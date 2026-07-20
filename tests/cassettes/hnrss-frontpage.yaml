@@ -1,0 +1,75 @@
+interactions:
+- request:
+    body: null
+    headers:
+      A-Im:
+      - feed
+      Accept:
+      - application/atom+xml,application/rdf+xml,application/rss+xml,application/x-netcdf,application/xml;q=0.9,text/xml;q=0.2,*/*;q=0.1
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - close
+      Host:
+      - hnrss.org
+      User-Agent:
+      - feedparser/6.0.12 +https://github.com/kurtmckee/feedparser/
+    method: GET
+    uri: https://hnrss.org/frontpage?count=2
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      Cache-Control:
+      - max-age=900
+      Connection:
+      - close
+      Content-Encoding:
+      - gzip
+      Content-Length:
+      - '1416'
+      Content-Type:
+      - application/xml; charset=utf-8
+      Date:
+      - Mon, 20 Jul 2026 11:57:32 GMT
+      Expires:
+      - Mon, 20 Jul 2026 12:12:32 GMT
+      Last-Modified:
+      - Mon, 20 Jul 2026 11:24:45 GMT
+      Server:
+      - nginx
+      Vary:
+      - Accept-Encoding
+      X-Algolia-Url:
+      - https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=2&numericFilters=created_at_i%3E%3D1783943852&restrictSearchableAttributes=title&tags=front_page
+      X-Cache:
+      - MISS
+    status:
+      code: 200
+      message: OK
+version: 1

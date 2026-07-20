@@ -1,0 +1,17 @@
+{
+  "item_id": "test-item-001",
+  "title": "Improved IVF outcomes with time-lapse embryo imaging: a randomized controlled trial",
+  "tl_dr": "Time-lapse embryo imaging significantly improves live birth rates (48.2% vs 39.5%) compared to standard morphological assessment in a large RCT of 1,200 IVF patients.",
+  "key_points": [
+    "Multicenter RCT with 1,200 IVF patients comparing time-lapse imaging to standard morphological assessment",
+    "Live birth rate: 48.2% (time-lapse) vs 39.5% (control), RR 1.22, 95% CI 1.06-1.40, p=0.006",
+    "Clinical pregnancy rate and implantation rate also significantly improved in the time-lapse group",
+    "Time-lapse imaging is a non-invasive method that improves embryo selection in IVF cycles"
+  ],
+  "entities": [
+    {"name": "Time-lapse embryo imaging", "type": "technology", "relevance": 0.95},
+    {"name": "IVF", "type": "procedure", "relevance": 0.90},
+    {"name": "Live birth rate", "type": "outcome", "relevance": 0.85}
+  ],
+  "relevance_score": 92
+}

@@ -1,0 +1,9 @@
+project:
+  name: My AutoInfo
+  created_at: '2026-07-20'
+llm:
+  provider: openrouter
+  model: deepseek/deepseek-chat
+  api_key: ${AUTOINFO_LLM_API_KEY}
+domains:
+- medical-research

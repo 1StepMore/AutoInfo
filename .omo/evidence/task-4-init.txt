@@ -1,0 +1,18 @@
+--- init output ---
+  SKIP  /tmp/test-autoinfo/.autoinfo/config.yaml  (already exists)
+  SKIP  /tmp/test-autoinfo/.autoinfo/sources.yaml  (already exists)
+  SKIP  /tmp/test-autoinfo/.autoinfo/knowledge/01-Raw/  (already exists)
+  SKIP  /tmp/test-autoinfo/.autoinfo/collections/  (already exists)
+  SKIP  /tmp/test-autoinfo/.autoinfo/outputs/  (already exists)
+
+✅ AutoInfo initialized for 'medical-research'.
+
+Next steps:
+  1. Set your LLM API key:
+     export AUTOINFO_LLM_API_KEY='sk-...'
+
+  2. Collect from sources:
+     autoinfo collect --domain medical-research --topic "IVF breakthroughs" --limit 5
+
+  3. Process collected items:
+     autoinfo process --domain medical-research

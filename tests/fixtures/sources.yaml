@@ -1,0 +1,15 @@
+name: medical-research
+description: "Medical research tracking — 辅助生殖/脑科学/神经科学"
+sources:
+  - name: pubmed
+    type: api
+    url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/
+    quality_tier: 1
+    frequency: daily
+    access: free
+    rate_limit: 3
+topics:
+  - name: "IVF breakthroughs"
+    keywords: ["IVF", "embryo", "implantation", "in vitro fertilization"]
+  - name: "Neuroplasticity"
+    keywords: ["neuroplasticity", "synaptic plasticity", "long-term potentiation"]

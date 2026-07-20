@@ -1,0 +1,18 @@
+project:
+  name: "Test Project"
+  created_at: "2026-07-01"
+llm:
+  provider: openrouter
+  model: deepseek/deepseek-chat
+  api_key: test-key
+domains:
+  - name: medical-research
+    active: true
+    sources:
+      - name: pubmed
+        type: api
+        url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/
+        quality_tier: 1
+    topics:
+      - name: "IVF breakthroughs"
+        keywords: ["IVF", "embryo"]

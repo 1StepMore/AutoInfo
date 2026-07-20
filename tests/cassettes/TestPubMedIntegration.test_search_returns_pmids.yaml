@@ -1,0 +1,70 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - eutils.ncbi.nlm.nih.gov
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmax=5&retmode=json&term=IVF
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAHSOzWrDMBCE730KsWdTHPk3vvVQQ3IplJJLbIIar4mCbLUr2dQYv3ulpIZS6G1m
+        d2e+neGCokGCYgY7fSAUgAYFnS8QwIhkpO7dLHyMYAnWFaEZlPWRsx56JyDaZjx3CULbiS83SO7G
+        WEF+HzorGyWNM0eIeZxFcRS7oZc859kqeRr+yE0WJqtMtynUAVgSvVHCup8M+qYZWtKd698dSndr
+        tZMV7NmuZwdpSbMSybLn7p0mzd58uq3guNcD9UIVp9NVNnm84ck2rtnLK6tAjv7gSSlWSlSNqWFx
+        3M8BafoFv1GuTPZsvFFaT8E7xf6h/F+8PHwDAAD//wMAEKopZX0BAAA=
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-RateLimit-Limit,X-RateLimit-Remaining
+      alt-svc:
+      - clear
+      cache-control:
+      - private
+      content-encoding:
+      - gzip
+      content-security-policy:
+      - upgrade-insecure-requests
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Mon, 20 Jul 2026 11:52:45 GMT
+      ncbi-phid:
+      - 1D33A174A2254D550000629E18292E3D.1.1.m_1
+      ncbi-sid:
+      - 5C87FE78B7C67F96_105DSID
+      referrer-policy:
+      - origin-when-cross-origin
+      server:
+      - Finatra
+      set-cookie:
+      - ncbi_sid=5C87FE78B7C67F96_105DSID; domain=.nih.gov; path=/; expires=Tue, 20
+        Jul 2027 11:52:46 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      via:
+      - 1.1 google
+      x-ratelimit-limit:
+      - '3'
+      x-ratelimit-remaining:
+      - '2'
+      x-ua-compatible:
+      - IE=Edge
+      x-xss-protection:
+      - 1; mode=block
+    status:
+      code: 200
+      message: OK
+version: 1

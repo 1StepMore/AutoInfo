@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoinfo"
+version = "0.1.0.dev0"
+description = "Universal information tracking and knowledge base platform"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "AutoInfo contributors"},
+]
+
+keywords = ["information-tracking", "knowledge-base", "mcp", "llm", "rss"]
+
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: News/Diary",
+]
+
+dependencies = [
+    # CLI & Config
+    "typer>=0.12",
+    "pyyaml>=6.0",
+
+    # HTTP & Networking
+    "httpx>=0.27",
+
+    # LLM
+    "litellm>=1.40",
+
+    # Collection
+    "feedparser>=6.0",
+    "trafilatura>=1.8",
+    "beautifulsoup4>=4.12",
+
+    # KB
+    "python-frontmatter>=1.1",
+    "markdown>=3.5",
+
+    # Search
+    "sqlite-vec>=0.1",
+
+    # MCP Server
+    "mcp>=1.0",
+
+    # Utilities
+    "jinja2>=3.1",
+    "python-dateutil>=2.8",
+    "pyrate-limiter>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-vcr>=1.0.2",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+web = [
+    "playwright>=1.45",
+]
+all = ["autoinfo[dev,web]"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/autoinfo"
+Documentation = "https://github.com/your-org/autoinfo#readme"
+
+[project.scripts]
+autoinfo = "autoinfo.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+autoinfo = ["py.typed", "data/*.yaml", "data/domains/*/sources.yaml"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,25 @@
+=== Task 3: Config system — Evidence ===
+Date: 2026-07-20
+File: src/autoinfo/config.py
+
+QA Scenarios executed:
+1. load_config parses valid YAML → PASS
+2. Env var resolution (${AUTOINFO_LLM_API_KEY}) → PASS
+3. Invalid YAML raises with file:line reference → PASS
+4. validate_config returns empty for valid config → PASS
+5. validate_config returns errors for missing fields → PASS
+6. get_config_path returns None when no config → PASS
+7. get_config_path finds config in cwd → PASS
+8. create_default_config → PASS
+9. ensure_config_exists with config → PASS (no exit)
+10. ensure_config_exists without config → PASS (exits code 1 with message)
+
+Exported functions:
+- load_config(path) -> Config
+- get_config_path() -> Path | None
+- validate_config(config) -> list[str]
+- create_default_config(domain) -> dict
+- ensure_config_exists() -> None
+
+Dataclasses:
+- ProjectConfig, LLMConfig, SourceConfig, TopicConfig, DomainConfig, Config

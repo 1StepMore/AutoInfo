@@ -1,0 +1,173 @@
+"""RSS/Atom feed handler using feedparser.
+
+Provides the :class:`RSSHandler` class which fetches and parses RSS 2.0
+and Atom feeds into :class:`Item <autoinfo.models.Item>` instances.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import timezone
+from typing import Any
+
+import feedparser
+
+from autoinfo.models import Item
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Handler
+# ---------------------------------------------------------------------------
+
+
+class RSSHandler:
+    """Fetch and parse RSS/Atom feeds into :class:`Item` instances.
+
+    Supports both RSS 2.0 and Atom formats transparently — *feedparser*
+    normalises both to the same ``feed.entries`` interface.
+
+    Usage::
+
+        handler = RSSHandler()
+        items = handler.fetch("https://hnrss.org/frontpage?count=3")
+        for item in items:
+            print(item.title, item.source_url)
+    """
+
+    def __init__(self, source_name: str = "rss") -> None:
+        self.source_name = source_name
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fetch(self, url: str) -> list[Item]:
+        """Fetch and parse a single RSS/Atom feed.
+
+        Parameters
+        ----------
+        url : str
+            The feed URL to fetch.
+
+        Returns
+        -------
+        list[Item]
+            Parsed items.  Returns an empty list on any error (network
+            failure, malformed XML, etc.) — this method **never** raises.
+        """
+        try:
+            parsed = feedparser.parse(url)
+        except Exception as exc:
+            logger.error("RSS fetch failed for %s: %s", url, exc)
+            return []
+
+        # -- bozo bit: feedparser could not fully parse the feed ----------
+        if parsed.bozo and not parsed.entries:
+            bozo_exception = parsed.get("bozo_exception", None)
+            logger.error(
+                "RSS parse error for %s (bozo): %s",
+                url,
+                bozo_exception or "unknown",
+            )
+            return []
+
+        # -- Ensure we have entries ---------------------------------------
+        if not parsed.entries:
+            logger.warning("RSS feed returned zero entries: %s", url)
+            return []
+
+        items: list[Item] = []
+        for i, entry in enumerate(parsed.entries):
+            try:
+                item = self._entry_to_item(entry, url)
+                items.append(item)
+            except Exception as exc:
+                logger.warning(
+                    "Skipping entry %d in %s: %s", i, url, exc,
+                )
+                continue
+
+        return items
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _entry_to_item(entry: dict[str, Any], feed_url: str) -> Item:
+        """Convert a feedparser entry ``dict`` into an :class:`Item`.
+
+        Parameters
+        ----------
+        entry : dict
+            A single entry from ``parsed.entries`` (feedparser's
+            normalised ``FeedParserDict``).
+        feed_url : str
+            The original feed URL (used as a fallback for source_url).
+
+        Returns
+        -------
+        Item
+        """
+        title = entry.get("title", "")
+        link = entry.get("link", feed_url)
+        summary = (
+            entry.get("summary")
+            or entry.get("description")
+            or entry.get("content", [{}])[0].get("value", "")
+            or ""
+        )
+
+        published = entry.get("published") or entry.get("updated") or ""
+        collected_at = _normalise_date(published)
+
+        return Item(
+            id=_make_item_id(feed_url, link),
+            source_name="rss",
+            source_type="rss",
+            source_url=link,
+            title=title,
+            content=summary,
+            content_type="text",
+            collected_at=collected_at,
+            raw_data={"feed_url": feed_url},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_item_id(feed_url: str, item_link: str) -> str:
+    """Produce a stable-ish item identifier from feed + entry URLs."""
+    import hashlib
+
+    raw = f"{feed_url}::{item_link}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _normalise_date(date_str: str) -> str:
+    """Try to parse *date_str* into ISO-8601 (UTC).
+
+    Returns an empty string if the date cannot be parsed.
+    """
+    if not date_str:
+        return ""
+
+    # feedparser may return a time.struct_time via ``parsed_parsed``,
+    # but the string form is more portable; use python-dateutil if
+    # available, otherwise a simple fallback.
+    try:
+        from dateutil import parser as dateutil_parser
+
+        dt = dateutil_parser.parse(date_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+    except Exception:
+        pass
+
+    # Last-resort: just return the raw string so caller has something.
+    return date_str

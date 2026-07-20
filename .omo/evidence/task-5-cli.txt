@@ -1,0 +1,55 @@
+                                                                                
+ Usage: autoinfo [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ Universal information tracking and knowledge base platform                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --json                        Enable JSON output                             │
+│ --install-completion          Install completion for the current shell.      │
+│ --show-completion             Show completion for the current shell, to copy │
+│                               it or customize the installation.              │
+│ --help                        Show this message and exit.                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ init       Initialize AutoInfo project skeleton.                             │
+│ doctor     Check system health and configuration.                            │
+│ collect    Collect from sources.                                             │
+│ process    Process collected items (LLM extraction, quality gates).          │
+│ status     Show collection overview and system status.                       │
+│ summaries  List and manage collected summaries.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+│ init       Initialize AutoInfo project skeleton.                             │
+│ doctor     Check system health and configuration.                            │
+│ collect    Collect from sources.                                             │
+│ process    Process collected items (LLM extraction, quality gates).          │
+│ status     Show collection overview and system status.                       │
+│ summaries  List and manage collected summaries.                              │
+---
+                                                                                
+ Usage: autoinfo doctor [OPTIONS] COMMAND [ARGS]...                             
+                                                                                
+ Check system health and configuration.                                         
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --json          JSON output                                                  │
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+---
+                                                                                
+ Usage: autoinfo collect [OPTIONS] COMMAND [ARGS]...                            
+                                                                                
+ Collect from sources.                                                          
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --domain              TEXT     Domain to collect for [required]           │
+│    --topic               TEXT     Topic filter                               │
+│    --source              TEXT     Source name filter                         │
+│    --limit               INTEGER  Max items to collect                       │
+│    --dry-run                      Preview without collecting                 │
+│    --auto-process                 Auto-process after collection              │
+│    --json                         JSON output                                │
+│    --help                         Show this message and exit.                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

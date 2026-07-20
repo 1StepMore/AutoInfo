@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE PubmedArticleSet PUBLIC "-//NLM//DTD PubMed 2.0//EN"
+  "https://dtd.nlm.nih.gov/ncbi/pubmed/out/PubMed.dtd">
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="PubMed-not-MEDLINE" Owner="NLM">
+      <PMID Version="1">12345678</PMID>
+      <DateCompleted>
+        <Year>2026</Year>
+        <Month>03</Month>
+        <Day>15</Day>
+      </DateCompleted>
+      <Article PubModel="Print-Electronic">
+        <Journal>
+          <ISSN IssnType="Print">1234-5678</ISSN>
+          <JournalIssue CitedMedium="Print">
+            <Volume>42</Volume>
+            <Issue>3</Issue>
+            <PubDate>
+              <Year>2026</Year>
+              <Month>Mar</Month>
+            </PubDate>
+          </JournalIssue>
+          <Title>Journal of Reproductive Medicine</Title>
+          <ISOAbbreviation>J Reprod Med</ISOAbbreviation>
+        </Journal>
+        <ArticleTitle>Improved IVF outcomes with time-lapse embryo imaging: a randomized controlled trial</ArticleTitle>
+        <Pagination>
+          <MedlinePgn>234-245</MedlinePgn>
+        </Pagination>
+        <AuthorList CompleteYN="Y">
+          <Author ValidYN="Y">
+            <LastName>Zhang</LastName>
+            <ForeName>Wei</ForeName>
+            <Initials>W</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Chen</LastName>
+            <ForeName>Li</ForeName>
+            <Initials>L</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Smith</LastName>
+            <ForeName>James A</ForeName>
+            <Initials>JA</Initials>
+          </Author>
+        </AuthorList>
+        <Abstract>
+          <AbstractText Label="Background" NlmCategory="BACKGROUND">
+            Time-lapse embryo imaging has been proposed as a non-invasive method to improve embryo selection in IVF cycles. However, evidence from large randomized trials remains limited.
+          </AbstractText>
+          <AbstractText Label="Methods" NlmCategory="METHODS">
+            We conducted a multicenter randomized controlled trial involving 1,200 patients undergoing IVF treatment. Patients were randomly assigned to embryo selection using time-lapse imaging (n=600) or standard morphological assessment (n=600). The primary outcome was live birth rate per embryo transfer.
+          </AbstractText>
+          <AbstractText Label="Results" NlmCategory="RESULTS">
+            The live birth rate was significantly higher in the time-lapse group compared to the control group (48.2% vs. 39.5%, relative risk 1.22, 95% CI 1.06-1.40, p=0.006). Clinical pregnancy rate and implantation rate were also significantly improved.
+          </AbstractText>
+          <AbstractText Label="Conclusions" NlmCategory="CONCLUSIONS">
+            Time-lapse embryo imaging significantly improves live birth rates compared to standard morphological assessment in IVF patients. This technology should be considered for routine clinical practice.
+          </AbstractText>
+        </Abstract>
+        <Language>eng</Language>
+        <PublicationTypeList>
+          <PublicationType UI="D016428">Journal Article</PublicationType>
+          <PublicationType UI="D017064">Randomized Controlled Trial</PublicationType>
+        </PublicationTypeList>
+      </Article>
+      <MeshHeadingList>
+        <MeshHeading>
+          <DescriptorName UI="D005313" MajorTopicYN="Y">Fertilization in Vitro</DescriptorName>
+        </MeshHeading>
+        <MeshHeading>
+          <DescriptorName UI="D059372" MajorTopicYN="N">Time-Lapse Imaging</DescriptorName>
+        </MeshHeading>
+        <MeshHeading>
+          <DescriptorName UI="D018892" MajorTopicYN="N">Live Birth</DescriptorName>
+        </MeshHeading>
+        <MeshHeading>
+          <DescriptorName UI="D017254" MajorTopicYN="N">Embryo Transfer</DescriptorName>
+        </MeshHeading>
+      </MeshHeadingList>
+    </MedlineCitation>
+    <PubmedData>
+      <History>
+        <PubMedPubDate PubStatus="received">
+          <Year>2025</Year>
+          <Month>09</Month>
+          <Day>10</Day>
+        </PubMedPubDate>
+        <PubMedPubDate PubStatus="accepted">
+          <Year>2026</Year>
+          <Month>01</Month>
+          <Day>22</Day>
+        </PubMedPubDate>
+        <PubMedPubDate PubStatus="pubmed">
+          <Year>2026</Year>
+          <Month>03</Month>
+          <Day>15</Day>
+        </PubMedPubDate>
+      </History>
+      <ArticleIdList>
+        <ArticleId IdType="doi">10.1000/j.jrm.2026.03.004</ArticleId>
+        <ArticleId IdType="pubmed">12345678</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>

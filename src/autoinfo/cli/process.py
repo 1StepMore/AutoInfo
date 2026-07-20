@@ -1,0 +1,120 @@
+"""Process CLI — LLM extraction and quality gates pipeline.
+
+Usage::
+
+    autoinfo process --domain medical-research [--model deepseek/deepseek-chat] [--json]
+"""
+
+from __future__ import annotations
+
+import json
+
+import typer
+
+from autoinfo.process import ProcessResult, run_processing
+
+app = typer.Typer()
+
+
+@app.callback(invoke_without_command=True)
+def process(
+    domain: str = typer.Option(..., "--domain", help="Domain to process"),
+    model: str = typer.Option(
+        None, "--model", help="LLM model override (e.g. deepseek/deepseek-chat)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Process collected items (LLM extraction, quality gates, KB storage)."""
+    try:
+        result = run_processing(domain=domain, model=model)
+    except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.echo(f"Unexpected error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    # -- Output -------------------------------------------------------------
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "domain": result.domain,
+                    "total_items": result.total_items,
+                    "passed_gates": result.passed_gates,
+                    "kb_entries_created": result.kb_entries_created,
+                    "errors": result.errors,
+                    "duration_s": result.duration_s,
+                    "per_item_logs": result.per_item_logs,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        _print_human(result)
+
+    # Exit with error code when any items failed
+    if result.errors:
+        raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _print_human(result: ProcessResult) -> None:
+    """Print a human-readable processing summary."""
+    if result.total_items == 0:
+        typer.echo(f"No cached items found for domain '{result.domain}'.")
+        return
+
+    typer.echo(f"Processing domain: {result.domain}")
+    typer.echo("")
+
+    # Per-item progress
+    for log in result.per_item_logs:
+        status_icon = {
+            "ok": "✓",
+            "duplicate": "⚠",
+            "error": "✗",
+        }.get(log.get("status", ""), "?")
+
+        title = log.get("title", "?")[:72]
+        item_id = log.get("item_id", "?")
+
+        if log.get("status") == "error":
+            typer.echo(
+                f"  {status_icon} {item_id}: {title}",
+                err=True,
+            )
+            typer.echo(f"      ↳ {log.get('error', 'unknown error')}", err=True)
+        elif log.get("status") == "duplicate":
+            typer.echo(
+                f"  {status_icon} {item_id}: {title} "
+                f"(duplicate, matched by {log.get('detail', '?')})"
+            )
+        else:
+            score = log.get("g3_score", 0)
+            dur = log.get("duration_s", 0)
+            typer.echo(
+                f"  {status_icon} {item_id}: {title} "
+                f"[score={score:.0f}, {dur:.2f}s]"
+            )
+
+    # Summary line
+    typer.echo("")
+    typer.echo(
+        f"Summary: {result.total_items} items → "
+        f"{result.passed_gates} passed G1-G3 → "
+        f"{result.kb_entries_created} KB entries created "
+        f"({result.duration_s:.1f}s)"
+    )
+
+    if result.errors:
+        summary = f"  {len(result.errors)} item(s) failed processing"
+        typer.echo(summary, err=True)

@@ -1,0 +1,11 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /tmp/autoinfo-venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /mnt/d/贯维/AutoInfo
+configfile: pyproject.toml
+testpaths: tests
+plugins: asyncio-1.4.0, vcr-1.0.2, anyio-4.14.2
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 0 items
+
+========================= no tests collected in 0.07s ==========================

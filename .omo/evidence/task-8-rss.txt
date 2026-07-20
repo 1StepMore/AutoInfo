@@ -1,0 +1,42 @@
+Task 8: Generic RSS Handler — QA Evidence
+========================================
+
+Created:
+  - src/autoinfo/collectors/rss.py  (RSSHandler class)
+  - tests/test_rss_handler.py       (12 tests)
+  - tests/cassettes/hnrss-frontpage.yaml  (VCR cassette)
+  - tests/fixtures/atom-feed.xml         (Atom fixture)
+
+Scenario 1: RSS feed parse
+  Command: handler.fetch('https://hnrss.org/frontpage?count=3')
+  Result:  3 items returned with title, source_url, collected_at
+  PASS
+
+Scenario 2: Atom feed parse
+  Command: handler.fetch('file://...atom-feed.xml')
+  Result:  2 items returned, "Atom Entry One" parsed correctly
+  PASS
+
+Scenario 3: Error handling (invalid URL)
+  Command: handler.fetch('https://invalid.example.com/nope')
+  Result:  [] returned, logged error
+  PASS
+
+Scenario 4: Never crashes
+  Command: handler.fetch('') / 'not-a-url' / 'https://'
+  Result:  [] returned for all bad inputs
+  PASS
+
+Test Suite: pytest tests/test_rss_handler.py -v
+  Result:  12 passed in ~10s
+  PASS
+
+Verify: feedparser handles both RSS 2.0 and Atom
+  Result:  RSS (hnrss.org) and Atom (local fixture) both parsed
+  PASS
+
+Verify: feedparser bozo bit handled
+  Result:  Bozo exceptions logged, empty list returned
+  PASS
+
+ALL QA SCENARIOS PASSED

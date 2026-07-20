@@ -1,0 +1,85 @@
+interactions:
+- request:
+    body: null
+    headers:
+      A-Im:
+      - feed
+      Accept:
+      - application/atom+xml,application/rdf+xml,application/rss+xml,application/x-netcdf,application/xml;q=0.9,text/xml;q=0.2,*/*;q=0.1
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - close
+      Host:
+      - lobste.rs
+      User-Agent:
+      - feedparser/6.0.12 +https://github.com/kurtmckee/feedparser/
+    method: GET
+    uri: https://lobste.rs/tag/python.rss
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAJbogA/6xW6XLbOBL+r6fAIrXrPUxTsmnLdkhWyU6cTdbOJrFzTKamVBDYFGGBAAM0dSST
+        d58CSdGi7Zk4leiHQKA/fH2gu4Hwb4nmuCqAZJjLuBe6gUimphEFRYlbAZbEPULCHJCRDLHw4FMp
+        5hHlWiEo9Nx+SppZRBGW6Duex4RnzFjAqMTUO6QVixRqRgzIiAquFSVWfAYb0UEQLAdBQIkji6jI
+        2RT8Qk0pyQykEfVRlzzz3B5vEAQ7TnSLjxWFBO8G13LvD5f7w3uIvotkMAiWg0HwozTD3eVw92c4
+        1QbswVQWmOHZOsLOQsEZCq18XYCqpQlYbkThVv+zzGVr6A1ip1pGgRIieq4nFsFYepMgiuUQ0bmA
+        RaENbqTFQiSYRQnMBQevmmwToQQKJj3LmYRocIfGQArGgNmgYXLBVncVYgY5eFxLvQl+NDod7PWf
+        3EFb1GblpZJN7Qb6yz8+lRof/78ejptZmnqoC8Hr6XY9jDqYkTTAkhV5pS1C0gGedIAnRs9AkXOh
+        Zh3UZQd1WbC8I+5IT5niIOulr3c84zrPXU3+gG8XHXUXrhp0x5yrDuDKaCk7wXnbkb9VM6GSn+Zu
+        tzxspg3yEomroTZbUzZ38x3BdR2gKl3jN2B1aTiQlxrJmS5VQn4n6xQO/Rp0WwGuJNgMAFt2Zi2g
+        9TcKyBsme2yXHfV3uG1S8yEMdmURcq8Z0qS/1+dHyfdxoM49CxI4ev0+HPb3BjUBSRgyD0sz0R4a
+        xmeumKRmycPNu9L5ZcU8NpDrOYwnJaJWXpDs871gcvRNPb3buWlN6hXMsHwjMVmJGSgUXOBqjK48
+        aNzrZLTbVQtudr0qxqcf34vxh/9dKPFBlE8vpmf8xTBYZGb8y3P7+tnJ0+Lk3fx69hmDyQTKj4vL
+        w+uPB9fz/9r+u3Qf7Dx9PuVHg9U1P3ty8KIsXn6+Pnl9p5qMnmjcbBFKM7FNlK7uJyaqDYSEddNs
+        OqstgJeySgxTSrCUKK04RFQ+x8PV62fw/kB8GCUHwUgs3p6PoqhhIeRLMxJCC9f6kGf0mPzarm4i
+        3I8uMjBAj28tE0LdpTDOGfIMLD0m1P837UC+bnemFNgUjAJbgXOdgGEIm1u+tt+/NV/1SujXvse9
+        0K9fCuFEJ6s6/UoLpjrEra16QemFVyqxjLYGw8NgPzgc7u5tOe9DtxcMEUlEFZuv48qqBamnmpKq
+        EiM6YXw2Na54625/TB4dQL/f7z9u8/fO9UT+eVoaAwoJGpamgh+TwfDv/6Jx6LNak0tVQsJEzAmX
+        zNrKikzLBEx7OqFirdTVj20llaWN5KaKOIo50HhUja2mP0Eb4KCQxm+q8VvopstbGp82X9WO3l/Z
+        U1/wNL6sxlv4TS1cGwWm9UPqqVA0PnfDhl2hr9i8OSY/EfO417sdpIbovig9REeroc4sMLXB1SG5
+        tBDKigSaPtM9vIlekkUtJCTMBmuLqhZP46AfhH42iFu6Rlw9C8bu/VpvLNz/VQbErG+OlS6JgU8l
+        uIueLJglSiNJXTpuE20IZkAqFpIxSyYAiiQgASHZcbr8irGJ103YNr5SrdF5WoXLFkxVrmqXtOBl
+        ujTWk1VaNZF3kI3Qr2MdsvXxsYkukcYjN2weXwtA9wiKr9jU3itOhaxfeGfVx72YpmEIrSyNL9oJ
+        OdfT+05z7WNv00XBJl7Bc88mM1eXbj3uSlmJOhVSdiC90Hf9Ju6Ffoa5jHt/DABOr5/d0gwAAA==
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000
+      Connection:
+      - close
+      Content-Encoding:
+      - gzip
+      Content-Length:
+      - '1309'
+      Content-Type:
+      - text/html; charset=utf-8
+      Date:
+      - Mon, 20 Jul 2026 11:58:43 GMT
+      Link:
+      - </assets/application-7d3a2a90.css>; rel=preload; as=style; nopush,</assets/system-system-fd030c9d.css>;
+        rel=preload; as=style; nopush,</assets/tom-select-00e8031d.css>; rel=preload;
+        as=style; nopush,</assets/TomSelect_remove_button-4d5c34b9.css>; rel=preload;
+        as=style; nopush
+      Referrer-Policy:
+      - strict-origin-when-cross-origin
+      Strict-Transport-Security:
+      - max-age=31536000
+      - max-age=63072000; includeSubDomains; preload
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 Caddy
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-Permitted-Cross-Domain-Policies:
+      - none
+      X-Request-Id:
+      - 361c1c48-bac6-43ed-ae33-a49be2cc4081
+      X-Xss-Protection:
+      - '0'
+    status:
+      code: 404
+      message: Not Found
+version: 1

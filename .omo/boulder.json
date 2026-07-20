@@ -1,0 +1,221 @@
+{
+  "schema_version": 2,
+  "active_work_id": "autoinfo-v0-1-fa566277",
+  "works": {
+    "autoinfo-v0-1-fa566277": {
+      "work_id": "autoinfo-v0-1-fa566277",
+      "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.1.md",
+      "plan_name": "autoinfo-v0.1",
+      "status": "completed",
+      "started_at": "2026-07-20T11:40:28.496Z",
+      "updated_at": "2026-07-20T12:47:45.791Z",
+      "session_ids": [
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
+      ],
+      "session_origins": {
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "Project skeleton + directory structure",
+          "session_id": "opencode:ses_080ab8be4ffeU2MJEhCW3WyM0m",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "updated_at": "2026-07-20T11:48:46.900Z",
+          "started_at": "2026-07-20T11:44:00.230Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T11:48:46.900Z",
+          "elapsed_ms": 286670
+        },
+        "todo:7": {
+          "task_key": "todo:7",
+          "task_label": "7",
+          "task_title": "PubMed API handler",
+          "session_id": "opencode:ses_080a3d87effeDE2N4qFcev5CgA",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T12:01:31.136Z",
+          "started_at": "2026-07-20T11:55:27.999Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:01:31.136Z",
+          "elapsed_ms": 363137
+        },
+        "todo:9": {
+          "task_key": "todo:9",
+          "task_label": "9",
+          "task_title": "Collection orchestrator + dedup",
+          "session_id": "opencode:ses_08098a2a9ffekAp5R06FC2Q6rb",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T12:09:36.808Z",
+          "started_at": "2026-07-20T12:09:23.026Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:09:36.808Z",
+          "elapsed_ms": 13782
+        },
+        "todo:11": {
+          "task_key": "todo:11",
+          "task_label": "11",
+          "task_title": "LLM extraction pipeline",
+          "session_id": "opencode:ses_0809154f2ffe7KHMbIn42sxdk5",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T12:21:22.648Z",
+          "started_at": "2026-07-20T12:20:55.125Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:21:22.648Z",
+          "elapsed_ms": 27523
+        },
+        "todo:13": {
+          "task_key": "todo:13",
+          "task_label": "13",
+          "task_title": "Process command wiring",
+          "session_id": "opencode:ses_080868b6dffeBvXDHmaGfv3ROB",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "updated_at": "2026-07-20T12:29:10.492Z",
+          "started_at": "2026-07-20T12:28:53.670Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:29:10.492Z",
+          "elapsed_ms": 16822
+        },
+        "todo:14": {
+          "task_key": "todo:14",
+          "task_label": "14",
+          "task_title": "CLI commands — status, doctor, summaries, auto-process",
+          "session_id": "opencode:ses_0807f7ab2ffejoNNt1qe0FBJRX",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T12:38:36.420Z",
+          "started_at": "2026-07-20T12:36:28.696Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:38:36.420Z",
+          "elapsed_ms": 127724
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "**Plan Compliance Audit** — `oracle`",
+          "session_id": "opencode:ses_08076e124ffecIn2hYFSH7nqf3",
+          "agent": "oracle",
+          "updated_at": "2026-07-20T12:45:36.310Z",
+          "started_at": "2026-07-20T12:41:54.015Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T12:45:36.310Z",
+          "elapsed_ms": 222295
+        }
+      },
+      "ended_at": "2026-07-20T12:47:45.791Z",
+      "elapsed_ms": 4037295
+    }
+  },
+  "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.1.md",
+  "started_at": "2026-07-20T11:40:28.496Z",
+  "status": "completed",
+  "updated_at": "2026-07-20T12:47:45.791Z",
+  "session_ids": [
+    "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
+  ],
+  "session_origins": {
+    "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
+  },
+  "plan_name": "autoinfo-v0.1",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Project skeleton + directory structure",
+      "session_id": "opencode:ses_080ab8be4ffeU2MJEhCW3WyM0m",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-07-20T11:48:46.900Z",
+      "started_at": "2026-07-20T11:44:00.230Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T11:48:46.900Z",
+      "elapsed_ms": 286670
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "PubMed API handler",
+      "session_id": "opencode:ses_080a3d87effeDE2N4qFcev5CgA",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-20T12:01:31.136Z",
+      "started_at": "2026-07-20T11:55:27.999Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:01:31.136Z",
+      "elapsed_ms": 363137
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "Collection orchestrator + dedup",
+      "session_id": "opencode:ses_08098a2a9ffekAp5R06FC2Q6rb",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-20T12:09:36.808Z",
+      "started_at": "2026-07-20T12:09:23.026Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:09:36.808Z",
+      "elapsed_ms": 13782
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "LLM extraction pipeline",
+      "session_id": "opencode:ses_0809154f2ffe7KHMbIn42sxdk5",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-20T12:21:22.648Z",
+      "started_at": "2026-07-20T12:20:55.125Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:21:22.648Z",
+      "elapsed_ms": 27523
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "Process command wiring",
+      "session_id": "opencode:ses_080868b6dffeBvXDHmaGfv3ROB",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-07-20T12:29:10.492Z",
+      "started_at": "2026-07-20T12:28:53.670Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:29:10.492Z",
+      "elapsed_ms": 16822
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "CLI commands — status, doctor, summaries, auto-process",
+      "session_id": "opencode:ses_0807f7ab2ffejoNNt1qe0FBJRX",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-20T12:38:36.420Z",
+      "started_at": "2026-07-20T12:36:28.696Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:38:36.420Z",
+      "elapsed_ms": 127724
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "opencode:ses_08076e124ffecIn2hYFSH7nqf3",
+      "agent": "oracle",
+      "updated_at": "2026-07-20T12:45:36.310Z",
+      "started_at": "2026-07-20T12:41:54.015Z",
+      "status": "completed",
+      "ended_at": "2026-07-20T12:45:36.310Z",
+      "elapsed_ms": 222295
+    }
+  },
+  "agent": "atlas",
+  "ended_at": "2026-07-20T12:47:45.791Z",
+  "elapsed_ms": 4037295
+}

@@ -1,0 +1,59 @@
+# {{ title }}
+
+**Domain**: {{ domain }}  
+**Generated**: {{ generated_at }}  
+{% if collection_id %}**Collection**: {{ collection_id }}  
+{% endif %}**Sections**: {{ sections|length }}  
+**References**: {{ references|length }}
+
+---
+
+## Executive Summary
+
+{{ executive_summary }}
+
+---
+
+## Sections
+
+{% for section in sections %}
+### {{ section.title }}
+
+{{ section.content }}
+
+{% if section.entries %}
+| # | Title | Summary |
+|---|-------|---------|
+{% for entry in section.entries %}
+| {{ loop.index }} | {{ entry.title }} | {{ entry.summary }} |
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+---
+
+## References
+
+{% for ref in references %}
+1. **{{ ref.title }}**{% if ref.source_url %} — {{ ref.source_url }}{% endif %}{% if ref.source_platform %} ({{ ref.source_platform }}){% endif %}
+{% else %}
+_No references included in this report._
+{% endfor %}
+
+{% if appendices %}
+---
+
+## Appendices
+
+{% for appendix in appendices %}
+### {{ appendix.title }}
+
+{{ appendix.content }}
+
+{% endfor %}
+{% endif %}
+
+---
+
+*AutoInfo Report · {{ domain }} · {{ generated_at }}*

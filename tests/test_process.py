@@ -448,6 +448,7 @@ class TestProcessCli:
         assert result.exit_code == 0
         assert "--domain" in result.stdout
         assert "--model" in result.stdout
+        assert "--batch-size" in result.stdout
         assert "--json" in result.stdout
 
     def test_process_missing_domain(self, cli_runner) -> None:
@@ -468,6 +469,9 @@ class TestProcessCli:
         mock_proc = MagicMock(return_value=ProcessResult(
             domain="test-domain",
             total_items=3,
+            processed_count=3,
+            remaining_count=0,
+            is_complete=True,
             passed_gates=2,
             kb_entries_created=2,
             duration_s=5.0,
@@ -485,6 +489,8 @@ class TestProcessCli:
         assert "Summary: 3 items" in result.stdout
         assert "2 passed G1-G3" in result.stdout
         assert "2 KB entries created" in result.stdout
+        # No batch message because is_complete=True
+        assert "Batch progress" not in result.stdout
 
     def test_process_json_output(self, cli_runner) -> None:
         """``--json`` flag produces parseable JSON."""
@@ -493,6 +499,9 @@ class TestProcessCli:
         mock_proc = MagicMock(return_value=ProcessResult(
             domain="test-domain",
             total_items=1,
+            processed_count=1,
+            remaining_count=0,
+            is_complete=True,
             passed_gates=1,
             kb_entries_created=1,
             duration_s=2.0,
@@ -508,6 +517,9 @@ class TestProcessCli:
         data = json.loads(result.stdout)
         assert data["domain"] == "test-domain"
         assert data["total_items"] == 1
+        assert data["processed_count"] == 1
+        assert data["remaining_count"] == 0
+        assert data["is_complete"] is True
         assert data["kb_entries_created"] == 1
 
     def test_process_exit_code_on_errors(self, cli_runner) -> None:
@@ -517,6 +529,9 @@ class TestProcessCli:
         mock_proc = MagicMock(return_value=ProcessResult(
             domain="test-domain",
             total_items=2,
+            processed_count=2,
+            remaining_count=0,
+            is_complete=True,
             passed_gates=1,
             kb_entries_created=1,
             errors=[{"item_id": "b", "error": "LLM failure"}],
@@ -570,6 +585,9 @@ class TestAutoProcessFlag:
                 return_value=ProcessResult(
                     domain="medical-research",
                     total_items=2,
+                    processed_count=2,
+                    remaining_count=0,
+                    is_complete=True,
                     passed_gates=2,
                     kb_entries_created=2,
                     duration_s=5.0,

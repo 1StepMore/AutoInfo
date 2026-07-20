@@ -176,6 +176,15 @@ def init(
         else:
             typer.echo(f"  SKIP  {d}/  (already exists)")
 
+    # --- Load first topic name for example command ---
+    first_topic = None
+    if demo_sources.is_file():
+        with open(demo_sources) as f:
+            domain_data = yaml.safe_load(f)
+        topics = domain_data.get("topics", [])
+        if topics:
+            first_topic = topics[0].get("name")
+
     # --- Success message with next steps ---
     typer.echo()
     typer.echo(f"✅ AutoInfo initialized for '{demo}'.")
@@ -185,7 +194,10 @@ def init(
     typer.echo("     export AUTOINFO_LLM_API_KEY='sk-...'")
     typer.echo()
     typer.echo("  2. Collect from sources:")
-    typer.echo(f"     autoinfo collect --domain {demo} --topic \"IVF breakthroughs\" --limit 5")
+    if first_topic:
+        typer.echo(f"     autoinfo collect --domain {demo} --topic \"{first_topic}\" --limit 5")
+    else:
+        typer.echo(f"     autoinfo collect --domain {demo} --limit 5")
     typer.echo()
     typer.echo("  3. Process collected items:")
     typer.echo(f"     autoinfo process --domain {demo}")

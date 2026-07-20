@@ -54,6 +54,9 @@ dependencies = [
     "jinja2>=3.1",
     "python-dateutil>=2.8",
     "pyrate-limiter>=3.0",
+
+    # Cron scheduling
+    "croniter>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -81,7 +84,7 @@ autoinfo = "autoinfo.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-autoinfo = ["py.typed", "data/*.yaml", "data/domains/*/sources.yaml"]
+autoinfo = ["py.typed", "data/*.yaml", "data/domains/*/sources.yaml", "data/templates/*.j2"]
 
 [tool.ruff]
 target-version = "py311"

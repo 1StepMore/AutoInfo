@@ -22,11 +22,26 @@ def process(
     model: str = typer.Option(
         None, "--model", help="LLM model override (e.g. deepseek/deepseek-chat)"
     ),
+    batch_size: int = typer.Option(
+        0,
+        "--batch-size",
+        help="Process only N items per run (0 = all). Prevents MCP timeout on large collections.",
+    ),
+    check_factual: bool = typer.Option(
+        False,
+        "--check-factual",
+        help="Run G4 factual consistency gate (LLM-based check of summary vs source)",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Process collected items (LLM extraction, quality gates, KB storage)."""
     try:
-        result = run_processing(domain=domain, model=model)
+        result = run_processing(
+            domain=domain,
+            model=model,
+            batch_size=batch_size,
+            check_factual=check_factual,
+        )
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
@@ -44,6 +59,9 @@ def process(
                 {
                     "domain": result.domain,
                     "total_items": result.total_items,
+                    "processed_count": result.processed_count,
+                    "remaining_count": result.remaining_count,
+                    "is_complete": result.is_complete,
                     "passed_gates": result.passed_gates,
                     "kb_entries_created": result.kb_entries_created,
                     "errors": result.errors,
@@ -108,12 +126,18 @@ def _print_human(result: ProcessResult) -> None:
 
     # Summary line
     typer.echo("")
-    typer.echo(
+    summary_parts = [
         f"Summary: {result.total_items} items → "
         f"{result.passed_gates} passed G1-G3 → "
         f"{result.kb_entries_created} KB entries created "
-        f"({result.duration_s:.1f}s)"
-    )
+        f"({result.duration_s:.1f}s)",
+    ]
+    if not result.is_complete:
+        summary_parts.append(
+            f"  Batch progress: {result.processed_count} processed, "
+            f"{result.remaining_count} remaining (incomplete)"
+        )
+    typer.echo("".join(summary_parts))
 
     if result.errors:
         summary = f"  {len(result.errors)} item(s) failed processing"

@@ -1,0 +1,38 @@
+# {{ title }}
+
+**Topic**: {{ topic }}  
+**Domain**: {{ domain }}  
+**Audience**: {{ target_audience }}  
+**Slides**: {{ slides|length }}  
+**Generated**: {{ generated_at }}
+
+{% if description %}
+**Description**: {{ description }}
+{% endif %}
+
+---
+
+{% for slide in slides %}
+## Slide {{ loop.index }}: {{ slide.title }}
+
+{{ slide.content }}
+
+{% if slide.bullets %}
+{% for bullet in slide.bullets %}
+- {{ bullet }}
+{% endfor %}
+{% endif %}
+
+{% if slide.notes %}
+> **Speaker Notes**: {{ slide.notes }}
+{% endif %}
+
+{% if loop.nextitem is defined %}
+---
+
+{% endif %}
+{% endfor %}
+
+---
+
+*AutoInfo Presentation · {{ domain }} · {{ generated_at }}*

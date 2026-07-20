@@ -1,0 +1,39 @@
+# AutoInfo demo domain: AI Commercial Intelligence
+# Tracks AI startup funding, product launches, and industry trends
+name: ai-commercial
+description: "AI commercial intelligence — startup funding, product launches, industry trends"
+
+sources:
+  - name: techcrunch
+    type: rss
+    url: https://techcrunch.com/feed/
+    quality_tier: 2
+    frequency: hourly
+    access: free
+    rate_limit: 10
+
+  - name: producthunt
+    type: api
+    url: https://api.producthunt.com/v2/api/graphql
+    quality_tier: 2
+    frequency: daily
+    access: api_key
+    rate_limit: 10
+
+topics:
+  - name: "AI Startup Funding"
+    keywords:
+      - AI startup
+      - artificial intelligence
+      - funding
+      - series A
+      - venture capital
+      - seed round
+  - name: "AI Product Launches"
+    keywords:
+      - AI product
+      - launch
+      - LLM
+      - GPT
+      - generative AI
+      - machine learning

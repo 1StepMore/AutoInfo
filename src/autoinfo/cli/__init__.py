@@ -2,7 +2,7 @@
 
 import typer
 
-from . import collect, doctor, process, status, summaries
+from . import collect, cron, doctor, kb, output, process, sources, status, summaries, topics
 
 # Import init function directly (not as typer app — single-command module)
 from .init import init as init_func
@@ -29,6 +29,11 @@ app.add_typer(doctor.app, name="doctor")
 app.add_typer(collect.app, name="collect")
 app.add_typer(process.app, name="process")
 app.add_typer(status.app, name="status")
+app.add_typer(sources.app, name="sources")
+app.add_typer(topics.app, name="topics")
+app.add_typer(kb.app, name="kb")
+app.add_typer(output.app, name="output")
+app.add_typer(cron.app, name="cron")
 app.add_typer(summaries.app, name="summaries")
 
 if __name__ == "__main__":

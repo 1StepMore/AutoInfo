@@ -46,13 +46,27 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
     "tl_dr": '"tl_dr": "2-3 sentence summary of the article"',
     "key_points": '"key_points": ["3-5 most important findings or takeaways"]',
     "entities": (
-        '"entities": [{"name": "Entity name", "type": "person|org|concept|technology|procedure|outcome"}]'
+        '"entities": [{"name": "Entity name", "type": "concept|person|org|drug|technology|procedure"}]'
     ),
     "relevance_score": '"relevance_score": integer 0-100 indicating relevance to medical research',
 }
 
+# Supported entity types for knowledge graph extraction.
+ENTITY_TYPES: list[str] = [
+    "concept",
+    "person",
+    "org",
+    "drug",
+    "technology",
+    "procedure",
+]
+
 # Fields always included when no custom schema is provided.
 DEFAULT_SCHEMA: list[str] = ["tl_dr", "key_points", "entities", "relevance_score"]
+
+# Default fields that are ALWAYS included in extraction prompts, even when
+# custom schema fields are specified.
+DEFAULT_FIELDS: list[str] = ["tl_dr", "key_points", "entities", "relevance_score"]
 
 # ---------------------------------------------------------------------------
 # Extractor
@@ -172,17 +186,41 @@ class LLMExtractor:
     ) -> tuple[str, str]:
         """Build (system_prompt, user_prompt) for the given *item*.
 
-        If *schema* is provided it controls which fields the LLM is asked to
-        extract; otherwise the default set (TL;DR, key points, entities,
-        relevance score) is used.
+        Default fields (TL;DR, key points, entities, relevance score) are
+        **always** included in the prompt.  When *schema* is provided any
+        additional field names not in the default set are treated as custom
+        fields and appended with an "Extract additionally" instruction.
+        When *schema* is ``None`` only the default fields are requested.
         """
         if schema is None:
-            schema = DEFAULT_SCHEMA
+            fields = DEFAULT_SCHEMA
+            custom = []
+        else:
+            fields = DEFAULT_FIELDS[:]
+            custom = [f for f in schema if f not in DEFAULT_FIELDS]
 
         lines = [SYSTEM_PROMPT, "", "Extract the following fields:"]
-        for field in schema:
+        for field in fields:
             desc = FIELD_DESCRIPTIONS.get(field, f'"{field}": <value>')
             lines.append(f"  - {desc}")
+
+        # Append entity type guidance when entities are requested
+        if "entities" in fields:
+            lines.append("")
+            lines.append(
+                "Entity types: " + ", ".join(ENTITY_TYPES)
+            )
+
+        if custom:
+            lines.append("")
+            lines.append("Extract additionally:")
+            for cf in custom:
+                # Auto-generate description from field name
+                desc = cf.replace("_", " ").replace("-", " ").title()
+                lines.append(f'  - "{cf}": {desc}')
+
+        lines.append("")
+        lines.append("Return all fields in a single JSON object.")
 
         system = "\n".join(lines)
         user = (
@@ -237,6 +275,16 @@ class LLMExtractor:
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
         parsed = self._parse_response(content)
 
+        # Determine which fields in the response are custom (not in defaults)
+        custom_field_names: list[str] = []
+        if schema is not None:
+            custom_field_names = [f for f in schema if f not in DEFAULT_FIELDS]
+
+        custom_fields: dict[str, Any] = {}
+        for cf in custom_field_names:
+            if cf in parsed:
+                custom_fields[cf] = parsed[cf]
+
         return ExtractionResult(
             item_id=item.id,
             title=item.title,
@@ -246,6 +294,7 @@ class LLMExtractor:
             relevance_score=max(
                 0.0, min(100.0, float(parsed.get("relevance_score", 0)))
             ),
+            custom_fields=custom_fields,
         )
 
     @staticmethod

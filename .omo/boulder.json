@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "active_work_id": "autoinfo-v0-1-fa566277",
+  "active_work_id": "autoinfo-v0-2-v1-0-a14070c5",
   "works": {
     "autoinfo-v0-1-fa566277": {
       "work_id": "autoinfo-v0-1-fa566277",
@@ -110,112 +110,171 @@
       },
       "ended_at": "2026-07-20T12:47:45.791Z",
       "elapsed_ms": 4037295
+    },
+    "autoinfo-v0-2-v1-0-a14070c5": {
+      "work_id": "autoinfo-v0-2-v1-0-a14070c5",
+      "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.2-v1.0.md",
+      "plan_name": "autoinfo-v0.2-v1.0",
+      "status": "completed",
+      "started_at": "2026-07-20T14:25:23.304Z",
+      "updated_at": "2026-07-20T15:42:51.956Z",
+      "session_ids": [
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
+      ],
+      "session_origins": {
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "Config schema — expand llm section with tasks, fallback, per-task model",
+          "session_id": "opencode:ses_080143c9cffezUJkKdZ2RgIy4N",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T14:42:12.822Z",
+          "started_at": "2026-07-20T14:31:38.837Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T14:42:12.822Z",
+          "elapsed_ms": 633985
+        },
+        "todo:6": {
+          "task_key": "todo:6",
+          "task_label": "6",
+          "task_title": "FTS5 search — full-text search over KB entries",
+          "session_id": "opencode:ses_080050cceffefGKtW0ewwegrsM",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T14:54:33.052Z",
+          "started_at": "2026-07-20T14:48:57.822Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T14:54:33.052Z",
+          "elapsed_ms": 335230
+        },
+        "todo:11": {
+          "task_key": "todo:11",
+          "task_label": "11",
+          "task_title": "Web scraping handler (trafilatura)",
+          "session_id": "opencode:ses_07ffa4635ffeK4U82d78e1JN1k",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T15:13:50.301Z",
+          "started_at": "2026-07-20T15:12:51.661Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T15:13:50.301Z",
+          "elapsed_ms": 58640
+        },
+        "todo:17": {
+          "task_key": "todo:17",
+          "task_label": "17",
+          "task_title": "FTS5+LLM Q&A on collected content",
+          "session_id": "opencode:ses_07fe8958effeUgKydrrMrRpY3b",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T15:27:01.359Z",
+          "started_at": "2026-07-20T15:20:08.552Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T15:27:01.359Z",
+          "elapsed_ms": 412807
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "**Plan Compliance Audit** — `oracle`",
+          "session_id": "opencode:ses_07fdc2049ffe3Q5dCkv5eVaaep",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-20T15:42:41.517Z",
+          "started_at": "2026-07-20T15:36:53.836Z",
+          "status": "completed",
+          "ended_at": "2026-07-20T15:42:41.517Z",
+          "elapsed_ms": 347681
+        }
+      },
+      "ended_at": "2026-07-20T15:42:51.956Z",
+      "elapsed_ms": 4648652
     }
   },
-  "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.1.md",
-  "started_at": "2026-07-20T11:40:28.496Z",
+  "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.2-v1.0.md",
+  "started_at": "2026-07-20T14:25:23.304Z",
   "status": "completed",
-  "updated_at": "2026-07-20T12:47:45.791Z",
+  "updated_at": "2026-07-20T15:42:51.956Z",
   "session_ids": [
     "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
   ],
   "session_origins": {
     "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
   },
-  "plan_name": "autoinfo-v0.1",
+  "plan_name": "autoinfo-v0.2-v1.0",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Project skeleton + directory structure",
-      "session_id": "opencode:ses_080ab8be4ffeU2MJEhCW3WyM0m",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-07-20T11:48:46.900Z",
-      "started_at": "2026-07-20T11:44:00.230Z",
-      "status": "completed",
-      "ended_at": "2026-07-20T11:48:46.900Z",
-      "elapsed_ms": 286670
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "PubMed API handler",
-      "session_id": "opencode:ses_080a3d87effeDE2N4qFcev5CgA",
+      "task_title": "Config schema — expand llm section with tasks, fallback, per-task model",
+      "session_id": "opencode:ses_080143c9cffezUJkKdZ2RgIy4N",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T12:01:31.136Z",
-      "started_at": "2026-07-20T11:55:27.999Z",
+      "updated_at": "2026-07-20T14:42:12.822Z",
+      "started_at": "2026-07-20T14:31:38.837Z",
       "status": "completed",
-      "ended_at": "2026-07-20T12:01:31.136Z",
-      "elapsed_ms": 363137
+      "ended_at": "2026-07-20T14:42:12.822Z",
+      "elapsed_ms": 633985
     },
-    "todo:9": {
-      "task_key": "todo:9",
-      "task_label": "9",
-      "task_title": "Collection orchestrator + dedup",
-      "session_id": "opencode:ses_08098a2a9ffekAp5R06FC2Q6rb",
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "FTS5 search — full-text search over KB entries",
+      "session_id": "opencode:ses_080050cceffefGKtW0ewwegrsM",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T12:09:36.808Z",
-      "started_at": "2026-07-20T12:09:23.026Z",
+      "updated_at": "2026-07-20T14:54:33.052Z",
+      "started_at": "2026-07-20T14:48:57.822Z",
       "status": "completed",
-      "ended_at": "2026-07-20T12:09:36.808Z",
-      "elapsed_ms": 13782
+      "ended_at": "2026-07-20T14:54:33.052Z",
+      "elapsed_ms": 335230
     },
     "todo:11": {
       "task_key": "todo:11",
       "task_label": "11",
-      "task_title": "LLM extraction pipeline",
-      "session_id": "opencode:ses_0809154f2ffe7KHMbIn42sxdk5",
+      "task_title": "Web scraping handler (trafilatura)",
+      "session_id": "opencode:ses_07ffa4635ffeK4U82d78e1JN1k",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T12:21:22.648Z",
-      "started_at": "2026-07-20T12:20:55.125Z",
+      "updated_at": "2026-07-20T15:13:50.301Z",
+      "started_at": "2026-07-20T15:12:51.661Z",
       "status": "completed",
-      "ended_at": "2026-07-20T12:21:22.648Z",
-      "elapsed_ms": 27523
+      "ended_at": "2026-07-20T15:13:50.301Z",
+      "elapsed_ms": 58640
     },
-    "todo:13": {
-      "task_key": "todo:13",
-      "task_label": "13",
-      "task_title": "Process command wiring",
-      "session_id": "opencode:ses_080868b6dffeBvXDHmaGfv3ROB",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-low",
-      "updated_at": "2026-07-20T12:29:10.492Z",
-      "started_at": "2026-07-20T12:28:53.670Z",
-      "status": "completed",
-      "ended_at": "2026-07-20T12:29:10.492Z",
-      "elapsed_ms": 16822
-    },
-    "todo:14": {
-      "task_key": "todo:14",
-      "task_label": "14",
-      "task_title": "CLI commands — status, doctor, summaries, auto-process",
-      "session_id": "opencode:ses_0807f7ab2ffejoNNt1qe0FBJRX",
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "FTS5+LLM Q&A on collected content",
+      "session_id": "opencode:ses_07fe8958effeUgKydrrMrRpY3b",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T12:38:36.420Z",
-      "started_at": "2026-07-20T12:36:28.696Z",
+      "updated_at": "2026-07-20T15:27:01.359Z",
+      "started_at": "2026-07-20T15:20:08.552Z",
       "status": "completed",
-      "ended_at": "2026-07-20T12:38:36.420Z",
-      "elapsed_ms": 127724
+      "ended_at": "2026-07-20T15:27:01.359Z",
+      "elapsed_ms": 412807
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "opencode:ses_08076e124ffecIn2hYFSH7nqf3",
-      "agent": "oracle",
-      "updated_at": "2026-07-20T12:45:36.310Z",
-      "started_at": "2026-07-20T12:41:54.015Z",
+      "session_id": "opencode:ses_07fdc2049ffe3Q5dCkv5eVaaep",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-20T15:42:41.517Z",
+      "started_at": "2026-07-20T15:36:53.836Z",
       "status": "completed",
-      "ended_at": "2026-07-20T12:45:36.310Z",
-      "elapsed_ms": 222295
+      "ended_at": "2026-07-20T15:42:41.517Z",
+      "elapsed_ms": 347681
     }
   },
   "agent": "atlas",
-  "ended_at": "2026-07-20T12:47:45.791Z",
-  "elapsed_ms": 4037295
+  "ended_at": "2026-07-20T15:42:51.956Z",
+  "elapsed_ms": 4648652
 }

@@ -193,6 +193,17 @@ def _collect_from_source(
         handler = _build_handler(source_config)
     except ValueError as exc:
         logger.warning("Skipping source '%s': %s", source_config.name, exc)
+        skipped_duration = round(time.time() - src_start, 3)
+        _log_run(
+            domain=domain,
+            source_name=source_config.name,
+            collection_id=collection_id,
+            items_found=0,
+            items_new=0,
+            status="skipped",
+            errors=[{"message": str(exc)}],
+            duration_s=skipped_duration,
+        )
         return CollectionResult(
             collection_id=collection_id,
             domain=domain,
@@ -201,7 +212,7 @@ def _collect_from_source(
             items_found=0,
             items_new=0,
             errors=[{"message": str(exc)}],
-            duration_s=round(time.time() - src_start, 3),
+            duration_s=skipped_duration,
         )
 
     # -- Fetch items -------------------------------------------------------
@@ -209,6 +220,17 @@ def _collect_from_source(
         items = _fetch_items(handler, source_config, topic, limit)
     except Exception as exc:
         logger.error("Fetch failed for source '%s': %s", source_config.name, exc)
+        error_duration = round(time.time() - src_start, 3)
+        _log_run(
+            domain=domain,
+            source_name=source_config.name,
+            collection_id=collection_id,
+            items_found=0,
+            items_new=0,
+            status="error",
+            errors=[{"message": f"Fetch failed: {exc}"}],
+            duration_s=error_duration,
+        )
         return CollectionResult(
             collection_id=collection_id,
             domain=domain,
@@ -217,7 +239,7 @@ def _collect_from_source(
             items_found=0,
             items_new=0,
             errors=[{"message": f"Fetch failed: {exc}"}],
-            duration_s=round(time.time() - src_start, 3),
+            duration_s=error_duration,
         )
 
     items_found = len(items)
@@ -231,12 +253,17 @@ def _collect_from_source(
 
     items_new = len(new_items)
 
+    elapsed = round(time.time() - src_start, 3)
+
     # -- Cache (only if not dry_run) ---------------------------------------
     if not dry_run and new_items:
         _cache_items(new_items, domain, source_config.name)
-        _log_run(domain, source_config.name, collection_id, items_found, items_new)
-
-    elapsed = round(time.time() - src_start, 3)
+        _log_run(
+            domain, source_config.name, collection_id,
+            items_found, items_new,
+            status="success",
+            duration_s=elapsed,
+        )
 
     return CollectionResult(
         collection_id=collection_id,
@@ -259,6 +286,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
     * ``PubMedHandler`` — ``search(query, max_results)`` / ``fetch(pmids)``
       / ``to_item(article)``
     * ``RSSHandler`` — ``fetch(url) -> list[Item]``
+    * ``WebHandler`` — ``fetch(url) -> list[Item]``
 
     Raises ``ValueError`` if the source type is unknown or unsupported.
     """
@@ -275,6 +303,11 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return RSSHandler(source_name=source_config.name)
 
+    if stype == "web":
+        from autoinfo.collectors.web import WebHandler
+
+        return WebHandler(source_name=source_config.name)
+
     if stype == "api":
         raise ValueError(
             f"Unsupported API source '{source_config.name}'. "
@@ -283,7 +316,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
     raise ValueError(
         f"Unknown source type '{source_config.type}' for source "
-        f"'{source_config.name}'. Supported types: api (pubmed), rss."
+        f"'{source_config.name}'. Supported types: api (pubmed), rss, web."
     )
 
 
@@ -298,6 +331,7 @@ def _fetch_items(
     Dispatches based on handler type:
     * ``PubMedHandler`` — uses ``search()`` + ``fetch()`` + ``to_item()``
     * ``RSSHandler`` — uses ``fetch(url)`` directly
+    * ``WebHandler`` — uses ``fetch(url)`` directly
     """
     # -- PubMed handler path -----------------------------------------------
     if hasattr(handler, "search") and hasattr(handler, "fetch"):
@@ -346,17 +380,33 @@ def _log_run(
     collection_id: str,
     items_found: int,
     items_new: int,
+    status: str = "success",
+    errors: list[dict[str, Any]] | None = None,
+    duration_s: float = 0.0,
 ) -> None:
-    """Append a run entry to ``collections/<domain>/<source>/_runs.json``."""
+    """Append a run entry to ``collections/<domain>/<source>/_runs.json``.
+
+    Parameters
+    ----------
+    status:
+        Run outcome: ``"success"``, ``"error"``, or ``"skipped"``.
+    errors:
+        Optional list of error dicts (only meaningful when status != success).
+    duration_s:
+        Wall-clock duration of the collection run in seconds.
+    """
     runs_dir = Path("collections") / domain / source_name
     runs_dir.mkdir(parents=True, exist_ok=True)
     runs_path = runs_dir / "_runs.json"
 
-    entry = {
+    entry: dict[str, Any] = {
         "collection_id": collection_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": status,
         "items_found": items_found,
         "items_new": items_new,
+        "errors": errors or [],
+        "duration_ms": round(duration_s * 1000, 1),
     }
 
     if runs_path.exists():
@@ -372,3 +422,31 @@ def _log_run(
 
     with open(runs_path, "w", encoding="utf-8") as fh:
         json.dump(runs, fh, ensure_ascii=False, indent=2)
+
+
+def list_active_collections() -> list[dict[str, Any]]:
+    """Return a list of active/in-progress collection runs.
+
+    Reads the latest runs from ``collections/_runs.json`` and returns
+    any that do not have a terminal status (``completed``, ``failed``).
+    Falls back to returning the 5 most recent runs if no active run
+    is found.
+    """
+    runs_path = Path("collections") / "_runs.json"
+    if not runs_path.is_file():
+        return []
+
+    try:
+        with open(runs_path, "r", encoding="utf-8") as fh:
+            runs: list[dict[str, Any]] = json.load(fh)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return []
+
+    terminal_statuses = frozenset({"completed", "failed", "cancelled"})
+    active = [r for r in runs if r.get("status", "") not in terminal_statuses]
+    if active:
+        return sorted(active, key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    # No active runs — return the 5 most recent for visibility
+    recent = sorted(runs, key=lambda x: x.get("timestamp", ""), reverse=True)
+    return recent[:5]

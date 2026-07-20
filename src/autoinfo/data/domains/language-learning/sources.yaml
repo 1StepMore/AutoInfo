@@ -1,0 +1,44 @@
+# AutoInfo demo domain: Language Learning (children's English)
+# Tracks English learning content for children — vocabulary, grammar, reading
+name: language-learning
+description: "Language learning — children's English, vocabulary, reading comprehension"
+
+sources:
+  - name: bbc-learning-english
+    type: rss
+    url: https://feeds.bbci.co.uk/learningenglish/features/6minuteenglish/rss.xml
+    quality_tier: 1
+    frequency: weekly
+    access: free
+    rate_limit: 10
+
+  - name: project-gutenberg
+    type: rss
+    url: https://www.gutenberg.org/cache/epub/feeds/today.epub.xml
+    quality_tier: 1
+    frequency: daily
+    access: free
+    rate_limit: 5
+
+topics:
+  - name: "English Vocabulary"
+    keywords:
+      - vocabulary
+      - word meaning
+      - phrase
+      - idiom
+      - expression
+  - name: "Reading Comprehension"
+    keywords:
+      - reading
+      - story
+      - comprehension
+      - children's literature
+      - passage
+  - name: "Listening & Pronunciation"
+    keywords:
+      - listening
+      - pronunciation
+      - speaking
+      - accent
+      - phonics

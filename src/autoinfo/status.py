@@ -1,12 +1,16 @@
-"""System status and collection overview.
+"""System status, per-source health monitoring (F18), and user feedback (F29).
 
-Provides ``show_status()`` used by ``autoinfo status`` to present a
-domain-level summary of collected items and source health.
+Provides:
+
+* ``show_status()`` — domain-level summary used by ``autoinfo status``.
+* ``get_source_health()`` — per-source health from ``_runs.json``.
+* ``rate_item()`` — store user ratings/feedback in SQLite.
 """
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -17,6 +21,7 @@ from autoinfo.config import (
     load_config,
 )
 from autoinfo.kb import SQLiteIndex
+from autoinfo.models import SourceHealth
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -173,3 +178,242 @@ def _is_recent(timestamp: str, days: int = 7) -> bool:
         return delta.days <= days
     except (ValueError, TypeError):
         return False
+
+
+# ===================================================================
+# F18 — Per-source health monitoring
+# ===================================================================
+
+
+def get_source_health(source_id: str) -> dict[str, Any]:
+    """Return health status for a single source.
+
+    Reads ``collections/<domain>/<source>/_runs.json`` and computes
+    the source health based on run history.
+
+    Parameters
+    ----------
+    source_id:
+        Source identifier in ``domain:name`` format.
+
+    Returns
+    -------
+    dict
+        ``SourceHealth`` fields plus an ``error_code`` on failure::
+
+            {source_id, status, last_success, error_count,
+             avg_response_time_ms}
+
+    Health statuses
+    ---------------
+    * ``healthy`` — last run succeeded, <3 consecutive failures
+    * ``degraded`` — last run failed (<3 consecutively) or slow
+    * ``error`` — 3+ consecutive failures
+    * ``paused`` — ``_paused`` marker file exists
+    * ``unknown`` — no runs recorded
+    """
+    # -- Parse source_id -------------------------------------------------
+    parts = source_id.split(":", 1)
+    if len(parts) != 2:
+        return {
+            "error_code": "InvalidSourceId",
+            "message": "source_id must be in 'domain:name' format",
+        }
+
+    domain, source_name = parts
+    health = SourceHealth(source_id=source_id)
+
+    # -- Check for paused marker -----------------------------------------
+    paused_path = Path("collections") / domain / source_name / "_paused"
+    if paused_path.is_file():
+        health.status = "paused"
+        return health.to_dict()
+
+    # -- Read runs -------------------------------------------------------
+    runs_path = Path("collections") / domain / source_name / "_runs.json"
+    if not runs_path.is_file():
+        health.status = "unknown"
+        return health.to_dict()
+
+    try:
+        runs: list[dict[str, Any]] = json.loads(
+            runs_path.read_text(encoding="utf-8")
+        )
+    except (json.JSONDecodeError, OSError):
+        health.status = "error"
+        return health.to_dict()
+
+    if not runs:
+        health.status = "unknown"
+        return health.to_dict()
+
+    # -- Analyse run history ---------------------------------------------
+    last_success = ""
+    error_count = 0
+    consecutive_errors = 0
+    total_duration_ms = 0.0
+    duration_count = 0
+
+    for run in reversed(runs):
+        run_status = run.get("status", "success")  # legacy: missing == success
+        if run_status == "success":
+            if not last_success:
+                last_success = run.get("timestamp", "")
+            consecutive_errors = 0
+        else:
+            error_count += 1
+            consecutive_errors += 1
+
+        dur = run.get("duration_ms", 0)
+        if dur:
+            total_duration_ms += dur
+            duration_count += 1
+
+    avg_rt = round(total_duration_ms / duration_count, 1) if duration_count > 0 else 0.0
+
+    health.last_success = last_success
+    health.error_count = error_count
+    health.avg_response_time_ms = avg_rt
+
+    # -- Determine status -------------------------------------------------
+    last_run = runs[-1]
+    last_status = last_run.get("status", "success")
+
+    if consecutive_errors >= 3:
+        health.status = "error"
+    elif last_status != "success":
+        health.status = "degraded"
+    elif avg_rt > 5000:
+        health.status = "degraded"
+    else:
+        health.status = "healthy"
+
+    return health.to_dict()
+
+
+# ===================================================================
+# F29 — User feedback / rating
+# ===================================================================
+
+
+def rate_item(
+    item_id: str,
+    rating: int,
+    feedback: str = "",
+) -> dict[str, Any]:
+    """Store a user rating and optional feedback for a collected item.
+
+    Ratings are persisted in a ``feedback`` table in the project's
+    ``autoinfo.db`` SQLite database.
+
+    Parameters
+    ----------
+    item_id:
+        The collected item or KB entry ID to rate.
+    rating:
+        Rating value (1-5).
+    feedback:
+        Optional free-text feedback.
+
+    Returns
+    -------
+    dict
+        ``{recorded: bool, item_id, rating, feedback}`` on success,
+        or an ``error_code`` dict if validation fails.
+    """
+    if not 1 <= rating <= 5:
+        return {
+            "error_code": "InvalidRating",
+            "message": "Rating must be between 1 and 5",
+        }
+
+    # Use same DB path as KBStore
+    autoinfo_dir = _find_autoinfo_dir()
+    db_path = autoinfo_dir / "autoinfo.db"
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id     TEXT NOT NULL,
+                rating      INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+                feedback    TEXT DEFAULT '',
+                created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        conn.execute(
+            "INSERT INTO feedback (item_id, rating, feedback) VALUES (?, ?, ?)",
+            (item_id, rating, feedback),
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as exc:
+        return {
+            "error_code": "DatabaseError",
+            "message": f"Failed to store rating: {exc}",
+        }
+
+    return {
+        "recorded": True,
+        "item_id": item_id,
+        "rating": rating,
+        "feedback": feedback,
+    }
+
+
+def _find_autoinfo_dir() -> Path:
+    """Locate the project's ``.autoinfo`` directory (config parent)."""
+    config_path = get_config_path()
+    if config_path:
+        return config_path.parent
+    # Fallback: look for autoinfo.db in CWD
+    return Path.cwd()
+
+
+# ===================================================================
+# Collection stats / diff (tasks 24+25)
+# ===================================================================
+
+
+def get_collection_stats(period: str = "daily") -> dict[str, Any]:
+    """Aggregated collection statistics across domains.
+
+    Parameters
+    ----------
+    period:
+        ``"daily"`` (default), ``"weekly"``, or ``"monthly"``.
+
+    Returns
+    -------
+    dict
+        ``{period, date_from, date_to, total_items, new_items,
+        duplicate_items, domains, sources}``
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    return store.get_collection_stats(period=period)
+
+
+def get_collection_diff(since_collection_id: str) -> dict[str, Any]:
+    """Return entries collected since a previous collection ID.
+
+    Parameters
+    ----------
+    since_collection_id:
+        A collection ID (timestamp) to compare against.
+
+    Returns
+    -------
+    dict
+        ``{since_id, new_entries, count, domains}``
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    return store.get_collection_diff(since_collection_id=since_collection_id)

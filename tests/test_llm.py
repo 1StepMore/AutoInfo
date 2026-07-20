@@ -307,8 +307,9 @@ class TestConfigHandling:
     def test_custom_schema_appears_in_prompt(
         self, sample_item: Item, extractor: LLMExtractor
     ) -> None:
-        """Custom schema fields are included in the extraction prompt."""
+        """Custom schema fields are included alongside defaults in the prompt."""
         prompt = extractor.dry_run(sample_item, schema=["tl_dr", "key_points"])
         assert "tl_dr" in prompt
         assert "key_points" in prompt
-        assert "entities" not in prompt  # not in custom schema
+        # Default fields are always included even when not in the schema
+        assert "entities" in prompt

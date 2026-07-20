@@ -1,0 +1,87 @@
+# {{ title }}
+
+**Domain**: {{ domain }}  
+**Target Audience**: {{ target_audience }}  
+**Duration**: {{ duration }}  
+**Prerequisites**: {{ prerequisites }}  
+
+{% if collection_id %}
+**Collection**: {{ collection_id }}
+{% endif %}
+
+---
+
+## Learning Objectives
+
+{% for obj in objectives %}
+- {{ obj }}
+{% else %}
+_No objectives defined._
+{% endfor %}
+
+---
+
+## Content
+
+{% for section in content %}
+### {{ section.heading }}
+
+{{ section.body }}
+
+{% if section.code_example %}
+**Example**:
+```{{ section.code_language or '' }}
+{{ section.code_example }}
+```
+{% endif %}
+
+{% if section.key_takeaway %}
+> **Key Takeaway**: {{ section.key_takeaway }}
+{% endif %}
+
+{% endfor %}
+
+---
+
+## Exercises
+
+{% for exercise in exercises %}
+### Exercise {{ loop.index }}: {{ exercise.title }}
+
+{{ exercise.description }}
+
+{% if exercise.hint %}
+**Hint**: {{ exercise.hint }}
+{% endif %}
+
+{% if exercise.solution %}
+<details>
+<summary>Solution</summary>
+
+{{ exercise.solution }}
+</details>
+{% endif %}
+
+{% else %}
+_No exercises provided._
+{% endfor %}
+
+---
+
+## Summary
+
+{{ summary }}
+
+---
+
+## Further Reading
+
+{% for ref in further_reading %}
+- {{ ref }}
+{% else %}
+_No references provided._
+{% endfor %}
+
+---
+
+*AutoInfo Tutorial · {{ domain }} · {{ generated_at }}*

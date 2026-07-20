@@ -1,18 +1,25 @@
-"""Quality gates G1-G3 for the AutoInfo pipeline.
+"""Quality gates G1-G4 for the AutoInfo pipeline.
 
 Runs advisory checks on collected items: source authority (G1),
-dedup status (G2), and relevance scoring (G3).
+dedup status (G2), relevance scoring (G3), and factual consistency (G4).
 
-G4 (factual consistency) and G5 (translation accuracy) are not yet
-implemented — they will be added in a future release.
+G4 is optional — it requires an LLM call and is only run when explicitly
+requested via the ``--check-factual`` flag.
+
+G5 (translation accuracy) is not yet implemented — it will be added in a
+future release.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from autoinfo.models import Item, KBEntry
+from autoinfo.models import ExtractionResult, Item, KBEntry
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -265,6 +272,159 @@ class G3RelevanceScoring:
                 "total_keywords": len(topic_keywords),
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# G4 — Factual Consistency
+# ---------------------------------------------------------------------------
+
+
+class G4FactualConsistency:
+    """Check if the extracted summary contradicts the source text.
+
+    This gate sends an LLM prompt comparing the source content with the
+    extracted summary (TL;DR) and asks the model to determine whether the
+    summary contradicts the source.
+
+    The gate is **advisory only** — it never blocks or fails items.
+
+    Parameters
+    ----------
+    model : str
+        LiteLLM model string (e.g. ``"openrouter/deepseek/deepseek-chat"``).
+    """
+
+    SYSTEM_PROMPT = (
+        "You are a quality assurance checker. Compare the source text "
+        "with its summary. Determine if the summary contradicts the source. "
+        'Answer ONLY with JSON: {"contradiction": bool, "explanation": str}'
+    )
+
+    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat") -> None:
+        self._model = model
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def check(self, item: Item, extraction: ExtractionResult) -> QualityResult:
+        """Send an LLM prompt to compare *item* content with *extraction* summary.
+
+        Parameters
+        ----------
+        item:
+            The collected item whose content is used as the source of truth.
+        extraction:
+            The LLM extraction result containing the ``tl_dr`` summary to check.
+
+        Returns
+        -------
+        QualityResult
+            ``flagged=True`` when the summary is found to contradict the source.
+            ``flagged=False`` when no contradiction is detected.
+            If the LLM call fails or returns malformed JSON, the item is flagged
+            as uncertain (``contradiction: None``).
+        """
+        # No summary to check — trivially consistent
+        if not extraction.tl_dr:
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=True,
+                flagged=False,
+                details={
+                    "contradiction": False,
+                    "explanation": "No summary to check",
+                },
+            )
+
+        _litellm = self._get_litellm()
+        if _litellm is None:
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=False,
+                flagged=True,
+                details={
+                    "contradiction": None,
+                    "explanation": "litellm is not available",
+                },
+            )
+
+        try:
+            response = _litellm.completion(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"SOURCE TEXT: {item.content[:4000]}\n\n"
+                            f"SUMMARY: {extraction.tl_dr}"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=500,
+                temperature=0.0,
+            )
+
+            content: str = response.choices[0].message.content  # type: ignore[union-attr]
+            parsed = json.loads(content)
+            contradiction = bool(parsed.get("contradiction", False))
+            explanation = str(parsed.get("explanation", ""))
+
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=not contradiction,
+                score=0.0 if contradiction else 1.0,
+                flagged=contradiction,
+                details={
+                    "contradiction": contradiction,
+                    "explanation": explanation,
+                },
+            )
+
+        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+            logger.warning("G4 malformed LLM response: %s", exc)
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=False,
+                flagged=True,
+                details={
+                    "contradiction": None,
+                    "explanation": f"Failed to parse LLM response: {exc}",
+                },
+            )
+
+        except Exception as exc:
+            logger.warning("G4 LLM call failed: %s", exc)
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=False,
+                flagged=True,
+                details={
+                    "contradiction": None,
+                    "explanation": f"LLM check failed: {exc}",
+                },
+            )
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_litellm() -> Any:
+        """Lazily import and return the ``litellm`` module.
+
+        Returns ``None`` when the package is not available (graceful
+        degradation for environments where LiteLLM is not installed).
+        """
+        try:
+            import litellm  # noqa: PLC0415 — deferred import
+
+            return litellm
+        except (ImportError, ModuleNotFoundError):
+            logger.error("litellm is not installed — run 'pip install litellm'")
+            return None
 
 
 # ---------------------------------------------------------------------------

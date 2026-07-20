@@ -238,7 +238,8 @@ class TestStatusCommand:
         self, cli_runner: Any, tmp_path: Path
     ) -> None:
         """Without config, status prints a friendly error (not traceback)."""
-        with patch("autoinfo.config.get_config_path", return_value=None):
+        # Patch at the usage site because status.py imports get_config_path at module level
+        with patch("autoinfo.status.get_config_path", return_value=None):
             result = cli_runner.invoke(app, ["status"])
 
         assert result.exit_code == 1
@@ -337,7 +338,7 @@ class TestSummariesCommand:
         with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
-                ["summaries", "--domain", "medical-research"],
+                ["summaries", "list", "--domain", "medical-research"],
             )
 
         assert result.exit_code == 0
@@ -357,7 +358,7 @@ class TestSummariesCommand:
         with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
-                ["summaries", "--domain", "medical-research", "--json"],
+                ["summaries", "list", "--domain", "medical-research", "--json"],
             )
 
         assert result.exit_code == 0
@@ -379,7 +380,7 @@ class TestSummariesCommand:
         with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
-                ["summaries", "--domain", "medical-research"],
+                ["summaries", "list", "--domain", "medical-research"],
             )
 
         assert result.exit_code == 0
@@ -398,7 +399,7 @@ class TestSummariesCommand:
             result = cli_runner.invoke(
                 app,
                 [
-                    "summaries",
+                    "summaries", "list",
                     "--domain", "medical-research",
                     "--limit", "1",
                     "--offset", "0",
@@ -421,7 +422,7 @@ class TestSummariesCommand:
         with patch("autoinfo.cli.summaries.get_config_path", return_value=None):
             result = cli_runner.invoke(
                 app,
-                ["summaries", "--domain", "medical-research"],
+                ["summaries", "list", "--domain", "medical-research"],
             )
 
         assert result.exit_code == 1

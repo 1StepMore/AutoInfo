@@ -2,15 +2,83 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
-## [0.1.0-dev] — 2026-07-20
+## [1.0.0-dev] — 2026-07-20
 
 ### Added
 
-#### Foundation
-- Project skeleton with Python packaging (`pyproject.toml`, `Makefile`, `.gitignore`)
-- Agent-facing infrastructure: `AGENTS.md`, `.opencode/skills/autoinfo-SKILL.md`
-- `docs/dev/founder-expectations.md` — full specification (32 expectations, 13 technical decisions)
-- Hermes 4-level KB pipeline model documented
+#### v0.1.1: Config Expansion & Infrastructure
+- LLM task config: per-task model selection (`llm.tasks.extraction`, `llm.tasks.summarization`)
+- LLM fallback chains (`llm.fallback: [{provider, model}]`)
+- `get_effective_llm_config(task)` — resolved model config
+- Domain config extensions: `extract_fields[]`, `search_mode`
+- Batch processing: `process_collection(domain, batch_size=N)` + `get_processing_progress`
+- CLI modules: sources, topics, kb, output, cron (with stubs)
+- MCP tools: list_domains, get_domain_schema, list_available_models, get_effective_llm_config,
+  add_source, add_sources, remove_source, test_source, list_sources,
+  add_topic, remove_topic, search_knowledge_base, flag_for_knowledge_base, list_output_templates
+- config.save_config() + config_to_dict() public API
+
+#### v0.2: KB & Search
+- FTS5 full-text search across all KB tiers (Raw + Draft + Wiki)
+- CJK tokenizer support (unicode61)
+- `autoinfo kb search` CLI command + MCP tool
+- `autoinfo kb reindex` command for FTS5 population
+- 02-Draft tier: agent creates Draft from Raw entries
+- `create_kb_draft(raw_ids, title, summary, tags)` with Raw validation
+- `reject_kb_draft(draft_id, reason, action)` — moves back to Raw
+- `list_kb_tier(domain, tier)` — filter by pipeline stage
+- Custom extraction fields per domain (`extract_fields: [methodology, sample_size]`)
+- Dynamic LLM prompt construction from field schema
+- On-demand re-extraction via `extract_fields` MCP tool
+- `flag_for_knowledge_base(summary_id, tags, importance)` — tag entries for KB
+- `autoinfo summaries flag` and `autoinfo summaries show` CLI commands
+- G4 factual consistency gate: LLM checks summary vs source
+- `autoinfo process --check-factual` flag
+
+#### v0.3: Multi-source & Schedule
+- Web scraping handler via trafilatura (compose/compat)
+- AI-commercial demo domain (TechCrunch RSS, ProductHunt API)
+- Source CRUD: add, list, remove, test (idempotent, writes to config)
+- Topic CRUD: add, list, remove
+- Scheduled collection via crond wrapper
+- `autoinfo cron run`, `add-schedule`, `list-schedules`, `remove-schedule`
+- croniter dependency for cron expression parsing
+- Source health monitoring: healthy/degraded/error/paused states
+- `rate_item(item_id, rating, feedback)` — user feedback in SQLite
+
+#### v0.4: Q&A & Output
+- FTS5+LLM Q&A: `query_collected()` with FTS5 search + LLM synthesis
+- Answer with source citations [1], [2] format
+- Digest generation via Jinja2 + LLM: `generate_digest(domain, period, format)`
+- Report generation: thematic grouping, executive summary, sections
+- Export functionality: Markdown (tar.gz), JSON array, SQLite copy
+- Jinja2 templates: digest.md.j2, report.md.j2
+
+#### v0.5: Mature MCP
+- 50 MCP tools across 12 categories
+- Auto-linking: keyword-overlap creates "related" relations during collection
+- `link_items(item_a_id, item_b_id, relation)` + `get_item_relations(item_id)`
+- Playwright web handler fallback for JS-heavy pages
+- Entry versioning: .bak copies, max 5 versions, get_entry_history, restore_entry_version
+- `get_collection_stats(period)` — aggregate across domains
+- `get_collection_diff(since_id)` — delta query
+- Config override system (`~/.autoinfo/overrides/`)
+- Complete CLI coverage: sources health, kb list-tiers, output list-templates
+- MCP tools: list_projects, get_project_assets, archive_project, batch_run, list_active_collections, get_config
+
+#### v0.6: Graph & Translation
+- Knowledge graph: entity extraction (6 types) + relation discovery
+- `query_knowledge_graph(entity, relation)` MCP tool
+- LLM-based translation: `localize_content(content_id, target_lang)`
+- Tutorial generation with audience adaptation (researcher/clinician/executive/student)
+- Presentation generation with speaker notes
+- Jinja2 templates: tutorial.md.j2, presentation.md.j2
+- Language-learning demo domain (Project Gutenberg, BBC Learning English RSS)
+- All 3 demo domains: medical-research, ai-commercial, language-learning
+
+### Infrastructure
+- `docs/autoinfo-validation-master-plan.md` — comprehensive validation plan (19 questions, 7 parts)
+- All docs updated to reflect v1.0 status
 
 #### Config System
 - `src/autoinfo/config.py` — YAML-based configuration with env var resolution

@@ -1,4 +1,5 @@
-"""Knowledge base storage — Markdown files + SQLite index.
+"""Knowledge base storage — Markdown files + SQLite index + FTS5 full-text search
++ entity extraction + knowledge graph relations.
 
 Provides the ``KBStore`` (high-level file + index orchestration) and
 ``SQLiteIndex`` (lightweight metadata index) classes.
@@ -14,10 +15,11 @@ collected content plus any LLM-extracted summary / key points.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +62,32 @@ def _parse_date(s: str) -> date:
 
 
 # ---------------------------------------------------------------------------
+# FTS5 query escaping
+# ---------------------------------------------------------------------------
+
+_FTS5_SPECIAL = re.compile(r'[\^"():+\-!~{}\[\]\\\\*]')
+_FTS5_KEYWORDS = frozenset({"AND", "OR", "NOT", "NEAR"})
+
+
+def _escape_fts5_query(query: str) -> str:
+    """Escape a user query string for safe use with FTS5 MATCH.
+
+    Removes FTS5 special characters and lowercases FTS5 keyword tokens
+    so they are treated as regular terms rather than operators.
+    Returns ``''`` if the query becomes empty after cleaning.
+    """
+    if not query or not query.strip():
+        return ""
+    cleaned = query.replace('"', " ")
+    cleaned = _FTS5_SPECIAL.sub(" ", cleaned)
+    tokens = cleaned.split()
+    safe: list[str] = []
+    for tok in tokens:
+        safe.append(tok.lower() if tok.upper() in _FTS5_KEYWORDS else tok)
+    return " ".join(safe) if safe else ""
+
+
+# ---------------------------------------------------------------------------
 # SQLite Index
 # ---------------------------------------------------------------------------
 
@@ -98,6 +126,7 @@ class SQLiteIndex:
                     entry_id        TEXT PRIMARY KEY,
                     title           TEXT,
                     domain          TEXT,
+                    tier            TEXT DEFAULT '01-Raw',
                     source_url      TEXT,
                     source_type     TEXT,
                     source_platform TEXT,
@@ -114,11 +143,125 @@ class SQLiteIndex:
                 CREATE INDEX IF NOT EXISTS idx_domain
                     ON entries(domain);
 
+                CREATE INDEX IF NOT EXISTS idx_tier
+                    ON entries(tier);
+
                 CREATE INDEX IF NOT EXISTS idx_collected_at
                     ON entries(collected_at);
 
+                CREATE INDEX IF NOT EXISTS idx_domain_tier
+                    ON entries(domain, tier);
+
                 CREATE INDEX IF NOT EXISTS idx_domain_collected
                     ON entries(domain, collected_at DESC);
+
+                -- Knowledge graph entity tables
+                CREATE TABLE IF NOT EXISTS entities (
+                    entity_id   TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    type        TEXT NOT NULL,
+                    domain      TEXT NOT NULL,
+                    entry_id    TEXT NOT NULL,
+                    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_entities_name
+                    ON entities(name);
+                CREATE INDEX IF NOT EXISTS idx_entities_type
+                    ON entities(type);
+                CREATE INDEX IF NOT EXISTS idx_entities_domain
+                    ON entities(domain);
+                CREATE INDEX IF NOT EXISTS idx_entities_entry
+                    ON entities(entry_id);
+
+                CREATE TABLE IF NOT EXISTS kg_relations (
+                    relation_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_a      TEXT NOT NULL,
+                    entity_b      TEXT NOT NULL,
+                    relation_type TEXT NOT NULL DEFAULT 'related_to',
+                    strength      REAL DEFAULT 1.0,
+                    entries_shared TEXT,
+                    domain        TEXT NOT NULL,
+                    created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(entity_a, entity_b, relation_type)
+                );
+                CREATE INDEX IF NOT EXISTS idx_kg_relations_a
+                    ON kg_relations(entity_a);
+                CREATE INDEX IF NOT EXISTS idx_kg_relations_b
+                    ON kg_relations(entity_b);
+                CREATE INDEX IF NOT EXISTS idx_kg_relations_domain
+                    ON kg_relations(domain);
+            """)
+            # Migration: add tier column if table existed before this change
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN tier TEXT DEFAULT '01-Raw'")
+            except Exception:
+                pass
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_tier ON entries(tier)")
+            except Exception:
+                pass
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_tier ON entries(domain, tier)")
+            except Exception:
+                pass
+            # Migration: add importance column (v0.1.1+)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER DEFAULT 3")
+            except Exception:
+                pass
+
+            conn.execute(
+                """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
+                   USING fts5(
+                       title, summary, content, domain, tags,
+                       tokenize='unicode61'
+                   )"""
+            )
+
+            # --- relations table for item linking --------------------------------
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS relations (
+                    relation_id   TEXT PRIMARY KEY,
+                    item_a_id     TEXT NOT NULL,
+                    item_b_id     TEXT NOT NULL,
+                    relation_type TEXT NOT NULL DEFAULT 'related',
+                    created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+                    metadata      TEXT DEFAULT '{}',
+                    FOREIGN KEY (item_a_id) REFERENCES entries(entry_id),
+                    FOREIGN KEY (item_b_id) REFERENCES entries(entry_id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_relations_a
+                    ON relations(item_a_id)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_relations_b
+                    ON relations(item_b_id)
+            """)
+            try:
+                conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_relations_pair
+                        ON relations(item_a_id, item_b_id, relation_type)
+                """)
+            except Exception:
+                pass
+
+            # --- entry_versions table for versioning -----------------------------
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS entry_versions (
+                    version_id    TEXT PRIMARY KEY,
+                    entry_id      TEXT NOT NULL,
+                    version_num   INTEGER NOT NULL,
+                    file_path     TEXT NOT NULL,
+                    created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+                    comment       TEXT DEFAULT '',
+                    FOREIGN KEY (entry_id) REFERENCES entries(entry_id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_entry_versions_entry
+                    ON entry_versions(entry_id)
             """)
 
     # ------------------------------------------------------------------
@@ -131,15 +274,16 @@ class SQLiteIndex:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO entries
-                    (entry_id, title, domain, source_url, source_type,
+                    (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, file_path, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
                     entry.title,
                     entry.domain,
+                    entry.tier,
                     entry.source_url,
                     entry.source_type,
                     entry.source_platform,
@@ -156,16 +300,19 @@ class SQLiteIndex:
     def list_entries(
         self,
         domain: str,
+        tier: str | None = None,
         date_from: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """List entries for *domain*, newest first, with optional date filter.
+        """List entries for *domain*, newest first, with optional tier and date filter.
 
         Parameters
         ----------
         domain:
             Domain to filter by.
+        tier:
+            Optional tier filter (e.g. "01-Raw", "02-Draft").
         date_from:
             Optional ISO date string — only entries collected on or after
             this date are returned.
@@ -180,7 +327,27 @@ class SQLiteIndex:
             Each dict contains the columns from the ``entries`` table.
         """
         with self._connect() as conn:
-            if date_from:
+            if tier and date_from:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM entries
+                    WHERE domain = ? AND tier = ? AND collected_at >= ?
+                    ORDER BY collected_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (domain, tier, date_from, limit, offset),
+                ).fetchall()
+            elif tier:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM entries
+                    WHERE domain = ? AND tier = ?
+                    ORDER BY collected_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (domain, tier, limit, offset),
+                ).fetchall()
+            elif date_from:
                 rows = conn.execute(
                     """
                     SELECT * FROM entries
@@ -202,6 +369,33 @@ class SQLiteIndex:
                 ).fetchall()
 
             return [dict(r) for r in rows]
+
+    def list_entries_by_tier(
+        self,
+        domain: str,
+        tier: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List entries for a specific tier in *domain*.
+
+        Parameters
+        ----------
+        domain:
+            Domain to filter by.
+        tier:
+            Tier to filter by (e.g. "01-Raw", "02-Draft").
+        limit:
+            Maximum number of rows (default 50).
+        offset:
+            Number of rows to skip (for pagination).
+
+        Returns
+        -------
+        list[dict]
+            Each dict contains the columns from the ``entries`` table.
+        """
+        return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset)
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return a single entry dict by *entry_id*, or ``None``."""
@@ -238,6 +432,239 @@ class SQLiteIndex:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    # ------------------------------------------------------------------
+    # Relations (item linking)
+    # ------------------------------------------------------------------
+
+    def link_items(
+        self,
+        item_a_id: str,
+        item_b_id: str,
+        relation_type: str = "related",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a link between two KB entries.
+
+        Idempotent: calling with the same (item_a, item_b, relation_type)
+        returns the existing relation without creating a duplicate.
+        """
+        relation_id = f"{item_a_id}--{item_b_id}--{relation_type}"
+        meta_json = json.dumps(metadata or {}, ensure_ascii=False)
+
+        # Validate that both entries exist
+        entry_a = self.get_entry(item_a_id)
+        if entry_a is None:
+            return {
+                "linked": False,
+                "error": f"Entry '{item_a_id}' not found",
+                "item_a_id": item_a_id,
+                "item_b_id": item_b_id,
+            }
+        entry_b = self.get_entry(item_b_id)
+        if entry_b is None:
+            return {
+                "linked": False,
+                "error": f"Entry '{item_b_id}' not found",
+                "item_a_id": item_a_id,
+                "item_b_id": item_b_id,
+            }
+
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT OR IGNORE INTO relations
+                   (relation_id, item_a_id, item_b_id, relation_type, metadata)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (relation_id, item_a_id, item_b_id, relation_type, meta_json),
+            )
+            row = conn.execute(
+                "SELECT * FROM relations WHERE relation_id = ?",
+                (relation_id,),
+            ).fetchone()
+            return dict(row) if row else {"linked": True, "relation_id": relation_id}
+
+    def get_item_relations(
+        self, item_id: str, relation_type: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return all relations where *item_id* participates.
+
+        Optionally filtered by *relation_type*.
+        """
+        with self._connect() as conn:
+            if relation_type:
+                rows = conn.execute(
+                    """SELECT * FROM relations
+                       WHERE (item_a_id = ? OR item_b_id = ?)
+                       AND relation_type = ?
+                       ORDER BY created_at DESC""",
+                    (item_id, item_id, relation_type),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT * FROM relations
+                       WHERE item_a_id = ? OR item_b_id = ?
+                       ORDER BY created_at DESC""",
+                    (item_id, item_id),
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Entry versioning
+    # ------------------------------------------------------------------
+
+    def _ensure_versioning_table(self) -> None:
+        """Idempotent migration for entry_versions table."""
+        with self._connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS entry_versions (
+                    version_id   TEXT PRIMARY KEY,
+                    entry_id     TEXT NOT NULL,
+                    version_num  INTEGER NOT NULL,
+                    file_path    TEXT NOT NULL,
+                    created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+                    comment      TEXT DEFAULT '',
+                    FOREIGN KEY (entry_id) REFERENCES entries(entry_id)
+                )
+            """)
+            try:
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_entry_versions_entry
+                        ON entry_versions(entry_id)
+                """)
+            except Exception:
+                pass
+
+    def save_entry_version(
+        self,
+        entry_id: str,
+        file_path: str,
+        comment: str = "",
+    ) -> dict[str, Any]:
+        """Save a version snapshot of an entry's file.
+
+        Creates numbered .bak copies of the file at the same location.
+        Prunes to max 5 versions. Returns version metadata.
+        """
+        self._ensure_versioning_table()
+        fp = Path(file_path)
+        if not fp.is_file():
+            return {"saved": False, "error": f"File not found: {file_path}"}
+
+        # Determine the next version number
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(version_num) as m FROM entry_versions WHERE entry_id = ?",
+                (entry_id,),
+            ).fetchone()
+            next_ver = (row["m"] or 0) + 1 if row else 1
+
+        # Create .bak file
+        bak_path = fp.with_suffix(f".bak.{next_ver}")
+        bak_path.write_bytes(fp.read_bytes())
+
+        version_id = f"{entry_id}--v{next_ver}"
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO entry_versions
+                   (version_id, entry_id, version_num, file_path, comment)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (version_id, entry_id, next_ver, str(bak_path), comment),
+            )
+
+        # Prune to max 5 versions
+        self._prune_versions(entry_id, max_versions=5)
+
+        return {
+            "saved": True,
+            "version_id": version_id,
+            "version_num": next_ver,
+            "file_path": str(bak_path),
+        }
+
+    def _prune_versions(self, entry_id: str, max_versions: int = 5) -> None:
+        """Remove old versions beyond *max_versions*."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT version_id, version_num, file_path
+                   FROM entry_versions WHERE entry_id = ?
+                   ORDER BY version_num ASC""",
+                (entry_id,),
+            ).fetchall()
+            if len(rows) <= max_versions:
+                return
+            to_remove = len(rows) - max_versions
+            for row in rows[:to_remove]:
+                fp = Path(row["file_path"])
+                if fp.is_file():
+                    fp.unlink(missing_ok=True)
+                conn.execute(
+                    "DELETE FROM entry_versions WHERE version_id = ?",
+                    (row["version_id"],),
+                )
+
+    def get_entry_history(self, entry_id: str) -> list[dict[str, Any]]:
+        """Return all saved versions for *entry_id*, newest first."""
+        self._ensure_versioning_table()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM entry_versions
+                   WHERE entry_id = ?
+                   ORDER BY version_num DESC""",
+                (entry_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def restore_entry_version(self, version_id: str) -> dict[str, Any]:
+        """Restore an entry from a saved version backup.
+
+        Copies the .bak file back over the original entry file.
+        Returns the entry_id and file_path of the restored entry.
+        """
+        self._ensure_versioning_table()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM entry_versions WHERE version_id = ?",
+                (version_id,),
+            ).fetchone()
+            if row is None:
+                return {
+                    "restored": False,
+                    "error": f"Version '{version_id}' not found",
+                }
+            version = dict(row)
+
+        bak_path = Path(version["file_path"])
+        if not bak_path.is_file():
+            return {
+                "restored": False,
+                "error": f"Backup file not found: {version['file_path']}",
+            }
+
+        # Restore: find the original file path from the entries table
+        with self._connect() as conn:
+            entry_row = conn.execute(
+                "SELECT file_path FROM entries WHERE entry_id = ?",
+                (version["entry_id"],),
+            ).fetchone()
+
+        if entry_row is None:
+            return {
+                "restored": False,
+                "error": f"Entry '{version['entry_id']}' not found in index",
+            }
+
+        orig_path = Path(entry_row["file_path"])
+        bak_path, bak_path.read_bytes()
+        orig_path.write_bytes(bak_path.read_bytes())
+
+        return {
+            "restored": True,
+            "entry_id": version["entry_id"],
+            "version_id": version_id,
+            "version_num": version["version_num"],
+            "file_path": str(orig_path),
+            "comment": version.get("comment", ""),
+        }
+
     def count_entries_today(self, domain: str | None = None) -> int:
         """Return the number of entries collected today, optionally filtered by domain."""
         today = date.today().isoformat()  # "YYYY-MM-DD"
@@ -264,6 +691,550 @@ class SQLiteIndex:
             else:
                 (count,) = conn.execute("SELECT COUNT(*) FROM entries").fetchone()
             return count
+
+    # ------------------------------------------------------------------
+    # Collection stats / diff
+    # ------------------------------------------------------------------
+
+    def get_collection_stats(self, period: str = "daily") -> dict[str, Any]:
+        """Aggregated collection statistics for the given period.
+
+        Parameters
+        ----------
+        period:
+            ``"daily"`` — items collected today.
+            ``"weekly"`` — items collected in the last 7 days.
+            ``"monthly"`` — items collected in the last 30 days.
+
+        Returns
+        -------
+        dict
+            ``{period, date_from, date_to, total_items, new_items,
+            duplicate_items, domains: {name: count}, sources: {name: count}}``
+        """
+        today = date.today()
+        if period == "daily":
+            date_from = today.isoformat()
+        elif period == "weekly":
+            from datetime import timedelta
+            date_from = (today - timedelta(days=7)).isoformat()
+        elif period == "monthly":
+            from datetime import timedelta
+            date_from = (today - timedelta(days=30)).isoformat()
+        else:
+            date_from = today.isoformat()
+
+        date_to = today.isoformat()
+
+        with self._connect() as conn:
+            # Total items in period
+            (total,) = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE collected_at >= ?",
+                (date_from,),
+            ).fetchone()
+
+            # New (unique) vs duplicate
+            (new_items,) = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE collected_at >= ? AND dedup_status = 'unique'",
+                (date_from,),
+            ).fetchone()
+            (dup_items,) = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE collected_at >= ? AND dedup_status = 'duplicate'",
+                (date_from,),
+            ).fetchone()
+
+            # Per-domain breakdown
+            domain_rows = conn.execute(
+                "SELECT domain, COUNT(*) as cnt FROM entries WHERE collected_at >= ? GROUP BY domain ORDER BY cnt DESC",
+                (date_from,),
+            ).fetchall()
+            domains = {r["domain"]: r["cnt"] for r in domain_rows}
+
+            # Per-source breakdown
+            src_rows = conn.execute(
+                "SELECT source_platform, COUNT(*) as cnt FROM entries WHERE collected_at >= ? GROUP BY source_platform ORDER BY cnt DESC",
+                (date_from,),
+            ).fetchall()
+            sources = {r["source_platform"]: r["cnt"] for r in src_rows if r["source_platform"]}
+
+        return {
+            "period": period,
+            "date_from": date_from,
+            "date_to": date_to,
+            "total_items": total,
+            "new_items": new_items,
+            "duplicate_items": dup_items,
+            "domains": domains,
+            "sources": sources,
+        }
+
+    def get_collection_diff(self, since_collection_id: str) -> dict[str, Any]:
+        """Return entries collected since a previous collection ID.
+
+        Parameters
+        ----------
+        since_collection_id:
+            A collection ID (timestamp-based) to compare against.
+            Only entries with ``collected_at > since_collection_id``
+            are returned.
+
+        Returns
+        -------
+        dict
+            ``{since_id, new_entries: [...], count, domains: {name: count}}``
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM entries
+                   WHERE collected_at > ?
+                   ORDER BY collected_at DESC""",
+                (since_collection_id,),
+            ).fetchall()
+
+        entries = [dict(r) for r in rows]
+        domains: dict[str, int] = {}
+        for e in entries:
+            d = e.get("domain", "unknown")
+            domains[d] = domains.get(d, 0) + 1
+
+        return {
+            "since_id": since_collection_id,
+            "new_entries": entries,
+            "count": len(entries),
+            "domains": domains,
+        }
+
+    # ------------------------------------------------------------------
+    # Flag / Tagging
+    # ------------------------------------------------------------------
+
+    def update_entry_tags(
+        self, entry_id: str, tags: list[str], importance: int = 3
+    ) -> None:
+        """Update the ``tags`` and ``importance`` columns for an entry.
+
+        Called by ``KBStore.flag_for_knowledge_base``.  Does not raise
+        an error if the entry_id does not exist (SQL UPDATE on zero rows
+        is a no-op).
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE entries SET tags = ?, importance = ? WHERE entry_id = ?",
+                (
+                    json.dumps(tags, ensure_ascii=False),
+                    importance,
+                    entry_id,
+                ),
+            )
+
+    # ------------------------------------------------------------------
+    # FTS5 full-text search
+    # ------------------------------------------------------------------
+
+    def index_entry_fts5(self, entry: KBEntry, content: str = "") -> None:
+        """Insert or update an entry in the FTS5 virtual table.
+
+        The ``rowid`` in the FTS5 table matches the ``rowid`` in the
+        ``entries`` table so that ``SEARCH ... JOIN entries`` works.
+
+        *content* is the plain-text body of the entry (without frontmatter).
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT rowid FROM entries WHERE entry_id = ?",
+                (entry.entry_id,),
+            ).fetchone()
+            if row is None:
+                return
+            rowid = row["rowid"]
+            tags_json = json.dumps(entry.tags, ensure_ascii=False)
+            conn.execute(
+                "DELETE FROM entries_fts5 WHERE rowid = ?",
+                (rowid,),
+            )
+            conn.execute(
+                """INSERT INTO entries_fts5(rowid, title, summary, content, domain, tags)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    rowid,
+                    entry.title,
+                    entry.summary,
+                    content,
+                    entry.domain,
+                    tags_json,
+                ),
+            )
+
+    def search_fts5(
+        self,
+        query: str,
+        domain: str = "",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search the knowledge base using FTS5 full-text search.
+
+        Returns a dict with keys: ``entries`` (list of matching entry
+        dicts), ``total_count`` (int), ``query``, ``domain``, ``limit``,
+        ``offset``.  Falls back to a LIKE-based search if the FTS5
+        query syntax is invalid.
+        """
+        safe_query = _escape_fts5_query(query)
+        if not safe_query:
+            return {
+                "query": query,
+                "domain": domain,
+                "entries": [],
+                "total_count": 0,
+                "limit": limit,
+                "offset": offset,
+            }
+
+        with self._connect() as conn:
+            try:
+                # FTS5 search with optional domain filter
+                if domain:
+                    rows = conn.execute(
+                        """SELECT e.entry_id, e.title, e.summary, e.relevance_score,
+                                  e.file_path, e.domain, f.rank
+                           FROM entries_fts5 f
+                           JOIN entries e ON e.rowid = f.rowid
+                           WHERE entries_fts5 MATCH ? AND e.domain = ?
+                           ORDER BY f.rank""",
+                        (safe_query, domain),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """SELECT e.entry_id, e.title, e.summary, e.relevance_score,
+                                  e.file_path, e.domain, f.rank
+                           FROM entries_fts5 f
+                           JOIN entries e ON e.rowid = f.rowid
+                           WHERE entries_fts5 MATCH ?
+                           ORDER BY f.rank""",
+                        (safe_query,),
+                    ).fetchall()
+            except sqlite3.OperationalError:
+                # Fallback: LIKE search across title, summary, tags
+                like_q = f"%{query}%"
+                if domain:
+                    rows = conn.execute(
+                        """SELECT * FROM entries
+                           WHERE domain = ?
+                           AND (title LIKE ? OR summary LIKE ? OR tags LIKE ?)
+                           ORDER BY collected_at DESC""",
+                        (domain, like_q, like_q, like_q),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """SELECT * FROM entries
+                           WHERE title LIKE ? OR summary LIKE ? OR tags LIKE ?
+                           ORDER BY collected_at DESC""",
+                        (like_q, like_q, like_q),
+                    ).fetchall()
+                # Convert to match FTS5 output shape
+                entries = [dict(r) for r in rows]
+                total = len(entries)
+                paged = entries[offset : offset + limit]
+                return {
+                    "query": query,
+                    "domain": domain,
+                    "entries": paged,
+                    "total_count": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "fts5_fallback": True,
+                }
+
+        entries = [dict(r) for r in rows]
+        total = len(entries)
+        paged = entries[offset : offset + limit]
+
+        return {
+            "query": query,
+            "domain": domain,
+            "entries": paged,
+            "total_count": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def reindex_fts5(self) -> int:
+        """Rebuild the entire FTS5 index from the ``entries`` table.
+
+        Iterates all entries, reads their file content (if available on
+        disk), and populates the FTS5 virtual table.  Returns the number
+        of entries indexed.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT rowid, * FROM entries"
+            ).fetchall()
+
+        # Clear existing FTS5 content
+        with self._connect() as conn:
+            conn.execute("DELETE FROM entries_fts5")
+
+        count = 0
+        for row in rows:
+            d = dict(row)
+            rowid = d["rowid"]
+            file_path = d.get("file_path") or ""
+            content = ""
+            if file_path and Path(file_path).is_file():
+                raw = Path(file_path).read_text(encoding="utf-8")
+                content = _strip_frontmatter(raw)
+
+            title = d.get("title") or ""
+            summary = d.get("summary") or ""
+            domain = d.get("domain") or ""
+            tags_json = d.get("tags") or ""
+
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT INTO entries_fts5(rowid, title, summary, content, domain, tags)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (rowid, title, summary, content, domain, tags_json),
+                )
+            count += 1
+
+        return count
+
+    # ------------------------------------------------------------------
+    # Knowledge graph — entity indexing & relation discovery
+    # ------------------------------------------------------------------
+
+    def _entity_id(self, name: str, domain: str) -> str:
+        """Deterministic entity ID from name + domain."""
+        raw = f"{domain}:{name.lower().strip()}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def index_entities(
+        self,
+        entry_id: str,
+        domain: str,
+        entities: list[dict[str, Any]],
+    ) -> int:
+        """Store entities extracted for a single entry.
+
+        Each entity dict should have ``name`` and ``type`` keys (as
+        returned by the LLM extractor).  Returns the number of entities
+        indexed.
+        """
+        count = 0
+        with self._connect() as conn:
+            for ent in entities:
+                name = ent.get("name", "").strip()
+                etype = ent.get("type", "").strip()
+                if not name or not etype:
+                    continue
+                eid = self._entity_id(name, domain)
+                conn.execute(
+                    """INSERT OR IGNORE INTO entities
+                       (entity_id, name, type, domain, entry_id)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (eid, name, etype, domain, entry_id),
+                )
+                count += conn.total_changes  # not perfect but indicative
+            # Deduplicate — keep only the first (earliest) row per name+type+domain
+            conn.execute("""
+                DELETE FROM entities
+                WHERE rowid NOT IN (
+                    SELECT MIN(rowid) FROM entities
+                    WHERE domain = ?
+                    GROUP BY name, type, domain
+                )
+                AND domain = ?
+            """, (domain, domain))
+        return count
+
+    def discover_relations(
+        self,
+        entry_id: str,
+        domain: str,
+        entity_names: list[str],
+    ) -> int:
+        """Auto-discover ``related_to`` relations between entities sharing an entry.
+
+        For every pair of distinct entity names in *entity_names* that
+        exist in the ``entities`` table, create or update a ``related_to``
+        relation in ``kg_relations`` with a strength proportional to the
+        number of entries they co-occur in.
+
+        Returns the number of relation rows upserted.
+        """
+        if len(entity_names) < 2:
+            return 0
+
+        count = 0
+        with self._connect() as conn:
+            for i in range(len(entity_names)):
+                for j in range(i + 1, len(entity_names)):
+                    a = entity_names[i].strip().lower()
+                    b = entity_names[j].strip().lower()
+                    if a == b or not a or not b:
+                        continue
+                    eid_a = self._entity_id(a, domain)
+                    eid_b = self._entity_id(b, domain)
+
+                    # Ensure a < b for canonical ordering
+                    if eid_a > eid_b:
+                        eid_a, eid_b = eid_b, eid_a
+
+                    # Get current entries_shared set
+                    row = conn.execute(
+                        "SELECT entries_shared, strength FROM kg_relations "
+                        "WHERE entity_a = ? AND entity_b = ? AND relation_type = 'related_to'",
+                        (eid_a, eid_b),
+                    ).fetchone()
+
+                    if row is not None:
+                        shared: set[str] = set(
+                            json.loads(row["entries_shared"] or "[]")
+                        )
+                        shared.add(entry_id)
+                        strength = len(shared)
+                        conn.execute(
+                            "UPDATE kg_relations SET strength = ?, entries_shared = ? "
+                            "WHERE entity_a = ? AND entity_b = ? AND relation_type = 'related_to'",
+                            (
+                                strength,
+                                json.dumps(sorted(shared)),
+                                eid_a,
+                                eid_b,
+                            ),
+                        )
+                    else:
+                        conn.execute(
+                            """INSERT OR IGNORE INTO kg_relations
+                               (entity_a, entity_b, relation_type, strength, entries_shared, domain)
+                               VALUES (?, ?, 'related_to', ?, ?, ?)""",
+                            (
+                                eid_a,
+                                eid_b,
+                                1.0,
+                                json.dumps([entry_id]),
+                                domain,
+                            ),
+                        )
+                    count += 1
+
+        return count
+
+    def query_knowledge_graph(
+        self,
+        entity: str,
+        relation: str = "related_to",
+        domain: str = "",
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Query the knowledge graph for entities related to *entity*.
+
+        Parameters
+        ----------
+        entity:
+            Entity name to query (case-insensitive partial match).
+        relation:
+            Relation type filter (default ``"related_to"``).  Use ``""``
+            to match all relation types.
+        domain:
+            Optional domain scope.
+        limit:
+            Maximum results (default 20).
+
+        Returns
+        -------
+        dict
+            ``{entity, relation, domain, results: [{entity_a, entity_b,
+            relation_type, strength, entries_shared_count}], total_count}``
+        """
+        results: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            # Find all entity_ids that match the name
+            like_q = f"%{entity}%"
+            if domain:
+                matching = conn.execute(
+                    "SELECT DISTINCT entity_id, name FROM entities "
+                    "WHERE name LIKE ? AND domain = ?",
+                    (like_q, domain),
+                ).fetchall()
+            else:
+                matching = conn.execute(
+                    "SELECT DISTINCT entity_id, name FROM entities WHERE name LIKE ?",
+                    (like_q,),
+                ).fetchall()
+
+            if not matching:
+                return {
+                    "entity": entity,
+                    "relation": relation,
+                    "domain": domain,
+                    "results": [],
+                    "total_count": 0,
+                }
+
+            entity_ids = {r["entity_id"] for r in matching}
+            entity_names = {r["entity_id"]: r["name"] for r in matching}
+
+            for eid in entity_ids:
+                if relation:
+                    rows = conn.execute(
+                        """SELECT r.entity_a, r.entity_b, r.relation_type,
+                                  r.strength, r.entries_shared
+                           FROM kg_relations r
+                           WHERE (r.entity_a = ? OR r.entity_b = ?)
+                             AND r.relation_type = ?
+                           ORDER BY r.strength DESC
+                           LIMIT ?""",
+                        (eid, eid, relation, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """SELECT r.entity_a, r.entity_b, r.relation_type,
+                                  r.strength, r.entries_shared
+                           FROM kg_relations r
+                           WHERE r.entity_a = ? OR r.entity_b = ?
+                           ORDER BY r.strength DESC
+                           LIMIT ?""",
+                        (eid, eid, limit),
+                    ).fetchall()
+
+                for row in rows:
+                    other_eid = (
+                        row["entity_b"]
+                        if row["entity_a"] == eid
+                        else row["entity_a"]
+                    )
+                    # Skip self-relations
+                    if other_eid == eid:
+                        continue
+                    shared_raw = row["entries_shared"] or "[]"
+                    shared_count = len(json.loads(shared_raw))
+                    results.append({
+                        "entity": entity_names.get(eid, eid),
+                        "related_entity": entity_names.get(other_eid, other_eid),
+                        "relation_type": row["relation_type"],
+                        "strength": row["strength"],
+                        "entries_shared_count": shared_count,
+                    })
+
+        # Deduplicate by (entity, related_entity, relation_type)
+        seen: set[tuple[str, str, str]] = set()
+        deduped: list[dict[str, Any]] = []
+        for r in results:
+            key = (r["entity"], r["related_entity"], r["relation_type"])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(r)
+
+        deduped = sorted(deduped, key=lambda x: x["strength"], reverse=True)[:limit]
+
+        return {
+            "entity": entity,
+            "relation": relation,
+            "domain": domain,
+            "results": deduped,
+            "total_count": len(deduped),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +1273,7 @@ class KBStore:
         item: Item,
         extraction: ExtractionResult | None = None,
         quality_results: dict[str, QualityResult] | None = None,
+        tier: str = "01-Raw",
     ) -> KBEntry:
         """Create a Markdown KB entry for *item* and index it in SQLite.
 
@@ -314,6 +1286,9 @@ class KBStore:
         quality_results:
             Quality gate results keyed by gate name.  Used to populate
             ``relevance_score`` (from G3) and ``dedup_status`` (from G2).
+        tier:
+            KB pipeline tier (default "01-Raw").  Set to "02-Draft" for
+            agent-created Draft entries.
 
         Returns
         -------
@@ -329,9 +1304,9 @@ class KBStore:
         topic_slug = _slugify(topic)
         entry_id = f"{domain}-{topic_slug}-{slug}"
 
-        # File path: knowledge/<domain>/01-Raw/<topic>/<YYYY-MM-DD>-<slug>.md
+        # File path: knowledge/<domain>/<tier>/<topic>/<YYYY-MM-DD>-<slug>.md
         date_str = collected_date.isoformat()
-        file_dir = self.base_path / domain / "01-Raw" / topic
+        file_dir = self.base_path / domain / tier / topic
         file_name = f"{date_str}-{slug}.md"
         file_path = file_dir / file_name
 
@@ -362,7 +1337,7 @@ class KBStore:
             entry_id=entry_id,
             title=item.title,
             domain=domain,
-            tier="01-Raw",
+            tier=tier,
             source_url=item.source_url,
             source_type=item.source_type,
             source_platform=item.source_name,
@@ -379,16 +1354,151 @@ class KBStore:
         # --- write Markdown file ----------------------------------------------
         file_dir.mkdir(parents=True, exist_ok=True)
 
-        frontmatter = _build_frontmatter(entry, quality_results)
+        frontmatter = _build_frontmatter(entry, quality_results, extraction)
         body = _build_body(item, extraction)
 
         full_content = f"---\n{frontmatter}---\n\n{body}"
         file_path.write_text(full_content, encoding="utf-8")
 
-        # --- index in SQLite --------------------------------------------------
+        # --- index in SQLite + FTS5 -------------------------------------------
+        # Versioning: save a .bak copy if this entry_id already exists
+        existing = self.index.get_entry(entry_id)
+        if existing is not None:
+            self.index.save_entry_version(
+                entry_id=entry_id,
+                file_path=str(file_path),
+                comment=f"Auto-backup before update of {entry_id}",
+            )
+
         self.index.index_entry(entry)
+        self.index.index_entry_fts5(entry, content=body)
+
+        # --- Auto-linking: keyword overlap with existing entries ---------------
+        self._auto_link_entry(entry, item)
 
         return entry
+
+    # ------------------------------------------------------------------
+    # Auto-linking helper
+    # ------------------------------------------------------------------
+
+    def _auto_link_entry(self, entry: KBEntry, item: Item) -> None:
+        """Link *entry* to existing entries that share topic tags.
+
+        Scans the SQLite index for entries in the same domain that have
+        overlapping topic tags, then creates ``related`` relations.
+        """
+        if not entry.tags and not item.topic_tags:
+            return
+
+        # Combine sources of tags
+        tags = set(entry.tags or []) | set(item.topic_tags or [])
+        if not tags:
+            return
+
+        with self.index._connect() as conn:
+            rows = conn.execute(
+                "SELECT entry_id, tags FROM entries WHERE domain = ? AND entry_id != ?",
+                (entry.domain, entry.entry_id),
+            ).fetchall()
+
+        for row in rows:
+            existing_id = row["entry_id"]
+            existing_tags_raw = row["tags"] or "[]"
+            try:
+                existing_tags = set(json.loads(existing_tags_raw))
+            except (json.JSONDecodeError, TypeError):
+                continue
+            # Link if they share at least one tag
+            if tags & existing_tags:
+                self.index.link_items(
+                    item_a_id=entry.entry_id,
+                    item_b_id=existing_id,
+                    relation_type="related",
+                    metadata={"matched_tags": list(tags & existing_tags)},
+                )
+
+    # ------------------------------------------------------------------
+    # Relations (item linking)
+    # ------------------------------------------------------------------
+
+    def link_items(
+        self,
+        item_a_id: str,
+        item_b_id: str,
+        relation_type: str = "related",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a link between two KB entries.
+
+        See :meth:`SQLiteIndex.link_items` for details.
+        """
+        return self.index.link_items(
+            item_a_id=item_a_id,
+            item_b_id=item_b_id,
+            relation_type=relation_type,
+            metadata=metadata,
+        )
+
+    def get_item_relations(
+        self, item_id: str, relation_type: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return all relations where *item_id* participates."""
+        return self.index.get_item_relations(
+            item_id=item_id, relation_type=relation_type
+        )
+
+    # ------------------------------------------------------------------
+    # Entry versioning
+    # ------------------------------------------------------------------
+
+    def get_entry_history(self, entry_id: str) -> list[dict[str, Any]]:
+        """Return all saved backup versions for *entry_id*, newest first."""
+        return self.index.get_entry_history(entry_id=entry_id)
+
+    def restore_entry_version(self, version_id: str) -> dict[str, Any]:
+        """Restore an entry from a saved version backup."""
+        return self.index.restore_entry_version(version_id=version_id)
+
+    # ------------------------------------------------------------------
+    # Collection stats / diff
+    # ------------------------------------------------------------------
+
+    def get_collection_stats(self, period: str = "daily") -> dict[str, Any]:
+        """Aggregated collection statistics for the given period.
+
+        Parameters
+        ----------
+        period:
+            ``"daily"`` (default), ``"weekly"``, or ``"monthly"``.
+
+        Returns
+        -------
+        dict
+            ``{period, date_from, date_to, total_items, new_items,
+            duplicate_items, domains, sources}``
+        """
+        return self.index.get_collection_stats(period=period)
+
+    def get_collection_diff(
+        self, since_collection_id: str
+    ) -> dict[str, Any]:
+        """Return entries collected since a previous collection ID.
+
+        Parameters
+        ----------
+        since_collection_id:
+            A collection ID to compare against (entries with
+            ``collected_at > since_collection_id`` are returned).
+
+        Returns
+        -------
+        dict
+            ``{since_id, new_entries, count, domains}``
+        """
+        return self.index.get_collection_diff(
+            since_collection_id=since_collection_id
+        )
 
     # ------------------------------------------------------------------
     # Read
@@ -397,6 +1507,7 @@ class KBStore:
     def list_entries(
         self,
         domain: str,
+        tier: str | None = None,
         date_from: str | None = None,
         limit: int = 20,
         offset: int = 0,
@@ -405,7 +1516,7 @@ class KBStore:
 
         Returns entries sorted by ``collected_at DESC``.
         """
-        return self.index.list_entries(domain, date_from, limit, offset)
+        return self.index.list_entries(domain, tier, date_from, limit, offset)
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.
@@ -435,6 +1546,590 @@ class KBStore:
             return None
         return self.get_entry(meta[0]["entry_id"])
 
+    # ------------------------------------------------------------------
+    # Draft tier — agent-created entries from Raw
+    # ------------------------------------------------------------------
+
+    def create_kb_draft(
+        self,
+        raw_ids: list[str],
+        title: str,
+        summary: str = "",
+        tags: list[str] | None = None,
+    ) -> KBEntry:
+        """Create a Draft entry from one or more Raw entries.
+
+        Validates that all *raw_ids* exist in the 01-Raw tier, merges
+        content from the source entries, and creates a file in
+        ``02-Draft/<topic>/`` with ``tier: 02-Draft``.
+
+        Parameters
+        ----------
+        raw_ids:
+            One or more entry IDs that exist in the 01-Raw tier.
+        title:
+            Title for the new Draft entry.
+        summary:
+            Optional summary text.
+        tags:
+            Optional tags for the Draft entry.
+
+        Returns
+        -------
+        KBEntry
+            The newly created Draft entry.
+
+        Raises
+        ------
+        ValueError
+            If *raw_ids* is empty or any ID does not exist in 01-Raw.
+        """
+        if not raw_ids:
+            raise ValueError("raw_ids must not be empty")
+
+        tags = tags or []
+
+        raw_entries: list[dict[str, Any]] = []
+        domains: set[str] = set()
+        topics: set[str] = set()
+
+        for rid in raw_ids:
+            entry = self.index.get_entry(rid)
+            if entry is None:
+                raise ValueError(
+                    f"Raw entry '{rid}' not found in knowledge base"
+                )
+            if entry.get("tier", "01-Raw") != "01-Raw":
+                raise ValueError(
+                    f"Entry '{rid}' is not in 01-Raw tier "
+                    f"(found: {entry.get('tier', 'unknown')})"
+                )
+            raw_entries.append(entry)
+
+            fp = Path(entry["file_path"])
+            # file_path: knowledge/<domain>/01-Raw/<topic>/<file>
+            if len(fp.parts) >= 4:
+                domains.add(fp.parts[-4])
+                topics.add(fp.parts[-2])
+
+        domain = domains.pop() if len(domains) == 1 else "default"
+        topic = topics.pop() if len(topics) == 1 else "general"
+        slug = _slugify(title)
+        today_str = date.today().isoformat()
+
+        entry_id = f"{domain}-draft-{slug}"
+
+        # File path: knowledge/<domain>/02-Draft/<topic>/<YYYY-MM-DD>-<slug>.md
+        file_dir = self.base_path / domain / "02-Draft" / topic
+        file_name = f"{today_str}-{slug}.md"
+        file_path = file_dir / file_name
+
+        merged_body_parts: list[str] = []
+        for i, re in enumerate(raw_entries):
+            merged_body_parts.append(
+                f"## Source {i + 1}: {re['title']}\n\n"
+            )
+            raw_fp = Path(re["file_path"])
+            if raw_fp.is_file():
+                raw_text = raw_fp.read_text(encoding="utf-8")
+                body = _strip_frontmatter(raw_text)
+                merged_body_parts.append(body)
+            merged_body_parts.append("\n\n")
+
+        merged_body = "".join(merged_body_parts)
+
+        # Build KBEntry
+        source_raw_ids = ",".join(raw_ids)
+        entry = KBEntry(
+            entry_id=entry_id,
+            title=title,
+            domain=domain,
+            tier="02-Draft",
+            source_url=raw_entries[0].get("source_url", ""),
+            source_type=raw_entries[0].get("source_type", ""),
+            source_platform=raw_entries[0].get("source_platform", ""),
+            collected_at=today_str,
+            summary=summary,
+            tags=tags,
+            quality_tier=1,
+            relevance_score=0.0,
+            dedup_status="unique",
+            file_path=str(file_path),
+            custom_fields={"source_raw_ids": source_raw_ids},
+        )
+
+        # Write Markdown file
+        file_dir.mkdir(parents=True, exist_ok=True)
+        frontmatter = _build_frontmatter(entry)
+        parts = [f"---\n{frontmatter}---\n\n"]
+        parts.append(f"_Compiled from: {source_raw_ids}_\n\n")
+        parts.append(merged_body)
+        file_path.write_text("".join(parts), encoding="utf-8")
+
+        # Index in SQLite
+        self.index.index_entry(entry)
+
+        return entry
+
+    def reject_kb_draft(
+        self,
+        draft_id: str,
+        reason: str = "",
+        action: str = "back_to_raw",
+    ) -> dict[str, Any]:
+        """Reject a Draft, moving it back to 01-Raw or archiving.
+
+        Reads the file from 02-Draft/, adds ``rejection_reason`` to the
+        frontmatter, and moves the file to 01-Raw/ (or archives it).
+
+        Parameters
+        ----------
+        draft_id:
+            Entry ID of the Draft to reject.
+        reason:
+            Optional human-readable reason for rejection.
+        action:
+            What to do with the file.  ``"back_to_raw"`` (default) moves
+            it to the 01-Raw tier.  ``"archive"`` moves to
+            ``_archive/<domain>/``.
+
+        Returns
+        -------
+        dict
+            Summary of the operation including old/new paths.
+        """
+        meta = self.index.get_entry(draft_id)
+        if meta is None:
+            raise ValueError(f"Draft entry '{draft_id}' not found")
+
+        if meta.get("tier") != "02-Draft":
+            raise ValueError(
+                f"Entry '{draft_id}' is not a Draft (tier: {meta.get('tier', 'unknown')})"
+            )
+
+        file_path = Path(meta["file_path"])
+        if not file_path.is_file():
+            raise FileNotFoundError(
+                f"Draft file not found on disk: {file_path}"
+            )
+
+        raw_content = file_path.read_text(encoding="utf-8")
+
+        if raw_content.startswith("---"):
+            end = raw_content.find("---", 3)
+            if end != -1:
+                fm_text = raw_content[3:end]
+                fm_data = yaml.safe_load(fm_text) or {}
+                fm_data["rejection_reason"] = reason
+                fm_data["rejected_at"] = datetime.now(timezone.utc).isoformat()
+                new_fm = yaml.dump(
+                    fm_data,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    width=120,
+                )
+                body = raw_content[end + 3 :].lstrip("\n")
+                raw_content = f"---\n{new_fm}---\n\n{body}"
+            else:
+                raw_content = (
+                    f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
+                )
+        else:
+            raw_content = (
+                f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
+            )
+
+        if action == "back_to_raw":
+            parts = list(file_path.parts)
+            tier_idx = None
+            for i, p in enumerate(parts):
+                if p == "02-Draft":
+                    tier_idx = i
+                    break
+            if tier_idx is not None:
+                parts[tier_idx] = "01-Raw"
+            new_path = Path(*parts)
+
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            new_path.write_text(raw_content, encoding="utf-8")
+            file_path.unlink()
+
+            entry = KBEntry(
+                entry_id=draft_id,
+                title=meta["title"],
+                domain=meta["domain"],
+                tier="01-Raw",
+                source_url=meta.get("source_url", ""),
+                source_type=meta.get("source_type", ""),
+                source_platform=meta.get("source_platform", ""),
+                collected_at=meta.get("collected_at", ""),
+                summary=meta.get("summary", ""),
+                tags=json.loads(meta.get("tags", "[]")),
+                quality_tier=meta.get("quality_tier", 1),
+                relevance_score=meta.get("relevance_score", 0.0),
+                dedup_status=meta.get("dedup_status", "unique"),
+                file_path=str(new_path),
+            )
+            self.index.index_entry(entry)
+
+            return {
+                "status": "rejected",
+                "action": action,
+                "draft_id": draft_id,
+                "old_path": str(file_path),
+                "new_path": str(new_path),
+                "reason": reason,
+            }
+
+        elif action == "archive":
+            archive_dir = self.base_path / "_archive" / meta["domain"]
+            archive_path = archive_dir / file_path.name
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            archive_path.write_text(raw_content, encoding="utf-8")
+            file_path.unlink()
+
+            with self.index._connect() as conn:
+                conn.execute(
+                    "DELETE FROM entries WHERE entry_id = ?", (draft_id,)
+                )
+
+            return {
+                "status": "archived",
+                "action": action,
+                "draft_id": draft_id,
+                "old_path": str(file_path),
+                "new_path": str(archive_path),
+                "reason": reason,
+            }
+
+        else:
+            raise ValueError(
+                f"Unknown action '{action}'. Use 'back_to_raw' or 'archive'."
+            )
+
+    def list_kb_tier(
+        self,
+        domain: str,
+        tier: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List entries in a specific tier for a domain.
+
+        Parameters
+        ----------
+        domain:
+            Domain to filter by.
+        tier:
+            Tier to list (e.g. "01-Raw", "02-Draft").
+        limit:
+            Max entries (default 50).
+        offset:
+            Pagination offset.
+
+        Returns
+        -------
+        list[dict]
+            Entries in the specified tier.
+        """
+        return self.index.list_entries_by_tier(domain, tier, limit, offset)
+
+    # ------------------------------------------------------------------
+    # Flag for KB inclusion
+    # ------------------------------------------------------------------
+
+    def flag_for_knowledge_base(
+        self,
+        summary_id: str,
+        tags: list[str] | None = None,
+        importance: int = 3,
+    ) -> dict[str, Any]:
+        """Flag an entry for KB inclusion.
+
+        - Tags the entry in SQLite index (tags, importance)
+        - Does **not** create a Draft -- agent must call
+          ``create_kb_draft`` separately
+        - Idempotent: calling again with same tags merges (no duplicates)
+
+        Returns
+        -------
+        dict
+            ``{flagged: true, entry_id, tags, importance}`` on success.
+            ``{flagged: false, entry_id, error}`` when not found.
+        """
+        existing = self.index.get_entry(summary_id)
+        if existing is None:
+            return {
+                "flagged": False,
+                "entry_id": summary_id,
+                "error": "Entry not found",
+            }
+
+        current_tags: list[str] = (
+            json.loads(existing["tags"]) if existing.get("tags") else []
+        )
+        if tags:
+            merged = list(dict.fromkeys(current_tags + tags))
+        else:
+            merged = current_tags
+
+        self.index.update_entry_tags(summary_id, merged, importance)
+
+        return {
+            "flagged": True,
+            "entry_id": summary_id,
+            "tags": merged,
+            "importance": importance,
+        }
+
+    # ------------------------------------------------------------------
+    # Knowledge graph — entity & relation storage
+    # ------------------------------------------------------------------
+
+    def store_entities(
+        self,
+        entry_id: str,
+        domain: str,
+        entities: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Store extracted entities for an entry and discover relations.
+
+        Calls through to :meth:`SQLiteIndex.index_entities` and
+        :meth:`SQLiteIndex.discover_relations`.
+
+        Parameters
+        ----------
+        entry_id:
+            The KB entry these entities were extracted from.
+        domain:
+            Domain scope.
+        entities:
+            List of entity dicts with ``name`` and ``type`` keys.
+
+        Returns
+        -------
+        dict
+            ``{entities_indexed, relations_discovered, entry_id}``.
+        """
+        entity_names = [e.get("name", "").strip() for e in entities if e.get("name")]
+        indexed = self.index.index_entities(entry_id, domain, entities)
+        discovered = self.index.discover_relations(entry_id, domain, entity_names)
+        return {
+            "entities_indexed": indexed,
+            "relations_discovered": discovered,
+            "entry_id": entry_id,
+        }
+
+    def query_knowledge_graph(
+        self,
+        entity: str,
+        relation: str = "related_to",
+        domain: str = "",
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Query the knowledge graph for entities related to *entity*.
+
+        Dispatches to :meth:`SQLiteIndex.query_knowledge_graph`.
+
+        Parameters
+        ----------
+        entity:
+            Entity name to query (case-insensitive partial match).
+        relation:
+            Relation type filter (default ``"related_to"``).  Use ``""``
+            for all relation types.
+        domain:
+            Optional domain scope filter.
+        limit:
+            Max results (default 20).
+
+        Returns
+        -------
+        dict
+            ``{entity, relation, domain, results, total_count}``.
+        """
+        return self.index.query_knowledge_graph(
+            entity=entity,
+            relation=relation,
+            domain=domain,
+            limit=limit,
+        )
+
+    def get_summary(self, summary_id: str) -> dict[str, Any]:
+        """Return full summary detail for an entry.
+
+        Reads from the SQLite index **and** the Markdown file to
+        assemble a comprehensive result including key points parsed
+        from the body and quality flags from the YAML frontmatter.
+
+        Returns
+        -------
+        dict
+            Keys: ``entry_id``, ``title``, ``tl_dr``, ``key_points``,
+            ``relevance_score``, ``quality_scores``,
+            ``source_provenance``, ``tags``, ``importance``,
+            ``file_path``.
+            Returns ``{error, entry_id}`` when not found.
+        """
+        meta = self.index.get_entry(summary_id)
+        if meta is None:
+            return {"error": "Entry not found", "entry_id": summary_id}
+
+        file_path = Path(meta["file_path"]) if meta["file_path"] else None
+        content = ""
+        quality_scores: dict[str, Any] = {}
+
+        if file_path and file_path.is_file():
+            raw = file_path.read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end = raw.find("---", 3)
+                if end != -1:
+                    fm = yaml.safe_load(raw[3:end]) or {}
+                    quality_scores = fm.get("quality_flags", {})
+                    content = raw[end + 3 :].lstrip("\n")
+                else:
+                    content = raw
+            else:
+                content = raw
+        else:
+            content = meta.get("content", "")
+
+        key_points = _extract_key_points(content)
+        tags: list[str] = (
+            json.loads(meta["tags"]) if meta.get("tags") else []
+        )
+
+        return {
+            "entry_id": meta["entry_id"],
+            "title": meta.get("title", ""),
+            "tl_dr": meta.get("summary", ""),
+            "key_points": key_points,
+            "relevance_score": meta.get("relevance_score", 0),
+            "quality_scores": quality_scores,
+            "source_provenance": {
+                "source_url": meta.get("source_url", ""),
+                "source_type": meta.get("source_type", ""),
+                "source_platform": meta.get("source_platform", ""),
+                "collected_at": meta.get("collected_at", ""),
+            },
+            "tags": tags,
+            "importance": meta.get("importance", 3),
+            "file_path": meta.get("file_path", ""),
+        }
+
+    # ------------------------------------------------------------------
+    # FTS5 search
+    # ------------------------------------------------------------------
+
+    def search_knowledge_base(
+        self,
+        query: str,
+        domain: str = "",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Full-text search across KB entries using FTS5.
+
+        Parameters
+        ----------
+        query:
+            Search query string.  Supports simple terms (AND implicit).
+        domain:
+            Optional domain filter.
+        limit:
+            Max results (default 20).
+        offset:
+            Pagination offset.
+
+        Returns
+        -------
+        dict
+            ``{query, domain, entries, total_count, limit, offset}``.
+            Falls back to LIKE search if FTS5 syntax is invalid.
+        """
+        return self.index.search_fts5(
+            query=query, domain=domain, limit=limit, offset=offset
+        )
+
+    def reindex_knowledge_base(self, domain: str | None = None) -> dict[str, Any]:
+        """Walk knowledge/ and rebuild the FTS5 search index.
+
+        Finds all ``.md`` files under ``knowledge/``, ensures each has
+        a corresponding entry in the SQLite index, then rebuilds the
+        FTS5 virtual table from the ``entries`` table.
+
+        Parameters
+        ----------
+        domain:
+            Optional domain to scope the reindex to.
+
+        Returns
+        -------
+        dict
+            ``{files_found, fts5_indexed, errors}``.
+        """
+        files_found = 0
+        sync_errors: list[dict[str, Any]] = []
+
+        search_root = self.base_path
+        if domain:
+            search_root = self.base_path / domain
+
+        if not search_root.is_dir():
+            return {
+                "files_found": 0,
+                "fts5_indexed": 0,
+                "errors": [{"message": f"Directory not found: {search_root}"}],
+            }
+
+        for md_file in search_root.rglob("*.md"):
+            try:
+                raw = md_file.read_text(encoding="utf-8")
+                if not raw.startswith("---"):
+                    continue
+                end = raw.find("---", 3)
+                if end == -1:
+                    continue
+                fm = yaml.safe_load(raw[3:end])
+                if not fm or "entry_id" not in fm:
+                    continue
+
+                entry_id = fm["entry_id"]
+                existing = self.index.get_entry(entry_id)
+                if existing is None:
+                    entry = KBEntry(
+                        entry_id=entry_id,
+                        title=fm.get("title", ""),
+                        domain=fm.get("domain", ""),
+                        tier=fm.get("tier", "01-Raw"),
+                        source_url=fm.get("source_url", ""),
+                        source_type=fm.get("source_type", ""),
+                        source_platform=fm.get("source_platform", ""),
+                        collected_at=fm.get("collected_at", ""),
+                        summary=fm.get("summary", ""),
+                        tags=fm.get("tags", []),
+                        quality_tier=fm.get("quality_tier", 1),
+                        relevance_score=fm.get("relevance_score", 0.0),
+                        dedup_status=fm.get("dedup_status", "unique"),
+                        file_path=str(md_file),
+                    )
+                    self.index.index_entry(entry)
+                files_found += 1
+            except Exception as exc:
+                sync_errors.append({
+                    "file": str(md_file),
+                    "error": str(exc),
+                })
+
+        fts5_count = self.index.reindex_fts5()
+
+        return {
+            "files_found": files_found,
+            "fts5_indexed": fts5_count,
+            "errors": sync_errors,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers — frontmatter / body building
@@ -444,6 +2139,7 @@ class KBStore:
 def _build_frontmatter(
     entry: KBEntry,
     quality_results: dict[str, QualityResult] | None = None,
+    extraction: ExtractionResult | None = None,
 ) -> str:
     """Render YAML frontmatter for *entry*."""
     data: dict[str, Any] = {
@@ -469,6 +2165,10 @@ def _build_frontmatter(
         for gname, gresult in quality_results.items():
             flags[gname] = gresult.flagged
         data["quality_flags"] = flags
+
+    # Include custom extracted fields in frontmatter
+    if extraction and extraction.custom_fields:
+        data["extracted_fields"] = extraction.custom_fields
 
     return yaml.dump(
         data,
@@ -533,3 +2233,20 @@ def _strip_frontmatter(text: str) -> str:
         if idx != -1:
             return text[idx + 3 :].lstrip("\n")
     return text
+
+
+def _extract_key_points(content: str) -> list[str]:
+    """Extract bullet-point key points from a KB entry body.
+
+    Looks for a ``## Key Points`` section and parses lines starting
+    with ``- `` as individual points.
+    """
+    match = re.search(r"## Key Points\n(.+?)(?:\n## |\Z)", content, re.DOTALL)
+    if not match:
+        return []
+    points: list[str] = []
+    for line in match.group(1).strip().split("\n"):
+        line = line.strip()
+        if line.startswith("- "):
+            points.append(line[2:])
+    return points

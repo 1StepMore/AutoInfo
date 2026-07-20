@@ -561,56 +561,56 @@ Beyond individual expectations, there are **core value propositions** — the fu
 
 ```
 Promise:  Configure any domain → AutoInfo collects from any source type
-Reality:  Initial state — no code written yet
+Reality:  v1.0 — RSS, API (PubMed), Web (trafilatura + Playwright) supported
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| RSS/API collection | ❌ Not implemented | Core pipeline to be built |
-| Web page extraction | ❌ Not implemented | Handler to be built |
+| RSS/API collection | ✅ Implemented | PubMed (esearch+efetch), RSS (feedparser), scheduled via crond |
+| Web page extraction | ✅ Implemented | trafilatura + Playwright fallback for JS-heavy pages |
 | Webhook/email collection | ❌ Not implemented | Future |
-| **End-to-end: source → stored item** | ❌ **Greenfield** | Core loop to be built |
+| **End-to-end: source → stored item** | ✅ **v1.0 Complete** | Core loop working across 4 source types |
 
 ### 5.2 "LLM-powered structured extraction"
 
 ```
 Promise:  Collect anything → LLM extracts the fields you care about
-Reality:  Initial state — no code written yet
+Reality:  v1.0 — default + custom extraction, G4 quality gate, Q&A
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| LLM extraction pipeline | ❌ Not implemented | Prompt design + integration |
-| Custom field extraction | ❌ Not implemented | Schema system to be designed |
-| Extraction quality check (G4) | ❌ Not implemented | Verification loop to be built |
+| LLM extraction pipeline | ✅ Implemented | LiteLLM multi-provider, TL;DR + key points + entities + relevance |
+| Custom field extraction | ✅ Implemented | User-defined schema per domain, on-demand re-extraction |
+| Extraction quality check (G4) | ✅ Implemented | Factual consistency checking via LLM, --check-factual flag |
 
 ### 5.3 "Knowledge base as an asset"
 
 ```
 Promise:  Collected knowledge is permanently stored, searchable, exportable
-Reality:  Initial state — no code written yet
+Reality:  v1.0 — 4-tier Hermes pipeline, FTS5 search, export, knowledge graph
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| File-based KB storage | ❌ Not implemented | Schema + directory structure |
-| Hybrid search | ❌ Not implemented | FTS5 + embeddings |
-| Export & interoperability | ❌ Not implemented | Format converters |
-| Knowledge graph | ❌ Not implemented | Entity extraction + graph model |
+| File-based KB storage | ✅ Implemented | 4-tier pipeline (Inbox→Raw→Draft→Wiki), Markdown + YAML frontmatter |
+| Hybrid search | ✅ Implemented | FTS5 across all tiers with CJK support |
+| Export & interoperability | ✅ Implemented | Markdown, JSON, SQLite export; versioning; entry history |
+| Knowledge graph | ✅ Implemented | Entity extraction + relation discovery via LLM |
 
 ### 5.4 "Agent can operate the system"
 
 ```
 Promise:  AI agents (OpenCode, Claude Code, etc.) can run AutoInfo via MCP
-Reality:  Initial state — no code written yet
+Reality:  v1.0 — 50 MCP tools across 12 categories
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| MCP server | ❌ Not implemented | Tool design + protocol |
-| Core collection tools | ❌ Not implemented | collect, search, summarize |
-| KB management tools | ❌ Not implemented | CRUD + search + export |
-| Output generation tools | ❌ Not implemented | digest, tutorial, presentation |
+| MCP server | ✅ Implemented | 50 tools, stdio transport, structured error responses |
+| Core collection tools | ✅ Implemented | collect_sources, process_collection, batch_run, cron management |
+| KB management tools | ✅ Implemented | CRUD + search + draft workflow + export + knowledge graph |
+| Output generation tools | ✅ Implemented | digest, report, tutorial, presentation, export, translation |
 
 ---
 

@@ -12,29 +12,34 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 
 ## Features
 
-- **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages
-- **LLM-powered extraction** — TL;DR, key points, entity extraction, relevance scoring
-- **Knowledge base (Hermes model)** — Markdown files with YAML frontmatter + SQLite index
-- **Hybrid search** — Keyword (SQLite) + semantic (via LLM embeddings)
-- **Agent-native** — All capabilities as MCP tools. Agent operates, human directs.
+- **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages (trafilatura + Playwright)
+- **LLM-powered extraction** — TL;DR, key points, entity extraction, relevance scoring, custom field extraction
+- **Knowledge base (Hermes model)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite)
+- **Full-text search** — FTS5 with CJK support across all KB tiers
+- **Quality gates G1-G5** — Source authority, dedup, relevance, factual consistency (advisory)
+- **Agent-native** — 50 MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
-- **Domain-agnostic** — Not hardcoded to any vertical. Users define their own domains.
+- **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning)
 
-## v0.1 Status
+## Status
 
 | Component | Status |
 |-----------|--------|
-| Config system | ✅ YAML-based, env var resolution, validation |
-| `autoinfo init` | ✅ Creates project skeleton with demo domains |
-| PubMed API handler | ✅ esearch + efetch, rate limiting, retry |
-| RSS handler | ✅ RSS 2.0 + Atom via feedparser |
-| LLM extraction | ✅ LiteLLM integration, TL;DR + key points + entities + relevance (0-100) |
-| Quality gates G1-G3 | ✅ Source authority, dedup, relevance scoring (advisory) |
-| KB storage | ✅ Markdown files in `knowledge/01-Raw/` + SQLite metadata index |
-| CLI commands | ✅ init, doctor, collect, process, status, summaries |
-| MCP server | ✅ 6 tools (health_check, diagnose_system, collect_sources, process_collection, list_summaries, get_kb_entry) |
-| Test suite | ✅ 220 tests, pytest + VCR cassettes + snapshot regression |
-| **Not in v0.1** | No FTS5 search, no Draft/Wiki tiers, no scheduled cron, no web UI |
+| Config system | ✅ LLM task config, per-task model, fallback chains |
+| CLI | ✅ 11 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron) |
+| Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), scheduled via crond |
+| LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency |
+| Quality gates | ✅ G1-G5 all functional (advisory, non-blocking) |
+| KB pipeline | ✅ 4-tier Hermes model (Inbox → Raw → Draft → Wiki) |
+| Search | ✅ FTS5 across all tiers |
+| Q&A | ✅ FTS5 + LLM synthesis with source citations |
+| Output generation | ✅ Digest, report, tutorial, presentation (Jinja2 + LLM) |
+| Translation | ✅ LLM-based source→target |
+| Knowledge graph | ✅ Entity extraction + relation discovery |
+| MCP server | ✅ 50 tools across 12 categories |
+| Export | ✅ Markdown, JSON, SQLite |
+| Demo domains | ✅ medical-research, ai-commercial, language-learning |
+| Test suite | ✅ 720+ tests |
 
 ## Quick Start
 
@@ -48,73 +53,80 @@ autoinfo init --demo medical-research
 # Configure LLM key
 export AUTOINFO_LLM_API_KEY="sk-..."
 
-# Collect and process
+# Collect, process, and search
 autoinfo collect --domain medical-research --topic "IVF breakthroughs" --limit 5
 autoinfo process --domain medical-research
+autoinfo kb search --query "embryo" --domain medical-research
 
-# Browse results
-autoinfo summaries list --domain medical-research
-autoinfo status --domain medical-research
+# Generate output
+autoinfo output digest --domain medical-research --period week
+autoinfo output export --domain medical-research --format json
 ```
 
 ## Architecture
 
 ```
-Sources (RSS/API)
+Sources (RSS/API/Web)
         │
         ▼
-   autinfo collect ───→ collections/ (raw JSON cache)
+   autoinfo collect ───→ collections/ (raw JSON cache)
         │
         ▼
    autoinfo process
         │
-   ├── LLMExtractor (LiteLLM)
-   ├── Quality Gates (G1-G3)
-   └── KBStore
+   ├── LLMExtractor (custom fields, entities, G4)
+   ├── Quality Gates (G1-G5)
+   └── KBStore (4-tier)
         │
         ▼
-   knowledge/01-Raw/ ────→ Markdown files + SQLite index
+   knowledge/{Raw|Draft|Wiki}/ ───→ Markdown + SQLite + FTS5
         │
-        ▼
-   autinfo summaries list | autoinfo status | MCP tools
+        ├── autoinfo summaries list | status | kb search
+        ├── autoinfo output digest | report | tutorial | export
+        └── MCP server (50 tools)
 ```
 
-## Interface
-
-- **Primary**: MCP tools (`python -m autoinfo.mcp.server`)
-- **Fallback**: CLI (`autoinfo <verb> --domain <domain>`)
-- **NOT v1**: No web UI, no mobile app, no email delivery
-
-## Demo Domains
-
-| Domain | Validates | Priority |
-|--------|-----------|----------|
-| **Medical Research** (辅助生殖/脑科学) | Academic paper collection (PubMed), structured metadata | 🔴 P0 — Implemented |
-| **AI Commercial Intelligence** | Multi-source collection (API + web + feeds) | 🟡 P1 — Future |
-| **Language Learning** (children's English) | Level classification, content simplification | 🟢 P2 — Future |
-
-## CLI Commands
+## CLI Commands (11 groups)
 
 ```bash
 autoinfo init --demo <domain>       # Initialize project
 autoinfo doctor                      # System health check
 autoinfo collect --domain <d> ...   # Collect from sources
 autoinfo process --domain <d> ...   # LLM extraction + storage
-autoinfo collect --auto-process     # Collect + process in one step
-autoinfo status                     # Collection stats
-autoinfo summaries list             # Browse extracted summaries
+autoinfo status                      # Collection stats
+autoinfo summaries list|flag|show   # Browse summaries
+autoinfo sources add|list|remove|test  # Source management
+autoinfo topics add|list|remove     # Topic management
+autoinfo kb search|create-draft|reject-draft|list-tiers|reindex
+autoinfo output digest|report|tutorial|presentation|export|translate|list-templates
+autoinfo cron run|list-schedules|add-schedule|remove-schedule
 ```
 
-## MCP Tools (6)
+## MCP Tools (50)
 
-| Tool | Description |
-|------|-------------|
-| `health_check` | Server health status |
-| `diagnose_system` | Comprehensive system diagnostics |
-| `collect_sources` | Collect from configured sources |
-| `process_collection` | Run LLM extraction + quality gates + storage |
-| `list_summaries` | List extracted summaries with pagination |
-| `get_kb_entry` | Read full KB entry content |
+| Category | Tools |
+|----------|-------|
+| **System** | health_check, diagnose_system, get_config, list_available_models |
+| **Discovery** | list_domains, get_domain_schema, get_effective_llm_config, list_output_templates |
+| **Source** | add_source, add_sources, remove_source, test_source, list_sources, get_source_health |
+| **Topic** | add_topic, remove_topic, list_topics, list_keywords |
+| **Collection** | collect_sources, get_collection_progress, process_collection, get_processing_progress, batch_run |
+| **KB** | search_knowledge_base, get_kb_entry, list_summaries, get_summary, create_kb_draft, reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
+| **Output** | generate_digest, generate_report, generate_tutorial, localize_content, export_kb |
+| **Q&A** | query_collected |
+| **Graph** | query_knowledge_graph |
+| **Relations** | link_items, get_item_relations |
+| **Monitor** | get_collection_stats, get_collection_diff, get_source_health, rate_item, list_active_collections |
+| **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules |
+| **Projects** | list_projects, get_project_assets, archive_project |
+
+## Demo Domains
+
+| Domain | Sources | Priority | Status |
+|--------|---------|----------|--------|
+| **Medical Research** | PubMed (REST API) | 🔴 P0 | ✅ Implemented |
+| **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API | 🟡 P1 | ✅ Implemented |
+| **Language Learning** | Project Gutenberg, BBC Learning English | 🟢 P2 | ✅ Implemented |
 
 ## Development
 
@@ -122,15 +134,7 @@ autoinfo summaries list             # Browse extracted summaries
 pip install -e ".[dev]"
 make test        # pytest -v
 make lint        # ruff check + mypy
-pytest -v        # 220 tests
 ```
-
-## Test Strategy
-
-- **Unit tests**: pytest + CliRunner for CLI, VCR cassettes for HTTP
-- **LLM extraction**: Snapshot regression with synthetic fixtures — no real LLM calls in CI
-- **Quality gates**: Pure Python, no external dependencies
-- **Integration**: End-to-end True Test (T1-T5) with temp directory isolation
 
 ## License
 

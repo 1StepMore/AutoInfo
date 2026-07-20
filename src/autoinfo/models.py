@@ -98,6 +98,7 @@ class ExtractionResult:
     key_points: list[str] = field(default_factory=list)
     entities: list[dict[str, Any]] = field(default_factory=list)
     relevance_score: float = 0.0
+    custom_fields: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,3 +124,39 @@ class SourceHealth:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SourceHealth:
         return cls(**data)
+
+
+@dataclass
+class ItemRelation:
+    """A link between two KB entries."""
+
+    relation_id: str
+    item_a_id: str
+    item_b_id: str
+    relation_type: str = "related"
+    created_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ItemRelation:
+        return cls(**data)
+
+
+@dataclass
+class CollectionStats:
+    """Aggregated collection statistics across a period."""
+
+    period: str = "daily"
+    date_from: str = ""
+    date_to: str = ""
+    total_items: int = 0
+    new_items: int = 0
+    duplicate_items: int = 0
+    domains: dict[str, int] = field(default_factory=dict)
+    sources: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

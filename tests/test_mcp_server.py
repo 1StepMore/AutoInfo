@@ -26,6 +26,7 @@ from autoinfo.mcp.server import (
     _handle_collect_sources,
     _handle_diagnose_system,
     _handle_get_kb_entry,
+    _handle_get_processing_progress,
     _handle_health_check,
     _handle_list_summaries,
     _handle_process_collection,
@@ -42,7 +43,7 @@ class TestHealthCheck:
         result = _handle_health_check()
         assert result["status"] == "ok"
         assert "version" in result
-        assert result["tools_count"] == 6
+        assert result["tools_count"] >= 23
 
     def test_version_matches_package(self) -> None:
         from autoinfo import __version__
@@ -220,19 +221,35 @@ class TestErrorResponse:
 
 class TestToolRegistration:
     @pytest.mark.asyncio
-    async def test_lists_six_tools(self) -> None:
+    async def test_lists_at_least_twenty_three_tools(self) -> None:
         tools = await mcp_server.list_tools()
-        assert len(tools) == 6
+        assert len(tools) >= 23
 
         names = {t.name for t in tools}
-        assert names == {
+        assert {
             "health_check",
             "diagnose_system",
             "collect_sources",
             "process_collection",
+            "get_processing_progress",
             "list_summaries",
             "get_kb_entry",
-        }
+            "list_domains",
+            "get_domain_schema",
+            "list_available_models",
+            "get_effective_llm_config",
+            "add_source",
+            "add_sources",
+            "remove_source",
+            "test_source",
+            "list_sources",
+            "add_topic",
+            "remove_topic",
+            "search_knowledge_base",
+            "flag_for_knowledge_base",
+            "get_summary",
+            "list_output_templates",
+        }.issubset(names)
 
     @pytest.mark.asyncio
     async def test_each_tool_has_input_schema(self) -> None:
@@ -382,6 +399,63 @@ class TestProcessCollection:
         mock_proc.return_value = ProcessResult(domain="test")
         _handle_process_collection(domain="test")
         mock_proc.assert_called_once_with(domain="test")
+
+    @patch("autoinfo.process.run_processing")
+    def test_batch_size_passed_through(self, mock_proc: MagicMock) -> None:
+        from autoinfo.process import ProcessResult
+
+        mock_proc.return_value = ProcessResult(
+            domain="medical-research",
+            total_items=10,
+            processed_count=3,
+            remaining_count=7,
+            is_complete=False,
+        )
+
+        result = _handle_process_collection(
+            domain="medical-research", batch_size=3
+        )
+
+        mock_proc.assert_called_once_with(
+            domain="medical-research", batch_size=3
+        )
+        assert result["total_items"] == 10
+        assert result["processed_count"] == 3
+        assert result["remaining_count"] == 7
+        assert result["is_complete"] is False
+
+
+class TestGetProcessingProgress:
+    @patch("autoinfo.process.get_processing_progress")
+    def test_returns_progress(self, mock_progress: MagicMock) -> None:
+        mock_progress.return_value = {
+            "total_items": 10,
+            "processed_count": 3,
+            "remaining_count": 7,
+            "is_complete": False,
+        }
+
+        result = _handle_get_processing_progress(domain="medical-research")
+
+        mock_progress.assert_called_once_with(domain="medical-research")
+        assert result["total_items"] == 10
+        assert result["processed_count"] == 3
+        assert result["remaining_count"] == 7
+        assert result["is_complete"] is False
+
+    @patch("autoinfo.process.get_processing_progress")
+    def test_complete_progress(self, mock_progress: MagicMock) -> None:
+        mock_progress.return_value = {
+            "total_items": 10,
+            "processed_count": 10,
+            "remaining_count": 0,
+            "is_complete": True,
+        }
+
+        result = _handle_get_processing_progress(domain="medical-research")
+
+        assert result["is_complete"] is True
+        assert result["remaining_count"] == 0
 
 
 class TestListSummaries:

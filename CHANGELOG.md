@@ -2,6 +2,33 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.3 (2026-07-21)
+
+### Added
+- **`ErrorCode` enum** — Centralized `ErrorCode(str, Enum)` in `src/autoinfo/mcp/errors.py` with 19 typed members replacing 47 fragmented literal strings across all handlers
+- **`init_project` MCP tool** — Idempotent project initialization via MCP (mirrors CLI `init`), with `domain` param, 15 dedicated tests
+- **`ErrorResponse` TypedDict** — Structured error response type with `error_code`, `message`, `actionable` fields; `error_dict()` and `error_response()` helpers
+
+### Changed
+- **MCP schema hardening** — 15 enum constraints on categorical params, 5 crash-risk defaults made non-nullable, `required` arrays enforced on all tools with properties (was optional in ~25% of schemas), nested descriptions fixed on `add_sources`
+- **Error handling refactored** — 46 literal `error_code` strings → `ErrorCode` enum refs across `server.py`, `dispatch` handlers, `call_tool`, MCP tool handlers. 4 bare-`"error"` dict keys → `"error_code"`. 5 dynamic `type(exc).__name__` → `ErrorCode.INTERNAL_ERROR`. Error helpers updated from `_error_dict`/`_error_response` to `error_dict`/`error_response`. `src/autoinfo/api/routes.py` aligned with `ErrorCode | str` type.
+- **AGENTS.md comprehensively rewritten** — No "Greenfield" mode, 12 common patterns (was 0), `health_check`-first discovery flow, updated constraints (8 rules), accurate tool counts, directory tree mirrors actual mcp/ module
+- Test suite expanded from 825+ to **1134 tests** (38 new `tests/test_errors.py`, 15 new `tests/test_mcp_init_project.py`)
+- MCP tool inventory: 65 tools across 15 categories (was "70+ areas across 12")
+- Tool table in README and AGENTS.md now matches actual 65-tool listing exactly
+- Version bumped from `1.2.0`
+
+### Fixed
+- **5 crash-risk MCP schema gaps**: `batch_run.sources`, `export_kb.topic`, `localize_content.target_lang` (missing `required` arrays), `get_effective_llm_config.task` (non-nullable with default), `add_sources.sources.items` (nested description)
+- **6 GitHub issues resolved**: #4 (AGENTS.md staleness), #5 (error_code centralization), #6 (init_project tool), #7 (discovery flow), #8 (MCP schema gaps), #9 (common patterns)
+- All CLI files (`cli/*.py`) and shared modules (`doctor.py`, `kb.py`, `keywords.py`, `process.py`) updated to use ErrorCode enum
+
+### Infrastructure
+- `.omo/plans/fix-6-issues.md`: Execution plan — 10 tasks, 3 waves + 4 final reviewers, all APPROVED
+- `src/autoinfo/mcp/errors.py`: New module — ErrorCode enum, helpers, re-exported via `__init__.py`
+- 3 commits pushed to `origin/main` (waves 1-2 + final verification)
+- F1-F4 final verification wave: all 4 APPROVED (Oracle compliance, code quality, manual QA, scope fidelity)
+
 ## v1.2 (2026-07-21)
 
 ### Added

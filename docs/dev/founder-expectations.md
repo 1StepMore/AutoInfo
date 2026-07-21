@@ -610,12 +610,12 @@ Reality:  v1.2 — 4-tier Hermes pipeline + promote workflow + KG export + front
 
 ```
 Promise:  AI agents (OpenCode, Claude Code, etc.) can run AutoInfo via MCP
-Reality:  v1.2 — 70+ MCP tools across 12 categories
+Reality:  v1.3 — 65 MCP tools across 15 categories (up from 56+ in v1.1, including new Projects category)
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| MCP server | ✅ **v1.2 Enhanced** | 70+ tool areas, stdio transport, structured error responses |
+| MCP server | ✅ **v1.3 Enhanced** | 65 tools across 15 categories, stdio transport, structured ErrorCode enum, schemas hardened with enum constraints and required arrays |
 | Core collection tools | ✅ Implemented | collect_sources (with dry_run), process_collection (batch), batch_run |
 | Progress visibility | ✅ **v1.1 Added** | get_collection_progress, get_collection_status MCP tools |
 | KB management tools | ✅ Implemented | Full CRUD + search + draft workflow + promote + KG + reindex |
@@ -760,7 +760,7 @@ PARTIAL — 16/32 expectations pass, but:
 
 ## 9. Current Reality Assessment
 
-**Status: v1.2 implemented (2026-07-21).** Full feature set across all 32 expectations, plus v1.1 gap-fill and v1.2 comprehensive enhancement release.
+**Status: v1.3 implemented (2026-07-21).**  Full feature set across all 32 expectations, plus v1.2 comprehensive enhancement release and v1.3 refactoring/polish.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%
@@ -793,11 +793,11 @@ gantt
 | Web UI Dashboard | ✅ Bootstrap 5 |
 | CEFR classification | ✅ LLM-based EN/ZH/JA |
 | Knowledge graph | ✅ Entity extraction + relation discovery + export (JSON/GraphML/CSV) |
-| MCP server | ✅ 70+ tool areas across 12 categories |
+| MCP server | ✅ 65 MCP tools across 15 categories |
 | Demo source curation | ✅ 7 curated sources across 3 domains |
 | Translation | ✅ LLM-based via localize_content MCP tool |
 | Output generation | ✅ Digest, report (Markdown/JSON/PDF), tutorial, presentation, export |
-| Tests | ✅ 825+ tests (unit, integration, snapshot regression, 105 v1.2 integration tests) |
+| Tests | ✅ 1134 tests (unit, integration, snapshot regression, 105 v1.2 integration tests) |
 | CI/CD | ⏸ Manual — Makefile targets, pre-commit hooks configured |
 
 ### What v1.2 ships (v1.1 + additions):
@@ -854,7 +854,7 @@ autoinfo email send --to user@example.com --subject "Digest" --body "..."
 # curl http://127.0.0.1:8741/dashboard  # Web UI
 
 # --- MCP (Agent Interface) ---
-# Agent connects via stdio MCP, discovers 70+ tools automatically
+# Agent connects via stdio MCP, discovers 65 tools automatically
 # All capabilities available as structured tool calls
 ```
 
@@ -955,8 +955,8 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 10-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ 825+ tests across 35+ test files |
-| MCP tools | ✅ 70+ tool areas across 12 categories (including CEFR, Email, Keywords) |
+| Tests | ✅ 1134 tests across 35+ test files |
+| MCP tools | ✅ 65 tool areas across 15 categories (including CEFR, Email, Keywords, Projects) |
 | Technical decisions | ✅ 13 categories documented, all implemented |
 | CLI commands | ✅ 14 command groups with `--json` global flag |
 
@@ -1256,7 +1256,7 @@ Unrecoverable:
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.2 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 825+ tests, and 70+ MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
+The project started from zero (v0.1, July 18 2026) and reached v1.3 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1134 tests, and 65 MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
 
 Some expectations that seemed easy (F07: demo source curation) required deep research — understanding PubMed's API, navigating CrossRef REST endpoints, knowing which journals matter for 辅助生殖. Some that seemed hard (F20: file-based KB) were trivially simple — a directory of Markdown files. The v1.1 gap-fill closed the quality-of-life gaps; v1.2 added the major enhancement features: hybrid vector search, REST API, Web UI dashboard, CEFR classification, git versioning, PDF export, and email sending.
 
@@ -1267,7 +1267,7 @@ The project is done when the founder can say: **"Yes, this does what I wanted."*
 
 ---
 
-## 14. Remaining Gaps & Future Work (Post v1.2)
+## 14. Remaining Gaps & Future Work (Post v1.3)
 
 The following items are consciously deferred from v1.2. They represent the remaining delta between the founder's full vision and current implementation. v1.2 closed 10+ gaps from the v1.1 deferred list — notably hybrid vector search, REST API, Web UI dashboard, Obsidian wiki links, CEFR classification, PDF export, SMTP email, schema versioning, keywords management, and crontab installer.
 
@@ -1295,17 +1295,17 @@ The following items are consciously deferred from v1.2. They represent the remai
 | **Citation management (BibTeX)** | §10.3 Explicit "No" | Medium | Post-v2 if medical community demands it. |
 | **Image/video processing** | §10.3 Explicit "No" | High | Text-only. KB is textual knowledge, not media. |
 
-### v1.2 Success Metrics
+### v1.3 Success Metrics
 
 | Metric | Value |
 |--------|-------|
 | Expectations met | 32/32 (all) |
 | Value propositions fulfilled | 4/4 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅) |
 | True Test passing | 10/10 |
-| MCP tools | 70+ |
+| MCP tools | 65 |
 | Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
 | Quality gates | 5 (G1-G5, advisory) |
-| Tests | 825+ |
+| Tests | 1134 |
 | Demo domains | 3 with 7 curated sources |
 
 ---

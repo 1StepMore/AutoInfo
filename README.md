@@ -22,7 +22,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **PDF export** — WeasyPrint-powered report generation
 - **Email sending** — SMTP-based digest delivery
 - **Quality gates G1-G5** — Source authority, dedup, relevance, factual consistency (advisory)
-- **Agent-native** — 70+ MCP tools. Agent operates, human directs.
+- **Agent-native** — 65 MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning)
 
@@ -43,7 +43,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 70+ MCP tool areas across 12 categories |
+| MCP server | ✅ 65 MCP tools across 15 categories |
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
@@ -51,7 +51,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 825+ tests (30+ test files, 105 v1.2 integration tests) |
+| Test suite | ✅ 1134 tests (35+ test files, 105 v1.2 integration tests) |
 
 ## Quick Start
 
@@ -119,26 +119,26 @@ autoinfo email send|config          # SMTP email sending
 autoinfo knowledge graph            # Knowledge graph export
 ```
 
-## MCP Tools (70+)
+## MCP Tools (65)
 
 | Category | Tools |
 |----------|-------|
 | **System** | health_check, diagnose_system, get_config, list_available_models |
 | **Discovery** | list_domains, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Source** | add_source, add_sources, remove_source, test_source, list_sources, get_source_health |
-| **Topic** | add_topic, remove_topic, list_topics, list_keywords |
+| **Topic** | add_topic, remove_topic, list_topics, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
 | **Collection** | collect_sources, get_collection_progress, get_collection_status, process_collection, get_processing_progress, batch_run |
 | **KB** | search_knowledge_base (hybrid), get_kb_entry, list_summaries, get_summary, create_kb_draft, reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base, vector_search, faceted_search |
 | **Output** | generate_digest, generate_report (Markdown/JSON/PDF), generate_tutorial, generate_presentation, localize_content, export_kb |
 | **CEFR** | classify_cefr |
 | **Keywords** | list_keywords, manage_keyword |
-| **Email** | send_email, get_email_config, set_email_config |
+| **Email** | send_email_digest |
 | **Q&A** | query_collected |
 | **Graph** | query_knowledge_graph |
-| **Relations** | link_items, get_item_relations |
+| **Relations** | link_items, get_item_relations, get_entry_history, restore_entry_version |
 | **Monitor** | get_collection_stats, get_collection_diff, get_source_health, rate_item, list_active_collections |
-| **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules, cron_install, cron_uninstall |
-| **Projects** | list_projects, get_project_assets, archive_project |
+| **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules |
+| **Projects** | init_project, list_projects, get_project_assets, archive_project |
 
 ## Demo Domains
 
@@ -158,7 +158,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.2 closes most remaining gaps from the founder's spec. The following items remain explicitly deferred:
+AutoInfo v1.3 adds ErrorCode centralization, MCP schema hardening, and the `init_project` tool. v1.2 closed most remaining gaps from the founder's spec. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

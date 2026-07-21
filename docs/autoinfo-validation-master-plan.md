@@ -5,7 +5,7 @@
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-20
 **Strategy:** Every section asks a user question → executes scenarios → reports a binary verdict
-**Current Baseline:** v1.2 full feature set — 825+ tests, 14 CLI command groups, 70+ MCP tools, FastAPI REST API, Bootstrap 5 Web UI
+**Current Baseline:** v1.3 full feature set — 1134 tests, 14 CLI command groups, 65 MCP tools across 15 categories, FastAPI REST API, Bootstrap 5 Web UI
 
 ---
 
@@ -578,9 +578,9 @@ cd /tmp/noconfig && autoinfo process --domain medical-research
 
 ---
 
-## Q7: Does every MCP tool work correctly? (70+ tools)
+## Q7: Does every MCP tool work correctly? (65 tools)
 
-**User says:** "I'm connecting via MCP protocol. I need all 70+ tools to work as documented."
+**User says:** "I'm connecting via MCP protocol. I need all 65 tools to work as documented."
 
 **Why this matters:** MCP is the primary integration surface for AI agents. Broken tools break automation.
 
@@ -592,15 +592,15 @@ import json
 # Check tools are registered
 tools = app.list_tools()()
 tool_names = [t.name for t in tools]
-assert len(tools) > 6  # 70+ tools in v1.2
+assert len(tools) > 6  # 65 tools in v1.3
 expected_tools = ["health_check", "diagnose_system", "collect_sources", "process_collection",
                   "list_summaries", "get_kb_entry", "generate_report", "classify_cefr",
-                  "vector_search", "faceted_search", "send_email", "manage_keyword"]
+                  "vector_search", "faceted_search", "send_email_digest", "init_project"]
 missing = [t for t in expected_tools if t not in tool_names]
 assert len(missing) == 0, f"Missing tools: {missing}"
 print(f"ALL {len(tools)} TOOLS PRESENT")
 ```
-**Expected Result:** ✅ 70+ tools registered with correct names, including all v1.2 additions (generate_report, classify_cefr, vector_search, faceted_search, send_email, manage_keyword).
+**Expected Result:** ✅ 65 tools registered with correct names, including v1.2 additions (generate_report, classify_cefr, vector_search, faceted_search) and v1.3 addition (init_project).
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -610,7 +610,7 @@ result = app.call_tool("health_check", {})
 data = json.loads(result.content[0].text)
 assert data["status"] == "ok"
 assert "version" in data
-assert data["tools_count"] > 6  # 70+ in v1.2
+assert data["tools_count"] > 6  # 65 in v1.3
 ```
 **Expected Result:** ✅ Returns status, version, tools_count.
 

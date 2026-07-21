@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (70+ tools across 12 categories)
+2. **All capabilities** are exposed as MCP tools (65 tools across 15 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -126,7 +126,7 @@ hidden from default views, or demoted — never deleted.
 
 ## Tool Discovery Guidance
 
-70+ MCP tools organized by category:
+65 MCP tools organized by category:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -265,7 +265,7 @@ hidden from default views, or demoted — never deleted.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 70+ MCP tool areas across 12 categories |
+| MCP server | ✅ 65 MCP tools across 15 categories |
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
@@ -273,7 +273,7 @@ hidden from default views, or demoted — never deleted.
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 825+ tests (30+ test files, 105 v1.2 integration tests) |
+| Test suite | ✅ 1134 tests (35+ test files, 105 v1.2 integration tests) |
 
 ## References
 

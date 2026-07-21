@@ -57,6 +57,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from autoinfo import __version__
+from autoinfo.mcp.errors import ErrorCode, error_dict, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-        "tools_count": 63,
+            "tools_count": 65,
     }
 
 
@@ -329,7 +330,7 @@ def _handle_get_kb_entry(entry_id: str, user_id: str | None = None) -> dict[str,
     entry = store.get_entry(entry_id)
     if entry is None:
         return {
-            "error_code": "NotFound",
+            "error_code": ErrorCode.NOT_FOUND.value,
             "message": f"Entry '{entry_id}' not found",
             "actionable": True,
         }
@@ -346,7 +347,7 @@ def _handle_list_domains() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"domains": [], "count": 0, "error": str(exc)}
+        return {"domains": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
 
     domains = []
     for d in config.domains:
@@ -369,7 +370,7 @@ def _handle_activate_domain(name: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{name}' is not configured",
             "actionable": True,
         }
@@ -400,7 +401,7 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{name}' is not configured",
             "actionable": True,
         }
@@ -431,7 +432,7 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{name}' is not configured",
             "actionable": True,
         }
@@ -477,7 +478,7 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -520,7 +521,7 @@ def _handle_list_available_models() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"models": [], "count": 0, "error": str(exc)}
+        return {"models": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
 
     models = [
         {
@@ -588,11 +589,11 @@ def _handle_add_source(
     # --- Validation -----------------------------------------------------------
     url_error = _validate_url(url)
     if url_error:
-        return {"error_code": "ValidationError", "message": url_error, "actionable": True}
+        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
 
     type_error = _validate_source_type(type)
     if type_error:
-        return {"error_code": "ValidationError", "message": type_error, "actionable": True}
+        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": type_error, "actionable": True}
 
     try:
         config = _load_config()
@@ -602,7 +603,7 @@ def _handle_add_source(
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -675,7 +676,7 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
             errored += 1
             results.append({
                 "index": idx,
-                "error_code": type(exc).__name__,
+                "error_code": ErrorCode.INTERNAL_ERROR.value,
                 "message": str(exc),
                 "actionable": True,
             })
@@ -698,7 +699,7 @@ def _handle_remove_source(source_id: str) -> dict[str, Any]:
     parts = source_id.split(":", 1)
     if len(parts) != 2:
         return {
-            "error_code": "InvalidSourceId",
+            "error_code": ErrorCode.INVALID_SOURCE_ID.value,
             "message": "source_id must be in format 'domain:name'",
             "actionable": True,
         }
@@ -707,7 +708,7 @@ def _handle_remove_source(source_id: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, domain_name)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain_name}' is not configured",
             "actionable": True,
         }
@@ -727,7 +728,7 @@ def _handle_remove_source(source_id: str) -> dict[str, Any]:
             }
 
     return {
-        "error_code": "SourceNotFound",
+        "error_code": ErrorCode.SOURCE_NOT_FOUND.value,
         "message": f"Source '{source_name}' not found in domain '{domain_name}'",
         "actionable": True,
     }
@@ -748,10 +749,10 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     """Test whether a source URL is reachable."""
     url_error = _validate_url(url)
     if url_error:
-        return {"reachable": False, "error_code": "ValidationError", "message": url_error, "actionable": True}
+        return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
     type_error = _validate_source_type(type)
     if type_error:
-        return {"reachable": False, "error_code": "ValidationError", "message": type_error, "actionable": True}
+        return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": type_error, "actionable": True}
     try:
         if type == "api":
             resp = httpx.get(url, timeout=10.0, follow_redirects=True)
@@ -779,14 +780,14 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     except httpx.TimeoutException:
         return {
             "reachable": False,
-            "error_code": "Timeout",
+            "error_code": ErrorCode.TIMEOUT.value,
             "message": f"Request to '{url}' timed out",
             "actionable": True,
         }
     except Exception as exc:
         return {
             "reachable": False,
-            "error_code": exc.__class__.__name__,
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -817,7 +818,7 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -854,7 +855,7 @@ def _handle_add_topic(
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -891,7 +892,7 @@ def _handle_remove_topic(domain: str, topic_id: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -908,7 +909,7 @@ def _handle_remove_topic(domain: str, topic_id: str) -> dict[str, Any]:
             }
 
     return {
-        "error_code": "TopicNotFound",
+        "error_code": ErrorCode.TOPIC_NOT_FOUND.value,
         "message": f"Topic '{topic_name}' not found in domain '{domain}'",
         "actionable": True,
     }
@@ -924,7 +925,7 @@ def _handle_list_topics(domain: str) -> dict[str, Any]:
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -957,7 +958,7 @@ def _handle_list_keywords(
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
         return {
-            "error_code": "DomainNotFound",
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
             "message": f"Domain '{domain}' is not configured",
             "actionable": True,
         }
@@ -1020,7 +1021,7 @@ def _handle_approve_keyword(domain: str, keyword: str) -> dict[str, Any]:
     result = kf.approve_keyword(domain=domain, keyword=keyword)
     if result is None:
         return {
-            "error_code": "KeywordNotFound",
+            "error_code": ErrorCode.KEYWORD_NOT_FOUND.value,
             "message": f"Keyword '{keyword}' not found in domain '{domain}'",
             "actionable": True,
         }
@@ -1040,7 +1041,7 @@ def _handle_reject_keyword(domain: str, keyword: str) -> dict[str, Any]:
     result = kf.deprecate_keyword(domain=domain, keyword=keyword)
     if result is None:
         return {
-            "error_code": "KeywordNotFound",
+            "error_code": ErrorCode.KEYWORD_NOT_FOUND.value,
             "message": f"Keyword '{keyword}' not found in domain '{domain}'",
             "actionable": True,
         }
@@ -1151,7 +1152,7 @@ def _handle_extract_fields(content_id: str, schema: list[str]) -> dict[str, Any]
     entry = store.get_entry(content_id)
     if entry is None:
         return {
-            "error_code": "NotFound",
+            "error_code": ErrorCode.NOT_FOUND.value,
             "message": f"Entry '{content_id}' not found",
             "actionable": True,
         }
@@ -1193,7 +1194,7 @@ def _handle_get_extraction(content_id: str) -> dict[str, Any]:
     entry = store.get_entry(content_id)
     if entry is None:
         return {
-            "error_code": "NotFound",
+            "error_code": ErrorCode.NOT_FOUND.value,
             "message": f"Entry '{content_id}' not found",
             "actionable": True,
         }
@@ -1404,7 +1405,7 @@ def _handle_create_kb_draft(
         return entry.to_dict()
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1425,7 +1426,7 @@ def _handle_reject_kb_draft(
         )
     except (ValueError, FileNotFoundError) as exc:
         return {
-            "error_code": type(exc).__name__,
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1485,7 +1486,7 @@ def _handle_generate_digest(
         return {"success": True, "format": format, "content": result}
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1516,7 +1517,7 @@ def _handle_generate_report(
         }
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1541,7 +1542,7 @@ def _handle_generate_tutorial(
         return {"success": True, "format": format, "domain": domain, "topic": topic, "content": result}
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1567,7 +1568,7 @@ def _handle_generate_presentation(
         return {"success": True, "domain": domain, "topic": topic, "slides": slides, "content": result}
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1607,7 +1608,7 @@ def _handle_send_email_digest(
 
     if not config.email.enabled:
         return {
-            "error_code": "EmailNotEnabled",
+            "error_code": ErrorCode.EMAIL_NOT_ENABLED.value,
             "message": (
                 "Email delivery is not enabled. "
                 "Set 'email.enabled: true' in .autoinfo/config.yaml "
@@ -1622,7 +1623,7 @@ def _handle_send_email_digest(
         return result
     except RuntimeError as exc:
         return {
-            "error_code": "EmailSendFailed",
+            "error_code": ErrorCode.EMAIL_SEND_FAILED.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1647,7 +1648,7 @@ def _handle_localize_content(**kwargs: Any) -> dict[str, Any]:
         return result
     except ValueError as exc:
         return {
-            "error_code": "ValidationError",
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": str(exc),
             "actionable": True,
         }
@@ -1693,7 +1694,7 @@ def _handle_add_schedule(
 
         if not croniter.is_valid(expression):
             return {
-                "error_code": "InvalidCronExpression",
+                "error_code": ErrorCode.INVALID_CRON_EXPRESSION.value,
                 "message": f"'{expression}' is not a valid cron expression",
                 "actionable": True,
             }
@@ -1703,7 +1704,7 @@ def _handle_add_schedule(
         schedules = load_schedules()
         if name in schedules:
             return {
-                "error_code": "ScheduleAlreadyExists",
+                "error_code": ErrorCode.SCHEDULE_ALREADY_EXISTS.value,
                 "message": f"A schedule named '{name}' already exists",
                 "actionable": True,
             }
@@ -1741,7 +1742,7 @@ def _handle_remove_schedule(name: str) -> dict[str, Any]:
         schedules = load_schedules()
         if name not in schedules:
             return {
-                "error_code": "ScheduleNotFound",
+                "error_code": ErrorCode.SCHEDULE_NOT_FOUND.value,
                 "message": f"Schedule '{name}' not found",
                 "actionable": True,
             }
@@ -1963,7 +1964,7 @@ def _handle_list_projects() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"projects": [], "count": 0, "error": str(exc)}
+        return {"projects": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
 
     from autoinfo.config import get_config_path
 
@@ -2052,7 +2053,7 @@ def _handle_archive_project(reason: str = "") -> dict[str, Any]:
 
     if not has_published:
         return {
-            "error_code": "NotPublished",
+            "error_code": ErrorCode.NOT_PUBLISHED.value,
             "message": (
                 "Cannot archive project: no entries have been promoted to "
                 "03-Wiki. Publish at least one Draft entry before archiving. "
@@ -2091,7 +2092,7 @@ def _handle_batch_run(
         collected = run_collection(**collect_args)
     except Exception as exc:
         return {
-            "error_code": "CollectionFailed",
+            "error_code": ErrorCode.COLLECTION_FAILED.value,
             "message": f"Collection phase failed: {exc}",
             "actionable": True,
         }
@@ -2105,7 +2106,7 @@ def _handle_batch_run(
         processed_dict = asdict(processed)
     except Exception as exc:
         return {
-            "error_code": "ProcessingFailed",
+            "error_code": ErrorCode.PROCESSING_FAILED.value,
             "message": f"Processing phase failed: {exc}",
             "actionable": True,
             "collection_result": collected,
@@ -2127,7 +2128,7 @@ def _handle_list_active_collections() -> dict[str, Any]:
     try:
         active = _list_active()
     except Exception as exc:
-        return {"active_collections": [], "count": 0, "error": str(exc)}
+        return {"active_collections": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
 
     return {
         "active_collections": active,
@@ -2182,7 +2183,7 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
 
     if section and section not in ("project", "llm", "domains"):
         return {
-            "error_code": "InvalidSection",
+            "error_code": ErrorCode.INVALID_SECTION.value,
             "message": f"Unknown config section '{section}'. Valid: project, llm, domains",
             "actionable": True,
         }
@@ -2198,9 +2199,9 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
 
 
 def _error_dict(exc: Exception) -> dict[str, Any]:
-    """Build a standardised error dict (same shape as _error_response)."""
+    """Build a standardised error dict."""
     return {
-        "error_code": type(exc).__name__,
+        "error_code": ErrorCode.INTERNAL_ERROR.value,
         "message": str(exc),
         "actionable": True,
     }
@@ -2212,7 +2213,7 @@ def _error_response(exc: Exception) -> list[TextContent]:
     Every error response includes three fields so agents can decide how
     to react:
 
-    * ``error_code``  — Python exception type name
+    * ``error_code``  — ErrorCode enum value
     * ``message``     — Human-readable description
     * ``actionable``  — Whether the agent can retry the operation
     """
@@ -2220,7 +2221,7 @@ def _error_response(exc: Exception) -> list[TextContent]:
         TextContent(
             type="text",
             text=json.dumps({
-                "error_code": type(exc).__name__,
+                "error_code": ErrorCode.INTERNAL_ERROR.value,
                 "message": str(exc),
                 "actionable": True,
             }),
@@ -3829,7 +3830,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 TextContent(
                     type="text",
                     text=json.dumps({
-                        "error_code": "UnknownTool",
+                        "error_code": ErrorCode.UNKNOWN_TOOL.value,
                         "message": f"Unknown tool: {name}",
                         "actionable": False,
                     }),

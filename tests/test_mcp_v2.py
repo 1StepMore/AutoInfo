@@ -133,7 +133,7 @@ class TestListDomains:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_domains()
             assert result["count"] == 0
-            assert "error" in result
+            assert "error_code" in result
 
 
 class TestGetDomainSchema:
@@ -518,7 +518,7 @@ class TestToolRegistrationV2:
     @pytest.mark.asyncio
     async def test_lists_twenty_tools(self) -> None:
         tools = await mcp_server.list_tools()
-        assert len(tools) == 61
+        assert len(tools) == 65
 
     @pytest.mark.asyncio
     async def test_all_new_tools_present(self) -> None:
@@ -697,4 +697,4 @@ class TestHealthCheckV2:
         from autoinfo.mcp.server import _handle_health_check
 
         result = _handle_health_check()
-        assert result["tools_count"] == 61
+        assert result["tools_count"] == 65

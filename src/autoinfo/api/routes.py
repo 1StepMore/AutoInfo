@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from autoinfo.kb import KBStore
+from autoinfo.mcp.errors import ErrorCode
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,7 @@ class ErrorResponse(BaseModel):
     """Standard error payload."""
 
     detail: str
-    error_code: str = "unknown"
+    error_code: ErrorCode | str = "unknown"
 
 
 class SearchQuery(BaseModel):

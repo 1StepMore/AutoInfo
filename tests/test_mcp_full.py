@@ -115,14 +115,14 @@ class TestToolCount:
 
     def test_tools_count_50(self) -> None:
         result = _handle_health_check()
-        assert result["tools_count"] == 61
+        assert result["tools_count"] == 65
 
     @pytest.mark.asyncio
     async def test_new_tool_names_are_declared(self) -> None:
         """Verify all 6 new tool names are present in list_tools declarations."""
         tools_list = await mcp_server.list_tools()
         assert isinstance(tools_list, list)
-        assert len(tools_list) == 61
+        assert len(tools_list) == 65
         names = {t.name for t in tools_list}
         assert "list_projects" in names
         assert "get_project_assets" in names
@@ -161,7 +161,7 @@ class TestListProjects:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_projects()
             assert result["count"] == 0
-            assert "error" in result
+            assert "error_code" in result
 
     def test_includes_llm_info(self, tmp_config: Path) -> None:
         result = _handle_list_projects()

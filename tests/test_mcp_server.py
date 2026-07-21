@@ -215,7 +215,7 @@ class TestErrorResponse:
         assert content.type == "text"
 
         data = json.loads(content.text)
-        assert data["error_code"] == "ValueError"
+        assert data["error_code"] == "InternalError"
         assert "Invalid domain name" in data["message"]
         assert data["actionable"] is True
 
@@ -223,7 +223,7 @@ class TestErrorResponse:
         exc = RuntimeError("Connection refused")
         result = _error_response(exc)
         data = json.loads(result[0].text)
-        assert data["error_code"] == "RuntimeError"
+        assert data["error_code"] == "InternalError"
 
 
 # ======================================================================

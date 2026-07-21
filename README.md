@@ -17,7 +17,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Knowledge base (Hermes model)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite)
 - **Full-text search** — FTS5 with CJK support across all KB tiers
 - **Quality gates G1-G5** — Source authority, dedup, relevance, factual consistency (advisory)
-- **Agent-native** — 50 MCP tools. Agent operates, human directs.
+- **Agent-native** — 56 MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning)
 
@@ -26,17 +26,17 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains |
-| CLI | ✅ 11 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron) |
+| CLI | ✅ 12 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency |
-| Quality gates | ✅ G1-G5 all functional (advisory, non-blocking) |
-| KB pipeline | ✅ 4-tier Hermes model (Inbox → Raw → Draft → Wiki) |
+| Quality gates | ✅ G1-G5 advisory gates (G4 factual consistency, G5 translation accuracy) |
+| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki) |
 | Search | ✅ FTS5 across all tiers |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
 | Output generation | ✅ Digest, report, tutorial, presentation (Jinja2 + LLM) |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
-| MCP server | ✅ 50 tools across 12 categories |
+| MCP server | ✅ 56 MCP tool areas across 12 categories (6 new in v1.1) |
 | Export | ✅ Markdown, JSON, SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
 | Test suite | ✅ 720+ tests |
@@ -83,10 +83,10 @@ Sources (RSS/API/Web)
         │
         ├── autoinfo summaries list | status | kb search
         ├── autoinfo output digest | report | tutorial | export
-        └── MCP server (50 tools)
+        └── MCP server (56 tools)
 ```
 
-## CLI Commands (11 groups)
+## CLI Commands (12 groups)
 
 ```bash
 autoinfo init --demo <domain>       # Initialize project
@@ -102,17 +102,17 @@ autoinfo output digest|report|tutorial|presentation|export|translate|list-templa
 autoinfo cron run|list-schedules|add-schedule|remove-schedule
 ```
 
-## MCP Tools (50)
+## MCP Tools (56)
 
 | Category | Tools |
 |----------|-------|
 | **System** | health_check, diagnose_system, get_config, list_available_models |
-| **Discovery** | list_domains, get_domain_schema, get_effective_llm_config, list_output_templates |
+| **Discovery** | list_domains, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Source** | add_source, add_sources, remove_source, test_source, list_sources, get_source_health |
 | **Topic** | add_topic, remove_topic, list_topics, list_keywords |
-| **Collection** | collect_sources, get_collection_progress, process_collection, get_processing_progress, batch_run |
+| **Collection** | collect_sources, get_collection_progress, get_collection_status, process_collection, get_processing_progress, batch_run |
 | **KB** | search_knowledge_base, get_kb_entry, list_summaries, get_summary, create_kb_draft, reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
-| **Output** | generate_digest, generate_report, generate_tutorial, localize_content, export_kb |
+| **Output** | generate_digest, generate_report, generate_tutorial, generate_presentation, localize_content, export_kb |
 | **Q&A** | query_collected |
 | **Graph** | query_knowledge_graph |
 | **Relations** | link_items, get_item_relations |
@@ -135,6 +135,22 @@ pip install -e ".[dev]"
 make test        # pytest -v
 make lint        # ruff check + mypy
 ```
+
+## Known Limitations
+
+AutoInfo v1.1 closes most gaps identified in the founder's spec. The following items are explicitly deferred to future releases:
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Vector/hybrid search (FTS5 + embeddings) | 📋 Planned | sqlite-vec in pyproject.toml, not yet wired |
+| REST API | 📋 Planned | Read-only KB access via HTTP |
+| Obsidian [[wiki links]] | 📋 Planned | KB native wiki-link support |
+| CEFR text classification | 📋 Planned | Language-learning domain feature |
+| Config override system (~/.autoinfo/overrides/) | 📋 Planned | Per-project config layering |
+| Schema versioning / migration tool | 📋 Planned | DB schema version markers |
+| CSV/PDF/GraphML export formats | 📋 Planned | Currently supports JSON + Markdown + SQLite |
+
+> These features are tracked for v1.2+ releases. See `docs/dev/founder-expectations.md` for the full specification.
 
 ## License
 

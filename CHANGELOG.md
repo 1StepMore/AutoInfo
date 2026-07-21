@@ -2,6 +2,34 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.1 (2026-07-21)
+
+### Added
+- G5 translation accuracy quality gate (advisory, optional)
+- KBStore.promote_kb_draft() method + `autoinfo kb promote` CLI
+- 03-Wiki append-only guards (agent writes blocked)
+- Init directory structure: 00-Inbox, 02-Draft, 03-Wiki
+- Interactive init wizard (domain selection, LLM config)
+- KB frontmatter: author, source_ids, status, related_concepts, linked_entries
+- Language auto-detection (langdetect) for Item.language
+- 6 new MCP tool areas: collection progress/status, domain lifecycle, list_keywords, tutorial/presentation
+- `autoinfo collect --all` flag for multi-domain collection
+- test_source extract_fields suggestions + quality tier warnings
+- 7 curated demo sources (arXiv, CrossRef, Unpaywall, Crunchbase, LMSYS, news-in-levels, commonlit)
+- Webhook source handler (HMAC, rate limiting)
+- Email (IMAP) source handler (stdlib imaplib)
+- PDF source handler (PyMuPDF, chunking)
+- Knowledge graph export CLI (JSON/GraphML/CSV)
+
+### Changed
+- SourceConfig supports `settings` dict for extra config fields
+- G3RelevanceScoring supports multi-language keywords and per-topic threshold
+- Topic dataclass: group, relevance_threshold fields
+- Updated README with Known Limitations section
+
+### Fixed
+- (pre-existing issues remain unchanged)
+
 ## [1.0.0-dev] — 2026-07-20
 
 ### Added

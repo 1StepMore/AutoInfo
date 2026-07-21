@@ -115,14 +115,14 @@ class TestToolCount:
 
     def test_tools_count_50(self) -> None:
         result = _handle_health_check()
-        assert result["tools_count"] == 58
+        assert result["tools_count"] == 61
 
     @pytest.mark.asyncio
     async def test_new_tool_names_are_declared(self) -> None:
         """Verify all 6 new tool names are present in list_tools declarations."""
         tools_list = await mcp_server.list_tools()
         assert isinstance(tools_list, list)
-        assert len(tools_list) == 58
+        assert len(tools_list) == 61
         names = {t.name for t in tools_list}
         assert "list_projects" in names
         assert "get_project_assets" in names

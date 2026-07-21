@@ -126,7 +126,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-        "tools_count": 58,
+        "tools_count": 61,
     }
 
 
@@ -1000,6 +1000,130 @@ def _handle_list_keywords(
 
 
 # ---------------------------------------------------------------------------
+# Keywords management tools (approve / reject / suggest)
+# ---------------------------------------------------------------------------
+
+
+def _handle_approve_keyword(domain: str, keyword: str) -> dict[str, Any]:
+    """Approve a keyword — move from ``auto_added`` → ``verified``."""
+    from autoinfo.keywords import KeywordsFile
+
+    kf = KeywordsFile()
+    result = kf.approve_keyword(domain=domain, keyword=keyword)
+    if result is None:
+        return {
+            "error_code": "KeywordNotFound",
+            "message": f"Keyword '{keyword}' not found in domain '{domain}'",
+            "actionable": True,
+        }
+    return {
+        "success": True,
+        "domain": domain,
+        "keyword": keyword,
+        "state": result.state.value,
+    }
+
+
+def _handle_reject_keyword(domain: str, keyword: str) -> dict[str, Any]:
+    """Reject a keyword — move to ``deprecated``."""
+    from autoinfo.keywords import KeywordsFile
+
+    kf = KeywordsFile()
+    result = kf.deprecate_keyword(domain=domain, keyword=keyword)
+    if result is None:
+        return {
+            "error_code": "KeywordNotFound",
+            "message": f"Keyword '{keyword}' not found in domain '{domain}'",
+            "actionable": True,
+        }
+    return {
+        "success": True,
+        "domain": domain,
+        "keyword": keyword,
+        "state": result.state.value,
+    }
+
+
+def _handle_suggest_keywords(
+    domain: str,
+    text: str,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Use LLM to suggest keywords from the given text."""
+    import json
+
+    import litellm  # noqa: PLC0415 — deferred import
+
+    from autoinfo.config import get_config_path, load_config
+
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+            model = config.llm.model or "deepseek/deepseek-chat"
+            api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
+            base_url = config.llm.base_url or None
+        else:
+            model = "deepseek/deepseek-chat"
+            api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+            base_url = None
+    except Exception:
+        model = "deepseek/deepseek-chat"
+        api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+        base_url = None
+
+    system_prompt = (
+        "You are a keyword extraction assistant. Given a text, suggest "
+        f"up to {limit} relevant keywords or short phrases (2-5 words) "
+        "that capture the core topics. "
+        "Respond with valid JSON only: an array of strings. "
+        "Example: [\"machine learning\", \"neural networks\", \"deep learning\"]"
+    )
+
+    user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
+
+    try:
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=500,
+            temperature=0.3,
+            api_base=base_url,
+            api_key=api_key or None,
+        )
+        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+
+        parsed = json.loads(content)
+        if isinstance(parsed, list):
+            suggestions = parsed
+        elif isinstance(parsed, dict):
+            for key in ("keywords", "suggestions", "tags", "items"):
+                if key in parsed and isinstance(parsed[key], list):
+                    suggestions = parsed[key]
+                    break
+            else:
+                suggestions = list(parsed.values()) if parsed else []
+        else:
+            suggestions = []
+
+        suggestions = [str(s).strip() for s in suggestions if s]
+        suggestions = suggestions[:limit]
+
+        return {
+            "domain": domain,
+            "suggestions": suggestions,
+            "count": len(suggestions),
+        }
+    except Exception as exc:
+        logger.exception("Keyword suggestion failed")
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
 # Custom extraction tools
 # ---------------------------------------------------------------------------
 
@@ -1103,13 +1227,40 @@ def _handle_search_knowledge_base(
     domain: str = "",
     limit: int = 20,
     offset: int = 0,
+    mode: str = "fts5",
+    filter_tags: list[str] | None = None,
+    filter_date_from: str | None = None,
+    filter_date_to: str | None = None,
+    filter_quality_tier_min: int | None = None,
+    filter_quality_tier_max: int | None = None,
+    filter_content_type: str | None = None,
+    filter_language: str | None = None,
 ) -> dict[str, Any]:
-    """Search the knowledge base using FTS5 full-text search."""
+    """Search the knowledge base using FTS5 full-text search.
+
+    Parameters
+    ----------
+    mode:
+        Search mode: ``"fts5"`` (default), ``"hybrid"`` (FTS5 + vector),
+        or ``"vector"``.  Falls back to FTS5 when vector search is
+        unavailable.
+    """
     from autoinfo.kb import KBStore
 
     store = KBStore()
     return store.search_knowledge_base(
-        query=query, domain=domain, limit=limit, offset=offset
+        query=query,
+        domain=domain,
+        limit=limit,
+        offset=offset,
+        mode=mode,
+        filter_tags=filter_tags,
+        filter_date_from=filter_date_from,
+        filter_date_to=filter_date_to,
+        filter_quality_tier_min=filter_quality_tier_min,
+        filter_quality_tier_max=filter_quality_tier_max,
+        filter_content_type=filter_content_type,
+        filter_language=filter_language,
     )
 
 
@@ -2133,6 +2284,66 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
+        # -- Keywords Management (3) ---------------------------------------
+        Tool(
+            name="approve_keyword",
+            description="Approve a keyword — move from auto_added to verified state",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Keyword to approve",
+                    },
+                },
+                "required": ["domain", "keyword"],
+            },
+        ),
+        Tool(
+            name="reject_keyword",
+            description="Reject a keyword — move to deprecated state",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Keyword to reject",
+                    },
+                },
+                "required": ["domain", "keyword"],
+            },
+        ),
+        Tool(
+            name="suggest_keywords",
+            description="Use LLM to suggest relevant keywords from a text input",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name for context",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to extract keywords from",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of suggestions (default 10)",
+                        "default": 10,
+                    },
+                },
+                "required": ["domain", "text"],
+            },
+        ),
         # -- Collection / Processing (5) ----------------------------------
         Tool(
             name="collect_sources",
@@ -2284,8 +2495,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_knowledge_base",
             description=(
-                "Search the knowledge base using FTS5 full-text search. "
-                "Supports simple term queries with optional domain filter."
+                "Search the knowledge base using FTS5 full-text, vector, "
+                "or hybrid (FTS5 + vector) search. "
+                "Supports simple term queries with optional domain and "
+                "faceted filters (tags, date range, quality tier, "
+                "content type, language)."
             ),
             inputSchema={
                 "type": "object",
@@ -2307,6 +2521,40 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Pagination offset",
                         "default": 0,
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "Search mode: 'fts5' (default, full-text only), 'hybrid' (FTS5 + vector fusion), or 'vector' (vector-only). Falls back to FTS5 when vector search is unavailable.",
+                        "default": "fts5",
+                    },
+                    "filter_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Only include entries whose tags contain ANY of the given values",
+                    },
+                    "filter_date_from": {
+                        "type": "string",
+                        "description": "Only entries with collected_at >= this ISO date (e.g. 2025-01-01)",
+                    },
+                    "filter_date_to": {
+                        "type": "string",
+                        "description": "Only entries with collected_at <= this ISO date (e.g. 2025-06-30)",
+                    },
+                    "filter_quality_tier_min": {
+                        "type": "integer",
+                        "description": "Only entries with quality_tier >= this value",
+                    },
+                    "filter_quality_tier_max": {
+                        "type": "integer",
+                        "description": "Only entries with quality_tier <= this value",
+                    },
+                    "filter_content_type": {
+                        "type": "string",
+                        "description": "Only entries with this exact content_type",
+                    },
+                    "filter_language": {
+                        "type": "string",
+                        "description": "Only entries with this exact language",
                     },
                 },
                 "required": ["query"],
@@ -3068,6 +3316,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_topics(**arguments)
         elif name == "list_keywords":
             result = _handle_list_keywords(**arguments)
+
+        # -- Keywords Management (3) --------------------------------------
+        elif name == "approve_keyword":
+            result = _handle_approve_keyword(**arguments)
+        elif name == "reject_keyword":
+            result = _handle_reject_keyword(**arguments)
+        elif name == "suggest_keywords":
+            result = _handle_suggest_keywords(**arguments)
 
         # -- Collection / Processing (5) ----------------------------------
         elif name == "collect_sources":

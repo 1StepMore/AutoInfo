@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 from datetime import date, datetime, timezone
@@ -28,6 +29,8 @@ import yaml
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.quality import QualityResult
 from autoinfo.schema import check_schema
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -218,6 +221,11 @@ class SQLiteIndex:
             # Migration: add language column (v1.1+)
             try:
                 conn.execute("ALTER TABLE entries ADD COLUMN language TEXT DEFAULT ''")
+            except Exception:
+                pass
+            # Migration: add content_type column (v1.1+)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN content_type TEXT DEFAULT ''")
             except Exception:
                 pass
 
@@ -895,13 +903,52 @@ class SQLiteIndex:
         domain: str = "",
         limit: int = 20,
         offset: int = 0,
+        mode: str = "fts5",
+        filter_tags: list[str] | None = None,
+        filter_date_from: str | None = None,
+        filter_date_to: str | None = None,
+        filter_quality_tier_min: int | None = None,
+        filter_quality_tier_max: int | None = None,
+        filter_content_type: str | None = None,
+        filter_language: str | None = None,
     ) -> dict[str, Any]:
         """Search the knowledge base using FTS5 full-text search.
 
         Returns a dict with keys: ``entries`` (list of matching entry
         dicts), ``total_count`` (int), ``query``, ``domain``, ``limit``,
-        ``offset``.  Falls back to a LIKE-based search if the FTS5
-        query syntax is invalid.
+        ``offset``, ``method``.  Falls back to a LIKE-based search if
+        the FTS5 query syntax is invalid.
+
+        Parameters
+        ----------
+        query:
+            Search query string.
+        domain:
+            Optional domain filter.
+        limit:
+            Max results (default 20).
+        offset:
+            Pagination offset.
+        mode:
+            Search mode: ``"fts5"`` (default, full-text only),
+            ``"hybrid"`` (FTS5 + vector fusion), or ``"vector"``
+            (vector-only).  Falls back to FTS5 when vector search is
+            unavailable.
+        filter_tags:
+            Only include entries whose tags JSON array contains ANY of
+            the given tag values.
+        filter_date_from:
+            Only include entries with ``collected_at >=`` this ISO date.
+        filter_date_to:
+            Only include entries with ``collected_at <=`` this ISO date.
+        filter_quality_tier_min:
+            Only include entries with ``quality_tier >=`` this value.
+        filter_quality_tier_max:
+            Only include entries with ``quality_tier <=`` this value.
+        filter_content_type:
+            Only include entries with this exact ``content_type``.
+        filter_language:
+            Only include entries with this exact ``language``.
         """
         safe_query = _escape_fts5_query(query)
         if not safe_query:
@@ -914,52 +961,104 @@ class SQLiteIndex:
                 "offset": offset,
             }
 
+        def _build_filter_params(
+            prefix: str = "e",
+        ) -> tuple[list[str], list[Any]]:
+            """Build filter WHERE conditions and their parameter list.
+
+            Returns (conditions_list, param_values) that can be merged
+            into any SELECT on the ``entries`` table (aliased by
+            *prefix*).
+            """
+            conds: list[str] = []
+            params: list[Any] = []
+
+            if domain:
+                conds.append(f"{prefix}.domain = ?")
+                params.append(domain)
+
+            if filter_tags:
+                tag_conds = []
+                for tag in filter_tags:
+                    tag_conds.append(
+                        f"EXISTS (SELECT 1 FROM json_each({prefix}.tags) WHERE value = ?)"
+                    )
+                    params.append(tag)
+                conds.append(f"({' OR '.join(tag_conds)})")
+
+            if filter_date_from:
+                conds.append(f"{prefix}.collected_at >= ?")
+                params.append(filter_date_from)
+
+            if filter_date_to:
+                conds.append(f"{prefix}.collected_at <= ?")
+                params.append(filter_date_to)
+
+            if filter_quality_tier_min is not None:
+                conds.append(f"{prefix}.quality_tier >= ?")
+                params.append(filter_quality_tier_min)
+
+            if filter_quality_tier_max is not None:
+                conds.append(f"{prefix}.quality_tier <= ?")
+                params.append(filter_quality_tier_max)
+
+            if filter_content_type:
+                conds.append(f"{prefix}.content_type = ?")
+                params.append(filter_content_type)
+
+            if filter_language:
+                conds.append(f"{prefix}.language = ?")
+                params.append(filter_language)
+
+            return conds, params
+
         with self._connect() as conn:
             try:
-                # FTS5 search with optional domain filter
-                if domain:
-                    rows = conn.execute(
-                        """SELECT e.entry_id, e.title, e.summary, e.relevance_score,
-                                  e.file_path, e.domain, f.rank
-                           FROM entries_fts5 f
-                           JOIN entries e ON e.rowid = f.rowid
-                           WHERE entries_fts5 MATCH ? AND e.domain = ?
-                           ORDER BY f.rank""",
-                        (safe_query, domain),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """SELECT e.entry_id, e.title, e.summary, e.relevance_score,
-                                  e.file_path, e.domain, f.rank
-                           FROM entries_fts5 f
-                           JOIN entries e ON e.rowid = f.rowid
-                           WHERE entries_fts5 MATCH ?
-                           ORDER BY f.rank""",
-                        (safe_query,),
-                    ).fetchall()
+                # FTS5 search with dynamic filters
+                fts_conds = ["entries_fts5 MATCH ?"]
+                fts_params: list[Any] = [safe_query]
+
+                extra_conds, extra_params = _build_filter_params("e")
+                fts_conds.extend(extra_conds)
+                fts_params.extend(extra_params)
+
+                where_clause = " AND ".join(fts_conds)
+
+                rows = conn.execute(
+                    f"""SELECT e.entry_id, e.title, e.summary, e.relevance_score,
+                               e.file_path, e.domain, f.rank
+                        FROM entries_fts5 f
+                        JOIN entries e ON e.rowid = f.rowid
+                        WHERE {where_clause}
+                        ORDER BY f.rank""",
+                    fts_params,
+                ).fetchall()
             except sqlite3.OperationalError:
                 # Fallback: LIKE search across title, summary, tags
                 like_q = f"%{query}%"
-                if domain:
-                    rows = conn.execute(
-                        """SELECT * FROM entries
-                           WHERE domain = ?
-                           AND (title LIKE ? OR summary LIKE ? OR tags LIKE ?)
-                           ORDER BY collected_at DESC""",
-                        (domain, like_q, like_q, like_q),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """SELECT * FROM entries
-                           WHERE title LIKE ? OR summary LIKE ? OR tags LIKE ?
-                           ORDER BY collected_at DESC""",
-                        (like_q, like_q, like_q),
-                    ).fetchall()
+                like_conds = [
+                    "(e.title LIKE ? OR e.summary LIKE ? OR e.tags LIKE ?)"
+                ]
+                like_params: list[Any] = [like_q, like_q, like_q]
+
+                extra_conds_l, extra_params_l = _build_filter_params("e")
+                like_conds.extend(extra_conds_l)
+                like_params.extend(extra_params_l)
+
+                like_where = " AND ".join(like_conds)
+
+                rows = conn.execute(
+                    f"""SELECT e.* FROM entries e
+                        WHERE {like_where}
+                        ORDER BY e.collected_at DESC""",
+                    like_params,
+                ).fetchall()
                 # Convert to match FTS5 output shape
                 entries = [dict(r) for r in rows]
                 total = len(entries)
                 paged = entries[offset : offset + limit]
-                return {
+
+                result: dict[str, Any] = {
                     "query": query,
                     "domain": domain,
                     "entries": paged,
@@ -969,11 +1068,27 @@ class SQLiteIndex:
                     "fts5_fallback": True,
                 }
 
+                if mode == "fts5":
+                    result["method"] = "fts5"
+                    return result
+
+                # For hybrid/vector, try vector search on top
+                return self._blend_with_vector(
+                    result=result,
+                    entries=entries,
+                    query=query,
+                    domain=domain,
+                    limit=limit,
+                    offset=offset,
+                    conn=conn,
+                    mode=mode,
+                )
+
         entries = [dict(r) for r in rows]
         total = len(entries)
         paged = entries[offset : offset + limit]
 
-        return {
+        result: dict[str, Any] = {
             "query": query,
             "domain": domain,
             "entries": paged,
@@ -981,6 +1096,202 @@ class SQLiteIndex:
             "limit": limit,
             "offset": offset,
         }
+
+        if mode == "fts5":
+            result["method"] = "fts5"
+            return result
+
+        # For hybrid/vector, open a new connection for vector search
+        with self._connect() as conn:
+            return self._blend_with_vector(
+                result=result,
+                entries=entries,
+                query=query,
+                domain=domain,
+                limit=limit,
+                offset=offset,
+                conn=conn,
+                mode=mode,
+            )
+
+    # ------------------------------------------------------------------
+    # Vector / hybrid search helpers
+    # ------------------------------------------------------------------
+
+    def _blend_with_vector(
+        self,
+        result: dict[str, Any],
+        entries: list[dict[str, Any]],
+        query: str,
+        domain: str,
+        limit: int,
+        offset: int,
+        conn: sqlite3.Connection,
+        mode: str,
+    ) -> dict[str, Any]:
+        """Blend FTS5 results with vector search for hybrid/vector modes.
+
+        Called from :meth:`search_fts5` when *mode* is ``"hybrid"`` or
+        ``"vector"``.  Falls back to FTS5 with a ``note`` when the
+        sqlite-vec extension or embedding generation is unavailable.
+        """
+        from autoinfo.embeddings import (
+            generate_embedding,
+            is_available as vec_available,
+            load_vec_extension,
+        )
+
+        # --- graceful degradation ------------------------------------------
+        if not vec_available:
+            result["method"] = "fts5"
+            result["note"] = "vector unavailable"
+            return result
+
+        loaded = load_vec_extension(conn)
+        if not loaded:
+            result["method"] = "fts5"
+            result["note"] = "vector unavailable"
+            return result
+
+        # --- config: model name + hybrid weights ---------------------------
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        model_name = "text-embedding-ada-002"
+        w_fts5 = 0.7
+        w_vec = 0.3
+        if config_path:
+            cfg = load_config(config_path)
+            if cfg.vector_search.model:
+                model_name = cfg.vector_search.model
+            w_fts5 = cfg.vector_search.hybrid_weight_fts5
+            w_vec = cfg.vector_search.hybrid_weight_vector
+
+        # --- generate query embedding --------------------------------------
+        query_embedding = generate_embedding(
+            query,
+            {"model": model_name},
+        )
+
+        # --- ensure embedding table exists ---------------------------------
+        from autoinfo.embeddings import ensure_embedding_table
+
+        ensure_embedding_table(conn)
+
+        # --- vector KNN search ---------------------------------------------
+        import sqlite_vec as _sv  # noqa: PLC0415 — deferred import
+
+        try:
+            blob = _sv.serialize_float32(query_embedding)
+        except Exception:
+            result["method"] = "fts5"
+            result["note"] = "vector unavailable"
+            return result
+
+        try:
+            if domain:
+                vec_rows = conn.execute(
+                    """SELECT emb.entry_id,
+                              vec_distance_cosine(emb.embedding, ?) AS distance
+                       FROM entry_embeddings emb
+                       JOIN entries e ON e.entry_id = emb.entry_id
+                       WHERE e.domain = ?
+                       ORDER BY distance
+                       LIMIT ?""",
+                    (blob, domain, limit + offset),
+                ).fetchall()
+            else:
+                vec_rows = conn.execute(
+                    """SELECT entry_id,
+                              vec_distance_cosine(embedding, ?) AS distance
+                       FROM entry_embeddings
+                       ORDER BY distance
+                       LIMIT ?""",
+                    (blob, limit + offset),
+                ).fetchall()
+        except Exception:
+            logger.warning("Vector KNN query failed — falling back to FTS5")
+            result["method"] = "fts5"
+            result["note"] = "vector unavailable"
+            return result
+
+        # Build dict: entry_id -> vec_similarity (0-1 range)
+        vec_scores: dict[str, float] = {}
+        for row in vec_rows:
+            eid = row["entry_id"] if isinstance(row, sqlite3.Row) else row[0]
+            distance = row["distance"] if isinstance(row, sqlite3.Row) else row[1]
+            if distance is not None:
+                # vec_distance_cosine returns 0-2; convert to 0-1 similarity
+                vec_scores[eid] = 1.0 - float(distance) / 2.0
+
+        # -----------------------------------------------------------
+        # mode == "vector" — return vector-only results
+        # -----------------------------------------------------------
+        if mode == "vector":
+            vector_entries: list[dict[str, Any]] = []
+            for eid, _score in sorted(
+                vec_scores.items(), key=lambda x: x[1], reverse=True
+            ):
+                entry_dict = self.get_entry(eid)
+                if entry_dict:
+                    entry_dict["_vec_score"] = vec_scores[eid]
+                    vector_entries.append(entry_dict)
+
+            total = len(vector_entries)
+            paged = vector_entries[offset : offset + limit]
+            # Strip internal helper key
+            for e in paged:
+                e.pop("_vec_score", None)
+
+            result["entries"] = paged
+            result["total_count"] = total
+            result["method"] = "vector"
+            return result
+
+        # -----------------------------------------------------------
+        # mode == "hybrid" — fuse FTS5 + vector scores
+        # -----------------------------------------------------------
+        # Build entry_id -> fts5_score lookup
+        fts5_scores: dict[str, float] = {}
+        for entry_dict in entries:
+            eid = entry_dict["entry_id"]
+            rank = entry_dict.get("rank")
+            if rank is not None:
+                # FTS5 rank is negative BM25; normalize to 0-1
+                fts5_scores[eid] = 1.0 / (1.0 + abs(rank))
+            else:
+                fts5_scores[eid] = 0.0
+
+        # Merge all unique entry IDs
+        all_ids = set(fts5_scores.keys()) | set(vec_scores.keys())
+
+        scored: list[tuple[str, float, dict[str, Any]]] = []  # (entry_id, score, dict)
+        for eid in all_ids:
+            fts5 = fts5_scores.get(eid, 0.0)
+            vec = vec_scores.get(eid, 0.0)
+            hybrid = w_fts5 * fts5 + w_vec * vec
+
+            if eid in fts5_scores:
+                # Already have the entry dict from FTS5 results
+                entry_dict = next(e for e in entries if e["entry_id"] == eid)
+            else:
+                # Vector-only hit — fetch from DB
+                entry_dict = self.get_entry(eid)
+                if entry_dict is None:
+                    continue
+
+            scored.append((eid, hybrid, entry_dict))
+
+        # Sort descending by hybrid score
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        total = len(scored)
+        paged_dicts = [sd[2] for sd in scored[offset : offset + limit]]
+
+        result["entries"] = paged_dicts
+        result["total_count"] = total
+        result["method"] = "hybrid"
+        return result
 
     def reindex_fts5(self) -> int:
         """Rebuild the entire FTS5 index from the ``entries`` table.
@@ -1471,10 +1782,63 @@ class KBStore:
         self.index.index_entry(entry)
         self.index.index_entry_fts5(entry, content=body)
 
+        # --- vector embedding (if enabled) ------------------------------------
+        self._maybe_store_embedding(entry, body)
+
         # --- Auto-linking: keyword overlap with existing entries ---------------
         self._auto_link_entry(entry, item)
 
         return entry
+
+    # ------------------------------------------------------------------
+    # Vector embedding helper
+    # ------------------------------------------------------------------
+
+    def _maybe_store_embedding(self, entry: KBEntry, body: str) -> None:
+        """Generate and store a vector embedding for *entry* if vector search is enabled.
+
+        Called from :meth:`store_entry` after the FTS5 index is updated.
+        Failures are logged but do not propagate — a failed embedding must
+        never block the entry creation flow.
+        """
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if not config_path:
+            return
+        config = load_config(config_path)
+        if not config.vector_search.enabled:
+            return
+
+        model_name = config.vector_search.model or "text-embedding-ada-002"
+
+        # Construct meaningful text for embedding — title + body content
+        entry_text = f"{entry.title}\n\n{body}"
+
+        try:
+            from autoinfo.embeddings import (
+                generate_embedding,
+                load_vec_extension,
+                store_embedding,
+            )
+
+            embedding = generate_embedding(
+                entry_text,
+                {"model": model_name},
+            )
+
+            with self.index._connect() as conn:
+                load_vec_extension(conn)
+                from autoinfo.embeddings import ensure_embedding_table
+
+                ensure_embedding_table(conn)
+                store_embedding(conn, entry.entry_id, embedding, model_name)
+                conn.commit()
+        except Exception:
+            logger.exception(
+                "Failed to store embedding for entry %s — skipping",
+                entry.entry_id,
+            )
 
     # ------------------------------------------------------------------
     # Auto-linking helper
@@ -2284,28 +2648,65 @@ class KBStore:
         domain: str = "",
         limit: int = 20,
         offset: int = 0,
+        mode: str = "fts5",
+        filter_tags: list[str] | None = None,
+        filter_date_from: str | None = None,
+        filter_date_to: str | None = None,
+        filter_quality_tier_min: int | None = None,
+        filter_quality_tier_max: int | None = None,
+        filter_content_type: str | None = None,
+        filter_language: str | None = None,
     ) -> dict[str, Any]:
-        """Full-text search across KB entries using FTS5.
+        """Search the knowledge base.
 
         Parameters
         ----------
         query:
-            Search query string.  Supports simple terms (AND implicit).
+            Search query string.
         domain:
             Optional domain filter.
         limit:
             Max results (default 20).
         offset:
             Pagination offset.
+        mode:
+            Search mode: ``"fts5"`` (default), ``"hybrid"`` (FTS5 + vector),
+            or ``"vector"``.  Falls back to FTS5 when vector search is
+            unavailable.
+        filter_tags:
+            Only include entries whose tags contain ANY of the given values.
+        filter_date_from:
+            Only entries with ``collected_at >=`` this ISO date.
+        filter_date_to:
+            Only entries with ``collected_at <=`` this ISO date.
+        filter_quality_tier_min:
+            Only entries with ``quality_tier >=`` this value.
+        filter_quality_tier_max:
+            Only entries with ``quality_tier <=`` this value.
+        filter_content_type:
+            Only entries with this exact ``content_type``.
+        filter_language:
+            Only entries with this exact ``language``.
 
         Returns
         -------
         dict
-            ``{query, domain, entries, total_count, limit, offset}``.
+            ``{query, domain, entries, total_count, limit, offset, method}``.
             Falls back to LIKE search if FTS5 syntax is invalid.
         """
         return self.index.search_fts5(
-            query=query, domain=domain, limit=limit, offset=offset
+            query=query,
+            domain=domain,
+            limit=limit,
+            offset=offset,
+            mode=mode,
+            filter_tags=filter_tags,
+            filter_date_from=filter_date_from,
+            filter_date_to=filter_date_to,
+            filter_quality_tier_min=filter_quality_tier_min,
+            filter_quality_tier_max=filter_quality_tier_max,
+            filter_content_type=filter_content_type,
+            filter_language=filter_language,
         )
 
     def reindex_knowledge_base(self, domain: str | None = None) -> dict[str, Any]:

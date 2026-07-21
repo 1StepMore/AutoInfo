@@ -126,7 +126,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-        "tools_count": 61,
+        "tools_count": 62,
     }
 
 
@@ -1495,6 +1495,37 @@ def _handle_generate_digest(
         return _error_dict(exc)
 
 
+def _handle_generate_report(
+    domain: str,
+    format: str = "markdown",
+    period: str = "month",
+) -> dict[str, Any]:
+    """Generate a structured report for *domain* over the given *period*.
+
+    Dispatches to :func:`autoinfo.output.generate_report`.
+    """
+    from autoinfo.output import generate_report as _generate_report
+
+    try:
+        result = _generate_report(domain=domain, format=format, period=period)
+        return {
+            "success": True,
+            "domain": domain,
+            "format": format,
+            "period": period,
+            "content": result,
+        }
+    except ValueError as exc:
+        return {
+            "error_code": "ValidationError",
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Report generation failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
 def _handle_generate_tutorial(
     domain: str,
     topic: str | None = None,
@@ -1543,6 +1574,61 @@ def _handle_generate_presentation(
         }
     except Exception as exc:
         logger.exception("Presentation generation failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+def _handle_send_email_digest(
+    domain: str,
+    period: str = "weekly",
+) -> dict[str, Any]:
+    """Generate and send a digest via SMTP email.
+
+    Dispatches to :func:`autoinfo.email_sender.send_digest`.
+    Only sends when ``config.email.enabled == True``.
+
+    Parameters
+    ----------
+    domain:
+        Domain to generate the digest for.
+    period:
+        Digest period: ``"daily"``, ``"weekly"``, ``"monthly"``.
+        Defaults to ``"weekly"``.
+
+    Returns
+    -------
+    dict
+        ``{success, message, recipients, domain, period}``.
+    """
+    from autoinfo.email_sender import send_digest as _send_email
+
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    if not config.email.enabled:
+        return {
+            "error_code": "EmailNotEnabled",
+            "message": (
+                "Email delivery is not enabled. "
+                "Set 'email.enabled: true' in .autoinfo/config.yaml "
+                "and configure email.smtp_host, email.from_addr, "
+                "and email.to_addrs."
+            ),
+            "actionable": True,
+        }
+
+    try:
+        result = _send_email(domain=domain, period=period, config=config)
+        return result
+    except RuntimeError as exc:
+        return {
+            "error_code": "EmailSendFailed",
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Email digest send failed for domain '%s'", domain)
         return _error_dict(exc)
 
 
@@ -2976,6 +3062,34 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="generate_report",
+            description=(
+                "Generate a structured report for a domain over a given "
+                "period (day, week, month).  Returns markdown by default; "
+                "also supports json."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: markdown, json",
+                        "default": "markdown",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Report period: day, week, month",
+                        "default": "month",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
             name="generate_tutorial",
             description="Generate a structured tutorial for a domain",
             inputSchema={
@@ -3064,6 +3178,31 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["target_lang"],
+            },
+        ),
+        # -- Email (1) --------------------------------------------------------
+        Tool(
+            name="send_email_digest",
+            description=(
+                "Generate and send a digest via SMTP email. "
+                "Only sends when email is enabled in config "
+                "(email.enabled: true). Requires email.smtp_host, "
+                "email.from_addr, and email.to_addrs to be configured."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain to generate digest for (e.g. medical-research)",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Digest period: daily, weekly, monthly",
+                        "default": "weekly",
+                    },
+                },
+                "required": ["domain"],
             },
         ),
         # -- Custom Extraction (2) -----------------------------------------
@@ -3485,12 +3624,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_output_templates(**arguments)
         elif name == "generate_digest":
             result = _handle_generate_digest(**arguments)
+        elif name == "generate_report":
+            result = _handle_generate_report(**arguments)
         elif name == "generate_tutorial":
             result = _handle_generate_tutorial(**arguments)
         elif name == "generate_presentation":
             result = _handle_generate_presentation(**arguments)
         elif name == "localize_content":
             result = _handle_localize_content(**arguments)
+
+        # -- Email (1) --------------------------------------------------------
+        elif name == "send_email_digest":
+            result = _handle_send_email_digest(**arguments)
 
         # -- Custom Extraction (2) ----------------------------------------
         elif name == "extract_fields":

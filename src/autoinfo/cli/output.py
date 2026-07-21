@@ -1,4 +1,3 @@
-from __future__ import annotations
 """Output CLI — generate digests, reports, tutorials, presentations, exports, and translations.
 
 Usage::
@@ -14,6 +13,7 @@ Usage::
     autoinfo output translate --content "Hello" --source-lang en --target-lang fr
 """
 
+from __future__ import annotations
 
 import json
 
@@ -86,13 +86,13 @@ def report(
         None, "--collection-id", help="Optional collection ID to scope the report",
     ),
     format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown only currently)"
+        "markdown", "--format", help="Output format (markdown or json)"
     ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.
 
     Groups KB entries by theme using LLM, generates per-section content,
-    and renders through a Jinja2 template.
+    and renders through a Jinja2 template or returns a JSON structure.
     """
     from autoinfo.output import generate_report
 
@@ -117,13 +117,13 @@ def export(
         None, "--domain", help="Domain to export (default: all domains)"
     ),
     format: str = typer.Option(
-        "json", "--format", help="Export format (json, markdown, sqlite)"
+        "json", "--format", help="Export format (json, markdown, sqlite, pdf)"
     ),
 ) -> None:
     """Export knowledge base data to a file.
 
-    Produces a JSON array, a Markdown tar.gz archive, or a SQLite copy
-    in the ``exports/`` directory.
+    Produces a JSON array, a Markdown tar.gz archive, a SQLite copy,
+    or a PDF document in the ``exports/`` directory.
     """
     try:
         result = export_kb(domain=domain, format=format)

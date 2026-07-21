@@ -427,6 +427,43 @@ class SQLiteIndex:
         """
         return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)
 
+    def list_all_entries(
+        self,
+        domain: str | None = None,
+        tier: str | None = None,
+        date_from: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List entries across all domains (or a specific *domain*).
+
+        Supports the same filters as :meth:`list_entries`, but *domain*
+        is optional.  When ``None``, entries from every domain are
+        returned.  Results are ordered by ``collected_at DESC``.
+        """
+        with self._connect() as conn:
+            conditions: list[str] = []
+            params: list[Any] = []
+            if domain is not None:
+                conditions.append("domain = ?")
+                params.append(domain)
+            if tier is not None:
+                conditions.append("tier = ?")
+                params.append(tier)
+            if date_from is not None:
+                conditions.append("collected_at >= ?")
+                params.append(date_from)
+            if user_id is not None:
+                conditions.append("user_id = ?")
+                params.append(user_id)
+            where = " AND ".join(conditions) if conditions else "1"
+            rows = conn.execute(
+                f"SELECT * FROM entries WHERE {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return a single entry dict by *entry_id*, or ``None``."""
         with self._connect() as conn:
@@ -435,6 +472,47 @@ class SQLiteIndex:
                 (entry_id,),
             ).fetchone()
             return dict(row) if row else None
+
+    def delete_entry(self, entry_id: str) -> bool:
+        """Delete an entry from the index, FTS5 table, and disk file.
+
+        Returns ``True`` when the entry existed and was deleted,
+        ``False`` when no entry with *entry_id* was found.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT file_path, rowid FROM entries WHERE entry_id = ?",
+                (entry_id,),
+            ).fetchone()
+            if row is None:
+                return False
+
+            file_path = row["file_path"]
+            rowid = row["rowid"]
+
+            conn.execute("DELETE FROM entries_fts5 WHERE rowid = ?", (rowid,))
+            conn.execute("DELETE FROM entries WHERE entry_id = ?", (entry_id,))
+            conn.execute("DELETE FROM entities WHERE entry_id = ?", (entry_id,))
+            conn.execute(
+                "DELETE FROM relations WHERE item_a_id = ? OR item_b_id = ?",
+                (entry_id, entry_id),
+            )
+            conn.execute(
+                "DELETE FROM kg_relations WHERE domain IN "
+                "(SELECT domain FROM entries WHERE entry_id = ?)",
+                (entry_id,),
+            )
+            conn.execute(
+                "DELETE FROM entry_versions WHERE entry_id = ?",
+                (entry_id,),
+            )
+
+        if file_path:
+            fp = Path(file_path)
+            if fp.is_file():
+                fp.unlink(missing_ok=True)
+
+        return True
 
     def search_by_field(
         self, field: str, value: str
@@ -2098,6 +2176,25 @@ class KBStore:
         """
         return self.index.list_entries(domain, tier, date_from, limit, offset, user_id=user_id)
 
+    def list_all_entries(
+        self,
+        domain: str | None = None,
+        tier: str | None = None,
+        date_from: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List entries across all domains (or a specific *domain*).
+
+        When *domain* is ``None``, entries from every domain are
+        returned.  Otherwise behaves like :meth:`list_entries`.
+        """
+        return self.index.list_all_entries(
+            domain=domain, tier=tier, date_from=date_from,
+            limit=limit, offset=offset, user_id=user_id,
+        )
+
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.
 
@@ -2125,6 +2222,28 @@ class KBStore:
         if not meta:
             return None
         return self.get_entry(meta[0]["entry_id"])
+
+    def delete_entry(self, entry_id: str) -> dict[str, Any]:
+        """Delete an entry by *entry_id* from the index, FTS5, and disk.
+
+        Returns ``{"deleted": True, "entry_id": ..., "title": ...}`` on
+        success, or ``{"deleted": False, "entry_id": ..., "error": ...}``
+        when the entry does not exist.
+        """
+        meta = self.index.get_entry(entry_id)
+        if meta is None:
+            return {
+                "deleted": False,
+                "entry_id": entry_id,
+                "error": "Entry not found",
+            }
+
+        ok = self.index.delete_entry(entry_id)
+        return {
+            "deleted": ok,
+            "entry_id": entry_id,
+            "title": meta.get("title", ""),
+        }
 
     # ------------------------------------------------------------------
     # Draft tier — agent-created entries from Raw

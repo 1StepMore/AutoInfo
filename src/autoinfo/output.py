@@ -16,12 +16,12 @@ Usage::
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import shutil
 import sqlite3
 import tarfile
-import tempfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -30,7 +30,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
 
 from autoinfo.config import Config, get_config_path, load_config
-from autoinfo.kb import SQLiteIndex, KBStore
+from autoinfo.kb import KBStore, SQLiteIndex
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,8 @@ def export_kb(
     domain:
         Optional domain filter.  When ``None``, the entire KB is exported.
     format:
-        Output format: ``"markdown"`` (default), ``"json"``, or ``"sqlite"``.
+        Output format: ``"markdown"`` (default), ``"json"``, ``"sqlite"``, or
+        ``"pdf"``.
     collection_id:
         Reserved for future collection-scoped export (not yet implemented).
 
@@ -70,10 +71,10 @@ def export_kb(
     ValueError
         If *format* is not one of the supported values.
     """
-    if format not in ("markdown", "json", "sqlite"):
+    if format not in ("markdown", "json", "sqlite", "pdf"):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
-            f"Supported: markdown, json, sqlite"
+            f"Supported: markdown, json, sqlite, pdf"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -131,6 +132,15 @@ def export_kb(
         result = _export_sqlite(
             db_path=db_path,
             export_dir=export_dir,
+            entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
+    elif format == "pdf":
+        result = _export_pdf(
+            knowledge_dir=knowledge_dir,
+            export_dir=export_dir,
+            domain=domain,
             entries=entries,
             timestamp=timestamp,
             domain_label=domain_label,
@@ -270,6 +280,160 @@ def _export_sqlite(
         "format": "sqlite",
         "path": str(out_path),
         "entries_count": count,
+        "domain": domain_label,
+        "success": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PDF export
+# ---------------------------------------------------------------------------
+
+
+def _export_pdf(
+    knowledge_dir: Path,
+    export_dir: Path,
+    domain: str | None,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as a PDF file.
+
+    Converts each entry's Markdown content to HTML, combines them into
+    a single styled HTML document, and renders via weasyprint.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``.
+
+    Raises
+    ------
+    ValueError
+        If weasyprint is not installed or PDF generation fails.
+    """
+    try:
+        import weasyprint  # noqa: PLC0415
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise ValueError(
+            "weasyprint is not installed. PDF export requires weasyprint.\n"
+            "Install it with: pip install weasyprint\n"
+            "On Ubuntu/Debian: sudo apt install libpango-1.0-0 libpangocairo-1.0-0 "
+            "libgdk-pixbuf2.0-dev libffi-dev\n"
+            "On macOS: brew install pango\n"
+            f"Original error: {exc}"
+        ) from exc
+
+    try:
+        import markdown as md_lib  # noqa: PLC0415
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise ValueError(
+            "markdown library is not installed.\n"
+            f"Original error: {exc}"
+        ) from exc
+
+    out_name = f"autoinfo-export-{domain_label}-{timestamp}.pdf"
+    out_path = export_dir / out_name
+
+    # --- Build HTML document ------------------------------------------------
+    html_parts: list[str] = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
+        "body{font-family:sans-serif;margin:2em;line-height:1.6;color:#333;}",
+        "h1{color:#222;border-bottom:2px solid #ddd;padding-bottom:0.3em;}",
+        "h2{color:#444;margin-top:1.5em;}",
+        "h3{color:#555;}",
+        ".meta{color:#777;font-size:0.9em;margin-bottom:1em;}",
+        ".entry{page-break-inside:avoid;margin-bottom:2em;}",
+        ".entry-content{margin-top:0.5em;}",
+        "pre{background:#f5f5f5;padding:1em;border-radius:4px;",
+        "overflow-x:auto;border:1px solid #e0e0e0;}",
+        "code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;}",
+        "pre code{background:none;padding:0;}",
+        "table{border-collapse:collapse;width:100%;margin:1em 0;}",
+        "th,td{border:1px solid #ddd;padding:0.5em;text-align:left;}",
+        "th{background:#f5f5f5;}",
+        "blockquote{border-left:4px solid #ddd;margin:1em 0;padding:0.5em 1em;color:#666;}",
+        "img{max-width:100%;height:auto;}",
+        "</style></head><body>",
+    ]
+
+    if domain:
+        html_parts.append(f"<h1>{html.escape(domain)}</h1>")
+    else:
+        html_parts.append("<h1>AutoInfo Knowledge Base Export</h1>")
+
+    html_parts.append(
+        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  "
+        f"Entries: {len(entries)}</p>"
+    )
+
+    for e in entries:
+        title = e.get("title", "Untitled")
+        file_path = e.get("file_path") or ""
+
+        content = ""
+        if file_path and Path(file_path).is_file():
+            raw = Path(file_path).read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end_idx = raw.find("---", 3)
+                if end_idx != -1:
+                    content = raw[end_idx + 3 :].strip()
+                else:
+                    content = raw
+            else:
+                content = raw
+
+        html_parts.append("<div class='entry'>")
+        html_parts.append(f"<h2>{html.escape(title)}</h2>")
+
+        meta_bits: list[str] = []
+        if e.get("source_url"):
+            url = html.escape(e["source_url"])
+            meta_bits.append(f'Source: <a href="{url}">{url}</a>')
+        if e.get("source_type"):
+            meta_bits.append(f"Type: {html.escape(e['source_type'])}")
+        if e.get("tier"):
+            meta_bits.append(f"Tier: {html.escape(e['tier'])}")
+        if e.get("relevance_score") is not None:
+            meta_bits.append(f"Relevance: {e['relevance_score']}")
+        if meta_bits:
+            html_parts.append(f"<p class='meta'>{' | '.join(meta_bits)}</p>")
+
+        summary = e.get("summary", "")
+        if summary:
+            html_parts.append(
+                f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>"
+            )
+
+        if content:
+            content_html = md_lib.markdown(
+                content, extensions=["fenced_code", "tables"]
+            )
+            html_parts.append(f"<div class='entry-content'>{content_html}</div>")
+
+        html_parts.append("</div>")
+
+    html_parts.append("</body></html>")
+
+    full_html = "\n".join(html_parts)
+
+    # --- Render PDF ---------------------------------------------------------
+    try:
+        weasyprint.HTML(string=full_html).write_pdf(str(out_path))
+    except Exception as exc:
+        logger.error("PDF generation failed: %s", exc)
+        raise ValueError(
+            f"PDF generation failed: {exc}\n"
+            "Ensure weasyprint system dependencies are installed.\n"
+            "See: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html"
+        ) from exc
+
+    return {
+        "format": "pdf",
+        "path": str(out_path),
+        "entries_count": len(entries),
         "domain": domain_label,
         "success": True,
     }
@@ -757,6 +921,7 @@ def generate_report(
     domain: str,
     collection_id: str | None = None,
     format: str = "markdown",
+    period: str = "month",
 ) -> str:
     """Generate a structured report for the given *domain*.
 
@@ -772,8 +937,11 @@ def generate_report(
         collection run.  When omitted, all KB entries for the domain
         are included.
     format : str, optional
-        Output format (default ``"markdown"``).  Only ``"markdown"``
-        is currently supported.
+        Output format (default ``"markdown"``).  Supports ``"markdown"``
+        and ``"json"``.
+    period : str, optional
+        Report period label (default ``"month"``).  Used for metadata
+        in JSON output.
 
     Returns
     -------
@@ -787,8 +955,11 @@ def generate_report(
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
-    if format != "markdown":
-        raise ValueError(f"Unsupported output format: {format!r}")
+    if format not in ("markdown", "json"):
+        raise ValueError(
+            f"Unsupported output format: {format!r}. "
+            f"Supported: markdown, json"
+        )
 
     # -- Load KB entries --------------------------------------------------
     from autoinfo.llm import LLMExtractor  # noqa: PLC0415
@@ -797,6 +968,20 @@ def generate_report(
     entries = kb_store.list_entries(domain, limit=5000)
 
     if not entries:
+        if format == "json":
+            empty_data = {
+                "title": f"{domain} \u2014 Report",
+                "summary": "",
+                "entries": [],
+                "metadata": {
+                    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                    "domain": domain,
+                    "period": period,
+                    "format": "json",
+                    "entry_count": 0,
+                },
+            }
+            return json.dumps(empty_data, indent=2, ensure_ascii=False)
         return _render_empty_report(domain)
 
     # -- Build reference list from entries --------------------------------
@@ -844,6 +1029,10 @@ def generate_report(
         sections=sections,
         references=references,
     )
+
+    # -- Render -------------------------------------------------------------
+    if format == "json":
+        return _render_report_json(report_data, period=period)
 
     # -- Render via Jinja2 template ----------------------------------------
     return _render_report_template(report_data)
@@ -1014,6 +1203,58 @@ def _llm_json_extract(
     )
     result = extractor.extract(dummy, schema=[field])
     return result.custom_fields.get(field)
+
+
+def _render_report_json(report_data: ReportData, period: str = "month") -> str:
+    """Render the report data as a JSON string.
+
+    The JSON structure includes ``title``, ``summary``, a flat ``entries``
+    list (with ``title``, ``summary``, ``url``, ``date`` per entry), and
+    ``metadata`` with generation context.
+    """
+    entries_list: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for section in report_data.sections:
+        for item in section.items:
+            url = item.get("source_url", "") or ""
+            if url and url in seen_urls:
+                continue
+            if url:
+                seen_urls.add(url)
+            entries_list.append({
+                "title": item.get("title", ""),
+                "summary": item.get("summary", ""),
+                "url": url,
+                "date": item.get("collected_at", ""),
+            })
+
+    # Also include any references not already covered
+    for ref in report_data.references:
+        url = ref.get("source_url", "") or ""
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        entries_list.append({
+            "title": ref.get("title", ""),
+            "summary": "",
+            "url": url,
+            "date": "",
+        })
+
+    output = {
+        "title": report_data.title,
+        "summary": report_data.executive_summary,
+        "entries": entries_list,
+        "metadata": {
+            "generated_at": report_data.generated_at,
+            "domain": report_data.domain,
+            "period": period,
+            "format": "json",
+            "entry_count": len(entries_list),
+        },
+    }
+    return json.dumps(output, indent=2, ensure_ascii=False, default=str)
 
 
 def _render_report_template(report_data: ReportData) -> str:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """CEFR classification CLI — classify text difficulty levels (A1-C2).
 
 Usage::

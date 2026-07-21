@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Knowledge graph CLI — query and export the knowledge graph.
 
 Usage::

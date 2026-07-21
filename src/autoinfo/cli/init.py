@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """`autoinfo init` — project skeleton generator.
 
 Creates the `.autoinfo/` directory structure, default config, and

@@ -300,36 +300,46 @@ class LLMExtractor:
         )
 
     @staticmethod
-    def _parse_response(content: str) -> dict[str, Any]:
+    def _parse_response(content: str | None) -> dict[str, Any]:
         """Parse the LLM response as JSON with several fallback strategies.
 
         1. Direct :func:`json.loads`.
         2. Extract JSON from markdown code blocks (```json ... ```).
         3. Find the first ``{…}`` brace-delimited block.
 
-        Returns an empty dict when all strategies fail.
+        Returns an empty dict when all strategies fail or content is ``None``.
         """
+        if content is None:
+            logger.warning("LLM returned None content — empty response")
+            return {}
+
         # Strategy 1 — direct JSON
         try:
             return json.loads(content)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             pass
 
         # Strategy 2 — markdown fenced code block
-        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except json.JSONDecodeError:
-                pass
+        try:
+            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        except TypeError:
+            pass
 
         # Strategy 3 — bare JSON object anywhere in the text
-        match = re.search(r"\{[\s\S]*\}", content)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
+        try:
+            match = re.search(r"\{[\s\S]*\}", content)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        except TypeError:
+            pass
 
-        logger.warning("Failed to parse LLM response as JSON: %.200s", content)
+        logger.warning("Failed to parse LLM response as JSON: %.200s", content or "")
         return {}

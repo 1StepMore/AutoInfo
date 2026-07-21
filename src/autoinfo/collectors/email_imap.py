@@ -210,7 +210,6 @@ class EmailHandler:
         mailbox_name: str,
     ) -> Item | None:
         """Fetch and parse a single email by UID."""
-        import imaplib
 
         typ, msg_data = conn.fetch(uid, "(RFC822)")
         if typ != "OK" or not msg_data or msg_data[0] is None:

@@ -11,9 +11,8 @@ import os
 import sqlite3
 import sys
 import time
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 
 from autoinfo.config import get_config_path, load_config, validate_config
 from autoinfo.schema import get_schema_version as _get_schema_version

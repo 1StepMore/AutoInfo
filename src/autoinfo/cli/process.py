@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Process CLI — LLM extraction and quality gates pipeline.
 
 Usage::

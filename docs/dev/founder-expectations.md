@@ -1258,6 +1258,8 @@ This document was designed to be **honest**. Not to make the project look good, 
 
 The project started from zero (v0.1, July 18 2026) and reached v1.3 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1134 tests, and 65 MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
 
+v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
+
 Some expectations that seemed easy (F07: demo source curation) required deep research — understanding PubMed's API, navigating CrossRef REST endpoints, knowing which journals matter for 辅助生殖. Some that seemed hard (F20: file-based KB) were trivially simple — a directory of Markdown files. The v1.1 gap-fill closed the quality-of-life gaps; v1.2 added the major enhancement features: hybrid vector search, REST API, Web UI dashboard, CEFR classification, git versioning, PDF export, and email sending.
 
 The explicit "No" list (§10.3) protected the project from scope creep. The deferred items (§14) are consciously tracked for v2.0+.
@@ -1267,7 +1269,7 @@ The project is done when the founder can say: **"Yes, this does what I wanted."*
 
 ---
 
-## 14. Remaining Gaps & Future Work (Post v1.3)
+## 14. Remaining Gaps & Future Work (Post v1.3.1)
 
 The following items are consciously deferred from v1.2. They represent the remaining delta between the founder's full vision and current implementation. v1.2 closed 10+ gaps from the v1.1 deferred list — notably hybrid vector search, REST API, Web UI dashboard, Obsidian wiki links, CEFR classification, PDF export, SMTP email, schema versioning, keywords management, and crontab installer.
 
@@ -1304,7 +1306,8 @@ The following items are consciously deferred from v1.2. They represent the remai
 | True Test passing | 10/10 |
 | MCP tools | 65 |
 | Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
-| Quality gates | 5 (G1-G5, advisory) |
+| Quality gates | 5 (G1-G5, advisory) + quality_flags persisted in KB model/frontmatter |
+| Resilience enhancements | LLM `None` content crash fix, `extraction_failed` detection, KB filesystem fallback |
 | Tests | 1134 |
 | Demo domains | 3 with 7 curated sources |
 

@@ -158,7 +158,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.3 adds ErrorCode centralization, MCP schema hardening, and the `init_project` tool. v1.2 closed most remaining gaps from the founder's spec. The following items remain explicitly deferred:
+AutoInfo v1.3 adds ErrorCode centralization, MCP schema hardening, the `init_project` tool, **LLM extraction resilience**, **KB quality flags**, and **filesystem fallback** for the entire KB pipeline. v1.2 closed most remaining gaps from the founder's spec. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

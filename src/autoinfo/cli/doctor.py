@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Doctor CLI — checks system health and configuration.
 
 Usage::

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Topics CLI — manage tracked topics.
 
 Usage::
@@ -14,10 +15,10 @@ import typer
 from autoinfo.config import (
     DomainConfig,
     TopicConfig,
+    ensure_config_exists,
     get_config_path,
     load_config,
     save_config,
-    ensure_config_exists,
 )
 
 app = typer.Typer(help="Manage tracked topics")

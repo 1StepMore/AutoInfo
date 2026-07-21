@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Sources CLI — manage collection sources.
 
 Usage::
@@ -12,16 +13,14 @@ Usage::
 
 import json
 from pathlib import Path
-from typing import Any
 
 import httpx
 import typer
-import yaml
 
 from autoinfo.config import (
     Config,
-    SourceConfig,
     DomainConfig,
+    SourceConfig,
     get_config_path,
     load_config,
     save_config,

@@ -75,9 +75,21 @@ def show_status(domain: str | None = None) -> dict[str, Any]:
 
     domains_status: list[dict[str, Any]] = []
     for d in target_domains:
-        # Entry counts
+        # Entry counts (with filesystem fallback when SQLite is empty)
         total_entries = index.count_entries(d.name) if index else 0
         items_today = index.count_entries_today(d.name) if index else 0
+
+        # If SQLite returned 0 but files exist on disk, count from filesystem
+        if total_entries == 0:
+            kb_base = config_path.parent / "knowledge"
+            domain_path = kb_base / d.name
+            if domain_path.is_dir():
+                fs_files = list(domain_path.rglob("*.md"))
+                total_entries = len(fs_files)
+                # Estimate today: count files whose path contains today's date
+                from datetime import date
+                today_str = date.today().isoformat()
+                items_today = sum(1 for f in fs_files if today_str in f.name)
 
         # Per-source health from collection run logs
         source_health = _collect_source_health(config_path.parent, d.name, d.sources)

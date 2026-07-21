@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Email CLI — send digest emails via SMTP.
 
 Usage::
@@ -6,7 +7,6 @@ Usage::
     autoinfo email send-digest --domain medical-research --period weekly
 """
 
-import sys
 
 import typer
 

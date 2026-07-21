@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Status CLI — system and collection status.
 
 Usage::

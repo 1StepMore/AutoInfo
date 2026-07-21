@@ -22,10 +22,15 @@ from typing import Any
 
 from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore
-from autoinfo.keywords import KeywordState, KeywordsFile
+from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import Item
-from autoinfo.quality import G4FactualConsistency, G5TranslationAccuracy, QualityResult, run_quality_gates
+from autoinfo.quality import (
+    G4FactualConsistency,
+    G5TranslationAccuracy,
+    QualityResult,
+    run_quality_gates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +63,8 @@ def detect_language(text: str) -> str:
     if len(text.strip()) < 20:
         return "unknown"
     try:
-        from langdetect import detect_langs, LangDetectException as _LDE
+        from langdetect import LangDetectException as _LDE
+        from langdetect import detect_langs
     except ImportError:
         logger.debug("langdetect not installed — language detection disabled")
         return "unknown"
@@ -529,6 +535,21 @@ def run_processing(
             item_log["tl_dr_length"] = len(extraction.tl_dr)
             item_log["key_points_count"] = len(extraction.key_points)
             item_log["relevance_score"] = extraction.relevance_score
+
+            # Detect extraction failure: empty tl_dr + no key points + no entities + score 0
+            extraction_failed = (
+                not extraction.tl_dr
+                and not extraction.key_points
+                and not extraction.entities
+                and extraction.relevance_score == 0.0
+            )
+            item_log["extraction_failed"] = extraction_failed
+            if extraction_failed:
+                logger.warning(
+                    "LLM extraction returned empty result for item %s — "
+                    "entry will be indexed with empty summary",
+                    item.id,
+                )
 
             # Step b: Quality gates (G1, G2, G3)
             quality_results = run_quality_gates(

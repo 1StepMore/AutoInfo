@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Cron CLI — manage scheduled collection jobs.
 
 Usage::
@@ -14,7 +15,7 @@ import json
 import logging
 import shutil
 import subprocess
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -168,7 +169,6 @@ def run_due_schedules(
         ``collection_result`` (dict, only when ``ran=True``),
         ``error`` (str, only on failure).
     """
-    from croniter import croniter
 
     schedules = load_schedules()
     now = datetime.now(timezone.utc)

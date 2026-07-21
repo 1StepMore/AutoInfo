@@ -1318,8 +1318,10 @@ class SQLiteIndex:
         """
         from autoinfo.embeddings import (
             generate_embedding,
-            is_available as vec_available,
             load_vec_extension,
+        )
+        from autoinfo.embeddings import (
+            is_available as vec_available,
         )
 
         # --- graceful degradation ------------------------------------------
@@ -1832,6 +1834,86 @@ class KBStore:
             check_schema(conn)
 
     # ------------------------------------------------------------------
+    # Filesystem fallback when SQLite index is empty
+    # ------------------------------------------------------------------
+
+    def _scan_kb_filesystem(
+        self,
+        domain: str,
+        tier: str | None = None,
+        entry_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fallback: walk ``knowledge/<domain>/`` and parse frontmatter from ``.md`` files.
+
+        Returns the same dict shape as :meth:`SQLiteIndex.list_entries` so
+        callers can use it as a transparent fallback when the SQLite index
+        is empty or the requested entry is not found.
+
+        Parameters
+        ----------
+        domain:
+            Domain to scan.
+        tier:
+            Optional tier filter (e.g. ``"01-Raw"``, ``"02-Draft"``).
+        entry_id:
+            Optional entry ID — when set, only the matching file is returned.
+
+        Returns
+        -------
+        list[dict]
+            Each dict mirrors the columns returned by ``SQLiteIndex.list_entries``.
+        """
+        search_root = self.base_path / domain
+        if not search_root.is_dir():
+            return []
+
+        results: list[dict[str, Any]] = []
+        for md_file in sorted(search_root.rglob("*.md"), reverse=True):
+            try:
+                if tier and f"/{tier}/" not in str(md_file):
+                    continue
+
+                raw = md_file.read_text(encoding="utf-8")
+                if not raw.startswith("---"):
+                    continue
+                end = raw.find("---", 3)
+                if end == -1:
+                    continue
+                fm = yaml.safe_load(raw[3:end]) or {}
+                if not isinstance(fm, dict) or "entry_id" not in fm:
+                    continue
+
+                if entry_id and fm["entry_id"] != entry_id:
+                    continue
+
+                tags = fm.get("tags", [])
+                results.append({
+                    "entry_id": fm.get("entry_id", ""),
+                    "title": fm.get("title", ""),
+                    "domain": fm.get("domain", domain),
+                    "tier": fm.get("tier", tier or "01-Raw"),
+                    "source_url": fm.get("source_url", ""),
+                    "source_type": fm.get("source_type", ""),
+                    "source_platform": fm.get("source_platform", ""),
+                    "collected_at": fm.get("collected_at", ""),
+                    "summary": fm.get("summary", ""),
+                    "quality_tier": fm.get("quality_tier", 1),
+                    "relevance_score": fm.get("relevance_score", 0.0),
+                    "dedup_status": fm.get("dedup_status", "unique"),
+                    "file_path": str(md_file),
+                    "tags": json.dumps(tags) if isinstance(tags, list) else str(tags),
+                    "content_type": fm.get("content_type", ""),
+                    "language": fm.get("language", ""),
+                    "user_id": fm.get("user_id", ""),
+                    "cefr": fm.get("cefr", ""),
+                })
+            except Exception:
+                continue
+
+        results.sort(key=lambda x: x.get("collected_at", ""), reverse=True)
+        return results
+
+    # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
 
@@ -2178,11 +2260,24 @@ class KBStore:
         offset: int = 0,
         user_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Fast listing from the SQLite index.
+        """Fast listing from the SQLite index (with filesystem fallback).
 
-        Returns entries sorted by ``collected_at DESC``.
+        Falls back to scanning ``knowledge/<domain>/`` when the SQLite index
+        is empty.  Returns entries sorted by ``collected_at DESC``.
         """
-        return self.index.list_entries(domain, tier, date_from, limit, offset, user_id=user_id)
+        entries = self.index.list_entries(
+            domain, tier, date_from, limit, offset, user_id=user_id,
+        )
+        if entries:
+            return entries
+        # Fallback: scan filesystem
+        fs_entries = self._scan_kb_filesystem(domain, tier=tier)
+        if date_from:
+            fs_entries = [
+                e for e in fs_entries
+                if e.get("collected_at", "") >= date_from
+            ]
+        return fs_entries[offset: offset + limit]
 
     def list_all_entries(
         self,
@@ -2196,23 +2291,65 @@ class KBStore:
         """List entries across all domains (or a specific *domain*).
 
         When *domain* is ``None``, entries from every domain are
-        returned.  Otherwise behaves like :meth:`list_entries`.
+        returned.  Falls back to filesystem scan when SQLite index is empty.
+        Otherwise behaves like :meth:`list_entries`.
         """
-        return self.index.list_all_entries(
+        entries = self.index.list_all_entries(
             domain=domain, tier=tier, date_from=date_from,
             limit=limit, offset=offset, user_id=user_id,
         )
+        if entries:
+            return entries
+        # Fallback: scan filesystem
+        kb_base = self.base_path
+        if not kb_base.is_dir():
+            return []
+        if domain:
+            fs_entries = self._scan_kb_filesystem(domain, tier=tier)
+        else:
+            fs_entries = []
+            for child in sorted(kb_base.iterdir()):
+                if not child.is_dir() or child.name.startswith("_"):
+                    continue
+                fs_entries.extend(self._scan_kb_filesystem(child.name, tier=tier))
+            fs_entries.sort(key=lambda x: x.get("collected_at", ""), reverse=True)
+        if date_from:
+            fs_entries = [
+                e for e in fs_entries
+                if e.get("collected_at", "") >= date_from
+            ]
+        return fs_entries[offset: offset + limit]
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.
 
         The returned dict contains all SQLite columns plus the parsed
         ``content`` (body text from the Markdown file).
+        Falls back to filesystem scan when the SQLite index has no match.
         Returns ``None`` if the entry is not found.
         """
         meta = self.index.get_entry(entry_id)
         if meta is None:
-            return None
+            # Fallback: scan filesystem for the entry
+            kb_base = self.base_path
+            if not kb_base.is_dir():
+                return None
+            fs_results = self._scan_kb_filesystem(
+                domain="*", entry_id=entry_id,
+            )
+            if not fs_results:
+                # Try each real domain directory
+                for child in sorted(kb_base.iterdir()):
+                    if not child.is_dir() or child.name.startswith("_"):
+                        continue
+                    fs_results = self._scan_kb_filesystem(
+                        domain=child.name, entry_id=entry_id,
+                    )
+                    if fs_results:
+                        break
+            if not fs_results:
+                return None
+            meta = fs_results[0]
 
         file_path = Path(meta["file_path"]) if meta["file_path"] else None
         if file_path and file_path.is_file():
@@ -2223,6 +2360,8 @@ class KBStore:
             if fm:
                 if not meta.get("cefr") and fm.get("cefr"):
                     meta["cefr"] = fm["cefr"]
+                if fm.get("quality_flags"):
+                    meta["quality_flags"] = fm["quality_flags"]
                 cf = meta.get("custom_fields") or "{}"
                 try:
                     cf_dict = json.loads(cf) if isinstance(cf, str) else dict(cf)
@@ -2853,7 +2992,7 @@ class KBStore:
             ``file_path``.
             Returns ``{error, entry_id}`` when not found.
         """
-        meta = self.index.get_entry(summary_id)
+        meta = self.get_entry(summary_id)
         if meta is None:
             return {"error": "Entry not found", "entry_id": summary_id}
 
@@ -3172,6 +3311,7 @@ class KBStore:
                         status=fm.get("status", "active"),
                         related_concepts=fm.get("related_concepts", []),
                         linked_entries=fm.get("linked_entries", []),
+                        quality_flags=fm.get("quality_flags", {}),
                         language=fm.get("language", ""),
                     )
                     self.index.index_entry(entry)
@@ -3229,10 +3369,12 @@ def _build_frontmatter(
         data["linked_entries"] = entry.linked_entries
 
     # Include quality gate flags in frontmatter for transparency
+    flags: dict[str, bool] = dict(entry.quality_flags)
     if quality_results:
-        flags: dict[str, bool] = {}
+        # quality_results overrides entry.quality_flags when provided
         for gname, gresult in quality_results.items():
             flags[gname] = gresult.flagged
+    if flags:
         data["quality_flags"] = flags
 
     # Include custom extracted fields in frontmatter

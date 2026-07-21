@@ -21,6 +21,9 @@ All notable changes to the AutoInfo project will be documented in this file.
 ### Fixed
 - **5 crash-risk MCP schema gaps**: `batch_run.sources`, `export_kb.topic`, `localize_content.target_lang` (missing `required` arrays), `get_effective_llm_config.task` (non-nullable with default), `add_sources.sources.items` (nested description)
 - **6 GitHub issues resolved**: #4 (AGENTS.md staleness), #5 (error_code centralization), #6 (init_project tool), #7 (discovery flow), #8 (MCP schema gaps), #9 (common patterns)
+- **#10 (LLM extraction crash on `None` content)**: `_parse_response()` hardened with `TypeError` guards around all 3 JSON parse strategies + `None` content returns empty dict early with warning. `process.py` detects extraction failure (empty `tl_dr` + no key points + no entities + score 0) and logs `extraction_failed` flag per item. Prevents SQLite indexing gap from silent parser crashes.
+- **#12 (KBEntry missing `quality_flags` field)**: `KBEntry` model gains `quality_flags: dict[str, bool]` field. `_build_frontmatter()` merges `entry.quality_flags` with `quality_results` override. `reindex_knowledge_base()` reads `quality_flags` from frontmatter. `get_entry()` extracts `quality_flags` from frontmatter.
+- **#13 (filesystem fallback when SQLite index is empty)**: New `KBStore._scan_kb_filesystem()` helper walks `knowledge/<domain>/**/*.md` and returns same dict shape as `SQLiteIndex.list_entries`. `list_entries()`, `list_all_entries()`, `get_entry()`, `get_summary()` all fall back to filesystem scan when SQLite returns no results. `show_status()` in `status.py` counts `.md` files on disk when SQLite count is 0.
 - All CLI files (`cli/*.py`) and shared modules (`doctor.py`, `kb.py`, `keywords.py`, `process.py`) updated to use ErrorCode enum
 
 ### Infrastructure

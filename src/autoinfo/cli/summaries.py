@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Summaries CLI — browse, flag, and inspect collected summaries.
 
 Usage::

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Knowledge Base CLI — search, list, and manage KB entries.
 
 Usage::
@@ -11,7 +12,6 @@ Usage::
 
 
 import json
-from pathlib import Path
 
 import typer
 

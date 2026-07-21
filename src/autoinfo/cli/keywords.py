@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Keywords CLI — manage per-domain keyword lifecycle.
 
 Usage::

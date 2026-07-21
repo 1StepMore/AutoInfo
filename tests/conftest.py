@@ -37,6 +37,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "llm: marks tests that require LLM integration (mocked in CI)",
     )
+    config.addinivalue_line(
+        "markers",
+        "v1_2: marks tests covering v1.2 features (vector, API, CEFR, email, etc.)",
+    )
 
 
 # ---------------------------------------------------------------------------

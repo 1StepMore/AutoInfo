@@ -403,29 +403,24 @@ class TestProcessIntegration:
 
     def test_process_calls_store_entities(self, mocker, tmp_path: Path) -> None:
         """run_processing should call KBStore.store_entities when entities exist."""
-        import json as _json
+        from autoinfo.models import Item
         from autoinfo.process import run_processing
 
-        # Create a minimal cached item
-        coll_dir = tmp_path / "collections" / "medical-research" / "pubmed"
-        coll_dir.mkdir(parents=True, exist_ok=True)
-        item_data = {
-            "id": "test-kg-001",
-            "source_name": "pubmed",
-            "source_type": "api",
-            "source_url": "https://example.com/kg-test",
-            "title": "KG Integration Test",
-            "content": "Test content about CRISPR and Gene Therapy.",
-            "content_type": "text",
-            "collected_at": "2026-07-20T00:00:00Z",
-            "language": "en",
-            "domain": "medical-research",
-            "topic_tags": ["genetics"],
-            "quality_tier": 1,
-        }
-        (coll_dir / "2026-07-20").mkdir(exist_ok=True)
-        coll_file = coll_dir / "2026-07-20" / "test-kg-001.json"
-        coll_file.write_text(_json.dumps(item_data), encoding="utf-8")
+        item = Item(
+            id="test-kg-001",
+            source_name="pubmed",
+            source_type="api",
+            source_url="https://example.com/kg-test",
+            title="KG Integration Test",
+            content="Test content about CRISPR and Gene Therapy.",
+            content_type="text",
+            collected_at="2026-07-20T00:00:00Z",
+            language="en",
+            domain="medical-research",
+            topic_tags=["genetics"],
+            quality_tier=1,
+        )
+        mocker.patch("autoinfo.process.load_cached_items", return_value=[item])
 
         spy = mocker.spy(KBStore, "store_entities")
 

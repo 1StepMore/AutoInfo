@@ -677,7 +677,6 @@ class SQLiteIndex:
             }
 
         orig_path = Path(entry_row["file_path"])
-        bak_path, bak_path.read_bytes()
         orig_path.write_bytes(bak_path.read_bytes())
 
         return {

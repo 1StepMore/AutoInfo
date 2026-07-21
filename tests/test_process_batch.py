@@ -179,7 +179,7 @@ class TestBatchProcessing:
         """Two sequential batch calls process items without overlap."""
         processed_ids: list[str] = []
 
-        def track_extraction(item: Item) -> ExtractionResult:
+        def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
             processed_ids.append(item.id)
             return mock_extraction
 
@@ -243,7 +243,7 @@ class TestBatchProcessing:
         """When total_items changed, progress resets to 0 (no duplication)."""
         processed_ids: list[str] = []
 
-        def track_extraction(item: Item) -> ExtractionResult:
+        def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
             processed_ids.append(item.id)
             return mock_extraction
 
@@ -470,6 +470,8 @@ class TestBatchCli:
             domain="test-domain",
             model=None,
             batch_size=2,
+            check_factual=False,
+            check_translation=False,
         )
 
     def test_batch_progress_shown_in_human_output(

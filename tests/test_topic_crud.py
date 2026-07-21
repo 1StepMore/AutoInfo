@@ -105,20 +105,21 @@ def tmp_project(tmp_path: Path) -> Path:
 class TestTopicsAddCLI:
     def test_add_topic_success(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Adding a new topic persists it to config and prints confirmation."""
-        result = cli_runner.invoke(
-            app,
-            [
-                "topics",
-                "add",
-                "--domain",
-                "medical-research",
-                "--name",
-                "IVF breakthroughs",
-                "--keywords",
-                "IVF,embryo",
-            ],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "IVF breakthroughs",
+                    "--keywords",
+                    "IVF,embryo",
+                ],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
         assert "Added topic" in result.stdout
         assert "IVF breakthroughs" in result.stdout
@@ -135,17 +136,19 @@ class TestTopicsAddCLI:
     def test_add_topic_idempotent(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Adding the same topic name+domain again is a no-op."""
         # First add
-        cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
+                catch_exceptions=False,
+            )
         # Second add (same)
-        result = cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
         assert "already exists" in result.stdout
 
@@ -186,22 +189,23 @@ class TestTopicsListCLI:
     def test_list_topics_success(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """List shows all topics for a domain."""
         # Add two topics first
-        cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
-            catch_exceptions=False,
-        )
-        cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "medical-research", "--name", "Gene therapy", "--keywords", "CRISPR,gene"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
+                catch_exceptions=False,
+            )
+            cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "medical-research", "--name", "Gene therapy", "--keywords", "CRISPR,gene"],
+                catch_exceptions=False,
+            )
 
-        result = cli_runner.invoke(
-            app,
-            ["topics", "list", "--domain", "medical-research"],
-            catch_exceptions=False,
-        )
+            result = cli_runner.invoke(
+                app,
+                ["topics", "list", "--domain", "medical-research"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
         assert "IVF" in result.stdout
         assert "Gene therapy" in result.stdout
@@ -209,11 +213,12 @@ class TestTopicsListCLI:
 
     def test_list_topics_empty(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Domain with no topics shows 'No topics configured'."""
-        result = cli_runner.invoke(
-            app,
-            ["topics", "list", "--domain", "medical-research"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "list", "--domain", "medical-research"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
         assert "No topics configured" in result.stdout
 
@@ -244,17 +249,18 @@ class TestTopicsRemoveCLI:
     def test_remove_topic_success(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Removing an existing topic deletes it from config and prints confirmation."""
         # Add a topic first
-        cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
+                catch_exceptions=False,
+            )
 
-        result = cli_runner.invoke(
-            app,
-            ["topics", "remove", "--domain", "medical-research", "--topic-id", "IVF"],
-            catch_exceptions=False,
-        )
+            result = cli_runner.invoke(
+                app,
+                ["topics", "remove", "--domain", "medical-research", "--topic-id", "IVF"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
         assert "Removed topic" in result.stdout
 
@@ -266,11 +272,12 @@ class TestTopicsRemoveCLI:
 
     def test_remove_topic_not_found(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Removing a non-existent topic prints an error."""
-        result = cli_runner.invoke(
-            app,
-            ["topics", "remove", "--domain", "medical-research", "--topic-id", "nonexistent"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "remove", "--domain", "medical-research", "--topic-id", "nonexistent"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 1
         assert "not found" in result.stdout
 

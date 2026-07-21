@@ -10,12 +10,19 @@ Covers:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from autoinfo.kb import KBStore, SQLiteIndex
+
+
+def _entity_id(name: str, domain: str) -> str:
+    """Match SQLiteIndex._entity_id to compute expected hashes."""
+    raw = f"{domain}:{name.lower().strip()}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 # ===================================================================
@@ -214,9 +221,11 @@ class TestSQLiteIndexEntities:
         assert result["entity"] == "IVF"
         assert result["relation"] == "related_to"
 
-        related_names = {r["related_entity"] for r in result["results"]}
-        assert "Embryo" in related_names
-        assert "Blastocyst" in related_names
+        related_ids = {r["related_entity"] for r in result["results"]}
+        embryo_id = _entity_id("Embryo", "medical-research")
+        blastocyst_id = _entity_id("Blastocyst", "medical-research")
+        assert embryo_id in related_ids
+        assert blastocyst_id in related_ids
 
     def test_query_with_empty_relation_returns_all(self, index: SQLiteIndex) -> None:
         """Empty relation string matches all relation types."""
@@ -269,10 +278,12 @@ class TestSQLiteIndexEntities:
         # Each domain should have exactly 1 related entity (the domain-specific one)
         assert med_result["total_count"] == 1
         assert ai_result["total_count"] == 1
-        med_names = {r["related_entity"] for r in med_result["results"]}
-        ai_names = {r["related_entity"] for r in ai_result["results"]}
-        assert "Entity-medical-research" in med_names
-        assert "Entity-ai-commercial" in ai_names
+        med_ids = {r["related_entity"] for r in med_result["results"]}
+        ai_ids = {r["related_entity"] for r in ai_result["results"]}
+        med_entity_id = _entity_id("Entity-medical-research", "medical-research")
+        ai_entity_id = _entity_id("Entity-ai-commercial", "ai-commercial")
+        assert med_entity_id in med_ids
+        assert ai_entity_id in ai_ids
 
 
 # ===================================================================
@@ -319,7 +330,9 @@ class TestKBStoreKnowledgeGraph:
         assert result["entity"] == "CRISPR"
         assert result["total_count"] >= 1
         related = {r["related_entity"] for r in result["results"]}
-        assert "Gene Therapy" in related or "AAV Vector" in related
+        gene_therapy_id = _entity_id("Gene Therapy", "medical-research")
+        aav_id = _entity_id("AAV Vector", "medical-research")
+        assert gene_therapy_id in related or aav_id in related
 
     def test_cross_entry_co_occurrence(self, store: KBStore) -> None:
         """Entities that co-occur across multiple entries get higher strength."""
@@ -346,8 +359,9 @@ class TestKBStoreKnowledgeGraph:
         )
         assert result["total_count"] >= 1
         # CRISPR should be most strongly related to Gene Therapy (2 shared entries)
+        gene_therapy_id = _entity_id("Gene Therapy", "medical-research")
         for r in result["results"]:
-            if r["related_entity"] == "Gene Therapy":
+            if r["related_entity"] == gene_therapy_id:
                 assert r["strength"] >= 2.0
                 assert r["entries_shared_count"] >= 2
 
@@ -371,10 +385,12 @@ class TestKBStoreKnowledgeGraph:
 
         med_related = {r["related_entity"] for r in med_result["results"]}
         ai_related = {r["related_entity"] for r in ai_result["results"]}
-        assert "Fever" in med_related
-        assert "Fever" not in ai_related
-        assert "Transformer" in ai_related
-        assert "Transformer" not in med_related
+        fever_id = _entity_id("Fever", "medical-research")
+        transformer_id = _entity_id("Transformer", "ai-commercial")
+        assert fever_id in med_related
+        assert fever_id not in ai_related
+        assert transformer_id in ai_related
+        assert transformer_id not in med_related
 
 
 # ===================================================================

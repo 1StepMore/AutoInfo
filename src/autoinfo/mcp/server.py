@@ -52,7 +52,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
@@ -126,7 +125,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-        "tools_count": 62,
+        "tools_count": 63,
     }
 
 
@@ -250,7 +249,7 @@ def _handle_get_collection_progress(domain: str = "") -> dict[str, Any]:
 
 def _handle_get_collection_status(domain: str) -> dict[str, Any]:
     """Return full collection results for *domain* (last run)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     state = _collection_state.get(domain, {
         "status": "idle",
@@ -1699,7 +1698,7 @@ def _handle_add_schedule(
                 "actionable": True,
             }
 
-        from autoinfo.cli.cron import Schedule, load_schedules, save_schedules, _now_iso
+        from autoinfo.cli.cron import Schedule, _now_iso, load_schedules, save_schedules
 
         schedules = load_schedules()
         if name in schedules:
@@ -1877,6 +1876,86 @@ def _handle_query_collected(
 # ---------------------------------------------------------------------------
 # Project / batch / config tools (v0.5)
 # ---------------------------------------------------------------------------
+
+
+def _handle_init_project(
+    domain: str,
+    project_name: str = "",
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Initialize AutoInfo project skeleton (creates .autoinfo/ directory,
+    config, demo domain). Idempotent — safe to call when already initialized.
+
+    Parameters
+    ----------
+    domain:
+        Demo domain name (e.g. medical-research).
+    project_name:
+        Optional human-friendly project name.
+    dry_run:
+        If True, preview what would be created without writing files.
+    """
+    # Lazy imports to avoid circular dependencies
+    from autoinfo.cli.init import _DEMO_DOMAINS_DIR, _ensure_dir, _run_init
+    from autoinfo.mcp.errors import ErrorCode, error_dict
+
+    autoinfo_dir = Path.cwd() / ".autoinfo"
+    config_path = autoinfo_dir / "config.yaml"
+
+    # Idempotency check — skip if already initialized
+    if config_path.exists() and not dry_run:
+        return {
+            "status": "skipped",
+            "message": "Already initialized",
+        }
+
+    # Validate domain against available demo domains
+    demo_sources = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
+    if not demo_sources.is_file():
+        available = sorted(
+            d.name for d in _DEMO_DOMAINS_DIR.iterdir()
+            if d.is_dir()
+        )
+        return error_dict(
+            ErrorCode.VALIDATION_ERROR,
+            f"Unknown demo domain '{domain}'. Available: {available}",
+        )
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "domain": domain,
+            "project_name": project_name,
+            "autoinfo_dir": str(autoinfo_dir),
+            "would_create_dirs": [
+                ".autoinfo/",
+                ".autoinfo/knowledge/00-Inbox/",
+                ".autoinfo/knowledge/01-Raw/",
+                ".autoinfo/knowledge/02-Draft/",
+                ".autoinfo/knowledge/03-Wiki/",
+                ".autoinfo/collections/",
+                ".autoinfo/outputs/",
+            ],
+            "would_create_files": [
+                ".autoinfo/config.yaml",
+                ".autoinfo/sources.yaml",
+            ],
+            "message": "Dry run — no files were created",
+        }
+
+    try:
+        _ensure_dir(autoinfo_dir)
+        _run_init(domain, autoinfo_dir, project_name=project_name)
+        return {
+            "status": "success",
+            "domain": domain,
+            "project_name": project_name,
+            "autoinfo_dir": str(autoinfo_dir),
+            "message": f"AutoInfo initialized for '{domain}'",
+        }
+    except Exception as exc:
+        logger.exception("Init project failed for domain '%s'", domain)
+        return error_dict(ErrorCode.INTERNAL_ERROR, str(exc))
 
 
 def _handle_list_projects() -> dict[str, Any]:
@@ -2211,8 +2290,10 @@ async def list_tools() -> list[Tool]:
                             "Optional task name (e.g. extraction, "
                             "summarization)"
                         ),
+                        "default": None,
                     },
                 },
+                "required": [],
             },
         ),
         Tool(
@@ -2278,6 +2359,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Source type (api, rss, web)",
                         "default": "api",
+                        "enum": ["api", "rss", "web"],
                     },
                     "domain": {
                         "type": "string",
@@ -2298,13 +2380,24 @@ async def list_tools() -> list[Tool]:
                         "items": {
                             "type": "object",
                             "properties": {
-                                "name": {"type": "string"},
-                                "url": {"type": "string"},
+                                "name": {
+                                    "type": "string",
+                                    "description": "Human-readable source name",
+                                },
+                                "url": {
+                                    "type": "string",
+                                    "description": "Source URL",
+                                },
                                 "type": {
                                     "type": "string",
                                     "default": "api",
+                                    "description": "Source type (api, rss, web)",
+                                    "enum": ["api", "rss", "web"],
                                 },
-                                "domain": {"type": "string"},
+                                "domain": {
+                                    "type": "string",
+                                    "description": "Domain to add this source to",
+                                },
                             },
                             "required": ["name", "url", "domain"],
                         },
@@ -2342,6 +2435,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Source type (api, rss, web)",
                         "default": "api",
+                        "enum": ["api", "rss", "web"],
                     },
                 },
                 "required": ["url"],
@@ -2543,8 +2637,10 @@ async def list_tools() -> list[Tool]:
                     "domain": {
                         "type": "string",
                         "description": "Optional domain name — returns all domains if omitted",
+                        "default": "",
                     },
                 },
+                "required": [],
             },
         ),
         Tool(
@@ -2682,6 +2778,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Search mode: 'fts5' (default, full-text only), 'hybrid' (FTS5 + vector fusion), or 'vector' (vector-only). Falls back to FTS5 when vector search is unavailable.",
                         "default": "fts5",
+                        "enum": ["fts5", "hybrid", "vector"],
                     },
                     "filter_tags": {
                         "type": "array",
@@ -2901,8 +2998,10 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Period: daily (default), weekly, monthly",
                         "default": "daily",
+                        "enum": ["daily", "weekly", "monthly"],
                     },
                 },
+                "required": [],
             },
         ),
         Tool(
@@ -2979,6 +3078,7 @@ async def list_tools() -> list[Tool]:
                             "'archive' moves to _archive/"
                         ),
                         "default": "back_to_raw",
+                        "enum": ["back_to_raw", "archive"],
                     },
                 },
                 "required": ["draft_id"],
@@ -3000,6 +3100,7 @@ async def list_tools() -> list[Tool]:
                     "tier": {
                         "type": "string",
                         "description": "Tier to list (01-Raw, 02-Draft)",
+                        "enum": ["01-Raw", "02-Draft"],
                     },
                     "limit": {
                         "type": "integer",
@@ -3029,8 +3130,10 @@ async def list_tools() -> list[Tool]:
                     "domain": {
                         "type": "string",
                         "description": "Domain name (optional)",
+                        "default": "",
                     },
                 },
+                "required": [],
             },
         ),
         Tool(
@@ -3051,11 +3154,13 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Digest period: daily, weekly, monthly",
                         "default": "weekly",
+                        "enum": ["daily", "weekly", "monthly"],
                     },
                     "format": {
                         "type": "string",
                         "description": "Output format: markdown, html, json",
                         "default": "markdown",
+                        "enum": ["markdown", "html", "json"],
                     },
                 },
                 "required": ["domain"],
@@ -3079,11 +3184,13 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Output format: markdown, json",
                         "default": "markdown",
+                        "enum": ["markdown", "json"],
                     },
                     "period": {
                         "type": "string",
                         "description": "Report period: day, week, month",
                         "default": "month",
+                        "enum": ["day", "week", "month"],
                     },
                 },
                 "required": ["domain"],
@@ -3107,6 +3214,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Output format (markdown, html, json)",
                         "default": "markdown",
+                        "enum": ["markdown", "html", "json"],
                     },
                 },
                 "required": ["domain"],
@@ -3200,6 +3308,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Digest period: daily, weekly, monthly",
                         "default": "weekly",
+                        "enum": ["daily", "weekly", "monthly"],
                     },
                 },
                 "required": ["domain"],
@@ -3317,6 +3426,7 @@ async def list_tools() -> list[Tool]:
                         ),
                     },
                 },
+                "required": [],
             },
         ),
         # -- Q&A (1) -------------------------------------------------------
@@ -3412,6 +3522,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Language code: en, zh, or ja",
                         "default": "en",
+                        "enum": ["en", "zh", "ja"],
                     },
                 },
                 "required": ["text"],
@@ -3448,8 +3559,10 @@ async def list_tools() -> list[Tool]:
                     "reason": {
                         "type": "string",
                         "description": "Optional reason for archiving",
+                        "default": "",
                     },
                 },
+                "required": [],
             },
         ),
         Tool(
@@ -3485,8 +3598,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_active_collections",
             description=(
-                "List currently active or in-progress collection runs. "
-                "Returns status, progress, and start time per collection."
+                "List currently active or in-progress collection runs."
             ),
             inputSchema={"type": "object", "properties": {}},
         ),
@@ -3503,8 +3615,41 @@ async def list_tools() -> list[Tool]:
                     "section": {
                         "type": "string",
                         "description": "Optional config section: project, llm, domains",
+                        "default": "",
+                        "enum": ["project", "llm", "domains"],
                     },
                 },
+                "required": [],
+            },
+        ),
+        # -- Init (1) --------------------------------------------------------
+        Tool(
+            name="init_project",
+            description=(
+                "Initialize AutoInfo project skeleton (creates .autoinfo/ "
+                "directory, config, demo domain). Idempotent — safe to call "
+                "when already initialized."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Demo domain name (e.g. medical-research)",
+                        "enum": ["medical-research", "ai-commercial", "language-learning"],
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "description": "Optional human-friendly project name",
+                        "default": "",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview what would be created without writing files",
+                        "default": False,
+                    },
+                },
+                "required": ["domain"],
             },
         ),
     ]
@@ -3663,7 +3808,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "rate_item":
             result = _handle_rate_item(**arguments)
 
-        # -- Project / Batch / Config (6) ---------------------------------
+        # -- Init / Project / Batch / Config (7) --------------------------
+        elif name == "init_project":
+            result = _handle_init_project(**arguments)
         elif name == "list_projects":
             result = _handle_list_projects()
         elif name == "get_project_assets":

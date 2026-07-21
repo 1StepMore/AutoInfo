@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (35+ tools across 10 categories)
+2. **All capabilities** are exposed as MCP tools (70+ tools across 12 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -41,7 +41,20 @@ AutoInfo/
 │       └── Hermes-KnowledgeBase-介绍.md  # KB pipeline reference model
 ├── .opencode/
 │   └── skills/                     # Agent skill definitions
-└── src/                            # Implementation (to be built)
+├── src/
+│   └── autoinfo/
+│       ├── cli/                     # 14 CLI command groups
+│       ├── mcp/                     # MCP server (70+ tools)
+│       ├── api/                     # REST API (FastAPI, port 8741)
+│       ├── kb.py                    # Knowledge base pipeline (4-tier Hermes)
+│       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
+│       ├── llm.py                   # LLM extraction engine
+│       ├── output.py                # Output generation (digest, report, tutorial, export)
+│       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
+│       ├── email_sender.py          # SMTP email sending
+│       ├── keywords.py              # Keyword management
+│       ├── qa.py                    # Q&A with LLM synthesis
+│       └── quality.py               # Quality gates G1-G5
 ```
 
 ## Architecture Rules
@@ -102,7 +115,7 @@ hidden from default views, or demoted — never deleted.
 
 | Action | Reason |
 |--------|--------|
-| **Do not run `init`** | Init is a human operation. You connect to an already-initialized MCP server. |
+| **Run `init_project` MCP tool** | Use `init_project` MCP tool for agent workflows instead of CLI `init`. CLI `init` remains available for humans. |
 | **Do not manage API keys** | Keys are configured in env vars or config. You don't store, generate, or transmit keys. |
 | **Do not write to 03-Wiki** | Only human can promote Draft→Wiki. |
 | **Do not create Draft from outside** | Draft must come from 01-Raw. |
@@ -113,25 +126,35 @@ hidden from default views, or demoted — never deleted.
 
 ## Tool Discovery Guidance
 
-35+ MCP tools organized by category:
+70+ MCP tools organized by category:
 
 | Category | Key Tools |
 |----------|-----------|
 | **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models` |
-| **Domain** | `list_domains`, `get_domain_schema`, `activate_domain` |
-| **Source** | `add_source` (idempotent), `add_sources` (batch), `test_source`, `get_source_health` |
-| **Topic** | `list_topics`, `add_topic`, `list_keywords` |
-| **Collection** | `collect_sources` (with `dry_run=true`), `get_collection_progress`, `get_collection_diff` |
-| **Summary** | `list_summaries`, `flag_for_knowledge_base`, `rate_item` |
-| **KB** | `search_knowledge_base`, `get_kb_entry`, `create_kb_draft`, `list_kb_tier` |
-| **Output** | `generate_digest`, `generate_tutorial`, `list_output_templates` |
+| **Discovery** | `list_domains`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
+| **Source** | `add_source`, `add_sources`, `remove_source`, `test_source`, `list_sources`, `get_source_health` |
+| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords` |
+| **Collection** | `collect_sources`, `get_collection_progress`, `get_collection_status`, `process_collection`, `get_processing_progress`, `batch_run` |
+| **KB** | `search_knowledge_base`, `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base`, `vector_search`, `faceted_search` |
+| **Output** | `generate_digest`, `generate_report`, `generate_tutorial`, `generate_presentation`, `localize_content`, `export_kb` |
+| **CEFR** | `classify_cefr` |
+| **Keywords** | `list_keywords`, `manage_keyword` |
+| **Email** | `send_email`, `get_email_config`, `set_email_config` |
+| **Q&A** | `query_collected` |
+| **Graph** | `query_knowledge_graph` |
+| **Relations** | `link_items`, `get_item_relations` |
+| **Monitor** | `get_collection_stats`, `get_collection_diff`, `get_source_health`, `rate_item`, `list_active_collections` |
+| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `cron_install`, `cron_uninstall` |
+| **Projects** | `list_projects`, `get_project_assets`, `archive_project` |
 | **Config** | `get_effective_llm_config` |
 
 **Discovery flow**:
-1. Call `list_domains()` to see available domains
-2. Call `get_domain_schema(domain)` to see available extraction fields
-3. Call `list_available_models()` to see configured LLM models
-4. Call `list_output_templates(domain)` to see output types
+1. Call `health_check()` first to verify server is alive and get version info
+2. Use MCP protocol `tools/list` for auto-discovery of all available tools
+3. Call `list_domains()` to see available domains
+4. Call `get_domain_schema(domain)` to see extraction fields for your domain
+5. Call `list_available_models()` to see configured LLM models
+6. Call `list_output_templates(domain)` to see output types for your domain
 
 ## Common Patterns
 
@@ -156,11 +179,101 @@ hidden from default views, or demoted — never deleted.
 1. `diagnose_system()` → comprehensive health (LLM key, sources, disk, DB)
 ```
 
+### "Initialise a project"
+```
+1. `health_check()` → verify server availability
+2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure
+3. `list_domains()` → confirm demo domain is active
+```
+→ Project initialised with demo domain, sources, and topics configured.
+
+### "Save an article to the knowledge base"
+```
+1. `flag_for_knowledge_base(summary_id="sum_123", tags=["important", "review"])` → promote summary
+2. `create_kb_draft(summary_id="sum_123")` → agent creates Draft from Raw
+3. (User promotes Draft → Wiki via CLI `autoinfo kb promote`)
+```
+→ Summary flagged, Draft created, awaiting human promotion to Wiki.
+
+### "Set up and run a cron schedule"
+```
+1. `add_schedule(domain="medical-research", cron="0 8 * * 1", topic="IVF breakthroughs")` → schedule created
+2. `cron_install()` → install crontab entries
+3. `list_schedules()` → verify active schedules
+4. `run_schedules()` → manual trigger for immediate collection
+```
+→ Scheduled collection runs every Monday at 8 AM.
+
+### "Generate and send a digest email"
+```
+1. `generate_digest(domain="medical-research", period="week")` → digest Markdown
+2. `send_email(to="user@example.com", subject="Weekly Digest", body=digest)` → email sent via SMTP
+```
+→ Weekly digest generated and delivered to inbox.
+
+### "Classify content by CEFR level"
+```
+1. `classify_cefr(text="The mitochondria is the powerhouse of the cell.", language="en")` → returns CEFR level
+```
+→ Returns `{"level": "B2", "confidence": 0.87, "features": ["academic vocabulary", "complex structure"]}`
+
+### "Search with hybrid or vector mode"
+```
+1. `search_knowledge_base(domain="medical-research", query="embryo development", mode="hybrid")` → FTS5 + vector
+2. `search_knowledge_base(domain="medical-research", query="embryo development", mode="vector")` → semantic only
+3. `faceted_search(domain="medical-research", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered
+```
+→ Ranked results from KB with source citations.
+
+### "Export knowledge base to PDF"
+```
+1. `export_kb(domain="medical-research", format="pdf", topic="IVF breakthroughs")` → generates PDF report
+```
+→ PDF file written to `exports/medical-research/IVF-breakthroughs-report.pdf`
+
+### "Manage keywords for a domain"
+```
+1. `list_keywords(domain="medical-research")` → view current keywords
+2. `manage_keyword(domain="medical-research", action="add", keyword="CRISPR")` → add new keyword
+3. `manage_keyword(domain="medical-research", action="remove", keyword="obsolete-term")` → remove keyword
+```
+→ Keywords updated for source filtering and topic matching.
+
+### "Use the REST API"
+```
+1. Start the FastAPI server: `uvicorn autoinfo.api.server:app --port 8741`
+2. `curl http://localhost:8741/health` → {"status": "ok"}
+3. `curl http://localhost:8741/api/v1/entries?domain=medical-research` → paginated entries
+4. `curl -X POST http://localhost:8741/api/v1/search -H "Content-Type: application/json" -d '{"query": "embryo"}'`
+```
+→ Full KB CRUD over HTTP, no auth required (localhost security).
+
 ## Status
 
-**Greenfield project**. No code has been written yet. This file describes what
-will exist once the MCP server is implemented. Currently, connecting to the
-MCP server will fail because the server doesn't exist yet.
+| Component | Status |
+|-----------|--------|
+| Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
+| CLI | ✅ 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email, keywords) |
+| Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), scheduled via crond, crontab install/uninstall |
+| LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency |
+| Quality gates | ✅ G1-G5 advisory gates (G4 factual consistency, G5 translation accuracy) |
+| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
+| Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
+| Q&A | ✅ FTS5 + LLM synthesis with source citations |
+| Output generation | ✅ Digest, report (Markdown/JSON/PDF), tutorial, presentation (Jinja2 + LLM) |
+| Translation | ✅ LLM-based source→target |
+| Knowledge graph | ✅ Entity extraction + relation discovery |
+| REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
+| Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
+| MCP server | ✅ 70+ MCP tool areas across 12 categories |
+| Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
+| CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
+| Email sending | ✅ SMTP sender (digest delivery) |
+| Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
+| Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
+| Schema versioning | ✅ DB schema version markers in SQLite |
+| Demo domains | ✅ medical-research, ai-commercial, language-learning |
+| Test suite | ✅ 825+ tests (30+ test files, 105 v1.2 integration tests) |
 
 ## References
 

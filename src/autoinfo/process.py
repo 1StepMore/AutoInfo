@@ -24,7 +24,7 @@ from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import Item
-from autoinfo.quality import G4FactualConsistency, QualityResult, run_quality_gates
+from autoinfo.quality import G4FactualConsistency, G5TranslationAccuracy, QualityResult, run_quality_gates
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +245,7 @@ def run_processing(
     topic: str | None = None,
     batch_size: int = 0,
     check_factual: bool = False,
+    check_translation: bool = False,
 ) -> ProcessResult:
     """Main processing pipeline.
 
@@ -254,10 +255,12 @@ def run_processing(
     2. If *batch_size* > 0, read SQLite progress to determine the starting
        index and only process up to *batch_size* items.
     3. For each item:
-       a. LLM extraction  (call :meth:`LLMExtractor.extract`)
-       b. Quality gates   (call :func:`run_quality_gates`; optionally G4
-                          factual consistency when *check_factual* is set)
-       c. KB storage      (call :meth:`KBStore.store_entry`)
+        a. LLM extraction  (call :meth:`LLMExtractor.extract`)
+        b. Quality gates   (call :func:`run_quality_gates`; optionally G4
+                           factual consistency when *check_factual* is set,
+                           and optionally G5 translation accuracy when
+                           *check_translation* is set)
+        c. KB storage      (call :meth:`KBStore.store_entry`)
        d. Per-item log    (model, duration, scores, flags, …)
     4. When *batch_size* > 0, persist the updated progress index.
     5. Return a :class:`ProcessResult` with summary stats (including
@@ -285,6 +288,9 @@ def run_processing(
         stopped.
     check_factual : bool, optional
         When ``True``, run the G4 factual consistency gate after G1-G3
+        (requires an LLM call per item).  Defaults to ``False``.
+    check_translation : bool, optional
+        When ``True``, run the G5 translation accuracy gate after G4
         (requires an LLM call per item).  Defaults to ``False``.
 
     Returns
@@ -423,6 +429,33 @@ def run_processing(
                     )
                     quality_results["G4-SummaryFactual"] = g4_result
 
+            # Step b3: Optional G5 translation accuracy gate
+            if check_translation:
+                try:
+                    g5_model = (
+                        f"{proc_config.llm.provider}/{proc_config.llm.model}"
+                        if proc_config and proc_config.llm.provider and proc_config.llm.model
+                        else "openrouter/deepseek/deepseek-chat"
+                    )
+                    g5 = G5TranslationAccuracy(model=g5_model)
+                    g5_result = g5.check(item, extraction)
+                    quality_results["G5-TranslationAccuracy"] = g5_result
+                except Exception as exc:
+                    logger.warning(
+                        "G5 translation check failed for item %s: %s", item.id, exc
+                    )
+                    g5_result = QualityResult(
+                        gate_name="G5-TranslationAccuracy",
+                        passed=False,
+                        flagged=True,
+                        details={
+                            "faithful": None,
+                            "explanation": str(exc),
+                            "issues": [],
+                        },
+                    )
+                    quality_results["G5-TranslationAccuracy"] = g5_result
+
             g1 = quality_results.get("G1-SourceAuthority")
             g2 = quality_results.get("G2-Dedup")
             g3 = quality_results.get("G3-RelevanceScoring")
@@ -447,6 +480,12 @@ def run_processing(
             if g4_result is not None:
                 item_log["g4_flagged"] = g4_result.flagged
                 item_log["g4_contradiction"] = g4_result.details.get("contradiction")
+
+            # Log G5 if it ran
+            g5_result = quality_results.get("G5-TranslationAccuracy")
+            if g5_result is not None:
+                item_log["g5_flagged"] = g5_result.flagged
+                item_log["g5_faithful"] = g5_result.details.get("faithful")
 
             # Step c: KB storage — store all items (quality gates are
             # advisory). Duplicates get marked in their frontmatter.
@@ -491,15 +530,19 @@ def run_processing(
     g4_count = sum(
         1 for log in result.per_item_logs if log.get("g4_flagged") is not None
     )
+    g5_count = sum(
+        1 for log in result.per_item_logs if log.get("g5_flagged") is not None
+    )
     logger.info(
         "Processing complete: %d items → %d passed G1-G3 → %d KB entries created "
-        "(batch=%d, remaining=%d, g4_checked=%d)",
+        "(batch=%d, remaining=%d, g4_checked=%d, g5_checked=%d)",
         result.total_items,
         result.passed_gates,
         result.kb_entries_created,
         result.processed_count,
         result.remaining_count,
         g4_count,
+        g5_count,
     )
 
     return result

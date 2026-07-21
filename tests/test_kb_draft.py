@@ -380,3 +380,133 @@ class TestSQLiteIndexTier:
         assert len(drafts) >= 1
         for d in drafts:
             assert d["tier"] == "02-Draft"
+
+
+# ===================================================================
+# promote_kb_draft
+# ===================================================================
+
+
+class TestPromoteKbDraft:
+    def test_promote_moves_draft_to_03_wiki(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Unit test: promote a Draft -> 03-Wiki."""
+        draft = store.create_kb_draft(
+            raw_ids=[raw_entry_ids[0]],
+            title="Draft to promote",
+        )
+        result = store.promote_kb_draft(draft_id=draft.entry_id)
+        assert result["status"] == "promoted"
+        assert "03-Wiki" in result["new_path"]
+        assert "02-Draft" not in result["new_path"]
+
+        # Verify SQLite updated
+        meta = store.index.get_entry(draft.entry_id)
+        assert meta is not None
+        assert meta["tier"] == "03-Wiki"
+
+        # Original Draft file should be gone
+        assert not Path(result["old_path"]).exists()
+        # New Wiki file should exist
+        assert Path(result["new_path"]).exists()
+
+    def test_promote_adds_human_promoted_frontmatter(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Unit test: promoted file gets human_promoted + promoted_at in frontmatter."""
+        draft = store.create_kb_draft(
+            raw_ids=[raw_entry_ids[0]],
+            title="Frontmatter promote test",
+        )
+        result = store.promote_kb_draft(draft_id=draft.entry_id)
+        raw = Path(result["new_path"]).read_text(encoding="utf-8")
+        end = raw.find("---", 3)
+        fm = yaml.safe_load(raw[3:end])
+        assert fm["human_promoted"] is True
+        assert "promoted_at" in fm
+
+    def test_promote_nonexistent_draft_raises_error(self, store: KBStore) -> None:
+        """Negative test: promote non-existent entry -> ValueError."""
+        with pytest.raises(ValueError, match="not found"):
+            store.promote_kb_draft(draft_id="nonexistent-draft")
+
+    def test_promote_raw_entry_raises_error(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Negative test: promote a Raw entry (not Draft) -> ValueError."""
+        with pytest.raises(ValueError, match="not a Draft"):
+            store.promote_kb_draft(draft_id=raw_entry_ids[0])
+
+    def test_promote_preserves_entry_id(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Unit test: entry_id stays the same after promotion."""
+        draft = store.create_kb_draft(
+            raw_ids=[raw_entry_ids[0]],
+            title="ID preservation test",
+        )
+        original_id = draft.entry_id
+        store.promote_kb_draft(draft_id=original_id)
+        meta = store.index.get_entry(original_id)
+        assert meta is not None
+        assert meta["entry_id"] == original_id
+
+    def test_promote_does_not_delete_other_tiers(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Unit test: existing Raw entries are untouched after promotion."""
+        draft = store.create_kb_draft(
+            raw_ids=[raw_entry_ids[0]],
+            title="Non-destructive promote",
+        )
+        store.promote_kb_draft(draft_id=draft.entry_id)
+        # Raw entry should still exist
+        raw_meta = store.index.get_entry(raw_entry_ids[0])
+        assert raw_meta is not None
+        assert raw_meta["tier"] == "01-Raw"
+
+    def test_promote_cli_integration(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
+        """Integration test: simulate CLI promote via direct API call
+        (matching the CLI pattern exactly)."""
+        draft = store.create_kb_draft(
+            raw_ids=[raw_entry_ids[0]],
+            title="CLI integration draft",
+        )
+        # Same call pattern as the CLI handler
+        result = store.promote_kb_draft(draft_id=draft.entry_id)
+        # Verify the result dict structure matches what CLI outputs
+        assert "status" in result
+        assert "draft_id" in result
+        assert "old_path" in result
+        assert "new_path" in result
+        assert "promoted_at" in result
+        # Verify the promoted entry exists in 03-Wiki
+        meta = store.index.get_entry(draft.entry_id)
+        assert meta is not None
+        assert meta["tier"] == "03-Wiki"
+        assert Path(result["new_path"]).exists()
+
+
+# ===================================================================
+# _ensure_not_wiki (03-Wiki append-only guard)
+# ===================================================================
+
+
+class TestEnsureNotWiki:
+    def test_store_entry_to_03_wiki_raises_permission_error(
+        self, store: KBStore, sample_item_1: Item
+    ) -> None:
+        """Negative test: agent cannot write directly to 03-Wiki via store_entry()."""
+        with pytest.raises(PermissionError, match="03-Wiki is append-only"):
+            store.store_entry(sample_item_1, tier="03-Wiki")
+
+    def test_store_entry_to_01_raw_is_allowed(
+        self, store: KBStore, sample_item_1: Item
+    ) -> None:
+        """Unit test: writing to 01-Raw is not blocked."""
+        entry = store.store_entry(sample_item_1)
+        assert entry.tier == "01-Raw"
+        assert Path(entry.file_path).exists()

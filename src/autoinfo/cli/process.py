@@ -32,15 +32,21 @@ def process(
         "--check-factual",
         help="Run G4 factual consistency gate (LLM-based check of summary vs source)",
     ),
+    check_translation: bool = typer.Option(
+        False,
+        "--check-translation",
+        help="Run G5 translation accuracy gate (LLM-based check of translation vs source)",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Process collected items (LLM extraction, quality gates, KB storage)."""
+    """Process collected items (LLM extraction, quality gates G1-G5, KB storage)."""
     try:
         result = run_processing(
             domain=domain,
             model=model,
             batch_size=batch_size,
             check_factual=check_factual,
+            check_translation=check_translation,
         )
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)

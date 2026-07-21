@@ -1268,6 +1268,21 @@ class KBStore:
     # Write
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _ensure_not_wiki(file_path: str | Path) -> None:
+        """Raise ``PermissionError`` if *file_path* targets the 03-Wiki tier.
+
+        03-Wiki is append-only.  Only ``promote_kb_draft()`` may write
+        entries into this tier — agent-facing write methods must reject
+        any attempt to create or modify files under ``03-Wiki/``.
+        """
+        path_str = str(file_path)
+        if "/03-Wiki/" in path_str or path_str.endswith("/03-Wiki"):
+            raise PermissionError(
+                "03-Wiki is append-only. "
+                "Only promote_kb_draft() can write here."
+            )
+
     def store_entry(
         self,
         item: Item,
@@ -1294,6 +1309,11 @@ class KBStore:
         -------
         KBEntry
             The newly created entry (also persisted to disk + index).
+
+        Raises
+        ------
+        PermissionError
+            If *tier* is "03-Wiki" (append-only — use ``promote_kb_draft()``).
         """
         # --- derive metadata ---------------------------------------------------
         domain = item.domain or "default"
@@ -1309,6 +1329,9 @@ class KBStore:
         file_dir = self.base_path / domain / tier / topic
         file_name = f"{date_str}-{slug}.md"
         file_path = file_dir / file_name
+
+        # 03-Wiki is append-only — reject agent-facing writes here
+        self._ensure_not_wiki(file_path)
 
         # --- parse quality gate results ----------------------------------------
         relevance_score: float = 0.0
@@ -1807,6 +1830,117 @@ class KBStore:
             raise ValueError(
                 f"Unknown action '{action}'. Use 'back_to_raw' or 'archive'."
             )
+
+    def promote_kb_draft(self, draft_id: str) -> dict[str, Any]:
+        """Promote a Draft entry to the 03-Wiki tier (human-only).
+
+        Reads the file from ``02-Draft/``, adds ``human_promoted: true``
+        and ``promoted_at`` to the frontmatter, moves the file to
+        ``03-Wiki/`` under the same domain and topic, and updates the
+        SQLite index tier to ``03-Wiki``.
+
+        Parameters
+        ----------
+        draft_id:
+            Entry ID of the Draft to promote.
+
+        Returns
+        -------
+        dict
+            Summary of the operation including old/new paths.
+
+        Raises
+        ------
+        ValueError
+            If *draft_id* is not found or not in the 02-Draft tier.
+        FileNotFoundError
+            If the Draft file is missing from disk.
+        """
+        meta = self.index.get_entry(draft_id)
+        if meta is None:
+            raise ValueError(f"Draft entry '{draft_id}' not found")
+
+        if meta.get("tier") != "02-Draft":
+            raise ValueError(
+                f"Entry '{draft_id}' is not a Draft "
+                f"(tier: {meta.get('tier', 'unknown')})"
+            )
+
+        file_path = Path(meta["file_path"])
+        if not file_path.is_file():
+            raise FileNotFoundError(
+                f"Draft file not found on disk: {file_path}"
+            )
+
+        raw_content = file_path.read_text(encoding="utf-8")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if raw_content.startswith("---"):
+            end = raw_content.find("---", 3)
+            if end != -1:
+                fm_text = raw_content[3:end]
+                fm_data = yaml.safe_load(fm_text) or {}
+                fm_data["human_promoted"] = True
+                fm_data["promoted_at"] = now_iso
+                new_fm = yaml.dump(
+                    fm_data,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    width=120,
+                )
+                body = raw_content[end + 3 :].lstrip("\n")
+                raw_content = f"---\n{new_fm}---\n\n{body}"
+            else:
+                raw_content = (
+                    f"---\nhuman_promoted: true\npromoted_at: {now_iso}\n"
+                    f"---\n\n{raw_content}"
+                )
+        else:
+            raw_content = (
+                f"---\nhuman_promoted: true\npromoted_at: {now_iso}\n"
+                f"---\n\n{raw_content}"
+            )
+
+        parts = list(file_path.parts)
+        tier_idx = None
+        for i, p in enumerate(parts):
+            if p == "02-Draft":
+                tier_idx = i
+                break
+        if tier_idx is not None:
+            parts[tier_idx] = "03-Wiki"
+        new_path = Path(*parts)
+
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_text(raw_content, encoding="utf-8")
+        file_path.unlink()
+
+        entry = KBEntry(
+            entry_id=draft_id,
+            title=meta["title"],
+            domain=meta["domain"],
+            tier="03-Wiki",
+            source_url=meta.get("source_url", ""),
+            source_type=meta.get("source_type", ""),
+            source_platform=meta.get("source_platform", ""),
+            collected_at=meta.get("collected_at", ""),
+            summary=meta.get("summary", ""),
+            tags=json.loads(meta.get("tags", "[]")),
+            quality_tier=meta.get("quality_tier", 1),
+            relevance_score=meta.get("relevance_score", 0.0),
+            dedup_status=meta.get("dedup_status", "unique"),
+            file_path=str(new_path),
+        )
+        self.index.index_entry(entry)
+
+        return {
+            "status": "promoted",
+            "draft_id": draft_id,
+            "old_path": str(file_path),
+            "new_path": str(new_path),
+            "promoted_at": now_iso,
+        }
 
     def list_kb_tier(
         self,

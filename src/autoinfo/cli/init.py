@@ -6,6 +6,7 @@ optionally populates it with a demo domain definition.
 """
 
 
+import os
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -22,7 +23,14 @@ _DEFAULT_CONFIG = _DATA_DIR / "default_config.yaml"
 _DEMO_DOMAINS_DIR = _DATA_DIR / "domains"
 
 # Directory structure created inside .autoinfo/
-_REQUIRED_SUBDIRS = ["knowledge/01-Raw", "collections", "outputs"]
+_REQUIRED_SUBDIRS = [
+    "knowledge/00-Inbox",
+    "knowledge/01-Raw",
+    "knowledge/02-Draft",
+    "knowledge/03-Wiki",
+    "collections",
+    "outputs",
+]
 
 
 def _list_demo_domains() -> list[str]:
@@ -124,51 +132,15 @@ def _generate_config(
     return True
 
 
-@app.command()
-def init(
-    demo: Optional[str] = typer.Option(
-        None,
-        "--demo",
-        "-d",
-        help="Demo domain to initialize (omit to list available domains).",
-        show_default=False,
-    ),
-) -> None:
-    """Initialize AutoInfo project skeleton.
-
-    Creates the .autoinfo/ directory structure with default configuration
-    and (optionally) a demo domain definition.
-    """
-    # --- No --demo flag: list available domains ---
-    if not demo:
-        _print_demo_domains()
-        return
-
-    demo = demo.strip()
-
-    # --- Validate demo domain exists ---
-    demo_sources = _DEMO_DOMAINS_DIR / demo / "sources.yaml"
-    if not demo_sources.is_file():
-        typer.echo(
-            f"  ERROR  unknown demo domain: '{demo}'. "
-            f"Run `autoinfo init` without --demo to see available domains.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    # --- Create .autoinfo/ at current working directory ---
-    autoinfo_dir = Path.cwd() / ".autoinfo"
-    _ensure_dir(autoinfo_dir)
-
-    # --- Generate config.yaml ---
+def _run_init(domain: str, autoinfo_dir: Path) -> None:
+    """Core init logic: generate config, copy sources, create subdirs, print next steps."""
     config_dst = autoinfo_dir / "config.yaml"
-    _generate_config(demo, config_dst)
+    _generate_config(domain, config_dst)
 
-    # --- Copy sources.yaml ---
+    demo_sources = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     sources_dst = autoinfo_dir / "sources.yaml"
     _copy_template(demo_sources, sources_dst)
 
-    # --- Create required sub-directories ---
     for sub in _REQUIRED_SUBDIRS:
         d = autoinfo_dir / sub
         if _ensure_dir(d):
@@ -176,7 +148,6 @@ def init(
         else:
             typer.echo(f"  SKIP  {d}/  (already exists)")
 
-    # --- Load first topic name for example command ---
     first_topic = None
     if demo_sources.is_file():
         with open(demo_sources) as f:
@@ -185,9 +156,8 @@ def init(
         if topics:
             first_topic = topics[0].get("name")
 
-    # --- Success message with next steps ---
     typer.echo()
-    typer.echo(f"✅ AutoInfo initialized for '{demo}'.")
+    typer.echo(f"✅ AutoInfo initialized for '{domain}'.")
     typer.echo()
     typer.echo("Next steps:")
     typer.echo("  1. Set your LLM API key:")
@@ -195,9 +165,87 @@ def init(
     typer.echo()
     typer.echo("  2. Collect from sources:")
     if first_topic:
-        typer.echo(f"     autoinfo collect --domain {demo} --topic \"{first_topic}\" --limit 5")
+        typer.echo(f"     autoinfo collect --domain {domain} --topic \"{first_topic}\" --limit 5")
     else:
-        typer.echo(f"     autoinfo collect --domain {demo} --limit 5")
+        typer.echo(f"     autoinfo collect --domain {domain} --limit 5")
     typer.echo()
     typer.echo("  3. Process collected items:")
-    typer.echo(f"     autoinfo process --domain {demo}")
+    typer.echo(f"     autoinfo process --domain {domain}")
+
+
+@app.command()
+def init(
+    demo: Optional[str] = typer.Option(
+        None,
+        "--demo",
+        "-d",
+        help="Demo domain to initialize (omit to enter interactive mode).",
+        show_default=False,
+    ),
+    interactive: bool = typer.Option(
+        True,
+        "--interactive/--no-interactive",
+        "-i",
+        help="Run in interactive mode (prompt for domain, LLM provider, API key).",
+    ),
+) -> None:
+    """Initialize AutoInfo project skeleton.
+
+    Creates the .autoinfo/ directory structure with default configuration
+    and (optionally) a demo domain definition.
+
+    Without --demo, the interactive wizard guides you through domain
+    selection, LLM provider setup, and optional API key configuration.
+    """
+    if demo:
+        demo = demo.strip()
+
+        demo_sources = _DEMO_DOMAINS_DIR / demo / "sources.yaml"
+        if not demo_sources.is_file():
+            typer.echo(
+                f"  ERROR  unknown demo domain: '{demo}'. "
+                f"Run `autoinfo init --no-interactive` to see available domains.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        autoinfo_dir = Path.cwd() / ".autoinfo"
+        _ensure_dir(autoinfo_dir)
+
+        _run_init(demo, autoinfo_dir)
+        return
+
+    if not interactive:
+        _print_demo_domains()
+        return
+
+    domains = _list_demo_domains()
+    if not domains:
+        typer.echo("No demo domains found. Cannot initialize interactively.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo("Available demo domains:")
+    for i, d in enumerate(domains, 1):
+        typer.echo(f"  [{i}] {d}")
+
+    choice = typer.prompt("Select a demo domain", type=int)
+    if choice < 1 or choice > len(domains):
+        typer.echo(f"  ERROR  invalid choice: {choice}", err=True)
+        raise typer.Exit(code=1)
+
+    selected_domain = domains[choice - 1]
+
+    provider = typer.prompt("LLM provider", default="openrouter")
+    typer.echo(f"  Using provider: {provider}")
+
+    api_key = typer.prompt("Set AUTOINFO_LLM_API_KEY (optional)", default="")
+    if api_key:
+        os.environ["AUTOINFO_LLM_API_KEY"] = api_key
+        typer.echo("  AUTOINFO_LLM_API_KEY set for this session.")
+    else:
+        typer.echo("  SKIP  LLM API key not set (use export AUTOINFO_LLM_API_KEY=... later)")
+
+    autoinfo_dir = Path.cwd() / ".autoinfo"
+    _ensure_dir(autoinfo_dir)
+
+    _run_init(selected_domain, autoinfo_dir)

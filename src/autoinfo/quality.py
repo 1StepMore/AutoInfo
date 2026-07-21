@@ -1,13 +1,14 @@
-"""Quality gates G1-G4 for the AutoInfo pipeline.
+"""Quality gates G1-G5 for the AutoInfo pipeline.
 
 Runs advisory checks on collected items: source authority (G1),
-dedup status (G2), relevance scoring (G3), and factual consistency (G4).
+dedup status (G2), relevance scoring (G3), factual consistency (G4),
+and translation accuracy (G5).
 
 G4 is optional — it requires an LLM call and is only run when explicitly
 requested via the ``--check-factual`` flag.
 
-G5 (translation accuracy) is not yet implemented — it will be added in a
-future release.
+G5 is optional — it requires an LLM call and is only run when explicitly
+requested via the ``--check-translation`` flag.
 """
 
 from __future__ import annotations
@@ -404,6 +405,171 @@ class G4FactualConsistency:
                 details={
                     "contradiction": None,
                     "explanation": f"LLM check failed: {exc}",
+                },
+            )
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_litellm() -> Any:
+        """Lazily import and return the ``litellm`` module.
+
+        Returns ``None`` when the package is not available (graceful
+        degradation for environments where LiteLLM is not installed).
+        """
+        try:
+            import litellm  # noqa: PLC0415 — deferred import
+
+            return litellm
+        except (ImportError, ModuleNotFoundError):
+            logger.error("litellm is not installed — run 'pip install litellm'")
+            return None
+
+
+# ---------------------------------------------------------------------------
+# G5 — Translation Accuracy
+# ---------------------------------------------------------------------------
+
+
+class G5TranslationAccuracy:
+    """Check if the translation faithfully represents the source text.
+
+    This gate sends an LLM prompt comparing the source content with its
+    translation and asks the model to determine whether the translation
+    faithfully preserves meaning, tone, and factual claims.
+
+    The gate is **advisory only** — it never blocks or fails items.
+
+    Parameters
+    ----------
+    model : str
+        LiteLLM model string (e.g. ``"openrouter/deepseek/deepseek-chat"``).
+    """
+
+    SYSTEM_PROMPT = (
+        "You are a quality assurance checker specialized in translation accuracy. "
+        "Compare the source text with its translation. Determine if the translation "
+        "faithfully represents the source content, preserving meaning, tone, and "
+        "factual claims. "
+        'Answer ONLY with JSON: {"faithful": bool, "explanation": str, "issues": [str]}'
+    )
+
+    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat") -> None:
+        self._model = model
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def check(self, item: Item, extraction: ExtractionResult) -> QualityResult:
+        """Send an LLM prompt to compare *item* content with its translation.
+
+        Parameters
+        ----------
+        item:
+            The collected item whose content is used as the source of truth.
+        extraction:
+            The LLM extraction result whose ``custom_fields["translation"]``
+            contains the translated text to check.
+
+        Returns
+        -------
+        QualityResult
+            ``flagged=True`` when the translation is found to be unfaithful.
+            ``flagged=False`` when the translation is faithful.
+            If the LLM call fails or returns malformed JSON, the item is flagged
+            as uncertain (``faithful: None``).
+        """
+        # Get translation from extraction custom_fields
+        translation = (extraction.custom_fields or {}).get("translation", "")
+
+        # No translation to check — trivially accurate
+        if not translation:
+            return QualityResult(
+                gate_name="G5-TranslationAccuracy",
+                passed=True,
+                flagged=False,
+                details={
+                    "faithful": True,
+                    "explanation": "No translation to check",
+                    "issues": [],
+                },
+            )
+
+        _litellm = self._get_litellm()
+        if _litellm is None:
+            return QualityResult(
+                gate_name="G5-TranslationAccuracy",
+                passed=False,
+                flagged=True,
+                details={
+                    "faithful": None,
+                    "explanation": "litellm is not available",
+                    "issues": [],
+                },
+            )
+
+        try:
+            response = _litellm.completion(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"SOURCE TEXT: {item.content[:4000]}\n\n"
+                            f"TRANSLATION: {translation}"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=500,
+                temperature=0.0,
+            )
+
+            content: str = response.choices[0].message.content  # type: ignore[union-attr]
+            parsed = json.loads(content)
+            faithful = bool(parsed.get("faithful", False))
+            explanation = str(parsed.get("explanation", ""))
+            issues = list(parsed.get("issues", []))
+
+            return QualityResult(
+                gate_name="G5-TranslationAccuracy",
+                passed=faithful,
+                score=1.0 if faithful else 0.0,
+                flagged=not faithful,
+                details={
+                    "faithful": faithful,
+                    "explanation": explanation,
+                    "issues": issues,
+                },
+            )
+
+        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+            logger.warning("G5 malformed LLM response: %s", exc)
+            return QualityResult(
+                gate_name="G5-TranslationAccuracy",
+                passed=False,
+                flagged=True,
+                details={
+                    "faithful": None,
+                    "explanation": f"Failed to parse LLM response: {exc}",
+                    "issues": [],
+                },
+            )
+
+        except Exception as exc:
+            logger.warning("G5 LLM call failed: %s", exc)
+            return QualityResult(
+                gate_name="G5-TranslationAccuracy",
+                passed=False,
+                flagged=True,
+                details={
+                    "faithful": None,
+                    "explanation": f"LLM check failed: {exc}",
+                    "issues": [],
                 },
             )
 

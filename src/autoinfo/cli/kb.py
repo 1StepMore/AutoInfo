@@ -150,8 +150,14 @@ def list_tiers(
 @app.command()
 def promote(
     entry_id: str = typer.Option(
-        ..., "--entry-id", help="Entry ID to promote to draft"
+        ..., "--entry-id", help="Entry ID of the Draft to promote to 03-Wiki"
     ),
 ) -> None:
-    """Promote a raw entry to draft (human-only). Not yet implemented."""
-    typer.echo("not yet implemented")
+    """Promote a Draft entry to 03-Wiki (human-only, append-only)."""
+    store = KBStore()
+    try:
+        result = store.promote_kb_draft(draft_id=entry_id)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)

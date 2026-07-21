@@ -209,6 +209,11 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER DEFAULT 3")
             except Exception:
                 pass
+            # Migration: add custom_fields JSON column (v1.1+)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN custom_fields TEXT DEFAULT '{}'")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -270,14 +275,26 @@ class SQLiteIndex:
 
     def index_entry(self, entry: KBEntry) -> None:
         """Insert or replace *entry* in the SQLite index."""
+        # Build custom_fields JSON from KBEntry expanded fields
+        custom_fields: dict[str, Any] = {}
+        custom_fields["author"] = entry.author
+        custom_fields["source_ids"] = entry.source_ids
+        custom_fields["status"] = entry.status
+        custom_fields["related_concepts"] = entry.related_concepts
+        custom_fields["linked_entries"] = entry.linked_entries
+        # Merge any existing custom_fields from the entry
+        if entry.custom_fields:
+            custom_fields.update(entry.custom_fields)
+
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO entries
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
-                     relevance_score, dedup_status, file_path, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     relevance_score, dedup_status, file_path, tags,
+                     custom_fields)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
@@ -294,6 +311,7 @@ class SQLiteIndex:
                     entry.dedup_status,
                     entry.file_path,
                     json.dumps(entry.tags, ensure_ascii=False),
+                    json.dumps(custom_fields, ensure_ascii=False),
                 ),
             )
 
@@ -1679,6 +1697,9 @@ class KBStore:
             dedup_status="unique",
             file_path=str(file_path),
             custom_fields={"source_raw_ids": source_raw_ids},
+            # Expanded frontmatter fields
+            source_ids=raw_ids,
+            status="active",
         )
 
         # Write Markdown file
@@ -1778,6 +1799,9 @@ class KBStore:
             new_path.write_text(raw_content, encoding="utf-8")
             file_path.unlink()
 
+            custom_fields_raw = meta.get("custom_fields") or "{}"
+            draft_custom_fields: dict[str, Any] = json.loads(custom_fields_raw)
+
             entry = KBEntry(
                 entry_id=draft_id,
                 title=meta["title"],
@@ -1793,6 +1817,12 @@ class KBStore:
                 relevance_score=meta.get("relevance_score", 0.0),
                 dedup_status=meta.get("dedup_status", "unique"),
                 file_path=str(new_path),
+                custom_fields=draft_custom_fields,
+                author=draft_custom_fields.get("author", ""),
+                source_ids=draft_custom_fields.get("source_ids", []),
+                status=draft_custom_fields.get("status", "active"),
+                related_concepts=draft_custom_fields.get("related_concepts", []),
+                linked_entries=draft_custom_fields.get("linked_entries", []),
             )
             self.index.index_entry(entry)
 
@@ -1916,6 +1946,9 @@ class KBStore:
         new_path.write_text(raw_content, encoding="utf-8")
         file_path.unlink()
 
+        custom_fields_raw = meta.get("custom_fields") or "{}"
+        draft_custom_fields: dict[str, Any] = json.loads(custom_fields_raw)
+
         entry = KBEntry(
             entry_id=draft_id,
             title=meta["title"],
@@ -1931,6 +1964,12 @@ class KBStore:
             relevance_score=meta.get("relevance_score", 0.0),
             dedup_status=meta.get("dedup_status", "unique"),
             file_path=str(new_path),
+            custom_fields=draft_custom_fields,
+            author=draft_custom_fields.get("author", ""),
+            source_ids=draft_custom_fields.get("source_ids", []),
+            status=draft_custom_fields.get("status", "active"),
+            related_concepts=draft_custom_fields.get("related_concepts", []),
+            linked_entries=draft_custom_fields.get("linked_entries", []),
         )
         self.index.index_entry(entry)
 
@@ -2247,6 +2286,12 @@ class KBStore:
                         relevance_score=fm.get("relevance_score", 0.0),
                         dedup_status=fm.get("dedup_status", "unique"),
                         file_path=str(md_file),
+                        # Expanded frontmatter fields (safe defaults if absent)
+                        author=fm.get("author", ""),
+                        source_ids=fm.get("source_ids", []),
+                        status=fm.get("status", "active"),
+                        related_concepts=fm.get("related_concepts", []),
+                        linked_entries=fm.get("linked_entries", []),
                     )
                     self.index.index_entry(entry)
                 files_found += 1
@@ -2292,6 +2337,14 @@ def _build_frontmatter(
         "dedup_status": entry.dedup_status,
         "language": entry.language,
     }
+
+    # Expanded frontmatter fields (Draft+ tiers only — 01-Raw stays lean)
+    if entry.tier != "01-Raw":
+        data["author"] = entry.author
+        data["source_ids"] = entry.source_ids
+        data["status"] = entry.status
+        data["related_concepts"] = entry.related_concepts
+        data["linked_entries"] = entry.linked_entries
 
     # Include quality gate flags in frontmatter for transparency
     if quality_results:

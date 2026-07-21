@@ -21,7 +21,7 @@ import pytest
 import yaml
 
 from autoinfo.kb import KBStore
-from autoinfo.models import Item
+from autoinfo.models import Item, KBEntry
 
 
 # ===================================================================
@@ -380,6 +380,181 @@ class TestSQLiteIndexTier:
         assert len(drafts) >= 1
         for d in drafts:
             assert d["tier"] == "02-Draft"
+
+
+# ===================================================================
+# Expanded frontmatter fields — author, source_ids, status, etc.
+# ===================================================================
+
+
+class TestExpandedFrontmatter:
+    def test_frontmatter_has_expanded_fields(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+        """Draft frontmatter must include all 5 new fields."""
+        draft = store.create_kb_draft(
+            raw_ids=raw_entry_ids,
+            title="Expanded frontmatter test",
+            summary="Testing new frontmatter fields",
+            tags=["test"],
+        )
+        raw = Path(draft.file_path).read_text(encoding="utf-8")
+        end = raw.find("---", 3)
+        fm = yaml.safe_load(raw[3:end])
+
+        assert "author" in fm, "Missing author in frontmatter"
+        assert "source_ids" in fm, "Missing source_ids in frontmatter"
+        assert "status" in fm, "Missing status in frontmatter"
+        assert "related_concepts" in fm, "Missing related_concepts in frontmatter"
+        assert "linked_entries" in fm, "Missing linked_entries in frontmatter"
+
+        # Check default values
+        assert fm["author"] == ""
+        assert fm["source_ids"] == raw_entry_ids
+        assert fm["status"] == "active"
+        assert fm["related_concepts"] == []
+        assert fm["linked_entries"] == []
+
+    def test_draft_custom_fields_stored_in_sqlite(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+        """New fields should be serialized into custom_fields JSON in SQLite."""
+        draft = store.create_kb_draft(
+            raw_ids=raw_entry_ids,
+            title="SQLite custom_fields test",
+        )
+        meta = store.index.get_entry(draft.entry_id)
+        assert meta is not None
+
+        custom_fields_raw = meta.get("custom_fields") or "{}"
+        cf = json.loads(custom_fields_raw)
+        assert cf.get("author") == ""
+        assert cf.get("source_ids") == raw_entry_ids
+        assert cf.get("status") == "active"
+        assert cf.get("related_concepts") == []
+        assert cf.get("linked_entries") == []
+
+    def test_raw_entry_does_not_have_expanded_fields(self, store: KBStore, sample_item_1: Item) -> None:
+        """01-Raw entries should NOT contain the expanded frontmatter fields."""
+        entry = store.store_entry(sample_item_1)
+        raw = Path(entry.file_path).read_text(encoding="utf-8")
+        end = raw.find("---", 3)
+        fm = yaml.safe_load(raw[3:end])
+
+        assert "author" not in fm, "author should not appear in 01-Raw frontmatter"
+        assert "source_ids" not in fm, "source_ids should not appear in 01-Raw frontmatter"
+        assert "status" not in fm, "status should not appear in 01-Raw frontmatter"
+        assert "related_concepts" not in fm, "related_concepts should not appear in 01-Raw frontmatter"
+        assert "linked_entries" not in fm, "linked_entries should not appear in 01-Raw frontmatter"
+
+    def test_expanded_fields_survive_promotion(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+        """Expanded fields should carry forward through Draft → Wiki promotion."""
+        draft = store.create_kb_draft(
+            raw_ids=raw_entry_ids,
+            title="Promotion frontmatter test",
+        )
+        result = store.promote_kb_draft(draft_id=draft.entry_id)
+        raw = Path(result["new_path"]).read_text(encoding="utf-8")
+        end = raw.find("---", 3)
+        fm = yaml.safe_load(raw[3:end])
+
+        assert "author" in fm
+        assert "source_ids" in fm
+        assert "status" in fm
+        assert "related_concepts" in fm
+        assert "linked_entries" in fm
+        # Status should still be "active" after promotion
+        assert fm["status"] == "active"
+        assert fm["source_ids"] == raw_entry_ids
+
+    def test_backwards_compatibility_no_custom_fields(self, store: KBStore) -> None:
+        """Entries without custom_fields column or with empty JSON should load fine."""
+        entry = KBEntry(
+            entry_id="legacy-entry",
+            title="Legacy entry",
+            domain="medical-research",
+            tier="02-Draft",
+            source_url="https://example.com/legacy",
+            source_type="api",
+            source_platform="pubmed",
+            collected_at="2026-01-01T00:00:00Z",
+            summary="Legacy entry without expanded fields",
+            tags=["legacy"],
+            quality_tier=1,
+            relevance_score=0.0,
+            dedup_status="unique",
+            file_path="/tmp/nonexistent.md",
+        )
+        # Index without custom_fields column value — simulate legacy row
+        with store.index._connect() as conn:
+            conn.execute(
+                """INSERT INTO entries
+                   (entry_id, title, domain, tier, source_url, source_type,
+                    source_platform, collected_at, summary, quality_tier,
+                    relevance_score, dedup_status, file_path, tags)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    entry.entry_id,
+                    entry.title,
+                    entry.domain,
+                    entry.tier,
+                    entry.source_url,
+                    entry.source_type,
+                    entry.source_platform,
+                    entry.collected_at,
+                    entry.summary,
+                    entry.quality_tier,
+                    entry.relevance_score,
+                    entry.dedup_status,
+                    entry.file_path,
+                    json.dumps(entry.tags),
+                ),
+            )
+
+        # Should load without error
+        meta = store.index.get_entry(entry.entry_id)
+        assert meta is not None
+        assert meta["entry_id"] == "legacy-entry"
+
+        # custom_fields should be empty string from SQLite
+        cf_raw = meta.get("custom_fields") or "{}"
+        cf = json.loads(cf_raw)
+        assert cf == {}
+        # KBEntry constructed from filtered meta should have defaults
+        kb_fields = {
+            k: v for k, v in meta.items()
+            if k in KBEntry.__dataclass_fields__
+        }
+        kb_fields["custom_fields"] = cf
+        loaded = KBEntry(**kb_fields)
+        assert loaded.author == ""
+        assert loaded.source_ids == []
+        assert loaded.status == "active"
+        assert loaded.related_concepts == []
+        assert loaded.linked_entries == []
+
+    def test_expanded_fields_persist_after_reject(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+        """Expanded fields should survive Draft → Raw demotion (reject).
+
+        Note: reject modifies the existing file frontmatter in-place
+        (adding rejection_reason) rather than rebuilding via
+        _build_frontmatter(), so expanded fields from the Draft persist
+        in the file even after demotion to 01-Raw.
+        """
+        draft = store.create_kb_draft(
+            raw_ids=raw_entry_ids,
+            title="Reject field preservation test",
+        )
+        result = store.reject_kb_draft(draft_id=draft.entry_id, reason="Test")
+        raw = Path(result["new_path"]).read_text(encoding="utf-8")
+        end = raw.find("---", 3)
+        fm = yaml.safe_load(raw[3:end])
+
+        # Expanded fields persist in file because reject modified in-place
+        assert "author" in fm
+        # SQLite custom_fields should still have them
+        meta = store.index.get_entry(draft.entry_id)
+        assert meta is not None
+        cf = json.loads(meta.get("custom_fields") or "{}")
+        assert cf.get("source_ids") == raw_entry_ids
+        # Entry is now 01-Raw in SQLite
+        assert meta["tier"] == "01-Raw"
 
 
 # ===================================================================

@@ -79,6 +79,12 @@ class KBEntry:
     dedup_status: str = "unique"
     file_path: str = ""
     custom_fields: dict[str, Any] = field(default_factory=dict)
+    # --- KB frontmatter fields expanded in v1.1 ---
+    author: str = ""
+    source_ids: list[str] = field(default_factory=list)
+    status: str = "active"  # "active", "deprecated", "archived"
+    related_concepts: list[str] = field(default_factory=list)
+    linked_entries: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

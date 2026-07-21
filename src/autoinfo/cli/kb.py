@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Knowledge Base CLI — search, list, and manage KB entries.
 
 Usage::
@@ -8,7 +9,6 @@ Usage::
     autoinfo kb promote --entry-id kb-001
 """
 
-from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -66,12 +66,12 @@ def reindex(
 
 @app.command(name="create-draft")
 def create_draft(
-    raw_ids: list[str] = typer.Option(
+    raw_ids = typer.Option(
         ..., "--raw-id", help="Raw entry ID(s) to compile into a Draft (repeatable)"
     ),
     title: str = typer.Option(..., "--title", help="Title for the new Draft entry"),
     summary: str = typer.Option("", "--summary", help="Optional summary text"),
-    tags: list[str] = typer.Option(
+    tags = typer.Option(
         [], "--tag", help="Optional tag (repeatable)"
     ),
 ) -> None:

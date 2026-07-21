@@ -1,3 +1,4 @@
+from __future__ import annotations
 """AutoInfo CLI entry point."""
 
 import typer

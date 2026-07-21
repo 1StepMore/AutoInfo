@@ -1,10 +1,10 @@
+from __future__ import annotations
 """`autoinfo init` — project skeleton generator.
 
 Creates the `.autoinfo/` directory structure, default config, and
 optionally populates it with a demo domain definition.
 """
 
-from __future__ import annotations
 
 import shutil
 from pathlib import Path

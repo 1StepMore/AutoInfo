@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Cron CLI — manage scheduled collection jobs.
 
 Usage::
@@ -8,7 +9,6 @@ Usage::
     autoinfo cron remove-schedule --name nightly
 """
 
-from __future__ import annotations
 
 import json
 import logging
@@ -146,7 +146,7 @@ def run_due_schedules(
     dry_run: bool = False,
     schedule_filter: str | None = None,
     json_output: bool = False,
-) -> list[dict[str, Any]]:
+) -> list:  # list of result dicts
     """Run all due schedules, returning a list of result dicts.
 
     Parameters
@@ -170,7 +170,7 @@ def run_due_schedules(
 
     schedules = load_schedules()
     now = datetime.now(timezone.utc)
-    results: list[dict[str, Any]] = []
+    results = []
 
     for name, sched in schedules.items():
         if schedule_filter and name != schedule_filter:

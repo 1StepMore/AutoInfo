@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Sources CLI — manage collection sources.
 
 Usage::
@@ -8,7 +9,6 @@ Usage::
     autoinfo sources test --url https://... --type api
 """
 
-from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -165,7 +165,7 @@ def add_sources(
 
     with open(src_path, encoding="utf-8") as fh:
         try:
-            sources_list: list[dict[str, Any]] = json.load(fh)
+            sources_list = json.load(fh)
         except json.JSONDecodeError as exc:
             typer.echo(f"Error: Invalid JSON in {filename}: {exc}", err=True)
             raise typer.Exit(1)

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Summaries CLI — browse, flag, and inspect collected summaries.
 
 Usage::
@@ -10,7 +11,6 @@ Usage::
     autoinfo summaries show <entry-id>
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any
@@ -74,7 +74,7 @@ def list_(
 @app.command()
 def flag(
     entry_id: str = typer.Argument(..., help="Entry ID to flag for KB inclusion"),
-    tag: list[str] = typer.Option(
+    tag = typer.Option(
         [], "--tag", help="Tags to apply (can be repeated)"
     ),
     importance: int = typer.Option(
@@ -153,7 +153,7 @@ def show(
         _print_summary_human(result)
 
 
-def _print_human(entries: list[dict[str, Any]]) -> None:
+def _print_human(entries) -> None:
     """Print entries in a human-readable table."""
     if not entries:
         typer.echo("No entries found.")

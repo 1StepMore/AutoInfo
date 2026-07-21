@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Process CLI — LLM extraction and quality gates pipeline.
 
 Usage::
@@ -5,7 +6,6 @@ Usage::
     autoinfo process --domain medical-research [--model deepseek/deepseek-chat] [--json]
 """
 
-from __future__ import annotations
 
 import json
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Output CLI — generate digests, reports, tutorials, presentations, exports, and translations.
 
 Usage::
@@ -13,7 +14,6 @@ Usage::
     autoinfo output translate --content "Hello" --source-lang en --target-lang fr
 """
 
-from __future__ import annotations
 
 import json
 

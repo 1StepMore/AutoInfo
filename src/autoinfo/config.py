@@ -32,6 +32,7 @@ class LLMConfig:
     provider: str = ""
     model: str = ""
     api_key: str = ""
+    base_url: str = ""
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
@@ -152,6 +153,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             provider=str(f.get("provider", "")),
             model=str(f.get("model", "")),
             api_key=str(f.get("api_key", "")),
+            base_url=str(f.get("base_url", "")),
         )
         for f in fallback_raw
     ]
@@ -209,6 +211,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             provider=str(llm_raw.get("provider", "")),
             model=str(llm_raw.get("model", "")),
             api_key=str(llm_raw.get("api_key", "")),
+            base_url=str(llm_raw.get("base_url", "")),
             fallback=fallback,
             tasks=tasks,
         ),

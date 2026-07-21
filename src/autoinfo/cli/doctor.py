@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Doctor CLI — checks system health and configuration.
 
 Usage::
@@ -5,7 +6,6 @@ Usage::
     autoinfo doctor [--json]
 """
 
-from __future__ import annotations
 
 import json
 

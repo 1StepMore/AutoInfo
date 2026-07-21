@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Topics CLI — manage tracked topics.
 
 Usage::
@@ -7,7 +8,6 @@ Usage::
     autoinfo topics remove --domain medical --topic-id "IVF breakthroughs"
 """
 
-from __future__ import annotations
 
 import typer
 

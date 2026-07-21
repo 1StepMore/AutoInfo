@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Collect CLI — runs collection pipeline.
 
 Usage::
@@ -6,7 +7,6 @@ Usage::
         [--limit 20] [--dry-run] [--auto-process] [--json]
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any
@@ -35,7 +35,7 @@ def collect(
     # The `--source` option is repeatable, single-string pass-through is fine
     # because typer collects multiple `--source` flags into a tuple → string.
     # We normalise it into a list here.
-    sources: list[str] | None = None
+    sources = None
     if source:
         # source is a single string; split by comma or treat as single entry
         sources = [s.strip() for s in source.split(",") if s.strip()]

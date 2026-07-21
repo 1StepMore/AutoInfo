@@ -10,5 +10,6 @@ llm:
   provider: openrouter
   model: deepseek/deepseek-chat
   api_key: ${AUTOINFO_LLM_API_KEY}
+  # base_url: "https://api.openai.com/v1"  # optional: custom API endpoint
 
 domains: []

@@ -697,4 +697,4 @@ class TestHealthCheckV2:
         from autoinfo.mcp.server import _handle_health_check
 
         result = _handle_health_check()
-        assert result["tools_count"] == 42
+        assert result["tools_count"] == 50

@@ -98,6 +98,7 @@ class LLMExtractor:
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL
         self._model = f"{provider}/{model}"
+        self._base_url = config.llm.base_url
 
         # If the config carries an API key, let the environment variable take
         # it — LiteLLM reads OPENROUTER_API_KEY automatically for OpenRouter
@@ -270,6 +271,7 @@ class LLMExtractor:
             response_format={"type": "json_object"},
             max_tokens=2000,
             temperature=0.1,
+            api_base=self._base_url or None,
         )
 
         content: str = response.choices[0].message.content  # type: ignore[union-attr]

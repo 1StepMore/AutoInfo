@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Status CLI — system and collection status.
 
 Usage::
@@ -5,7 +6,6 @@ Usage::
     autoinfo status [--domain medical-research] [--json]
 """
 
-from __future__ import annotations
 
 import json
 

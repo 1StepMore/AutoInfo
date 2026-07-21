@@ -248,6 +248,83 @@ def _reset_progress(domain: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# CEFR classification helper (non-blocking, post-store)
+# ---------------------------------------------------------------------------
+
+
+def _classify_entry_cefr(
+    entry: Any,
+    item: Item,
+    config: Config,
+) -> None:
+    """Run CEFR classification on *item* and store result in entry frontmatter.
+
+    Called after ``store_entry()``.  Failures are logged but do **not**
+    propagate — classification must never block entry creation.
+
+    Steps
+    -----
+    1. Determine language from the item (detected language or config default).
+    2. If the language is not in ``config.cefr.languages``, skip.
+    3. Call ``classify_text()``.
+    4. If a level was returned (not "unknown"), write it to the frontmatter
+       of the entry's Markdown file as ``cefr: <level>``.
+    """
+    try:
+        # Determine language: use detected language, or fall back to "en"
+        lang = item.language or "en"
+        # Normalize: langdetect returns "zh-cn" etc. — take the base
+        lang = lang.split("-")[0] if lang else "en"
+
+        # Check if language is configured for CEFR
+        if lang not in config.cefr.languages:
+            return
+
+        # Build model config from the effective LLM config
+        model_config: dict[str, Any] = {}
+        if config.cefr.model:
+            model_config["model"] = config.cefr.model
+        elif config.llm.provider and config.llm.model:
+            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+        if config.llm.api_key:
+            model_config["api_key"] = config.llm.api_key
+        if config.llm.base_url:
+            model_config["base_url"] = config.llm.base_url
+
+        # Classify the text (title + content, truncated)
+        text_for_classification = f"{item.title}\n\n{item.content}"[:3000]
+        from autoinfo.cefr import classify_text
+
+        result = classify_text(
+            text=text_for_classification,
+            lang=lang,
+            model_config=model_config,
+        )
+
+        cefr_level = result.get("cefr_level", "unknown")
+        if cefr_level != "unknown":
+            from autoinfo.kb import update_frontmatter_field
+
+            update_frontmatter_field(
+                file_path=entry.file_path,
+                key="cefr",
+                value=cefr_level,
+            )
+            logger.debug(
+                "CEFR classification for %s: %s (confidence=%.2f)",
+                entry.entry_id,
+                cefr_level,
+                result.get("confidence", 0.0),
+            )
+    except Exception as exc:
+        logger.debug(
+            "CEFR classification skipped for item %s: %s",
+            getattr(item, "id", "?"),
+            exc,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Processing pipeline
 # ---------------------------------------------------------------------------
 
@@ -548,6 +625,10 @@ def run_processing(
             entry = kb_store.store_entry(item, extraction, quality_results)
             item_log["entry_id"] = entry.entry_id
             result.kb_entries_created += 1
+
+            # Step c2: CEFR classification (non-blocking — only when enabled)
+            if config is not None and config.cefr.enabled:
+                _classify_entry_cefr(entry, item, config)
 
             # Step d: Knowledge graph — store entities & discover relations
             if extraction and extraction.entities:

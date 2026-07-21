@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import sqlite3
+import subprocess
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -228,6 +229,11 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN content_type TEXT DEFAULT ''")
             except Exception:
                 pass
+            # Migration: add user_id column (v1.2 — multi-user foundation)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN user_id TEXT DEFAULT ''")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -275,6 +281,7 @@ class SQLiteIndex:
                     file_path     TEXT NOT NULL,
                     created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
                     comment       TEXT DEFAULT '',
+                    git_sha       TEXT DEFAULT '',
                     FOREIGN KEY (entry_id) REFERENCES entries(entry_id)
                 )
             """)
@@ -282,6 +289,13 @@ class SQLiteIndex:
                 CREATE INDEX IF NOT EXISTS idx_entry_versions_entry
                     ON entry_versions(entry_id)
             """)
+            # Migration: add git_sha column for existing databases
+            try:
+                conn.execute(
+                    "ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''"
+                )
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # CRUD
@@ -307,8 +321,8 @@ class SQLiteIndex:
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, file_path, tags,
-                     custom_fields, language)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     custom_fields, language, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
@@ -327,6 +341,7 @@ class SQLiteIndex:
                     json.dumps(entry.tags, ensure_ascii=False),
                     json.dumps(custom_fields, ensure_ascii=False),
                     entry.language,
+                    entry.user_id,
                 ),
             )
 
@@ -337,6 +352,7 @@ class SQLiteIndex:
         date_from: str | None = None,
         limit: int = 20,
         offset: int = 0,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """List entries for *domain*, newest first, with optional tier and date filter.
 
@@ -353,6 +369,9 @@ class SQLiteIndex:
             Maximum number of rows (default 20).
         offset:
             Number of rows to skip (for pagination).
+        user_id:
+            Optional user_id filter. When provided, only entries with
+            matching user_id are returned. ``None`` means no filter.
 
         Returns
         -------
@@ -360,47 +379,22 @@ class SQLiteIndex:
             Each dict contains the columns from the ``entries`` table.
         """
         with self._connect() as conn:
-            if tier and date_from:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM entries
-                    WHERE domain = ? AND tier = ? AND collected_at >= ?
-                    ORDER BY collected_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (domain, tier, date_from, limit, offset),
-                ).fetchall()
-            elif tier:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM entries
-                    WHERE domain = ? AND tier = ?
-                    ORDER BY collected_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (domain, tier, limit, offset),
-                ).fetchall()
-            elif date_from:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM entries
-                    WHERE domain = ? AND collected_at >= ?
-                    ORDER BY collected_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (domain, date_from, limit, offset),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM entries
-                    WHERE domain = ?
-                    ORDER BY collected_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (domain, limit, offset),
-                ).fetchall()
-
+            conditions: list[str] = ["domain = ?"]
+            params: list[Any] = [domain]
+            if tier is not None:
+                conditions.append("tier = ?")
+                params.append(tier)
+            if date_from is not None:
+                conditions.append("collected_at >= ?")
+                params.append(date_from)
+            if user_id is not None:
+                conditions.append("user_id = ?")
+                params.append(user_id)
+            where = " AND ".join(conditions)
+            rows = conn.execute(
+                f"SELECT * FROM entries WHERE {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
             return [dict(r) for r in rows]
 
     def list_entries_by_tier(
@@ -409,6 +403,7 @@ class SQLiteIndex:
         tier: str,
         limit: int = 50,
         offset: int = 0,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """List entries for a specific tier in *domain*.
 
@@ -422,13 +417,15 @@ class SQLiteIndex:
             Maximum number of rows (default 50).
         offset:
             Number of rows to skip (for pagination).
+        user_id:
+            Optional user_id filter.
 
         Returns
         -------
         list[dict]
             Each dict contains the columns from the ``entries`` table.
         """
-        return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset)
+        return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return a single entry dict by *entry_id*, or ``None``."""
@@ -555,6 +552,7 @@ class SQLiteIndex:
                     file_path    TEXT NOT NULL,
                     created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
                     comment      TEXT DEFAULT '',
+                    git_sha      TEXT DEFAULT '',
                     FOREIGN KEY (entry_id) REFERENCES entries(entry_id)
                 )
             """)
@@ -565,6 +563,91 @@ class SQLiteIndex:
                 """)
             except Exception:
                 pass
+            # Migration: add git_sha column for existing databases
+            try:
+                conn.execute(
+                    "ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''"
+                )
+            except Exception:
+                pass
+
+    @staticmethod
+    def _git_commit_and_get_sha(
+        file_path: str,
+        entry_id: str,
+        version_num: int,
+    ) -> str:
+        """Run git add + commit for *file_path* and return the commit SHA.
+
+        Returns empty string if git is unavailable, not in a repo, or
+        if git user.name/email is not configured. Never raises.
+        """
+        try:
+            # Check if git is available and we're in a repo
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode != 0:
+                logger.warning("Git not available or not a git repo — skipping git commit")
+                return ""
+
+            repo_root = result.stdout.strip()
+
+            # Check that git user is configured
+            name_check = subprocess.run(
+                ["git", "config", "user.name"],
+                capture_output=True, text=True, timeout=5,
+                cwd=repo_root,
+            )
+            email_check = subprocess.run(
+                ["git", "config", "user.email"],
+                capture_output=True, text=True, timeout=5,
+                cwd=repo_root,
+            )
+            if not name_check.stdout.strip() or not email_check.stdout.strip():
+                logger.warning(
+                    "Git user.name or user.email not configured — skipping git commit"
+                )
+                return ""
+
+            # git add
+            add = subprocess.run(
+                ["git", "add", file_path],
+                capture_output=True, text=True, timeout=15,
+                cwd=repo_root,
+            )
+            if add.returncode != 0:
+                logger.warning("git add failed: %s", add.stderr.strip())
+                return ""
+
+            # git commit
+            msg = f"autoinfo: version {version_num} of {entry_id}"
+            commit = subprocess.run(
+                ["git", "commit", "-m", msg],
+                capture_output=True, text=True, timeout=15,
+                cwd=repo_root,
+            )
+            if commit.returncode != 0:
+                logger.warning("git commit failed: %s", commit.stderr.strip())
+                return ""
+
+            # Get SHA
+            sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+                cwd=repo_root,
+            )
+            if sha.returncode == 0:
+                return sha.stdout.strip()
+            return ""
+
+        except FileNotFoundError:
+            logger.warning("Git executable not found — skipping git commit")
+            return ""
+        except Exception as exc:
+            logger.warning("Git commit skipped: %s", exc)
+            return ""
 
     def save_entry_version(
         self,
@@ -575,7 +658,8 @@ class SQLiteIndex:
         """Save a version snapshot of an entry's file.
 
         Creates numbered .bak copies of the file at the same location.
-        Prunes to max 5 versions. Returns version metadata.
+        Prunes to max 5 versions. Returns version metadata including
+        git_sha (empty string if git unavailable).
         """
         self._ensure_versioning_table()
         fp = Path(file_path)
@@ -595,12 +679,14 @@ class SQLiteIndex:
         bak_path.write_bytes(fp.read_bytes())
 
         version_id = f"{entry_id}--v{next_ver}"
+        git_sha = self._git_commit_and_get_sha(file_path, entry_id, next_ver)
+
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO entry_versions
-                   (version_id, entry_id, version_num, file_path, comment)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (version_id, entry_id, next_ver, str(bak_path), comment),
+                   (version_id, entry_id, version_num, file_path, comment, git_sha)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (version_id, entry_id, next_ver, str(bak_path), comment, git_sha),
             )
 
         # Prune to max 5 versions
@@ -611,6 +697,7 @@ class SQLiteIndex:
             "version_id": version_id,
             "version_num": next_ver,
             "file_path": str(bak_path),
+            "git_sha": git_sha,
         }
 
     def _prune_versions(self, entry_id: str, max_versions: int = 5) -> None:
@@ -911,6 +998,7 @@ class SQLiteIndex:
         filter_quality_tier_max: int | None = None,
         filter_content_type: str | None = None,
         filter_language: str | None = None,
+        filter_user_id: str | None = None,
     ) -> dict[str, Any]:
         """Search the knowledge base using FTS5 full-text search.
 
@@ -949,6 +1037,9 @@ class SQLiteIndex:
             Only include entries with this exact ``content_type``.
         filter_language:
             Only include entries with this exact ``language``.
+        filter_user_id:
+            Only include entries with this exact ``user_id``.
+            When ``None``, no user_id filter is applied (returns all).
         """
         safe_query = _escape_fts5_query(query)
         if not safe_query:
@@ -1009,6 +1100,10 @@ class SQLiteIndex:
             if filter_language:
                 conds.append(f"{prefix}.language = ?")
                 params.append(filter_language)
+
+            if filter_user_id is not None:
+                conds.append(f"{prefix}.user_id = ?")
+                params.append(filter_user_id)
 
             return conds, params
 
@@ -1675,6 +1770,7 @@ class KBStore:
         extraction: ExtractionResult | None = None,
         quality_results: dict[str, QualityResult] | None = None,
         tier: str = "01-Raw",
+        user_id: str | None = None,
     ) -> KBEntry:
         """Create a Markdown KB entry for *item* and index it in SQLite.
 
@@ -1738,6 +1834,26 @@ class KBStore:
                 elif g2.details.get("is_duplicate"):
                     dedup_status = "duplicate"
 
+        # --- resolve user_id ---------------------------------------------------
+        resolved_user_id: str = ""
+        if user_id is not None:
+            resolved_user_id = user_id
+        else:
+            # Try from config multi_user settings
+            try:
+                from autoinfo.config import get_config_path, load_config
+
+                cfg_path = get_config_path()
+                if cfg_path:
+                    cfg = load_config(cfg_path)
+                    if cfg.multi_user.enabled:
+                        # Prefer item.raw_data["user_id"], fall back to default
+                        resolved_user_id = str(
+                            item.raw_data.get("user_id", cfg.multi_user.default_user_id)
+                        )
+            except Exception:
+                pass  # No config available — stay with empty user_id
+
         # --- build KBEntry -----------------------------------------------------
         summary = extraction.tl_dr if extraction and extraction.tl_dr else ""
         tags = item.topic_tags[:]
@@ -1758,6 +1874,7 @@ class KBStore:
             dedup_status=dedup_status,
             file_path=str(file_path),
             language=item.language,
+            user_id=resolved_user_id,
         )
 
         # --- write Markdown file ----------------------------------------------
@@ -1973,12 +2090,13 @@ class KBStore:
         date_from: str | None = None,
         limit: int = 20,
         offset: int = 0,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Fast listing from the SQLite index.
 
         Returns entries sorted by ``collected_at DESC``.
         """
-        return self.index.list_entries(domain, tier, date_from, limit, offset)
+        return self.index.list_entries(domain, tier, date_from, limit, offset, user_id=user_id)
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.
@@ -2412,6 +2530,7 @@ class KBStore:
         tier: str,
         limit: int = 50,
         offset: int = 0,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """List entries in a specific tier for a domain.
 
@@ -2425,13 +2544,15 @@ class KBStore:
             Max entries (default 50).
         offset:
             Pagination offset.
+        user_id:
+            Optional user_id filter.
 
         Returns
         -------
         list[dict]
             Entries in the specified tier.
         """
-        return self.index.list_entries_by_tier(domain, tier, limit, offset)
+        return self.index.list_entries_by_tier(domain, tier, limit, offset, user_id=user_id)
 
     # ------------------------------------------------------------------
     # Flag for KB inclusion
@@ -2656,6 +2777,7 @@ class KBStore:
         filter_quality_tier_max: int | None = None,
         filter_content_type: str | None = None,
         filter_language: str | None = None,
+        filter_user_id: str | None = None,
     ) -> dict[str, Any]:
         """Search the knowledge base.
 
@@ -2687,6 +2809,9 @@ class KBStore:
             Only entries with this exact ``content_type``.
         filter_language:
             Only entries with this exact ``language``.
+        filter_user_id:
+            Only entries with this exact ``user_id``.
+            ``None`` means no filter (returns all).
 
         Returns
         -------
@@ -2707,7 +2832,138 @@ class KBStore:
             filter_quality_tier_max=filter_quality_tier_max,
             filter_content_type=filter_content_type,
             filter_language=filter_language,
+            filter_user_id=filter_user_id,
         )
+
+    # ------------------------------------------------------------------
+    # Wiki links (Obsidian-style [[links]])
+    # ------------------------------------------------------------------
+
+    def rebuild_wiki_links(self) -> dict[str, Any]:
+        """Scan all KB entries for ``[[wiki link]]`` syntax and update ``## Linked References`` sections.
+
+        Two-pass: (1) build title→entry map + collect all ``[[Title]]`` references;
+        (2) write/replace sections per entry (skipping 03-Wiki — append-only).
+        Each section shows outgoing links and backlinks.
+        Idempotent and no-op on entries without references.
+
+        Returns ``{files_scanned, files_updated, wiki_links_found, backlinks_found}``.
+        """
+        from collections import defaultdict
+
+        WIKI_LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+        SECTION_PATTERN = re.compile(
+            r"\n## Linked References\n.*?(?=\n## |\Z)", re.DOTALL
+        )
+
+        stats: dict[str, Any] = {
+            "files_scanned": 0,
+            "files_updated": 0,
+            "wiki_links_found": 0,
+            "backlinks_found": 0,
+        }
+
+        all_entries: dict[str, dict[str, Any]] = {}
+        title_map: dict[str, list[dict[str, str]]] = defaultdict(list)
+
+        for md_file in sorted(self.base_path.rglob("*.md")):
+            try:
+                raw = md_file.read_text(encoding="utf-8")
+                if not raw.startswith("---"):
+                    continue
+                end = raw.find("---", 3)
+                if end == -1:
+                    continue
+                fm = yaml.safe_load(raw[3:end]) or {}
+                entry_id = fm.get("entry_id", "")
+                title = fm.get("title", "")
+                if not entry_id or not title:
+                    continue
+
+                all_entries[entry_id] = {
+                    "title": title,
+                    "file_path": str(md_file),
+                    "tier": fm.get("tier", "01-Raw"),
+                    "fm_text": raw[3:end],
+                    "body": raw[end + 3 :].lstrip("\n"),
+                }
+
+                key = title.lower().strip()
+                title_map[key].append({
+                    "entry_id": entry_id,
+                    "title": title,
+                    "tier": fm.get("tier", "01-Raw"),
+                })
+            except Exception as exc:
+                logger.debug("Skipping %s: %s", md_file, exc)
+
+        stats["files_scanned"] = len(all_entries)
+
+        forward_map: dict[str, list[dict[str, str]]] = defaultdict(list)
+        backlink_map: dict[str, list[dict[str, str]]] = defaultdict(list)
+
+        for entry_id, info in all_entries.items():
+            links = WIKI_LINK_RE.findall(info["body"])
+            if not links:
+                continue
+            stats["wiki_links_found"] += len(links)
+
+            for link_title in links:
+                key = link_title.lower().strip()
+                matches = title_map.get(key, [])
+                for tm in matches:
+                    if tm["entry_id"] == entry_id:
+                        continue
+                    forward_map[entry_id].append({
+                        "wikilink": link_title,
+                        "target_entry_id": tm["entry_id"],
+                        "target_title": tm["title"],
+                    })
+                    backlink_map[tm["entry_id"]].append({
+                        "source_entry_id": entry_id,
+                        "source_title": info["title"],
+                        "wikilink": link_title,
+                    })
+
+        stats["backlinks_found"] = sum(len(v) for v in backlink_map.values())
+
+        for entry_id, info in all_entries.items():
+            if info["tier"] == "03-Wiki":
+                continue
+
+            forwards = forward_map.get(entry_id, [])
+            backwards = backlink_map.get(entry_id, [])
+
+            if not forwards and not backwards:
+                continue
+
+            section_parts: list[str] = ["\n\n## Linked References\n"]
+            if forwards:
+                for f in forwards:
+                    section_parts.append(
+                        f"- [[{f['wikilink']}]] — linked to {f['target_entry_id']}\n"
+                    )
+            if backwards:
+                if forwards:
+                    section_parts.append("\n### Backlinks\n")
+                for b in backwards:
+                    section_parts.append(
+                        f"- Referenced by [[{b['source_title']}]] ({b['source_entry_id']})\n"
+                    )
+
+            new_section = "".join(section_parts)
+            body = info["body"]
+
+            if SECTION_PATTERN.search(body):
+                body = SECTION_PATTERN.sub(new_section, body)
+            else:
+                body = body.rstrip() + new_section
+
+            new_content = f"---\n{info['fm_text']}---\n\n{body}"
+            Path(info["file_path"]).write_text(new_content, encoding="utf-8")
+            stats["files_updated"] += 1
+
+        return stats
 
     def reindex_knowledge_base(self, domain: str | None = None) -> dict[str, Any]:
         """Walk knowledge/ and rebuild the FTS5 search index.
@@ -2821,6 +3077,7 @@ def _build_frontmatter(
         "relevance_score": entry.relevance_score,
         "dedup_status": entry.dedup_status,
         "language": entry.language,
+        "user_id": entry.user_id,
     }
 
     # Expanded frontmatter fields (Draft+ tiers only — 01-Raw stays lean)
@@ -2922,3 +3179,59 @@ def _extract_key_points(content: str) -> list[str]:
         if line.startswith("- "):
             points.append(line[2:])
     return points
+
+
+def update_frontmatter_field(file_path: str, key: str, value: Any) -> bool:
+    """Add or update a single field in the YAML frontmatter of a Markdown file.
+
+    Reads the file, parses the YAML frontmatter (between ``---`` markers),
+    sets *key* to *value*, and writes the file back.
+
+    Parameters
+    ----------
+    file_path:
+        Path to the Markdown file.
+    key:
+        Frontmatter field name (e.g. ``"cefr"``).
+    value:
+        Value to set for the field.
+
+    Returns
+    -------
+    bool
+        ``True`` if the file was successfully modified.
+    """
+    fp = Path(file_path)
+    if not fp.is_file():
+        logger.warning("update_frontmatter_field: file not found — %s", file_path)
+        return False
+
+    raw = fp.read_text(encoding="utf-8")
+    if not raw.startswith("---"):
+        logger.warning("update_frontmatter_field: no frontmatter in %s", file_path)
+        return False
+
+    end = raw.find("---", 3)
+    if end == -1:
+        logger.warning("update_frontmatter_field: malformed frontmatter in %s", file_path)
+        return False
+
+    fm_text = raw[3:end]
+    try:
+        fm_data: dict[str, Any] = yaml.safe_load(fm_text) or {}
+    except yaml.YAMLError:
+        logger.warning("update_frontmatter_field: invalid YAML in %s", file_path)
+        return False
+
+    fm_data[key] = value
+
+    new_fm = yaml.dump(
+        fm_data,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+        width=120,
+    )
+    body = raw[end + 3 :].lstrip("\n")
+    fp.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
+    return True

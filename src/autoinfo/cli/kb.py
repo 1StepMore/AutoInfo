@@ -147,6 +147,27 @@ def list_tiers(
         )
 
 
+@app.command(name="wiki-links")
+def wiki_links(
+    rebuild: bool = typer.Option(
+        False, "--rebuild", help="Scan all entries and update Linked References sections"
+    ),
+) -> None:
+    """Rebuild [[wiki link]] cross-references across the knowledge base.
+
+    Walks all markdown files in ``knowledge/``, scans for ``[[Title]]``
+    syntax, resolves each title to a matching KB entry, and writes
+    ``## Linked References`` sections with outgoing links and backlinks.
+    """
+    if not rebuild:
+        typer.echo("Use --rebuild to scan and update wiki links.")
+        raise typer.Exit(0)
+
+    store = KBStore()
+    result = store.rebuild_wiki_links()
+    typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+
 @app.command()
 def promote(
     entry_id: str = typer.Option(
@@ -161,3 +182,28 @@ def promote(
     except (ValueError, FileNotFoundError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
+
+
+@app.command()
+def history(
+    entry_id: str = typer.Argument(..., help="Entry ID to show version history for"),
+    show_git: bool = typer.Option(
+        False, "--show-git", help="Show git commit SHAs alongside version history"
+    ),
+) -> None:
+    """Show version history for a KB entry."""
+    store = KBStore()
+    versions = store.get_entry_history(entry_id=entry_id)
+    if not versions:
+        typer.echo(f"No versions found for entry '{entry_id}'.")
+        return
+
+    for v in versions:
+        line = (
+            f"  v{v['version_num']}  {v['created_at']}"
+            f"  {v['comment'] or ''}"
+        )
+        if show_git:
+            sha = v.get("git_sha", "") or ""
+            line += f"  git:{sha[:12] if sha else '—'}"
+        typer.echo(line)

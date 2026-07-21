@@ -85,6 +85,7 @@ class KBEntry:
     status: str = "active"  # "active", "deprecated", "archived"
     related_concepts: list[str] = field(default_factory=list)
     linked_entries: list[str] = field(default_factory=list)
+    user_id: str = ""  # Multi-user support — empty string means "all users"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

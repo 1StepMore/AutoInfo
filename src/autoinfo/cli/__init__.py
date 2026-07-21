@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typer
 
-from . import collect, cron, doctor, kb, knowledge, keywords, output, process, sources, status, summaries, topics
+from . import cefr, collect, cron, doctor, kb, knowledge, keywords, output, process, sources, status, summaries, topics
 
 # Import init function directly (not as typer app — single-command module)
 from .init import init as init_func
@@ -34,6 +34,7 @@ app.add_typer(sources.app, name="sources")
 app.add_typer(topics.app, name="topics")
 app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
+app.add_typer(cefr.app, name="cefr")
 app.add_typer(cron.app, name="cron")
 app.add_typer(summaries.app, name="summaries")
 app.add_typer(keywords.app, name="keywords", help="Manage per-domain keyword lifecycle")

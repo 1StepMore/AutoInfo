@@ -313,8 +313,17 @@ def _handle_list_summaries(**kwargs: Any) -> dict[str, Any]:
     return {"domain": domain, "entries": entries, "count": len(entries)}
 
 
-def _handle_get_kb_entry(entry_id: str) -> dict[str, Any]:
-    """Fetch a single KB entry by ID via ``KBStore.get_entry``."""
+def _handle_get_kb_entry(entry_id: str, user_id: str | None = None) -> dict[str, Any]:
+    """Fetch a single KB entry by ID via ``KBStore.get_entry``.
+
+    Parameters
+    ----------
+    entry_id:
+        Unique entry identifier.
+    user_id:
+        Optional user_id filter (accepted for multi-user compatibility;
+        direct ID lookup is user-independent).
+    """
     from autoinfo.kb import KBStore
 
     store = KBStore()
@@ -1235,6 +1244,7 @@ def _handle_search_knowledge_base(
     filter_quality_tier_max: int | None = None,
     filter_content_type: str | None = None,
     filter_language: str | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     """Search the knowledge base using FTS5 full-text search.
 
@@ -1261,6 +1271,7 @@ def _handle_search_knowledge_base(
         filter_quality_tier_max=filter_quality_tier_max,
         filter_content_type=filter_content_type,
         filter_language=filter_language,
+        filter_user_id=user_id,
     )
 
 
@@ -1426,12 +1437,20 @@ def _handle_list_kb_tier(
     tier: str,
     limit: int = 50,
     offset: int = 0,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    """List entries in a specific KB tier."""
+    """List entries in a specific KB tier.
+
+    Parameters
+    ----------
+    user_id:
+        Optional user_id filter — only entries belonging to this user
+        are returned. When ``None``, no user filter is applied.
+    """
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    entries = store.list_kb_tier(domain=domain, tier=tier, limit=limit, offset=offset)
+    entries = store.list_kb_tier(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)
     return {
         "domain": domain,
         "tier": tier,
@@ -1678,6 +1697,53 @@ def _handle_run_schedules(
         }
     except Exception as exc:
         return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# CEFR classification tool
+# ---------------------------------------------------------------------------
+
+
+def _handle_classify_cefr(text: str, lang: str = "en") -> dict[str, Any]:
+    """Classify text into a CEFR level (A1-C2) using the configured LLM.
+
+    Dispatches to :func:`autoinfo.cefr.classify_text`.
+
+    Parameters
+    ----------
+    text:
+        Text to classify.
+    lang:
+        Language code: ``"en"``, ``"zh"``, or ``"ja"`` (default ``"en"``).
+
+    Returns
+    -------
+    dict
+        ``{cefr_level, confidence, text_preview}``.
+    """
+    try:
+        config = _load_config()
+        model_config: dict[str, Any] = {}
+        if config.cefr.model:
+            model_config["model"] = config.cefr.model
+        elif config.llm.provider and config.llm.model:
+            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+        if config.llm.api_key:
+            model_config["api_key"] = config.llm.api_key
+        if config.llm.base_url:
+            model_config["base_url"] = config.llm.base_url
+    except Exception:
+        model_config = {}
+
+    from autoinfo.cefr import classify_text
+
+    result = classify_text(text=text, lang=lang, model_config=model_config)
+    text_preview = text[:200] + "..." if len(text) > 200 else text
+    return {
+        "cefr_level": result["cefr_level"],
+        "confidence": result["confidence"],
+        "text_preview": text_preview,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2488,6 +2554,10 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Unique entry identifier",
                     },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user_id filter (accepted for multi-user compatibility; direct ID lookup is user-independent)",
+                    },
                 },
                 "required": ["entry_id"],
             },
@@ -2555,6 +2625,10 @@ async def list_tools() -> list[Tool]:
                     "filter_language": {
                         "type": "string",
                         "description": "Only entries with this exact language",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user_id filter — only entries belonging to this user",
                     },
                 },
                 "required": ["query"],
@@ -2850,6 +2924,10 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Pagination offset",
                         "default": 0,
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user_id filter — only entries belonging to this user",
                     },
                 },
                 "required": ["domain", "tier"],
@@ -3176,6 +3254,30 @@ async def list_tools() -> list[Tool]:
                 "required": ["item_id", "rating"],
             },
         ),
+        # -- CEFR Classification (1) ----------------------------------------
+        Tool(
+            name="classify_cefr",
+            description=(
+                "Classify text into a CEFR level (A1-C2) using the "
+                "configured LLM. Supports English (en), Chinese (zh), "
+                "and Japanese (ja)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to classify",
+                    },
+                    "lang": {
+                        "type": "string",
+                        "description": "Language code: en, zh, or ja",
+                        "default": "en",
+                    },
+                },
+                "required": ["text"],
+            },
+        ),
         # -- Project / Batch / Config (6) ------------------------------------
         Tool(
             name="list_projects",
@@ -3373,6 +3475,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_reject_kb_draft(**arguments)
         elif name == "list_kb_tier":
             result = _handle_list_kb_tier(**arguments)
+
+        # -- CEFR Classification (1) ----------------------------------------
+        elif name == "classify_cefr":
+            result = _handle_classify_cefr(**arguments)
 
         # -- Output (5) ---------------------------------------------------
         elif name == "list_output_templates":

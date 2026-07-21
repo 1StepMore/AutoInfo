@@ -1,0 +1,37 @@
+QA Scenario: F3-06 — Keywords Lifecycle
+=========================================
+Date: 2026-07-21
+
+## Test Cases (via autoinfo.keywords.KeywordsFile)
+
+### Test 1: Create keyword (auto_added by default)
+- add_keyword('test-domain', 'ivf', source='auto-discovery') ✓
+- State: auto_added, source: auto-discovery ✓
+
+### Test 2: Create keyword with explicit state
+- add_keyword('test-domain', 'embryo', state=VERIFIED, source='user') ✓
+- State: verified ✓
+
+### Test 3: Approve keyword (auto_added → verified)
+- approve_keyword('test-domain', 'ivf') → state changes to verified ✓
+
+### Test 4: Deprecate keyword
+- deprecate_keyword('test-domain', 'ivf') → state changes to deprecated ✓
+
+### Test 5: Approve non-existent keyword → returns None ✓
+
+### Test 6: List all keywords
+- Returns all 2 entries (ivf: deprecated, embryo: verified) ✓
+
+### Test 7: Filter by status
+- list_keywords(domain, status=VERIFIED) → 1 result (embryo) ✓
+- list_keywords(domain, status=DEPRECATED) → 1 result (ivf) ✓
+
+### Test 8: Persistence (re-load from file)
+- Keywords survive file reload ✓
+
+### Test 9: create_if_missing
+- First call returns True ✓
+- Second call (already exists) returns False ✓
+
+Result: PASS ✓

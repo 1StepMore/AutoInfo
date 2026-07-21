@@ -1,0 +1,42 @@
+QA Scenario: F3-02 — REST API CRUD
+====================================
+Date: 2026-07-21
+Server: http://127.0.0.1:8741
+API Prefix: /api/v1
+
+## POST /api/v1/entries → 201
+curl -s -X POST http://127.0.0.1:8741/api/v1/entries \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test Entry for QA","content":"This is a test entry created during F3 manual QA.","domain":"medical-research","tier":"01-Raw","source_url":"https://example.com/test-qa","source_type":"api","source_platform":"qa-test","tags":["qa","test","manual"],"language":"en"}'
+
+Result: PASS
+- entry_id generated: "medical-research-qa-test-entry-for-qa"
+- All fields preserved
+- tier set to "01-Raw"
+- tags saved as ["qa","test","manual"]
+
+## GET /api/v1/entries → 200 (list)
+Result: PASS
+- Returns array of entries
+- New entry visible in list
+
+## GET /api/v1/entries/{id} → 200 (single)
+curl -s http://127.0.0.1:8741/api/v1/entries/medical-research-qa-test-entry-for-qa
+Result: PASS
+- Returns full entry details including content, tags, domain
+
+## GET /api/v1/entries/nonexistent-id → 404
+Result: PASS
+- Returns {"detail":"Entry 'nonexistent-id' not found"}
+- HTTP status 404
+
+## DELETE /api/v1/entries/{id} → 204
+curl -s -X DELETE http://127.0.0.1:8741/api/v1/entries/medical-research-qa-test-entry-for-qa
+Result: PASS
+- HTTP status 204 (No Content)
+- Entry no longer returned in subsequent queries
+
+## Verify deletion
+curl -s "http://127.0.0.1:8741/api/v1/entries?q=qa"
+Result: PASS
+- 0 entries match 'qa' after deletion

@@ -1,0 +1,15 @@
+QA Scenario: F3-01 — FastAPI /health endpoint
+=============================================
+Date: 2026-07-21
+Server: http://127.0.0.1:8741
+
+Command: curl -s http://127.0.0.1:8741/health
+
+Response:
+{"status":"ok","version":"0.1.0.dev0","uptime_s":13.21}
+
+Result: PASS
+- Status is "ok"
+- Version string is present
+- uptime_s is a positive float
+- Response is valid JSON

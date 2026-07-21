@@ -13,20 +13,20 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import uvicorn
+import yaml
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
 from autoinfo import __version__
-
-logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# RestAPIConfig — imported from autoinfo.config (Task 3)
-# ---------------------------------------------------------------------------
-
+from autoinfo.api.routes import router as api_v1_router
 from autoinfo.config import RestAPIConfig
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config I/O (mirrors mcp/server.py pattern)
@@ -67,8 +67,6 @@ def _load_rest_config() -> RestAPIConfig:
 
     # Fall back to reading raw YAML
     try:
-        import yaml
-
         with open(config_path, "r", encoding="utf-8") as fh:
             raw: dict[str, Any] = yaml.safe_load(fh) or {}
         rest_api_raw: dict[str, Any] = raw.get("rest_api", {}) or {}
@@ -84,10 +82,6 @@ def _load_rest_config() -> RestAPIConfig:
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 
 _server_start_time: float = time.time()
 
@@ -106,8 +100,6 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # API v1 Router
 # ---------------------------------------------------------------------------
-
-from autoinfo.api.routes import router as api_v1_router
 
 app.include_router(api_v1_router, prefix="/api/v1")
 
@@ -172,8 +164,6 @@ async def health() -> dict[str, Any]:
 
 def main() -> None:
     """Start the REST API server via ``uvicorn.run()``."""
-    import uvicorn
-
     cfg = _load_rest_config()
     logger.info(
         "Starting AutoInfo API on http://%s:%d",

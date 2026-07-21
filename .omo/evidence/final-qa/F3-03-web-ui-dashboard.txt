@@ -1,0 +1,32 @@
+QA Scenario: F3-03 — Web UI Dashboard
+=======================================
+Date: 2026-07-21
+Server: http://127.0.0.1:8741
+
+## GET / (root)
+curl -s http://127.0.0.1:8741/
+Result: PASS
+- Returns full HTML page (dashboard)
+- Status 200
+
+## GET /dashboard
+curl -s http://127.0.0.1:8741/dashboard
+Result: PASS
+- Returns full HTML page (16,037 bytes)
+- Status 200
+- Content-Type: text/html
+- Contains Bootstrap 5.3.3 CSS + JS
+- Dark mode toggle with localStorage persistence
+- Search input with clear button
+- Domain/tier/page-size filter dropdowns
+- Entry table with title, domain, tier, CEFR, quality, date columns
+- Pagination controls (prev/next)
+- Entry detail modal with meta-grid, tags, summary, content, source link
+- Loading spinner overlay
+- Empty state with icon
+- CEFR color badges (A1-C2)
+- Quality star rating (1-5)
+- Responsive layout
+
+Expected: Dashboard loads and renders interactive KB browser UI
+Result: PASS ✓

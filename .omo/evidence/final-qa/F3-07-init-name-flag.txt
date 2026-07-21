@@ -1,0 +1,25 @@
+QA Scenario: F3-07 — init --name Flag
+======================================
+Date: 2026-07-21
+
+## Test Cases
+
+### Test 1: init without --name
+- _generate_config('medical-research', config_path, project_name='')
+- project.project_name in config = "" (empty) ✓
+
+### Test 2: init with --name "My Custom Project"
+- _generate_config('medical-research', config_path, project_name='My Custom Project')
+- project.project_name = "My Custom Project" ✓
+
+### Test 3: init with special characters
+- _generate_config('medical-research', config_path, project_name='AutoInfo v2.0 (beta)')
+- project.project_name = "AutoInfo v2.0 (beta)" ✓
+
+### Test 4: Full config structure verification
+- Top-level keys: ['project', 'llm', 'domains'] ✓
+- project.project_name = "TestProj" ✓
+- domains[0].name = "medical-research" ✓
+
+Result: PASS ✓
+--name flag correctly stores project.project_name in config.yaml

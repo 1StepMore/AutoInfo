@@ -1,0 +1,34 @@
+QA Scenario: F3-05 — Schema Versioning
+=======================================
+Date: 2026-07-21
+
+## Test Cases
+
+### Test 1: SCHEMA_VERSION constant
+- SCHEMA_VERSION = 1 ✓
+
+### Test 2: Fresh in-memory database
+- Schema version before migration: 0 (correct for fresh DB) ✓
+
+### Test 3: Auto-migrate fresh DB
+- check_schema() migrates from v0 → v1 ✓
+
+### Test 4: Migration records
+- _schema_version table records version, applied_at, description ✓
+
+### Test 5: Idempotent check
+- Calling check_schema() twice does not re-apply migrations ✓
+
+### Test 6: Downgrade prevention
+- apply_migrations(conn, 0) raises SchemaVersionError ✓
+
+### Test 7: Newer DB detection
+- DB with version 99 raises SchemaVersionError for code expecting v1 ✓
+
+### Test 8: Real DB (autoinfo.db)
+- autoinfo.db is at schema version 1 ✓
+
+### Test 9: Missing migration function
+- apply_migrations(conn, 999) raises SchemaVersionError ✓
+
+Result: PASS ✓

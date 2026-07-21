@@ -1,9 +1,25 @@
-from __future__ import annotations
 """AutoInfo CLI entry point."""
+
+from __future__ import annotations
 
 import typer
 
-from . import cefr, collect, cron, doctor, email, kb, knowledge, keywords, output, process, sources, status, summaries, topics
+from . import (
+    cefr,
+    collect,
+    cron,
+    doctor,
+    email,
+    kb,
+    keywords,
+    knowledge,
+    output,
+    process,
+    sources,
+    status,
+    summaries,
+    topics,
+)
 
 # Import init function directly (not as typer app — single-command module)
 from .init import init as init_func

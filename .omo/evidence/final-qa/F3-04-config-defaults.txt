@@ -1,0 +1,29 @@
+QA Scenario: F3-04 — Config Defaults
+=====================================
+Date: 2026-07-21
+
+## Test 1: create_default_config("medical-research")
+python3 -c "from autoinfo.config import create_default_config; import yaml; print(yaml.dump(create_default_config('medical-research'), default_flow_style=False))"
+
+Result: PASS
+Expected values:
+- project.name = "autoinfo-medical-research"
+- llm.provider = "openai"
+- llm.model = "gpt-4o-mini"
+- llm.api_key = "${AUTOINFO_LLM_API_KEY}"
+- domains[0].name = "medical-research"
+- domains[0].active = True
+
+## Test 2: Default dataclass constructor values
+- RestAPIConfig: enabled=True, port=8741, host="127.0.0.1" ✓
+- VectorSearchConfig: enabled=False, model="", hybrid_weight_fts5=0.7, hybrid_weight_vector=0.3 ✓
+- CEFRConfig: enabled=False, languages=["en", "zh", "ja"] ✓
+- EmailConfig: smtp_port=587, enabled=False ✓
+- CronConfig: auto_install=False ✓
+- MultiUserConfig: enabled=False, default_user_id="default" ✓
+
+## Test 3: Load actual config from disk
+- Loaded from .autoinfo/config.yaml ✓
+- REST API defaults correct ✓
+
+Result: PASS ✓

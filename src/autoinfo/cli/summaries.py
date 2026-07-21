@@ -48,7 +48,7 @@ def list_(
             )
             raise typer.Exit(code=1)
 
-        kb_base = config_path.parent / "knowledge"
+        kb_base = config_path.parent.parent / "knowledge"
         store = KBStore(base_path=kb_base)
         entries = store.list_entries(
             domain=domain,
@@ -95,7 +95,7 @@ def flag(
             )
             raise typer.Exit(code=1)
 
-        kb_base = config_path.parent / "knowledge"
+        kb_base = config_path.parent.parent / "knowledge"
         store = KBStore(base_path=kb_base)
         result = store.flag_for_knowledge_base(
             summary_id=entry_id, tags=tag, importance=importance
@@ -137,7 +137,7 @@ def show(
             )
             raise typer.Exit(code=1)
 
-        kb_base = config_path.parent / "knowledge"
+        kb_base = config_path.parent.parent / "knowledge"
         store = KBStore(base_path=kb_base)
         result = store.get_summary(summary_id=entry_id)
     except Exception as exc:

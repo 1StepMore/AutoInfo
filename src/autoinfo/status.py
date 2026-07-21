@@ -81,7 +81,7 @@ def show_status(domain: str | None = None) -> dict[str, Any]:
 
         # If SQLite returned 0 but files exist on disk, count from filesystem
         if total_entries == 0:
-            kb_base = config_path.parent / "knowledge"
+            kb_base = config_path.parent.parent / "knowledge"
             domain_path = kb_base / d.name
             if domain_path.is_dir():
                 fs_files = list(domain_path.rglob("*.md"))

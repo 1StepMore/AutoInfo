@@ -20,6 +20,18 @@ sources:
     access: api_key
     rate_limit: 10
 
+  - name: Crunchbase
+    type: rss
+    url: https://news.crunchbase.com/feed/
+    quality_tier: 2
+    enabled: true
+
+  - name: LMSYS
+    type: rss
+    url: https://lmarena.ai/feed/
+    quality_tier: 2
+    enabled: true
+
 topics:
   - name: "AI Startup Funding"
     keywords:

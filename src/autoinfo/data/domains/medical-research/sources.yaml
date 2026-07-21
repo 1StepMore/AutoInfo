@@ -12,6 +12,29 @@ sources:
     access: free
     rate_limit: 3  # requests per second without API key
 
+  - name: arXiv
+    type: rss
+    url: https://rss.arxiv.org/rss/bio
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+
+  - name: CrossRef
+    type: api
+    url: https://api.crossref.org/works
+    quality_tier: 2
+    enabled: true
+    rate_limit: 50
+    api_key_optional: true
+
+  - name: Unpaywall
+    type: api
+    url: https://api.unpaywall.org/v2
+    quality_tier: 2
+    enabled: true
+    rate_limit: 100
+    api_key_optional: true
+
 topics:
   - name: "IVF breakthroughs"
     keywords:

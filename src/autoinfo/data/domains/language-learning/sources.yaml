@@ -20,6 +20,18 @@ sources:
     access: free
     rate_limit: 5
 
+  - name: news-in-levels
+    type: rss
+    url: https://www.newsinlevels.com/feed/
+    quality_tier: 2
+    enabled: true
+
+  - name: commonlit
+    type: rss
+    url: https://www.commonlit.org/blog/feed/
+    quality_tier: 2
+    enabled: true
+
 topics:
   - name: "English Vocabulary"
     keywords:

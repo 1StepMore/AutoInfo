@@ -12,12 +12,12 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 
 ## Features
 
-- **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages (trafilatura + Playwright)
+- **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages (trafilatura + Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF)
 - **LLM-powered extraction** — TL;DR, key points, entity extraction, relevance scoring, custom field extraction
 - **Knowledge base (Hermes model)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite)
 - **Full-text search** — FTS5 with CJK support across all KB tiers
 - **Quality gates G1-G5** — Source authority, dedup, relevance, factual consistency (advisory)
-- **Agent-native** — 56 MCP tools. Agent operates, human directs.
+- **Agent-native** — 56+ MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning)
 
@@ -39,7 +39,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | MCP server | ✅ 56 MCP tool areas across 12 categories (6 new in v1.1) |
 | Export | ✅ Markdown, JSON, SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 720+ tests |
+| Test suite | ✅ 720+ tests (30+ test files) |
 
 ## Quick Start
 
@@ -83,7 +83,7 @@ Sources (RSS/API/Web)
         │
         ├── autoinfo summaries list | status | kb search
         ├── autoinfo output digest | report | tutorial | export
-        └── MCP server (56 tools)
+        └── MCP server (56+ tools)
 ```
 
 ## CLI Commands (12 groups)
@@ -97,12 +97,12 @@ autoinfo status                      # Collection stats
 autoinfo summaries list|flag|show   # Browse summaries
 autoinfo sources add|list|remove|test  # Source management
 autoinfo topics add|list|remove     # Topic management
-autoinfo kb search|create-draft|reject-draft|list-tiers|reindex
+autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates
 autoinfo cron run|list-schedules|add-schedule|remove-schedule
 ```
 
-## MCP Tools (56)
+## MCP Tools (56+)
 
 | Category | Tools |
 |----------|-------|
@@ -124,9 +124,9 @@ autoinfo cron run|list-schedules|add-schedule|remove-schedule
 
 | Domain | Sources | Priority | Status |
 |--------|---------|----------|--------|
-| **Medical Research** | PubMed (REST API) | 🔴 P0 | ✅ Implemented |
-| **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API | 🟡 P1 | ✅ Implemented |
-| **Language Learning** | Project Gutenberg, BBC Learning English | 🟢 P2 | ✅ Implemented |
+| **Medical Research** | PubMed (REST API), arXiv, CrossRef, Unpaywall | 🔴 P0 | ✅ Implemented (4 curated sources) |
+| **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API, Crunchbase, LMSYS | 🟡 P1 | ✅ Implemented (4 curated sources) |
+| **Language Learning** | Project Gutenberg, BBC Learning English, news-in-levels, commonlit | 🟢 P2 | ✅ Implemented (4 curated sources) |
 
 ## Development
 

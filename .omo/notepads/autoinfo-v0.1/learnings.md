@@ -25,3 +25,11 @@
 - `autoinfo doctor`, `autoinfo status`, `autoinfo summaries` all functional
 - MCP server starts with 6 tools
 - Scope compliance: 15/15 Must NOT Have guardrails respected
+
+## Promote KB Draft Implementation
+- `promote_kb_draft(draft_id)` added to `KBStore` — pattern-matched from `reject_kb_draft`
+- Method steps: validate tier == "02-Draft", inject `human_promoted: true` + `promoted_at` into frontmatter, move file from `02-Draft/` to `03-Wiki/` (same domain/topic), update SQLite tier to "03-Wiki"
+- Added `_ensure_not_wiki(file_path)` static method — raises `PermissionError` for any agent-facing write targeting `03-Wiki/`
+- Guard wired into `store_entry()` — prevents direct `tier="03-Wiki"` writes
+- CLI `autoinfo kb promote --entry-id <draft-id>` replaced "not yet implemented" stub with real call to `KBStore().promote_kb_draft()`
+- 34 tests pass (9 new: 5 promote unit, 1 promote CLI integration, 2 negative, 1 append-only guard)

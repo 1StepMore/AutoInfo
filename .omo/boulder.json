@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "active_work_id": "autoinfo-v0-2-v1-0-a14070c5",
+  "active_work_id": "autoinfo-v1-1-89660ebe",
   "works": {
     "autoinfo-v0-1-fa566277": {
       "work_id": "autoinfo-v0-1-fa566277",
@@ -194,87 +194,305 @@
       },
       "ended_at": "2026-07-20T15:42:51.956Z",
       "elapsed_ms": 4648652
+    },
+    "autoinfo-v1-1-71b650b9": {
+      "work_id": "autoinfo-v1-1-71b650b9",
+      "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v1.1.md",
+      "plan_name": "autoinfo-v1.1",
+      "status": "active",
+      "started_at": "2026-07-21T02:27:22.298Z",
+      "updated_at": "2026-07-21T02:27:22.298Z",
+      "session_ids": [
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
+      ],
+      "session_origins": {
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {}
+    },
+    "autoinfo-v1-1-89660ebe": {
+      "work_id": "autoinfo-v1-1-89660ebe",
+      "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v1.1.md",
+      "plan_name": "autoinfo-v1.1",
+      "status": "completed",
+      "started_at": "2026-07-21T02:27:22.372Z",
+      "updated_at": "2026-07-21T04:31:24.085Z",
+      "session_ids": [
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh",
+        "opencode:ses_07d690e50ffe3SJqdAodgtrDS0",
+        "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9",
+        "opencode:ses_07d546989ffeabJQktnhPMHgC4",
+        "opencode:ses_07d545756ffePtaHUozEbCmqHE",
+        "opencode:ses_07d544011ffeTvPOxgWXNnAYbo",
+        "opencode:ses_07d542edbffe422tc80NmdPED6",
+        "opencode:ses_07d4002cfffec57Z6zbU3U9g45",
+        "opencode:ses_07d3ff6f7ffeEWsZPxktRolzHC",
+        "opencode:ses_07d3fe811ffe6gtfP7KjxYzPTp",
+        "opencode:ses_07d3fda07ffeFrYUsVBe5epQ1O"
+      ],
+      "session_origins": {
+        "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct",
+        "opencode:ses_07d690e50ffe3SJqdAodgtrDS0": "appended",
+        "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9": "appended",
+        "opencode:ses_07d546989ffeabJQktnhPMHgC4": "appended",
+        "opencode:ses_07d545756ffePtaHUozEbCmqHE": "appended",
+        "opencode:ses_07d544011ffeTvPOxgWXNnAYbo": "appended",
+        "opencode:ses_07d542edbffe422tc80NmdPED6": "appended",
+        "opencode:ses_07d4002cfffec57Z6zbU3U9g45": "appended",
+        "opencode:ses_07d3ff6f7ffeEWsZPxktRolzHC": "appended",
+        "opencode:ses_07d3fe811ffe6gtfP7KjxYzPTp": "appended",
+        "opencode:ses_07d3fda07ffeFrYUsVBe5epQ1O": "appended"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "G5TranslationAccuracy quality gate",
+          "session_id": "opencode:ses_07d7f7e30ffeRui3mgidDibjYv",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-21T02:39:13.309Z",
+          "started_at": "2026-07-21T02:34:18.023Z",
+          "status": "completed",
+          "ended_at": "2026-07-21T02:39:13.309Z",
+          "elapsed_ms": 295286
+        },
+        "todo:4": {
+          "task_key": "todo:4",
+          "task_label": "4",
+          "task_title": "KB frontmatter field expansion",
+          "session_id": "opencode:ses_07d74d5ccffeuqGgkPL6nbSQez",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "updated_at": "2026-07-21T02:45:09.695Z",
+          "started_at": "2026-07-21T02:44:50.349Z",
+          "status": "completed",
+          "ended_at": "2026-07-21T02:45:09.695Z",
+          "elapsed_ms": 19346
+        },
+        "todo:5": {
+          "task_key": "todo:5",
+          "task_label": "5",
+          "task_title": "Language auto-detection",
+          "session_id": "opencode:ses_07d6faabfffexrthNxnEQDFl0U",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-07-21T02:52:15.217Z",
+          "started_at": "2026-07-21T02:51:55.144Z",
+          "status": "completed",
+          "ended_at": "2026-07-21T02:52:15.217Z",
+          "elapsed_ms": 20073
+        },
+        "todo:6": {
+          "task_key": "todo:6",
+          "task_label": "6",
+          "task_title": "get_collection_progress MCP tool",
+          "session_id": "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "started_at": "2026-07-21T03:12:39.946Z",
+          "status": "completed",
+          "updated_at": "2026-07-21T03:13:03.349Z",
+          "ended_at": "2026-07-21T03:13:03.349Z",
+          "elapsed_ms": 23403
+        },
+        "todo:13": {
+          "task_key": "todo:13",
+          "task_label": "13",
+          "task_title": "7 curated demo sources",
+          "session_id": "opencode:ses_07d5612cfffezsZzCR5LkYp65b",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "updated_at": "2026-07-21T03:14:58.501Z",
+          "started_at": "2026-07-21T03:14:44.168Z",
+          "status": "completed",
+          "ended_at": "2026-07-21T03:14:58.501Z",
+          "elapsed_ms": 14333
+        },
+        "todo:14": {
+          "task_key": "todo:14",
+          "task_label": "14",
+          "task_title": "Webhook source handler",
+          "session_id": "opencode:ses_07d545756ffePtaHUozEbCmqHE",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-07-21T03:34:51.294Z",
+          "status": "completed",
+          "updated_at": "2026-07-21T03:35:17.140Z",
+          "ended_at": "2026-07-21T03:35:17.140Z",
+          "elapsed_ms": 25846
+        },
+        "todo:18": {
+          "task_key": "todo:18",
+          "task_label": "18",
+          "task_title": "README update: Known Limitations + quality gate status correction",
+          "session_id": "opencode:ses_07d41b345ffel6OQTNz3K9s89S",
+          "agent": "Sisyphus-Junior",
+          "category": "writing",
+          "updated_at": "2026-07-21T03:37:16.350Z",
+          "started_at": "2026-07-21T03:37:00.746Z",
+          "status": "completed",
+          "ended_at": "2026-07-21T03:37:16.350Z",
+          "elapsed_ms": 15604
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "**Plan Compliance Audit** — `oracle`",
+          "session_id": "opencode:ses_07d11dde0ffe5LDh0YFXdbk2Ip",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-07-21T04:12:56.941Z",
+          "status": "completed",
+          "updated_at": "2026-07-21T04:30:43.963Z",
+          "ended_at": "2026-07-21T04:30:43.963Z",
+          "elapsed_ms": 1067022
+        }
+      },
+      "ended_at": "2026-07-21T04:31:24.085Z",
+      "elapsed_ms": 7441713
     }
   },
-  "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v0.2-v1.0.md",
-  "started_at": "2026-07-20T14:25:23.304Z",
+  "active_plan": "/mnt/d/贯维/AutoInfo/.omo/plans/autoinfo-v1.1.md",
+  "started_at": "2026-07-21T02:27:22.372Z",
   "status": "completed",
-  "updated_at": "2026-07-20T15:42:51.956Z",
+  "updated_at": "2026-07-21T04:31:24.085Z",
   "session_ids": [
-    "opencode:ses_08172c2bcffeOCaD99gdDF40vh"
+    "opencode:ses_08172c2bcffeOCaD99gdDF40vh",
+    "opencode:ses_07d690e50ffe3SJqdAodgtrDS0",
+    "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9",
+    "opencode:ses_07d546989ffeabJQktnhPMHgC4",
+    "opencode:ses_07d545756ffePtaHUozEbCmqHE",
+    "opencode:ses_07d544011ffeTvPOxgWXNnAYbo",
+    "opencode:ses_07d542edbffe422tc80NmdPED6",
+    "opencode:ses_07d4002cfffec57Z6zbU3U9g45",
+    "opencode:ses_07d3ff6f7ffeEWsZPxktRolzHC",
+    "opencode:ses_07d3fe811ffe6gtfP7KjxYzPTp",
+    "opencode:ses_07d3fda07ffeFrYUsVBe5epQ1O"
   ],
   "session_origins": {
-    "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct"
+    "opencode:ses_08172c2bcffeOCaD99gdDF40vh": "direct",
+    "opencode:ses_07d690e50ffe3SJqdAodgtrDS0": "appended",
+    "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9": "appended",
+    "opencode:ses_07d546989ffeabJQktnhPMHgC4": "appended",
+    "opencode:ses_07d545756ffePtaHUozEbCmqHE": "appended",
+    "opencode:ses_07d544011ffeTvPOxgWXNnAYbo": "appended",
+    "opencode:ses_07d542edbffe422tc80NmdPED6": "appended",
+    "opencode:ses_07d4002cfffec57Z6zbU3U9g45": "appended",
+    "opencode:ses_07d3ff6f7ffeEWsZPxktRolzHC": "appended",
+    "opencode:ses_07d3fe811ffe6gtfP7KjxYzPTp": "appended",
+    "opencode:ses_07d3fda07ffeFrYUsVBe5epQ1O": "appended"
   },
-  "plan_name": "autoinfo-v0.2-v1.0",
+  "plan_name": "autoinfo-v1.1",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Config schema — expand llm section with tasks, fallback, per-task model",
-      "session_id": "opencode:ses_080143c9cffezUJkKdZ2RgIy4N",
+      "task_title": "G5TranslationAccuracy quality gate",
+      "session_id": "opencode:ses_07d7f7e30ffeRui3mgidDibjYv",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T14:42:12.822Z",
-      "started_at": "2026-07-20T14:31:38.837Z",
+      "updated_at": "2026-07-21T02:39:13.309Z",
+      "started_at": "2026-07-21T02:34:18.023Z",
       "status": "completed",
-      "ended_at": "2026-07-20T14:42:12.822Z",
-      "elapsed_ms": 633985
+      "ended_at": "2026-07-21T02:39:13.309Z",
+      "elapsed_ms": 295286
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "KB frontmatter field expansion",
+      "session_id": "opencode:ses_07d74d5ccffeuqGgkPL6nbSQez",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-07-21T02:45:09.695Z",
+      "started_at": "2026-07-21T02:44:50.349Z",
+      "status": "completed",
+      "ended_at": "2026-07-21T02:45:09.695Z",
+      "elapsed_ms": 19346
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "Language auto-detection",
+      "session_id": "opencode:ses_07d6faabfffexrthNxnEQDFl0U",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-07-21T02:52:15.217Z",
+      "started_at": "2026-07-21T02:51:55.144Z",
+      "status": "completed",
+      "ended_at": "2026-07-21T02:52:15.217Z",
+      "elapsed_ms": 20073
     },
     "todo:6": {
       "task_key": "todo:6",
       "task_label": "6",
-      "task_title": "FTS5 search — full-text search over KB entries",
-      "session_id": "opencode:ses_080050cceffefGKtW0ewwegrsM",
+      "task_title": "get_collection_progress MCP tool",
+      "session_id": "opencode:ses_07d6900f1ffe2sgWLRaKe4nJT9",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-07-20T14:54:33.052Z",
-      "started_at": "2026-07-20T14:48:57.822Z",
+      "category": "quick",
+      "started_at": "2026-07-21T03:12:39.946Z",
       "status": "completed",
-      "ended_at": "2026-07-20T14:54:33.052Z",
-      "elapsed_ms": 335230
+      "updated_at": "2026-07-21T03:13:03.349Z",
+      "ended_at": "2026-07-21T03:13:03.349Z",
+      "elapsed_ms": 23403
     },
-    "todo:11": {
-      "task_key": "todo:11",
-      "task_label": "11",
-      "task_title": "Web scraping handler (trafilatura)",
-      "session_id": "opencode:ses_07ffa4635ffeK4U82d78e1JN1k",
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "7 curated demo sources",
+      "session_id": "opencode:ses_07d5612cfffezsZzCR5LkYp65b",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-07-20T15:13:50.301Z",
-      "started_at": "2026-07-20T15:12:51.661Z",
+      "category": "quick",
+      "updated_at": "2026-07-21T03:14:58.501Z",
+      "started_at": "2026-07-21T03:14:44.168Z",
       "status": "completed",
-      "ended_at": "2026-07-20T15:13:50.301Z",
-      "elapsed_ms": 58640
+      "ended_at": "2026-07-21T03:14:58.501Z",
+      "elapsed_ms": 14333
     },
-    "todo:17": {
-      "task_key": "todo:17",
-      "task_label": "17",
-      "task_title": "FTS5+LLM Q&A on collected content",
-      "session_id": "opencode:ses_07fe8958effeUgKydrrMrRpY3b",
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "Webhook source handler",
+      "session_id": "opencode:ses_07d545756ffePtaHUozEbCmqHE",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T15:27:01.359Z",
-      "started_at": "2026-07-20T15:20:08.552Z",
+      "started_at": "2026-07-21T03:34:51.294Z",
       "status": "completed",
-      "ended_at": "2026-07-20T15:27:01.359Z",
-      "elapsed_ms": 412807
+      "updated_at": "2026-07-21T03:35:17.140Z",
+      "ended_at": "2026-07-21T03:35:17.140Z",
+      "elapsed_ms": 25846
+    },
+    "todo:18": {
+      "task_key": "todo:18",
+      "task_label": "18",
+      "task_title": "README update: Known Limitations + quality gate status correction",
+      "session_id": "opencode:ses_07d41b345ffel6OQTNz3K9s89S",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-07-21T03:37:16.350Z",
+      "started_at": "2026-07-21T03:37:00.746Z",
+      "status": "completed",
+      "ended_at": "2026-07-21T03:37:16.350Z",
+      "elapsed_ms": 15604
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "opencode:ses_07fdc2049ffe3Q5dCkv5eVaaep",
+      "session_id": "opencode:ses_07d11dde0ffe5LDh0YFXdbk2Ip",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-07-20T15:42:41.517Z",
-      "started_at": "2026-07-20T15:36:53.836Z",
+      "started_at": "2026-07-21T04:12:56.941Z",
       "status": "completed",
-      "ended_at": "2026-07-20T15:42:41.517Z",
-      "elapsed_ms": 347681
+      "updated_at": "2026-07-21T04:30:43.963Z",
+      "ended_at": "2026-07-21T04:30:43.963Z",
+      "elapsed_ms": 1067022
     }
   },
   "agent": "atlas",
-  "ended_at": "2026-07-20T15:42:51.956Z",
-  "elapsed_ms": 4648652
+  "ended_at": "2026-07-21T04:31:24.085Z",
+  "elapsed_ms": 7441713
 }

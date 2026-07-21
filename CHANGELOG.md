@@ -25,10 +25,21 @@ All notable changes to the AutoInfo project will be documented in this file.
 - SourceConfig supports `settings` dict for extra config fields
 - G3RelevanceScoring supports multi-language keywords and per-topic threshold
 - Topic dataclass: group, relevance_threshold fields
-- Updated README with Known Limitations section
+- Updated README with Known Limitations section + v1.1 final status
+- Updated founder-expectations.md: Sections 5, 9, 10, 11, 12.10, 13 updated to v1.1 reality
+- Added Section 14 to founder-expectations.md: remaining gaps catalog
+- MCP tool inventory expanded from 35 to 56+ tool areas
 
 ### Fixed
-- (pre-existing issues remain unchanged)
+- Dead code removal (unused imports, orphaned test assertions)
+- Test mock updates for KG test (process_calls_store_entities)
+- install pytest-mock for KG test fixtures
+- CI: F1-F4 final verification wave — all 4 pass (Oracle, code quality, manual QA, scope fidelity)
+
+### Infrastructure
+- `.omo/evidence/final-qa/`: 11 QA scenario evidence files (S1-S11)
+- `.omo/plans/autoinfo-v1.1.md`: Full execution plan
+- `.omo/notepads/autoinfo-v1.1/learnings.md`: Implementation learnings
 
 ## [1.0.0-dev] — 2026-07-20
 

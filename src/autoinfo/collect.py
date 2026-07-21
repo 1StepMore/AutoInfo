@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import date, datetime, timezone
@@ -287,6 +288,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
       / ``to_item(article)``
     * ``RSSHandler`` — ``fetch(url) -> list[Item]``
     * ``WebHandler`` — ``fetch(url) -> list[Item]``
+    * ``EmailHandler`` — ``collect(config) -> list[Item]``
 
     Raises ``ValueError`` if the source type is unknown or unsupported.
     """
@@ -308,6 +310,16 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return WebHandler(source_name=source_config.name)
 
+    if stype in ("email", "email_imap"):
+        from autoinfo.collectors.email_imap import EmailHandler
+
+        return EmailHandler(source_name=source_config.name)
+
+    if stype == "pdf":
+        from autoinfo.collectors.pdf import PDFHandler
+
+        return PDFHandler(source_name=source_config.name)
+
     if stype == "api":
         raise ValueError(
             f"Unsupported API source '{source_config.name}'. "
@@ -316,7 +328,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
     raise ValueError(
         f"Unknown source type '{source_config.type}' for source "
-        f"'{source_config.name}'. Supported types: api (pubmed), rss, web."
+        f"'{source_config.name}'. Supported types: api (pubmed), rss, web, email_imap, pdf."
     )
 
 
@@ -333,6 +345,32 @@ def _fetch_items(
     * ``RSSHandler`` — uses ``fetch(url)`` directly
     * ``WebHandler`` — uses ``fetch(url)`` directly
     """
+    # -- Webhook handler path (push-based, no URL to pull) ----------------
+    if hasattr(handler, "handle") and not hasattr(handler, "fetch"):
+        logger.info(
+            "Source '%s' is push-based (%s); "
+            "nothing to fetch during pull collection",
+            source_config.name,
+            type(handler).__name__,
+        )
+        return []
+
+    # -- Email handler path (uses collect() with settings dict) ------------
+    if hasattr(handler, "collect"):
+        settings = source_config.settings
+        email_config: dict[str, Any] = {
+            "host": source_config.url or settings.get("host", ""),
+            "port": int(settings.get("port", 993)),
+            "username": settings.get("username", ""),
+            "password": settings.get("password", "")
+            or os.environ.get("AUTOINFO_EMAIL_PASSWORD", ""),
+            "mailbox": settings.get("mailbox", "INBOX"),
+        }
+        if settings.get("since_date"):
+            email_config["since_date"] = settings["since_date"]
+        items = handler.collect(email_config)
+        return items[:limit]
+
     # -- PubMed handler path -----------------------------------------------
     if hasattr(handler, "search") and hasattr(handler, "fetch"):
         query = topic if topic else source_config.name
@@ -342,7 +380,7 @@ def _fetch_items(
         articles = handler.fetch(pmids)
         return [handler.to_item(a) for a in articles]
 
-    # -- RSS handler path --------------------------------------------------
+    # -- RSS / Web handler path --------------------------------------------
     if hasattr(handler, "fetch"):
         url = source_config.url
         if not url:

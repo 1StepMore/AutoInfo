@@ -1260,6 +1260,54 @@ class SQLiteIndex:
             "total_count": len(deduped),
         }
 
+    def list_entities(self, domain: str = "") -> list[dict[str, Any]]:
+        """Return all entities, optionally filtered by *domain*.
+
+        Each entity dict contains: ``entity_id``, ``name``, ``type``,
+        ``domain``, ``entry_id``, ``created_at``.
+        """
+        with self._connect() as conn:
+            if domain:
+                rows = conn.execute(
+                    "SELECT entity_id, name, type, domain, entry_id, created_at "
+                    "FROM entities WHERE domain = ? ORDER BY name",
+                    (domain,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT entity_id, name, type, domain, entry_id, created_at "
+                    "FROM entities ORDER BY name"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def list_relations(self, domain: str = "") -> list[dict[str, Any]]:
+        """Return all relations, optionally filtered by *domain*.
+
+        Each relation dict contains: ``relation_id``, ``entity_a``,
+        ``entity_a_name``, ``entity_b``, ``entity_b_name``,
+        ``relation_type``, ``strength``, ``entries_shared``, ``domain``,
+        ``created_at``.
+        """
+        base_query = (
+            "SELECT r.relation_id, r.entity_a, a.name AS entity_a_name, "
+            "r.entity_b, b.name AS entity_b_name, r.relation_type, "
+            "r.strength, r.entries_shared, r.domain, r.created_at "
+            "FROM kg_relations r "
+            "JOIN entities a ON r.entity_a = a.entity_id "
+            "JOIN entities b ON r.entity_b = b.entity_id "
+        )
+        with self._connect() as conn:
+            if domain:
+                rows = conn.execute(
+                    base_query + "WHERE r.domain = ? ORDER BY r.strength DESC",
+                    (domain,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    base_query + "ORDER BY r.strength DESC"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
 
 # ---------------------------------------------------------------------------
 # KBStore
@@ -2138,6 +2186,28 @@ class KBStore:
             domain=domain,
             limit=limit,
         )
+
+    def export_knowledge_graph(self, domain: str = "") -> dict[str, Any]:
+        """Export the entire knowledge graph for the given *domain*.
+
+        Parameters
+        ----------
+        domain:
+            Domain filter.  When empty, exports all domains.
+
+        Returns
+        -------
+        dict
+            ``{domain, exported_at, entities: [...], relations: [...]}``.
+        """
+        entities = self.index.list_entities(domain=domain)
+        relations = self.index.list_relations(domain=domain)
+        return {
+            "domain": domain or "*",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "entities": entities,
+            "relations": relations,
+        }
 
     def get_summary(self, summary_id: str) -> dict[str, Any]:
         """Return full summary detail for an entry.

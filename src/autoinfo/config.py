@@ -57,6 +57,7 @@ class SourceConfig:
     type: str = "api"
     url: str = ""
     quality_tier: int = 1
+    settings: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -176,12 +177,14 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     domains = []
     for d in domains_raw:
         sources_raw: list[dict[str, Any]] = d.get("sources", []) or []
+        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier"})
         sources = [
             SourceConfig(
                 name=s.get("name", ""),
                 type=s.get("type", "api"),
                 url=s.get("url", ""),
                 quality_tier=s.get("quality_tier", 1),
+                settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
             )
             for s in sources_raw
         ]
@@ -324,12 +327,14 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         if domain.search_mode != "keyword":
             domain_dict["search_mode"] = domain.search_mode
         for source in domain.sources:
-            domain_dict["sources"].append({
+            src_dict: dict[str, Any] = {
                 "name": source.name,
                 "type": source.type,
                 "url": source.url,
                 "quality_tier": source.quality_tier,
-            })
+            }
+            src_dict.update(source.settings)
+            domain_dict["sources"].append(src_dict)
         for topic in domain.topics:
             topic_dict: dict[str, Any] = {
                 "name": topic.name,
@@ -447,6 +452,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "type": s.type,
                     "url": s.url,
                     "quality_tier": s.quality_tier,
+                    **s.settings,
                 }
                 for s in domain.sources
             ],

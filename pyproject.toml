@@ -74,7 +74,10 @@ dev = [
 web = [
     "playwright>=1.45",
 ]
-all = ["autoinfo[dev,web]"]
+pdf = [
+    "PyMuPDF>=1.23.0",
+]
+all = ["autoinfo[dev,web,pdf]"]
 
 [project.urls]
 Homepage = "https://github.com/your-org/autoinfo"

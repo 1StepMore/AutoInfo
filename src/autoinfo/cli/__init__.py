@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typer
 
-from . import collect, cron, doctor, kb, output, process, sources, status, summaries, topics
+from . import collect, cron, doctor, kb, knowledge, output, process, sources, status, summaries, topics
 
 # Import init function directly (not as typer app — single-command module)
 from .init import init as init_func
@@ -36,6 +36,7 @@ app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
 app.add_typer(cron.app, name="cron")
 app.add_typer(summaries.app, name="summaries")
+app.add_typer(knowledge.knowledge_app, name="knowledge")
 
 if __name__ == "__main__":
     app()

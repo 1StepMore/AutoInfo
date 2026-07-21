@@ -112,53 +112,53 @@ class TestErrorDict:
 
 
 class TestErrorResponse:
-    """Helper that returns MCP TextContent list for tool error returns."""
+    """Helper that returns error envelope dicts."""
 
-    def test_returns_list_of_text_content(self) -> None:
+    def test_returns_envelope_dict(self) -> None:
         result = error_response(ErrorCode.INTERNAL_ERROR)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], TextContent)
+        assert isinstance(result, dict)
+        assert result["success"] is False
+        assert "error" in result
+        assert "data" not in result
 
-    def test_text_content_type_is_text(self) -> None:
-        result = error_response(ErrorCode.INTERNAL_ERROR)
-        assert result[0].type == "text"
-
-    def test_text_contains_valid_json(self) -> None:
+    def test_error_has_required_fields(self) -> None:
         result = error_response(ErrorCode.SOURCE_NOT_FOUND)
-        parsed = json.loads(result[0].text)
-        assert parsed["error_code"] == "SourceNotFound"
-        assert parsed["message"] == ""
-        assert parsed["actionable"] is True
+        error = result["error"]
+        assert error["code"] == "SourceNotFound"
+        assert error["message"] == ""
+        assert error["actionable"] is True
 
-    def test_custom_message_in_json(self) -> None:
+    def test_custom_message(self) -> None:
         result = error_response(
             ErrorCode.COLLECTION_FAILED,
             message="PubMed API timed out",
             actionable=False,
         )
-        parsed = json.loads(result[0].text)
-        assert parsed["error_code"] == "CollectionFailed"
-        assert parsed["message"] == "PubMed API timed out"
-        assert parsed["actionable"] is False
+        error = result["error"]
+        assert error["code"] == "CollectionFailed"
+        assert error["message"] == "PubMed API timed out"
+        assert error["actionable"] is False
 
-    def test_json_round_trip(self) -> None:
+    def test_full_envelope(self) -> None:
         result = error_response(
             ErrorCode.EMAIL_SEND_FAILED,
             message="SMTP connection refused",
             actionable=True,
         )
-        parsed = json.loads(result[0].text)
-        assert parsed == {
-            "error_code": "EmailSendFailed",
-            "message": "SMTP connection refused",
-            "actionable": True,
+        assert result == {
+            "success": False,
+            "error": {
+                "code": "EmailSendFailed",
+                "message": "SMTP connection refused",
+                "actionable": True,
+            },
         }
 
-    def test_no_bare_error_key_in_json(self) -> None:
+    def test_no_bare_error_key_outside_envelope(self) -> None:
+        """The error key is nested inside the envelope, not at root."""
         result = error_response(ErrorCode.NOT_FOUND)
-        parsed = json.loads(result[0].text)
-        assert "error" not in parsed
+        assert "error_code" not in result
+        assert "code" in result["error"]
 
 
 class TestInternalErrorForUnknownExceptions:
@@ -190,9 +190,9 @@ class TestInternalErrorForUnknownExceptions:
                 getattr(ErrorCode, code_name), message=str(exc)
             )
 
-        parsed = json.loads(result[0].text)
-        assert parsed["error_code"] == "InternalError"
-        assert parsed["message"] == "broken pipe"
+        error = result["error"]
+        assert error["code"] == "InternalError"
+        assert error["message"] == "broken pipe"
 
 
 class TestReExports:

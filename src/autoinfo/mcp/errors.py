@@ -72,24 +72,38 @@ def error_dict(
     }
 
 
+def success_response(
+    data: dict[str, Any] | list[Any] | str,
+) -> dict[str, Any]:
+    """Return a success envelope ``{success: True, data: ...}``.
+
+    This is the standard success response for all non-health MCP tools.
+    """
+    return {"success": True, "data": data}
+
+
 def error_response(
-    error_code: ErrorCode,
+    code: str | ErrorCode,
     message: str = "",
     actionable: bool = True,
-) -> list[TextContent]:
-    """Build a standardised MCP error response.
+) -> dict[str, Any]:
+    """Return an error envelope ``{success: False, error: {code, message, actionable}}``.
 
-    Returns ``list[TextContent]`` containing a single JSON-serialised
-    error dict — the format MCP tools return when they encounter an
-    error they want the agent to handle.
+    Parameters
+    ----------
+    code:
+        Error code string or ``ErrorCode`` enum member.
+    message:
+        Human-readable description of the error.
+    actionable:
+        Whether the agent can retry the operation.
     """
-    return [
-        TextContent(
-            type="text",
-            text=json.dumps({
-                "error_code": error_code.value,
-                "message": message,
-                "actionable": actionable,
-            }),
-        ),
-    ]
+    code_str = code.value if isinstance(code, ErrorCode) else code
+    return {
+        "success": False,
+        "error": {
+            "code": code_str,
+            "message": message,
+            "actionable": actionable,
+        },
+    }

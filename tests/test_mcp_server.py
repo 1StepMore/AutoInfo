@@ -215,15 +215,18 @@ class TestErrorResponse:
         assert content.type == "text"
 
         data = json.loads(content.text)
-        assert data["error_code"] == "InternalError"
-        assert "Invalid domain name" in data["message"]
-        assert data["actionable"] is True
+        # Envelope shape
+        assert data["success"] is False
+        assert data["error"]["code"] == "InternalError"
+        assert "Invalid domain name" in data["error"]["message"]
+        assert data["error"]["actionable"] is True
 
     def test_handles_arbitrary_exception_types(self) -> None:
         exc = RuntimeError("Connection refused")
         result = _error_response(exc)
         data = json.loads(result[0].text)
-        assert data["error_code"] == "InternalError"
+        assert data["success"] is False
+        assert data["error"]["code"] == "InternalError"
 
 
 # ======================================================================
@@ -334,8 +337,10 @@ class TestToolDispatch:
         result = await handler(request)
         call_result = result.root
         data = json.loads(call_result.content[0].text)
-        assert data["error_code"] == "UnknownTool"
-        assert data["actionable"] is False
+        # Envelope shape
+        assert data["success"] is False
+        assert data["error"]["code"] == "UnknownTool"
+        assert data["error"]["actionable"] is False
 
     @pytest.mark.asyncio
     async def test_missing_required_argument_returns_error(self) -> None:

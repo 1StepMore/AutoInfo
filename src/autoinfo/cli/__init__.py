@@ -6,6 +6,7 @@ import typer
 
 from . import (
     cefr,
+    clean,
     collect,
     cron,
     doctor,
@@ -51,6 +52,7 @@ app.add_typer(topics.app, name="topics")
 app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
 app.add_typer(cefr.app, name="cefr")
+app.add_typer(clean.app, name="clean")
 app.add_typer(email.app, name="email", help="Send email digests via SMTP")
 app.add_typer(cron.app, name="cron")
 app.add_typer(summaries.app, name="summaries")

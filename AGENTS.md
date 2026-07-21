@@ -182,7 +182,7 @@ hidden from default views, or demoted — never deleted.
 ### "Initialise a project"
 ```
 1. `health_check()` → verify server availability
-2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure
+2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure *(requires AutoInfo ≥ v1.3)*
 3. `list_domains()` → confirm demo domain is active
 ```
 → Project initialised with demo domain, sources, and topics configured.
@@ -197,8 +197,8 @@ hidden from default views, or demoted — never deleted.
 
 ### "Set up and run a cron schedule"
 ```
-1. `add_schedule(domain="medical-research", cron="0 8 * * 1", topic="IVF breakthroughs")` → schedule created
-2. `cron_install()` → install crontab entries
+1. `add_schedule(domain="medical-research", cron="0 8 * * 1", topic="IVF breakthroughs")` → schedule created *(requires AutoInfo ≥ v1.2)*
+2. `cron_install()` → install crontab entries *(requires AutoInfo ≥ v1.2)*
 3. `list_schedules()` → verify active schedules
 4. `run_schedules()` → manual trigger for immediate collection
 ```
@@ -207,21 +207,21 @@ hidden from default views, or demoted — never deleted.
 ### "Generate and send a digest email"
 ```
 1. `generate_digest(domain="medical-research", period="week")` → digest Markdown
-2. `send_email(to="user@example.com", subject="Weekly Digest", body=digest)` → email sent via SMTP
+2. `send_email(to="user@example.com", subject="Weekly Digest", body=digest)` → email sent via SMTP *(requires AutoInfo ≥ v1.2)*
 ```
 → Weekly digest generated and delivered to inbox.
 
 ### "Classify content by CEFR level"
 ```
-1. `classify_cefr(text="The mitochondria is the powerhouse of the cell.", language="en")` → returns CEFR level
+1. `classify_cefr(text="The mitochondria is the powerhouse of the cell.", language="en")` → returns CEFR level *(requires AutoInfo ≥ v1.2)*
 ```
 → Returns `{"level": "B2", "confidence": 0.87, "features": ["academic vocabulary", "complex structure"]}`
 
 ### "Search with hybrid or vector mode"
 ```
 1. `search_knowledge_base(domain="medical-research", query="embryo development", mode="hybrid")` → FTS5 + vector
-2. `search_knowledge_base(domain="medical-research", query="embryo development", mode="vector")` → semantic only
-3. `faceted_search(domain="medical-research", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered
+2. `search_knowledge_base(domain="medical-research", query="embryo development", mode="vector")` → semantic only *(requires AutoInfo ≥ v1.2)*
+3. `faceted_search(domain="medical-research", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered *(requires AutoInfo ≥ v1.2)*
 ```
 → Ranked results from KB with source citations.
 
@@ -247,6 +247,46 @@ hidden from default views, or demoted — never deleted.
 4. `curl -X POST http://localhost:8741/api/v1/search -H "Content-Type: application/json" -d '{"query": "embryo"}'`
 ```
 → Full KB CRUD over HTTP, no auth required (localhost security).
+
+## LLM Configuration
+
+AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
+
+| Config | Default | Notes |
+|--------|---------|-------|
+| provider | openrouter | Use "openai" for OpenAI-compatible endpoints |
+| model | deepseek/deepseek-chat | Any LiteLLM-supported model |
+| base_url | (none) | Required for non-OpenRouter endpoints |
+| api_key | ${AUTOINFO_LLM_API_KEY} | Set via env var or config |
+
+**Precedence** (highest to lowest):
+1. MCP tool parameter (e.g. `init_project(llm_provider="openai")`)
+2. Config file `.autoinfo/config.yaml` → `llm.provider`, `llm.model`
+3. Environment variable `AUTOINFO_LLM_API_KEY`
+4. Default values (openrouter/deepseek/deepseek-chat)
+
+**Custom endpoint example** (e.g. OpenCode Go, Ollama, Azure):
+1. Set `provider` to `"openai"`
+2. Set `base_url` to your endpoint (e.g. `http://localhost:11434/v1`)
+3. Set `api_key` via env var or config
+4. Set `model` to your model name
+
+### "Monitor long-running collection or processing"
+
+Collection and processing can take 30-120 seconds depending on item count and LLM speed. Poll for progress:
+
+1. Start collection: `collect_sources(domain="medical", topic="IVF", async=true)` → get `collection_id`
+2. Poll every 5 seconds:
+   ```
+   while True:
+       status = get_collection_progress(collection_id=collection_id)
+       if status["is_complete"]:
+           break
+       sleep(5)
+   ```
+3. Start processing: `process_collection(domain="medical")` → get `processing_id`
+4. Poll: `get_processing_progress(domain="medical")` → check `is_complete`
+5. When done: `list_summaries(domain="medical")` to review results
 
 ## Status
 

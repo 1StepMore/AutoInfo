@@ -5,7 +5,7 @@ Pure dataclasses with serialization methods — no business logic, no persistenc
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field
 from typing import Any
 
 
@@ -32,7 +32,35 @@ class Item:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Item:
-        return cls(**data)
+        """Create Item from dict with resilience to missing/extra keys.
+
+        Only accepts known fields from ``Item.__dataclass_fields__``;
+        unknown keys are silently ignored.  Missing fields are filled
+        with their declared default, default_factory, or an empty string.
+        """
+        valid_fields = cls.__dataclass_fields__
+
+        # Accept only keys that match Item's dataclass fields
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+
+        # Fill missing fields with defaults
+        for field_name, field_def in valid_fields.items():
+            if field_name in filtered:
+                continue
+            if field_def.default is not MISSING:
+                filtered[field_name] = field_def.default
+            elif field_def.default_factory is not MISSING:
+                filtered[field_name] = field_def.default_factory()
+            else:
+                # Required field without a default — use empty string
+                filtered[field_name] = ""
+
+        try:
+            return cls(**filtered)
+        except Exception as exc:
+            raise TypeError(
+                f"Cannot create Item from data: {exc}"
+            ) from exc
 
 
 @dataclass

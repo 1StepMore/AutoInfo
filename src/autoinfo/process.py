@@ -158,13 +158,21 @@ def load_cached_items(domain: str, base_path: str | Path = "collections") -> lis
         if not source_dir.is_dir() or source_dir.name.startswith("_"):
             continue
         for date_dir in sorted(source_dir.iterdir()):
-            if not date_dir.is_dir():
+            if not date_dir.is_dir() or date_dir.name.startswith("_"):
                 continue
             for json_file in sorted(date_dir.glob("*.json")):
                 try:
                     data = json.loads(json_file.read_text(encoding="utf-8"))
+                    # Pre-validate: skip non-dict JSON values (list, str, number, …)
+                    if not isinstance(data, dict):
+                        logger.warning(
+                            "Skipping cache file %s: expected a JSON object, got %s",
+                            json_file,
+                            type(data).__name__,
+                        )
+                        continue
                     items.append(Item.from_dict(data))
-                except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                     logger.warning(
                         "Skipping malformed cache file %s: %s", json_file, exc
                     )
@@ -758,6 +766,22 @@ def run_processing(
         g4_count,
         g5_count,
     )
+
+    # -- Auto-verify: compare expected entries vs KB store count ----------
+    if result.kb_entries_created > 0:
+        try:
+            actual = kb_store.list_entries(domain, limit=1, offset=0)
+            actual_count = len(actual) if isinstance(actual, list) else 0
+            if actual_count < result.kb_entries_created:
+                logger.warning(
+                    "KB count mismatch: expected %d entries, SQLite returned %d. "
+                    "Run 'autoinfo kb reindex --domain %s' to rebuild the index.",
+                    result.kb_entries_created,
+                    actual_count,
+                    domain,
+                )
+        except Exception as verr:
+            logger.debug("KB verification skipped: %s", verr)
 
     return result
 

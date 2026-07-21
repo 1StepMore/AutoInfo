@@ -589,7 +589,9 @@ class TestNewToolDispatch:
         )
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
-        assert "domains" in data
+        # Envelope shape
+        assert data["success"] is True
+        assert "domains" in data["data"]
 
     @pytest.mark.asyncio
     async def test_get_domain_schema_dispatches(self, tmp_config: Path) -> None:
@@ -603,7 +605,8 @@ class TestNewToolDispatch:
         )
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
-        assert data["domain"] == "medical-research"
+        assert data["success"] is True
+        assert data["data"]["domain"] == "medical-research"
 
     @pytest.mark.asyncio
     async def test_list_output_templates_dispatches(self) -> None:
@@ -617,7 +620,8 @@ class TestNewToolDispatch:
         )
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
-        assert data["count"] == 4
+        assert data["success"] is True
+        assert data["data"]["count"] == 4
 
     @pytest.mark.asyncio
     async def test_unknown_tool_returns_error(self) -> None:
@@ -628,8 +632,9 @@ class TestNewToolDispatch:
         )
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
-        assert data["error_code"] == "UnknownTool"
-        assert data["actionable"] is False
+        assert data["success"] is False
+        assert data["error"]["code"] == "UnknownTool"
+        assert data["error"]["actionable"] is False
 
     @pytest.mark.asyncio
     async def test_implemented_tool_returns_result(self) -> None:
@@ -644,8 +649,9 @@ class TestNewToolDispatch:
         )
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
-        assert "entries" in data
-        assert "total_count" in data
+        assert data["success"] is True
+        assert "entries" in data["data"]
+        assert "total_count" in data["data"]
 
 # ======================================================================
 # Error response format verification
@@ -662,9 +668,12 @@ class TestErrorResponseV2:
         assert isinstance(content, TextContent)
 
         data = json.loads(content.text)
-        assert "error_code" in data
-        assert "message" in data
-        assert "actionable" in data
+        # Envelope shape
+        assert data["success"] is False
+        assert "error" in data
+        assert data["error"]["code"] == "InternalError"
+        assert "message" in data["error"]
+        assert "actionable" in data["error"]
 
     def test_add_source_domain_not_found(self, tmp_config: Path) -> None:
         result = _handle_add_source(

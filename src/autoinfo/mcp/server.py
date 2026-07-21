@@ -57,7 +57,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from autoinfo import __version__
-from autoinfo.mcp.errors import ErrorCode, error_dict, error_response
+from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
 logger = logging.getLogger(__name__)
 
@@ -1883,6 +1883,9 @@ def _handle_init_project(
     domain: str,
     project_name: str = "",
     dry_run: bool = False,
+    llm_provider: str = "",
+    llm_model: str = "",
+    llm_base_url: str = "",
 ) -> dict[str, Any]:
     """Initialize AutoInfo project skeleton (creates .autoinfo/ directory,
     config, demo domain). Idempotent — safe to call when already initialized.
@@ -1895,6 +1898,12 @@ def _handle_init_project(
         Optional human-friendly project name.
     dry_run:
         If True, preview what would be created without writing files.
+    llm_provider:
+        Override the default LLM provider (e.g. \"openai\").
+    llm_model:
+        Override the default LLM model (e.g. \"gpt-4\").
+    llm_base_url:
+        Override the default LLM base URL (e.g. \"http://localhost:11434/v1\").
     """
     # Lazy imports to avoid circular dependencies
     from autoinfo.cli.init import _DEMO_DOMAINS_DIR, _ensure_dir, _run_init
@@ -1928,6 +1937,9 @@ def _handle_init_project(
             "domain": domain,
             "project_name": project_name,
             "autoinfo_dir": str(autoinfo_dir),
+            "llm_provider": llm_provider or "(default)",
+            "llm_model": llm_model or "(default)",
+            "llm_base_url": llm_base_url or "(default)",
             "would_create_dirs": [
                 ".autoinfo/",
                 ".autoinfo/knowledge/00-Inbox/",
@@ -1947,11 +1959,30 @@ def _handle_init_project(
     try:
         _ensure_dir(autoinfo_dir)
         _run_init(domain, autoinfo_dir, project_name=project_name)
+
+        if llm_provider or llm_model or llm_base_url:
+            import yaml
+            config_path = autoinfo_dir / "config.yaml"
+            if config_path.exists():
+                with open(config_path, "r") as f:
+                    cfg = yaml.safe_load(f)
+                if llm_provider:
+                    cfg.setdefault("llm", {})["provider"] = llm_provider
+                if llm_model:
+                    cfg.setdefault("llm", {})["model"] = llm_model
+                if llm_base_url:
+                    cfg.setdefault("llm", {})["base_url"] = llm_base_url
+                with open(config_path, "w") as f:
+                    yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
         return {
             "status": "success",
             "domain": domain,
             "project_name": project_name,
             "autoinfo_dir": str(autoinfo_dir),
+            "llm_provider": llm_provider or "(default)",
+            "llm_model": llm_model or "(default)",
+            "llm_base_url": llm_base_url or "(default)",
             "message": f"AutoInfo initialized for '{domain}'",
         }
     except Exception as exc:
@@ -2208,22 +2239,20 @@ def _error_dict(exc: Exception) -> dict[str, Any]:
 
 
 def _error_response(exc: Exception) -> list[TextContent]:
-    """Build a standardised error response.
+    """Build a standardised error response in the envelope format.
 
-    Every error response includes three fields so agents can decide how
-    to react:
-
-    * ``error_code``  — ErrorCode enum value
-    * ``message``     — Human-readable description
-    * ``actionable``  — Whether the agent can retry the operation
+    Returns ``list[TextContent]`` with the uniform ``{success, error}`` shape.
     """
     return [
         TextContent(
             type="text",
             text=json.dumps({
-                "error_code": ErrorCode.INTERNAL_ERROR.value,
-                "message": str(exc),
-                "actionable": True,
+                "success": False,
+                "error": {
+                    "code": ErrorCode.INTERNAL_ERROR.value,
+                    "message": str(exc),
+                    "actionable": True,
+                },
             }),
         )
     ]
@@ -3649,6 +3678,21 @@ async def list_tools() -> list[Tool]:
                         "description": "Preview what would be created without writing files",
                         "default": False,
                     },
+                    "llm_provider": {
+                        "type": "string",
+                        "description": "Override default LLM provider (e.g. \"openai\")",
+                        "default": "",
+                    },
+                    "llm_model": {
+                        "type": "string",
+                        "description": "Override default LLM model (e.g. \"gpt-4\")",
+                        "default": "",
+                    },
+                    "llm_base_url": {
+                        "type": "string",
+                        "description": "Override default LLM base URL (e.g. \"http://localhost:11434/v1\")",
+                        "default": "",
+                    },
                 },
                 "required": ["domain"],
             },
@@ -3660,10 +3704,13 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch tool calls to the appropriate implementation."""
     try:
-        # -- System (2) ---------------------------------------------------
+        # -- health_check is exempted — keep flat for the entry-point tool
         if name == "health_check":
             result = _handle_health_check()
-        elif name == "diagnose_system":
+            return [TextContent(type="text", text=json.dumps(result))]
+
+        # -- System (1) ---------------------------------------------------
+        if name == "diagnose_system":
             result = _handle_diagnose_system()
 
         # -- Discovery (7) ------------------------------------------------
@@ -3829,15 +3876,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return [
                 TextContent(
                     type="text",
-                    text=json.dumps({
-                        "error_code": ErrorCode.UNKNOWN_TOOL.value,
-                        "message": f"Unknown tool: {name}",
-                        "actionable": False,
-                    }),
+                    text=json.dumps(error_response(
+                        code=ErrorCode.UNKNOWN_TOOL,
+                        message=f"Unknown tool: {name}",
+                        actionable=False,
+                    )),
                 )
             ]
 
-        return [TextContent(type="text", text=json.dumps(result))]
+        # Wrap non-health responses in uniform envelope
+        if isinstance(result, dict) and "error_code" in result:
+            wrapped = error_response(
+                code=result["error_code"],
+                message=result.get("message", ""),
+                actionable=result.get("actionable", True),
+            )
+        else:
+            wrapped = success_response(result)
+        return [TextContent(type="text", text=json.dumps(wrapped))]
     except NotImplementedError:
         # Stub tools return a graceful error response
         return _error_response(NotImplementedError(str(arguments.get("message", "Not implemented in v0.1"))))

@@ -136,6 +136,73 @@ def _make_quality_results_duplicate() -> dict[str, QualityResult]:
 
 
 # ===================================================================
+# Test: Item.from_dict resilience (partial/malformed dicts)
+# ===================================================================
+
+
+class TestItemFromDict:
+    """``Item.from_dict()`` resilience to missing/extra keys."""
+
+    def test_from_dict_empty(self) -> None:
+        """Empty dict returns an Item with all default values."""
+        item = Item.from_dict({})
+        assert item.id == ""
+        assert item.title == ""
+        assert item.content == ""
+        assert item.source_url == ""
+        assert item.source_type == ""
+        assert item.source_name == ""
+        assert item.content_type == "text"
+        assert item.topic_tags == []
+        assert item.quality_tier == 1
+        assert item.raw_data == {}
+
+    def test_from_dict_missing_source_url(self) -> None:
+        """Missing ``source_url`` fills with empty string."""
+        item = Item.from_dict({
+            "id": "x",
+            "source_name": "pubmed",
+            "source_type": "api",
+            "title": "Test",
+            "content": "Body",
+        })
+        assert item.source_url == ""
+        assert item.id == "x"
+        assert item.title == "Test"
+
+    def test_from_dict_extra_keys(self) -> None:
+        """Extra keys in the dict are silently ignored."""
+        item = Item.from_dict({
+            "id": "x",
+            "source_name": "pubmed",
+            "source_type": "api",
+            "source_url": "https://example.com",
+            "title": "Test",
+            "content": "Body",
+            "bogus_field": "should be ignored",
+            "_unused": 42,
+        })
+        assert item.id == "x"
+        assert item.title == "Test"
+        assert not hasattr(item, "bogus_field")
+
+    def test_from_dict_wrong_types(self) -> None:
+        """Non-string values for str fields are accepted as-is (no crash)."""
+        item = Item.from_dict({
+            "id": "x",
+            "source_name": "pubmed",
+            "source_type": "api",
+            "source_url": "https://example.com",
+            "title": "Test",
+            "content": "Body",
+            "quality_tier": "3",  # str instead of int
+        })
+        assert item.id == "x"
+        # quality_tier will be the raw value passed through
+        assert item.quality_tier == "3"
+
+
+# ===================================================================
 # Test: load_cached_items
 # ===================================================================
 
@@ -195,6 +262,21 @@ class TestLoadCachedItems:
 
         assert items == []
         assert "Skipping malformed cache file" in caplog.text
+
+    def test_skips_non_dict_json(self, tmp_path: Path, caplog) -> None:
+        """Valid JSON that is not a dict (e.g. list) is skipped."""
+        cache_file = (
+            tmp_path / "collections" / "test-domain" / "pubmed" / "2026-07-15" / "array.json"
+        )
+        cache_file.parent.mkdir(parents=True)
+        cache_file.write_text('["not", "a", "dict"]', encoding="utf-8")
+
+        caplog.set_level(logging.WARNING)
+
+        items = load_cached_items("test-domain", base_path=tmp_path / "collections")
+
+        assert items == []
+        assert "expected a JSON object, got list" in caplog.text
 
     def test_skips_underscore_directories(self, tmp_path: Path) -> None:
         """Directories starting with ``_`` are skipped (e.g. ``_runs``)."""

@@ -39,9 +39,15 @@ class TestToolRegistration:
         assert "domain" in schema.get("properties", {})
         assert "project_name" in schema["properties"]
         assert "dry_run" in schema["properties"]
+        assert "llm_provider" in schema["properties"]
+        assert "llm_model" in schema["properties"]
+        assert "llm_base_url" in schema["properties"]
         assert schema["required"] == ["domain"]
         # Domain should have an enum constraint
         assert "enum" in schema["properties"]["domain"]
+        assert "llm_provider" not in schema["required"]
+        assert "llm_model" not in schema["required"]
+        assert "llm_base_url" not in schema["required"]
 
 
 # ======================================================================
@@ -210,3 +216,123 @@ class TestInitErrorHandling:
 
         # Restore
         monkeypatch.setattr(cli_init, "_ensure_dir", original)
+
+
+# ======================================================================
+# LLM override params
+# ======================================================================
+
+
+class TestInitLlmOverride:
+    """``llm_provider`` / ``llm_model`` / ``llm_base_url`` params should
+    override the corresponding values in generated config.yaml."""
+
+    def test_llm_provider_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="medical-research",
+            llm_provider="openai",
+        )
+        assert result["status"] == "success"
+        assert result["llm_provider"] == "openai"
+
+        import yaml
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["llm"]["provider"] == "openai"
+        # Other defaults should remain
+        assert cfg["llm"]["model"] == "deepseek/deepseek-chat"
+
+    def test_llm_model_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="medical-research",
+            llm_model="gpt-4",
+        )
+        assert result["status"] == "success"
+        assert result["llm_model"] == "gpt-4"
+
+        import yaml
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["llm"]["model"] == "gpt-4"
+        assert cfg["llm"]["provider"] == "openrouter"
+
+    def test_llm_base_url_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="medical-research",
+            llm_base_url="http://localhost:11434/v1",
+        )
+        assert result["status"] == "success"
+        assert result["llm_base_url"] == "http://localhost:11434/v1"
+
+        import yaml
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["llm"]["base_url"] == "http://localhost:11434/v1"
+
+    def test_all_three_overrides(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="ai-commercial",
+            llm_provider="anthropic",
+            llm_model="claude-3-opus",
+            llm_base_url="https://api.anthropic.com",
+        )
+        assert result["status"] == "success"
+
+        import yaml
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["llm"]["provider"] == "anthropic"
+        assert cfg["llm"]["model"] == "claude-3-opus"
+        assert cfg["llm"]["base_url"] == "https://api.anthropic.com"
+
+    def test_no_overrides_backwards_compatible(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Calling without LLM params should leave defaults intact."""
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(domain="medical-research")
+        assert result["status"] == "success"
+        assert result["llm_provider"] == "(default)"
+        assert result["llm_model"] == "(default)"
+        assert result["llm_base_url"] == "(default)"
+
+        import yaml
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["llm"]["provider"] == "openrouter"
+        assert cfg["llm"]["model"] == "deepseek/deepseek-chat"
+        assert "base_url" not in cfg["llm"]
+
+    def test_dry_run_includes_llm_values(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="medical-research",
+            dry_run=True,
+            llm_provider="openai",
+            llm_model="gpt-4",
+            llm_base_url="http://localhost:11434/v1",
+        )
+        assert result["status"] == "dry_run"
+        assert result["llm_provider"] == "openai"
+        assert result["llm_model"] == "gpt-4"
+        assert result["llm_base_url"] == "http://localhost:11434/v1"
+        # No files should have been created
+        assert not (tmp_path / ".autoinfo").exists()
+
+    def test_dry_run_defaults_shown(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _handle_init_project(
+            domain="medical-research",
+            dry_run=True,
+        )
+        assert result["status"] == "dry_run"
+        assert result["llm_provider"] == "(default)"
+        assert result["llm_model"] == "(default)"
+        assert result["llm_base_url"] == "(default)"

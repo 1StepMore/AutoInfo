@@ -203,6 +203,11 @@ def init(
         "-i",
         help="Run in interactive mode (prompt for domain, LLM provider, API key).",
     ),
+    list_domains: bool = typer.Option(
+        False,
+        "--list-domains",
+        help="Show available demo domains and exit.",
+    ),
 ) -> None:
     """Initialize AutoInfo project skeleton.
 
@@ -215,6 +220,10 @@ def init(
     Use --name to give your project a human-friendly name (stored in config
     under ``project.project_name``).
     """
+    if list_domains:
+        _print_demo_domains()
+        return
+
     if demo:
         demo = demo.strip()
 

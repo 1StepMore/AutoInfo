@@ -234,6 +234,11 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN user_id TEXT DEFAULT ''")
             except Exception:
                 pass
+            # Migration: add cefr column (v1.2 — CEFR badge for dashboard)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN cefr TEXT DEFAULT ''")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -314,6 +319,8 @@ class SQLiteIndex:
         if entry.custom_fields:
             custom_fields.update(entry.custom_fields)
 
+        cefr_level = str(custom_fields.get("cefr", "")) if custom_fields else ""
+
         with self._connect() as conn:
             conn.execute(
                 """
@@ -321,8 +328,8 @@ class SQLiteIndex:
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, file_path, tags,
-                     custom_fields, language, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     custom_fields, language, user_id, cefr)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
@@ -342,6 +349,7 @@ class SQLiteIndex:
                     json.dumps(custom_fields, ensure_ascii=False),
                     entry.language,
                     entry.user_id,
+                    cefr_level,
                 ),
             )
 
@@ -2211,6 +2219,19 @@ class KBStore:
             raw = file_path.read_text(encoding="utf-8")
             content = _strip_frontmatter(raw)
             meta["content"] = content
+            fm = _parse_frontmatter(raw)
+            if fm:
+                if not meta.get("cefr") and fm.get("cefr"):
+                    meta["cefr"] = fm["cefr"]
+                cf = meta.get("custom_fields") or "{}"
+                try:
+                    cf_dict = json.loads(cf) if isinstance(cf, str) else dict(cf)
+                except (json.JSONDecodeError, TypeError):
+                    cf_dict = {}
+                for k in ("author", "source_ids", "status", "related_concepts", "linked_entries"):
+                    if k in fm and k not in cf_dict:
+                        cf_dict[k] = fm[k]
+                meta["custom_fields"] = json.dumps(cf_dict, ensure_ascii=False)
         else:
             meta["content"] = ""
 
@@ -3281,6 +3302,24 @@ def _strip_frontmatter(text: str) -> str:
         if idx != -1:
             return text[idx + 3 :].lstrip("\n")
     return text
+
+
+def _parse_frontmatter(text: str) -> dict[str, Any]:
+    """Parse the YAML frontmatter of a Markdown file into a dict.
+
+    Returns an empty dict when the file has no frontmatter or the YAML
+    is malformed.
+    """
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
+    try:
+        data = yaml.safe_load(text[3:end]) or {}
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _extract_key_points(content: str) -> list[str]:

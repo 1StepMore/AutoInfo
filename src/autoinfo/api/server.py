@@ -87,6 +87,7 @@ def _load_rest_config() -> RestAPIConfig:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 _server_start_time: float = time.time()
 
@@ -109,6 +110,45 @@ app.add_middleware(
 from autoinfo.api.routes import router as api_v1_router
 
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# ---------------------------------------------------------------------------
+# Dashboard (read-only web UI)
+# ---------------------------------------------------------------------------
+
+_DASHBOARD_HTML_PATH = Path(__file__).resolve().parent / "dashboard.html"
+
+
+def _load_dashboard_html() -> str:
+    """Read the dashboard HTML file from disk (cached per-process)."""
+    global _dashboard_html_cache
+    if _dashboard_html_cache is None:
+        if _DASHBOARD_HTML_PATH.is_file():
+            _dashboard_html_cache = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
+        else:
+            _dashboard_html_cache = (
+                "<!doctype html><html><body>"
+                "<h1>AutoInfo Dashboard</h1>"
+                "<p>dashboard.html not found at "
+                f"{_DASHBOARD_HTML_PATH}</p>"
+                "</body></html>"
+            )
+    return _dashboard_html_cache
+
+
+_dashboard_html_cache: str | None = None
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard_root() -> str:
+    """Serve the read-only dashboard at the site root."""
+    return _load_dashboard_html()
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard() -> str:
+    """Serve the read-only dashboard at ``/dashboard``."""
+    return _load_dashboard_html()
+
 
 # ---------------------------------------------------------------------------
 # Endpoints

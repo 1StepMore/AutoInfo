@@ -252,6 +252,24 @@ def _reset_progress(domain: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _update_index_cefr(entry_id: str, cefr_level: str) -> None:
+    """Persist *cefr_level* on the SQLite index row for *entry_id*.
+
+    Non-blocking: any failure is logged and swallowed.
+    """
+    try:
+        from autoinfo.kb import KBStore
+
+        store = KBStore()
+        with store.index._connect() as conn:
+            conn.execute(
+                "UPDATE entries SET cefr = ? WHERE entry_id = ?",
+                (cefr_level, entry_id),
+            )
+    except Exception as exc:
+        logger.debug("Failed to update cefr in index for %s: %s", entry_id, exc)
+
+
 def _classify_entry_cefr(
     entry: Any,
     item: Item,
@@ -310,6 +328,7 @@ def _classify_entry_cefr(
                 key="cefr",
                 value=cefr_level,
             )
+            _update_index_cefr(entry.entry_id, cefr_level)
             logger.debug(
                 "CEFR classification for %s: %s (confidence=%.2f)",
                 entry.entry_id,

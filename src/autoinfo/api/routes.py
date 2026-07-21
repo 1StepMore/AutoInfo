@@ -70,6 +70,8 @@ class EntryResponse(BaseModel):
     file_path: str
     content: str = ""
     language: str = ""
+    cefr: str = ""
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
 
 
 class ErrorResponse(BaseModel):
@@ -115,6 +117,23 @@ def _entry_to_response(entry: dict[str, Any]) -> dict[str, Any]:
             tags = [tags_raw] if tags_raw else []
     else:
         tags = list(tags_raw) if tags_raw else []
+
+    custom_fields_raw = entry.get("custom_fields") or {}
+    if isinstance(custom_fields_raw, str):
+        import json
+        try:
+            custom_fields = json.loads(custom_fields_raw)
+        except (json.JSONDecodeError, TypeError):
+            custom_fields = {}
+    elif isinstance(custom_fields_raw, dict):
+        custom_fields = dict(custom_fields_raw)
+    else:
+        custom_fields = {}
+
+    cefr = entry.get("cefr") or ""
+    if not cefr and isinstance(custom_fields, dict):
+        cefr = str(custom_fields.get("cefr", "")) or ""
+
     return {
         "entry_id": entry.get("entry_id", ""),
         "title": entry.get("title", ""),
@@ -132,6 +151,8 @@ def _entry_to_response(entry: dict[str, Any]) -> dict[str, Any]:
         "file_path": entry.get("file_path", ""),
         "content": entry.get("content", ""),
         "language": entry.get("language", ""),
+        "cefr": cefr,
+        "custom_fields": custom_fields,
     }
 
 

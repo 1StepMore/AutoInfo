@@ -12,6 +12,8 @@ Usage::
 
 import json
 import logging
+import shutil
+import subprocess
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -387,4 +389,106 @@ def remove_schedule(
     save_schedules(schedules)
     typer.echo(
         f"Schedule '{name}' removed (was: {removed.expression} → domain '{removed.domain}')."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Crontab management (system crontab install/uninstall)
+# ---------------------------------------------------------------------------
+
+CRONTAB_MARKER = "# autoinfo-cron-managed"
+
+
+def _check_crontab() -> None:
+    """Exit with helpful message if ``crontab`` binary is missing."""
+    if not shutil.which("crontab"):
+        typer.echo(
+            "Error: `crontab` command not found.\n"
+            "Install cronie or your system's cron package to use this feature.\n"
+            "  Debian/Ubuntu: sudo apt-get install cronie\n"
+            "  RHEL/Fedora:  sudo dnf install cronie\n"
+            "  macOS:         Already preinstalled.\n"
+            "  Windows:       Use WSL or install cron via cygwin.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _get_crontab_lines() -> list[str]:
+    """Return current crontab lines (empty list if no crontab yet)."""
+    try:
+        result = subprocess.run(
+            ["crontab", "-l"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return [line for line in result.stdout.splitlines() if line.strip()]
+        return []
+    except FileNotFoundError:
+        _check_crontab()
+        return []
+
+
+def _set_crontab_lines(lines: list[str]) -> None:
+    """Write *lines* as the new crontab."""
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    try:
+        _ = subprocess.run(
+            ["crontab", "-"],
+            input=text,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        _check_crontab()
+
+
+# ---------------------------------------------------------------------------
+# CLI Commands — install / uninstall
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def install() -> None:
+    """Install autoinfo crontab entry (runs daily at 6:00 AM).
+
+    The entry is marked with ``# autoinfo-cron-managed`` and can be
+    removed with ``autoinfo cron uninstall``.
+    """
+    _check_crontab()
+
+    lines = _get_crontab_lines()
+    if any(CRONTAB_MARKER in line for line in lines):
+        typer.echo("autoinfo crontab entry already installed.")
+        return
+
+    cron_line = (
+        f"0 6 * * * cd {Path.cwd()} && autoinfo cron run "
+        f">> /tmp/autoinfo-cron.log 2>&1 {CRONTAB_MARKER}"
+    )
+    lines.append(cron_line)
+    _set_crontab_lines(lines)
+    typer.echo("autoinfo crontab entry installed (daily at 6:00 AM).")
+
+
+@app.command()
+def uninstall() -> None:
+    """Remove all autoinfo-managed crontab entries."""
+    _check_crontab()
+
+    lines = _get_crontab_lines()
+    filtered = [line for line in lines if CRONTAB_MARKER not in line]
+    removed = len(lines) - len(filtered)
+
+    if removed == 0:
+        typer.echo("No autoinfo crontab entries found.")
+        return
+
+    _set_crontab_lines(filtered)
+    typer.echo(
+        f"Removed {removed} autoinfo crontab entr{'y' if removed == 1 else 'ies'}."
     )

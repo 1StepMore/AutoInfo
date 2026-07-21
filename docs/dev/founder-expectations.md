@@ -561,7 +561,7 @@ Beyond individual expectations, there are **core value propositions** — the fu
 
 ```
 Promise:  Configure any domain → AutoInfo collects from any source type
-Reality:  v1.1 — RSS, API, Web, Webhook, Email (IMAP), PDF — 6 source types
+Reality:  v1.2 — RSS, API, Web, Webhook, Email (IMAP), PDF — 6 source types, crontab installer
 ```
 
 | Aspect | Status | Gap |
@@ -570,6 +570,7 @@ Reality:  v1.1 — RSS, API, Web, Webhook, Email (IMAP), PDF — 6 source types
 | Web page extraction | ✅ Implemented | trafilatura + Playwright fallback for JS-heavy pages |
 | Webhook/email/PDF collection | ✅ **v1.1 Added** | Webhook (HMAC+rate limiting), Email (stdlib imaplib), PDF (PyMuPDF+chunking) |
 | **End-to-end: source → stored item** | ✅ **v1.1 Complete** | Core loop working across 6 source types |
+| **Crontab scheduling** | ✅ **v1.2 Added** | `autoinfo cron install/uninstall` for POSIX crontab |
 
 ### 5.2 "LLM-powered structured extraction"
 
@@ -589,34 +590,43 @@ Reality:  v1.1 — default + custom extraction + G4/G5 quality gates + Q&A
 
 ```
 Promise:  Collected knowledge is permanently stored, searchable, exportable
-Reality:  v1.1 — 4-tier Hermes pipeline + promote workflow + KG export + frontmatter expansion
+Reality:  v1.2 — 4-tier Hermes pipeline + promote workflow + KG export + frontmatter expansion + git versioning + `[[wiki links]]` + PDF export + REST API
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
 | File-based KB storage | ✅ Implemented | 4-tier pipeline (Inbox→Raw→Draft→Wiki), Markdown + YAML frontmatter |
-| Hybrid search | ✅ Implemented | FTS5 across all tiers with CJK support; sqlite-vec in deps (not wired) |
+| Hybrid search | ✅ **v1.2 Wired** | sqlite-vec embeddings + FTS5 (0.7 FTS5 + 0.3 vec), faceted search (7 filters) |
 | Export & interoperability | ✅ Implemented | Markdown, JSON, SQLite, CSV, GraphML export; versioning; entry history |
 | Knowledge graph | ✅ **v1.1 Enhanced** | Export CLI (JSON/GraphML/CSV), entity extraction + relation discovery |
 | KB promote workflow | ✅ **v1.1 Added** | Human-only Draft→Wiki promotion, agent cannot write 03-Wiki |
 | Frontmatter expansion | ✅ **v1.1 Added** | author, source_ids, status, related_concepts, linked_entries |
+| KB versioning | ✅ **v1.2 Added** | Git auto-commit + SHA tracking per entry, rollback support |
+| Obsidian `[[wiki links]]` | ✅ **v1.2 Added** | Native wiki-link syntax in KB Markdown files |
+| PDF export | ✅ **v1.2 Added** | WeasyPrint-powered report generation |
+| REST API | ✅ **v1.2 Added** | FastAPI CRUD (port 8741), read-only KB access via HTTP |
 
 ### 5.4 "Agent can operate the system"
 
 ```
 Promise:  AI agents (OpenCode, Claude Code, etc.) can run AutoInfo via MCP
-Reality:  v1.1 — 56+ MCP tools across 12 categories
+Reality:  v1.2 — 70+ MCP tools across 12 categories
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| MCP server | ✅ **v1.1 Enhanced** | 56+ tool areas, stdio transport, structured error responses |
+| MCP server | ✅ **v1.2 Enhanced** | 70+ tool areas, stdio transport, structured error responses |
 | Core collection tools | ✅ Implemented | collect_sources (with dry_run), process_collection (batch), batch_run |
 | Progress visibility | ✅ **v1.1 Added** | get_collection_progress, get_collection_status MCP tools |
 | KB management tools | ✅ Implemented | Full CRUD + search + draft workflow + promote + KG + reindex |
 | Domain lifecycle | ✅ **v1.1 Added** | activate_domain, deactivate_domain, get_domain_config |
 | Output generation | ✅ **v1.1 Added** | generate_tutorial, generate_presentation added |
 | Keyword discovery | ✅ **v1.1 Added** | list_keywords with groups, multi-language scoring |
+| CEFR classification | ✅ **v1.2 Added** | classify_cefr MCP tool, EN/ZH/JA LLM-based scoring |
+| Keywords management | ✅ **v1.2 Added** | Central `_keywords.yaml` per domain, manage_keyword MCP tool |
+| Email sending | ✅ **v1.2 Added** | send_email MCP tool, SMTP configuration |
+| Hybrid search + faceted | ✅ **v1.2 Added** | Vector search MCP tools, 7 faceted filters |
+| Report generation (PDF/JSON) | ✅ **v1.2 Added** | generate_report with format param |
 
 ---
 
@@ -750,7 +760,7 @@ PARTIAL — 16/32 expectations pass, but:
 
 ## 9. Current Reality Assessment
 
-**Status: v1.1 implemented (2026-07-21).** Full feature set across all 32 expectations, plus v1.1 gap-fill release.
+**Status: v1.2 implemented (2026-07-21).** Full feature set across all 32 expectations, plus v1.1 gap-fill and v1.2 comprehensive enhancement release.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%
@@ -765,37 +775,45 @@ gantt
     All 32 expectations met              :done, 2026-07-20, 1d
     section v1.1 Gap-Fill
     G5 + Promote + Webhook+Email+PDF     :done, 2026-07-21, 1d
+    section v1.2 Enhancement
+    Hybrid search + REST API + CEFR + Dashboard + Versioning :done, 2026-07-21, 1d
 ```
 
 | Component | Status |
 |-----------|--------|
-| Code base | ✅ ~15K+ lines Python |
-| CLI | ✅ 12 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge) |
-| Config system | ✅ YAML-based, LLM per-task config, fallback chains |
-| Collection pipeline | ✅ RSS, API (PubMed), Web (trafilatura+Playwright), Webhook, Email (IMAP), PDF |
+| Code base | ✅ ~18K+ lines Python |
+| CLI | ✅ 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email) |
+| Config system | ✅ YAML-based, LLM per-task config, fallback chains, schema versioning |
+| Collection pipeline | ✅ RSS, API (PubMed), Web (trafilatura+Playwright), Webhook, Email (IMAP), PDF, crontab installer |
 | LLM extraction | ✅ Default + custom fields, G4 factual consistency check |
 | Quality gates | ✅ G1-G5 all advisory (never discard content) |
-| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki) |
-| Search | ✅ FTS5 across all tiers with CJK support |
+| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning (auto-commit + SHA) |
+| Search | ✅ Hybrid (FTS5 + sqlite-vec vector), faceted (7 filters) |
+| REST API | ✅ FastAPI CRUD (port 8741) |
+| Web UI Dashboard | ✅ Bootstrap 5 |
+| CEFR classification | ✅ LLM-based EN/ZH/JA |
 | Knowledge graph | ✅ Entity extraction + relation discovery + export (JSON/GraphML/CSV) |
-| MCP server | ✅ 56+ tool areas across 12 categories |
+| MCP server | ✅ 70+ tool areas across 12 categories |
 | Demo source curation | ✅ 7 curated sources across 3 domains |
 | Translation | ✅ LLM-based via localize_content MCP tool |
-| Output generation | ✅ Digest, report, tutorial, presentation, export |
-| Tests | ✅ 720+ tests (unit, integration, snapshot regression) |
+| Output generation | ✅ Digest, report (Markdown/JSON/PDF), tutorial, presentation, export |
+| Tests | ✅ 825+ tests (unit, integration, snapshot regression, 105 v1.2 integration tests) |
 | CI/CD | ⏸ Manual — Makefile targets, pre-commit hooks configured |
 
-### What v1.1 ships:
+### What v1.2 ships (v1.1 + additions):
 
 ```bash
 # --- Setup ---
-autoinfo init --interactive              # Interactive wizard with domain selection
+autoinfo init --name "MyProject"         # Named project initialization
+autoinfo init --demo medical-research    # Interactive wizard with domain selection
 autoinfo doctor                           # Full health check (LLM, sources, disk, DB)
 
 # --- Collection ---
 autoinfo collect --all                    # Collect from ALL active domains at once
 autoinfo collect --domain medical --sources pubmed --keywords IVF --limit 5
 autoinfo collect --dry-run                # Preview before fetching
+autoinfo cron install                     # Install crontab for scheduled collection
+autoinfo cron uninstall                   # Remove crontab
 
 # --- Processing ---
 autoinfo process --domain medical         # LLM extraction + G1-G5 quality gates
@@ -808,7 +826,8 @@ autoinfo summaries flag <id> --tag important --add-to-kb
 autoinfo summaries rate <id> --helpful
 
 # --- Knowledge Base ---
-autoinfo kb search "embryo grading"       # FTS5 keyword search
+autoinfo kb search "embryo grading"       # Hybrid search (FTS5 + vector)
+autoinfo kb search --vector-only "..."    # Pure vector search
 autoinfo kb create-draft ...              # Agent creates Draft from Raw
 autoinfo kb promote <entry-id>            # Human-only: Draft → Wiki
 autoinfo kb reject <entry-id>             # Reject with reason
@@ -816,12 +835,26 @@ autoinfo kb list-tiers                    # Browse pipeline stages
 
 # --- Output ---
 autoinfo output digest --domain medical --period week
+autoinfo output report --format pdf       # PDF/JSON/Markdown report
 autoinfo output tutorial --collection "IVF Protocols" --audience clinician
 autoinfo knowledge graph --domain medical  # Export knowledge graph
 autoinfo output export --domain medical --format json
 
+# --- CEFR ---
+autoinfo cefr classify --text "..."       # Classify text CEFR level (EN/ZH/JA)
+autoinfo cefr batch --domain language     # Batch classify domain entries
+
+# --- Email ---
+autoinfo email config --smtp-server smtp.gmail.com --port 587
+autoinfo email send --to user@example.com --subject "Digest" --body "..."
+
+# --- REST API ---
+# curl http://127.0.0.1:8741/health
+# curl http://127.0.0.1:8741/api/v1/entries
+# curl http://127.0.0.1:8741/dashboard  # Web UI
+
 # --- MCP (Agent Interface) ---
-# Agent connects via stdio MCP, discovers 56+ tools automatically
+# Agent connects via stdio MCP, discovers 70+ tools automatically
 # All capabilities available as structured tool calls
 ```
 
@@ -861,18 +894,19 @@ For each expectation in the catalog:
 | **v0.6 — MCP Mature** | Full MCP tool suite → all domains → scheduled distribution → tutorial generation | F09, F10, F25, F29-F32 |
 | **v1.0 — Product** | All 32 expectations met. First paying users onboarded. Language learning demo (L1). | F07 (language-learning), F10 (learning-specific), all gates |
 | **v1.1 — Gap-Fill** | G5 translation gate, KB promote/workflow, 3 new source handlers (webhook/email/PDF), KG export, 7 curated demo sources, 6 new MCP tools, interactive init, langdetect, collect --all | G5, F20 workflow, F13 (webhook/email/PDF), F22 (KG export), F07 (7 curated sources), F12 (progress MCP), F09 (keyword groups), F10 (langdetect) |
+| **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP), F14 (crontab), F20 (keywords), F32 (schema versioning) |
 
-### 10.3 Explicit "No" List (v1 Scope)
+### 10.3 Explicit "No" List (v1.2 Scope)
 
-The following are **explicitly out of scope** for v1:
+The following are **explicitly out of scope** for v1.2:
 
 | Feature | Status | Rationale |
 |---------|--------|-----------|
-| Web UI / dashboard | ❌ Out | CLI + MCP only. Director-user interacts through agent. |
+| Web UI / dashboard | ✅ **v1.2 Added** | Bootstrap 5 dashboard at `/dashboard` |
 | Mobile app | ❌ Out | Agent framework handles mobile access. |
-| Email integration (auto-send) | ❌ Out | Digest as file output. User configures delivery via agent/cron. |
-| Email collection (IMAP) | ❌ Out for v0.1-v0.5 | Source type for v0.6+ |
-| Multi-user / collaboration | ❌ Out | Single-user system. Team features are v2. |
+| Email integration (auto-send) | 🔄 **v1.2 Partial** | SMTP sender implemented; auto-scheduled delivery TBD |
+| Email collection (IMAP) | ✅ **v1.1 Added** | Source type added in v1.1 |
+| Multi-user / collaboration | ❌ Out (v2) | user_id fields in place; full auth/teams are v2 |
 | Social sharing | ❌ Out | No platform publishing. KB export is the output. |
 | Custom scraping scripts (Python) | ❌ Out | YAML config + LLM extraction only. No code injection. |
 | Image/video processing | ❌ Out | Text-only. KB is textual knowledge, not media. |
@@ -905,7 +939,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 
 ---
 
-## 11. Current Status (v1.1 — 2026-07-21)
+## 11. Current Status (v1.2 — 2026-07-21)
 
 | Component | Status |
 |-----------|--------|
@@ -916,15 +950,15 @@ This is the standard. Everything else — tests, architecture, source curation �
 | Market positioning | ✅ Researched — whitespace confirmed |
 | Target user persona | ✅ Defined — information-intensive professionals |
 | Pricing reference | ✅ Drafted for v1 individual tier |
-| Explicit "No" list | ✅ 9 features consciously deferred |
-| Milestone mapping | ✅ v0.1→v1.1 all met, v1.2+ planned |
+| Explicit "No" list | ✅ Updated for v1.2 — 7 deferred items tracked |
+| Milestone mapping | ✅ v0.1→v1.2 all met, v2.0+ planned |
 | True Test | ✅ 10-point agent-verifiable checklist — all pass |
-| Code implementation | ✅ ~15K+ lines Python, 30+ modules |
+| Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ 720+ tests across 30+ test files |
-| MCP tools | ✅ 56+ tool areas across 12 categories |
+| Tests | ✅ 825+ tests across 35+ test files |
+| MCP tools | ✅ 70+ tool areas across 12 categories (including CEFR, Email, Keywords) |
 | Technical decisions | ✅ 13 categories documented, all implemented |
-| CLI commands | ✅ 12 command groups with `--json` global flag |
+| CLI commands | ✅ 14 command groups with `--json` global flag |
 
 ---
 
@@ -1130,7 +1164,7 @@ User can override per domain:
 
 ### 12.10 MCP Tool Inventory
 
-**v1.1: 56+ tool areas** across 12 categories (up from 35+ in spec, 50 in v1.0, 6 new in v1.1).
+**v1.2: 70+ tool areas** across 12 categories (up from 56+ in v1.1, with 3 new categories: CEFR, Email, Keywords).
 
 | Category | Tools |
 |----------|-------|
@@ -1139,13 +1173,16 @@ User can override per domain:
 | **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source` (with extract_fields + tier warnings), `list_sources`, `get_source_health` |
 | **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords` (with groups, multi-language scoring) |
 | **Collection** | `collect_sources` (with dry_run), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch), `get_processing_progress`, `batch_run` |
-| **KB** | `search_knowledge_base` (paginated), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft` (from Raw only), `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
-| **Output** | `generate_digest`, `generate_report`, `generate_tutorial`, `generate_presentation`, `localize_content` (translation), `export_kb`, `list_output_templates` |
+| **KB** | `search_knowledge_base` (hybrid: FTS5+vector, paginated), `vector_search`, `faceted_search`, `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft` (from Raw only), `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
+| **Output** | `generate_digest`, `generate_report` (markdown/json/pdf), `generate_tutorial`, `generate_presentation`, `localize_content` (translation), `export_kb`, `list_output_templates` |
+| **CEFR** ⭐ | `classify_cefr` (EN/ZH/JA LLM-based classification) |
+| **Keywords** ⭐ | `list_keywords`, `manage_keyword` (central `_keywords.yaml` per domain) |
+| **Email** ⭐ | `send_email`, `get_email_config`, `set_email_config` (SMTP) |
 | **Q&A** | `query_collected` (FTS5 + LLM synthesis with source citations) |
 | **Graph** | `query_knowledge_graph` |
 | **Relations** | `link_items`, `get_item_relations` |
 | **Monitor** | `get_collection_stats`, `get_collection_diff`, `get_source_health`, `rate_item`, `list_active_collections` |
-| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules` |
+| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `cron_install`, `cron_uninstall` |
 | **Projects** | `list_projects`, `get_project_assets`, `archive_project` |
 
 All tools accept `domain` parameter where applicable. Agent selects domain, then operates within it.
@@ -1219,60 +1256,56 @@ Unrecoverable:
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.1 in 4 days of intensive development. Over 15K+ lines of Python, 30+ modules, 720+ tests, and 56+ MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
+The project started from zero (v0.1, July 18 2026) and reached v1.2 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 825+ tests, and 70+ MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
 
-Some expectations that seemed easy (F07: demo source curation) required deep research — understanding PubMed's API, navigating CrossRef REST endpoints, knowing which journals matter for 辅助生殖. Some that seemed hard (F20: file-based KB) were trivially simple — a directory of Markdown files. The v1.1 gap-fill closed the remaining quality-of-life gaps: G5 translation gate, source handler diversity (webhook, email, PDF), knowledge graph export, interactive init, and curated demo source libraries.
+Some expectations that seemed easy (F07: demo source curation) required deep research — understanding PubMed's API, navigating CrossRef REST endpoints, knowing which journals matter for 辅助生殖. Some that seemed hard (F20: file-based KB) were trivially simple — a directory of Markdown files. The v1.1 gap-fill closed the quality-of-life gaps; v1.2 added the major enhancement features: hybrid vector search, REST API, Web UI dashboard, CEFR classification, git versioning, PDF export, and email sending.
 
-The explicit "No" list (§10.3) protected the project from scope creep. The deferred items (§14) are consciously tracked for v1.2+.
+The explicit "No" list (§10.3) protected the project from scope creep. The deferred items (§14) are consciously tracked for v2.0+.
 
 The project is not done when all tests pass.
 The project is done when the founder can say: **"Yes, this does what I wanted."**
 
 ---
 
-## 14. Remaining Gaps & Future Work (Post v1.1)
+## 14. Remaining Gaps & Future Work (Post v1.2)
 
-The following items are consciously deferred from v1.1. They represent the remaining delta between the founder's full vision and current implementation.
+The following items are consciously deferred from v1.2. They represent the remaining delta between the founder's full vision and current implementation. v1.2 closed 10+ gaps from the v1.1 deferred list — notably hybrid vector search, REST API, Web UI dashboard, Obsidian wiki links, CEFR classification, PDF export, SMTP email, schema versioning, keywords management, and crontab installer.
 
-### 🔴 Short-Term Candidates (v1.2)
-
-| Gap | Related Expectation | Effort | Notes |
-|-----|--------------------|--------|-------|
-| **Vector/hybrid search** | F21 — KB Search | Medium | `sqlite-vec` in pyproject.toml, not yet wired. Add embedding generation + hybrid ranking. |
-| **Faceted search** | F21 — KB Search | Medium | Filter by domain, tags, date range, quality tier, content type, language. Currently keyword-only with domain scope. |
-| **Keywords management system** | F20 — KB Pipeline | Medium | Centralized `_keywords.yaml` per domain with verified/auto_added/merged/deprecated states. Currently `list_keywords` returns flat data. |
-| **Entry-level native versioning** | F23 — KB as Asset | Low | Currently relies on git. Adding native revision history + rollback would decouple from git. |
-
-### 🟡 Medium-Term Candidates (v1.3+)
+### 🔴 Short-Term Candidates (v1.3)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
-| **REST API (read-only)** | F23 — KB as Asset | High | Read-only KB access via HTTP for external tool integration. |
-| **Obsidian [[wiki links]]** | F23 — KB as Asset | Low | KB Markdown files with native wiki-link syntax. Currently plain Markdown. |
-| **CEFR text classification** | F10 — Localization | Medium | Language-learning domain feature. Level-appropriate simplification, glossaries, CEFR A1-C2 scoring. |
-| **PDF export** | F26 — Export | Low | Currently supports JSON, Markdown, SQLite, CSV, GraphML. PDF via weasyprint/md-to-pdf. |
+| **Config override system** | F31 — Domain & Config Isolation | Medium | `~/.autoinfo/overrides/` YAML layering. Currently single config file. |
+| **Multi-user auth (login, API keys)** | §10.3 Explicit "No" | High | user_id fields in place; full auth (JWT, API keys) needed for production. |
+
+### 🟡 Medium-Term Candidates (v1.4+)
+
+| Gap | Related Expectation | Effort | Notes |
+|-----|--------------------|--------|-------|
+| **Scheduled email digest delivery** | F27 — Scheduled Distribution | Medium | SMTP sender done; auto-scheduled delivery via cron + digest generation TBD. |
+| **Webhook push for new items** | F27 — Scheduled Distribution | Low | Webhook push on collection completion for external integrations. |
+| **Agent proactive alerting** | F29 — Source Health Monitoring | Medium | Agent proactively reports 3 consecutive source failures. |
 
 ### 🔵 Longer-Term (v2.0+)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
-| **Config override system** | F31 — Domain & Config Isolation | Medium | `~/.autoinfo/overrides/` YAML layering. Currently single config file. |
-| **Schema versioning / migration** | F32 — Forward Compatibility | Medium | DB schema version markers + migration tool for breaking changes. |
-| **Email auto-send distribution** | F27 — Scheduled Distribution | Medium | Digest delivery via SMTP. Explicitly Out for v1. |
-| **Web UI / dashboard** | §10.3 Explicit "No" | High | CLI + MCP only. Director-user interacts through agent. Revisit when non-technical users onboard. |
-| **Multi-user / collaboration** | §10.3 Explicit "No" | High | Single-user system. Team features are v2. |
+| **Collaboration / teams** | §10.3 Explicit "No" | High | Multi-user read/write, shared KB spaces. |
+| **Mobile app** | §10.3 Explicit "No" | High | Agent framework handles mobile access for now. |
+| **Citation management (BibTeX)** | §10.3 Explicit "No" | Medium | Post-v2 if medical community demands it. |
+| **Image/video processing** | §10.3 Explicit "No" | High | Text-only. KB is textual knowledge, not media. |
 
-### v1.1 Success Metrics
+### v1.2 Success Metrics
 
 | Metric | Value |
 |--------|-------|
 | Expectations met | 32/32 (all) |
 | Value propositions fulfilled | 4/4 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅) |
 | True Test passing | 10/10 |
-| MCP tools | 56+ |
-| Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) |
+| MCP tools | 70+ |
+| Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
 | Quality gates | 5 (G1-G5, advisory) |
-| Tests | 720+ |
+| Tests | 825+ |
 | Demo domains | 3 with 7 curated sources |
 
 ---

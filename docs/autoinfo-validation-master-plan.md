@@ -5,7 +5,7 @@
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-20
 **Strategy:** Every section asks a user question → executes scenarios → reports a binary verdict
-**Current Baseline:** v0.1 core loop — 220 tests, 6 CLI commands, 6 MCP tools
+**Current Baseline:** v1.2 full feature set — 825+ tests, 14 CLI command groups, 70+ MCP tools, FastAPI REST API, Bootstrap 5 Web UI
 
 ---
 
@@ -44,13 +44,13 @@ Before running validation, ensure:
 pip install -e ".[dev]"
 
 # 2. Verify test infrastructure
-pytest --collect-only -q  # Should collect 200+ tests without errors
+pytest --collect-only -q  # Should collect 800+ tests without errors
 
 # 3. Set minimum env vars
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 
 # 4. Verify CLI works
-autoinfo --help  # Should show 6 commands
+autoinfo --help  # Should show 14 command groups
 ```
 
 ---
@@ -442,7 +442,7 @@ autoinfo doctor --json
 ```bash
 autoinfo --help
 ```
-**Expected Result:** ✅ Shows all 6 commands (init, doctor, collect, process, status, summaries). `--json` global flag present.
+**Expected Result:** ✅ Shows all 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email). `--json` global flag present.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -578,9 +578,9 @@ cd /tmp/noconfig && autoinfo process --domain medical-research
 
 ---
 
-## Q7: Does every MCP tool work correctly? (6 tools)
+## Q7: Does every MCP tool work correctly? (70+ tools)
 
-**User says:** "I'm connecting via MCP protocol. I need all 6 tools to work as documented."
+**User says:** "I'm connecting via MCP protocol. I need all 70+ tools to work as documented."
 
 **Why this matters:** MCP is the primary integration surface for AI agents. Broken tools break automation.
 
@@ -592,16 +592,15 @@ import json
 # Check tools are registered
 tools = app.list_tools()()
 tool_names = [t.name for t in tools]
-assert len(tools) == 6
-assert "health_check" in tool_names
-assert "diagnose_system" in tool_names
-assert "collect_sources" in tool_names
-assert "process_collection" in tool_names
-assert "list_summaries" in tool_names
-assert "get_kb_entry" in tool_names
-print("ALL 6 TOOLS PRESENT")
+assert len(tools) > 6  # 70+ tools in v1.2
+expected_tools = ["health_check", "diagnose_system", "collect_sources", "process_collection",
+                  "list_summaries", "get_kb_entry", "generate_report", "classify_cefr",
+                  "vector_search", "faceted_search", "send_email", "manage_keyword"]
+missing = [t for t in expected_tools if t not in tool_names]
+assert len(missing) == 0, f"Missing tools: {missing}"
+print(f"ALL {len(tools)} TOOLS PRESENT")
 ```
-**Expected Result:** ✅ 6 tools registered with correct names.
+**Expected Result:** ✅ 70+ tools registered with correct names, including all v1.2 additions (generate_report, classify_cefr, vector_search, faceted_search, send_email, manage_keyword).
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -611,7 +610,7 @@ result = app.call_tool("health_check", {})
 data = json.loads(result.content[0].text)
 assert data["status"] == "ok"
 assert "version" in data
-assert data["tools_count"] == 6
+assert data["tools_count"] > 6  # 70+ in v1.2
 ```
 **Expected Result:** ✅ Returns status, version, tools_count.
 

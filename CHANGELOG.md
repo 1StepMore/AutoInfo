@@ -2,6 +2,42 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.2 (2026-07-21)
+
+### Added
+- **FastAPI REST API** — Full CRUD (`/api/v1/entries`, `/health`, `/dashboard`), port 8741, localhost-only (no auth)
+- **Hybrid vector search** — sqlite-vec embeddings + FTS5 keyword (0.7 FTS5 + 0.3 vec weight), cosine similarity ranking
+- **Faceted search** — 7 filters (domain, tier, tags, date range, quality tier, content type, language)
+- **Keywords management system** — Central `_keywords.yaml` per domain; `list_keywords` and `manage_keyword` MCP tools + CLI
+- **DB schema versioning** — `schema.py` with version markers in SQLite, migration support
+- **`autoinfo init --name`** — Project name override flag
+- **Git auto-commit + SHA tracking** — KB entries versioned with git SHA, automatic commits on write
+- **Obsidian `[[wiki links]]`** — Native wiki-link syntax in KB Markdown files
+- **CEFR text classification** — LLM-based EN/ZH/JA reading level scoring (A1-C2), auto-classification on creation
+- **Multi-user foundation** — `user_id` fields on all KB entries (no auth/teams yet)
+- **PDF export** — WeasyPrint-powered report generation with proper formatting, tables, headers
+- **JSON report format** — Structured report output alongside Markdown
+- **`generate_report` MCP tool** — Report generation with `format` param (markdown/json/pdf)
+- **SMTP email sender** — `send_email()` MCP tool, `autoinfo email send/config` CLI
+- **`autoinfo cron install/uninstall`** — POSIX crontab automation (writes/removes crontab entries)
+- **Web UI Dashboard** — Bootstrap 5, collection stats, KB search, source health overview, REST API client
+- **105 integration tests** — Comprehensive v1.2 feature coverage in `tests/test_v1_2_integration.py`
+
+### Changed
+- MCP tool inventory expanded from 56+ to 70+ tool areas (CEFR, email, keywords categories)
+- CLI command groups expanded from 12 to 14 (`cefr`, `email` groups added)
+- Test suite expanded from 720+ to 825+ tests
+- Search architecture upgraded from FTS5-only to hybrid (FTS5 + sqlite-vec)
+- Version bumped from `0.1.0.dev0` to `1.2.0`
+- README updated with v1.2 feature set and revised Known Limitations
+- Updated founder-expectations.md: Sections 5, 9, 10, 11, 12, 13, 14 revised to v1.2 reality
+- Updated autoinfo-validation-master-plan.md baseline to v1.2
+
+### Infrastructure
+- `.omo/plans/autoinfo-v1.2.md`: Full v1.2 execution plan (25 tasks, 5 waves)
+- `.omo/evidence/final-qa/`: F3 QA evidence (8 scenarios, all pass)
+- 6 commits pushed to `origin/main` (waves 1-5 + verification)
+
 ## v1.1 (2026-07-21)
 
 ### Added

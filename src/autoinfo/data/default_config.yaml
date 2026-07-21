@@ -4,6 +4,7 @@
 
 project:
   name: "My AutoInfo"
+  # project_name: ""           # optional human-friendly project name
   created_at: "2026-07-20"
 
 llm:
@@ -13,3 +14,38 @@ llm:
   # base_url: "https://api.openai.com/v1"  # optional: custom API endpoint
 
 domains: []
+
+# --- v1.2 optional sections (uncomment to configure) ---
+
+# cefr:
+#   enabled: false
+#   languages: ["en", "zh", "ja"]
+#   model: ""
+
+# email:
+#   enabled: false
+#   smtp_host: ""
+#   smtp_port: 587
+#   smtp_user: ""
+#   smtp_pass: ${AUTOINFO_SMTP_PASS}
+#   from_addr: ""
+#   to_addrs: []
+
+# rest_api:
+#   enabled: true
+#   port: 8741
+#   host: "127.0.0.1"
+
+# vector_search:
+#   enabled: false
+#   model: ""
+#   hybrid_weight_fts5: 0.7
+#   hybrid_weight_vector: 0.3
+
+# cron:
+#   auto_install: false
+#   install_path: ""
+
+# multi_user:
+#   enabled: false
+#   default_user_id: "default"

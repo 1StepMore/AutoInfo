@@ -94,8 +94,12 @@ def _copy_template(
 def _generate_config(
     domain_name: str,
     dst: Path,
+    project_name: str = "",
 ) -> bool:
     """Generate .autoinfo/config.yaml from default_config.yaml + domain name.
+
+    When *project_name* is non-empty it is stored under
+    ``project.project_name`` in the generated YAML.
 
     Returns True if the file was written, False if skipped (already exists).
     """
@@ -124,6 +128,9 @@ def _generate_config(
     else:
         config["domains"] = [{"name": domain_name, "active": True, "sources": [], "topics": []}]
 
+    if project_name:
+        config.setdefault("project", {})["project_name"] = project_name
+
     dst.parent.mkdir(parents=True, exist_ok=True)
     with open(dst, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -132,10 +139,10 @@ def _generate_config(
     return True
 
 
-def _run_init(domain: str, autoinfo_dir: Path) -> None:
+def _run_init(domain: str, autoinfo_dir: Path, project_name: str = "") -> None:
     """Core init logic: generate config, copy sources, create subdirs, print next steps."""
     config_dst = autoinfo_dir / "config.yaml"
-    _generate_config(domain, config_dst)
+    _generate_config(domain, config_dst, project_name=project_name)
 
     demo_sources = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     sources_dst = autoinfo_dir / "sources.yaml"
@@ -182,6 +189,13 @@ def init(
         help="Demo domain to initialize (omit to enter interactive mode).",
         show_default=False,
     ),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Optional human-friendly project name stored as project.project_name in config.",
+        show_default=False,
+    ),
     interactive: bool = typer.Option(
         True,
         "--interactive/--no-interactive",
@@ -196,6 +210,9 @@ def init(
 
     Without --demo, the interactive wizard guides you through domain
     selection, LLM provider setup, and optional API key configuration.
+
+    Use --name to give your project a human-friendly name (stored in config
+    under ``project.project_name``).
     """
     if demo:
         demo = demo.strip()
@@ -212,7 +229,7 @@ def init(
         autoinfo_dir = Path.cwd() / ".autoinfo"
         _ensure_dir(autoinfo_dir)
 
-        _run_init(demo, autoinfo_dir)
+        _run_init(demo, autoinfo_dir, project_name=name or "")
         return
 
     if not interactive:
@@ -223,6 +240,8 @@ def init(
     if not domains:
         typer.echo("No demo domains found. Cannot initialize interactively.", err=True)
         raise typer.Exit(code=1)
+
+    project_name = typer.prompt("Project name (optional)", default="")
 
     typer.echo("Available demo domains:")
     for i, d in enumerate(domains, 1):
@@ -248,4 +267,4 @@ def init(
     autoinfo_dir = Path.cwd() / ".autoinfo"
     _ensure_dir(autoinfo_dir)
 
-    _run_init(selected_domain, autoinfo_dir)
+    _run_init(selected_domain, autoinfo_dir, project_name=project_name)

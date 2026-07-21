@@ -24,6 +24,7 @@ import yaml
 @dataclass
 class ProjectConfig:
     name: str = ""
+    project_name: str = ""
     created_at: str = ""
 
 
@@ -79,10 +80,67 @@ class DomainConfig:
 
 
 @dataclass
+class CEFRConfig:
+    """CEFR (Common European Framework of Reference) classification settings."""
+    enabled: bool = False
+    languages: list[str] = field(default_factory=lambda: ["en", "zh", "ja"])
+    model: str = ""
+
+
+@dataclass
+class EmailConfig:
+    """Email notification / collection settings."""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    from_addr: str = ""
+    to_addrs: list[str] = field(default_factory=list)
+    enabled: bool = False
+
+
+@dataclass
+class RestAPIConfig:
+    """REST API server settings."""
+    enabled: bool = True
+    port: int = 8741
+    host: str = "127.0.0.1"
+
+
+@dataclass
+class VectorSearchConfig:
+    """Vector / hybrid search settings (FTS5 + embeddings)."""
+    enabled: bool = False
+    model: str = ""
+    hybrid_weight_fts5: float = 0.7
+    hybrid_weight_vector: float = 0.3
+
+
+@dataclass
+class CronConfig:
+    """Scheduled task (cron) settings."""
+    auto_install: bool = False
+    install_path: str = ""
+
+
+@dataclass
+class MultiUserConfig:
+    """Multi-user / multi-tenant settings."""
+    enabled: bool = False
+    default_user_id: str = "default"
+
+
+@dataclass
 class Config:
     project: ProjectConfig = field(default_factory=ProjectConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     domains: list[DomainConfig] = field(default_factory=list)
+    cefr: CEFRConfig = field(default_factory=CEFRConfig)
+    email: EmailConfig = field(default_factory=EmailConfig)
+    rest_api: RestAPIConfig = field(default_factory=RestAPIConfig)
+    vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
+    cron: CronConfig = field(default_factory=CronConfig)
+    multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +267,21 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             )
         )
 
+    # --- Parse new v1.2 sections ---
+    def _dict_or_empty(key: str) -> dict[str, Any]:
+        return raw.get(key, {}) or {}
+
+    cefr_raw = _dict_or_empty("cefr")
+    email_raw = _dict_or_empty("email")
+    rest_api_raw = _dict_or_empty("rest_api")
+    vector_search_raw = _dict_or_empty("vector_search")
+    cron_raw = _dict_or_empty("cron")
+    multi_user_raw = _dict_or_empty("multi_user")
+
     return Config(
         project=ProjectConfig(
             name=str(project_raw.get("name", "")),
+            project_name=str(project_raw.get("project_name", "")),
             created_at=str(project_raw.get("created_at", "")),
         ),
         llm=LLMConfig(
@@ -223,6 +293,39 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             tasks=tasks,
         ),
         domains=domains,
+        cefr=CEFRConfig(
+            enabled=bool(cefr_raw.get("enabled", False)),
+            languages=list(cefr_raw.get("languages", ["en", "zh", "ja"])),
+            model=str(cefr_raw.get("model", "")),
+        ),
+        email=EmailConfig(
+            smtp_host=str(email_raw.get("smtp_host", "")),
+            smtp_port=int(email_raw.get("smtp_port", 587)),
+            smtp_user=str(email_raw.get("smtp_user", "")),
+            smtp_pass=str(email_raw.get("smtp_pass", "")),
+            from_addr=str(email_raw.get("from_addr", "")),
+            to_addrs=list(email_raw.get("to_addrs", [])),
+            enabled=bool(email_raw.get("enabled", False)),
+        ),
+        rest_api=RestAPIConfig(
+            enabled=bool(rest_api_raw.get("enabled", True)),
+            port=int(rest_api_raw.get("port", 8741)),
+            host=str(rest_api_raw.get("host", "127.0.0.1")),
+        ),
+        vector_search=VectorSearchConfig(
+            enabled=bool(vector_search_raw.get("enabled", False)),
+            model=str(vector_search_raw.get("model", "")),
+            hybrid_weight_fts5=float(vector_search_raw.get("hybrid_weight_fts5", 0.7)),
+            hybrid_weight_vector=float(vector_search_raw.get("hybrid_weight_vector", 0.3)),
+        ),
+        cron=CronConfig(
+            auto_install=bool(cron_raw.get("auto_install", False)),
+            install_path=str(cron_raw.get("install_path", "")),
+        ),
+        multi_user=MultiUserConfig(
+            enabled=bool(multi_user_raw.get("enabled", False)),
+            default_user_id=str(multi_user_raw.get("default_user_id", "default")),
+        ),
     )
 
 
@@ -339,6 +442,9 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         },
         "domains": [],
     }
+    # Only include project_name when non-empty (backward compat)
+    if config.project.project_name:
+        raw["project"]["project_name"] = config.project.project_name
     # Serialize llm.fallback
     if config.llm.fallback:
         raw["llm"]["fallback"] = [
@@ -355,6 +461,41 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "max_tokens": tc.max_tokens,
                 }.items() if v
             }
+
+    # Serialize v1.2 config sections
+    raw["cefr"] = {
+        "enabled": config.cefr.enabled,
+        "languages": config.cefr.languages,
+        "model": config.cefr.model,
+    }
+    raw["email"] = {
+        "smtp_host": config.email.smtp_host,
+        "smtp_port": config.email.smtp_port,
+        "smtp_user": config.email.smtp_user,
+        "smtp_pass": config.email.smtp_pass,
+        "from_addr": config.email.from_addr,
+        "to_addrs": config.email.to_addrs,
+        "enabled": config.email.enabled,
+    }
+    raw["rest_api"] = {
+        "enabled": config.rest_api.enabled,
+        "port": config.rest_api.port,
+        "host": config.rest_api.host,
+    }
+    raw["vector_search"] = {
+        "enabled": config.vector_search.enabled,
+        "model": config.vector_search.model,
+        "hybrid_weight_fts5": config.vector_search.hybrid_weight_fts5,
+        "hybrid_weight_vector": config.vector_search.hybrid_weight_vector,
+    }
+    raw["cron"] = {
+        "auto_install": config.cron.auto_install,
+        "install_path": config.cron.install_path,
+    }
+    raw["multi_user"] = {
+        "enabled": config.multi_user.enabled,
+        "default_user_id": config.multi_user.default_user_id,
+    }
 
     for domain in config.domains:
         domain_dict: dict[str, Any] = {

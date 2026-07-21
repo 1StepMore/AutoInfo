@@ -27,6 +27,7 @@ import yaml
 
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.quality import QualityResult
+from autoinfo.schema import check_schema
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1334,6 +1335,9 @@ class KBStore:
         db_path = self.base_path.parent / "autoinfo.db"
         self.index = SQLiteIndex(db_path)
         self.index.init_db()
+        # Ensure schema version is compatible (auto-migrates if needed)
+        with self.index._connect() as conn:
+            check_schema(conn)
 
     # ------------------------------------------------------------------
     # Write

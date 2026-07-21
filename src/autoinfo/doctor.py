@@ -8,11 +8,15 @@ reachability.
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import time
 from typing import Any
 
+from pathlib import Path
+
 from autoinfo.config import get_config_path, load_config, validate_config
+from autoinfo.schema import get_schema_version as _get_schema_version
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -108,6 +112,21 @@ def run_doctor() -> dict[str, Any]:
             pass
 
     results["sources"] = sources_status
+
+    # -- KB database schema version -------------------------------------------
+    schema_ver: int | None = None
+    try:
+        # Default KB database is autoinfo.db alongside knowledge/
+        kb_path = Path("autoinfo.db")
+        if kb_path.is_file():
+            conn = sqlite3.connect(str(kb_path))
+            try:
+                schema_ver = _get_schema_version(conn)
+            finally:
+                conn.close()
+    except Exception:
+        pass
+    results["schema_version"] = schema_ver
 
     return results
 

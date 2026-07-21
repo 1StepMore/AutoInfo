@@ -22,11 +22,21 @@ from typing import Any
 
 from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore
+from autoinfo.keywords import KeywordState, KeywordsFile
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import Item
 from autoinfo.quality import G4FactualConsistency, G5TranslationAccuracy, QualityResult, run_quality_gates
 
 logger = logging.getLogger(__name__)
+
+# Minimal stop sets for keyword auto-discovery (Step e in processing pipeline)
+_STOP_WORDS: frozenset[str] = frozenset({
+    "the", "this", "that", "with", "from", "have", "been", "were",
+    "their", "which", "about", "study", "also", "show", "shown",
+    "using", "used", "may", "results", "result", "method", "methods",
+    "however", "conclusion", "background", "objective", "aim",
+})
+_STOP_PHRASES: frozenset[str] = frozenset({"", "  ", "   "})
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +558,47 @@ def run_processing(
                 )
                 item_log["entities_indexed"] = kg_result["entities_indexed"]
                 item_log["relations_discovered"] = kg_result["relations_discovered"]
+
+            # Step e: Keyword auto-discovery — extract new keywords from LLM response
+            discovered: list[str] = []
+            if extraction:
+                # Collect entity names as keyword candidates
+                for entity in extraction.entities:
+                    name = entity.get("name", "").strip().lower()
+                    if name and len(name) > 1:
+                        discovered.append(name)
+                # Collect key-point phrases as keyword candidates
+                for kp in extraction.key_points:
+                    words = [w.strip().lower() for w in kp.split() if len(w.strip()) > 2]
+                    # Use short phrases (2-4 words) as single keywords
+                    for i in range(len(words)):
+                        # Single words that aren't stop-word-ish
+                        w = words[i]
+                        if len(w) > 3 and w not in _STOP_WORDS:
+                            discovered.append(w)
+                    for n in (2, 3):
+                        phrases = [" ".join(words[i:i + n]) for i in range(len(words) - n + 1)]
+                        for p in phrases:
+                            if p not in _STOP_PHRASES:
+                                discovered.append(p)
+
+            if discovered:
+                kf = KeywordsFile()
+                # Deduplicate and add
+                seen: set[str] = set()
+                for kw in discovered:
+                    if kw not in seen:
+                        seen.add(kw)
+                        try:
+                            kf.add_keyword(
+                                domain=domain,
+                                keyword=kw,
+                                state=KeywordState.AUTO_ADDED,
+                                source=f"auto-discovery:{item.source_name}",
+                            )
+                        except Exception:
+                            logger.debug("Failed to add discovered keyword '%s':", kw, exc_info=True)
+                item_log["keywords_discovered"] = len(seen)
 
             # Track items that passed all gates
             if gates_passed == 3:

@@ -934,8 +934,12 @@ def _handle_list_keywords(
 ) -> dict[str, Any]:
     """List keywords with topic grouping, multi-language support, and scoring info.
 
-    Returns keywords per domain/topic from config.  When *topic* is provided,
-    only keywords for that topic are returned.
+    Returns keywords from two sources:
+    1. Topic-level keywords from ``.autoinfo/config.yaml`` (existing behaviour).
+    2. Managed keywords from ``knowledge/<domain>/_keywords.yaml``.
+
+    When *topic* is provided, only keywords for that topic are returned
+    (from config only — managed keywords are returned separately).
     """
     try:
         config = _load_config()
@@ -950,6 +954,7 @@ def _handle_list_keywords(
             "actionable": True,
         }
 
+    # --- Topic-level keywords from config (existing behaviour) ---
     results: list[dict[str, Any]] = []
     for t in domain_cfg.topics:
         if topic and t.name != topic:
@@ -963,11 +968,34 @@ def _handle_list_keywords(
         }
         results.append(entry)
 
+    # --- Managed keywords from _keywords.yaml (new) ---
+    from autoinfo.keywords import KeywordsFile
+
+    kf = KeywordsFile()
+    managed_entries = kf.load(domain)
+    managed = [
+        {
+            "keyword": e.keyword,
+            "state": e.state.value,
+            "aliases": e.aliases,
+            "created_at": e.created_at,
+            "updated_at": e.updated_at,
+            "source": e.source,
+        }
+        for e in managed_entries
+    ]
+
     return {
         "domain": domain,
         "topic": topic or "*",
         "topics": results,
         "count": len(results),
+        "keywords_file": {
+            "path": str(kf._path(domain)),
+            "exists": kf._path(domain).is_file(),
+            "entries": managed,
+            "entry_count": len(managed),
+        },
     }
 
 

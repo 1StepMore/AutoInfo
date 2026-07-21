@@ -126,6 +126,42 @@ def remove(
 # ---------------------------------------------------------------------------
 
 
+@app.command()
+def keywords(
+    domain: str = typer.Option(..., "--domain", help="Domain to list keywords for"),
+    topic: str = typer.Option(None, "--topic", help="Optional topic name filter"),
+) -> None:
+    """List keywords with topic grouping and scoring info."""
+    ensure_config_exists()
+    config_path = get_config_path()
+    if config_path is None:
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        raise typer.Exit(code=1)
+
+    config = load_config(config_path)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
+        raise typer.Exit(code=1)
+
+    found = False
+    for t in domain_cfg.topics:
+        if topic and t.name != topic:
+            continue
+        found = True
+        kw_display = t.keywords if t.keywords else "(none)"
+        group_info = f" [group: {t.group}]" if t.group else ""
+        threshold_info = f" [threshold: {t.relevance_threshold}]"
+        typer.echo(f"  - {t.name}{group_info}{threshold_info}")
+        typer.echo(f"    keywords: {kw_display}")
+    if not found:
+        if topic:
+            typer.echo(f"No topic '{topic}' found in domain '{domain}'")
+        else:
+            typer.echo(f"No topics configured for domain '{domain}'")
+
+
 def _find_domain(config: object, name: str) -> DomainConfig | None:
     """Return the domain config for *name*, or ``None``."""
     from autoinfo.config import Config

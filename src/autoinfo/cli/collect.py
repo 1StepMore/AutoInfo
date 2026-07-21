@@ -18,7 +18,12 @@ app = typer.Typer()
 
 @app.callback(invoke_without_command=True)
 def collect(
-    domain: str = typer.Option(..., "--domain", help="Domain to collect for"),
+    domain: str = typer.Option(
+        None, "--domain", help="Domain to collect for (mutually exclusive with --all)",
+    ),
+    all_domains: bool = typer.Option(
+        False, "--all", "-A", help="Collect for all active domains",
+    ),
     topic: str = typer.Option("", "--topic", help="Topic / search query filter"),
     source: str = typer.Option(
         None, "--source", help="Source name filter (repeatable: --source pubmed --source rss)",
@@ -31,6 +36,22 @@ def collect(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Collect items from configured sources."""
+    # -- Validate mutually exclusive flags ---------------------------------
+    if all_domains and domain:
+        typer.echo(
+            "Error: Cannot use --all with --domain. Use either --all to collect "
+            "for all active domains or --domain to collect for a specific domain.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not all_domains and not domain:
+        typer.echo(
+            "Error: Either --domain or --all must be provided.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     # -- Parse source filter -----------------------------------------------
     # The `--source` option is repeatable, single-string pass-through is fine
     # because typer collects multiple `--source` flags into a tuple → string.
@@ -43,13 +64,90 @@ def collect(
     try:
         from autoinfo.collect import run_collection
 
-        result = run_collection(
-            domain=domain,
-            topic=topic,
-            sources=sources,
-            limit=limit,
-            dry_run=dry_run,
-        )
+        if all_domains:
+            # -- Multi-domain collection -----------------------------------
+            from autoinfo.config import get_config_path, load_config
+
+            config_path = get_config_path()
+            if config_path is None:
+                typer.echo(
+                    "Error: No configuration found. Run 'autoinfo init' first.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+
+            config = load_config(config_path)
+            active_domains = [d.name for d in config.domains if d.active]
+
+            if not active_domains:
+                typer.echo("Error: No active domains found in configuration.", err=True)
+                raise typer.Exit(code=1)
+
+            results: list[dict[str, Any]] = []
+            for dom in active_domains:
+                typer.echo(f"── Collecting for domain '{dom}' ──")
+                dom_result = run_collection(
+                    domain=dom,
+                    topic=topic,
+                    sources=sources,
+                    limit=limit,
+                    dry_run=dry_run,
+                )
+                results.append(dom_result)
+                if not json_output:
+                    _print_human(dom_result)
+                    typer.echo("")
+
+            # Aggregate summary
+            aggregated = {
+                "domains": results,
+                "total_domains": len(results),
+                "total_found": sum(r["total_found"] for r in results),
+                "total_new": sum(r["total_new"] for r in results),
+                "total_duration_s": round(sum(r["duration_s"] for r in results), 3),
+                "dry_run": dry_run,
+            }
+
+            if json_output:
+                typer.echo(json.dumps(aggregated, ensure_ascii=False, indent=2))
+
+            # -- Optional: auto-process (across all domains) ---------------
+            if auto_process and not dry_run:
+                for dom_result in results:
+                    if dom_result["total_new"] > 0:
+                        typer.echo(f"── Running auto-process for '{dom_result['domain']}' ──")
+                        _run_auto_process(dom_result["domain"], topic)
+                    else:
+                        typer.echo(
+                            f"No new items for '{dom_result['domain']}' — skipping auto-process."
+                        )
+
+        else:
+            # -- Single-domain collection (existing behavior) --------------
+            result = run_collection(
+                domain=domain,
+                topic=topic,
+                sources=sources,
+                limit=limit,
+                dry_run=dry_run,
+            )
+
+            # -- Output ----------------------------------------------------
+            if json_output:
+                typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                _print_human(result)
+
+            # -- Optional: auto-process ------------------------------------
+            if auto_process and not dry_run:
+                if result["total_new"] > 0:
+                    typer.echo("")
+                    typer.echo("── Running auto-process ──")
+                    _run_auto_process(domain, topic)
+                else:
+                    typer.echo("")
+                    typer.echo("No new items — skipping auto-process.")
+
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
@@ -59,22 +157,6 @@ def collect(
     except ImportError as exc:
         typer.echo(f"Error: collect module not available: {exc}", err=True)
         raise typer.Exit(code=1)
-
-    # -- Output ------------------------------------------------------------
-    if json_output:
-        typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        _print_human(result)
-
-    # -- Optional: auto-process --------------------------------------------
-    if auto_process and not dry_run:
-        if result["total_new"] > 0:
-            typer.echo("")
-            typer.echo("── Running auto-process ──")
-            _run_auto_process(domain, topic)
-        else:
-            typer.echo("")
-            typer.echo("No new items — skipping auto-process.")
 
     if dry_run:
         typer.echo("")

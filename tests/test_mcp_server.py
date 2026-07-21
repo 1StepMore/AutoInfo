@@ -22,14 +22,26 @@ from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
 
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
+    _collection_state,
     _error_response,
+    _handle_activate_domain,
+    _handle_add_source,
     _handle_collect_sources,
+    _handle_deactivate_domain,
     _handle_diagnose_system,
+    _handle_generate_presentation,
+    _handle_generate_tutorial,
+    _handle_get_collection_progress,
+    _handle_get_collection_status,
+    _handle_get_domain_config,
     _handle_get_kb_entry,
     _handle_get_processing_progress,
     _handle_health_check,
+    _handle_list_keywords,
     _handle_list_summaries,
     _handle_process_collection,
+    _handle_test_source,
+    _suggest_extract_fields,
 )
 
 
@@ -230,6 +242,8 @@ class TestToolRegistration:
             "health_check",
             "diagnose_system",
             "collect_sources",
+            "get_collection_progress",
+            "get_collection_status",
             "process_collection",
             "get_processing_progress",
             "list_summaries",
@@ -238,6 +252,9 @@ class TestToolRegistration:
             "get_domain_schema",
             "list_available_models",
             "get_effective_llm_config",
+            "activate_domain",
+            "deactivate_domain",
+            "get_domain_config",
             "add_source",
             "add_sources",
             "remove_source",
@@ -245,10 +262,13 @@ class TestToolRegistration:
             "list_sources",
             "add_topic",
             "remove_topic",
+            "list_keywords",
             "search_knowledge_base",
             "flag_for_knowledge_base",
             "get_summary",
             "list_output_templates",
+            "generate_tutorial",
+            "generate_presentation",
         }.issubset(names)
 
     @pytest.mark.asyncio
@@ -515,3 +535,410 @@ class TestGetKBEntry:
         assert "error_code" in result
         assert result["error_code"] == "NotFound"
         assert "nonexistent" in result["message"]
+
+
+# ======================================================================
+# _handle_get_collection_progress / _handle_get_collection_status
+# ======================================================================
+
+
+class TestCollectionProgressStatus:
+    def setup_method(self) -> None:
+        _collection_state.clear()
+
+    def test_get_collection_progress_idle(self) -> None:
+        result = _handle_get_collection_progress(domain="test")
+        assert result["domain"] == "test"
+        assert result["status"] == "idle"
+        assert result["progress_pct"] == 0.0
+
+    def test_get_collection_progress_all(self) -> None:
+        _collection_state["test"] = {
+            "status": "running",
+            "started_at": "2026-01-01T00:00:00",
+            "completed_at": "",
+            "progress_pct": 50.0,
+            "items_collected": 5,
+            "errors": 1,
+            "items_per_source": {"src1": 3},
+            "duration_s": 0.0,
+        }
+        result = _handle_get_collection_progress(domain="")
+        assert result["count"] == 1
+        assert result["domains"]["test"]["status"] == "running"
+        assert result["domains"]["test"]["items_collected"] == 5
+
+    def test_get_collection_status_with_state(self) -> None:
+        import datetime
+
+        from autoinfo.mcp.server import _collection_state
+
+        _collection_state["test"] = {
+            "status": "completed",
+            "started_at": "2026-01-01T00:00:00",
+            "completed_at": "2026-01-01T01:00:00",
+            "progress_pct": 100.0,
+            "items_collected": 10,
+            "errors": 0,
+            "items_per_source": {"pubmed": 10},
+            "duration_s": 0.0,
+        }
+        result = _handle_get_collection_status(domain="test")
+        assert result["domain"] == "test"
+        assert result["status"] == "completed"
+        assert result["items_collected"] == 10
+        assert result["duration_s"] > 0
+
+    def test_get_collection_status_idle(self) -> None:
+        _collection_state.clear()
+        result = _handle_get_collection_status(domain="nonexistent")
+        assert result["domain"] == "nonexistent"
+        assert result["status"] == "idle"
+        assert result["items_collected"] == 0
+
+
+# ======================================================================
+# _handle_activate_domain / _handle_deactivate_domain / _handle_get_domain_config
+# ======================================================================
+
+
+class TestDomainLifecycle:
+    def test_activate_existing_domain(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n  - name: medical\n    active: false\n    sources: []\n    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_activate_domain(name="medical")
+
+        assert result["domain"] == "medical"
+        assert result["active"] is True
+
+    def test_activate_nonexistent_domain(self) -> None:
+        with patch("autoinfo.config.get_config_path", return_value=None):
+            result = _handle_activate_domain(name="nonexistent")
+        assert "error_code" in result
+
+    def test_deactivate_existing_domain(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n  - name: medical\n    active: true\n    sources: []\n    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_deactivate_domain(name="medical")
+
+        assert result["domain"] == "medical"
+        assert result["active"] is False
+
+    def test_get_domain_config(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical\n"
+            "    active: true\n"
+            "    extract_fields: [methodology]\n"
+            "    sources:\n"
+            "      - name: pubmed\n"
+            "        type: api\n"
+            "        url: https://eutils.ncbi.nlm.nih.gov\n"
+            "    topics:\n"
+            "      - name: IVF\n"
+            "        keywords: [IVF, embryo]\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_get_domain_config(name="medical")
+
+        assert result["domain"] == "medical"
+        assert result["active"] is True
+        assert result["source_count"] == 1
+        assert result["topic_count"] == 1
+        assert "methodology" in result["extract_fields"]
+
+    def test_get_domain_config_nonexistent(self) -> None:
+        with patch("autoinfo.config.get_config_path", return_value=None):
+            result = _handle_get_domain_config(name="nonexistent")
+        assert "error_code" in result
+
+
+# ======================================================================
+# _handle_list_keywords
+# ======================================================================
+
+
+class TestListKeywords:
+    def test_list_keywords_all(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics:\n"
+            "      - name: IVF\n"
+            "        keywords: [IVF, embryo]\n"
+            "        group: fertility\n"
+            "        relevance_threshold: 50\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_list_keywords(domain="medical")
+
+        assert result["domain"] == "medical"
+        assert result["count"] == 1
+        assert result["topics"][0]["name"] == "IVF"
+        assert result["topics"][0]["group"] == "fertility"
+        assert result["topics"][0]["relevance_threshold"] == 50
+
+    def test_list_keywords_filtered_by_topic(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics:\n"
+            "      - name: IVF\n"
+            "        keywords: [IVF]\n"
+            "      - name: Cancer\n"
+            "        keywords: [cancer]\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_list_keywords(domain="medical", topic="IVF")
+
+        assert result["count"] == 1
+        assert result["topics"][0]["name"] == "IVF"
+
+    def test_list_keywords_domain_not_found(self) -> None:
+        with patch("autoinfo.config.get_config_path", return_value=None):
+            result = _handle_list_keywords(domain="nonexistent")
+        assert "error_code" in result
+
+
+# ======================================================================
+# _handle_generate_tutorial / _handle_generate_presentation
+# ======================================================================
+
+
+class TestGenerateOutput:
+    @patch("autoinfo.output.generate_tutorial")
+    def test_generate_tutorial(self, mock_gen: MagicMock) -> None:
+        mock_gen.return_value = "# Tutorial\n\nContent here"
+        result = _handle_generate_tutorial(
+            domain="medical-research",
+            topic="IVF",
+            format="markdown",
+        )
+        assert result["success"] is True
+        assert result["domain"] == "medical-research"
+        assert "# Tutorial" in result["content"]
+
+        mock_gen.assert_called_once_with(
+            domain="medical-research", format="markdown"
+        )
+
+    @patch("autoinfo.output.generate_tutorial")
+    def test_generate_tutorial_error(self, mock_gen: MagicMock) -> None:
+        mock_gen.side_effect = ValueError("Invalid domain")
+        result = _handle_generate_tutorial(domain="bad")
+        assert "error_code" in result
+
+    @patch("autoinfo.output.generate_presentation")
+    def test_generate_presentation(self, mock_gen: MagicMock) -> None:
+        mock_gen.return_value = "# Slide 1\n\nContent"
+        result = _handle_generate_presentation(
+            domain="medical-research",
+            topic="IVF breakthroughs",
+            slides=10,
+        )
+        assert result["success"] is True
+        assert result["domain"] == "medical-research"
+        assert result["slides"] == 10
+        assert "# Slide 1" in result["content"]
+
+        mock_gen.assert_called_once_with(
+            domain="medical-research", topic="IVF breakthroughs", slide_count=10
+        )
+
+
+# ======================================================================
+# _handle_test_source — suggested_extract_fields
+# ======================================================================
+
+
+class TestTestSourceFields:
+    @patch("autoinfo.mcp.server.httpx.get")
+    @patch("autoinfo.mcp.server.httpx.head")
+    def test_suggested_fields_for_api(self, mock_head: MagicMock, mock_get: MagicMock) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/xml"}
+        mock_response.text = "<rss><item>test</item></rss>"
+        mock_response.content = b"test"
+        mock_get.return_value = mock_response
+
+        result = _handle_test_source(
+            url="https://eutils.ncbi.nlm.nih.gov",
+            type="api",
+        )
+        assert result["reachable"] is True
+        assert "suggested_extract_fields" in result
+        assert result["suggested_extract_fields"] == ["pmid", "doi", "authors", "journal"]
+
+    @patch("autoinfo.mcp.server.httpx.get")
+    @patch("autoinfo.mcp.server.httpx.head")
+    def test_suggested_fields_for_rss(self, mock_head: MagicMock, mock_get: MagicMock) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/rss+xml"}
+        mock_response.text = "<rss version='2.0'><channel><title>Test</title></channel></rss>"
+        mock_response.content = b"test"
+        mock_head.return_value = mock_response
+
+        result = _handle_test_source(
+            url="https://example.com/rss",
+            type="rss",
+        )
+        assert result["reachable"] is True
+        assert result["suggested_extract_fields"] == ["title", "pub_date", "description"]
+
+    def test_suggested_fields_default(self) -> None:
+        result = _suggest_extract_fields("unknown")
+        assert result == ["title", "description"]
+
+
+# ======================================================================
+# _handle_add_source — quality tier warning
+# ======================================================================
+
+
+class TestAddSourceQualityWarning:
+    def test_no_warning_for_tier_1(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_source(
+                name="pubmed",
+                url="https://eutils.ncbi.nlm.nih.gov",
+                type="api",
+                domain="medical",
+            )
+
+        assert result["created"] is True
+        assert "warning" not in result
+
+    def test_warning_for_existing_tier_3_source(self, tmp_path: Path) -> None:
+        """When a source already exists in config with tier 3+, the dedup path warns."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical\n"
+            "    active: true\n"
+            "    sources:\n"
+            "      - name: blog\n"
+            "        type: web\n"
+            "        url: https://example.com/blog\n"
+            "        quality_tier: 4\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_source(
+                name="blog",
+                url="https://example.com/blog",
+                type="web",
+                domain="medical",
+            )
+
+        assert result["created"] is False
+        assert "warning" in result
+        assert "Quality tier 3+" in result["warning"]
+
+
+# ======================================================================
+# G3 multi-language relevance scoring
+# ======================================================================
+
+
+class TestG3MultiLanguage:
+    def test_multi_language_keywords_dict(self) -> None:
+        from autoinfo.quality import G3RelevanceScoring
+
+        scorer = G3RelevanceScoring()
+        item = MagicMock()
+        item.title = "试管婴儿新突破"
+        item.content = "胚胎研究取得重大进展"
+
+        keywords: dict[str, list[str]] = {
+            "en": ["IVF", "embryo"],
+            "zh": ["试管婴儿", "胚胎"],
+        }
+
+        result = scorer.check(item=item, topic_keywords=keywords, threshold=30)
+        # Should match "试管婴儿" and "胚胎" in the Chinese text = 2/4 matches = 50
+        assert result.score >= 40.0
+        assert result.passed is True
+        assert result.flagged is False
+
+    def test_multi_language_no_match(self) -> None:
+        from autoinfo.quality import G3RelevanceScoring
+
+        scorer = G3RelevanceScoring()
+        item = MagicMock()
+        item.title = "Python programming guide"
+        item.content = "How to write better Python code"
+
+        keywords: dict[str, list[str]] = {
+            "en": ["IVF", "embryo"],
+            "zh": ["试管婴儿", "胚胎"],
+        }
+
+        result = scorer.check(item=item, topic_keywords=keywords, threshold=30)
+        # None of the keywords match — score = 0, flagged
+        assert result.score < 30.0
+        assert result.passed is False
+        assert result.flagged is True
+
+    def test_backwards_compatible_list(self) -> None:
+        from autoinfo.quality import G3RelevanceScoring
+
+        scorer = G3RelevanceScoring()
+        item = MagicMock()
+        item.title = "IVF breakthrough"
+        item.content = "New embryo research"
+
+        # Old-style list[str] must still work
+        result = scorer.check(item=item, topic_keywords=["IVF", "embryo"], threshold=30)
+        assert result.score >= 50.0
+        assert result.passed is True

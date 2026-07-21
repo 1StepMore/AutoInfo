@@ -747,3 +747,74 @@ class TestCollectCli:
         assert result.exit_code == 1
         assert "Error" in result.output
         assert "No configuration found" in result.output
+
+    def test_cli_all_and_domain_conflict(self, cli_runner):
+        """``--all`` and ``--domain`` together produce an error."""
+        from autoinfo.cli.collect import app
+
+        result = cli_runner.invoke(
+            app,
+            ["--all", "--domain", "medical-research"],
+        )
+
+        assert result.exit_code == 1
+        assert "Cannot use --all with --domain" in result.output
+
+    @patch.object(Path, "cwd")
+    @patch("autoinfo.collect.run_collection")
+    def test_cli_all_multi_domain_dispatch(
+        self, mock_run_collection, mock_cwd, cli_runner, tmp_path,
+    ):
+        """``--all`` collects for all active domains in config."""
+        import yaml
+        from autoinfo.cli.collect import app
+        from autoinfo.config import _dict_to_config
+
+        # Point cwd to a temp dir so get_config_path finds the test config
+        tmp = Path(tmp_path)
+        mock_cwd.return_value = tmp
+        config_dir = tmp / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+
+        config_data = {
+            "project": {"name": "test", "created_at": ""},
+            "llm": {"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-test"},
+            "domains": [
+                {"name": "domain-a", "active": True, "sources": [{"name": "src-a", "type": "rss", "url": "https://a.example.com/rss"}]},
+                {"name": "domain-b", "active": True, "sources": [{"name": "src-b", "type": "rss", "url": "https://b.example.com/rss"}]},
+            ],
+        }
+        config_path.write_text(yaml.dump(config_data))
+
+        mock_result = {
+            "collection_id": "col-test",
+            "domain": "",
+            "total_found": 5,
+            "total_new": 3,
+            "duration_s": 1.0,
+            "per_source": [],
+            "dry_run": False,
+        }
+
+        def side_effect(**kwargs):
+            r = dict(mock_result)
+            r["domain"] = kwargs["domain"]
+            return r
+
+        mock_run_collection.side_effect = side_effect
+
+        result = cli_runner.invoke(
+            app,
+            ["--all", "--limit", "10", "--dry-run"],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert mock_run_collection.call_count == 2
+        calls = [c[1] for c in mock_run_collection.call_args_list]
+        domains_collected = [c["domain"] for c in calls]
+        assert "domain-a" in domains_collected
+        assert "domain-b" in domains_collected
+        for c in calls:
+            assert c["limit"] == 10
+            assert c["dry_run"] is True

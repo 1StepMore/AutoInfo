@@ -6,8 +6,9 @@ are planned; v0.1 exposes 30 tools across 7 categories:
 **System** (2):
     health_check, diagnose_system
 
-**Discovery** (4):
-    list_domains, get_domain_schema, list_available_models, get_effective_llm_config
+**Discovery** (7):
+    list_domains, get_domain_schema, list_available_models, get_effective_llm_config,
+    activate_domain, deactivate_domain, get_domain_config
 
 **Schedule Management** (4):
     list_schedules, add_schedule, remove_schedule, run_schedules
@@ -15,17 +16,18 @@ are planned; v0.1 exposes 30 tools across 7 categories:
 **Source Management** (5):
     add_source, add_sources, remove_source, test_source, list_sources
 
-**Topic Management** (2):
-    add_topic, remove_topic
+**Topic Management** (3):
+    add_topic, remove_topic, list_keywords
 
-**Collection / Processing** (3):
-    collect_sources, process_collection, get_processing_progress
+**Collection / Processing** (5):
+    collect_sources, get_collection_progress, get_collection_status,
+    process_collection, get_processing_progress
 
 **Knowledge Base** (4):
     list_summaries, get_kb_entry, search_knowledge_base, flag_for_knowledge_base
 
-**Output** (1):
-    list_output_templates
+**Output** (3):
+    list_output_templates, generate_tutorial, generate_presentation
 
 Usage::
 
@@ -91,6 +93,27 @@ def _find_domain(config: Any, name: str) -> Any | None:
     return None
 
 # ---------------------------------------------------------------------------
+# Module-level state (in-memory, not persisted)
+# ---------------------------------------------------------------------------
+
+_collection_state: dict[str, Any] = {}
+"""In-memory state tracking active collection runs, keyed by domain.
+
+Each entry has the shape::
+
+    {
+        "status": "running" | "completed" | "idle",
+        "started_at": "ISO timestamp" | "",
+        "completed_at": "ISO timestamp" | "",
+        "progress_pct": float,
+        "items_collected": int,
+        "errors": int,
+        "items_per_source": dict[str, int],
+        "duration_s": float,
+    }
+"""
+
+# ---------------------------------------------------------------------------
 # Tool implementations
 #
 # These are plain (sync) functions so they can be tested without an async
@@ -103,7 +126,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 50,
+        "tools_count": 50,
     }
 
 
@@ -163,9 +186,103 @@ def _handle_diagnose_system() -> dict[str, Any]:
 
 def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
     """Execute a collection run via ``autoinfo.collect.run_collection``."""
+    from datetime import datetime, timezone
+
     from autoinfo.collect import run_collection
 
-    return run_collection(**kwargs)
+    domain = kwargs.get("domain", "unknown")
+    _collection_state[domain] = {
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": "",
+        "progress_pct": 0.0,
+        "items_collected": 0,
+        "errors": 0,
+        "items_per_source": {},
+        "duration_s": 0.0,
+    }
+
+    try:
+        result = run_collection(**kwargs)
+        # Attempt to extract stats from result
+        total_new = result.get("total_new", 0) if isinstance(result, dict) else 0
+        total_found = result.get("total_found", 0) if isinstance(result, dict) else 0
+        errors = result.get("errors", 0) if isinstance(result, dict) else 0
+        _collection_state[domain].update({
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "progress_pct": 100.0,
+            "items_collected": total_new,
+            "errors": errors,
+            "items_per_source": result.get("items_per_source", {}) if isinstance(result, dict) else {},
+        })
+        return result
+    except Exception:
+        _collection_state[domain].update({
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "progress_pct": 100.0,
+        })
+        raise
+
+
+def _handle_get_collection_progress(domain: str = "") -> dict[str, Any]:
+    """Return current collection progress for *domain* (or all domains)."""
+    if domain:
+        state = _collection_state.get(domain, {
+            "status": "idle",
+            "started_at": "",
+            "completed_at": "",
+            "progress_pct": 0.0,
+            "items_collected": 0,
+            "errors": 0,
+            "items_per_source": {},
+            "duration_s": 0.0,
+        })
+        return {"domain": domain, **state}
+
+    # Return all
+    results: dict[str, Any] = {}
+    for d in list(_collection_state.keys()):
+        results[d] = {k: v for k, v in _collection_state[d].items()}
+    return {"domains": results, "count": len(results)}
+
+
+def _handle_get_collection_status(domain: str) -> dict[str, Any]:
+    """Return full collection results for *domain* (last run)."""
+    from datetime import datetime, timezone
+
+    state = _collection_state.get(domain, {
+        "status": "idle",
+        "started_at": "",
+        "completed_at": "",
+        "progress_pct": 0.0,
+        "items_collected": 0,
+        "errors": 0,
+        "items_per_source": {},
+        "duration_s": 0.0,
+    })
+
+    # Compute duration if available
+    duration = 0.0
+    if state.get("started_at") and state.get("completed_at"):
+        try:
+            from datetime import datetime
+            started = datetime.fromisoformat(state["started_at"])
+            completed = datetime.fromisoformat(state["completed_at"])
+            duration = (completed - started).total_seconds()
+        except (ValueError, TypeError):
+            duration = 0.0
+
+    return {
+        "domain": domain,
+        "status": state["status"],
+        "last_collection_time": state.get("completed_at", ""),
+        "items_per_source": state.get("items_per_source", {}),
+        "error_count": state.get("errors", 0),
+        "duration_s": round(duration, 2),
+        "items_collected": state.get("items_collected", 0),
+    }
 
 
 def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
@@ -232,6 +349,114 @@ def _handle_list_domains() -> dict[str, Any]:
             "topic_count": len(d.topics),
         })
     return {"domains": domains, "count": len(domains)}
+
+
+def _handle_activate_domain(name: str) -> dict[str, Any]:
+    """Activate a domain (set domain.active = True)."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, name)
+    if domain_cfg is None:
+        return {
+            "error_code": "DomainNotFound",
+            "message": f"Domain '{name}' is not configured",
+            "actionable": True,
+        }
+
+    if domain_cfg.active:
+        return {
+            "domain": name,
+            "active": True,
+            "message": f"Domain '{name}' is already active",
+        }
+
+    domain_cfg.active = True
+    _save_config(config)
+    return {
+        "domain": name,
+        "active": True,
+        "message": f"Domain '{name}' activated",
+    }
+
+
+def _handle_deactivate_domain(name: str) -> dict[str, Any]:
+    """Deactivate a domain (set domain.active = False)."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, name)
+    if domain_cfg is None:
+        return {
+            "error_code": "DomainNotFound",
+            "message": f"Domain '{name}' is not configured",
+            "actionable": True,
+        }
+
+    if not domain_cfg.active:
+        return {
+            "domain": name,
+            "active": False,
+            "message": f"Domain '{name}' is already inactive",
+        }
+
+    domain_cfg.active = False
+    _save_config(config)
+    return {
+        "domain": name,
+        "active": False,
+        "message": f"Domain '{name}' deactivated",
+    }
+
+
+def _handle_get_domain_config(name: str) -> dict[str, Any]:
+    """Return full domain config including sources, topics, extract_fields."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, name)
+    if domain_cfg is None:
+        return {
+            "error_code": "DomainNotFound",
+            "message": f"Domain '{name}' is not configured",
+            "actionable": True,
+        }
+
+    sources = [
+        {
+            "name": s.name,
+            "type": s.type,
+            "url": s.url,
+            "quality_tier": s.quality_tier,
+        }
+        for s in domain_cfg.sources
+    ]
+    topics = [
+        {
+            "name": t.name,
+            "keywords": t.keywords,
+            "group": t.group,
+            "relevance_threshold": t.relevance_threshold,
+        }
+        for t in domain_cfg.topics
+    ]
+
+    return {
+        "domain": domain_cfg.name,
+        "active": domain_cfg.active,
+        "search_mode": domain_cfg.search_mode,
+        "extract_fields": domain_cfg.extract_fields,
+        "sources": sources,
+        "source_count": len(sources),
+        "topics": topics,
+        "topic_count": len(topics),
+    }
 
 
 def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
@@ -377,7 +602,7 @@ def _handle_add_source(
     # Idempotency check: same url + type + domain
     for existing in domain_cfg.sources:
         if existing.url == url and existing.type == type:
-            return {
+            dup_result: dict[str, Any] = {
                 "source": {
                     "name": existing.name,
                     "type": existing.type,
@@ -388,6 +613,9 @@ def _handle_add_source(
                 "created": False,
                 "source_id": f"{domain}:{existing.name}",
             }
+            if existing.quality_tier >= 3:
+                dup_result["warning"] = "Quality tier 3+ source — content may have lower authority."
+            return dup_result
 
     # Determine next quality_tier based on type
     quality_tier = 1 if type in ("api", "rss") else 2
@@ -398,7 +626,7 @@ def _handle_add_source(
     domain_cfg.sources.append(new_source)
     _save_config(config)
 
-    return {
+    result: dict[str, Any] = {
         "source": {
             "name": name,
             "type": type,
@@ -409,6 +637,12 @@ def _handle_add_source(
         "created": True,
         "source_id": f"{domain}:{name}",
     }
+
+    # Advisory warning for tier 3+ sources
+    if quality_tier >= 3:
+        result["warning"] = "Quality tier 3+ source — content may have lower authority."
+
+    return result
 
 
 def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
@@ -491,6 +725,17 @@ def _handle_remove_source(source_id: str) -> dict[str, Any]:
     }
 
 
+def _suggest_extract_fields(source_type: str) -> list[str]:
+    """Return recommended extract fields for a given source type."""
+    suggestions: dict[str, list[str]] = {
+        "pubmed": ["pmid", "doi", "authors", "journal"],
+        "api": ["pmid", "doi", "authors", "journal"],
+        "rss": ["title", "pub_date", "description"],
+        "web": ["description", "author", "published_date"],
+    }
+    return suggestions.get(source_type, ["title", "description"])
+
+
 def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     """Test whether a source URL is reachable."""
     url_error = _validate_url(url)
@@ -511,6 +756,9 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
         content_preview = resp.text[:500] if resp.text else ""
         size_kb = len(resp.content) / 1024.0
 
+        # Suggested extract fields based on source type
+        suggested_fields = _suggest_extract_fields(type)
+
         return {
             "reachable": resp.status_code < 500,
             "status_code": resp.status_code,
@@ -518,6 +766,7 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
             "content_preview": content_preview,
             "size_kb": round(size_kb, 1),
             "format": _infer_format(content_type_header, content_preview),
+            "suggested_extract_fields": suggested_fields,
         }
     except httpx.TimeoutException:
         return {
@@ -677,6 +926,49 @@ def _handle_list_topics(domain: str) -> dict[str, Any]:
         for t in domain_cfg.topics
     ]
     return {"domain": domain, "topics": topics, "count": len(topics)}
+
+
+def _handle_list_keywords(
+    domain: str,
+    topic: str | None = None,
+) -> dict[str, Any]:
+    """List keywords with topic grouping, multi-language support, and scoring info.
+
+    Returns keywords per domain/topic from config.  When *topic* is provided,
+    only keywords for that topic are returned.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": "DomainNotFound",
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    results: list[dict[str, Any]] = []
+    for t in domain_cfg.topics:
+        if topic and t.name != topic:
+            continue
+        entry: dict[str, Any] = {
+            "name": t.name,
+            "keywords": t.keywords,
+            "group": t.group,
+            "relevance_threshold": t.relevance_threshold,
+            "keyword_count": len(t.keywords) if isinstance(t.keywords, list) else sum(len(v) for v in t.keywords.values()) if isinstance(t.keywords, dict) else 0,
+        }
+        results.append(entry)
+
+    return {
+        "domain": domain,
+        "topic": topic or "*",
+        "topics": results,
+        "count": len(results),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1002,6 +1294,57 @@ def _handle_generate_digest(
         }
     except Exception as exc:
         logger.exception("Digest generation failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+def _handle_generate_tutorial(
+    domain: str,
+    topic: str | None = None,
+    format: str = "markdown",
+) -> dict[str, Any]:
+    """Generate a structured tutorial for *domain*.
+
+    Thin wrapper around :func:`autoinfo.output.generate_tutorial`.
+    """
+    from autoinfo.output import generate_tutorial as _generate_tutorial
+
+    try:
+        result = _generate_tutorial(domain=domain, format=format)
+        return {"success": True, "format": format, "domain": domain, "topic": topic, "content": result}
+    except ValueError as exc:
+        return {
+            "error_code": "ValidationError",
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Tutorial generation failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+def _handle_generate_presentation(
+    domain: str,
+    topic: str | None = None,
+    slides: int = 10,
+) -> dict[str, Any]:
+    """Generate a slide-based presentation for *topic* within *domain*.
+
+    Thin wrapper around :func:`autoinfo.output.generate_presentation`.
+    """
+    from autoinfo.output import generate_presentation as _generate_presentation
+
+    try:
+        topic_str = topic or ""
+        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides)
+        return {"success": True, "domain": domain, "topic": topic, "slides": slides, "content": result}
+    except ValueError as exc:
+        return {
+            "error_code": "ValidationError",
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Presentation generation failed for domain '%s'", domain)
         return _error_dict(exc)
 
 
@@ -1500,7 +1843,7 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={"type": "object", "properties": {}},
         ),
-        # -- Discovery (4) ------------------------------------------------
+        # -- Discovery (7) ------------------------------------------------
         Tool(
             name="list_domains",
             description="List all configured domains with source/topic counts",
@@ -1539,6 +1882,48 @@ async def list_tools() -> list[Tool]:
                         ),
                     },
                 },
+            },
+        ),
+        Tool(
+            name="activate_domain",
+            description="Activate a domain (set domain.active = True)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Domain name to activate",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="deactivate_domain",
+            description="Deactivate a domain (set domain.active = False)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Domain name to deactivate",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="get_domain_config",
+            description="Return full domain config including sources, topics, extract_fields",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                },
+                "required": ["name"],
             },
         ),
         # -- Source Management (5) ----------------------------------------
@@ -1645,7 +2030,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
-        # -- Topic Management (3) -----------------------------------------
+        # -- Topic Management (4) -----------------------------------------
         Tool(
             name="add_topic",
             description="Add a topic to a domain (idempotent by name+domain)",
@@ -1702,7 +2087,25 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
-        # -- Collection / Processing (3) ----------------------------------
+        Tool(
+            name="list_keywords",
+            description="List keywords with topic grouping, multi-language support, and scoring info",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Optional topic name filter",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        # -- Collection / Processing (5) ----------------------------------
         Tool(
             name="collect_sources",
             description="Execute a collection run for a domain",
@@ -1735,6 +2138,33 @@ async def list_tools() -> list[Tool]:
                             "If true, preview only — no storage"
                         ),
                         "default": False,
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="get_collection_progress",
+            description="Return current collection progress for a domain (in-memory state)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain name — returns all domains if omitted",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_collection_status",
+            description="Return full collection results for a domain (last run)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
                     },
                 },
                 "required": ["domain"],
@@ -2149,7 +2579,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain", "tier"],
             },
         ),
-        # -- Output (3) ---------------------------------------------------
+        # -- Output (5) ---------------------------------------------------
         Tool(
             name="list_output_templates",
             description="List available output templates for a domain",
@@ -2189,6 +2619,52 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="generate_tutorial",
+            description="Generate a structured tutorial for a domain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Optional topic filter",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format (markdown, html, json)",
+                        "default": "markdown",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="generate_presentation",
+            description="Generate a slide-based presentation for a topic within a domain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Presentation topic",
+                    },
+                    "slides": {
+                        "type": "integer",
+                        "description": "Desired number of slides (3-30)",
+                        "default": 10,
+                    },
+                },
+                "required": ["domain", "topic"],
             },
         ),
         Tool(
@@ -2527,7 +3003,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "diagnose_system":
             result = _handle_diagnose_system()
 
-        # -- Discovery (4) ------------------------------------------------
+        # -- Discovery (7) ------------------------------------------------
         elif name == "list_domains":
             result = _handle_list_domains()
         elif name == "get_domain_schema":
@@ -2536,6 +3012,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_available_models()
         elif name == "get_effective_llm_config":
             result = _handle_get_effective_llm_config(**arguments)
+        elif name == "activate_domain":
+            result = _handle_activate_domain(**arguments)
+        elif name == "deactivate_domain":
+            result = _handle_deactivate_domain(**arguments)
+        elif name == "get_domain_config":
+            result = _handle_get_domain_config(**arguments)
 
         # -- Source Management (5) ----------------------------------------
         elif name == "add_source":
@@ -2549,17 +3031,23 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "list_sources":
             result = _handle_list_sources(**arguments)
 
-        # -- Topic Management (3) -----------------------------------------
+        # -- Topic Management (4) -----------------------------------------
         elif name == "add_topic":
             result = _handle_add_topic(**arguments)
         elif name == "remove_topic":
             result = _handle_remove_topic(**arguments)
         elif name == "list_topics":
             result = _handle_list_topics(**arguments)
+        elif name == "list_keywords":
+            result = _handle_list_keywords(**arguments)
 
-        # -- Collection / Processing (3) ----------------------------------
+        # -- Collection / Processing (5) ----------------------------------
         elif name == "collect_sources":
             result = _handle_collect_sources(**arguments)
+        elif name == "get_collection_progress":
+            result = _handle_get_collection_progress(**arguments)
+        elif name == "get_collection_status":
+            result = _handle_get_collection_status(**arguments)
         elif name == "process_collection":
             result = _handle_process_collection(**arguments)
         elif name == "get_processing_progress":
@@ -2602,11 +3090,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "list_kb_tier":
             result = _handle_list_kb_tier(**arguments)
 
-        # -- Output (3) ---------------------------------------------------
+        # -- Output (5) ---------------------------------------------------
         elif name == "list_output_templates":
             result = _handle_list_output_templates(**arguments)
         elif name == "generate_digest":
             result = _handle_generate_digest(**arguments)
+        elif name == "generate_tutorial":
+            result = _handle_generate_tutorial(**arguments)
+        elif name == "generate_presentation":
+            result = _handle_generate_presentation(**arguments)
         elif name == "localize_content":
             result = _handle_localize_content(**arguments)
 

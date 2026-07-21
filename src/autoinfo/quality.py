@@ -202,6 +202,9 @@ class G3RelevanceScoring:
     Uses simple keyword overlap scoring (term-count / total-keywords × 100).
     Items scoring below *threshold* are flagged with ``hidden: true``.
 
+    Supports both single-language keywords (``list[str]``) and multi-language
+    keywords (``dict[str, list[str]]``) for backwards compatibility.
+
     Future enhancement:
         LLM-based semantic scoring will be added in a later version.
         The current implementation is purely lexical and serves as a
@@ -211,7 +214,7 @@ class G3RelevanceScoring:
     def check(
         self,
         item: Item,
-        topic_keywords: list[str],
+        topic_keywords: list[str] | dict[str, list[str]],
         threshold: int = 30,
     ) -> QualityResult:
         """Score *item* relevance against *topic_keywords*.
@@ -221,7 +224,9 @@ class G3RelevanceScoring:
         item:
             The collected item to score.
         topic_keywords:
-            List of keywords that define the topic (e.g. ``["IVF", "embryo"]``).
+            List of keywords that define the topic (e.g. ``["IVF", "embryo"]``)
+            or a dict mapping language codes to keyword lists
+            (e.g. ``{"en": ["IVF"], "zh": ["试管婴儿"]}``).
         threshold:
             Minimum score (0-100) below which the item is flagged as hidden.
             Defaults to 30.
@@ -232,12 +237,24 @@ class G3RelevanceScoring:
             Contains the relevance ``score`` (0-100). Items below threshold
             have ``flagged=True`` and ``details["hidden"] = True``.
         """
+        # Normalise multi-language keywords to a flat list
+        if isinstance(topic_keywords, dict):
+            # When multi-language, flatten all language keyword lists
+            flat_keywords: list[str] = []
+            for lang_kws in topic_keywords.values():
+                flat_keywords.extend(lang_kws)
+            topic_keywords = flat_keywords
+
         if not topic_keywords:
             return QualityResult(
                 gate_name="G3-RelevanceScoring",
                 passed=True,
                 score=100.0,
-                details={"hidden": False, "reason": "no keywords to match against"},
+                details={
+                    "hidden": False,
+                    "reason": "no keywords to match against",
+                    "multi_language": True,
+                },
             )
 
         # Combine title + content into a single searchable text.

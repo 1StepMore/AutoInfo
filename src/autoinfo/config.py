@@ -63,6 +63,8 @@ class SourceConfig:
 class TopicConfig:
     name: str = ""
     keywords: list[str] = field(default_factory=list)
+    group: str = ""
+    relevance_threshold: int = 30
 
 
 @dataclass
@@ -188,6 +190,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             TopicConfig(
                 name=t.get("name", ""),
                 keywords=t.get("keywords", []),
+                group=t.get("group", ""),
+                relevance_threshold=int(t.get("relevance_threshold", 30)),
             )
             for t in topics_raw
         ]
@@ -327,10 +331,15 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                 "quality_tier": source.quality_tier,
             })
         for topic in domain.topics:
-            domain_dict["topics"].append({
+            topic_dict: dict[str, Any] = {
                 "name": topic.name,
                 "keywords": topic.keywords,
-            })
+            }
+            if topic.group:
+                topic_dict["group"] = topic.group
+            if topic.relevance_threshold != 30:
+                topic_dict["relevance_threshold"] = topic.relevance_threshold
+            domain_dict["topics"].append(topic_dict)
         raw["domains"].append(domain_dict)
     return raw
 
@@ -442,7 +451,13 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                 for s in domain.sources
             ],
             "topics": [
-                {"name": t.name, "keywords": t.keywords} for t in domain.topics
+                {
+                    "name": t.name,
+                    "keywords": t.keywords,
+                    **({"group": t.group} if t.group else {}),
+                    **({"relevance_threshold": t.relevance_threshold} if t.relevance_threshold != 30 else {}),
+                }
+                for t in domain.topics
             ],
         }
         if domain.extract_fields:

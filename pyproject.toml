@@ -44,6 +44,9 @@ dependencies = [
     "python-frontmatter>=1.1",
     "markdown>=3.5",
 
+    # Language detection
+    "langdetect>=1.0.9",
+
     # Search
     "sqlite-vec>=0.1",
 

@@ -30,6 +30,42 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Language detection
+# ---------------------------------------------------------------------------
+
+
+def detect_language(text: str) -> str:
+    """Auto-detect the language of *text* using ``langdetect``.
+
+    Returns a language code (e.g. ``"en"``, ``"zh-cn"``) when confidence
+    is ≥ 0.8 and text has ≥ 20 characters.  Returns ``"unknown"`` for
+    short/noisy text or when detection fails.
+
+    .. note::
+        Non-blocking — returns ``"unknown"`` when ``langdetect`` is not
+        installed or ``LangDetectException`` is raised.
+    """
+    if len(text.strip()) < 20:
+        return "unknown"
+    try:
+        from langdetect import detect_langs, LangDetectException as _LDE
+    except ImportError:
+        logger.debug("langdetect not installed — language detection disabled")
+        return "unknown"
+
+    try:
+        langs = detect_langs(text)
+        if not langs:
+            return "unknown"
+        top = langs[0]
+        if top.prob < 0.8:
+            return "unknown"
+        return top.lang
+    except _LDE:
+        return "unknown"
+
+
+# ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------
 
@@ -486,6 +522,12 @@ def run_processing(
             if g5_result is not None:
                 item_log["g5_flagged"] = g5_result.flagged
                 item_log["g5_faithful"] = g5_result.details.get("faithful")
+
+            # Step c0: Language detection (non-blocking)
+            text_for_lang = f"{item.title} {item.content}"
+            detected_lang = detect_language(text_for_lang)
+            item.language = detected_lang
+            item_log["language"] = detected_lang
 
             # Step c: KB storage — store all items (quality gates are
             # advisory). Duplicates get marked in their frontmatter.

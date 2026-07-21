@@ -214,6 +214,11 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN custom_fields TEXT DEFAULT '{}'")
             except Exception:
                 pass
+            # Migration: add language column (v1.1+)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN language TEXT DEFAULT ''")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -293,8 +298,8 @@ class SQLiteIndex:
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, file_path, tags,
-                     custom_fields)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     custom_fields, language)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
@@ -312,6 +317,7 @@ class SQLiteIndex:
                     entry.file_path,
                     json.dumps(entry.tags, ensure_ascii=False),
                     json.dumps(custom_fields, ensure_ascii=False),
+                    entry.language,
                 ),
             )
 
@@ -1700,6 +1706,8 @@ class KBStore:
             # Expanded frontmatter fields
             source_ids=raw_ids,
             status="active",
+            # Carry forward language from first raw entry
+            language=raw_entries[0].get("language", ""),
         )
 
         # Write Markdown file
@@ -1823,6 +1831,7 @@ class KBStore:
                 status=draft_custom_fields.get("status", "active"),
                 related_concepts=draft_custom_fields.get("related_concepts", []),
                 linked_entries=draft_custom_fields.get("linked_entries", []),
+                language=meta.get("language", ""),
             )
             self.index.index_entry(entry)
 
@@ -1970,6 +1979,7 @@ class KBStore:
             status=draft_custom_fields.get("status", "active"),
             related_concepts=draft_custom_fields.get("related_concepts", []),
             linked_entries=draft_custom_fields.get("linked_entries", []),
+            language=meta.get("language", ""),
         )
         self.index.index_entry(entry)
 
@@ -2292,6 +2302,7 @@ class KBStore:
                         status=fm.get("status", "active"),
                         related_concepts=fm.get("related_concepts", []),
                         linked_entries=fm.get("linked_entries", []),
+                        language=fm.get("language", ""),
                     )
                     self.index.index_entry(entry)
                 files_found += 1

@@ -433,6 +433,43 @@ class TestRunProcessing:
 
 
 # ===================================================================
+# Test: Language detection
+# ===================================================================
+
+
+class TestLanguageDetection:
+    """``detect_language()`` — auto-detect text language."""
+
+    def test_detect_english(self) -> None:
+        """English text is detected as ``"en"``."""
+        from autoinfo.process import detect_language
+
+        fake_lang_en = type("Lang", (), {"lang": "en", "prob": 0.95})()
+
+        with patch("langdetect.detect_langs", return_value=[fake_lang_en]):
+            result = detect_language("This is a sample English text to detect language.")
+        assert result == "en"
+
+    def test_detect_chinese(self) -> None:
+        """Chinese text is detected as ``"zh-cn"`` or ``"zh"``."""
+        from autoinfo.process import detect_language
+
+        fake_lang_zh = type("Lang", (), {"lang": "zh-cn", "prob": 0.97})()
+
+        long_zh = "这是一段比较长的中文文本，用来测试语言检测功能是否能够正确识别中文语言。"
+        with patch("langdetect.detect_langs", return_value=[fake_lang_zh]):
+            result = detect_language(long_zh)
+        assert result in ("zh-cn", "zh")
+
+    def test_detect_short_text(self) -> None:
+        """Very short text (< 20 chars) returns ``"unknown"``."""
+        from autoinfo.process import detect_language
+
+        result = detect_language("Hi")
+        assert result == "unknown"
+
+
+# ===================================================================
 # Test: CLI wiring
 # ===================================================================
 

@@ -21,7 +21,7 @@ class Item:
     content: str
     content_type: str = "text"
     collected_at: str = ""
-    language: str = "en"
+    language: str = ""
     domain: str = ""
     topic_tags: list[str] = field(default_factory=list)
     quality_tier: int = 1
@@ -73,7 +73,7 @@ class KBEntry:
     extracted_fields: dict[str, Any] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
     priority: int = 3
-    language: str = "en"
+    language: str = ""
     quality_tier: int = 1
     relevance_score: float = 0.0
     dedup_status: str = "unique"

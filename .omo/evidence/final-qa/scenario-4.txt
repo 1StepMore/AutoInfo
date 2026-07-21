@@ -1,0 +1,22 @@
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/config.yaml
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/sources.yaml
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/knowledge/00-Inbox/
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/knowledge/01-Raw/
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/knowledge/02-Draft/
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/knowledge/03-Wiki/
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/collections/
+  CREATE  /tmp/tmp.MAotjn0BNa/.autoinfo/outputs/
+
+✅ AutoInfo initialized for 'medical-research'.
+
+Next steps:
+  1. Set your LLM API key:
+     export AUTOINFO_LLM_API_KEY='sk-...'
+
+  2. Collect from sources:
+     autoinfo collect --domain medical-research --topic "IVF breakthroughs" --limit 5
+
+  3. Process collected items:
+     autoinfo process --domain medical-research
+First call: success
+Task4: init_project created .autoinfo/ OK

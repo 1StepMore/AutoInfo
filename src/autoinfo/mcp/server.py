@@ -47,6 +47,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -105,13 +106,16 @@ Each entry has the shape::
         "status": "running" | "completed" | "idle",
         "started_at": "ISO timestamp" | "",
         "completed_at": "ISO timestamp" | "",
-        "progress_pct": float,
+        "progress_pct": 0.0 .. 100.0,
         "items_collected": int,
         "errors": int,
         "items_per_source": dict[str, int],
         "duration_s": float,
     }
 """
+
+# In-memory job state for progress tracking via job_id (collect_sources / process_collection)
+_job_state: dict[str, dict[str, Any]] = {}
 
 # ---------------------------------------------------------------------------
 # Tool implementations
@@ -191,6 +195,7 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
     from autoinfo.collect import run_collection
 
     domain = kwargs.get("domain", "unknown")
+    job_id = str(uuid.uuid4())
     _collection_state[domain] = {
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
@@ -200,6 +205,16 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
         "errors": 0,
         "items_per_source": {},
         "duration_s": 0.0,
+        "job_id": job_id,
+    }
+    _job_state[job_id] = {
+        "domain": domain,
+        "tool": "collect_sources",
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "items_collected": 0,
+        "errors": 0,
+        "progress_pct": 0.0,
     }
 
     try:
@@ -216,6 +231,17 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
             "errors": errors,
             "items_per_source": result.get("items_per_source", {}) if isinstance(result, dict) else {},
         })
+        _job_state[job_id].update({
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "items_collected": total_new,
+            "errors": errors,
+            "progress_pct": 100.0,
+        })
+        if isinstance(result, dict):
+            result["job_id"] = job_id
+        else:
+            result = {"job_id": job_id, "result": result}
         return result
     except Exception:
         _collection_state[domain].update({
@@ -223,11 +249,20 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "progress_pct": 100.0,
         })
+        _job_state[job_id].update({
+            "status": "error",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
         raise
 
 
-def _handle_get_collection_progress(domain: str = "") -> dict[str, Any]:
-    """Return current collection progress for *domain* (or all domains)."""
+def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
+    """Return current collection progress. Supports lookup by domain or job_id."""
+    if job_id:
+        state = _job_state.get(job_id)
+        if state:
+            return {"job_id": job_id, **state, "is_complete": state.get("status") in ("completed", "error")}
+        return {"job_id": job_id, "status": "not_found", "is_complete": True}
     if domain:
         state = _collection_state.get(domain, {
             "status": "idle",
@@ -287,17 +322,53 @@ def _handle_get_collection_status(domain: str) -> dict[str, Any]:
 
 def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
     """Execute a processing run via ``autoinfo.process.run_processing``."""
+    from datetime import datetime, timezone
+
     from autoinfo.process import run_processing
 
-    result = run_processing(**kwargs)
-    return asdict(result)
+    job_id = str(uuid.uuid4())
+    _job_state[job_id] = {
+        "domain": kwargs.get("domain", "unknown"),
+        "tool": "process_collection",
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "progress_pct": 0.0,
+        "kb_entries_created": 0,
+        "total_items": 0,
+    }
+
+    try:
+        result = run_processing(**kwargs)
+        result_dict = asdict(result)
+        _job_state[job_id].update({
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "progress_pct": 100.0,
+            "kb_entries_created": result_dict.get("kb_entries_created", 0),
+            "total_items": result_dict.get("total_items", result_dict.get("total_new", 0)),
+        })
+        result_dict["job_id"] = job_id
+        return result_dict
+    except Exception:
+        _job_state[job_id].update({
+            "status": "error",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        raise
 
 
-def _handle_get_processing_progress(domain: str) -> dict[str, Any]:
-    """Return processing progress from ``autoinfo.process.get_processing_progress``."""
-    from autoinfo.process import get_processing_progress
+def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
+    """Return processing progress. Supports lookup by domain or job_id."""
+    if job_id:
+        state = _job_state.get(job_id)
+        if state:
+            return {"job_id": job_id, **state, "is_complete": state.get("status") in ("completed", "error")}
+        return {"job_id": job_id, "status": "not_found", "is_complete": True}
+    if domain:
+        from autoinfo.process import get_processing_progress
 
-    return get_processing_progress(domain=domain)
+        return get_processing_progress(domain=domain)
+    return {"status": "idle", "is_complete": True}
 
 
 def _handle_list_summaries(**kwargs: Any) -> dict[str, Any]:
@@ -689,8 +760,17 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _handle_remove_source(source_id: str) -> dict[str, Any]:
+def _handle_remove_source(source_id: str, confirm: bool = False) -> dict[str, Any]:
     """Remove a source by its source_id (``domain:name``)."""
+    if not confirm:
+        return {
+            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
+            "message": (
+                f"This operation is destructive and requires confirmation. "
+                f"Pass confirm=True to proceed."
+            ),
+            "actionable": True,
+        }
     try:
         config = _load_config()
     except Exception as exc:
@@ -882,8 +962,17 @@ def _handle_add_topic(
     }
 
 
-def _handle_remove_topic(domain: str, topic_id: str) -> dict[str, Any]:
+def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = False) -> dict[str, Any]:
     """Remove a topic by its topic_id (``domain:name``)."""
+    if not confirm:
+        return {
+            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
+            "message": (
+                f"This operation is destructive and requires confirmation. "
+                f"Pass confirm=True to proceed."
+            ),
+            "actionable": True,
+        }
     try:
         config = _load_config()
     except Exception as exc:
@@ -1734,8 +1823,17 @@ def _handle_add_schedule(
         return _error_dict(exc)
 
 
-def _handle_remove_schedule(name: str) -> dict[str, Any]:
+def _handle_remove_schedule(name: str, confirm: bool = False) -> dict[str, Any]:
     """Remove a collection schedule."""
+    if not confirm:
+        return {
+            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
+            "message": (
+                f"This operation is destructive and requires confirmation. "
+                f"Pass confirm=True to proceed."
+            ),
+            "actionable": True,
+        }
     try:
         from autoinfo.cli.cron import load_schedules, save_schedules
 
@@ -1990,7 +2088,7 @@ def _handle_init_project(
         return error_dict(ErrorCode.INTERNAL_ERROR, str(exc))
 
 
-def _handle_list_projects() -> dict[str, Any]:
+def _handle_list_projects(status: str = "") -> dict[str, Any]:
     """List all configured projects with domain/source summaries."""
     try:
         config = _load_config()
@@ -2018,12 +2116,17 @@ def _handle_list_projects() -> dict[str, Any]:
             ),
             "llm_provider": config.llm.provider if hasattr(config, "llm") else "",
             "llm_model": config.llm.model if hasattr(config, "llm") else "",
+            "status": "active",
         }
     ]
+
+    if status:
+        projects = [p for p in projects if p.get("status") == status]
+
     return {"projects": projects, "count": len(projects)}
 
 
-def _handle_get_project_assets() -> dict[str, Any]:
+def _handle_get_project_assets(type: str = "") -> dict[str, Any]:
     """Return project assets info — directories, db, exports."""
     assets: dict[str, Any] = {
         "collections_dir": {"exists": False, "path": ""},
@@ -2065,11 +2168,32 @@ def _handle_get_project_assets() -> dict[str, Any]:
         "path": str(config_dir),
     }
 
+    if type:
+        asset_types_map = {
+            "collections": "collections_dir",
+            "knowledge": "knowledge_dir",
+            "database": "database",
+            "exports": "exports_dir",
+            "config": "config_dir",
+        }
+        key = asset_types_map.get(type)
+        if key:
+            return {key: assets[key]}
+
     return assets
 
 
-def _handle_archive_project(reason: str = "") -> dict[str, Any]:
+def _handle_archive_project(reason: str = "", confirm: bool = False) -> dict[str, Any]:
     """Archive the current project (refuses unless published to 03-Wiki)."""
+    if not confirm:
+        return {
+            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
+            "message": (
+                f"This operation is destructive and requires confirmation. "
+                f"Pass confirm=True to proceed."
+            ),
+            "actionable": True,
+        }
     try:
         from autoinfo.kb import KBStore
 
@@ -2111,48 +2235,82 @@ def _handle_batch_run(
     limit: int = 20,
     model: str = "",
 ) -> dict[str, Any]:
-    """Run collect + process in sequence for a domain."""
+    """Run collect + process in sequence for a domain. Returns per-phase results."""
     from autoinfo.collect import run_collection
     from autoinfo.process import ProcessResult, run_processing
+
+    from datetime import datetime, timezone
+
+    start_time = datetime.now(timezone.utc)
+    phases: list[dict[str, Any]] = []
 
     collect_args: dict[str, Any] = {"domain": domain, "limit": limit}
     if topic:
         collect_args["topic"] = topic
 
+    phase_start = datetime.now(timezone.utc)
     try:
         collected = run_collection(**collect_args)
+        phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+        phases.append({
+            "phase": "collection",
+            "status": "completed",
+            "result": collected,
+            "duration_s": round(phase_duration, 2),
+        })
     except Exception as exc:
-        return {
-            "error_code": ErrorCode.COLLECTION_FAILED.value,
-            "message": f"Collection phase failed: {exc}",
-            "actionable": True,
-        }
+        phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+        phases.append({
+            "phase": "collection",
+            "status": "failed",
+            "error": str(exc),
+            "duration_s": round(phase_duration, 2),
+        })
 
-    process_args: dict[str, Any] = {"domain": domain}
-    if model:
-        process_args["model"] = model
+    if phases[-1]["status"] == "completed":
+        process_args: dict[str, Any] = {"domain": domain}
+        if model:
+            process_args["model"] = model
 
-    try:
-        processed: ProcessResult = run_processing(**process_args)
-        processed_dict = asdict(processed)
-    except Exception as exc:
-        return {
-            "error_code": ErrorCode.PROCESSING_FAILED.value,
-            "message": f"Processing phase failed: {exc}",
-            "actionable": True,
-            "collection_result": collected,
-        }
+        phase_start = datetime.now(timezone.utc)
+        try:
+            processed: ProcessResult = run_processing(**process_args)
+            processed_dict = asdict(processed)
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+            phases.append({
+                "phase": "processing",
+                "status": "completed",
+                "result": processed_dict,
+                "duration_s": round(phase_duration, 2),
+            })
+        except Exception as exc:
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+            phases.append({
+                "phase": "processing",
+                "status": "failed",
+                "error": str(exc),
+                "duration_s": round(phase_duration, 2),
+            })
+    else:
+        phases.append({
+            "phase": "processing",
+            "status": "skipped",
+            "reason": "collection failed",
+        })
+
+    total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+    overall_success = all(p["status"] == "completed" for p in phases)
 
     return {
         "domain": domain,
         "topic": topic or "*",
-        "collection_result": collected,
-        "processing_result": processed_dict,
-        "success": True,
+        "phases": phases,
+        "overall_success": overall_success,
+        "total_duration_s": round(total_duration, 2),
     }
 
 
-def _handle_list_active_collections() -> dict[str, Any]:
+def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
     """List active / in-progress collection runs."""
     from autoinfo.collect import list_active_collections as _list_active
 
@@ -2160,6 +2318,9 @@ def _handle_list_active_collections() -> dict[str, Any]:
         active = _list_active()
     except Exception as exc:
         return {"active_collections": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
+
+    if domain:
+        active = [c for c in active if c.get("domain") == domain]
 
     return {
         "active_collections": active,
@@ -2445,7 +2606,12 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "source_id": {
                         "type": "string",
-                        "description": "Source identifier in 'domain:name' format",
+                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be True to confirm this destructive operation",
+                        "default": False,
                     },
                 },
                 "required": ["source_id"],
@@ -2522,7 +2688,12 @@ async def list_tools() -> list[Tool]:
                     },
                     "topic_id": {
                         "type": "string",
-                        "description": "Topic identifier (name or 'domain:name' format)",
+                        "description": "Topic identifier — name or 'domain:name' format (e.g. 'IVF breakthroughs' or 'medical-research:IVF breakthroughs'). Returned by add_topic in the response.",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be True to confirm this destructive operation",
+                        "default": False,
                     },
                 },
                 "required": ["domain", "topic_id"],
@@ -3430,6 +3601,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Schedule name to remove",
                     },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be True to confirm this destructive operation",
+                        "default": False,
+                    },
                 },
                 "required": ["name"],
             },
@@ -3502,7 +3678,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "source_id": {
                         "type": "string",
-                        "description": "Source identifier in 'domain:name' format",
+                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
                     },
                 },
                 "required": ["source_id"],
@@ -3565,7 +3741,17 @@ async def list_tools() -> list[Tool]:
                 "List all configured projects with domain count, source/topic "
                 "summaries, and LLM provider info."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Optional status filter (active, archived)",
+                        "default": "",
+                    },
+                },
+                "required": [],
+            },
         ),
         Tool(
             name="get_project_assets",
@@ -3573,7 +3759,17 @@ async def list_tools() -> list[Tool]:
                 "Return project asset paths and sizes — collections, knowledge "
                 "directories, database, exports, and config directory."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "description": "Optional asset type filter (collections, knowledge, database, exports, config)",
+                        "default": "",
+                    },
+                },
+                "required": [],
+            },
         ),
         Tool(
             name="archive_project",
@@ -3590,6 +3786,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional reason for archiving",
                         "default": "",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be True to confirm this destructive operation",
+                        "default": False,
                     },
                 },
                 "required": [],
@@ -3628,9 +3829,20 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_active_collections",
             description=(
-                "List currently active or in-progress collection runs."
+                "List currently active or in-progress collection runs. "
+                "Optionally filter by domain."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain filter (e.g. medical-research)",
+                        "default": "",
+                    },
+                },
+                "required": [],
+            },
         ),
         Tool(
             name="get_config",

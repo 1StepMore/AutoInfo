@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "autoinfo": {
+      "command": "python",
+      "args": ["-m", "autoinfo.mcp.server"],
+      "env": {
+        "AUTOINFO_LLM_API_KEY": "${AUTOINFO_LLM_API_KEY}"
+      }
+    }
+  }
+}

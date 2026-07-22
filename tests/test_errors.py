@@ -52,7 +52,7 @@ class TestErrorCodeEnumValues:
 
     def test_total_members(self) -> None:
         """Ensure exactly 19 members exist (no missing, no extras)."""
-        assert len(ErrorCode) == 19
+        assert len(ErrorCode) == 20
 
 
 class TestErrorResponseTypedDict:

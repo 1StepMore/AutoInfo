@@ -1,0 +1,7 @@
+{
+  "autoinfo": {
+    "type": "local",
+    "command": ["python", "-m", "autoinfo.mcp.server"],
+    "enabled": true
+  }
+}

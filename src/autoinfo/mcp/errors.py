@@ -39,6 +39,7 @@ class ErrorCode(str, Enum):
     PROCESSING_FAILED = "ProcessingFailed"
     INVALID_SECTION = "InvalidSection"
     UNKNOWN_TOOL = "UnknownTool"
+    CONFIRMATION_REQUIRED = "ConfirmationRequired"
     INTERNAL_ERROR = "InternalError"
 
 

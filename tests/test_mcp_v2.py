@@ -309,16 +309,16 @@ class TestRemoveSource:
             domain="medical-research",
         )
         # Then remove it
-        result = _handle_remove_source(source_id="medical-research:to-remove")
+        result = _handle_remove_source(source_id="medical-research:to-remove", confirm=True)
         assert result["removed"] is True
 
     def test_returns_error_for_nonexistent_source(self, tmp_config: Path) -> None:
-        result = _handle_remove_source(source_id="medical-research:nonexistent")
+        result = _handle_remove_source(source_id="medical-research:nonexistent", confirm=True)
         assert "error_code" in result
         assert result["error_code"] == "SourceNotFound"
 
     def test_returns_error_for_malformed_id(self, tmp_config: Path) -> None:
-        result = _handle_remove_source(source_id="no-colon-here")
+        result = _handle_remove_source(source_id="no-colon-here", confirm=True)
         assert "error_code" in result
         assert "InvalidSourceId" in result["error_code"]
 
@@ -329,7 +329,7 @@ class TestRemoveSource:
             type="api",
             domain="medical-research",
         )
-        _handle_remove_source(source_id="medical-research:remove-me")
+        _handle_remove_source(source_id="medical-research:remove-me", confirm=True)
 
         from autoinfo.config import load_config
 
@@ -434,20 +434,20 @@ class TestRemoveTopic:
     def test_removes_existing_topic(self, tmp_config: Path) -> None:
         _handle_add_topic(domain="medical-research", name="Temp Topic")
         result = _handle_remove_topic(
-            domain="medical-research", topic_id="medical-research:Temp Topic"
+            domain="medical-research", topic_id="medical-research:Temp Topic", confirm=True
         )
         assert result["removed"] is True
 
     def test_uses_plain_name_as_topic_id(self, tmp_config: Path) -> None:
         _handle_add_topic(domain="medical-research", name="Plain Name")
         result = _handle_remove_topic(
-            domain="medical-research", topic_id="Plain Name"
+            domain="medical-research", topic_id="Plain Name", confirm=True
         )
         assert result["removed"] is True
 
     def test_returns_error_for_nonexistent_topic(self, tmp_config: Path) -> None:
         result = _handle_remove_topic(
-            domain="medical-research", topic_id="nonexistent"
+            domain="medical-research", topic_id="nonexistent", confirm=True
         )
         assert "error_code" in result
         assert result["error_code"] == "TopicNotFound"
@@ -455,7 +455,7 @@ class TestRemoveTopic:
     def test_removed_topic_no_longer_in_config(self, tmp_config: Path) -> None:
         _handle_add_topic(domain="medical-research", name="Remove Me")
         _handle_remove_topic(
-            domain="medical-research", topic_id="medical-research:Remove Me"
+            domain="medical-research", topic_id="medical-research:Remove Me", confirm=True
         )
 
         from autoinfo.config import load_config
@@ -683,7 +683,7 @@ class TestErrorResponseV2:
         assert result["error_code"] == "DomainNotFound"
 
     def test_remove_source_not_found(self, tmp_config: Path) -> None:
-        result = _handle_remove_source(source_id="medical-research:ghost")
+        result = _handle_remove_source(source_id="medical-research:ghost", confirm=True)
         assert "error_code" in result
         assert result["error_code"] == "SourceNotFound"
 
@@ -692,7 +692,7 @@ class TestErrorResponseV2:
         assert "error_code" in result
 
     def test_remove_topic_not_found(self, tmp_config: Path) -> None:
-        result = _handle_remove_topic(domain="medical-research", topic_id="ghost")
+        result = _handle_remove_topic(domain="medical-research", topic_id="ghost", confirm=True)
         assert "error_code" in result
 
 

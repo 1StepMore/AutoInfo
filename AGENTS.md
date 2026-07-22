@@ -26,6 +26,27 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
 
+## Quick Start (5 Seconds)
+
+Connect your AI agent to AutoInfo immediately:
+
+**Cursor**: `.cursor/mcp.json` is already committed to the repo -- restart Cursor
+and the `autoinfo` MCP server is ready to use.
+
+**Claude Desktop**: Copy `.claude/claude_desktop_config.json` from this repo to
+`claude_desktop_config.json` in your Claude config directory:
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+**OpenCode**: `.opencode/mcp.json` is already committed -- OpenCode discovers it
+automatically via project-level configuration.
+
+**Manual (any platform)**:
+```bash
+python -m autoinfo.mcp.server
+```
+
 ## Project Structure
 
 ```
@@ -273,20 +294,22 @@ AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
 
 ### "Monitor long-running collection or processing"
 
-Collection and processing can take 30-120 seconds depending on item count and LLM speed. Poll for progress:
+Collection and processing now return a `job_id` for progress polling:
 
-1. Start collection: `collect_sources(domain="medical", topic="IVF", async=true)` → get `collection_id`
+1. Start collection: `collect_sources(domain="medical", topic="IVF", async=true)` → returns `{..., "job_id": "uuid-xxx"}`
 2. Poll every 5 seconds:
    ```
    while True:
-       status = get_collection_progress(collection_id=collection_id)
+       status = get_collection_progress(job_id="uuid-xxx")
        if status["is_complete"]:
            break
        sleep(5)
    ```
-3. Start processing: `process_collection(domain="medical")` → get `processing_id`
-4. Poll: `get_processing_progress(domain="medical")` → check `is_complete`
+3. Start processing: `process_collection(domain="medical")` → returns `{..., "job_id": "uuid-yyy"}`
+4. Poll: `get_processing_progress(job_id="uuid-yyy")` → check `status["is_complete"]`
 5. When done: `list_summaries(domain="medical")` to review results
+
+**Legacy**: `get_collection_progress(domain="medical")` and `get_processing_progress(domain="medical")` still work for simple single-domain usage without job_id.
 
 ## Status
 

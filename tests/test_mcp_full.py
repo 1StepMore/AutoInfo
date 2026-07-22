@@ -215,11 +215,17 @@ class TestArchiveProject:
             instance.index.count_entries.return_value = 0
             instance.index.list_entries_by_tier.return_value = []
 
-            result = _handle_archive_project(reason="cleanup")
+            result = _handle_archive_project(reason="cleanup", confirm=True)
 
         assert "error_code" in result
         assert result["error_code"] == "NotPublished"
         assert "actionable" in result
+        assert result["actionable"] is True
+
+    def test_refuses_without_confirm(self) -> None:
+        """archive_project must refuse when confirm=False."""
+        result = _handle_archive_project(reason="cleanup", confirm=False)
+        assert result["error_code"] == "ConfirmationRequired"
         assert result["actionable"] is True
 
     def test_says_human_only_when_published(self) -> None:
@@ -229,7 +235,7 @@ class TestArchiveProject:
             instance.index.count_entries.return_value = 10
             instance.index.list_entries_by_tier.return_value = [{"entry_id": "wiki-001"}]
 
-            result = _handle_archive_project(reason="cleanup")
+            result = _handle_archive_project(reason="cleanup", confirm=True)
 
         assert "error_code" not in result
         assert result["status"] == "refused_by_design"
@@ -241,7 +247,7 @@ class TestArchiveProject:
             instance.index.count_entries.return_value = 0
             instance.index.list_entries_by_tier.return_value = []
 
-            result = _handle_archive_project()
+            result = _handle_archive_project(confirm=True)
 
         assert result["error_code"] == "NotPublished"
         assert "reason provided" not in result["message"].lower()
@@ -253,8 +259,8 @@ class TestArchiveProject:
 
 
 class TestBatchRun:
-    def test_collect_phase_failure_returns_error(self) -> None:
-        """If collection fails, batch_run should return a clear error."""
+    def test_collect_phase_failure_returns_phases(self) -> None:
+        """If collection fails, batch_run should return phases with collection failed and processing skipped."""
         with (
             patch("autoinfo.collect.run_collection") as mock_collect,
         ):
@@ -262,13 +268,18 @@ class TestBatchRun:
 
             result = _handle_batch_run(domain="medical-research", topic="IVF")
 
-        assert "error_code" in result
-        assert result["error_code"] == "CollectionFailed"
-        assert "actionable" in result
-        assert result["actionable"] is True
+        assert "phases" in result
+        assert len(result["phases"]) == 2
+        assert result["phases"][0]["phase"] == "collection"
+        assert result["phases"][0]["status"] == "failed"
+        assert "API timeout" in result["phases"][0]["error"]
+        assert result["phases"][1]["phase"] == "processing"
+        assert result["phases"][1]["status"] == "skipped"
+        assert result["overall_success"] is False
+        assert "total_duration_s" in result
 
     def test_processing_phase_failure_includes_collect_result(self) -> None:
-        """If processing fails, the collection result should still be returned."""
+        """If processing fails, collection phase result should still be available."""
         with (
             patch("autoinfo.collect.run_collection") as mock_collect,
             patch("autoinfo.process.run_processing") as mock_process,
@@ -278,13 +289,20 @@ class TestBatchRun:
 
             result = _handle_batch_run(domain="medical-research")
 
-        assert "error_code" in result
-        assert result["error_code"] == "ProcessingFailed"
-        assert "collection_result" in result
-        assert result["collection_result"]["items_found"] == 5
+        assert "phases" in result
+        assert len(result["phases"]) == 2
+        assert result["phases"][0]["phase"] == "collection"
+        assert result["phases"][0]["status"] == "completed"
+        assert result["phases"][0]["result"]["items_found"] == 5
+        assert result["phases"][1]["phase"] == "processing"
+        assert result["phases"][1]["status"] == "failed"
+        assert "LLM quota exceeded" in result["phases"][1]["error"]
+        assert "duration_s" in result["phases"][0]
+        assert "duration_s" in result["phases"][1]
+        assert result["overall_success"] is False
 
     def test_successful_batch_run(self) -> None:
-        """A successful batch run returns both collect and process results."""
+        """A successful batch run returns both phases with completed status."""
         from autoinfo.process import ProcessResult
 
         proc_result = ProcessResult(
@@ -307,10 +325,18 @@ class TestBatchRun:
 
             result = _handle_batch_run(domain="medical-research", model="deepseek/deepseek-chat")
 
-        assert result["success"] is True
+        assert result["overall_success"] is True
         assert result["domain"] == "medical-research"
-        assert result["collection_result"]["items_found"] == 5
-        assert result["processing_result"]["processed_count"] == 3
+        assert len(result["phases"]) == 2
+        assert result["phases"][0]["phase"] == "collection"
+        assert result["phases"][0]["status"] == "completed"
+        assert result["phases"][0]["result"]["items_found"] == 5
+        assert result["phases"][1]["phase"] == "processing"
+        assert result["phases"][1]["status"] == "completed"
+        assert result["phases"][1]["result"]["processed_count"] == 3
+        assert "duration_s" in result["phases"][0]
+        assert "duration_s" in result["phases"][1]
+        assert "total_duration_s" in result
         assert "topic" in result
 
 
@@ -438,3 +464,123 @@ class TestGetConfig:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_get_config(section="")
             assert "error_code" in result
+
+
+# ======================================================================
+# #24: confirm param on destructive tools
+# ======================================================================
+
+
+class TestConfirmParam:
+    """confirm=False returns ConfirmationRequired for all 4 destructive tools."""
+
+    def test_remove_source_refuses_without_confirm(self) -> None:
+        result = mcp_server._handle_remove_source(source_id="test:src", confirm=False)
+        assert result["error_code"] == "ConfirmationRequired"
+        assert result["actionable"] is True
+
+    def test_remove_topic_refuses_without_confirm(self) -> None:
+        result = mcp_server._handle_remove_topic(domain="test", topic_id="t", confirm=False)
+        assert result["error_code"] == "ConfirmationRequired"
+        assert result["actionable"] is True
+
+    def test_remove_schedule_refuses_without_confirm(self) -> None:
+        result = mcp_server._handle_remove_schedule(name="test-sched", confirm=False)
+        assert result["error_code"] == "ConfirmationRequired"
+        assert result["actionable"] is True
+
+    def test_archive_project_refuses_without_confirm(self) -> None:
+        result = mcp_server._handle_archive_project(reason="test", confirm=False)
+        assert result["error_code"] == "ConfirmationRequired"
+        assert result["actionable"] is True
+
+
+# ======================================================================
+# #22: job_id on long-running tools
+# ======================================================================
+
+
+class TestJobId:
+    """job_id is generated and returned by collect_sources / process_collection."""
+
+    def test_collect_sources_returns_job_id(self) -> None:
+        with patch("autoinfo.collect.run_collection") as mock_collect:
+            mock_collect.return_value = {"total_new": 3, "total_found": 5, "errors": 0}
+            result = mcp_server._handle_collect_sources(domain="test-domain")
+        assert "job_id" in result
+        assert isinstance(result["job_id"], str)
+        assert len(result["job_id"]) > 0
+
+    def test_process_collection_returns_job_id(self) -> None:
+        from autoinfo.process import ProcessResult
+        with patch("autoinfo.process.run_processing") as mock_process:
+            mock_process.return_value = ProcessResult(
+                domain="test", total_items=5,
+                kb_entries_created=3, duration_s=1.0,
+            )
+            result = mcp_server._handle_process_collection(domain="test-domain")
+        assert "job_id" in result
+        assert isinstance(result["job_id"], str)
+
+    def test_get_collection_progress_by_job_id(self) -> None:
+        """After collect_sources, get_collection_progress with job_id returns state."""
+        with patch("autoinfo.collect.run_collection") as mock_collect:
+            mock_collect.return_value = {"total_new": 3, "total_found": 5, "errors": 0}
+            result = mcp_server._handle_collect_sources(domain="test-progress")
+        job_id = result["job_id"]
+        progress = mcp_server._handle_get_collection_progress(job_id=job_id)
+        assert progress["job_id"] == job_id
+        assert "is_complete" in progress
+        assert progress["is_complete"] is True
+        assert progress["status"] == "completed"
+
+    def test_get_collection_progress_unknown_job_id(self) -> None:
+        progress = mcp_server._handle_get_collection_progress(job_id="nonexistent-job")
+        assert progress["status"] == "not_found"
+        assert progress["is_complete"] is True
+
+    def test_get_processing_progress_by_job_id(self) -> None:
+        from autoinfo.process import ProcessResult
+        with patch("autoinfo.process.run_processing") as mock_process:
+            mock_process.return_value = ProcessResult(
+                domain="test", total_items=5,
+                kb_entries_created=3, duration_s=1.0,
+            )
+            result = mcp_server._handle_process_collection(domain="test-progress-2")
+        job_id = result["job_id"]
+        progress = mcp_server._handle_get_processing_progress(job_id=job_id)
+        assert progress["job_id"] == job_id
+        assert "is_complete" in progress
+
+    def test_get_processing_progress_unknown_job_id(self) -> None:
+        progress = mcp_server._handle_get_processing_progress(job_id="nonexistent-job")
+        assert progress["status"] == "not_found"
+        assert progress["is_complete"] is True
+
+
+# ======================================================================
+# #25: optional filters on list tools
+# ======================================================================
+
+
+class TestToolFilters:
+    """Optional filter params on list_active_collections, list_projects, get_project_assets."""
+
+    def test_list_active_collections_accepts_domain_filter(self) -> None:
+        """list_active_collections accepts a domain parameter."""
+        with patch("autoinfo.collect.list_active_collections") as mock_list:
+            mock_list.return_value = [{"domain": "medical-research", "status": "running"}]
+            result = mcp_server._handle_list_active_collections(domain="medical-research")
+        assert "active_collections" in result
+
+    def test_list_projects_accepts_status_filter(self) -> None:
+        """list_projects accepts a status parameter."""
+        result = mcp_server._handle_list_projects(status="active")
+        assert "projects" in result
+        assert all(p.get("status") == "active" for p in result["projects"])
+
+    def test_get_project_assets_accepts_type_filter(self) -> None:
+        """get_project_assets accepts a type parameter."""
+        result = mcp_server._handle_get_project_assets(type="database")
+        assert "database" in result
+        assert "collections_dir" not in result

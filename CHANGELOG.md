@@ -32,6 +32,24 @@ All notable changes to the AutoInfo project will be documented in this file.
 - 3 commits pushed to `origin/main` (waves 1-2 + final verification)
 - F1-F4 final verification wave: all 4 APPROVED (Oracle compliance, code quality, manual QA, scope fidelity)
 
+### v1.3 amendments (2026-07-22)
+
+#### Added
+- **LLM token usage tracking** — `ExtractionResult.usage` captures `prompt_tokens`, `completion_tokens`, `total_tokens` from LiteLLM responses; `ProcessResult.token_usage` aggregates per-run totals exposed in `process_collection` MCP response (#27)
+- **`job_id` progress signals** — `collect_sources` and `process_collection` return a `job_id`; `get_collection_progress(job_id=...)` and `get_processing_progress(job_id=...)` support job-based lookup for progress polling (#22)
+- **MCP connection configs** — `.cursor/mcp.json`, `.claude/claude_desktop_config.json`, `.opencode/mcp.json` with `python -m autoinfo.mcp.server` entrypoint (#23)
+- **`confirm` param on destructive tools** — `remove_source`, `remove_topic`, `remove_schedule`, `archive_project` require `confirm=True` to execute (#24)
+- **Quick Start (5 Seconds)** guide in AGENTS.md for all agent platforms (#23)
+
+#### Changed
+- **`batch_run` returns per-phase results** — Structured `phases[]` array with per-phase `status`, `duration_s`, and partial results on failure (#26)
+- **MCP tool parameter documentation** — `source_id` and `topic_id` descriptions now include format examples (e.g., `'medical-research:pubmed'`) (#25)
+- **Optional list tool filters** — `list_active_collections(domain=...)`, `list_projects(status=...)`, `get_project_assets(type=...)` accept optional filter params (#25)
+
+#### Fixed
+- **5 GitHub issues resolved**: #22 (progress signals), #23 (MCP configs), #24 (confirm param), #25 (doc/filters), #26 (batch_run), #27 (token usage)
+- Test suite expanded to **202+ MCP tests** with new `TestJobId`, `TestConfirmParam`, `TestToolFilters` test classes
+
 ## v1.2 (2026-07-21)
 
 ### Added

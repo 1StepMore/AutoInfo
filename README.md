@@ -33,7 +33,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
 | CLI | ✅ 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email, keywords) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), scheduled via crond, crontab install/uninstall |
-| LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency |
+| LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Quality gates | ✅ G1-G5 advisory gates (G4 factual consistency, G5 translation accuracy) |
 | KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
@@ -43,7 +43,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 65 MCP tools across 15 categories |
+| MCP server | ✅ 70+ MCP tools across 15 categories |
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |

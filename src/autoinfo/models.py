@@ -135,6 +135,7 @@ class ExtractionResult:
     entities: list[dict[str, Any]] = field(default_factory=list)
     relevance_score: float = 0.0
     custom_fields: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

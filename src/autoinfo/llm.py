@@ -274,6 +274,15 @@ class LLMExtractor:
             api_base=self._base_url or None,
         )
 
+        # Capture token usage from LiteLLM response
+        usage: dict[str, Any] = {}
+        if hasattr(response, "usage") and response.usage is not None:
+            usage = {
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                "total_tokens": getattr(response.usage, "total_tokens", 0),
+            }
+
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
         parsed = self._parse_response(content)
 
@@ -297,6 +306,7 @@ class LLMExtractor:
                 0.0, min(100.0, float(parsed.get("relevance_score", 0)))
             ),
             custom_fields=custom_fields,
+            usage=usage,
         )
 
     @staticmethod

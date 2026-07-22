@@ -124,6 +124,12 @@ class ProcessResult:
     errors: list[dict] = field(default_factory=list)
     duration_s: float = 0.0
     per_item_logs: list[dict] = field(default_factory=list)
+    token_usage: dict[str, Any] = field(default_factory=lambda: {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "items_with_usage": 0,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +546,11 @@ def run_processing(
         try:
             # Step a: LLM extraction (with custom schema if configured)
             extraction = extractor.extract(item, schema=extract_fields)
+            # Aggregate token usage from this item
+            if extraction.usage:
+                for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    result.token_usage[k] += extraction.usage.get(k, 0)
+                result.token_usage["items_with_usage"] += 1
             item_log["tl_dr_length"] = len(extraction.tl_dr)
             item_log["key_points_count"] = len(extraction.key_points)
             item_log["relevance_score"] = extraction.relevance_score

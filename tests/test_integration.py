@@ -253,11 +253,12 @@ class TestTrueTest:
         and the required sub-directories."""
         os.chdir(tmp_path)
 
-        # Call the init module directly (the CLI stub in __init__.py
-        # raises NotImplementedError; the real logic lives in cli/init.py).
-        from autoinfo.cli.init import init
+        from typer.testing import CliRunner
+        from autoinfo.cli import app
 
-        init(demo="medical-research")
+        runner = CliRunner()
+        result = runner.invoke(app, ["init", "--demo", "medical-research"])
+        assert result.exit_code == 0, f"init failed: {result.output}"
 
         # -- config.yaml exists --
         config_path = tmp_path / ".autoinfo" / "config.yaml"
@@ -284,9 +285,12 @@ class TestTrueTest:
         """Config YAML has ``${AUTOINFO_LLM_API_KEY}`` as the API key value."""
         os.chdir(tmp_path)
 
-        from autoinfo.cli.init import init
+        from typer.testing import CliRunner
+        from autoinfo.cli import app
 
-        init(demo="medical-research")
+        runner = CliRunner()
+        result = runner.invoke(app, ["init", "--demo", "medical-research"])
+        assert result.exit_code == 0, f"init failed: {result.output}"
 
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path, encoding="utf-8") as fh:
@@ -498,9 +502,12 @@ class TestTrueTest:
         os.chdir(tmp_path)
 
         # -- Stage 1: init ---------------------------------------------------
-        from autoinfo.cli.init import init
+        from typer.testing import CliRunner
+        from autoinfo.cli import app
 
-        init(demo="medical-research")
+        runner = CliRunner()
+        result = runner.invoke(app, ["init", "--demo", "medical-research"])
+        assert result.exit_code == 0, f"init failed: {result.output}"
 
         # The init command creates a minimal config, but for the full
         # pipeline we need a properly structured config. Overwrite with

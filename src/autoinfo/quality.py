@@ -591,6 +591,28 @@ class G5TranslationAccuracy:
             )
 
     # ------------------------------------------------------------------
+    # Detailed check (uses all 5 translation quality gates)
+    # ------------------------------------------------------------------
+
+    def check_detailed(
+        self,
+        source: str,
+        target: str,
+        source_lang: str,
+        target_lang: str,
+        terminology_dict: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run all 5 translation quality gates via the orchestrator."""
+        return run_translation_quality_gates(
+            source=source,
+            target=target,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            terminology_dict=terminology_dict,
+            model=self._model,
+        )
+
+    # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
@@ -608,6 +630,255 @@ class G5TranslationAccuracy:
         except (ImportError, ModuleNotFoundError):
             logger.error("litellm is not installed — run 'pip install litellm'")
             return None
+
+
+# ---------------------------------------------------------------------------
+# Translation Quality Gate Functions (deterministic, no LLM)
+# ---------------------------------------------------------------------------
+
+
+def check_inline_tags(
+    source: str,
+    target: str,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Gate 1: Verify markdown inline elements preserved in translation."""
+    import re
+
+    patterns: dict[str, str] = {
+        "code": r"`[^`]+`",
+        "link": r"\[([^\]]+)\]\([^)]+\)",
+        "image": r"!\[([^\]]*)\]\([^)]+\)",
+    }
+    if tags:
+        patterns = {k: v for k, v in patterns.items() if k in tags}
+
+    def _extract(text: str) -> set[tuple[str, str]]:
+        result: set[tuple[str, str]] = set()
+        for tag_name, pat in patterns.items():
+            for m in re.finditer(pat, text):
+                result.add((tag_name, m.group(0)))
+        return result
+
+    source_set = _extract(source)
+    target_set = _extract(target)
+    missing = sorted(source_set - target_set)
+    extra = sorted(target_set - source_set)
+
+    return {
+        "passed": len(missing) == 0,
+        "missing_tags": [f"{t}:{v}" for t, v in missing],
+        "extra_tags": [f"{t}:{v}" for t, v in extra],
+    }
+
+
+def check_terminology(
+    source: str,  # noqa: ARG001 — unused, kept for API symmetry
+    target: str,
+    terminology_dict: dict[str, Any],
+) -> dict[str, Any]:
+    """Gate 2: Check do_not_translate terms and preferred translations.
+
+    Parameters
+    ----------
+    source:
+        Original source text (unused, kept for API symmetry).
+    target:
+        Translated target text to inspect.
+    terminology_dict:
+        Mapping of ``term -> {type, preferred, ...}``.
+        ``type="do_not_translate"`` — term must appear literally in target.
+        ``type="preferred"`` — ``preferred`` value must appear in target.
+
+    Returns
+    -------
+    dict
+        ``passed`` — bool
+        ``violations`` — list of ``{term, expected, actual}``
+    """
+    violations: list[dict[str, str]] = []
+    for term, config in terminology_dict.items():
+        term_type = config.get("type", "preferred")
+
+        if term_type == "do_not_translate":
+            if term.lower() not in target.lower():
+                violations.append({
+                    "term": term,
+                    "expected": f"present as '{term}'",
+                    "actual": "missing or translated",
+                })
+
+        elif term_type == "preferred":
+            preferred = config.get("preferred", "")
+            if preferred and preferred not in target:
+                violations.append({
+                    "term": term,
+                    "expected": preferred,
+                    "actual": "missing preferred translation",
+                })
+
+    return {"passed": len(violations) == 0, "violations": violations}
+
+
+def check_length_ratio(
+    source: str,
+    target: str,
+    min_ratio: float = 0.5,
+    max_ratio: float = 2.0,
+) -> dict[str, Any]:
+    """Gate 3: Check target/source length ratio.
+
+    Compute ``ratio = len(target) / max(len(source), 1)``.
+    Passes when *ratio* falls within [*min_ratio*, *max_ratio*].
+
+    Returns
+    -------
+    dict
+        ``passed`` — bool
+        ``ratio`` — float
+    """
+    if not source and not target:
+        return {"passed": True, "ratio": 1.0}
+    if not source:
+        return {"passed": False, "ratio": float("inf")}
+
+    ratio = len(target) / len(source)
+    passed = min_ratio <= ratio <= max_ratio
+    return {"passed": passed, "ratio": round(ratio, 4)}
+
+
+def check_source_copy(source: str, target: str, threshold: float = 0.9) -> dict[str, Any]:
+    """Gate 4: Detect near-identical copy (translation not actually applied).
+
+    Uses character-level :class:`difflib.SequenceMatcher` similarity.
+    Fails when similarity >= *threshold*.
+
+    Returns
+    -------
+    dict
+        ``passed`` — bool (``True`` when similarity is **below** threshold)
+        ``similarity`` — float 0.0–1.0
+    """
+    from difflib import SequenceMatcher
+
+    similarity = SequenceMatcher(None, source, target).ratio()
+    passed = similarity < threshold
+    return {"passed": passed, "similarity": round(similarity, 4)}
+
+
+# ---------------------------------------------------------------------------
+# Gate 5 — LLM-based translation evaluation
+# ---------------------------------------------------------------------------
+
+
+def llm_judge(
+    source: str,
+    target: str,
+    source_lang: str,
+    target_lang: str,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Gate 5: LLM-based quality eval (faithfulness, terminology, style, readability 0-100)."""
+    try:
+        import litellm as _lm_mod  # noqa: PLC0415
+    except ImportError:
+        logger.error("litellm is not installed")
+        return {"faithfulness": 0, "terminology": 0, "style": 0, "readability": 0,
+                "issues": ["litellm unavailable"]}
+
+    _lm: Any = _lm_mod
+    if model is None:
+        model = _resolve_llm_model()
+
+    prompt = (
+        f"Evaluate translation {source_lang}->{target_lang}.\n"
+        f"Source: {source[:3000]}\nTarget: {target[:3000]}\n"
+        "Score 0-100: faithfulness(meaning), terminology(domain terms), "
+        "style(tone), readability(fluency). List issues.\n"
+        'Return JSON: {"faithfulness":int,"terminology":int,"style":int,"readability":int,"issues":[str]}'
+    )
+
+    try:
+        resp = _lm.completion(model=model, messages=[{"role": "user", "content": prompt}],
+                              response_format={"type": "json_object"}, max_tokens=1000, temperature=0.0)
+        parsed = json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        logger.warning("llm_judge failed: %s", e)
+        return {"faithfulness": 0, "terminology": 0, "style": 0, "readability": 0,
+                "issues": [f"LLM eval failed: {e}"]}
+
+    return {
+        "faithfulness": max(0, min(100, int(parsed.get("faithfulness", 0)))),
+        "terminology": max(0, min(100, int(parsed.get("terminology", 0)))),
+        "style": max(0, min(100, int(parsed.get("style", 0)))),
+        "readability": max(0, min(100, int(parsed.get("readability", 0)))),
+        "issues": list(parsed.get("issues", [])),
+    }
+
+
+def _resolve_llm_model() -> str:
+    """Resolve LLM model string from config, falling back to defaults."""
+    from autoinfo.config import Config, get_config_path, load_config  # noqa: PLC0415
+
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+        else:
+            config = Config()
+    except Exception:
+        config = Config()
+
+    provider = config.llm.provider or "openrouter"
+    model = config.llm.model or "deepseek/deepseek-chat"
+    return f"{provider}/{model}"
+
+
+def run_translation_quality_gates(
+    source: str,
+    target: str,
+    source_lang: str,
+    target_lang: str,
+    terminology_dict: dict[str, Any] | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Run all 5 translation quality gates and compute composite score.
+
+    Gates 1-4 are deterministic (no LLM).  Gate 5 calls the LLM.
+    Composite score computed via
+    :func:`~autoinfo.translation_qa.calculate_quality_score`.
+
+    Returns
+    -------
+    dict
+        ``gates`` — dict of ``{gate_name: gate_result}`` for all 5 gates
+        ``composite_score`` — weighted composite from calculate_quality_score
+    """
+    from autoinfo.translation_qa import calculate_quality_score  # noqa: PLC0415
+
+    g1 = check_inline_tags(source, target)
+    g2 = check_terminology(source, target, terminology_dict or {})
+    g3 = check_length_ratio(source, target)
+    g4 = check_source_copy(source, target)
+    g5 = llm_judge(source, target, source_lang, target_lang, model)
+
+    composite = calculate_quality_score(
+        faithfulness=float(g5["faithfulness"]),
+        terminology=float(g5["terminology"]),
+        style=float(g5["style"]),
+        readability=float(g5["readability"]),
+    )
+
+    return {
+        "gates": {
+            "inline_tags": g1,
+            "terminology": g2,
+            "length_ratio": g3,
+            "source_copy": g4,
+            "llm_judge": g5,
+        },
+        "composite_score": composite,
+    }
 
 
 # ---------------------------------------------------------------------------

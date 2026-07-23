@@ -408,10 +408,13 @@ class TestInitIntegration:
 
     def test_init_exit_code_zero(self, tmp_path: Path) -> None:
         """``autoinfo init --demo medical-research`` exits 0."""
-        from autoinfo.cli.init import init
+        from typer.testing import CliRunner
+        from autoinfo.cli import app
 
         os.chdir(tmp_path)
-        init(demo="medical-research")
+        runner = CliRunner()
+        result = runner.invoke(app, ["init", "--demo", "medical-research"])
+        assert result.exit_code == 0, f"init failed: {result.output}"
 
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         assert config_path.is_file(), "config.yaml was not created"
@@ -421,10 +424,13 @@ class TestInitIntegration:
 
     def test_init_config_loads_with_new_schema(self, tmp_path: Path) -> None:
         """Generated config loads with new schema (tasks/fallback have defaults)."""
-        from autoinfo.cli.init import init
+        from typer.testing import CliRunner
+        from autoinfo.cli import app
 
         os.chdir(tmp_path)
-        init(demo="medical-research")
+        runner = CliRunner()
+        result = runner.invoke(app, ["init", "--demo", "medical-research"])
+        assert result.exit_code == 0, f"init failed: {result.output}"
         config_path = tmp_path / ".autoinfo" / "config.yaml"
 
         # Load via the new config loader

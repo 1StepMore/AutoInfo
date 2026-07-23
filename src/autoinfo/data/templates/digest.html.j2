@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7785;
+    --accent: #2c6cb0;
+    --accent-soft: #eaf1fb;
+    --border: #e3e7ec;
+    --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --radius: 8px;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  header.digest-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.75rem 1.75rem;
+    margin-bottom: 1.75rem;
+  }
+  header.digest-header h1 {
+    margin: 0 0 0.5rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+  .meta-row span { display: inline-flex; align-items: center; }
+  .meta-row strong { color: var(--text); font-weight: 600; margin-right: 0.35rem; }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  section > h2 {
+    margin: 0 0 1rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent-soft);
+    color: var(--accent);
+  }
+  .findings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+  .finding-card {
+    background: linear-gradient(180deg, var(--surface) 0%, #fbfcfd 100%);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1rem 1.1rem;
+  }
+  .finding-card .rank {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.03em;
+  }
+  .finding-card h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .finding-card p {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  .trends-list { margin: 0; padding-left: 1.25rem; }
+  .trends-list li { margin-bottom: 0.4rem; }
+  .entries-list { list-style: none; margin: 0; padding: 0; counter-reset: entry; }
+  .entries-list li {
+    counter-increment: entry;
+    padding: 1rem 1.1rem 1rem 2.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+    position: relative;
+    background: var(--surface);
+  }
+  .entries-list li::before {
+    content: counter(entry);
+    position: absolute;
+    left: 0.9rem;
+    top: 1.1rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    line-height: 1.5rem;
+    text-align: center;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.8rem;
+    border-radius: 50%;
+  }
+  .entries-list h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1.02rem;
+    font-weight: 600;
+  }
+  .entries-list h3 a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .entries-list h3 a:hover { text-decoration: underline; }
+  .entry-summary {
+    margin: 0.35rem 0 0.5rem;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  .entry-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .relevance-badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+  }
+  .empty-note {
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+  }
+  footer.digest-footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  footer.digest-footer a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 600px) {
+    .container { padding: 1rem 0.75rem 3rem; }
+    header.digest-header, section { padding: 1.1rem 1rem; }
+    .findings-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="digest-header">
+    <h1>{{ title }}</h1>
+    <div class="meta-row">
+      <span><strong>Domain:</strong> {{ domain_name }}</span>
+      <span><strong>Period:</strong> {{ period }}</span>
+      <span><strong>Generated:</strong> {{ generated_at }}</span>
+      <span><strong>Entries:</strong> {{ entries|length }}</span>
+    </div>
+  </header>
+
+  {% if executive_summary %}
+  <section>
+    <h2>Executive Summary</h2>
+    <p>{{ executive_summary }}</p>
+  </section>
+  {% endif %}
+
+  {% if key_findings %}
+  <section>
+    <h2>Key Findings</h2>
+    <div class="findings-grid">
+      {% for finding in key_findings %}
+      <div class="finding-card">
+        <span class="rank">#{{ loop.index }}</span>
+        <h3>{{ finding.title }}</h3>
+        <p>{{ finding.text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if trends %}
+  <section>
+    <h2>Trends &amp; Patterns</h2>
+    <ul class="trends-list">
+      {% for trend in trends %}
+      <li>{{ trend }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if recommendations %}
+  <section>
+    <h2>Recommendations</h2>
+    <ul class="trends-list">
+      {% for rec in recommendations %}
+      <li>{{ rec }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Entries</h2>
+    {% if entries %}
+    <ol class="entries-list">
+      {% for entry in entries %}
+      <li>
+        <h3>
+          {% if entry.source_url %}
+          <a href="{{ entry.source_url }}">{{ entry.title }}</a>
+          {% else %}
+          {{ entry.title }}
+          {% endif %}
+        </h3>
+        {% if entry.summary %}
+        <p class="entry-summary">{{ entry.summary }}</p>
+        {% endif %}
+        <div class="entry-meta">
+          {% if entry.source_url %}
+          <span>Source: {{ entry.source_url }}</span>
+          {% endif %}
+          {% if entry.relevance_score is not none %}
+          <span class="relevance-badge">Relevance: {{ entry.relevance_score }}/100</span>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty-note">No entries found for {{ domain_name }} in this period.</p>
+    {% endif %}
+  </section>
+
+  <footer class="digest-footer">
+    Generated by <a href="#">AutoInfo</a> &middot; {{ domain_name }} &middot; {{ generated_at }}
+  </footer>
+</div>
+</body>
+</html>

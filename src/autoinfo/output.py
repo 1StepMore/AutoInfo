@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
+from jinja2 import Environment, FileSystemLoader, Template
 
 from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore, SQLiteIndex
@@ -625,13 +625,32 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent / "data" / "templates"
 _jinja_env: Environment | None = None
 
 
+def _html_autoescape(template_name: str | None) -> bool:
+    """Enable Jinja2 autoescaping for HTML templates only.
+
+    Markdown templates (``*.md.j2``) keep autoescaping OFF so they can
+    emit raw Markdown freely.  HTML templates (``*.html.j2``) turn
+    autoescaping ON so user-supplied text is safely escaped; pre-rendered
+    HTML content is marked ``|safe`` in the template where needed.
+    """
+    if template_name is None:
+        return False
+    return template_name.endswith(".html.j2")
+
+
 def _get_jinja_env() -> Environment:
-    """Return a cached Jinja2 environment for the ``data/templates/`` directory."""
+    """Return a cached Jinja2 environment for the ``data/templates/`` directory.
+
+    The environment loads any template file in ``data/templates/`` —
+    including both ``.md.j2`` (Markdown) and ``.html.j2`` (HTML)
+    templates.  Autoescaping is enabled selectively for ``.html.j2``
+    files via :func:`_html_autoescape`.
+    """
     global _jinja_env
     if _jinja_env is None:
         _jinja_env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-            autoescape=select_autoescape(default=False),
+            autoescape=_html_autoescape,
             trim_blocks=True,
             lstrip_blocks=True,
         )
@@ -789,6 +808,7 @@ def generate_digest(
     period: str = "weekly",
     format: str = "markdown",
     llm_config: Config | None = None,
+    custom_instructions: str = "",
 ) -> str:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -805,6 +825,9 @@ def generate_digest(
     llm_config:
         Optional :class:`Config` override for LLM settings.  When omitted,
         the config is auto-detected from the project directory.
+    custom_instructions:
+        Optional string of additional instructions to append to the LLM
+        generation prompt.  Ignored when empty/absent.
 
     Returns
     -------
@@ -857,6 +880,8 @@ def generate_digest(
     llm_synthesis: dict[str, Any] = {}
     if entries:
         prompt = _build_digest_llm_prompt(entries)
+        if custom_instructions:
+            prompt += f"\n\nAdditional instructions: {custom_instructions}"
         llm_synthesis = _call_llm_for_digest(prompt, config=llm_config)
     else:
         llm_synthesis = {}
@@ -879,12 +904,10 @@ def generate_digest(
     if format == "json":
         return _render_json(context)
 
-    raw_md = _render_markdown(context)
-
     if format == "html":
-        return _render_html(raw_md)
+        return _render_digest_html(context)
 
-    return raw_md
+    return _render_markdown(context)
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +945,7 @@ def generate_report(
     collection_id: str | None = None,
     format: str = "markdown",
     period: str = "month",
+    custom_instructions: str = "",
 ) -> str:
     """Generate a structured report for the given *domain*.
 
@@ -937,11 +961,14 @@ def generate_report(
         collection run.  When omitted, all KB entries for the domain
         are included.
     format : str, optional
-        Output format (default ``"markdown"``).  Supports ``"markdown"``
-        and ``"json"``.
+        Output format (default ``"markdown"``).  Supports ``"markdown"``,
+        ``"json"``, and ``"html"``.
     period : str, optional
         Report period label (default ``"month"``).  Used for metadata
         in JSON output.
+    custom_instructions : str, optional
+        Optional string of additional instructions to append to the LLM
+        generation prompt.  Ignored when empty/absent.
 
     Returns
     -------
@@ -955,10 +982,10 @@ def generate_report(
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
-    if format not in ("markdown", "json"):
+    if format not in ("markdown", "json", "html"):
         raise ValueError(
             f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, json"
+            f"Supported: markdown, json, html"
         )
 
     # -- Load KB entries --------------------------------------------------
@@ -982,6 +1009,8 @@ def generate_report(
                 },
             }
             return json.dumps(empty_data, indent=2, ensure_ascii=False)
+        if format == "html":
+            return _render_empty_report_html(domain)
         return _render_empty_report(domain)
 
     # -- Build reference list from entries --------------------------------
@@ -1000,7 +1029,7 @@ def generate_report(
     groupings = _group_by_theme(extractor, entries)
 
     # -- Generate executive summary via LLM --------------------------------
-    executive_summary = _generate_executive_summary(extractor, entries, groupings)
+    executive_summary = _generate_executive_summary(extractor, entries, groupings, custom_instructions)
 
     # -- Build report data -------------------------------------------------
     sections = [
@@ -1033,6 +1062,9 @@ def generate_report(
     # -- Render -------------------------------------------------------------
     if format == "json":
         return _render_report_json(report_data, period=period)
+
+    if format == "html":
+        return _render_report_html(report_data, period=period)
 
     # -- Render via Jinja2 template ----------------------------------------
     return _render_report_template(report_data)
@@ -1143,6 +1175,7 @@ def _generate_executive_summary(
     extractor: LLMExtractor,
     entries: list[dict[str, Any]],
     groupings: list[dict[str, Any]],
+    custom_instructions: str = "",
 ) -> str:
     """Generate an executive summary via LLM.
 
@@ -1161,6 +1194,8 @@ def _generate_executive_summary(
         "Return a JSON object with a single key 'executive_summary' "
         "whose value is the summary text."
     )
+    if custom_instructions:
+        prompt += f"\n\nAdditional instructions: {custom_instructions}"
 
     try:
         raw = _llm_json_extract(extractor, prompt, "executive_summary")
@@ -1294,6 +1329,96 @@ def _render_empty_report(domain: str) -> str:
     )
 
 
+def _render_empty_report_html(domain: str) -> str:
+    """Return a minimal HTML5 document when there are no entries for *domain*."""
+    env = _get_jinja_env()
+    template = env.get_template("report.html.j2")
+    return template.render(
+        title=f"{domain} \u2014 Report",
+        domain_name=domain,
+        period="",
+        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        executive_summary="",
+        executive_summary_html="",
+        sections=[],
+        references=[],
+    )
+
+
+def _render_report_html(report_data: ReportData, period: str = "month") -> str:
+    """Render the report as a self-contained HTML5 document.
+
+    Maps :class:`ReportData` to the variable contract expected by
+    ``report.html.j2``:
+
+    - ``title``, ``domain_name``, ``period``, ``generated_at`` — metadata
+    - ``executive_summary`` / ``executive_summary_html`` — summary text
+    - ``sections`` — list of ``{id, heading, content_html}``
+    - ``references`` — list of ``{id, text, url}``
+
+    Section ``content_html`` is built by converting the section's
+    Markdown ``content`` plus its item table to HTML via the ``markdown``
+    library.  References are numbered to match the template's ordered list.
+    """
+    env = _get_jinja_env()
+    template = env.get_template("report.html.j2")
+
+    try:
+        import markdown as md_lib  # noqa: PLC0415
+
+        def _md_to_html(md_text: str) -> str:
+            return md_lib.markdown(md_text or "", extensions=["fenced_code", "tables"])
+    except (ImportError, ModuleNotFoundError):
+        def _md_to_html(md_text: str) -> str:  # type: ignore[no-redef]
+            return html.escape(md_text or "").replace("\n", "<br>\n")
+
+    html_sections: list[dict[str, Any]] = []
+    for idx, section in enumerate(report_data.sections, 1):
+        content_md = section.content or ""
+        if section.items:
+            rows = ["| # | Title | Summary |", "|---|-------|---------|"]
+            for i, item in enumerate(section.items, 1):
+                title = item.get("title", "")
+                summary = item.get("summary", "")
+                rows.append(f"| {i} | {title} | {summary} |")
+            content_md = (content_md + "\n\n" + "\n".join(rows)).strip()
+
+        section_id = f"section-{idx}"
+        html_sections.append({
+            "id": section_id,
+            "heading": section.title,
+            "content_html": _md_to_html(content_md),
+        })
+
+    html_references: list[dict[str, Any]] = []
+    for idx, ref in enumerate(report_data.references, 1):
+        title = ref.get("title", "")
+        platform = ref.get("source_platform", "")
+        url = ref.get("source_url", "") or ""
+        text = title
+        if platform:
+            text = f"{title} ({platform})" if title else platform
+        html_references.append({
+            "id": f"ref-{idx}",
+            "text": text,
+            "url": url,
+        })
+
+    exec_summary = report_data.executive_summary or ""
+    exec_summary_html = _md_to_html(exec_summary) if exec_summary else ""
+
+    return template.render(
+        title=report_data.title,
+        domain_name=report_data.domain,
+        period=period,
+        generated_at=report_data.generated_at,
+        executive_summary=exec_summary,
+        executive_summary_html=exec_summary_html,
+        sections=html_sections,
+        references=html_references,
+    )
+
+
 # ---------------------------------------------------------------------------
 # LLM-based translation (F10)
 # ---------------------------------------------------------------------------
@@ -1310,11 +1435,62 @@ _TRANSLATION_SYSTEM_PROMPT = (
 )
 
 
+def _build_translation_prompt(
+    title: str,
+    body: str,
+    target_lang: str,
+    domain: str = "",
+) -> str:
+    """Build the user prompt for translation, optionally injecting terminology guardrails.
+
+    When *domain* is non-empty and a ``knowledge/<domain>/_terminology.yaml``
+    file exists, ``do_not_translate`` terms and ``preferred`` translations
+    are injected as guardrails into the prompt.
+    """
+    prompt_parts: list[str] = [
+        f"Target language: {target_lang}\n\n",
+        f"Title: {title}\n\n",
+        f"Body:\n{body}\n\n",
+        "Translate the title and body above into the target language. "
+        "Preserve all medical terminology, drug names, procedures, "
+        "statistics, and citations exactly. Return valid JSON.\n",
+    ]
+
+    if domain:
+        from autoinfo.terminology import load_terminology  # noqa: PLC0415
+
+        terminology = load_terminology(domain)
+        if terminology.terms:
+            do_not_translate = [
+                t for t, e in terminology.terms.items() if e.type == "do_not_translate"
+            ]
+            preferred = {
+                t: e.preferred
+                for t, e in terminology.terms.items()
+                if e.type == "preferred" and e.preferred
+            }
+            if do_not_translate:
+                prompt_parts.append(
+                    "The following terms MUST NOT be translated: "
+                    f"{', '.join(do_not_translate)}.\n"
+                )
+            if preferred:
+                lines = [f"  {term} → {trans}" for term, trans in preferred.items()]
+                prompt_parts.append(
+                    "Use these preferred translations:\n"
+                    + "\n".join(lines)
+                    + "\n"
+                )
+
+    return "".join(prompt_parts)
+
+
 def _call_llm_for_translation(
     title: str,
     body: str,
     target_lang: str,
     config: Config | None = None,
+    domain: str = "",
 ) -> dict[str, str]:
     """Translate *title* and *body* into *target_lang* via LiteLLM.
 
@@ -1341,13 +1517,11 @@ def _call_llm_for_translation(
     model = config.llm.model or "deepseek/deepseek-chat"
     full_model = f"{provider}/{model}"
 
-    user_prompt = (
-        f"Target language: {target_lang}\n\n"
-        f"Title: {title}\n\n"
-        f"Body:\n{body}\n\n"
-        "Translate the title and body above into the target language. "
-        "Preserve all medical terminology, drug names, procedures, "
-        "statistics, and citations exactly. Return valid JSON."
+    user_prompt = _build_translation_prompt(
+        title=title,
+        body=body,
+        target_lang=target_lang,
+        domain=domain,
     )
 
     try:
@@ -1378,6 +1552,7 @@ def localize_content(
     content: str | None = None,
     source_lang: str = "",
     target_lang: str = "",
+    domain: str = "",
 ) -> dict[str, Any]:
     """Translate a KB entry or raw text into *target_lang*.
 
@@ -1411,6 +1586,12 @@ def localize_content(
     target_lang:
         Target language code (e.g. ``"zh"``, ``"fr"``, ``"ja"``).
         **Required**.
+    domain:
+        Domain name (e.g. ``"medical-research"``).  When provided, loads
+        domain-specific terminology guardrails from
+        ``knowledge/<domain>/_terminology.yaml`` into the translation
+        prompt.  When empty in content-ID mode, the domain is inferred
+        from the KB entry's metadata.
 
     Returns
     -------
@@ -1439,6 +1620,7 @@ def localize_content(
         if entry is None:
             raise ValueError(f"KB entry '{content_id}' not found")
 
+        resolved_domain = domain or entry.get("domain", "")
         src_lang = source_lang or entry.get("language", "en")
 
         file_path_str = entry.get("file_path", "")
@@ -1460,6 +1642,7 @@ def localize_content(
             title=entry.get("title", ""),
             body=body,
             target_lang=target_lang,
+            domain=resolved_domain,
         )
 
         if not result.get("translated_title") and not result.get("translated_body"):
@@ -1490,6 +1673,7 @@ def localize_content(
             title="",
             body=content,
             target_lang=target_lang,
+            domain=domain,
         )
 
         if not result.get("translated_body"):
@@ -1589,6 +1773,7 @@ def generate_tutorial(
     collection_id: str | None = None,
     target_audience: str = "student",
     format: str = "markdown",
+    custom_instructions: str = "",
 ) -> str:
     """Generate a structured tutorial for *domain*, adapted to *target_audience*.
 
@@ -1610,6 +1795,9 @@ def generate_tutorial(
     format : str, optional
         Output format (default ``"markdown"``).  Only ``"markdown"``
         is currently supported.
+    custom_instructions : str, optional
+        Optional string of additional instructions to append to the LLM
+        generation prompt.  Ignored when empty/absent.
 
     Returns
     -------
@@ -1675,6 +1863,9 @@ def generate_tutorial(
         "Return all fields in a single JSON object. Adapt depth, terminology, "
         f"and examples specifically for a {target_audience} audience."
     )
+
+    if custom_instructions:
+        prompt += f"\n\nAdditional instructions: {custom_instructions}"
 
     llm_result = _call_llm_for_tutorial(prompt)
 
@@ -1765,11 +1956,13 @@ def generate_presentation(
     slide_count: int = 10,
     target_audience: str = "executive",
     format: str = "markdown",
+    custom_instructions: str = "",
 ) -> str:
     """Generate a slide-based presentation for *topic* within *domain*.
 
     Searches the KB for entries related to *topic*, asks the LLM to
-    produce structured slide content, and renders through ``presentation.md.j2``.
+    produce structured slide content, and renders through the
+    appropriate template based on *format*.
 
     Parameters
     ----------
@@ -1783,8 +1976,19 @@ def generate_presentation(
         Intended audience.  One of ``"researcher"``, ``"clinician"``,
         ``"executive"`` (default), ``"student"``.
     format : str, optional
-        Output format (default ``"markdown"``).  Only ``"markdown"``
-        is currently supported.
+        Output format (default ``"markdown"``).  Supported values:
+
+        - ``"markdown"`` — Reveal.js-flavoured Markdown via
+          ``presentation.md.j2`` (backward compatible).
+        - ``"html"`` — standalone Reveal.js HTML5 document via
+          ``presentation.html.j2`` (loads Reveal.js from CDN).
+        - ``"mkslides"`` — generate mkslides-compatible Markdown and
+          attempt to build via the ``mkslides`` CLI; falls back to
+          standalone HTML when mkslides is unavailable.
+
+    custom_instructions : str, optional
+        Optional string of additional instructions to append to the LLM
+        generation prompt.  Ignored when empty/absent.
 
     Returns
     -------
@@ -1796,8 +2000,11 @@ def generate_presentation(
     ValueError
         If *format*, *target_audience*, or *slide_count* is invalid.
     """
-    if format != "markdown":
-        raise ValueError(f"Unsupported output format: {format!r}")
+    if format not in ("markdown", "html", "mkslides"):
+        raise ValueError(
+            f"Unsupported output format: {format!r}. "
+            f"Supported: markdown, html, mkslides"
+        )
 
     if target_audience not in _VALID_AUDIENCES:
         raise ValueError(
@@ -1853,6 +2060,9 @@ def generate_presentation(
         f"specifically for a {target_audience} audience."
     )
 
+    if custom_instructions:
+        prompt += f"\n\nAdditional instructions: {custom_instructions}"
+
     llm_result = _call_llm_for_presentation(prompt, slide_count)
 
     # -- Build template context -------------------------------------------
@@ -1868,7 +2078,7 @@ def generate_presentation(
     }
 
     # -- Render via Jinja2 template ---------------------------------------
-    return _render_presentation_template(context)
+    return _render_presentation_template(context, format=format)
 
 
 def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
@@ -1916,11 +2126,155 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     return _parse_json_response(content)
 
 
-def _render_presentation_template(context: dict[str, Any]) -> str:
-    """Render the presentation data through ``presentation.md.j2``."""
+def _render_presentation_template(
+    context: dict[str, Any],
+    format: str = "markdown",
+) -> str:
+    """Render the presentation data through the appropriate template.
+
+    Parameters
+    ----------
+    context:
+        Template context dict built by :func:`generate_presentation`.
+    format:
+        Output format — ``"markdown"`` (default, backward compatible),
+        ``"html"`` (standalone Reveal.js HTML5 via CDN), or
+        ``"mkslides"`` (mkslides-compatible Markdown with optional
+        CLI build; falls back to standalone HTML on failure).
+    """
+    if format == "html":
+        return _render_presentation_html(context)
+
+    if format == "mkslides":
+        return _render_presentation_mkslides(context)
+
+    # Default: backward-compatible Markdown
     env = _get_jinja_env()
     template = env.get_template("presentation.md.j2")
     return template.render(**context)
+
+
+def _render_presentation_html(context: dict[str, Any]) -> str:
+    """Render the presentation as a standalone Reveal.js HTML5 document.
+
+    Loads Reveal.js CSS/JS from the jsdelivr CDN — no bundling.
+    The template (``presentation.html.j2``) is autoescaped by
+    :func:`_html_autoescape` because of its ``.html.j2`` extension.
+    """
+    env = _get_jinja_env()
+    template = env.get_template("presentation.html.j2")
+    return template.render(**context)
+
+
+def _render_presentation_mkslides(context: dict[str, Any]) -> str:
+    """Render the presentation as mkslides-compatible Markdown.
+
+    Produces a Markdown file with YAML frontmatter (``title``,
+    ``author``, ``theme``) and ``---`` slide separators, writes it to
+    a temporary directory, and attempts to build via the ``mkslides``
+    CLI.  When mkslides is not installed or the build fails, falls
+    back to the standalone HTML renderer with a log warning.
+    """
+    import subprocess  # noqa: PLC0415
+    import tempfile    # noqa: PLC0415
+
+    title = context.get("title", "Presentation")
+    author = context.get("domain", "AutoInfo")
+    theme = context.get("theme", "black")
+    slides = context.get("slides", []) or []
+
+    # Build mkslides Markdown: frontmatter + --- separated slides
+    lines: list[str] = [
+        "---",
+        f"title: {title}",
+        f"author: {author}",
+        f"theme: {theme}",
+        "---",
+        "",
+    ]
+
+    for slide in slides:
+        slide_title = slide.get("title", "")
+        slide_content = slide.get("content", "")
+        bullets = slide.get("bullets", []) or []
+        notes = slide.get("notes", "")
+
+        lines.append(f"# {slide_title}")
+        lines.append("")
+        if slide_content:
+            lines.append(slide_content)
+            lines.append("")
+        if bullets:
+            for b in bullets:
+                lines.append(f"- {b}")
+            lines.append("")
+        if notes:
+            lines.append(f"<!-- {notes} -->")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    mkslides_md = "\n".join(lines)
+
+    # Attempt mkslides build in a temp directory
+    try:
+        with tempfile.TemporaryDirectory(prefix="autoinfo-mkslides-") as tmpdir:
+            src_path = Path(tmpdir) / "presentation.md"
+            src_path.write_text(mkslides_md, encoding="utf-8")
+
+            try:
+                proc = subprocess.run(
+                    ["mkslides", "build", "presentation.md"],
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except FileNotFoundError:
+                logger.warning(
+                    "mkslides is not installed — falling back to "
+                    "standalone HTML presentation."
+                )
+                return _render_presentation_html(context)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "mkslides build timed out after 30s — falling back "
+                    "to standalone HTML presentation."
+                )
+                return _render_presentation_html(context)
+
+            if proc.returncode != 0:
+                logger.warning(
+                    "mkslides build failed (rc=%d): %s — falling back "
+                    "to standalone HTML presentation.",
+                    proc.returncode,
+                    (proc.stderr or "").strip()[:200],
+                )
+                return _render_presentation_html(context)
+
+            # mkslides writes output to a default location; locate the HTML
+            out_dir = Path(tmpdir) / "public"
+            html_candidates = sorted(out_dir.rglob("*.html")) if out_dir.is_dir() else []
+            if not html_candidates:
+                # Some mkslides versions write alongside the source
+                html_candidates = sorted(Path(tmpdir).glob("*.html"))
+
+            if not html_candidates:
+                logger.warning(
+                    "mkslides build produced no HTML output — falling "
+                    "back to standalone HTML presentation."
+                )
+                return _render_presentation_html(context)
+
+            return html_candidates[0].read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning(
+            "mkslides rendering failed (%s) — falling back to standalone "
+            "HTML presentation.",
+            exc,
+        )
+        return _render_presentation_html(context)
 
 
 # ---------------------------------------------------------------------------
@@ -1940,6 +2294,12 @@ def _render_html(markdown_text: str) -> str:
 
     Uses the ``markdown`` library (already a project dependency) to
     produce bare HTML without any stylesheets or CSS classes.
+
+    .. deprecated::
+        Prefer :func:`_render_digest_html` for digest output, which
+        renders a full HTML5 document via ``digest.html.j2``.  This
+        helper is retained for backward compatibility with callers
+        that pass raw Markdown.
     """
     try:
         import markdown as md_lib  # noqa: PLC0415
@@ -1948,6 +2308,65 @@ def _render_html(markdown_text: str) -> str:
     except (ImportError, ModuleNotFoundError):
         logger.warning("markdown library not available \u2014 returning raw markdown")
         return markdown_text
+
+
+def _render_digest_html(context: dict[str, Any]) -> str:
+    """Render the digest as a self-contained HTML5 document.
+
+    Maps the internal digest context (built by :func:`generate_digest`)
+    to the variable contract expected by ``digest.html.j2``:
+
+    - ``title`` — digest title
+    - ``domain_name`` — domain identifier
+    - ``period`` — human-readable period label with date range
+    - ``generated_at`` — ISO timestamp
+    - ``executive_summary`` — LLM-synthesized summary (if any)
+    - ``key_findings`` — list of ``{title, text}`` dicts (ranked by order)
+    - ``trends`` — list of trend strings
+    - ``recommendations`` — list of recommendation strings
+    - ``entries`` — list of ``{title, source_url, summary, relevance_score}``
+    """
+    env = _get_jinja_env()
+    template = env.get_template("digest.html.j2")
+
+    synthesis = context.get("llm_synthesis") or {}
+
+    # Map LLM key_findings ({topic, detail}) -> {title, text}
+    key_findings = [
+        {
+            "title": f.get("topic", ""),
+            "text": f.get("detail", ""),
+        }
+        for f in (synthesis.get("key_findings") or [])
+    ]
+
+    # Map KB entries to the template's entry contract
+    html_entries = [
+        {
+            "title": e.get("title", ""),
+            "source_url": e.get("source_url", "") or "",
+            "summary": e.get("summary", "") or "",
+            "relevance_score": e.get("relevance_score"),
+        }
+        for e in (context.get("entries") or [])
+    ]
+
+    period_label = context.get("period_label", "")
+    date_from = context.get("date_from", "")
+    date_to = context.get("date_to", "")
+    period_str = f"{period_label} ({date_from} \u2013 {date_to})" if period_label else ""
+
+    return template.render(
+        title=context.get("title", ""),
+        domain_name=context.get("domain", ""),
+        period=period_str,
+        generated_at=context.get("generated_at", ""),
+        executive_summary=synthesis.get("executive_summary", "") or "",
+        key_findings=key_findings,
+        trends=synthesis.get("trends") or [],
+        recommendations=synthesis.get("recommendations") or [],
+        entries=html_entries,
+    )
 
 
 def _render_json(context: dict[str, Any]) -> str:

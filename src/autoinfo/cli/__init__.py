@@ -10,6 +10,7 @@ from . import (
     collect,
     cron,
     doctor,
+    domain,
     email,
     kb,
     keywords,
@@ -49,6 +50,7 @@ app.add_typer(process.app, name="process")
 app.add_typer(status.app, name="status")
 app.add_typer(sources.app, name="sources")
 app.add_typer(topics.app, name="topics")
+app.add_typer(domain.app, name="domain")
 app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
 app.add_typer(cefr.app, name="cefr")

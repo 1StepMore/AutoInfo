@@ -5,7 +5,7 @@
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-20
 **Strategy:** Every section asks a user question → executes scenarios → reports a binary verdict
-**Current Baseline:** v1.3 full feature set — 1134 tests, 14 CLI command groups, 65 MCP tools across 15 categories, FastAPI REST API, Bootstrap 5 Web UI
+**Current Baseline:** v1.4 full feature set — 1134 tests, 17 CLI command groups, 72 MCP tools across 16 categories, FastAPI REST API, Bootstrap 5 Web UI, domain management, webhook push, cron digest
 
 ---
 
@@ -44,13 +44,13 @@ Before running validation, ensure:
 pip install -e ".[dev]"
 
 # 2. Verify test infrastructure
-pytest --collect-only -q  # Should collect 800+ tests without errors
+pytest --collect-only -q  # Should collect 1134+ tests without errors
 
 # 3. Set minimum env vars
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 
 # 4. Verify CLI works
-autoinfo --help  # Should show 14 command groups
+autoinfo --help  # Should show 17 command groups
 ```
 
 ---
@@ -448,7 +448,7 @@ autoinfo doctor --json
 ```bash
 autoinfo --help
 ```
-**Expected Result:** ✅ Shows all 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email). `--json` global flag present.
+**Expected Result:** ✅ Shows all 17 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, kb, output, cron, knowledge, cefr, email, keywords, clean). `--json` global flag present.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -584,9 +584,9 @@ cd /tmp/noconfig && autoinfo process --domain medical-research
 
 ---
 
-## Q7: Does every MCP tool work correctly? (65 tools)
+## Q7: Does every MCP tool work correctly? (72 tools)
 
-**User says:** "I'm connecting via MCP protocol. I need all 65 tools to work as documented."
+**User says:** "I'm connecting via MCP protocol. I need all 72 tools to work as documented."
 
 **Why this matters:** MCP is the primary integration surface for AI agents. Broken tools break automation.
 
@@ -598,7 +598,7 @@ import json
 # Check tools are registered
 tools = app.list_tools()()
 tool_names = [t.name for t in tools]
-assert len(tools) > 6  # 65 tools in v1.3
+assert len(tools) > 6  # 72 tools in v1.4
 expected_tools = ["health_check", "diagnose_system", "collect_sources", "process_collection",
                   "list_summaries", "get_kb_entry", "generate_report", "classify_cefr",
                   "vector_search", "faceted_search", "send_email_digest", "init_project"]
@@ -606,7 +606,7 @@ missing = [t for t in expected_tools if t not in tool_names]
 assert len(missing) == 0, f"Missing tools: {missing}"
 print(f"ALL {len(tools)} TOOLS PRESENT")
 ```
-**Expected Result:** ✅ 65 tools registered with correct names, including v1.2 additions (generate_report, classify_cefr, vector_search, faceted_search) and v1.3 addition (init_project).
+**Expected Result:** ✅ 72 tools registered with correct names, including v1.2 additions (generate_report, classify_cefr, vector_search, faceted_search), v1.3 addition (init_project), and v1.4 additions (add_domain, remove_domain, list_available_platforms, import_kb, set_domain_webhooks, get_domain_webhooks).
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -616,7 +616,7 @@ result = app.call_tool("health_check", {})
 data = json.loads(result.content[0].text)
 assert data["status"] == "ok"
 assert "version" in data
-assert data["tools_count"] > 6  # 65 in v1.3
+assert data["tools_count"] > 6  # 72 in v1.4
 ```
 **Expected Result:** ✅ Returns status, version, tools_count.
 
@@ -694,7 +694,7 @@ except Exception as e:
 
 | Scenario | Result |
 |----------|--------|
-| 7.1 Server starts, 6 tools | ⬜ |
+| 7.1 Server starts, 72 tools registered | ⬜ |
 | 7.2 health_check | ⬜ |
 | 7.3 diagnose_system | ⬜ |
 | 7.4 collect_sources | ⬜ |
@@ -2048,7 +2048,7 @@ autoinfo doctor
 ```bash
 cd /path/to/AutoInfo && pytest -v --tb=short
 ```
-**Expected Result:** ✅ 200+ tests pass. 0 failures.
+**Expected Result:** ✅ 1134+ tests pass. 0 failures.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -2180,8 +2180,8 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 
 | Criteria | Status | Notes |
 |----------|--------|-------|
-| All 6 MCP tools respond correctly | ⬜ | Q7 |
-| All 6 CLI commands work | ⬜ | Q5 |
+| All 72 MCP tools respond correctly | ⬜ | Q7 |
+| All 17 CLI commands work | ⬜ | Q5 |
 | `init` creates valid project | ⬜ | Q1 |
 | PubMed collection works (real API, no mock) | ⬜ | Q20 |
 | RSS collection works (real API, no mock) | ⬜ | Q20 |
@@ -2195,7 +2195,7 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 | Quality gates are advisory (no content loss) | ⬜ | Q9 |
 | MCP server stdio transport works | ⬜ | Q18 |
 | Error cases handled gracefully | ⬜ | Q13-Q16 |
-| Test suite passes (200+) | ⬜ | Q17 |
+| Test suite passes (1134+) | ⬜ | Q17 |
 
 ---
 
@@ -2209,5 +2209,5 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 
 ---
 
-*Plan generated: 2026-07-20*
-*Based on: AutoInfo v0.1 codebase — 220 tests, 6 CLI commands, 6 MCP tools, Hermes KB pipeline*
+*Plan generated: 2026-07-20 (v1.4 baseline: 2026-07-23)*
+*Based on: AutoInfo v1.4 codebase — 1134 tests, 17 CLI command groups, 72 MCP tools, Hermes KB pipeline, domain management, webhook push, cron digest*

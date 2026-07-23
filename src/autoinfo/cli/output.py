@@ -150,6 +150,9 @@ def translate(
     target_lang: str = typer.Option(
         ..., "--target-lang", help="Target language code (e.g. zh, fr, ja)"
     ),
+    domain: str = typer.Option(
+        "", "--domain", help="Domain name for terminology guardrails (e.g. medical-research)"
+    ),
 ) -> None:
     """Translate a KB entry or raw text into a target language.
 
@@ -170,6 +173,7 @@ def translate(
             content=content,
             source_lang=source_lang,
             target_lang=target_lang,
+            domain=domain,
         )
         if result.get("success"):
             typer.echo("Translation successful!")

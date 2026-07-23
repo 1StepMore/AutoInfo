@@ -7,14 +7,18 @@ applies deduplication, and caches collected items to disk.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.dedup import DedupChecker
@@ -103,6 +107,7 @@ def run_collection(
 
     # -- Per-source collection ---------------------------------------------
     per_source: list[CollectionResult] = []
+    all_new_items: list[Item] = []
 
     for src_cfg in source_configs:
         logger.info(
@@ -120,6 +125,7 @@ def run_collection(
             existing_entries=existing_entries,
             collection_id=collection_id,
             checker=checker,
+            new_items_collector=all_new_items,
         )
         per_source.append(src_result)
 
@@ -127,6 +133,10 @@ def run_collection(
     total_found = sum(r.items_found for r in per_source)
     total_new = sum(r.items_new for r in per_source)
     elapsed = time.time() - start_time
+
+    # -- Fire webhooks (fire-and-forget) -----------------------------------
+    if not dry_run and domain_config.webhook_urls and all_new_items:
+        _fire_webhooks_sync(domain, all_new_items, domain_config.webhook_urls)
 
     return {
         "collection_id": collection_id,
@@ -184,6 +194,7 @@ def _collect_from_source(
     existing_entries: list[KBEntry],
     collection_id: str,
     checker: DedupChecker,
+    new_items_collector: list[Item] | None = None,
 ) -> CollectionResult:
     """Fetch items from a single source, deduplicate, and optionally cache."""
     src_start = time.time()
@@ -259,6 +270,8 @@ def _collect_from_source(
     # -- Cache (only if not dry_run) ---------------------------------------
     if not dry_run and new_items:
         _cache_items(new_items, domain, source_config.name)
+        if new_items_collector is not None:
+            new_items_collector.extend(new_items)
         _log_run(
             domain, source_config.name, collection_id,
             items_found, items_new,
@@ -410,6 +423,100 @@ def _cache_items(
             continue
         with open(file_path, "w", encoding="utf-8") as fh:
             json.dump(item.to_dict(), fh, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Webhook push
+# ---------------------------------------------------------------------------
+
+
+def _build_webhook_payload(domain: str, item: Item) -> dict[str, Any]:
+    """Build the JSON payload for a webhook POST."""
+    import uuid as _uuid
+
+    return {
+        "item_id": item.id or str(_uuid.uuid4()),
+        "title": item.title,
+        "url": item.source_url,
+        "source": item.source_name,
+        "source_type": item.source_type,
+        "domain": domain,
+        "topic": item.topic_tags,
+        "content": item.content,
+        "collected_at": item.collected_at,
+        "extracted": {
+            "summary": item.raw_data.get("summary", ""),
+            "key_points": item.raw_data.get("key_points", []),
+            "entities": item.raw_data.get("entities", []),
+        },
+    }
+
+
+async def _post_webhook(
+    client: httpx.AsyncClient,
+    url: str,
+    payload: dict[str, Any],
+    retries: int = 3,
+) -> None:
+    """POST *payload* to *url* with exponential backoff retry.
+
+    Retries on 5xx and network errors only.  2xx and 4xx are terminal.
+    """
+    for attempt in range(retries):
+        try:
+            resp = await client.post(url, json=payload)
+            if resp.status_code < 500:
+                return  # 2xx or 4xx — terminal
+            await asyncio.sleep(2**attempt)  # 2s, 4s, 8s
+        except (httpx.TimeoutException, httpx.NetworkError):
+            if attempt == retries - 1:
+                logger.error(
+                    "Webhook failed after %d attempts: %s", retries, url
+                )
+            await asyncio.sleep(2**attempt)
+
+
+async def _fire_webhooks(
+    domain: str,
+    new_items: list[Item],
+    webhook_urls: list[str],
+) -> None:
+    """Fire-and-forget webhook POST for each new item.
+
+    All items are sent to all configured webhooks concurrently.
+    Exceptions are logged and never propagated.
+    """
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        tasks: list[asyncio.Task[None]] = []
+        for item in new_items:
+            payload = _build_webhook_payload(domain, item)
+            for url in webhook_urls:
+                tasks.append(asyncio.create_task(_post_webhook(client, url, payload)))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _fire_webhooks_sync(
+    domain: str,
+    new_items: list[Item],
+    webhook_urls: list[str],
+) -> None:
+    """Synchronous fire-and-forget entry point.
+
+    Runs the async webhook fire in a daemon thread so collection is
+    never blocked even when called from an already-running event loop.
+    """
+    if not webhook_urls or not new_items:
+        return
+
+    def _run() -> None:
+        try:
+            asyncio.run(_fire_webhooks(domain, new_items, webhook_urls))
+        except Exception:
+            logger.exception("Webhook fire failed for domain '%s'", domain)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 
 def _log_run(

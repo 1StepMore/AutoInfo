@@ -757,7 +757,7 @@ class TestGenerateOutput:
         assert "# Tutorial" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", format="markdown"
+            domain="medical-research", format="markdown", custom_instructions=""
         )
 
     @patch("autoinfo.output.generate_tutorial")
@@ -780,7 +780,7 @@ class TestGenerateOutput:
         assert "# Slide 1" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", topic="IVF breakthroughs", slide_count=10
+            domain="medical-research", topic="IVF breakthroughs", slide_count=10, custom_instructions=""
         )
 
 

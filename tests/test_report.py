@@ -154,14 +154,14 @@ class TestGenerateReport:
         assert "test-domain" in report
 
     def test_unsupported_format_raises_value_error(self) -> None:
-        """Formats other than 'markdown' raise ``ValueError``."""
+        """Formats other than 'markdown', 'json', 'html' raise ``ValueError``."""
         with patch("autoinfo.output.KBStore") as mock_kb_cls:
             mock_store = MagicMock()
             mock_store.list_entries.return_value = []
             mock_kb_cls.return_value = mock_store
 
             with pytest.raises(ValueError, match="Unsupported output format"):
-                _call_report("test-domain", format="html")
+                _call_report("test-domain", format="pdf")
 
     def test_happy_path_renders_complete_report(
         self, sample_entries: list[dict]

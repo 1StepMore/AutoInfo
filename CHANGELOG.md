@@ -2,6 +2,39 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.4 (2026-07-23)
+
+### Added
+- **Domain management (F10b)** — `add_domain`/`remove_domain` MCP tools and `autoinfo domain` CLI command group (add/list/show/remove/activate/deactivate). Users can now define custom domains without editing YAML config directly
+- **`list_available_platforms` MCP tool** — Returns all supported source platform types with descriptions, enabling agents to discover valid source types dynamically
+- **Translation QA pipeline (F10/G5 enhanced)** — 5 lite quality gates (terminology compliance, back-translation consistency, multi-round refinement, composite quality scoring, translator-qa-skill) with `_terminology.yaml` terminology guardrails and `get_translation_quality` MCP tool
+- **HTML format output (F24/F25)** — `generate_digest` and `generate_report` now support HTML format via Jinja2; `generate_presentation` supports HTML via Reveal.js CDN with speaker notes; all output tools accept optional `custom_instructions` parameter for LLM-guided content adaptation
+- **KB import module (F26)** — `import_kb` MCP tool imports content from 4 formats (PDF, Markdown, HTML, JSON) directly into 01-Raw tier, with format auto-detection and metadata extraction
+- **Per-item webhook push (F27)** — `set_domain_webhooks`/`get_domain_webhooks` MCP tools for configuring webhook URLs per domain; collected items are pushed to configured webhooks on completion
+- **Cron-based email digest delivery (F27)** — Scheduled email digest via SMTP + crontab; `add_schedule` extended with `email` action for automatic digest delivery on schedule trigger
+- **Agent proactive alerting (F29)** — `docs/dev/agent-alerting.md` documents polling-based source health monitoring pattern; agents proactively poll `get_source_health` to detect 3+ consecutive failures and flag to user
+- **`custom_instructions` parameter** — Added to all output generation tools (`generate_digest`, `generate_report`, `generate_tutorial`, `generate_presentation`, `localize_content`) for LLM-guided content adaptation
+- **`import_kb` MCP tool** — 4-format import (PDF, Markdown, HTML, JSON) → 01-Raw KB tier with format auto-detection, source metadata extraction, and idempotent import dedup
+
+### Changed
+- **CLI expanded from 14 to 17 command groups** — `domain` and `clean` groups added; `keywords` promoted from sub-command to full command group
+- **MCP tool inventory expanded from 65 to 72 tools** — 7 new tools: `add_domain`, `remove_domain`, `list_available_platforms`, `import_kb`, `set_domain_webhooks`, `get_domain_webhooks`, `get_extraction` (previously missing from registration); `extract_fields` tool added for on-demand re-extraction
+- **MCP tool categories expanded** — Added **Domain** (2 tools), **Webhooks** (2 tools), **Export/Import** (2 tools), **Custom Extraction** (2 tools) categories
+- **Output generation tools upgraded** — All output tools accept `custom_instructions`; digest/report support HTML format; presentation uses Reveal.js CDN for HTML slides
+- **README.md comprehensively rewritten** — Features, status table, CLI commands, MCP tools table, and Known Limitations all updated to v1.4 reality
+- **AGENTS.md updated** — MCP tool count (65→72), CLI count (14→17), status table, project structure, and tool categories all revised for v1.4
+- **founder-expectations.md updated** — Section 9 status, component table, gantt chart, and CLI examples revised to v1.4 reality
+- Version bumped from `1.3.0`
+
+### Infrastructure
+- `docs/dev/agent-alerting.md`: New document — polling-based agent proactive alerting pattern (6 pages, full workflow with MCP tool reference, scenario dialogues)
+- `src/autoinfo/cli/domain.py`: New module — domain CRUD CLI (add/list/show/remove/activate/deactivate)
+- `src/autoinfo/mcp/server.py`: 7 new tool handlers (add_domain, remove_domain, list_available_platforms, import_kb, set_domain_webhooks, get_domain_webhooks, get_extraction) + extract_fields tool
+
+### Fixed
+- `list_keywords` MCP tool now correctly registered in Discovery category (was missing from tool manifest)
+- `get_extraction` MCP tool now correctly registered (was defined as handler but missing from `list_tools`)
+
 ## v1.3 (2026-07-21)
 
 ### Added

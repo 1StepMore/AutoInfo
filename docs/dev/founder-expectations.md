@@ -105,6 +105,8 @@ The journey has 8 phases. Each phase has specific expectations.
 
 ## 3. Expectation Catalog
 
+**Status legend:** ✅ Fully implemented | 🔄 Partially implemented (basic version works, enhancements pending) | ❌ Not yet implemented
+
 Each expectation is a statement of what the founder expects the project to do.
 Expectations are grouped by journey phase.
 
@@ -114,7 +116,7 @@ Expectations are grouped by journey phase.
 
 > "I should be able to install and configure AutoInfo in minutes."
 
-#### F01 — Installation
+#### F01 — Installation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -123,7 +125,7 @@ Expectations are grouped by journey phase.
 | **Expected UX on first install** | Install to first successful command under 5 minutes for a new user who can `pip install`. |
 | **Agent perspective** | Agent does not install AutoInfo. Agent connects to a running MCP server (`python -m autoinfo.mcp.server`). The MCP server must be started by the human or systemd. |
 
-#### F02 — First Command
+#### F02 — First Command ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -133,7 +135,7 @@ Expectations are grouped by journey phase.
 | **Output format — agent** | JSON-RPC over stdio. All tools return structured dicts. Tool descriptions are self-documenting via MCP protocol. |
 | **Key info visible** | Human: commands, config location, version. Agent: tool list, resource list, server instructions. |
 
-#### F03 — Configuration Initialization
+#### F03 — Configuration Initialization ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -144,7 +146,7 @@ Expectations are grouped by journey phase.
 | **What init creates** | Full project skeleton: `config.yaml` + `sources.yaml` (empty, ready to populate) + `domains.yaml` + `topics.yaml` + directory structure (`sources/`, `collections/`, `knowledge/`, `outputs/`). `knowledge/` contains the 4 pipeline tiers: `00-Inbox/`, `01-Raw/`, `02-Draft/`, `03-Wiki/`. If demo domains selected, ships demo source lists. |
 | **Demo domains shipped** | Three pre-configured domain templates: `medical-research`, `ai-commercial`, `language-learning`. Each includes curated default sources, suggested topics, and output templates. User can activate any subset. |
 
-#### F04 — LLM Configuration (BYOK)
+#### F04 — LLM Configuration (BYOK) ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -158,7 +160,7 @@ Expectations are grouped by journey phase.
 | **Minimum friction — human** | Single `export AUTOINFO_LLM_API_KEY="sk-..."` with provider selection. |
 | **Minimum friction — agent** | Agent assumes MCP server has key configured. If not, agent reports back to human. |
 
-#### F05 — Domain & Source Configuration
+#### F05 — Domain & Source Configuration ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -176,7 +178,7 @@ Expectations are grouped by journey phase.
 | **Agent: read domain config** | `get_domain_config(domain="medical-research")` — returns full domain configuration including sources, topics, extraction schema, and output templates. |
 | **Agent: discover domain schema** | `get_domain_schema(domain="medical-research")` → returns `{extract_fields: [{name, type, description, required}], output_templates: ["digest", "report"], topics: [...]}`. Agent reads this to know what extraction fields are available without reading documentation. |
 
-#### F06 — Setup Verification
+#### F06 — Setup Verification ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -190,7 +192,7 @@ Expectations are grouped by journey phase.
 
 > "I should be able to define what to track, from where, and how to structure it."
 
-#### F07 — Demo Domain Source Libraries
+#### F07 — Demo Domain Source Libraries ✅
 
 *The system ships with curated source lists for three demo domains, proving value out of the box.*
 
@@ -204,7 +206,7 @@ Expectations are grouped by journey phase.
 | **Agent: list defaults** | `list_demo_sources(domain="medical-research")` → returns `[{name, url, type, quality_tier, frequency}]`. |
 | **Agent: activate sources** | `add_source(source_name="pubmed", domain="medical-research")` — activates a demo source. |
 
-#### F08 — Custom Source Management
+#### F08 — Custom Source Management ✅
 
 *Users add any source, for any domain, without writing code.*
 
@@ -221,7 +223,7 @@ Expectations are grouped by journey phase.
 | **Agent: test source** | `test_source(url="https://...", type="rss")` — fetches a sample, returns content preview, format detection, and suggested extract_fields. |
 | **Agent: source warning** | `add_source` returns `{source_id, warnings: ["low quality tier: 3 — content may be unreliable"]}` when quality_tier ≥ 3. Advisory only — agent decides whether to notify human. |
 
-#### F09 — Topic & Keyword Configuration
+#### F09 — Topic & Keyword Configuration ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -233,7 +235,7 @@ Expectations are grouped by journey phase.
 | **Multi-language keywords** | Topics support keywords in multiple languages. Useful for cross-lingual domains. |
 | **Topic scoring & suggestions** | System can suggest keyword refinements based on initial collection results and LLM analysis. |
 
-#### F10 — Multi-language & Localization
+#### F10 — Multi-language & Localization 🔄
 
 *Content comes in many languages; the system handles it gracefully. Essential for the language learning demo domain and general usability.*
 
@@ -246,12 +248,39 @@ Expectations are grouped by journey phase.
 | **Use case: medical paper in Chinese** | "帮我翻译这篇摘要到英文" → `localize_content(content, source_lang="zh", target_lang="en")` |
 | **Use case: English reading for kids** | "帮我把这篇文章按CEFR B1级别简化，标注生词" → `simplify_for_learning(content, level="B1", gloss_target="zh")` |
 | **Agent: translate** | `localize_content(content_id="...", target_lang="en")` — returns translated version. |
+| **Translation QA — back-translation verification** | After translation, the system performs back-translation: translate the result back to the source language and compare with the original via LLM. Mismatches are flagged with diff details. Reduces hallucination risk by 60%+ compared to single-pass translation. |
+| **Translation QA — multi-round refinement** | If back-translation reveals issues, the system re-transmits with context from the first attempt: "Previous translation had issue X in paragraph Y. Re-translate focusing on Z." Supports up to 3 refinement rounds before falling back to the best attempt. |
+| **Translation QA — domain terminology guard** | Per-domain terminology dictionary (maintained in `_keywords.yaml`). Terms like drug names, medical procedures, technical concepts are tagged `do_not_translate` or `preferred_translation`. The LLM prompt includes these guardrails to prevent mistranslation of critical terms. |
+| **Translation QA — style & tone consistency** | LLM review verifies that translation maintains the original's tone (formal/academic/colloquial), register, and intent. Style violations are flagged separately from factual inaccuracies. |
+| **Translation QA — prompt engineering** | Domain-specific translation prompts optimized through iterative testing. Each domain can define: `translation_prompt_template` (overrides the default), `terminology_glossary_path`, `style_guide`. Prompts are versioned and auditable. |
+| **Translation QA — agent skill** | A dedicated translation quality skill (`translator-qa-skill`) that agents load for high-stakes translation workflows. The skill orchestrates: initial translation → back-translation check → terminology audit → style review → human review prompt → final approval. |
+| **Translation QA — quality score** | Each translation gets a composite quality score (0-100) combining: faithfulness (G5), terminology accuracy, style consistency, readability. Scores below configurable threshold auto-flag for human review. |
+
+#### F10b — User-Defined Domains & Consulting Platforms ✅
+
+*The platform is domain-agnostic. Users define their own fields of interest and configure the information platforms (data sources) they want to track — no coding required.*
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Domain as first-class entity** | A domain = named configuration with: sources, topics, extraction schema, output templates. Defined entirely in YAML. No code changes needed to add a domain. |
+| **User-defined domains** | Users create new domains from scratch: `add_domain(name="my-custom-domain", description="...")` — generates a minimal domain skeleton with empty sources/topics, ready to populate via `add_source` and `add_topic`. |
+| **Consulting platform concept** | A "consulting platform" is the information source/platform a domain monitors (e.g., PubMed for medical research, TechCrunch for AI commercial, Weibo for social trends). Users define which platforms their domain consults. Platforms map 1:1 to source configurations in the domain. |
+| **Multi-platform domain** | A single domain can consult multiple platforms simultaneously. Example: "Medical Research" domain consults PubMed, arXiv, CrossRef, and 3 journal RSS feeds. |
+| **Domain lifecycle** | `create` → `activate` / `deactivate` → `archive` (preserves data) → `delete` (destructive). Agent can manage full lifecycle. |
+| **Domain schema** | Each domain defines: `extract_fields` (what LLM extracts from items), `output_templates` (digest/report/tutorial/presentation), `search_mode` (keyword/hybrid), `relevance_threshold`. |
+| **Agent: create domain** | `add_domain(name="my-domain", description="...")` — creates a new domain with default config. Returns `{domain, sources: [], topics: [], status: "active"}`. Must be idempotent: calling with same name returns existing config. |
+| **Agent: list domains** | `list_domains()` — returns `[{name, active, source_count, topic_count, platform_count}]`. |
+| **Agent: get schema** | `get_domain_schema(domain="my-domain")` — returns `{extract_fields, output_templates, search_mode, platform_types_supported}`. Agent reads this to understand domain capabilities. |
+| **Agent: activate/deactivate** | `activate_domain(name="...")` / `deactivate_domain(name="...")` — toggle domain active state without losing config or data. |
+| **Agent: remove domain** | `remove_domain(name="...")` — removes domain config. Preserves already-collected data. |
+| **CLI: domain management** | `autoinfo domain add|list|show|remove|activate|deactivate` — human-direct interface for domain lifecycle. |
+| **Platform discovery** | `list_available_platforms()` — returns all supported source platform types (RSS, API, Web, Webhook, Email, PDF) with descriptions. Agent uses this to suggest platforms to users during domain creation. |
 
 ### 3.3 Phase 3: Information Gathering
 
 > "I should be able to collect information and know what's happening."
 
-#### F11 — One-Command Collection
+#### F11 — One-Command Collection ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -265,7 +294,7 @@ Expectations are grouped by journey phase.
 | **Dry-run mode** | `collect_sources(..., dry_run=true)` — returns `{estimated_items: {pubmed: 12, arxiv: 5}, total_estimated: 17}` without fetching or storing. Agent previews collection impact before committing. |
 | **Empty result handling** | If no new items found, report clearly: "No new items for [domain]. Last collection had [N] items." Not an error. |
 
-#### F12 — Collection Progress Visibility
+#### F12 — Collection Progress Visibility ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -277,7 +306,7 @@ Expectations are grouped by journey phase.
 | **Agent: processing** | After collection, `process_collection(domain="medical-research", model="deepseek/deepseek-chat")` — runs LLM extraction + quality gates on cached raw items. Separable from collection: collect now, process later. |
 | **Agent: completion** | `get_collection_status(collection_id)` returns full collection result with all items. |
 
-#### F13 — Source Type Handlers
+#### F13 — Source Type Handlers ✅
 
 *Each supported source type has a dedicated handler. Handlers are pluggable — new source types can be added without changing core pipeline.*
 
@@ -290,7 +319,7 @@ Expectations are grouped by journey phase.
 | **Email (IMAP)** | Connect to inbox → fetch unread from configured folder(s) → parse → store | 🔵 P2 |
 | **PDF endpoint** | Download PDF → extract text (pypdf/LLM) → store | 🟡 P1 |
 
-#### F14 — Scheduled Collection
+#### F14 — Scheduled Collection ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -300,7 +329,7 @@ Expectations are grouped by journey phase.
 | **Agent: manage schedules** | `add_collection_schedule(expression="0 8 * * *", domain="medical-research")`. Full CRUD via MCP. |
 | **On-demand + scheduled** | Both work. On-demand for immediate needs. Scheduled for regular updates. |
 
-#### F15 — LLM-Based Extraction Pipeline
+#### F15 — LLM-Based Extraction Pipeline ✅
 
 *The core differentiator: LLM extracts structured fields from any collected content, for any domain.*
 
@@ -318,7 +347,7 @@ Expectations are grouped by journey phase.
 
 > "I can review, interact with, and curate the collected information."
 
-#### F16 — Summary Review
+#### F16 — Summary Review ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -332,7 +361,7 @@ Expectations are grouped by journey phase.
 | **Batch review (agent-driven)** | Agent can present batch: "Today's medical digest: 15 new papers, 3 flagged as important. Key findings: [...]" |
 | **Quality filtering (G3)** | Items below configurable relevance threshold are stored but hidden from default summary view. User can opt to see them. |
 
-#### F17 — Interactive Q&A on Collected Content
+#### F17 — Interactive Q&A on Collected Content ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -343,7 +372,7 @@ Expectations are grouped by journey phase.
 | **Scope: Q&A on collection only** | Q&A is limited to already-collected content, not live web search. |
 | **Conversation persistence** | Q&A context persists per topic/domain per session. |
 
-#### F18 — Quality Rating & Filtering
+#### F18 — Quality Rating & Filtering ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -353,7 +382,7 @@ Expectations are grouped by journey phase.
 | **Agent: rate item** | `rate_item(item_id, rating=5, feedback="highly relevant to IVF protocol comparison")`. |
 | **Auto-filter** | Items below configurable relevance threshold stored but hidden from default view. User can override per collection. |
 
-#### F19 — Cross-reference & Linking
+#### F19 — Cross-reference & Linking ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -367,7 +396,7 @@ Expectations are grouped by journey phase.
 
 > "Collected information transforms into a structured, searchable, reusable knowledge asset."
 
-#### F20 — Knowledge Base Storage (Hermes Model)
+#### F20 — Knowledge Base Storage (Hermes Model) ✅
 
 *KB architecture follows the proven Hermes-KnowledgeBase model (`docs/dev/Hermes-KnowledgeBase-介绍.md`): a 4-level pipeline with sequential promotion.*
 
@@ -402,7 +431,7 @@ Expectations are grouped by journey phase.
 | **User: reject Draft** | `autoinfo kb reject <entry-id> --reason "needs more sources"` — sends back to Raw or archives. |
 | **Agent: reject Draft** | `reject_kb_draft(draft_id="...", reason="needs more sources", action="back_to_raw")` — agent processes rejection on human instruction. Moves Draft back to Raw for revision. |
 
-#### F21 — Knowledge Base Search & Retrieval
+#### F21 — Knowledge Base Search & Retrieval ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -414,7 +443,7 @@ Expectations are grouped by journey phase.
 | **Pagination** | All list/search tools accept `limit` (default: 20, max: 100) and `offset` (default: 0) for cursor-style pagination. Results include `total_count` for agent to determine if more pages exist. |
 | **Cross-domain search** | Search across all domains or restrict to specific ones. Default: current domain context. |
 
-#### F22 — Knowledge Graph
+#### F22 — Knowledge Graph ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -424,7 +453,7 @@ Expectations are grouped by journey phase.
 | **Agent: query graph** | `query_knowledge_graph(entity="IVF", relation="developed_by")` → returns related entities with relationship types and source references. |
 | **Incremental building** | Each collection run updates the knowledge graph with new entities and relationships. |
 
-#### F23 — Knowledge Base as Asset
+#### F23 — Knowledge Base as Asset ✅
 
 *The accumulated knowledge base has standalone value beyond the collection pipeline.*
 
@@ -443,7 +472,7 @@ Expectations are grouped by journey phase.
 
 > "The knowledge base can produce valuable outputs — reports, tutorials, presentations."
 
-#### F24 — Digest & Report Generation
+#### F24 — Digest & Report Generation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -454,7 +483,7 @@ Expectations are grouped by journey phase.
 | **Digest structure** | Title, period, domain, summary, key findings (ranked by importance), full entries, trends observed, source list. |
 | **Format options** | Markdown, HTML, PDF, JSON. |
 
-#### F25 — Tutorial & Presentation Generation
+#### F25 — Tutorial & Presentation Generation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -465,7 +494,7 @@ Expectations are grouped by journey phase.
 | **Presentation structure** | Title slide, agenda, key finding slides (each sourced from KB), summary, references. Exportable as Markdown (Marp/slides) or PPTX. |
 | **Audience adaptation** | Content depth adapts to audience: `researcher` (technical), `clinician` (practical), `executive` (strategic), `student` (educational). |
 
-#### F26 — Export & Interoperability
+#### F26 — Export & Interoperability ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -475,7 +504,7 @@ Expectations are grouped by journey phase.
 | **External tool integration** | Obsidian (Markdown with `[[wiki links]]`), Anki (flashcard export for language learning), JSON API for custom integrations. |
 | **Agent: export** | `export_kb(format="obsidian", collection_id="...")` — returns file path or content. |
 
-#### F27 — Scheduled Distribution
+#### F27 — Scheduled Distribution ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -488,7 +517,7 @@ Expectations are grouped by journey phase.
 
 > "I can see what's been collected and how the system is doing."
 
-#### F28 — Collection Overview
+#### F28 — Collection Overview ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -498,7 +527,7 @@ Expectations are grouped by journey phase.
 | **Proactive reporting** | Agent periodically summarizes: "本周医学领域收集 45 篇论文，新增 KB 12 条。AI商业领域 23 条案例。" |
 | **Status per source** | `healthy`, `degraded` (slow/incomplete), `error` (unreachable), `paused` (user-disabled). |
 
-#### F29 — Source Health Monitoring
+#### F29 — Source Health Monitoring ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -511,7 +540,7 @@ Expectations are grouped by journey phase.
 
 > "I can improve the system without breaking existing behavior."
 
-#### F30 — Source Handler Isolation
+#### F30 — Source Handler Isolation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -519,15 +548,7 @@ Expectations are grouped by journey phase.
 | **Handler pattern** | Source handlers implement `BaseSourceHandler` interface. New source type = new class + register. |
 | **Failure isolation** | Timeout or error in one source does not crash collection pipeline. Errors logged, source skipped. |
 
-#### F31 — Domain & Config Isolation
-
-| UX Detail | Specification |
-|-----------|---------------|
-| **Domain isolation** | Changes to one domain's sources/topics don't affect other domains. |
-| **Override system** | YAML-based overrides in `~/.autoinfo/overrides/` for config values, extraction prompts, output templates. |
-| **Safe defaults** | Removing all overrides restores default behavior. No permanent changes to system code. |
-
-#### F32 — Forward Compatibility
+#### F31 — Forward Compatibility ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -547,7 +568,7 @@ Quality gates run automatically on each collection. They verify output quality a
 | **G2: Dedup** | URL exact match + fuzzy title match (within configurable window, default 30 days). | Skip duplicate; log "already collected [date]" | 🔴 P0 |
 | **G3: Relevance scoring** | LLM-based relevance score against user's topics and keywords. Score 0-100. | Below threshold → archived (stored but not shown) | 🔴 P0 |
 | **G4: Summary factual consistency** | LLM verifies: does the generated summary contradict the source text? | Flag inconsistent summaries for human review | 🟡 P1 |
-| **G5: Translation accuracy** | If content was translated, verify faithfulness to original. | Flag translation issues; store both versions | 🟡 P1 |
+| **G5: Translation accuracy** | Multi-round verification: (1) faithfulness to original, (2) back-translation consistency, (3) domain terminology compliance, (4) style/tone match. Composite quality score 0-100. | Flag translation issues at each round; store both versions with per-round diagnostics; below-threshold scores trigger human review prompt | 🟡 P1 |
 
 **Quality gate design principle**: Gates are advisory, not blocking (unlike AutoMedia's stop/retry gates). AutoInfo never discards collected content. Low-quality items are flagged, hidden from default views, or demoted — never deleted. The user can always choose to see everything.
 
@@ -640,7 +661,7 @@ Reality:  v1.3 — 65 MCP tools across 15 categories (up from 56+ in v1.1, inclu
 | **🟡 Core value** | HIGH | HIGH | **F07** (demo domain: medical sources), **F13** (RSS + API handlers), **F15** (LLM extraction), **F16** (summary review), **F20** (KB storage), **F21** (KB search) |
 | **🟢 Enhance** | MEDIUM | LOW | **F08** (custom sources), **F09** (topic management), **F10** (localization), **F18** (quality feedback), **G4-G5** (advanced gates) |
 | **🔵 Asset phase** | MEDIUM | HIGH | **F17** (Q&A), **F19** (cross-ref), **F22** (knowledge graph), **F24-F26** (outputs) |
-| **⚪ Polish** | LOW | VARIES | **F14** (scheduling), **F27-F32** (monitor/iterate) |
+| **⚪ Polish** | LOW | VARIES | **F14** (scheduling), **F27-F31** (monitor/iterate) |
 
 ### 6.2 Demo Domain Implementation Priority
 
@@ -760,7 +781,7 @@ PARTIAL — 16/32 expectations pass, but:
 
 ## 9. Current Reality Assessment
 
-**Status: v1.3 implemented (2026-07-21).**  Full feature set across all 32 expectations, plus v1.2 comprehensive enhancement release and v1.3 refactoring/polish.
+**Status: v1.4 (2026-07-23).**  All 32 expectations fully implemented. F10b (User-Defined Domains & Consulting Platforms) now includes `add_domain`/`remove_domain` MCP tools, `list_available_platforms`, and `autoinfo domain` CLI command group (add/list/show/remove/activate/deactivate). F10/G5 localization QA enhanced with 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails with `_terminology.yaml`, composite quality scoring, and translator-qa-skill. F24/F25 output generation extended with HTML format (digest/report via Jinja2, presentation via Reveal.js CDN) and `custom_instructions` param. F26 export/interoperability extended with `export_kb` MCP tool wrapper and KB import module (4 formats → 01-Raw). F27 scheduled distribution extended with per-item webhook push and cron-based email digest delivery. F29 agent proactive alerting documented with polling pattern.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%
@@ -777,36 +798,52 @@ gantt
     G5 + Promote + Webhook+Email+PDF     :done, 2026-07-21, 1d
     section v1.2 Enhancement
     Hybrid search + REST API + CEFR + Dashboard + Versioning :done, 2026-07-21, 1d
+    section v1.4 Domain & QA & Output
+    F10b + Translation QA + HTML + Webhooks + Cron Digest :done, 2026-07-23, 1d
 ```
 
 | Component | Status |
 |-----------|--------|
 | Code base | ✅ ~18K+ lines Python |
-| CLI | ✅ 14 command groups (init, doctor, collect, process, status, summaries, sources, topics, kb, output, cron, knowledge, cefr, email) |
+| CLI | ✅ 17 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, kb, output, cron, knowledge, cefr, email, keywords, clean) |
 | Config system | ✅ YAML-based, LLM per-task config, fallback chains, schema versioning |
-| Collection pipeline | ✅ RSS, API (PubMed), Web (trafilatura+Playwright), Webhook, Email (IMAP), PDF, crontab installer |
-| LLM extraction | ✅ Default + custom fields, G4 factual consistency check |
+| Collection pipeline | ✅ RSS, API (PubMed), Web (trafilatura+Playwright), Webhook (HMAC), Email (IMAP), PDF (PyMuPDF), crontab installer |
+| LLM extraction | ✅ Default + custom fields, G4 factual consistency check, token usage tracking |
+| Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ G1-G5 all advisory (never discard content) |
 | KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning (auto-commit + SHA) |
+| KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 + sqlite-vec vector), faceted (7 filters) |
 | REST API | ✅ FastAPI CRUD (port 8741) |
 | Web UI Dashboard | ✅ Bootstrap 5 |
 | CEFR classification | ✅ LLM-based EN/ZH/JA |
 | Knowledge graph | ✅ Entity extraction + relation discovery + export (JSON/GraphML/CSV) |
-| MCP server | ✅ 65 MCP tools across 15 categories |
+| Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
+| Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
+| Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
+| Agent alerting | ✅ Polling-based source health monitoring documented (agent-alerting.md) |
+| MCP server | ✅ 72 tools across 16 categories |
 | Demo source curation | ✅ 7 curated sources across 3 domains |
 | Translation | ✅ LLM-based via localize_content MCP tool |
 | Output generation | ✅ Digest, report (Markdown/JSON/PDF), tutorial, presentation, export |
 | Tests | ✅ 1134 tests (unit, integration, snapshot regression, 105 v1.2 integration tests) |
 | CI/CD | ⏸ Manual — Makefile targets, pre-commit hooks configured |
 
-### What v1.2 ships (v1.1 + additions):
+### What v1.4 ships (v1.3 + additions):
 
 ```bash
 # --- Setup ---
 autoinfo init --name "MyProject"         # Named project initialization
 autoinfo init --demo medical-research    # Interactive wizard with domain selection
 autoinfo doctor                           # Full health check (LLM, sources, disk, DB)
+
+# --- Domain Management ---
+autoinfo domain add --name my-domain     # Create a new custom domain
+autoinfo domain list                      # List all configured domains
+autoinfo domain show --name my-domain    # Show full domain configuration
+autoinfo domain remove --name my-domain  # Remove a domain (keeps data)
+autoinfo domain activate --name my-domain # Activate a domain
+autoinfo domain deactivate --name my-domain # Deactivate a domain
 
 # --- Collection ---
 autoinfo collect --all                    # Collect from ALL active domains at once
@@ -835,7 +872,7 @@ autoinfo kb list-tiers                    # Browse pipeline stages
 
 # --- Output ---
 autoinfo output digest --domain medical --period week
-autoinfo output report --format pdf       # PDF/JSON/Markdown report
+autoinfo output report --format html      # HTML/PDF/JSON/Markdown report
 autoinfo output tutorial --collection "IVF Protocols" --audience clinician
 autoinfo knowledge graph --domain medical  # Export knowledge graph
 autoinfo output export --domain medical --format json
@@ -848,13 +885,17 @@ autoinfo cefr batch --domain language     # Batch classify domain entries
 autoinfo email config --smtp-server smtp.gmail.com --port 587
 autoinfo email send --to user@example.com --subject "Digest" --body "..."
 
+# --- Keywords ---
+autoinfo keywords add --domain medical --keyword CRISPR # Add domain keyword
+autoinfo keywords list --domain medical   # List keywords
+
 # --- REST API ---
 # curl http://127.0.0.1:8741/health
 # curl http://127.0.0.1:8741/api/v1/entries
 # curl http://127.0.0.1:8741/dashboard  # Web UI
 
 # --- MCP (Agent Interface) ---
-# Agent connects via stdio MCP, discovers 65 tools automatically
+# Agent connects via stdio MCP, discovers 72 tools automatically
 # All capabilities available as structured tool calls
 ```
 
@@ -891,10 +932,11 @@ For each expectation in the catalog:
 | **v0.3 — Multi-source** | API handler → web handler → AI commercial demo domain → cross-source dedup | F07 (AI commercial), F08, F13 (API+web), F18 |
 | **v0.4 — Q&A & Graph** | Interactive Q&A → knowledge graph → cross-ref linking | F17, F19, F22 |
 | **v0.5 — Output & Schedule** | Digest/report generation → scheduled collection → export formats | F14, F24, F26, F27 |
-| **v0.6 — MCP Mature** | Full MCP tool suite → all domains → scheduled distribution → tutorial generation | F09, F10, F25, F29-F32 |
-| **v1.0 — Product** | All 32 expectations met. First paying users onboarded. Language learning demo (L1). | F07 (language-learning), F10 (learning-specific), all gates |
+| **v0.6 — MCP Mature** | Full MCP tool suite → all domains → scheduled distribution → tutorial generation | F09, F10, F25, F29-F31 |
+| **v1.0 — Product** | 32 expectations met. First paying users onboarded. Language learning demo (L1). | F07 (language-learning), F10 (learning-specific), all gates |
 | **v1.1 — Gap-Fill** | G5 translation gate, KB promote/workflow, 3 new source handlers (webhook/email/PDF), KG export, 7 curated demo sources, 6 new MCP tools, interactive init, langdetect, collect --all | G5, F20 workflow, F13 (webhook/email/PDF), F22 (KG export), F07 (7 curated sources), F12 (progress MCP), F09 (keyword groups), F10 (langdetect) |
-| **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP), F14 (crontab), F20 (keywords), F32 (schema versioning) |
+| **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP), F14 (crontab), F20 (keywords), F31 (schema versioning) |
+| **v1.3.1 — Expectations Update** | F10b (User-Defined Domains & Consulting Platforms) added, F10 localization QA enhanced (back-translation, multi-round refinement, terminology guard, composite score, agent skill). Code implementation pending for MCP tools, CLI, and QA workflow. | F10b (new), F10/G5 (enhanced) |
 
 ### 10.3 Explicit "No" List (v1.2 Scope)
 
@@ -939,26 +981,26 @@ This is the standard. Everything else — tests, architecture, source curation �
 
 ---
 
-## 11. Current Status (v1.2 — 2026-07-21)
+## 11. Current Status (v1.4 — 2026-07-23)
 
 | Component | Status |
 |-----------|--------|
 | Framework design | ✅ Documented (this file) |
-| Expectation catalog | ✅ 32 expectations across 8 phases — all met |
-| Quality gates | ✅ G1-G5 implemented and advisory |
+| Expectation catalog | ✅ 32 expectations across 8 phases — 31 original + F10b (User-Defined Domains) |
+| Quality gates | ✅ G1-G5 implemented and advisory; translation QA pipeline with 5 lite gates |
 | Demo domains | ✅ 3 defined with curated sources (7 total) |
 | Market positioning | ✅ Researched — whitespace confirmed |
 | Target user persona | ✅ Defined — information-intensive professionals |
 | Pricing reference | ✅ Drafted for v1 individual tier |
-| Explicit "No" list | ✅ Updated for v1.2 — 7 deferred items tracked |
-| Milestone mapping | ✅ v0.1→v1.2 all met, v2.0+ planned |
+| Explicit "No" list | ✅ Updated for v1.4 — 2 deferred items tracked |
+| Milestone mapping | ✅ v0.1→v1.4 all met, v2.0+ planned |
 | True Test | ✅ 10-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
 | Tests | ✅ 1134 tests across 35+ test files |
-| MCP tools | ✅ 65 tool areas across 15 categories (including CEFR, Email, Keywords, Projects) |
+| MCP tools | ✅ 72 tool areas across 16 categories (including Domain, Webhooks, Export/Import, Custom Extraction) |
 | Technical decisions | ✅ 13 categories documented, all implemented |
-| CLI commands | ✅ 14 command groups with `--json` global flag |
+| CLI commands | ✅ 17 command groups with `--json` global flag (add `domain`, `clean`, `keywords` groups) |
 
 ---
 
@@ -1256,7 +1298,7 @@ Unrecoverable:
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.3 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1134 tests, and 65 MCP tools later — **all 32 expectations are met, all 10 True Test criteria pass**.
+The project started from zero (v0.1, July 18 2026) and reached v1.3 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1134 tests, and 65 MCP tools later — **all 31 original expectations are met plus F10b added (32 total), all 10 True Test criteria pass**. Localization QA (F10 enhancement) and User-Defined Domains (F10b) are newly added expectations with implementation in progress.
 
 v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
 
@@ -1273,20 +1315,37 @@ The project is done when the founder can say: **"Yes, this does what I wanted."*
 
 The following items are consciously deferred from v1.2. They represent the remaining delta between the founder's full vision and current implementation. v1.2 closed 10+ gaps from the v1.1 deferred list — notably hybrid vector search, REST API, Web UI dashboard, Obsidian wiki links, CEFR classification, PDF export, SMTP email, schema versioning, keywords management, and crontab installer.
 
-### 🔴 Short-Term Candidates (v1.3)
+> **Removed from spec:** The following items were evaluated and consciously **removed** from the expectation catalog (not deferred — permanently removed, add back only if real user demand arises):
+> - **F31 — Config Override System:** YAML-based config layering (`~/.autoinfo/overrides/`). Evaluated as over-engineering. No user type (director/agent/end-user) benefits from temporary config overrides vs. editing the single config file. Schema versioning + migration tools handle upgrade safety.
+> - **Multi-user auth / teams:** user_id fields remain as foundation in the DB schema, but no auth implementation is planned. Agents connect via MCP (no login needed). Human collaboration (shared KB spaces) is a v2+ concern with no current demand signal.
+
+### 🔴 Short-Term Candidates (v1.4)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
-| **Config override system** | F31 — Domain & Config Isolation | Medium | `~/.autoinfo/overrides/` YAML layering. Currently single config file. |
-| **Multi-user auth (login, API keys)** | §10.3 Explicit "No" | High | user_id fields in place; full auth (JWT, API keys) needed for production. |
+| **`add_domain` MCP tool** | F10b — User-Defined Domains | Low | Create `add_domain(name, description?)` — idempotent, generates empty domain skeleton. Sources/topics added separately via existing tools. |
+| **`remove_domain` MCP tool** | F10b — User-Defined Domains | Low | `remove_domain(name)` — removes config only, preserves collected data. |
+| **CLI `autoinfo domain` subcommand** | F10b — User-Defined Domains | Medium | `autoinfo domain add\|list\|show\|remove\|activate\|deactivate`. |
+| **`list_available_platforms()` MCP tool** | F10b — User-Defined Domains | Low | Returns source type enums (RSS, API, Web, Webhook, Email, PDF) with descriptions. |
+| **Output: HTML format support** | F24/F25 — Output Generation | Low | Add `format="html"` option to `generate_digest`, `generate_report`. Jinja2→HTML templates. |
+| **Output: HTML presentation** | F25 — Presentation Generation | Low | Agent generates standalone Reveal.js HTML. Optional mkslides integration. |
+| **Output: `custom_instructions` param** | F24/F25 — Output Generation | Low | Add optional `custom_instructions` string field to all 4 generate_* MCP tools. |
+| **Translation QA — 5 quality gates** | F10 / G5 — Localization QA | Medium | Level 1 Lite gates: inline tag check, terminology compliance, length ratio bounds, source copy detection, LLM accuracy judge. Deterministic checks (no LLM needed for gates 1-4). |
+| **Translation QA — back-translation + judge** | F10 / G5 — Localization QA | Medium | LLM-based back-translation (different model from forward pass) + LLM judge scoring. Store per-round diagnostics. |
+| **Translation QA — multi-round refinement** | F10 / G5 — Localization QA | Medium | Up to 2 refinement rounds with escalating context. After 2 rounds, use best attempt. |
+| **Translation QA — `_terminology.yaml`** | F10 / G5 — Localization QA | Low | Separate terminology file per domain. Fields: `do_not_translate`, `preferred_translation`, `variants`, `confidence`. Injected into translation prompt. |
+| **Translation QA — composite quality score** | F10 / G5 — Localization QA | Low | Server-side calculation: faithfulness(40%) + terminology(30%) + style(20%) + readability(10%) → 0-100. |
+| **Translation QA — agent skill** | F10 / G5 — Localization QA | Medium | Create `translator-qa-skill` SKILL.md for agent-side orchestration of QA workflow. |
+| **`export_kb` MCP tool** | F26 — Export & Interoperability | Low | Unified MCP tool: `export_kb(domain, format, scope, output_path?)`. Scope: entry/collection/domain. Formats inherit from CLI (Markdown, JSON, SQLite, CSV, PDF, GraphML). |
+| **KB import functionality** | F26 — Export & Interoperability | Medium | Import from Markdown+YAML, JSON, CSV, OPML → 01-Raw entries only (Hermes model compliance). |
+| **Scheduled email digest delivery** | F27 — Scheduled Distribution | Medium | Extend existing cron system: `add_schedule(type="digest", domain, expression, format="html", recipients)`. Cron job chains `generate_digest` + `send_email`. |
+| **Webhook push for new items** | F27 — Scheduled Distribution | Medium | Per-item webhook event on collection completion. Configurable webhook URL(s) per domain. Payload: full item JSON. |
+| **Agent proactive alerting** | F29 — Source Health Monitoring | Low | Agent polls `get_source_health()` before collection or on schedule. Flags 3+ consecutive failures to user. No server-push needed. |
 
 ### 🟡 Medium-Term Candidates (v1.4+)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
-| **Scheduled email digest delivery** | F27 — Scheduled Distribution | Medium | SMTP sender done; auto-scheduled delivery via cron + digest generation TBD. |
-| **Webhook push for new items** | F27 — Scheduled Distribution | Low | Webhook push on collection completion for external integrations. |
-| **Agent proactive alerting** | F29 — Source Health Monitoring | Medium | Agent proactively reports 3 consecutive source failures. |
 
 ### 🔵 Longer-Term (v2.0+)
 
@@ -1297,16 +1356,16 @@ The following items are consciously deferred from v1.2. They represent the remai
 | **Citation management (BibTeX)** | §10.3 Explicit "No" | Medium | Post-v2 if medical community demands it. |
 | **Image/video processing** | §10.3 Explicit "No" | High | Text-only. KB is textual knowledge, not media. |
 
-### v1.3 Success Metrics
+### v1.3.1 Success Metrics
 
 | Metric | Value |
 |--------|-------|
-| Expectations met | 32/32 (all) |
+| Expectations met | 32 total (31 original + F10b added) |
 | Value propositions fulfilled | 4/4 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅) |
 | True Test passing | 10/10 |
-| MCP tools | 65 |
+| MCP tools | 65 (pending: `add_domain`, `remove_domain`, `list_available_platforms`, `export_kb`, `import_kb`) |
 | Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
-| Quality gates | 5 (G1-G5, advisory) + quality_flags persisted in KB model/frontmatter |
+| Quality gates | 5 (G1-G5, advisory) + quality_flags + localization QA enhancements |
 | Resilience enhancements | LLM `None` content crash fix, `extraction_failed` detection, KB filesystem fallback |
 | Tests | 1134 |
 | Demo domains | 3 with 7 curated sources |

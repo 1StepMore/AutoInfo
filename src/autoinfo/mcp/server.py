@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 65,
+            "tools_count": 68,
     }
 
 
@@ -431,6 +431,23 @@ def _handle_list_domains() -> dict[str, Any]:
     return {"domains": domains, "count": len(domains)}
 
 
+# -- Platform metadata (static) -------------------------------------------
+
+PLATFORMS = [
+    {"type": "rss", "name": "RSS/Atom Feed", "description": "Fetch content from RSS or Atom feeds", "output_formats": ["xml", "json"]},
+    {"type": "api", "name": "REST API", "description": "Call REST API endpoints that return JSON data", "output_formats": ["json"]},
+    {"type": "web", "name": "Web Page", "description": "Extract content from web pages using trafilatura/readability", "output_formats": ["html", "markdown"]},
+    {"type": "webhook", "name": "Webhook Receiver", "description": "Receive pushed content via HTTP POST webhooks", "output_formats": ["json"]},
+    {"type": "email", "name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
+    {"type": "pdf", "name": "PDF Document", "description": "Extract text content from PDF documents", "output_formats": ["text", "markdown"]},
+]
+
+
+def _handle_list_available_platforms() -> dict[str, Any]:
+    """List all supported source platform types with descriptions."""
+    return {"platforms": PLATFORMS}
+
+
 def _handle_activate_domain(name: str) -> dict[str, Any]:
     """Activate a domain (set domain.active = True)."""
     try:
@@ -493,6 +510,26 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
     }
 
 
+def _handle_remove_domain(name: str) -> dict[str, Any]:
+    """Remove a domain configuration. Preserves all collected data on disk."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, name)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{name}' is not configured",
+            "actionable": True,
+        }
+
+    config.domains.remove(domain_cfg)
+    _save_config(config)
+    return {"removed": True, "domain": name}
+
+
 def _handle_get_domain_config(name: str) -> dict[str, Any]:
     """Return full domain config including sources, topics, extract_fields."""
     try:
@@ -536,6 +573,105 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
         "source_count": len(sources),
         "topics": topics,
         "topic_count": len(topics),
+    }
+
+
+def _handle_set_domain_webhooks(
+    domain: str,
+    webhook_urls: list[str],
+) -> dict[str, Any]:
+    """Set webhook URLs for a domain. Replaces any existing URLs."""
+    # -- Validate URLs ----------------------------------------------------
+    invalid: list[str] = []
+    for url in webhook_urls:
+        if not url.startswith(("http://", "https://")):
+            invalid.append(url)
+    if invalid:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": (
+                f"Invalid webhook URLs (must start with http:// or https://): "
+                f"{invalid}"
+            ),
+            "actionable": True,
+        }
+
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    domain_cfg.webhook_urls = list(webhook_urls)
+    _save_config(config)
+
+    return {
+        "domain": domain,
+        "webhook_urls": domain_cfg.webhook_urls,
+        "updated": True,
+    }
+
+
+def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
+    """Return the configured webhook URLs for a domain."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    return {
+        "domain": domain,
+        "webhook_urls": list(getattr(domain_cfg, "webhook_urls", [])),
+    }
+
+
+def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
+    """Create a new domain configuration (idempotent — returns existing config if domain already exists)."""
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, name)
+    if domain_cfg is not None:
+        return {
+            "domain": name,
+            "name": name,
+            "description": domain_cfg.description,
+            "sources": domain_cfg.sources,
+            "topics": domain_cfg.topics,
+            "active": domain_cfg.active,
+            "created": False,
+        }
+
+    from autoinfo.config import DomainConfig
+
+    new_domain = DomainConfig(name=name, description=description or "", active=True)
+    config.domains.append(new_domain)
+    _save_config(config)
+    return {
+        "domain": name,
+        "name": name,
+        "description": description or "",
+        "sources": [],
+        "topics": [],
+        "active": True,
+        "created": True,
     }
 
 
@@ -1558,6 +1694,7 @@ def _handle_generate_digest(
     domain: str,
     period: str = "weekly",
     format: str = "markdown",
+    custom_instructions: str = "",
 ) -> dict[str, Any]:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -1566,7 +1703,7 @@ def _handle_generate_digest(
     from autoinfo.output import generate_digest as _generate_digest
 
     try:
-        result = _generate_digest(domain=domain, period=period, format=format)
+        result = _generate_digest(domain=domain, period=period, format=format, custom_instructions=custom_instructions)
         if format == "json":
             # Parse JSON string back to dict for structured MCP response
             import json as _json
@@ -1588,6 +1725,7 @@ def _handle_generate_report(
     domain: str,
     format: str = "markdown",
     period: str = "month",
+    custom_instructions: str = "",
 ) -> dict[str, Any]:
     """Generate a structured report for *domain* over the given *period*.
 
@@ -1596,7 +1734,7 @@ def _handle_generate_report(
     from autoinfo.output import generate_report as _generate_report
 
     try:
-        result = _generate_report(domain=domain, format=format, period=period)
+        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions)
         return {
             "success": True,
             "domain": domain,
@@ -1619,6 +1757,7 @@ def _handle_generate_tutorial(
     domain: str,
     topic: str | None = None,
     format: str = "markdown",
+    custom_instructions: str = "",
 ) -> dict[str, Any]:
     """Generate a structured tutorial for *domain*.
 
@@ -1627,7 +1766,7 @@ def _handle_generate_tutorial(
     from autoinfo.output import generate_tutorial as _generate_tutorial
 
     try:
-        result = _generate_tutorial(domain=domain, format=format)
+        result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions)
         return {"success": True, "format": format, "domain": domain, "topic": topic, "content": result}
     except ValueError as exc:
         return {
@@ -1644,6 +1783,8 @@ def _handle_generate_presentation(
     domain: str,
     topic: str | None = None,
     slides: int = 10,
+    format: str = "markdown",
+    custom_instructions: str = "",
 ) -> dict[str, Any]:
     """Generate a slide-based presentation for *topic* within *domain*.
 
@@ -1653,8 +1794,8 @@ def _handle_generate_presentation(
 
     try:
         topic_str = topic or ""
-        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides)
-        return {"success": True, "domain": domain, "topic": topic, "slides": slides, "content": result}
+        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions)
+        return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": result}
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -1747,6 +1888,116 @@ def _handle_localize_content(**kwargs: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Export / Import (2)
+# ---------------------------------------------------------------------------
+
+
+def _handle_export_kb(
+    domain: str,
+    format: str = "markdown",
+    scope: str = "domain",
+    entry_ids: list[str] | None = None,
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """Export knowledge base entries to specified format.
+
+    Dispatches to :func:`autoinfo.output.export_kb`.
+
+    Parameters
+    ----------
+    domain:
+        Domain name (e.g. medical-research).
+    format:
+        Output format: ``"markdown"``, ``"json"``, ``"sqlite"``, ``"csv"``,
+        ``"pdf"``, or ``"graphml"``.  Defaults to ``"markdown"``.
+    scope:
+        Export scope: ``"domain"`` (all entries in domain), ``"entry"``
+        (specific entries by ID), or ``"collection"`` (collection-scoped).
+        Defaults to ``"domain"``.
+    entry_ids:
+        Specific entry IDs to export (used when scope == ``"entry"``).
+    output_path:
+        Optional explicit output path.  When omitted, the file is written
+        to the ``exports/`` directory with an auto-generated name.
+
+    Returns
+    -------
+    dict
+        ``{format, path, entries_count, file_size_bytes, domain, success}``.
+    """
+    from autoinfo.output import export_kb as _export_kb
+
+    try:
+        collection_id: str | None = None
+        if scope == "entry" and entry_ids:
+            collection_id = entry_ids[0]
+        elif scope == "collection":
+            collection_id = "__all__"
+
+        result = _export_kb(domain=domain, format=format, collection_id=collection_id)
+
+        file_path = result.get("path", "")
+        if file_path and os.path.isfile(file_path):
+            result["file_size_bytes"] = os.path.getsize(file_path)
+        else:
+            result["file_size_bytes"] = 0
+
+        return result
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Export KB failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+def _handle_import_kb(
+    domain: str,
+    format: str,
+    data: str,
+) -> dict[str, Any]:
+    """Import entries or source suggestions into the KB.
+
+    Dispatches to the appropriate handler in :mod:`autoinfo.importer`
+    based on *format*.
+
+    Parameters
+    ----------
+    domain:
+        Target domain name (e.g. medical-research).
+    format:
+        Import format: ``"markdown"``, ``"json"``, ``"csv"``, or ``"opml"``.
+    data:
+        Raw content string to import (YAML+Markdown, JSON, CSV, or OPML XML).
+
+    Returns
+    -------
+    dict
+        For ``markdown`` / ``json`` / ``csv``::
+            ``{domain, format, entries_imported, entries_failed, errors}``
+        For ``opml``::
+            ``{type: "source_list", suggestions, action_required, domain, format}``
+    """
+    from autoinfo.importer import import_kb as _import_kb
+
+    try:
+        result = _import_kb(domain=domain, format=format, data=data)
+        return result
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("Import KB failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
 # Schedule management tools
 # ---------------------------------------------------------------------------
 
@@ -1776,9 +2027,42 @@ def _handle_add_schedule(
     name: str,
     expression: str,
     domain: str,
+    schedule_type: str = "collection",
+    recipients: list[str] | None = None,
+    output_format: str = "html",
 ) -> dict[str, Any]:
-    """Add a new collection schedule."""
+    """Add a new collection or digest schedule."""
     try:
+        if schedule_type not in ("collection", "digest"):
+            return {
+                "error_code": ErrorCode.VALIDATION_ERROR.value,
+                "message": f"Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
+                "actionable": True,
+            }
+
+        if schedule_type == "digest":
+            if not recipients:
+                return {
+                    "error_code": ErrorCode.VALIDATION_ERROR.value,
+                    "message": "Recipients are required for digest-type schedules.",
+                    "actionable": True,
+                }
+            try:
+                config = _load_config()
+            except Exception as exc:
+                return _error_dict(exc)
+            if not config.email.enabled:
+                return {
+                    "error_code": ErrorCode.EMAIL_NOT_ENABLED.value,
+                    "message": (
+                        "Email delivery is not enabled. Digest schedules require "
+                        "email to be configured. Set 'email.enabled: true' in "
+                        ".autoinfo/config.yaml and configure email.smtp_host, "
+                        "email.from_addr, and email.to_addrs."
+                    ),
+                    "actionable": True,
+                }
+
         from croniter import croniter
 
         if not croniter.is_valid(expression):
@@ -1802,9 +2086,12 @@ def _handle_add_schedule(
             name=name,
             expression=expression,
             domain=domain,
+            type=schedule_type,
             enabled=True,
             last_run=None,
             created_at=_now_iso(),
+            recipients=recipients or [],
+            format=output_format,
         )
         schedules[name] = new_schedule
         save_schedules(schedules)
@@ -1814,9 +2101,12 @@ def _handle_add_schedule(
                 "name": name,
                 "expression": expression,
                 "domain": domain,
+                "type": schedule_type,
                 "enabled": True,
                 "last_run": None,
                 "created_at": new_schedule.created_at,
+                "recipients": recipients or [],
+                "format": output_format,
             },
         }
     except Exception as exc:
@@ -2451,6 +2741,11 @@ async def list_tools() -> list[Tool]:
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
+            name="list_available_platforms",
+            description="List all supported source platform types with descriptions",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
             name="get_domain_schema",
             description="Return the extraction schema and structure for a domain",
             inputSchema={
@@ -2510,6 +2805,38 @@ async def list_tools() -> list[Tool]:
                     "name": {
                         "type": "string",
                         "description": "Domain name to deactivate",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="add_domain",
+            description="Create a new domain configuration (idempotent — returns existing config if domain already exists)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Domain name (e.g. my-custom-domain)",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description of the domain",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="remove_domain",
+            description="Remove a domain configuration. Preserves all collected data on disk.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Domain name to remove",
                     },
                 },
                 "required": ["name"],
@@ -3342,7 +3669,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Generate a digest of KB entries for a domain over a given "
                 "period (daily, weekly, monthly).  Returns markdown by "
-                "default; also supports html and json."
+                "default; also supports html and json.  "
+                "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
                 "type": "object",
@@ -3363,6 +3691,11 @@ async def list_tools() -> list[Tool]:
                         "default": "markdown",
                         "enum": ["markdown", "html", "json"],
                     },
+                    "custom_instructions": {
+                        "type": "string",
+                        "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
                 },
                 "required": ["domain"],
             },
@@ -3372,7 +3705,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Generate a structured report for a domain over a given "
                 "period (day, week, month).  Returns markdown by default; "
-                "also supports json."
+                "also supports json.  "
+                "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
                 "type": "object",
@@ -3393,13 +3727,21 @@ async def list_tools() -> list[Tool]:
                         "default": "month",
                         "enum": ["day", "week", "month"],
                     },
+                    "custom_instructions": {
+                        "type": "string",
+                        "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
                 },
                 "required": ["domain"],
             },
         ),
         Tool(
             name="generate_tutorial",
-            description="Generate a structured tutorial for a domain",
+            description=(
+                "Generate a structured tutorial for a domain. "
+                "Accepts optional custom_instructions to tailor output."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3417,13 +3759,21 @@ async def list_tools() -> list[Tool]:
                         "default": "markdown",
                         "enum": ["markdown", "html", "json"],
                     },
+                    "custom_instructions": {
+                        "type": "string",
+                        "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
                 },
                 "required": ["domain"],
             },
         ),
         Tool(
             name="generate_presentation",
-            description="Generate a slide-based presentation for a topic within a domain",
+            description=(
+                "Generate a slide-based presentation for a topic within a domain. "
+                "Accepts optional custom_instructions to tailor output."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3440,6 +3790,21 @@ async def list_tools() -> list[Tool]:
                         "description": "Desired number of slides (3-30)",
                         "default": 10,
                     },
+                    "format": {
+                        "type": "string",
+                        "description": (
+                            "Output format: 'markdown' (default, Reveal.js-flavoured "
+                            "Markdown), 'html' (standalone Reveal.js HTML5 via CDN), "
+                            "or 'mkslides' (mkslides build with HTML fallback)."
+                        ),
+                        "default": "markdown",
+                        "enum": ["markdown", "html", "mkslides"],
+                    },
+                    "custom_instructions": {
+                        "type": "string",
+                        "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
                 },
                 "required": ["domain", "topic"],
             },
@@ -3452,7 +3817,8 @@ async def list_tools() -> list[Tool]:
                 "entry (stores the translation as a new file), or (2) pass "
                 "content + source_lang for direct translation without storage. "
                 "Preserves medical terminology, drug names, procedures, "
-                "statistics, and citations."
+                "statistics, and citations. Optionally accepts a domain "
+                "name to inject terminology guardrails."
             ),
             inputSchema={
                 "type": "object",
@@ -3485,8 +3851,92 @@ async def list_tools() -> list[Tool]:
                             "Target language code (e.g. zh, fr, ja)."
                         ),
                     },
+                    "domain": {
+                        "type": "string",
+                        "description": (
+                            "Domain name (e.g. medical-research). When "
+                            "provided, loads domain-specific terminology "
+                            "guardrails from knowledge/<domain>/_terminology.yaml. "
+                            "In content_id mode, inferred from KB entry "
+                            "if not specified."
+                        ),
+                    },
                 },
                 "required": ["target_lang"],
+            },
+        ),
+        # -- Export / Import (2) -----------------------------------------------
+        Tool(
+            name="export_kb",
+            description=(
+                "Export knowledge base entries to specified format. "
+                "Supports markdown, json, sqlite, csv, pdf, graphml formats."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml",
+                        "default": "markdown",
+                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml"],
+                    },
+                    "scope": {
+                        "type": "string",
+                        "description": "Export scope: domain (all entries), entry (specific IDs), collection (collection-scoped)",
+                        "default": "domain",
+                        "enum": ["entry", "collection", "domain"],
+                    },
+                    "entry_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific entry IDs to export (used when scope is 'entry')",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "Optional explicit output path. Auto-generated when omitted.",
+                    },
+                },
+                "required": ["domain", "format"],
+            },
+        ),
+        Tool(
+            name="import_kb",
+            description=(
+                "Import entries or source suggestions into the KB. "
+                "Supports 4 formats: markdown (YAML+Markdown frontmatter), "
+                "json, csv, and opml. "
+                "All entry imports land in 01-Raw (Hermes model). "
+                "OPML returns source suggestions only — does NOT auto-add sources."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Target domain name (e.g. medical-research)",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Import format: markdown (YAML+Markdown), json, csv, opml",
+                        "enum": ["markdown", "json", "csv", "opml"],
+                    },
+                    "data": {
+                        "type": "string",
+                        "description": (
+                            "Raw content string to import. "
+                            "For markdown: YAML frontmatter (--- delimited) + Markdown body. "
+                            "For json: JSON array or single object with title, source_url, content. "
+                            "For csv: CSV with header row (title, source_url, content required). "
+                            "For opml: OPML XML with <outline> elements."
+                        ),
+                    },
+                },
+                "required": ["domain", "format", "data"],
             },
         ),
         # -- Email (1) --------------------------------------------------------
@@ -3569,7 +4019,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="add_schedule",
-            description="Add a new collection schedule with a cron expression",
+            description="Add a new collection or digest schedule with a cron expression",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3585,7 +4035,22 @@ async def list_tools() -> list[Tool]:
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Domain to collect on this schedule",
+                        "description": "Domain to collect or generate digest for",
+                    },
+                    "schedule_type": {
+                        "type": "string",
+                        "description": "Schedule type: collection or digest",
+                        "default": "collection",
+                    },
+                    "recipients": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Email recipients (required for digest type)",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "description": "Digest format: html or markdown",
+                        "default": "html",
                     },
                 },
                 "required": ["name", "expression", "domain"],
@@ -3864,6 +4329,47 @@ async def list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        # -- Webhooks (2) ----------------------------------------------------
+        Tool(
+            name="set_domain_webhooks",
+            description=(
+                "Set webhook URLs for a domain. All newly collected items "
+                "will be POSTed to these URLs as JSON. Replaces any existing "
+                "URLs. Fire-and-forget with retry (3 attempts)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "webhook_urls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "List of webhook URLs (must start with "
+                            "http:// or https://)"
+                        ),
+                    },
+                },
+                "required": ["domain", "webhook_urls"],
+            },
+        ),
+        Tool(
+            name="get_domain_webhooks",
+            description="Return the configured webhook URLs for a domain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
         # -- Init (1) --------------------------------------------------------
         Tool(
             name="init_project",
@@ -3928,6 +4434,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # -- Discovery (7) ------------------------------------------------
         elif name == "list_domains":
             result = _handle_list_domains()
+        elif name == "list_available_platforms":
+            result = _handle_list_available_platforms()
         elif name == "get_domain_schema":
             result = _handle_get_domain_schema(**arguments)
         elif name == "list_available_models":
@@ -3938,6 +4446,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_activate_domain(**arguments)
         elif name == "deactivate_domain":
             result = _handle_deactivate_domain(**arguments)
+        elif name == "add_domain":
+            result = _handle_add_domain(**arguments)
+        elif name == "remove_domain":
+            result = _handle_remove_domain(**arguments)
         elif name == "get_domain_config":
             result = _handle_get_domain_config(**arguments)
 
@@ -4038,6 +4550,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "localize_content":
             result = _handle_localize_content(**arguments)
 
+        # -- Export / Import (2) -----------------------------------------------
+        elif name == "export_kb":
+            result = _handle_export_kb(**arguments)
+        elif name == "import_kb":
+            result = _handle_import_kb(**arguments)
+
         # -- Email (1) --------------------------------------------------------
         elif name == "send_email_digest":
             result = _handle_send_email_digest(**arguments)
@@ -4068,8 +4586,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "rate_item":
             result = _handle_rate_item(**arguments)
 
+        # -- Webhooks (2) -------------------------------------------------
+        elif name == "set_domain_webhooks":
+            result = _handle_set_domain_webhooks(**arguments)
+        elif name == "get_domain_webhooks":
+            result = _handle_get_domain_webhooks(**arguments)
+
         # -- Init / Project / Batch / Config (7) --------------------------
-        elif name == "init_project":
             result = _handle_init_project(**arguments)
         elif name == "list_projects":
             result = _handle_list_projects()

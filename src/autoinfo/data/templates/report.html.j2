@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7785;
+    --accent: #2c6cb0;
+    --accent-soft: #eaf1fb;
+    --border: #e3e7ec;
+    --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --radius: 8px;
+    --code-bg: #f3f4f6;
+    --code-border: #dfe3e8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.7;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  .title-page {
+    background: linear-gradient(135deg, var(--accent) 0%, #1e4e8c 100%);
+    color: #fff;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 3rem 2.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+  .title-page h1 {
+    margin: 0 0 1rem;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .title-page .meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1.75rem;
+    font-size: 0.95rem;
+    opacity: 0.92;
+  }
+  .title-page .meta span { display: inline-flex; align-items: center; }
+  .title-page .meta strong { font-weight: 600; margin-right: 0.4rem; }
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 2rem;
+  }
+  .toc h2 {
+    margin: 0 0 0.85rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent-soft);
+  }
+  .toc ol {
+    margin: 0;
+    padding-left: 1.5rem;
+  }
+  .toc ol li { margin-bottom: 0.35rem; }
+  .toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .toc a:hover { text-decoration: underline; }
+  section.report-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.75rem 1.75rem;
+    margin-bottom: 1.5rem;
+    scroll-margin-top: 1rem;
+  }
+  section.report-section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent-soft);
+  }
+  section.report-section h3 {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  section.report-section p {
+    margin: 0.5rem 0;
+  }
+  section.report-section .section-content {
+    font-size: 0.96rem;
+  }
+  section.report-section .section-content ul,
+  section.report-section .section-content ol {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    margin: 0.75rem 0;
+  }
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  p code, li code, td code {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.86em;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+  }
+  .references {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.75rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .references h2 {
+    margin: 0 0 1rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent-soft);
+  }
+  .references ol {
+    margin: 0;
+    padding-left: 1.5rem;
+    font-size: 0.92rem;
+  }
+  .references ol li {
+    margin-bottom: 0.5rem;
+    word-break: break-word;
+  }
+  .references a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .references a:hover { text-decoration: underline; }
+  .empty-note {
+    color: var(--muted);
+    font-style: italic;
+  }
+  footer.report-footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  footer.report-footer a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 600px) {
+    .container { padding: 1rem 0.75rem 3rem; }
+    .title-page { padding: 2rem 1.25rem; }
+    .title-page h1 { font-size: 1.5rem; }
+    section.report-section, .references, .toc { padding: 1.1rem 1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="title-page">
+    <h1>{{ title }}</h1>
+    <div class="meta">
+      <span><strong>Domain:</strong> {{ domain_name }}</span>
+      <span><strong>Period:</strong> {{ period }}</span>
+      <span><strong>Generated:</strong> {{ generated_at }}</span>
+    </div>
+  </div>
+
+  {% if sections %}
+  <nav class="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      {% for section in sections %}
+      <li><a href="#{{ section.id }}">{{ section.heading }}</a></li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% endif %}
+
+  {% if executive_summary %}
+  <section class="report-section" id="executive-summary">
+    <h2>Executive Summary</h2>
+    <div class="section-content">
+      {{ executive_summary_html|safe if executive_summary_html else executive_summary }}
+    </div>
+  </section>
+  {% endif %}
+
+  {% for section in sections %}
+  <section class="report-section" id="{{ section.id }}">
+    <h2>{{ section.heading }}</h2>
+    <div class="section-content">
+      {{ section.content_html|safe }}
+    </div>
+  </section>
+  {% else %}
+  <section class="report-section">
+    <p class="empty-note">No sections in this report.</p>
+  </section>
+  {% endfor %}
+
+  {% if references %}
+  <section class="references" id="references">
+    <h2>References</h2>
+    <ol>
+      {% for ref in references %}
+      <li>
+        {{ ref.text }}
+        {% if ref.url %}
+        &mdash; <a href="{{ ref.url }}">{{ ref.url }}</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  <footer class="report-footer">
+    Generated by <a href="#">AutoInfo</a> &middot; {{ domain_name }} &middot; {{ generated_at }}
+  </footer>
+</div>
+</body>
+</html>

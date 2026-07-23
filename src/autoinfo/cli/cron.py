@@ -15,7 +15,7 @@ import json
 import logging
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -39,9 +39,12 @@ class Schedule:
     name: str = ""
     expression: str = ""
     domain: str = ""
+    type: str = "collection"  # "collection" or "digest"
     enabled: bool = True
     last_run: str | None = None  # ISO-8601 datetime, or None if never run
     created_at: str = ""
+    recipients: list[str] = field(default_factory=list)  # email recipients (digest type)
+    format: str = "html"  # digest output format: "html" or "markdown"
 
 
 def _now_iso() -> str:
@@ -87,9 +90,12 @@ def load_schedules() -> dict[str, Schedule]:
             name=name,
             expression=s.get("expression", ""),
             domain=s.get("domain", ""),
+            type=s.get("type", "collection"),
             enabled=s.get("enabled", True),
             last_run=s.get("last_run"),
             created_at=s.get("created_at", ""),
+            recipients=s.get("recipients", []),
+            format=s.get("format", "html"),
         )
     return schedules
 
@@ -98,13 +104,20 @@ def save_schedules(schedules: dict[str, Schedule]) -> None:
     """Persist schedules to disk."""
     raw: dict[str, Any] = {"schedules": {}}
     for name, s in schedules.items():
-        raw["schedules"][name] = {
+        schedule_dict: dict[str, Any] = {
             "expression": s.expression,
             "domain": s.domain,
             "enabled": s.enabled,
             "last_run": s.last_run,
             "created_at": s.created_at,
         }
+        # Only serialize type and digest fields when not default "collection"
+        if s.type != "collection":
+            schedule_dict["type"] = s.type
+            schedule_dict["format"] = s.format
+            if s.recipients:
+                schedule_dict["recipients"] = s.recipients
+        raw["schedules"][name] = schedule_dict
     _dump_schedules_raw(raw)
 
 
@@ -200,23 +213,31 @@ def run_due_schedules(
             results.append(entry)
             continue
 
-        # Execute collection
+        # Execute based on schedule type
         try:
-            from autoinfo.collect import run_collection
+            if sched.type == "digest":
+                from autoinfo.email_sender import send_digest
 
-            coll_result = run_collection(domain=sched.domain)
-            # Update last_run
-            sched.last_run = now.isoformat()
-            save_schedules(schedules)
-            entry["ran"] = True
-            if json_output:
-                entry["collection_result"] = coll_result
+                send_digest(domain=sched.domain, period="daily", config=None)
+                sched.last_run = now.isoformat()
+                save_schedules(schedules)
+                entry["ran"] = True
+                entry["type"] = "digest"
             else:
-                entry["collection_result"] = {
-                    "collection_id": coll_result.get("collection_id"),
-                    "total_new": coll_result.get("total_new", 0),
-                    "total_found": coll_result.get("total_found", 0),
-                }
+                from autoinfo.collect import run_collection
+
+                coll_result = run_collection(domain=sched.domain)
+                sched.last_run = now.isoformat()
+                save_schedules(schedules)
+                entry["ran"] = True
+                if json_output:
+                    entry["collection_result"] = coll_result
+                else:
+                    entry["collection_result"] = {
+                        "collection_id": coll_result.get("collection_id"),
+                        "total_new": coll_result.get("total_new", 0),
+                        "total_found": coll_result.get("total_found", 0),
+                    }
             entry["last_run"] = sched.last_run
         except Exception as exc:
             logger.exception("Schedule '%s' failed", name)
@@ -336,8 +357,31 @@ def add_schedule(
     domain: str = typer.Option(
         ..., "--domain", help="Domain to collect on this schedule",
     ),
+    schedule_type: str = typer.Option(
+        "collection", "--type", help="Schedule type: collection or digest",
+    ),
+    recipients: str = typer.Option(
+        "", "--recipients", help="Comma-separated email recipients (for digest type)",
+    ),
+    output_format: str = typer.Option(
+        "html", "--format", help="Digest format: html or markdown",
+    ),
 ) -> None:
-    """Add a new collection schedule."""
+    """Add a new collection or digest schedule."""
+    if schedule_type not in ("collection", "digest"):
+        typer.echo(
+            f"Error: Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if schedule_type == "digest" and not recipients:
+        typer.echo(
+            "Error: --recipients is required for digest-type schedules.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     # Validate cron expression
     try:
         from croniter import croniter
@@ -361,18 +405,27 @@ def add_schedule(
         typer.echo(f"Error: A schedule named '{name}' already exists.", err=True)
         raise typer.Exit(code=1)
 
+    recipients_list = [r.strip() for r in recipients.split(",") if r.strip()] if recipients else []
+
     new_schedule = Schedule(
         name=name,
         expression=expression,
         domain=domain,
+        type=schedule_type,
         enabled=True,
         last_run=None,
         created_at=_now_iso(),
+        recipients=recipients_list,
+        format=output_format,
     )
     schedules[name] = new_schedule
     save_schedules(schedules)
 
-    typer.echo(f"Schedule '{name}' added: {expression} → domain '{domain}'")
+    type_label = "digest" if schedule_type == "digest" else "collection"
+    typer.echo(
+        f"Schedule '{name}' added: {expression} → domain '{domain}' "
+        f"(type: {type_label})"
+    )
 
 
 @app.command(name="remove-schedule")

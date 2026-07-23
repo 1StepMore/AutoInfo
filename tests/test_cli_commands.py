@@ -441,7 +441,7 @@ class TestInitCommand:
     def test_init_lists_demo_domains(
         self, cli_runner: Any
     ) -> None:
-        """``autoinfo init`` without --demo lists available demo domains."""
-        result = cli_runner.invoke(app, ["init"])
+        """``autoinfo init --list-domains`` lists available demo domains."""
+        result = cli_runner.invoke(app, ["init", "--list-domains"])
         assert result.exit_code == 0
         assert "medical-research" in result.output

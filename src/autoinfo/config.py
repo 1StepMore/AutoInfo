@@ -72,11 +72,13 @@ class TopicConfig:
 @dataclass
 class DomainConfig:
     name: str = ""
+    description: str = ""
     active: bool = True
     sources: list[SourceConfig] = field(default_factory=list)
     topics: list[TopicConfig] = field(default_factory=list)
     extract_fields: list[str] = field(default_factory=list)
     search_mode: str = "keyword"  # keyword | hybrid
+    webhook_urls: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -264,6 +266,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 topics=topics,
                 extract_fields=d.get("extract_fields", []),
                 search_mode=str(d.get("search_mode", "keyword")),
+                webhook_urls=list(d.get("webhook_urls", [])),
             )
         )
 
@@ -525,6 +528,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             domain_dict["extract_fields"] = domain.extract_fields
         if domain.search_mode != "keyword":
             domain_dict["search_mode"] = domain.search_mode
+        if domain.webhook_urls:
+            domain_dict["webhook_urls"] = domain.webhook_urls
         raw["domains"].append(domain_dict)
     return raw
 

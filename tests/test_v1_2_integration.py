@@ -1179,7 +1179,7 @@ class TestJSONReport:
         """generate_report raises ValueError for unsupported format."""
         from autoinfo.output import generate_report
         with pytest.raises(ValueError, match="Unsupported output format"):
-            generate_report(domain="medical-research", format="html")
+            generate_report(domain="medical-research", format="pdf")
 
 
 # ======================================================================

@@ -244,6 +244,7 @@ class EmailHandler:
             id=item_id,
             source_name=self.source_name,
             source_type="email_imap",
+            source_platform=source_platform,
             source_url=f"imap://{host}/{mailbox_name}#{uid_str}",
             title=subject or "(no subject)",
             content=body_text,

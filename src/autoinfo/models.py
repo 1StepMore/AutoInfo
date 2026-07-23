@@ -20,6 +20,7 @@ class Item:
     title: str
     content: str
     content_type: str = "text"
+    source_platform: str = ""
     collected_at: str = ""
     language: str = ""
     domain: str = ""

@@ -126,6 +126,7 @@ class RSSHandler:
             id=_make_item_id(feed_url, link),
             source_name="rss",
             source_type="rss",
+            source_platform="rss",
             source_url=link,
             title=title,
             content=summary,

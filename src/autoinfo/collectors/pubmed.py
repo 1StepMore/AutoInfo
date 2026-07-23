@@ -278,6 +278,7 @@ class PubMedHandler:
             id=pmid or str(uuid.uuid4()),
             source_name="pubmed",
             source_type="api",
+            source_platform="pubmed",
             source_url=(
                 f"{BASE_URL}efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
                 if pmid
@@ -286,6 +287,7 @@ class PubMedHandler:
             title=article.get("title", ""),
             content=article.get("abstract", ""),
             content_type="text",
+            collected_at=article.get("pub_date", ""),
             domain="medical-research",
             topic_tags=list(article.get("keywords", [])),
             raw_data={

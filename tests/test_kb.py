@@ -310,6 +310,7 @@ class TestKBStore:
             id="test-item-001",
             source_name="pubmed",
             source_type="api",
+            source_platform="pubmed",
             source_url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=12345678",
             title="Improved IVF outcomes with time-lapse embryo imaging: a randomized controlled trial",
             content=(

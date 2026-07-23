@@ -2033,7 +2033,7 @@ class KBStore:
             tier=tier,
             source_url=item.source_url,
             source_type=item.source_type,
-            source_platform=item.source_name,
+            source_platform=item.source_platform,
             collected_at=item.collected_at,
             summary=summary,
             tags=tags,

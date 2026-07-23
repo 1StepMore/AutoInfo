@@ -175,10 +175,12 @@ class WebHandler:
             id=item_id,
             source_name=self.source_name,
             source_type="web",
+            source_platform=self.source_name,
             source_url=url,
             title=title,
             content=text,
             content_type="text",
+            collected_at=date,
             raw_data={
                 "author": author,
                 "date": date,

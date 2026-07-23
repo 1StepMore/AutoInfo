@@ -521,6 +521,17 @@ def run_processing(
         KBEntry(**row) for row in existing_entries_raw
     ]
 
+    # Deserialize JSON fields (tags, custom_fields) stored as JSON strings in SQLite
+    import json
+
+    for i, row in enumerate(existing_entries_raw):
+        tags = row.get("tags")
+        cf = row.get("custom_fields")
+        if isinstance(tags, str):
+            existing_entries[i].tags = json.loads(tags)
+        if isinstance(cf, str):
+            existing_entries[i].custom_fields = json.loads(cf)
+
     # Resolve topic keywords from domain config (for G3)
     topic_keywords: list[str] = []
     if config and topic:

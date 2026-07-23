@@ -702,7 +702,7 @@ def _build_digest_llm_prompt(entries: list[dict[str, Any]]) -> str:
 
         lines.append(f"Entry {i}:")
         lines.append(f"  Title: {title}")
-        lines.append(f"  Summary: {summary[:500] if summary else '\u2014'}")
+        lines.append(f"  Summary: {summary[:500] if summary else chr(8212)}")
         lines.append(f"  Tags: {tags_str}")
         lines.append("")
 

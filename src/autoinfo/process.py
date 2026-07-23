@@ -514,7 +514,12 @@ def run_processing(
     kb_store = KBStore()
 
     # Load existing entries for G2 dedup checking
-    existing_entries = kb_store.list_entries(domain, limit=10000)
+    # Convert SQLite dicts back to KBEntry objects for type safety
+    from autoinfo.models import KBEntry
+    existing_entries_raw = kb_store.list_entries(domain, limit=10000)
+    existing_entries: list[KBEntry] = [
+        KBEntry(**row) for row in existing_entries_raw
+    ]
 
     # Resolve topic keywords from domain config (for G3)
     topic_keywords: list[str] = []

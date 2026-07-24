@@ -6,7 +6,8 @@ Pure dataclasses with serialization methods — no business logic, no persistenc
 from __future__ import annotations
 
 from dataclasses import MISSING, asdict, dataclass, field
-from typing import Any
+from enum import Enum
+from typing import Any, Literal
 
 
 @dataclass
@@ -82,7 +83,78 @@ class CollectionResult:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CollectionResult:
+    def from_dict(cls, data: dict[str, Any]) -> CollectionStats:
+        return cls(**data)
+
+
+class ProductType(Enum):
+    """Type of deliverable product."""
+
+    RAW = "raw"
+    PROCESSED = "processed"
+
+
+@dataclass
+class Product:
+    """A deliverable product configured for a domain."""
+
+    id: str
+    domain: str
+    type: ProductType
+    name: str = ""
+    config: dict[str, Any] = field(default_factory=dict)
+    templates: list[str] = field(default_factory=list)
+    delivery_channels: list[str] = field(default_factory=list)
+    quality_gates: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["type"] = self.type.value  # serialize enum to its string value
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Product:
+        data = dict(data)
+        if "type" in data and isinstance(data["type"], str):
+            data["type"] = ProductType(data["type"])
+        return cls(**data)
+
+
+@dataclass
+class DeliveryResult:
+    """Result of delivering a product through a specific channel."""
+
+    product_id: str
+    channel: str
+    status: Literal["success", "failed", "partial"]
+    timestamp: str = ""
+    recipient_count: int = 0
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DeliveryResult:
+        return cls(**data)
+
+
+@dataclass
+class AlertRule:
+    """Threshold-based alert rule for triggering notifications."""
+
+    id: str
+    domain: str
+    topic_keywords: list[str] = field(default_factory=list)
+    relevance_threshold: float = 0.0
+    channel: Literal["email", "webhook"] = "email"
+    enabled: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AlertRule:
         return cls(**data)
 
 
@@ -198,3 +270,7 @@ class CollectionStats:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CollectionStats:
+        return cls(**data)

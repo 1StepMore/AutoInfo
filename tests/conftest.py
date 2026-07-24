@@ -191,6 +191,7 @@ def sample_item() -> Item:
         content_type="text",
         collected_at="2026-07-15T10:30:00Z",
         language="en",
+        source_platform="pubmed",
         domain="medical-research",
         topic_tags=["IVF", "embryo imaging"],
         quality_tier=1,

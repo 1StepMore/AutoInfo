@@ -79,6 +79,8 @@ class DomainConfig:
     extract_fields: list[str] = field(default_factory=list)
     search_mode: str = "keyword"  # keyword | hybrid
     webhook_urls: list[str] = field(default_factory=list)
+    quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
+    delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
 
 
 @dataclass
@@ -99,6 +101,33 @@ class EmailConfig:
     from_addr: str = ""
     to_addrs: list[str] = field(default_factory=list)
     enabled: bool = False
+
+
+@dataclass
+class QualityGateConfig:
+    """Configuration for a single quality gate (G0-G5 or custom).
+
+    Attributes match the YAML schema in ``founder-expectations.md`` §4.4.
+    """
+
+    name: str = ""
+    category: str = "soft"  # "hard" | "soft"
+    retries: int = 0
+    retry_models: list[str] = field(default_factory=list)
+    action: str = "flag"  # hard: block | retry; soft: retry | flag | skip | archive
+    threshold: float | None = None
+
+
+@dataclass
+class DeliveryGateConfig:
+    """Configuration for a delivery gate (D1-D3).
+
+    Checked at product output time for PROCESSED products.
+    """
+
+    name: str = ""
+    enabled: bool = True
+    action_on_failure: str = "block"  # block | fallback | flag
 
 
 @dataclass
@@ -143,6 +172,8 @@ class Config:
     vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
     cron: CronConfig = field(default_factory=CronConfig)
     multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
+    quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
+    delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +289,29 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             )
             for t in topics_raw
         ]
+        # --- Parse per-domain quality_gates ---
+        domain_qg_raw: dict[str, Any] = d.get("quality_gates", {}) or {}
+        domain_quality_gates: dict[str, QualityGateConfig] = {}
+        for gate_name, gc_raw in domain_qg_raw.items():
+            gc = gc_raw or {}
+            domain_quality_gates[str(gate_name)] = QualityGateConfig(
+                name=str(gate_name),
+                category=str(gc.get("category", "soft")),
+                retries=int(gc.get("retries", 0)),
+                retry_models=list(gc.get("retry_models", [])),
+                action=str(gc.get("action", "flag")),
+                threshold=gc.get("threshold", None),
+            )
+        # --- Parse per-domain delivery_gates ---
+        domain_dg_raw: dict[str, Any] = d.get("delivery_gates", {}) or {}
+        domain_delivery_gates: dict[str, DeliveryGateConfig] = {}
+        for dg_name, dc_raw in domain_dg_raw.items():
+            dc = dc_raw or {}
+            domain_delivery_gates[str(dg_name)] = DeliveryGateConfig(
+                name=str(dg_name),
+                enabled=bool(dc.get("enabled", True)),
+                action_on_failure=str(dc.get("action_on_failure", "block")),
+            )
         domains.append(
             DomainConfig(
                 name=d.get("name", ""),
@@ -267,7 +321,33 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 extract_fields=d.get("extract_fields", []),
                 search_mode=str(d.get("search_mode", "keyword")),
                 webhook_urls=list(d.get("webhook_urls", [])),
+                quality_gates=domain_quality_gates,
+                delivery_gates=domain_delivery_gates,
             )
+        )
+
+    # --- Parse v1.5 sections: quality_gates & delivery_gates ---
+    quality_gates_raw: dict[str, Any] = raw.get("quality_gates", {}) or {}
+    quality_gates: dict[str, QualityGateConfig] = {}
+    for gate_name, gc_raw in quality_gates_raw.items():
+        gc = gc_raw or {}
+        quality_gates[str(gate_name)] = QualityGateConfig(
+            name=str(gate_name),
+            category=str(gc.get("category", "soft")),
+            retries=int(gc.get("retries", 0)),
+            retry_models=list(gc.get("retry_models", [])),
+            action=str(gc.get("action", "flag")),
+            threshold=gc.get("threshold", None),
+        )
+
+    delivery_gates_raw: dict[str, Any] = raw.get("delivery_gates", {}) or {}
+    delivery_gates: dict[str, DeliveryGateConfig] = {}
+    for dg_name, dc_raw in delivery_gates_raw.items():
+        dc = dc_raw or {}
+        delivery_gates[str(dg_name)] = DeliveryGateConfig(
+            name=str(dg_name),
+            enabled=bool(dc.get("enabled", True)),
+            action_on_failure=str(dc.get("action_on_failure", "block")),
         )
 
     # --- Parse new v1.2 sections ---
@@ -329,6 +409,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             enabled=bool(multi_user_raw.get("enabled", False)),
             default_user_id=str(multi_user_raw.get("default_user_id", "default")),
         ),
+        quality_gates=quality_gates,
+        delivery_gates=delivery_gates,
     )
 
 
@@ -376,6 +458,29 @@ def validate_config(config: Config) -> list[str]:
     if not config.llm.model:
         errors.append("llm.model is required")
 
+    # --- Validate quality_gates (both global and per-domain) ---
+    HARD_GATE_ACTIONS = frozenset({"block", "retry"})
+    SOFT_GATE_ACTIONS = frozenset({"retry", "flag", "skip", "archive"})
+
+    all_gate_confs: list[tuple[str, str, QualityGateConfig]] = [
+        ("global", gn, gc) for gn, gc in config.quality_gates.items()
+    ]
+    for domain in config.domains:
+        for gn, gc in domain.quality_gates.items():
+            all_gate_confs.append((f"domain '{domain.name}'", gn, gc))
+
+    for scope, gate_name, gc in all_gate_confs:
+        if gc.category == "hard" and gc.action not in HARD_GATE_ACTIONS:
+            errors.append(
+                f"quality_gates.{gate_name} ({scope}): hard gate action must be "
+                f"'block' or 'retry', got '{gc.action}'"
+            )
+        elif gc.category == "soft" and gc.action not in SOFT_GATE_ACTIONS:
+            errors.append(
+                f"quality_gates.{gate_name} ({scope}): soft gate action must be "
+                f"'retry', 'flag', 'skip', or 'archive', got '{gc.action}'"
+            )
+
     active_domains = [d for d in config.domains if d.active]
     if not active_domains:
         errors.append("at least one domain must be active")
@@ -398,6 +503,7 @@ def create_default_config(domain: str) -> dict[str, Any]:
     """Generate a minimal default configuration for *domain*.
 
     The returned dict is suitable for writing to ``.autoinfo/config.yaml``.
+    Includes default quality gates (G0-G5) and delivery gates (D1-D3).
     """
     return {
         "project": {
@@ -417,6 +523,24 @@ def create_default_config(domain: str) -> dict[str, Any]:
                 "topics": [],
             }
         ],
+        "quality_gates": {
+            "G0": {"category": "hard", "retries": 1, "action": "block"},
+            "G1": {"category": "soft", "action": "flag"},
+            "G2": {"category": "soft", "action": "flag"},
+            "G3": {"category": "soft", "retries": 2, "action": "archive", "threshold": 30},
+            "G4": {
+                "category": "hard",
+                "retries": 3,
+                "retry_models": ["deepseek/deepseek-chat", "anthropic/claude-sonnet-4"],
+                "action": "block",
+            },
+            "G5": {"category": "soft", "retries": 2, "action": "flag"},
+        },
+        "delivery_gates": {
+            "D1": {"enabled": True, "action_on_failure": "block"},
+            "D2": {"enabled": True, "action_on_failure": "fallback"},
+            "D3": {"enabled": True, "action_on_failure": "flag"},
+        },
     }
 
 
@@ -500,6 +624,28 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         "default_user_id": config.multi_user.default_user_id,
     }
 
+    # --- Serialize v1.5 quality_gates & delivery_gates ---
+    if config.quality_gates:
+        raw["quality_gates"] = {}
+        for gate_name, gc in config.quality_gates.items():
+            entry: dict[str, Any] = {
+                "category": gc.category,
+                "retries": gc.retries,
+                "action": gc.action,
+            }
+            if gc.retry_models:
+                entry["retry_models"] = gc.retry_models
+            if gc.threshold is not None:
+                entry["threshold"] = gc.threshold
+            raw["quality_gates"][gate_name] = entry
+    if config.delivery_gates:
+        raw["delivery_gates"] = {}
+        for dg_name, dc in config.delivery_gates.items():
+            raw["delivery_gates"][dg_name] = {
+                "enabled": dc.enabled,
+                "action_on_failure": dc.action_on_failure,
+            }
+
     for domain in config.domains:
         domain_dict: dict[str, Any] = {
             "name": domain.name,
@@ -530,6 +676,28 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             domain_dict["search_mode"] = domain.search_mode
         if domain.webhook_urls:
             domain_dict["webhook_urls"] = domain.webhook_urls
+        if domain.quality_gates:
+            domain_qg_dict: dict[str, Any] = {}
+            for gate_name, gc in domain.quality_gates.items():
+                entry: dict[str, Any] = {
+                    "category": gc.category,
+                    "retries": gc.retries,
+                    "action": gc.action,
+                }
+                if gc.retry_models:
+                    entry["retry_models"] = gc.retry_models
+                if gc.threshold is not None:
+                    entry["threshold"] = gc.threshold
+                domain_qg_dict[gate_name] = entry
+            domain_dict["quality_gates"] = domain_qg_dict
+        if domain.delivery_gates:
+            domain_dg_dict: dict[str, Any] = {}
+            for dg_name, dc in domain.delivery_gates.items():
+                domain_dg_dict[dg_name] = {
+                    "enabled": dc.enabled,
+                    "action_on_failure": dc.action_on_failure,
+                }
+            domain_dict["delivery_gates"] = domain_dg_dict
         raw["domains"].append(domain_dict)
     return raw
 

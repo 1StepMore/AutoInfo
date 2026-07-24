@@ -1,10 +1,10 @@
-"""Tests for quality gates G1-G3.
+"""Tests for quality gates G1-G3 (and orchestrator G0).
 
 Covers:
     - G1SourceAuthority: tier-based advisory warnings
     - G2Dedup: URL, PMID, DOI duplicate detection
     - G3RelevanceScoring: keyword overlap scoring + threshold hiding
-    - run_quality_gates: orchestrator runs all three gates
+    - run_quality_gates: orchestrator runs G0+G1+G2+G3
 """
 
 from __future__ import annotations
@@ -387,10 +387,11 @@ class TestRunQualityGates:
         }
         results = run_quality_gates(sample_item, context)
 
+        assert "G0-SchemaIntegrity" in results
         assert "G1-SourceAuthority" in results
         assert "G2-Dedup" in results
         assert "G3-RelevanceScoring" in results
-        assert len(results) == 3
+        assert len(results) == 4
 
     def test_all_quality_result_instances(self, sample_item: Item) -> None:
         results = run_quality_gates(sample_item, {"topic_keywords": ["IVF"]})
@@ -402,7 +403,9 @@ class TestRunQualityGates:
         """Orchestrator should not crash when context is empty."""
         results = run_quality_gates(sample_item, {})
 
-        assert len(results) == 3
+        assert len(results) == 4
+        # G0 should pass for valid sample_item
+        assert results["G0-SchemaIntegrity"].passed is True
         # G3 with empty keywords = score 100
         assert results["G3-RelevanceScoring"].score == 100.0
 
@@ -410,7 +413,7 @@ class TestRunQualityGates:
         """Orchestrator should not crash when context is None."""
         results = run_quality_gates(sample_item)
 
-        assert len(results) == 3
+        assert len(results) == 4
 
     def test_g3_triggers_hidden_in_orchestrator(self, sample_item: Item) -> None:
         """Hidden flag propagates through orchestrated G3."""

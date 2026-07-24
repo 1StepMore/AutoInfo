@@ -18,6 +18,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+import yaml
+
 from autoinfo.models import ExtractionResult, Item, KBEntry
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,115 @@ class QualityResult:
     score: float = 0.0
     details: dict[str, object] = field(default_factory=dict)
     flagged: bool = False
+
+
+# ---------------------------------------------------------------------------
+# G0 — Schema Integrity
+# ---------------------------------------------------------------------------
+
+
+class G0SchemaIntegrity:
+    """Validates schema integrity of a raw collected item before Item construction.
+
+    Checks mandatory fields (source_url, source_type, source_platform) and
+    optional frontmatter YAML validity.
+
+    This gate is **HARD** — on persistent failure after one retry it blocks
+    the item from entering the pipeline.
+    """
+
+    MANDATORY_FIELDS = ["source_url", "source_type", "source_platform"]
+
+    def check(self, item: dict[str, Any], context: dict[str, Any] | None = None) -> QualityResult:
+        """Validate *item* dict schema integrity.
+
+        Parameters
+        ----------
+        item:
+            Raw collected item dict (not yet constructed into Item).
+        context:
+            Optional context dict (reserved for future use).
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when all mandatory fields are non-empty strings
+            and frontmatter (if present) is valid YAML.
+
+            On persistent failure after one retry: ``passed=False`` with
+            ``action="block"`` in details.
+        """
+        failed_fields: list[dict[str, object]] = []
+
+        def _validate() -> list[dict[str, object]]:
+            """Run validation once, return list of field errors."""
+            errors: list[dict[str, object]] = []
+
+            for field in self.MANDATORY_FIELDS:
+                val = item.get(field)
+                if not isinstance(val, str) or not val.strip():
+                    errors.append({
+                        "field": field,
+                        "reason": "missing or empty",
+                        "value": val,
+                    })
+
+            frontmatter = item.get("frontmatter")
+            if frontmatter is not None:
+                if isinstance(frontmatter, str) and frontmatter.strip():
+                    try:
+                        yaml.safe_load(frontmatter)
+                    except yaml.YAMLError as exc:
+                        errors.append({
+                            "field": "frontmatter",
+                            "reason": f"invalid YAML: {exc}",
+                            "value": frontmatter[:200],
+                        })
+                elif not isinstance(frontmatter, str):
+                    errors.append({
+                        "field": "frontmatter",
+                        "reason": "not a string",
+                        "value": str(type(frontmatter)),
+                    })
+
+            return errors
+
+        # First attempt
+        failed_fields = _validate()
+
+        retry_count = 0
+        if failed_fields:
+            logger.warning(
+                "G0 first attempt failed for fields: %s",
+                [f["field"] for f in failed_fields],
+            )
+            retry_count = 1
+            # Retry once (re-parse)
+            failed_fields = _validate()
+
+        if not failed_fields:
+            return QualityResult(
+                gate_name="G0-SchemaIntegrity",
+                passed=True,
+                score=1.0,
+                details={"valid": True},
+            )
+
+        return QualityResult(
+            gate_name="G0-SchemaIntegrity",
+            passed=False,
+            score=0.0,
+            flagged=True,
+            details={
+                "action": "block",
+                "retry_count": retry_count,
+                "failed_fields": failed_fields,
+                "error": (
+                    "Schema integrity check failed for fields: "
+                    f"{[f['field'] for f in failed_fields]}"
+                ),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +1001,10 @@ def run_quality_gates(
     item: Item,
     context: dict[str, Any] | None = None,
 ) -> dict[str, QualityResult]:
-    """Run all three quality gates (G1, G2, G3) on *item*.
+    """Run all quality gates (G0, G1, G2, G3) on *item*.
+
+    G0 runs first (schema integrity), followed by G1-G3. G4 and G5
+    are run separately in the processing pipeline.
 
     Parameters
     ----------
@@ -916,12 +1030,15 @@ def run_quality_gates(
     topic_keywords: list[str] = ctx.get("topic_keywords", [])
     threshold: int = ctx.get("threshold", 30)
 
+    g0 = G0SchemaIntegrity()
     g1 = G1SourceAuthority()
     g2 = G2Dedup()
     g3 = G3RelevanceScoring()
 
     results: dict[str, QualityResult] = {}
 
+    # G0 runs FIRST — validates raw item schema before further processing
+    results["G0-SchemaIntegrity"] = g0.check(item.to_dict(), ctx)
     results["G1-SourceAuthority"] = g1.check(item, source_config)
     results["G2-Dedup"] = g2.check(item, existing_entries)
     results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold)

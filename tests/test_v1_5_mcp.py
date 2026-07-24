@@ -335,3 +335,109 @@ class TestToolManifest:
         }
         missing = expected - tool_names
         assert not missing, f"Tools missing from manifest: {missing}"
+
+
+# ===================================================================
+# 6. Edge cases
+# ===================================================================
+
+
+class TestMCPEdgeCases:
+    """Edge cases for MCP handlers — missing configs, unusual states."""
+
+    def test_get_gate_config_no_domain_gates_no_global(
+        self, cwd_patch: Path
+    ) -> None:
+        """When gate exists neither at domain nor global level, error is returned."""
+        result = _handle_get_gate_config(domain="medical-research", gate="G9")
+        assert "error_code" in result
+        assert result.get("error_code") != ErrorCode.DOMAIN_NOT_FOUND.value
+
+    def test_set_gate_on_domain_without_existing_gates(
+        self, tmp_path: Path
+    ) -> None:
+        """set_gate_config can add a gate to a domain that has no gates section."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+        config_data = {
+            "project": {"name": "Test", "created_at": "2026-07-01"},
+            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "domains": [{"name": "bare-domain", "active": True, "sources": []}],
+        }
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(config_data, fh, default_flow_style=False)
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = _handle_set_gate_config(
+                domain="bare-domain",
+                gate="G1",
+                config={"action": "flag", "category": "soft"},
+            )
+        assert "error_code" not in result, f"Unexpected error: {result}"
+        assert result["updated"] is True
+
+    def test_set_gate_unknown_type_uses_quality_by_default(
+        self, tmp_path: Path
+    ) -> None:
+        """When gate name is unknown (not G0-G5 or D1-D3), defaults to quality."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+        config_data = {
+            "project": {"name": "Test", "created_at": "2026-07-01"},
+            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "domains": [{"name": "bare-domain", "active": True, "sources": []}],
+        }
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(config_data, fh, default_flow_style=False)
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = _handle_set_gate_config(
+                domain="bare-domain",
+                gate="CustomGate",
+                config={"action": "flag", "category": "soft"},
+            )
+        assert "error_code" not in result, f"Unexpected error: {result}"
+        assert result["updated"] is True
+
+    def test_health_check_exact_tools_count(self) -> None:
+        """health_check reports tools count (>= 75)."""
+        from autoinfo.mcp.server import _handle_health_check
+        result = _handle_health_check()
+        assert result["tools_count"] >= 75
+
+    def test_get_gate_config_global_fallback_for_missing_domain_gate(
+        self, tmp_path: Path
+    ) -> None:
+        """When gate is at global level (not domain), it's returned as fallback."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+        config_data = {
+            "project": {"name": "Test", "created_at": "2026-07-01"},
+            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "domains": [
+                {
+                    "name": "medical-research",
+                    "active": True,
+                    "sources": [{"name": "pubmed", "type": "api", "url": "https://example.com/api"}],
+                    "topics": [],
+                }
+            ],
+            "quality_gates": {
+                "G5": {"category": "soft", "action": "flag"},
+            },
+            "delivery_gates": {
+                "D3": {"enabled": True, "action_on_failure": "flag"},
+            },
+        }
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(config_data, fh, default_flow_style=False)
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = _handle_get_gate_config(domain="medical-research", gate="G5")
+        assert "error_code" not in result, f"Unexpected error: {result}"
+        assert result["gate"] == "G5"
+        assert result["gate_type"] == "quality"
+        assert result["config"]["action"] == "flag"

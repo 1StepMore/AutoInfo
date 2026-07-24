@@ -295,3 +295,90 @@ class TestFeedAPI:
         item = response.json()["items"][0]
         assert item["id"] == created["entry_id"]
         assert item["url"] == "https://example.com/article"
+
+    # ------------------------------------------------------------------
+    # Pagination edge cases
+    # ------------------------------------------------------------------
+
+    def test_feed_offset_validation_negative(self, client):
+        """Negative offset returns 422."""
+        response = client.get("/api/v1/feeds?domain=medical-research&offset=-1")
+        assert response.status_code == 422
+
+    def test_feed_limit_below_minimum(self, client):
+        """Limit < 1 returns 422."""
+        response = client.get("/api/v1/feeds?domain=medical-research&limit=0")
+        assert response.status_code == 422
+
+    # ------------------------------------------------------------------
+    # Sort order
+    # ------------------------------------------------------------------
+
+    def test_feed_sort_order_descending(self, client):
+        """Entries are returned sorted by collected_at descending (newest first)."""
+        from autoinfo.api.routes import _get_store
+        store = _get_store()
+        self._seed_entry(store, "Oldest", collected_at="2025-01-01T00:00:00Z")
+        self._seed_entry(store, "Middle", collected_at="2026-01-01T00:00:00Z")
+        self._seed_entry(store, "Newest", collected_at="2026-06-01T00:00:00Z")
+
+        response = client.get("/api/v1/feeds?domain=medical-research")
+        data = response.json()
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Newest", "Middle", "Oldest"]
+
+    # ------------------------------------------------------------------
+    # Invalid `since` parameter
+    # ------------------------------------------------------------------
+
+    def test_feed_invalid_since_format_ignored(self, client):
+        """Invalid since date is handled gracefully (no crash)."""
+        self._create_entry(client, "Article 1")
+        response = client.get(
+            "/api/v1/feeds?domain=medical-research&since=not-a-date"
+        )
+        # Should not crash — might return 0 entries if date parsing fails,
+        # but the response should still be valid JSON with status 200
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "pagination" in data
+
+    # ------------------------------------------------------------------
+    # Entry with empty/missing source_url
+    # ------------------------------------------------------------------
+
+    def test_feed_entry_without_source_url(self, client):
+        """Entry with empty source_url still returns valid feed structure."""
+        self._create_entry(client, "No URL Article", source_url="")
+        response = client.get("/api/v1/feeds?domain=medical-research")
+        data = response.json()
+        item = data["items"][0]
+        assert item["title"] == "No URL Article"
+        assert item["url"] == ""  # empty string, not None or crash
+
+    # ------------------------------------------------------------------
+    # Special characters in titles
+    # ------------------------------------------------------------------
+
+    def test_feed_special_characters(self, client):
+        """Entries with Unicode and special characters are handled."""
+        self._create_entry(client, "中文标题 — Café & Résumé")
+        response = client.get("/api/v1/feeds?domain=medical-research")
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["title"] == "中文标题 — Café & Résumé"
+
+    # ------------------------------------------------------------------
+    # Filter with no matches
+    # ------------------------------------------------------------------
+
+    def test_feed_filter_source_type_no_matches(self, client):
+        """Filtering by source_type with no matches returns empty list."""
+        self._create_entry(client, "API Article", source_type="api")
+        response = client.get(
+            "/api/v1/feeds?domain=medical-research&source_type=slack"
+        )
+        data = response.json()
+        assert data["items"] == []
+        assert data["pagination"]["total"] == 0

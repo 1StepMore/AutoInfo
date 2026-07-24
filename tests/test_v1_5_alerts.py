@@ -385,3 +385,189 @@ class TestKeywordMatchingEdgeCases:
             with patch("autoinfo.alerts.get_config_path", return_value=None):
                 results = check_alerts(item, domain="medical-research")
         assert len(results) == 1
+
+    def test_unicode_keywords_match(self, tmp_path: Path) -> None:
+        """Unicode keywords match correctly."""
+        item = _make_item(title="CRISPR基因编辑技术在临床应用中的进展")
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            add_alert_rule(domain="medical-research", topic_keywords=["基因编辑"])
+            with patch("autoinfo.alerts.get_config_path", return_value=None):
+                results = check_alerts(item, domain="medical-research")
+        assert len(results) == 1
+
+    def test_match_in_content_but_not_title(self, tmp_path: Path) -> None:
+        """Keyword match in content (not title) triggers."""
+        item = _make_item(
+            title="Some medical article",
+            content="This article discusses CRISPR gene editing therapy outcomes.",
+            topic_tags=[],
+        )
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            add_alert_rule(domain="medical-research", topic_keywords=["CRISPR"])
+            with patch("autoinfo.alerts.get_config_path", return_value=None):
+                results = check_alerts(item, domain="medical-research")
+        assert len(results) == 1
+
+    def test_none_content_does_not_crash(self, tmp_path: Path) -> None:
+        """Item with None content does not crash keyword matching."""
+        item = _make_item(title="Test", content=None)  # type: ignore[arg-type]
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            add_alert_rule(domain="medical-research", topic_keywords=["test"])
+            with patch("autoinfo.alerts.get_config_path", return_value=None):
+                results = check_alerts(item, domain="medical-research")
+        assert len(results) == 1
+
+    def test_empty_topic_tags_does_not_crash(self, tmp_path: Path) -> None:
+        """Item with None topic_tags does not crash keyword matching."""
+        item = _make_item(title="Test article", topic_tags=None)  # type: ignore[arg-type]
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            add_alert_rule(domain="medical-research", topic_keywords=["test"])
+            with patch("autoinfo.alerts.get_config_path", return_value=None):
+                results = check_alerts(item, domain="medical-research")
+        assert len(results) == 1
+
+
+# ===================================================================
+# Notification dispatch
+# ===================================================================
+
+
+class TestNotificationDispatch:
+    """Tests for _dispatch_notification and its channel-specific paths."""
+
+    def test_email_disabled_in_config(self, tmp_path: Path) -> None:
+        """Email notification is skipped when email is not enabled in config."""
+        from autoinfo.alerts import _dispatch_notification
+
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write a config with email disabled
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\n"
+            "llm:\n  provider: openai\n  model: gpt-4\n  api_key: key\n"
+            "domains:\n  - name: medical-research\n    active: true\n    sources: []\n"
+            "email:\n  enabled: false\n"
+        )
+
+        rule = AlertRule(
+            id="alert-test-email-disabled",
+            domain="medical-research",
+            topic_keywords=["IVF"],
+            channel="email",
+            enabled=True,
+        )
+        item = _make_item()
+
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            result = _dispatch_notification(rule, item, "medical-research")
+        assert result["status"] == "skipped"
+        assert result["reason"] == "email_not_enabled"
+
+    def test_webhook_no_urls_skips(self, tmp_path: Path) -> None:
+        """Webhook notification is skipped when no webhook URLs configured."""
+        from autoinfo.alerts import _dispatch_notification
+
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\n"
+            "llm:\n  provider: openai\n  model: gpt-4\n  api_key: key\n"
+            "domains:\n  - name: medical-research\n    active: true\n    sources: []\n"
+        )
+
+        rule = AlertRule(
+            id="alert-test-webhook-no-urls",
+            domain="medical-research",
+            topic_keywords=["IVF"],
+            channel="webhook",
+            enabled=True,
+        )
+        item = _make_item()
+
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            result = _dispatch_notification(rule, item, "medical-research")
+        assert result["status"] == "skipped"
+        assert result["reason"] == "no_webhook_urls"
+
+    def test_multiple_rules_match_same_item(self, tmp_path: Path) -> None:
+        """Multiple alert rules matching the same item all trigger."""
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            add_alert_rule(domain="medical-research", topic_keywords=["IVF"])
+            add_alert_rule(domain="medical-research", topic_keywords=["embryo"])
+            add_alert_rule(domain="medical-research", topic_keywords=["time-lapse"])
+            item = _make_item()
+            with patch("autoinfo.alerts.get_config_path", return_value=None):
+                results = check_alerts(item, domain="medical-research")
+        assert len(results) == 3  # all three rules match
+
+
+# ===================================================================
+# Edge cases for internal helpers
+# ===================================================================
+
+
+class TestInternalHelpers:
+    """Tests for _get_relevance_score and save_alerts edge cases."""
+
+    def test_relevance_score_non_dict_raw_data(self) -> None:
+        """_get_relevance_score returns 1.0 when raw_data is not a dict."""
+        from autoinfo.alerts import _get_relevance_score
+        item = _make_item()
+        item.raw_data = "not a dict"  # type: ignore[assignment]
+        assert _get_relevance_score(item) == 1.0
+
+    def test_relevance_score_none_score(self) -> None:
+        """_get_relevance_score returns 1.0 when relevance_score is None."""
+        from autoinfo.alerts import _get_relevance_score
+        item = _make_item()
+        item.raw_data = {"relevance_score": None}
+        assert _get_relevance_score(item) == 1.0
+
+    def test_relevance_score_invalid_type(self) -> None:
+        """_get_relevance_score returns 1.0 when score cannot be converted to float."""
+        from autoinfo.alerts import _get_relevance_score
+        item = _make_item()
+        item.raw_data = {"relevance_score": "not-a-number"}
+        assert _get_relevance_score(item) == 1.0
+
+    def test_save_alerts_empty_dict(self, tmp_path: Path) -> None:
+        """save_alerts with empty dict writes valid YAML."""
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            save_alerts({})
+            loaded = load_alerts()
+        assert loaded == {}
+
+    def test_corrupted_yaml_returns_empty(self, tmp_path: Path) -> None:
+        """Corrupted alerts YAML is handled gracefully, returning empty dict."""
+        from autoinfo.alerts import load_alerts, _alerts_path
+
+        alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
+        alerts_path.parent.mkdir(parents=True, exist_ok=True)
+        alerts_path.write_text("!!broken yaml [\n")
+
+        with patch("autoinfo.alerts._alerts_path", return_value=alerts_path):
+            loaded = load_alerts()
+        assert loaded == {}

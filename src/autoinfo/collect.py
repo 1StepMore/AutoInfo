@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from autoinfo.alerts import check_alerts
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import CollectionResult, Item, KBEntry
@@ -137,6 +138,14 @@ def run_collection(
     # -- Fire webhooks (fire-and-forget) -----------------------------------
     if not dry_run and domain_config.webhook_urls and all_new_items:
         _fire_webhooks_sync(domain, all_new_items, domain_config.webhook_urls)
+
+    # -- Check alert rules (fire-and-forget) --------------------------------
+    if not dry_run and all_new_items:
+        for _item in all_new_items:
+            try:
+                check_alerts(_item, domain)
+            except Exception:
+                logger.exception("Alert check failed for item '%s'", _item.id)
 
     return {
         "collection_id": collection_id,

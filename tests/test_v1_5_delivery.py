@@ -6,6 +6,8 @@ validate_config, get_channel factory, list_channels, ProductTemplate.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from autoinfo.delivery import (
@@ -17,7 +19,7 @@ from autoinfo.delivery import (
     list_channels,
 )
 from autoinfo.models import DeliveryResult, Product, ProductType
-from autoinfo.output import ProductTemplate, generate_digest, generate_report
+from autoinfo.output import DeliveryOutput, ProductTemplate, generate_digest, generate_report
 
 
 def _make_product(
@@ -366,3 +368,279 @@ class TestProductTemplate:
         assert len(result) > 0
         # Verify the result uses the old rendering path (no ProductTemplate)
         assert "Entry 1" in result
+
+
+# ===================================================================
+# D1-D3 Delivery gate integration in generate_digest / generate_report
+# ===================================================================
+
+
+class TestDigestDeliveryGates:
+    """D1-D3 delivery gates wired into generate_digest()."""
+
+    def test_backward_compat_no_config_returns_str(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Calling generate_digest without delivery_gate_configs returns str (backward compat)."""
+
+        class _MockStore:
+            """Minimal KBStore mock that returns one entry."""
+
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "Entry 1",
+                        "summary": "A test entry",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": "2026-07-24",
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+
+        result = generate_digest(domain="test", period="daily", format="markdown")
+        assert isinstance(result, str)
+
+    def test_d1_blocks_incomplete_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """D1 blocks delivery when digest has incomplete/empty sections."""
+
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "Entry 1",
+                        "summary": "Test",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": "2026-07-24",
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        # Return empty LLM synthesis — all D1 sections will be empty/missing
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+
+        configs = {"D1": {"enabled": True, "action_on_failure": "block"}}
+        result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+            delivery_gate_configs=configs,
+        )
+
+        assert isinstance(result, DeliveryOutput)
+        assert result.delivery_blocked is True
+        assert any("D1 blocked" in w for w in result.warnings)
+        d1 = result.gate_results.get("D1-ProductCompleteness")
+        assert d1 is not None
+        assert d1.passed is False
+
+    def test_d2_fallback_to_markdown(self) -> None:
+        """D2 triggers fallback when HTML output is malformed."""
+        from autoinfo.output import _apply_delivery_gates
+
+        broken_html = "<html><body><h1>Broken</body></html>"
+        configs = {"D2": {"enabled": True, "action_on_failure": "fallback"}}
+
+        result = _apply_delivery_gates(
+            rendered_output=broken_html,
+            output_format="html",
+            entries=[],
+            context={},
+            product_type="PROCESSED",
+            delivery_gate_configs=configs,
+            fallback_render_fn=lambda: "# Fallback Markdown",
+        )
+
+        assert isinstance(result, DeliveryOutput)
+        assert result.delivery_format == "markdown"
+        assert any("D2 fallback" in w for w in result.warnings)
+
+    def test_raw_skips_all_delivery_gates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RAW product type causes all D1-D3 gates to skip."""
+
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "E1",
+                        "summary": "S1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": "2026-07-24",
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+
+        configs = {
+            "D1": {"enabled": True},
+            "D2": {"enabled": True},
+            "D3": {"enabled": True},
+        }
+        result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+            product_type="RAW",
+            delivery_gate_configs=configs,
+        )
+
+        assert isinstance(result, DeliveryOutput)
+        for gate_name, gr in result.gate_results.items():
+            assert gr.details.get("skipped") is True, (
+                f"{gate_name} should be skipped for RAW"
+            )
+
+    def test_gate_results_in_delivery_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Gate results dict is included in DeliveryOutput when configs provided."""
+
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "E1",
+                        "summary": "S1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+
+        configs = {
+            "D1": {"enabled": True},
+            "D3": {"enabled": True, "action_on_failure": "flag"},
+        }
+        result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+            delivery_gate_configs=configs,
+        )
+
+        assert isinstance(result, DeliveryOutput)
+        assert "D1-ProductCompleteness" in result.gate_results
+        assert "D2-FormatIntegrity" in result.gate_results
+        assert "D3-Freshness" in result.gate_results
+
+    def test_report_backward_compat_no_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """generate_report without delivery_gate_configs returns str."""
+
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "entry_id": "e1",
+                        "title": "Entry 1",
+                        "summary": "Summary 1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": "2026-07-24",
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        # Mock LLM calls used by _group_by_theme and _generate_executive_summary
+        monkeypatch.setattr(
+            "autoinfo.output._llm_json_extract",
+            lambda extractor, prompt, field: (
+                [{"theme": "General", "description": "All entries", "entry_ids": ["e1"]}]
+                if field == "groups"
+                else "Executive summary for the report."
+            ),
+        )
+
+        result = generate_report(domain="test", format="markdown")
+        assert isinstance(result, str)
+
+    def test_report_with_delivery_gates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """generate_report with delivery_gate_configs returns DeliveryOutput with gate results."""
+
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "entry_id": "e1",
+                        "title": "Entry 1",
+                        "summary": "Summary 1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._llm_json_extract",
+            lambda extractor, prompt, field: (
+                [{"theme": "General", "description": "All entries", "entry_ids": ["e1"]}]
+                if field == "groups"
+                else "Executive summary for the report."
+            ),
+        )
+
+        configs = {
+            "D1": {"enabled": True},
+            "D2": {"enabled": True},
+            "D3": {"enabled": True},
+        }
+        result = generate_report(
+            domain="test",
+            format="markdown",
+            delivery_gate_configs=configs,
+        )
+
+        assert isinstance(result, DeliveryOutput)
+        assert "D1-ProductCompleteness" in result.gate_results
+        assert "D2-FormatIntegrity" in result.gate_results
+        assert "D3-Freshness" in result.gate_results

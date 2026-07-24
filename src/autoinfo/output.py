@@ -25,7 +25,10 @@ import tarfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from autoinfo.quality import QualityResult
 
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, TemplateNotFound
 
@@ -36,8 +39,144 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Delivery gate output container
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DeliveryOutput:
+    """Output from a product generation run, extended with delivery gate results.
+
+    When :func:`generate_digest` or :func:`generate_report` is called with
+    *delivery_gate_configs* explicitly provided, the function returns a
+    :class:`DeliveryOutput` instead of a plain ``str``.  Existing callers
+    that do not pass *delivery_gate_configs* continue to receive a plain
+    ``str`` (backward compatible).
+    """
+
+    output: str
+    gate_results: dict[str, "QualityResult"] = field(default_factory=dict)
+    delivery_blocked: bool = False
+    delivery_format: str = ""
+    warnings: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def _apply_delivery_gates(
+    rendered_output: str,
+    output_format: str,
+    entries: list[dict[str, Any]],
+    context: dict[str, Any],
+    product_type: str,
+    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+    fallback_render_fn: Callable[[], str] | None = None,
+) -> DeliveryOutput:
+    """Run D1-D3 delivery gates on rendered output.
+
+    Parameters
+    ----------
+    rendered_output:
+        The rendered output string (markdown, html, or json).
+    output_format:
+        The format of the rendered output (``"markdown"``, ``"html"``,
+        ``"json"``).
+    entries:
+        List of KB entry dicts used to produce the output.
+    context:
+        Digest or report context dict.  May contain ``llm_synthesis``
+        (for D1 completeness checks).
+    product_type:
+        ``"PROCESSED"`` or ``"RAW"``.  RAW skips all delivery gates.
+    delivery_gate_configs:
+        Optional dict of ``{gate_name: config_dict}``.  When ``None``,
+        no gates are run and the output is returned as-is.
+    fallback_render_fn:
+        Optional callable that re-renders the output as markdown.
+        Invoked when D2 fails with ``action="fallback"``.
+
+    Returns
+    -------
+    DeliveryOutput
+        Contains the (possibly modified) output, gate results, and
+        delivery metadata (blocked flag, warnings).
+    """
+    if delivery_gate_configs is None:
+        return DeliveryOutput(
+            output=rendered_output,
+            gate_results={},
+            delivery_format=output_format,
+        )
+
+    # Deferred imports to avoid circular dependencies
+    from autoinfo.quality import QualityResult, run_delivery_gates  # noqa: PLC0415
+
+    llm_synthesis: dict[str, Any] = context.get("llm_synthesis", {})
+
+    # Build product_output dict expected by run_delivery_gates
+    product_output: dict[str, Any] = {
+        "product_type": product_type,
+        "format": output_format,
+        "body": rendered_output,
+        "key_findings": llm_synthesis.get("key_findings", []),
+        "summary": llm_synthesis.get("executive_summary", ""),
+        "recommendations": llm_synthesis.get("recommendations", []),
+        "entries": entries,
+    }
+
+    gate_results = run_delivery_gates(product_output, context, delivery_gate_configs)
+    warnings: list[str] = []
+    delivery_blocked = False
+    output = rendered_output
+    final_format = output_format
+
+    # --- D1: Completeness -----------------------------------------------
+    d1_result = gate_results.get("D1-ProductCompleteness")
+    if d1_result is not None and not d1_result.passed:
+        action = d1_result.details.get("action", "block")
+        if action == "block":
+            error_detail = d1_result.details.get("error", "incomplete product")
+            logger.warning("Delivery blocked by D1: %s", error_detail)
+            delivery_blocked = True
+            warnings.append(f"D1 blocked: {error_detail}")
+
+    # --- D2: Format integrity (fallback) ---------------------------------
+    d2_result = gate_results.get("D2-FormatIntegrity")
+    if d2_result is not None and d2_result.flagged:
+        action = d2_result.details.get("action", "fallback")
+        if action == "fallback":
+            d2_error = d2_result.details.get("error", "format integrity issue")
+            if fallback_render_fn is not None and output_format != "markdown":
+                logger.warning(
+                    "D2 fallback: %s — re-rendering as markdown",
+                    d2_error,
+                )
+                output = fallback_render_fn()
+                final_format = "markdown"
+                warnings.append("D2 fallback: re-rendered as markdown")
+            else:
+                logger.warning("D2 flagged: %s", d2_error)
+                warnings.append(f"D2 flagged: {d2_error}")
+
+    # --- D3: Freshness (flag) -------------------------------------------
+    d3_result = gate_results.get("D3-Freshness")
+    if d3_result is not None and d3_result.flagged:
+        stale = d3_result.details.get("stale_count", 0)
+        total = d3_result.details.get("total_entries", 0)
+        if stale:
+            logger.warning("D3 flagged: %d/%d stale entries", stale, total)
+            warnings.append(f"D3: {stale}/{total} entries stale")
+
+    return DeliveryOutput(
+        output=output,
+        gate_results=gate_results,
+        delivery_blocked=delivery_blocked,
+        delivery_format=final_format,
+        warnings=warnings,
+    )
 
 
 def export_kb(
@@ -934,7 +1073,9 @@ def generate_digest(
     llm_config: Config | None = None,
     custom_instructions: str = "",
     product_template: ProductTemplate | None = None,
-) -> str:
+    product_type: str = "PROCESSED",
+    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+) -> str | DeliveryOutput:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
     Parameters
@@ -958,11 +1099,23 @@ def generate_digest(
         When provided, the digest is rendered through the product template
         system (with domain-specific overrides).  When ``None`` (default),
         the existing direct Jinja2 rendering is used (backward compatible).
+    product_type:
+        Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+        enables D1-D3 checks when *delivery_gate_configs* is provided.
+        ``"RAW"`` skips all delivery gates.
+    delivery_gate_configs:
+        Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+        gates.  When provided, D1-D3 are run after rendering and the return
+        type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+        no gates are run and a plain ``str`` is returned (backward
+        compatible).
 
     Returns
     -------
-    str
-        The generated digest in the requested format.
+    str or DeliveryOutput
+        Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+        :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+        is provided.
 
     Raises
     ------
@@ -1033,15 +1186,27 @@ def generate_digest(
     # --- Render --------------------------------------------------------------
     if product_template is not None:
         variant = FORMAT_TO_VARIANT.get(format, format)
-        return product_template.render("digest", variant, context)
+        rendered = product_template.render("digest", variant, context)
+    elif format == "json":
+        rendered = _render_json(context)
+    elif format == "html":
+        rendered = _render_digest_html(context)
+    else:
+        rendered = _render_markdown(context)
 
-    if format == "json":
-        return _render_json(context)
+    # --- Delivery gates (D1-D3) ---------------------------------------------
+    if delivery_gate_configs is not None:
+        return _apply_delivery_gates(
+            rendered_output=rendered,
+            output_format=format,
+            entries=entries,
+            context=context,
+            product_type=product_type,
+            delivery_gate_configs=delivery_gate_configs,
+            fallback_render_fn=lambda: _render_markdown(context),
+        )
 
-    if format == "html":
-        return _render_digest_html(context)
-
-    return _render_markdown(context)
+    return rendered
 
 
 # ---------------------------------------------------------------------------
@@ -1081,7 +1246,9 @@ def generate_report(
     period: str = "month",
     custom_instructions: str = "",
     product_template: ProductTemplate | None = None,
-) -> str:
+    product_type: str = "PROCESSED",
+    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+) -> str | DeliveryOutput:
     """Generate a structured report for the given *domain*.
 
     Groups KB entries by theme using an LLM, produces an executive
@@ -1109,11 +1276,23 @@ def generate_report(
         When provided, the report is rendered through the product template
         system (with domain-specific overrides).  When ``None`` (default),
         the existing direct Jinja2 rendering is used (backward compatible).
+    product_type:
+        Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+        enables D1-D3 checks when *delivery_gate_configs* is provided.
+        ``"RAW"`` skips all delivery gates.
+    delivery_gate_configs:
+        Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+        gates.  When provided, D1-D3 are run after rendering and the return
+        type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+        no gates are run and a plain ``str`` is returned (backward
+        compatible).
 
     Returns
     -------
-    str
-        Rendered report string.
+    str or DeliveryOutput
+        Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+        :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+        is provided.
 
     Raises
     ------
@@ -1135,6 +1314,7 @@ def generate_report(
     entries = kb_store.list_entries(domain, limit=5000)
 
     if not entries:
+        rendered: str
         if format == "json":
             empty_data = {
                 "title": f"{domain} \u2014 Report",
@@ -1148,10 +1328,22 @@ def generate_report(
                     "entry_count": 0,
                 },
             }
-            return json.dumps(empty_data, indent=2, ensure_ascii=False)
-        if format == "html":
-            return _render_empty_report_html(domain)
-        return _render_empty_report(domain)
+            rendered = json.dumps(empty_data, indent=2, ensure_ascii=False)
+        elif format == "html":
+            rendered = _render_empty_report_html(domain)
+        else:
+            rendered = _render_empty_report(domain)
+
+        if delivery_gate_configs is not None:
+            return _apply_delivery_gates(
+                rendered_output=rendered,
+                output_format=format,
+                entries=[],
+                context={},
+                product_type=product_type,
+                delivery_gate_configs=delivery_gate_configs,
+            )
+        return rendered
 
     # -- Build reference list from entries --------------------------------
     references = [
@@ -1199,20 +1391,40 @@ def generate_report(
         references=references,
     )
 
+    # -- Build context for delivery gates ----------------------------------
+    report_context: dict[str, Any] = {
+        "llm_synthesis": {
+            "executive_summary": report_data.executive_summary,
+            "key_findings": [s.title for s in report_data.sections],
+            "recommendations": [],
+        },
+    }
+
     # -- Render -------------------------------------------------------------
     if product_template is not None:
         variant = FORMAT_TO_VARIANT.get(format, format)
-        report_context = _report_data_to_dict(report_data)
-        return product_template.render("report", variant, report_context)
+        pt_context = _report_data_to_dict(report_data)
+        rendered = product_template.render("report", variant, pt_context)
+    elif format == "json":
+        rendered = _render_report_json(report_data, period=period)
+    elif format == "html":
+        rendered = _render_report_html(report_data, period=period)
+    else:
+        rendered = _render_report_template(report_data)
 
-    if format == "json":
-        return _render_report_json(report_data, period=period)
+    # -- Delivery gates (D1-D3) ---------------------------------------------
+    if delivery_gate_configs is not None:
+        return _apply_delivery_gates(
+            rendered_output=rendered,
+            output_format=format,
+            entries=entries,
+            context=report_context,
+            product_type=product_type,
+            delivery_gate_configs=delivery_gate_configs,
+            fallback_render_fn=lambda: _render_report_template(report_data),
+        )
 
-    if format == "html":
-        return _render_report_html(report_data, period=period)
-
-    # -- Render via Jinja2 template ----------------------------------------
-    return _render_report_template(report_data)
+    return rendered
 
 
 # ---------------------------------------------------------------------------

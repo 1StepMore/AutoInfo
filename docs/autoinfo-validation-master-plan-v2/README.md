@@ -2,7 +2,7 @@
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-23
-**Baseline:** AutoInfo v1.4 — 1134 tests, 17 CLI command groups, 72 MCP tools (16 categories), Hermes KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA
+**Baseline:** AutoInfo v1.4 — 1134 tests, 17 CLI command groups, 72 MCP tools (16 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA
 
 ---
 

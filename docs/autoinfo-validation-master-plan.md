@@ -2210,4 +2210,4 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 ---
 
 *Plan generated: 2026-07-20 (v1.4 baseline: 2026-07-23)*
-*Based on: AutoInfo v1.4 codebase — 1134 tests, 17 CLI command groups, 72 MCP tools, Hermes KB pipeline, domain management, webhook push, cron digest*
+*Based on: AutoInfo v1.4 codebase — 1134 tests, 17 CLI command groups, 72 MCP tools, KB pipeline, domain management, webhook push, cron digest*

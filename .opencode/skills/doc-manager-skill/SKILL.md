@@ -53,7 +53,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
 | `docs/dev/founder-expectations.md` | Full project specification: 32 expectations, 13 technical decisions, design principles, 3 user types, deferred items catalog | 🔴 P0 — spec | Every architecture/feature change |
-| `docs/dev/Hermes-KnowledgeBase-介绍.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
+| `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
 
 ### 1.4 Validation Docs (testing and verification plans)
@@ -103,21 +103,21 @@ When you modify each code module below, the listed documentation files **must** 
 
 | Submodule | Docs to Update | What to Update |
 |-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 72) |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 79) |
 | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
 | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
 | `server.py` — new tool | `CHANGELOG.md` | Add entry |
 | `server.py` — new tool | `docs/autoinfo-validation-master-plan-v2/` parts 03/04 | Add validation scenarios |
 | `server.py` — tool param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
 | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Add error code to boundary matrix |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Update "72 tools" / "65 tools" references |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Update "79 tools" / "72 tools" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
-| KB tier logic | `AGENTS.md` | Architecture Rules (KB Pipeline Hermes Model) |
-| KB tier logic | `docs/dev/Hermes-KnowledgeBase-介绍.md` | Pipeline design details |
+| KB tier logic | `AGENTS.md` | Architecture Rules (KB Pipeline) |
+| KB tier logic | `docs/dev/kb-pipeline-reference.md` | Pipeline design details |
 | KB tier logic | `docs/dev/founder-expectations.md` | KB pipeline expectations |
 | KB tier logic | `README.md` | Status table (KB pipeline row) |
 | KB entry schema | `docs/dev/founder-expectations.md` | Entry field specifications |
@@ -248,6 +248,24 @@ When you modify each code module below, the listed documentation files **must** 
 | Version bump in `pyproject.toml` | `docs/dev/founder-expectations.md` | Version references, gantt chart, status tables |
 | Any release prep | All P0 docs | Comprehensive review of all docs for accuracy |
 
+### 2.18 Alerts (`src/autoinfo/alerts.py`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| Alert rule CRUD/logic | `README.md` | Feature list, MCP tools table (Alert Rules category) |
+| Alert rule CRUD/logic | `AGENTS.md` | Status table (agent alerting row), Tool Discovery table |
+| Alert rule CRUD/logic | `CHANGELOG.md` | Add entry |
+| Alert dispatch logic | `docs/dev/agent-alerting.md` | Update alerting pattern (was polling-based, now config-based) |
+
+### 2.19 Delivery Channel (`src/autoinfo/delivery.py`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| Channel logic | `README.md` | Feature list (product delivery), Architecture diagram |
+| Channel logic | `AGENTS.md` | Quality Gates section (D1-D3), Status table |
+| Channel logic | `CHANGELOG.md` | Add entry |
+| New channel type | `README.md`, `AGENTS.md` | Update delivery channel listing |
+
 ---
 
 ## 3. Doc Update Workflow
@@ -270,7 +288,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 17 groups, update descriptions
-- MCP Tools table → verify tool count (currently 72), update categories/tools
+- MCP Tools table → verify tool count (currently 79), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -329,10 +347,10 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 72 |
-| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 16 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 79 |
+| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 19 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 17 |
-| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1134 |
+| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1421 |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 3 |
 
@@ -410,7 +428,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 72), category count if new category
+**Quantities to bump**: MCP tool count (currently 79), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -442,14 +460,14 @@ Validation plan part-02 → new scenarios cover new command group
 
 **When**: You modify `src/autoinfo/kb.py`, changing how the 4-tier pipeline works.
 
-**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/dev/Hermes-KnowledgeBase-介绍.md`, `docs/dev/founder-expectations.md`, `README.md` (Status table), `CHANGELOG.md`
+**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/dev/kb-pipeline-reference.md`, `docs/dev/founder-expectations.md`, `README.md` (Status table), `CHANGELOG.md`
 
 **Critical**: The KB pipeline rules (01-Raw is sole entry point, agent cannot write to 03-Wiki, 03-Wiki is append-only) are **hard architecture constraints**. If these rules change, the update is a breaking change and must be clearly communicated in ALL docs.
 
 **Verify**:
 ```
 AGENTS.md Architecture Rules → KB Pipeline table matches new behavior
-Hermes-KnowledgeBase-介绍.md → pipeline diagram and rules updated
+kb-pipeline-reference.md → pipeline diagram and rules updated
 founder-expectations.md → expectations reflect new pipeline
 ```
 
@@ -488,7 +506,7 @@ Terms that appear across docs and must be used consistently:
 
 | Term | Definition | Used In |
 |------|-----------|---------|
-| Hermes model | 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki | AGENTS.md, Hermes doc, founder-expectations.md |
+| KB pipeline (4-tier) | 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki | AGENTS.md, kb-pipeline-reference.md, founder-expectations.md |
 | G1-G5 | Quality gates: Source authority, Dedup, Relevance, Factual, Translation | AGENTS.md, README.md, quality.md |
 | P0/P1/P2 | Priority levels used in status tables | README.md, AGENTS.md |
 | 01-Raw | Sole entry point for all collected content | All KB-related docs |

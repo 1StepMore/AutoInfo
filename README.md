@@ -15,7 +15,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages (trafilatura + Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF)
 - **Domain management** — Add, remove, list, activate/deactivate domains via CLI and MCP tools
 - **LLM-powered extraction** — TL;DR, key points, entity extraction, relevance scoring, custom field extraction
-- **Knowledge base (Hermes model)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite), with git versioning and `[[wiki links]]`
+- **Knowledge base (4-tier pipeline)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite), with git versioning and `[[wiki links]]`
 - **KB import** — Import content from 4 formats (PDF, Markdown, HTML, JSON) directly into 01-Raw
 - **Hybrid search** — FTS5 keyword + sqlite-vec vector embeddings, faceted filtering
 - **REST API** — Full CRUD over HTTP (FastAPI, port 8741), no auth (localhost security)
@@ -25,10 +25,12 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Translation QA pipeline** — 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails, composite quality scoring
 - **Email sending** — SMTP-based digest delivery (manual and cron-scheduled)
 - **Webhook push** — Per-item webhook notification on collected content
-- **Quality gates G1-G5** — Source authority, dedup, relevance, factual consistency, translation accuracy (all advisory)
-- **Agent-native** — 72 MCP tools. Agent operates, human directs.
+- **Quality gates** — 6 hard/soft gates (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3). Retry-first, block-last philosophy.
+- **Product delivery** — Two product types: RAW (API feeds, webhook streams, bulk export) and PROCESSED (scheduled digests, thematic reports, alert streams via SMTP/webhook)
+- **Agent-native** — 79 MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
-- **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning)
+- **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning). Any field with paying customers.
+- **Subscription-ready** — F30 (billing, feature gating, usage metering) defined and deferred to v2+
 
 ## Status
 
@@ -39,8 +41,8 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
-| Quality gates | ✅ G1-G5 advisory gates (G4 factual consistency, G5 translation accuracy) |
-| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
+| Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
+| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
@@ -49,7 +51,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 72 tools across 16 categories |
+| MCP server | ✅ 79 tools across 19 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -61,7 +63,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 1134 tests (35+ test files, 105 v1.2 integration tests) |
+| Test suite | ✅ 1421 tests (53 test files, 262 v1.5 tests) |
 
 ## Quick Start
 
@@ -103,10 +105,15 @@ Sources (RSS/API/Web)
         ▼
    knowledge/{Raw|Draft|Wiki}/ ───→ Markdown + SQLite + FTS5 + vector embeddings
         │
+        ├── Product Pipeline (RAW + PROCESSED)
+        │     ├── RAW feeds (API, webhook, bulk export)
+        │     └── PROCESSED (digests, reports, alerts, tutorials)
+        │
+        ├── Delivery Channels (SMTP, webhook, REST API, export)
         ├── autoinfo summaries list | status | kb search
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
-        └── MCP server (72 tools)
+         └── MCP server (79 tools)
 ```
 
 ## CLI Commands (17 groups)
@@ -132,7 +139,7 @@ autoinfo knowledge graph            # Knowledge graph export
 autoinfo clean                       # Clean temporary artifacts
 ```
 
-## MCP Tools (72)
+## MCP Tools (79)
 
 | Category | Tools |
 |----------|-------|
@@ -159,6 +166,9 @@ autoinfo clean                       # Clean temporary artifacts
 | **Projects** | init_project, list_projects, get_project_assets, archive_project |
 | **Monitor** | list_active_collections |
 | **Webhooks** | set_domain_webhooks, get_domain_webhooks |
+| **Quality Gate Config** | get_gate_config, set_gate_config |
+| **Product** | list_products, get_product |
+| **Alert Rules** | add_alert_rule, get_alert_rules, remove_alert_rule |
 
 ## Demo Domains
 
@@ -178,7 +188,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.4 adds **user-defined domains** via CLI/MCP, **translation QA pipeline** (5 lite gates + back-translation verification + terminology guardrails), **HTML format output** (digest/report/presentation), **KB import** (4 formats → 01-Raw), **per-item webhook push**, and **cron-based email digest delivery** with **agent proactive alerting** documentation. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo v1.5 adds **commercial scope** (any field with paying customers), **two product types** (RAW + PROCESSED with delivery infrastructure), **production-grade quality gates** (hard/soft split, retry-first/block-last philosophy), and **product architecture** with delivery channels (SMTP, webhook, REST API, export). v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (72 tools across 16 categories)
+2. **All capabilities** are exposed as MCP tools (79 tools across 19 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -58,8 +58,8 @@ AutoInfo/
 ├── .gitignore
 ├── docs/
 │   ├── dev/
-│   │   ├── founder-expectations.md # Full spec (32 expectations, 13 tech decisions)
-│   │   └── Hermes-KnowledgeBase-介绍.md  # KB pipeline reference model
+│   │   ├── founder-expectations.md # Full spec (35 expectations, 13 tech decisions)
+│   │   └── kb-pipeline-reference.md  # KB pipeline reference model
 │   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
 │       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
 │       └── translator-qa-skill/    # Translation QA workflow
@@ -68,17 +68,20 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 17 CLI command groups
-│       ├── mcp/                     # MCP server (72 tools)
+│       ├── mcp/                     # MCP server (79 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
-│       ├── kb.py                    # Knowledge base pipeline (4-tier Hermes)
+│       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output.py                # Output generation (digest, report, tutorial, export)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
 │       ├── email_sender.py          # SMTP email sending
 │       ├── keywords.py              # Keyword management
+│       ├── quality.py               # Quality gates G0-G5, D1-D3 delivery gates
+│       ├── delivery.py              # Delivery channel abstraction (SMTP, webhook, REST, export)
+│       ├── alerts.py                # Alert rule CRUD, YAML persistence, check & dispatch
 │       ├── qa.py                    # Q&A with LLM synthesis
-│       └── quality.py               # Quality gates G1-G5
+│       └── ...
 ```
 
 ## Architecture Rules
@@ -86,7 +89,7 @@ AutoInfo/
 These are hard constraints derived from `founder-expectations.md`.
 Violating them produces incorrect behavior.
 
-### KB Pipeline (Hermes Model)
+### KB Pipeline
 
 ```
 Collected Item → 01-Raw → 02-Draft → 03-Wiki
@@ -122,18 +125,26 @@ Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
   → Creates 01-Raw KB entries
 ```
 
-### Quality Gates (Advisory, Not Blocking)
+### Quality Gates (Production-Grade)
 
-AutoInfo never discards collected content. Low-quality items are flagged,
-hidden from default views, or demoted — never deleted.
+Production-grade quality with hard/soft split and retry-first, block-last philosophy.
+G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — they retry
+up to 3 times with escalating context, then block on failure. G1-G3 and G5 are
+**soft gates** with configurable thresholds and actions (archive/flag/pass).
+3 delivery gates (D1-D3) check product completeness, format integrity, and
+freshness at output time.
 
-| Gate | Priority |
-|------|----------|
-| G1: Source authority (tier check) | 🔴 P0 |
-| G2: Dedup (URL + fuzzy title) | 🔴 P0 |
-| G3: Relevance scoring (0-100) | 🔴 P0 |
-| G4: Summary factual consistency | 🟡 P1 |
-| G5: Translation accuracy | 🟡 P1 |
+| Gate | Type | Priority | Action on Failure |
+|------|------|----------|-------------------|
+| G0: Schema integrity | 🔴 Hard | 🔴 P0 | 3× retry → block (item written to `_failed/`) |
+| G1: Source authority (tier check) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
+| G2: Dedup (URL + fuzzy title) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
+| G3: Relevance scoring (0-100) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass (below threshold) |
+| G4: Factual consistency | 🔴 Hard | 🟡 P1 | 3× retry with escalating context → block |
+| G5: Translation accuracy | 🟡 Soft | 🟡 P1 | Configurable: archive/flag/pass |
+| D1: Product completeness | 🔴 Hard | 🔴 P0 | Blocks delivery |
+| D2: Format integrity | 🔴 Hard | 🔴 P0 | Blocks delivery |
+| D3: Freshness | 🟡 Soft | 🟡 P1 | Configurable threshold |
 
 ## Agent Constraints (MUST NOT)
 
@@ -150,7 +161,7 @@ hidden from default views, or demoted — never deleted.
 
 ## Tool Discovery Guidance
 
-72 MCP tools organized by category:
+79 MCP tools organized by category:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -177,6 +188,9 @@ hidden from default views, or demoted — never deleted.
 | **Projects** | `init_project`, `list_projects`, `get_project_assets`, `archive_project` |
 | **Monitor** | `list_active_collections` |
 | **Webhooks** | `set_domain_webhooks`, `get_domain_webhooks` |
+| **Quality Gate Config** | `get_gate_config`, `set_gate_config` |
+| **Product** | `list_products`, `get_product` |
+| **Alert Rules** | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
 
 **Discovery flow**:
 1. Call `health_check()` first to verify server is alive and get version info
@@ -339,8 +353,8 @@ Collection and processing now return a `job_id` for progress polling:
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
-| Quality gates | ✅ G1-G5 advisory gates (G4 factual consistency, G5 translation accuracy) |
-| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
+| Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
+| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
@@ -349,11 +363,11 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 72 tools across 16 categories |
+| MCP server | ✅ 79 tools across 19 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
-| Agent alerting | ✅ Polling-based source health monitoring documented (agent-alerting.md) |
+| Agent alerting | ✅ Config-based alert rules with YAML persistence, check & dispatch via DeliveryChannel |
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
@@ -361,9 +375,9 @@ Collection and processing now return a `job_id` for progress polling:
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 1134 tests (35+ test files, 105 v1.2 integration tests) |
+| Test suite | ✅ 1421 tests (53 test files, 262 v1.5 tests) |
 
 ## References
 
-- `docs/dev/founder-expectations.md` — Full specification (32 expectations, 13 technical decisions)
-- `docs/dev/Hermes-KnowledgeBase-介绍.md` — Reference KB pipeline model
+- `docs/dev/founder-expectations.md` — Full specification (35 expectations, 13 technical decisions)
+- `docs/dev/kb-pipeline-reference.md` — Reference KB pipeline model

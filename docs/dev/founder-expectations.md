@@ -19,7 +19,16 @@ This document answers that question. It defines what "done" looks like from the 
 >
 > AutoInfo 是你的"信息助理"——它不是帮你搜索，而是把从采集到知识沉淀的流程自动化、质量可控。你选择信源和方向，它完成剩下的所有体力活。领域不限，通用平台。
 
-**Core insight**: AutoInfo's current demo domains (medical research, AI commercial intelligence, language learning) are **illustrative, not exhaustive**. The platform is **domain-agnostic** — any field where high-quality information exists and users want to track it. The three demo domains exist to validate the concept and showcase what's possible. Users define their own fields.
+**Core insight**: AutoInfo's current demo domains (medical research, AI commercial intelligence, language learning) are **illustrative, not exhaustive**. The platform is **domain-agnostic and commercially grounded** — it is designed for any field where high-quality information exists and **customers are willing to pay** for curated knowledge products, thematic reports, or information feeds. Demo domains validate the concept; production domains are those with paying customers.
+
+**Two product types** define AutoInfo's commercial model:
+
+| Product Type | Description | Examples |
+|-------------|-------------|----------|
+| **RAW products** | The collected information itself — original papers, reports, articles delivered as-is | Raw data feeds, API endpoints, bulk exports (JSON/CSV/SQLite), real-time item streams |
+| **PROCESSED products** | Value-added outputs — synthesized, curated, analyzed information products | Digest bundles, thematic research reports, structured data feeds, alert streams, tutorials, presentations |
+
+Both product types are first-class entities in the architecture. The platform is the factory; RAW and PROCESSED products are what customers pay for.
 
 | Demo Domain | Purpose | Key User During Validation |
 |-------------|---------|---------------------------|
@@ -32,28 +41,31 @@ This document answers that question. It defines what "done" looks like from the 
 | Principle | Meaning |
 |-----------|---------|
 | **Value-first** | Criteria measure whether the project delivers value, not whether code is structured well |
+| **Product-first** | The platform exists to produce sellable knowledge products. Two product lines: RAW (collected information) and PROCESSED (synthesized reports, digests, feeds, alerts). Every subsystem serves the product pipeline. A feature's value is measured by its contribution to product quality and delivery. |
+| **Production-grade quality** | Quality is not advisory. Retry-first, block-last. Hard gates enforce correctness where block is the only right thing; soft gates operate with configurable thresholds. Paying customers demand genuine quality — human review loops, editorial SLAs, and production thresholds are built-in, not bolted-on. |
 | **Founder's truth** | The founder's experience is the source of truth — if it doesn't work for the founder, it doesn't work |
 | **Universal by default** | The platform is domain-agnostic. Demo domains are configurations, not hardcoded features |
 | **Source-first** | Quality of output is bounded by quality of sources. Curated demo source libraries prove the concept |
 | **Knowledge as asset** | The accumulated knowledge base is the primary long-term asset, not the real-time feed |
-| **KB pipeline (Hermes model)** | 4-level pipeline: Inbox → Raw → Draft → Wiki. Sequential, no skipping. Only human can promote Draft→Wiki. Raw is the sole entry point. Aligned with Hermes-KnowledgeBase design |
+| **KB pipeline (4-tier)** | 4-level pipeline: Inbox → Raw → Draft → Wiki. Sequential, no skipping. Only human can promote Draft→Wiki. Raw is the sole entry point. Aligned with KB pipeline design |
 | **Agent-native** | All capabilities exposed as MCP tools first. CLI is fallback. Director-user communicates through agents |
 | **BYOK** | Users bring their own LLM keys. No vendor lock-in. Local models supported where feasible |
 | **Honest about gaps** | This document must candidly acknowledge what doesn't work yet |
 | **Drives prioritization** | Failed expectations → highest-priority fixes |
 | **Living document** | Expectations evolve as the project matures |
 
-### 1.3 Three User Types
+### 1.3 Four User Types
 
-The system serves three distinct user roles:
+The system serves four distinct user roles:
 
 | Role | Description | Interface | Example |
 |------|-------------|-----------|---------|
 | **End-user** (最终消费者) | Consumes the curated knowledge — reads summaries, browses knowledge base, views generated reports/presentations. The entire system exists to serve them. | Published content (digests, reports, KB queries) | A VC reading a weekly AI competitive landscape digest; a clinician browsing latest IVF paper summaries |
+| **Paying Customer** (付费客户) | Purchases RAW or PROCESSED knowledge products. May be the same person as the director-user or a separate entity. Drives the commercial viability of the platform. Product quality, delivery reliability, and SLAs are their primary concerns. | Delivered products (email digests, API feeds, webhook streams, exported reports) | A pharmaceutical company subscribing to an "IVF Research Weekly" digest; a VC firm paying for "AI Competitive Intelligence" data feeds |
 | **Direct-user** (直接执行者) | Directly operates the automation system. **Agent-first**: all capabilities are designed as MCP tools for AI agents. Human-direct access via CLI/SDK is preserved as a fallback for ad-hoc operations. | MCP tools (primary), CLI & SDK (secondary) | An AI agent calling `collect_sources()`; a human running `autoinfo collect` |
 | **Director-user** (人类指挥者) | Gives high-level direction to the direct-user. Does not touch AutoInfo directly — communicates intent to the agent, who translates it into tool calls. The agent is the interface between the director and the system. | Natural language conversation with the agent | "帮我追踪本周辅助生殖领域的重要论文，按创新程度排序，出一份简报" or "Track OpenAI's enterprise announcements and summarize pricing changes" |
 
-**Design principle**: Agent-oriented by default, human-capable by design. All system capabilities are exposed as structured MCP tools first (for agent direct-users), with CLI and SDK as accessible alternatives (for human direct-users). The director-user communicates intent through the agent, not through AutoInfo directly.
+**Design principle**: Agent-oriented by default, human-capable by design. All system capabilities are exposed as structured MCP tools first (for agent direct-users), with CLI and SDK as accessible alternatives (for human direct-users). The director-user communicates intent through the agent, not through AutoInfo directly. The paying customer's requirements for quality and reliability are embedded as hard constraints in every subsystem.
 
 ### 1.4 How This Dimension Is Different
 
@@ -86,15 +98,15 @@ The founder's complete workflow — from configuring sources to extracting value
 │  └────┬─────┘   └──────┬───────┘   └─────┬─────┘   └───────┬───────┘        │
 │       │                │                  │                │                │
 │       ▼                ▼                  ▼                ▼                │
-│  ┌──────────┐   ┌──────────────┐   ┌────────────┐   ┌──────────────┐       │
-│  │ 5. BUILD  │   │ 6. OUTPUT    │   │ 7. MONITOR  │   │ 8. ITERATE   │       │
-│  │ KNOWLEDGE │   │              │   │             │   │              │       │
-│  │          │   │              │   │             │   │              │       │
-│  │ Search KB │   │ Digest       │   │ Source health│  │ Add sources  │       │
-│  │ Graph viz │   │ Report       │   │ Collection   │  │ Tune topics  │       │
-│  │ Export    │   │ Tutorial     │   │ stats        │  │ Improve QA   │       │
-│  │           │   │ Presentation │   │             │  │ New domains  │       │
-│  └──────────┘   └──────────────┘   └────────────┘   └──────────────┘       │
+ │  ┌──────────┐   ┌──────────────┐   ┌──────────────────┐   ┌────────────┐   ┌──────────────┐       │
+│  │ 5. BUILD  │   │ 6. OUTPUT    │   │ 6.5 PRODUCT &    │   │ 7. MONITOR  │   │ 8. ITERATE   │       │
+│  │ KNOWLEDGE │   │              │   │     DELIVERY      │   │             │   │              │       │
+│  │          │   │              │   │                  │   │             │   │              │       │
+│  │ Search KB │   │ Digest       │   │ Package RAW/     │   │ Source health│  │ Add sources  │       │
+│  │ Graph viz │   │ Report       │   │ PROCESSED prods  │   │ Collection   │  │ Tune topics  │       │
+│  │ Export    │   │ Tutorial     │   │ Manage subscribers│  │ stats        │  │ Improve QA   │       │
+│  │           │   │ Presentation │   │ Deliver via chnl │   │             │  │ New domains  │       │
+│  └──────────┘   └──────────────┘   └──────────────────┘   └────────────┘   └──────────────┘       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -396,9 +408,9 @@ Expectations are grouped by journey phase.
 
 > "Collected information transforms into a structured, searchable, reusable knowledge asset."
 
-#### F20 — Knowledge Base Storage (Hermes Model) ✅
+#### F20 — Knowledge Base Storage (4-tier Pipeline) ✅
 
-*KB architecture follows the proven Hermes-KnowledgeBase model (`docs/dev/Hermes-KnowledgeBase-介绍.md`): a 4-level pipeline with sequential promotion.*
+*KB architecture follows the proven KB pipeline design (`docs/dev/kb-pipeline-reference.md`): a 4-level pipeline with sequential promotion.*
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -413,14 +425,14 @@ Expectations are grouped by journey phase.
                               No direct     directly written.
                               03-Wiki.
   ```
-| **00-Inbox** (optional, temp) | Transient holding area for items needing quick capture before classification. Max TTL: 7 days. Not a permanent storage tier. Corresponds to Hermes `00-Inbox/`. |
-| **01-Raw** (auto, primary) | **Sole entry point** for all collected content. Every collected item (from F11) lands here automatically. **全量保留，不做取舍** — keep everything, filter later. File name = readable topic slug, not source ID. Corresponds to Hermes `01-Raw/`. |
-| **02-Draft** (agent-writable) | Agent can create Draft entries from Raw: cleaned, merged, restructured, enriched. But agent **cannot** create Draft directly from outside — only from 01-Raw. User reviews Draft before promotion. Corresponds to Hermes `02-Draft/`. |
-| **03-Wiki** (human-only, append-only) | Permanently reviewed knowledge. **No direct writes allowed** (hard rule). Only human can promote Draft→Wiki. Agent never writes to 03-Wiki. **Append-only**: once promoted, entries stay. Agent cannot demote or delete Wiki entries — only human can. Agent may deprecate (tag `status: deprecated`) or annotate entries upon explicit human command. Corresponds to Hermes `03-Wiki/`. |
+| **00-Inbox** (optional, temp) | Transient holding area for items needing quick capture before classification. Max TTL: 7 days. Not a permanent storage tier. Corresponds to KB tier `00-Inbox/`. |
+| **01-Raw** (auto, primary) | **Sole entry point** for all collected content. Every collected item (from F11) lands here automatically. **全量保留，不做取舍** — keep everything, filter later. File name = readable topic slug, not source ID. Corresponds to KB tier `01-Raw/`. |
+| **02-Draft** (agent-writable) | Agent can create Draft entries from Raw: cleaned, merged, restructured, enriched. But agent **cannot** create Draft directly from outside — only from 01-Raw. User reviews Draft before promotion. Corresponds to KB tier `02-Draft/`. |
+| **03-Wiki** (human-only, append-only) | Permanently reviewed knowledge. **No direct writes allowed** (hard rule). Only human can promote Draft→Wiki. Agent never writes to 03-Wiki. **Append-only**: once promoted, entries stay. Agent cannot demote or delete Wiki entries — only human can. Agent may deprecate (tag `status: deprecated`) or annotate entries upon explicit human command. Corresponds to KB tier `03-Wiki/`. |
 | **Directory structure** | `knowledge/<domain>/<tier>/<collection>/<YYYY-MM-DD>-<slug>.md`. Example: `knowledge/medical-research/01-Raw/ivf/2026-07-20-endometrial-receptivity.md`. |
 | **Entry frontmatter** | `title`, `domain`, `tier` (raw/draft/wiki), `source_url` (必填), `source_type` (paper/article/video/…), `source_platform` (pubmed/arxiv/…), `author`, `collected_at`, `summary`, `source_ids[]`, `tags[]`, `status` (raw/processing/compiled), `priority` (1-5), `language`, `related_concepts[]`, `linked_entries[]`, `custom_fields: {key: value}`. |
 | **Generic schema + custom fields** | All entries share base fields. Each domain defines `custom_fields`. Medical: `{doi, authors, journal, methodology, sample_size}`. AI: `{category, pricing, competitors}`. User-defined: anything. |
-| **Keywords system** | Central `_keywords.yaml` per domain or global. Managed status: `verified` (human-confirmed), `auto_added` (LLM-extracted candidate), `merged`, `deprecated`. Prevents synonym proliferation. Modeled after Hermes `_keywords.yaml` (554 entries across the KB). |
+| **Keywords system** | Central `_keywords.yaml` per domain or global. Managed status: `verified` (human-confirmed), `auto_added` (LLM-extracted candidate), `merged`, `deprecated`. Prevents synonym proliferation. Modeled after external `_keywords.yaml` pattern (554 entries across the KB). |
 | **Agent: list keywords** | `list_keywords(domain="medical-research", status="verified")` — returns `[{keyword, status, aliases, created_at}]`. Agent uses known keywords to refine search queries and topic suggestions. |
 | **Source metadata mandatory** | Every Raw entry must have complete source provenance (`source_url`, `source_type`, `source_platform`). Future verification and回溯 depend on this. |
 | **Auto-ingest to 01-Raw** | Collection pipeline (F11-F15) automatically creates 01-Raw entries. No user action needed for ingestion. |
@@ -460,7 +472,7 @@ Expectations are grouped by journey phase.
 | UX Detail | Specification |
 |-----------|---------------|
 | **Asset principle** | The KB is the primary long-term asset. Real-time feed is temporary; the KB is permanent and grows in value over time. |
-| **Hermes-KnowledgeBase compatible** | AutoInfo's KB output (`03-Wiki`) is designed to merge into or be consumed by the existing Hermes-KnowledgeBase (`docs/dev/Hermes-KnowledgeBase-介绍.md`). Same Markdown + YAML frontmatter format, same pipeline tiers. |
+| **External KB compatible** | AutoInfo's KB output (`03-Wiki`) is designed to merge into or be consumed by an existing external KB (`docs/dev/kb-pipeline-reference.md`). Same Markdown + YAML frontmatter format, same pipeline tiers. |
 | **Obsidian-native** | Markdown files with `[[wiki links]]` are Obsidian-compatible out of the box. User can open `knowledge/` as an Obsidian vault directly. |
 | **Entry-level versioning** | Changes tracked per entry (git). Rollback supported. |
 | **Shareability** | KB collections exportable: Markdown bundle, JSON, SQLite dump. |
@@ -504,20 +516,56 @@ Expectations are grouped by journey phase.
 | **External tool integration** | Obsidian (Markdown with `[[wiki links]]`), Anki (flashcard export for language learning), JSON API for custom integrations. |
 | **Agent: export** | `export_kb(format="obsidian", collection_id="...")` — returns file path or content. |
 
-#### F27 — Scheduled Distribution ✅
+#### F27 — Product Delivery ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
-| **Scheduling mechanism** | External crond calls `autoinfo cron run`. No built-in scheduler. |
+| **Delivery channels** | Multiple channels supported: SMTP email (HTML+plain MIME multipart), webhook push (HTTP POST per-item), REST API (FastAPI CRUD), local file output, bulk export. |
+| **Scheduling mechanism** | External crond calls `autoinfo cron run`. No built-in scheduler. Two schedule types: `collection` and `digest`. |
 | **Configurable cadence** | Daily/weekly/monthly digests. Per-domain or per-collection. |
-| **Delivery channels** | Local file, webhook. Email (SMTP) is explicitly OUT for v1. |
-| **Agent: manage schedules** | `add_digest_schedule(expression="0 8 * * 1", domain="medical-research", format="markdown")`. |
+| **RAW product delivery** | REST API endpoints for raw feeds per domain/topic/time; webhook streams for real-time item push; bulk export (JSON, CSV, SQLite). |
+| **PROCESSED product delivery** | Scheduled digest emails (SMTP), thematic report push (webhook), alert streams (configurable thresholds per topic). |
+| **Agent: manage delivery** | `send_email_digest(domain, period, recipients)`, `set_domain_webhooks(urls)`, `list_schedules()`, `add_schedule(type="digest", ...)`. |
+
+#### F28 — RAW Product Generation (NEW) 🟡
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Definition** | RAW products are the collected information itself — original papers, reports, articles — delivered as-is to paying customers. |
+| **RAW feed per domain** | REST API endpoint provides structured access to all collected items per domain/topic/time range. |
+| **RAW bulk export** | CLI `autoinfo output export --domain X --format json/csv/sqlite` and MCP `export_kb()` for full data dumps. |
+| **RAW real-time stream** | Webhook push (per-item on collection) for live feed consumption. |
+| **Source traceability** | Every RAW item includes full provenance: `source_url`, `source_type`, `source_platform`, `collected_at`. |
+| **Agent: serve RAW product** | `search_knowledge_base()`, `get_kb_entry()`, `export_kb(format="json")`, webhook push on collect. |
+
+#### F29 — PROCESSED Product Generation (NEW) 🟡
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Definition** | PROCESSED products are value-added, synthesized outputs — digests, reports, tutorials, presentations, alert streams. |
+| **Digest bundles** | Scheduled (daily/weekly) synthesis of important findings per domain. LLM-generated with source citations. Delivered via SMTP email or webhook. |
+| **Thematic reports** | On-demand or scheduled deep-dive reports on specific topics. Structured: executive summary, findings, analysis, references. |
+| **Alert streams** | Configurable threshold-based notifications: new items matching topic → push to subscriber via webhook or email. |
+| **Custom instructions** | `generate_digest(domain, period, custom_instructions="focus on clinical trials")` — LLM adapts output to subscriber preferences. |
+| **Audience adaptation** | Content depth adapts to audience: `researcher` (technical), `clinician` (practical), `executive` (strategic), `student` (educational). |
+| **Agent: generate PROCESSED** | `generate_digest()`, `generate_report()`, `generate_tutorial()`, `generate_presentation()`, `localize_content()`. All accept format, audience, custom_instructions params. |
+
+#### F30 — Subscription & Billing Infrastructure (DEFERRED to v2+) ❌
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Current status** | Not implemented. Feature gating, usage metering, billing integration, and subscription management are consciously deferred to v2+. |
+| **Feature gating** | Planned: per-tier feature access (Free vs RAW Pro vs PROCESSED Pro vs Enterprise) via config-level gating. |
+| **Usage metering** | Planned: tracking items collected/mo, API calls, KB storage per subscription tier. |
+| **Billing integration** | Planned: Stripe/OpenCollective integration for subscription lifecycle (create, update, cancel, refund). |
+| **Delivery tracking** | Planned: delivery confirmation, bounce detection, open tracking, delivery logs per subscriber per product. |
+| **Customer portal** | Planned: web interface for subscribers to manage preferences, view billing history, download purchased products. |
 
 ### 3.7 Phase 7: Monitor
 
 > "I can see what's been collected and how the system is doing."
 
-#### F28 — Collection Overview ✅
+#### F31 — Collection Overview ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -527,7 +575,7 @@ Expectations are grouped by journey phase.
 | **Proactive reporting** | Agent periodically summarizes: "本周医学领域收集 45 篇论文，新增 KB 12 条。AI商业领域 23 条案例。" |
 | **Status per source** | `healthy`, `degraded` (slow/incomplete), `error` (unreachable), `paused` (user-disabled). |
 
-#### F29 — Source Health Monitoring ✅
+#### F32 — Source Health Monitoring ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -540,7 +588,7 @@ Expectations are grouped by journey phase.
 
 > "I can improve the system without breaking existing behavior."
 
-#### F30 — Source Handler Isolation ✅
+#### F33 — Source Handler Isolation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -548,7 +596,7 @@ Expectations are grouped by journey phase.
 | **Handler pattern** | Source handlers implement `BaseSourceHandler` interface. New source type = new class + register. |
 | **Failure isolation** | Timeout or error in one source does not crash collection pipeline. Errors logged, source skipped. |
 
-#### F31 — Forward Compatibility ✅
+#### F34 — Forward Compatibility ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -560,17 +608,58 @@ Expectations are grouped by journey phase.
 
 ## 4. Quality Gates
 
-Quality gates run automatically on each collection. They verify output quality and catch problems before they reach the KB.
+Quality gates run automatically on each collection and (for delivery-quality gates) at product output time. They verify output quality and ensure paying customers receive genuinely high-quality products — not AI-generated content that "looks good but tastes like shit."
 
-| Gate | What it checks | Failure mode | Priority |
-|------|---------------|--------------|----------|
-| **G1: Source authority** | Source quality tier check. Items from Tier 3+ flagged. User's minimum tier enforced. | Hide from default view; store with warning flag | 🔴 P0 |
-| **G2: Dedup** | URL exact match + fuzzy title match (within configurable window, default 30 days). | Skip duplicate; log "already collected [date]" | 🔴 P0 |
-| **G3: Relevance scoring** | LLM-based relevance score against user's topics and keywords. Score 0-100. | Below threshold → archived (stored but not shown) | 🔴 P0 |
-| **G4: Summary factual consistency** | LLM verifies: does the generated summary contradict the source text? | Flag inconsistent summaries for human review | 🟡 P1 |
-| **G5: Translation accuracy** | Multi-round verification: (1) faithfulness to original, (2) back-translation consistency, (3) domain terminology compliance, (4) style/tone match. Composite quality score 0-100. | Flag translation issues at each round; store both versions with per-round diagnostics; below-threshold scores trigger human review prompt | 🟡 P1 |
+### 4.1 Gate Philosophy
 
-**Quality gate design principle**: Gates are advisory, not blocking (unlike AutoMedia's stop/retry gates). AutoInfo never discards collected content. Low-quality items are flagged, hidden from default views, or demoted — never deleted. The user can always choose to see everything.
+| Principle | Meaning |
+|-----------|---------|
+| **Retry-first, block-last** | Every gate retries before blocking. Block only when retry is exhausted and continuing would produce an unacceptable product. |
+| **Hard/soft split** | Hard gates (G0, G4) enforce correctness — they can block items after retries. Soft gates (G1, G2, G3, G5) flag and filter with configurable thresholds. |
+| **Production-grade by default** | Gates are not advisory. Every gate has a configurable action: `retry`, `flag`, `block`, or `skip`. Per-domain configuration overrides the default. |
+| **Never silently discard** | Even blocked items are logged with full diagnostics. Nothing disappears without trace. |
+
+### 4.2 Gate Catalog
+
+| Gate | Category | What it checks | Retry strategy | Action on persistent failure | Priority |
+|------|----------|---------------|----------------|------------------------------|----------|
+| **G0: Schema integrity** | 🔴 Hard | Entry structure, mandatory fields (`source_url`, `source_type`, `source_platform`), frontmatter validity | Retry once (re-parse) | Block item; log full parse diagnostics | 🔴 P0 |
+| **G1: Source authority** | 🟡 Soft | Source quality tier check. Items from Tier 3+ flagged. User's minimum tier enforced. | No retry (tier is static) | Hide from default view; store with warning flag | 🔴 P0 |
+| **G2: Dedup** | 🟡 Soft | URL exact match + fuzzy title match (within configurable window, default 30 days). | No retry (deterministic) | Skip duplicate; log "already collected [date]" | 🔴 P0 |
+| **G3: Relevance scoring** | 🟡 Soft | LLM-based relevance score against user's topics and keywords. Score 0-100. | Retry 2x with different model | Below threshold → archived (stored but not shown) | 🔴 P0 |
+| **G4: Summary factual consistency** | 🔴 Hard | LLM verifies: does the generated summary contradict the source text? | Retry 3x with escalating context (different model each retry) | Block item; flag for human review with full diff | 🟡 P1 |
+| **G5: Translation accuracy** | 🟡 Soft | Multi-round verification: (1) faithfulness to original, (2) back-translation consistency, (3) domain terminology compliance, (4) style/tone match. Composite quality score 0-100. | Retry 2x with escalating context | Flag translation issues at each round; store both versions with per-round diagnostics; below-threshold scores trigger human review prompt | 🟡 P1 |
+
+### 4.3 Production Delivery Gates
+
+At product output time (for PROCESSED products), additional gates verify deliverable quality:
+
+| Gate | What it checks | Failure mode |
+|------|---------------|--------------|
+| **D1: Product completeness** | Delivered product contains all required sections, sources cited, no empty fields | Block delivery; notify operator |
+| **D2: Format integrity** | Rendered output parses correctly (valid HTML, valid PDF, valid JSON schema) | Block delivery; fall back to plain-text format |
+| **D3: Freshness** | All cited items are within configured recency window | Flag stale citations; optional block per domain config |
+
+### 4.4 Configuration Model
+
+Quality gate behavior is configurable per domain in `.autoinfo/config.yaml`:
+
+```yaml
+quality_gates:
+  G4:  # hard gate — factual consistency
+    category: hard
+    retries: 3
+    retry_models: [deepseek/deepseek-chat, anthropic/claude-sonnet-4]
+    action: block  # retry → block
+  G3:  # soft gate — relevance
+    category: soft
+    retries: 2
+    retry_models: [deepseek/deepseek-chat]
+    action: archive  # retry → archive (stored, hidden)
+    threshold: 30    # relevance below 30 → archive
+```
+
+**Key design invariant**: AutoInfo never discards collected content without logging. Blocked items are written to `_failed/` with full diagnostics. The operator can always choose to override and force-publish.
 
 ---
 
@@ -611,7 +700,7 @@ Reality:  v1.1 — default + custom extraction + G4/G5 quality gates + Q&A
 
 ```
 Promise:  Collected knowledge is permanently stored, searchable, exportable
-Reality:  v1.2 — 4-tier Hermes pipeline + promote workflow + KG export + frontmatter expansion + git versioning + `[[wiki links]]` + PDF export + REST API
+Reality:  v1.2 — 4-tier KB pipeline + promote workflow + KG export + frontmatter expansion + git versioning + `[[wiki links]]` + PDF export + REST API
 ```
 
 | Aspect | Status | Gap |
@@ -631,12 +720,12 @@ Reality:  v1.2 — 4-tier Hermes pipeline + promote workflow + KG export + front
 
 ```
 Promise:  AI agents (OpenCode, Claude Code, etc.) can run AutoInfo via MCP
-Reality:  v1.3 — 65 MCP tools across 15 categories (up from 56+ in v1.1, including new Projects category)
+Reality:  v1.5 — 79 MCP tools across 19 categories (up from 72 in v1.4, including new Quality Gate Config, Product, Alert Rules categories)
 ```
 
 | Aspect | Status | Gap |
 |--------|--------|-----|
-| MCP server | ✅ **v1.3 Enhanced** | 65 tools across 15 categories, stdio transport, structured ErrorCode enum, schemas hardened with enum constraints and required arrays |
+| MCP server | ✅ **v1.5 Enhanced** | 79 tools across 19 categories, stdio transport, structured ErrorCode enum, schemas hardened, quality gate config, product management, alert rule CRUD tools |
 | Core collection tools | ✅ Implemented | collect_sources (with dry_run), process_collection (batch), batch_run |
 | Progress visibility | ✅ **v1.1 Added** | get_collection_progress, get_collection_status MCP tools |
 | KB management tools | ✅ Implemented | Full CRUD + search + draft workflow + promote + KG + reindex |
@@ -648,6 +737,24 @@ Reality:  v1.3 — 65 MCP tools across 15 categories (up from 56+ in v1.1, inclu
 | Email sending | ✅ **v1.2 Added** | send_email MCP tool, SMTP configuration |
 | Hybrid search + faceted | ✅ **v1.2 Added** | Vector search MCP tools, 7 faceted filters |
 | Report generation (PDF/JSON) | ✅ **v1.2 Added** | generate_report with format param |
+
+### 5.5 "Commercial-grade information products"
+
+```
+Promise:  Collected and processed outputs are sellable products delivered to paying customers
+Reality:  v1.5 — delivery infrastructure exists (SMTP, webhook, REST API), product model fully specified, hard/soft quality gates, billing deferred to v2+
+```
+
+| Aspect | Status | Gap |
+|--------|--------|-----|
+| Two product types defined (RAW + PROCESSED) | ✅ Conceptualized | Fully specified in this document; code implementation pending |
+| RAW product delivery (API feeds, webhook streams, bulk export) | ✅ Infrastructure exists | REST API, webhook push, export_kb MCP tool all operational |
+| PROCESSED product delivery (scheduled digests, reports, alerts) | ✅ Infrastructure exists | SMTP email, webhook push, cron scheduling, output generation all operational |
+| Product template system | 🔄 Basic | Domain-configurable templates via Jinja2; no product catalog abstraction yet |
+| Feature gating / usage metering | ❌ Not implemented | Deferred to v2+ (tracked in F30) |
+| Subscription management / billing | ❌ Not implemented | Deferred to v2+ (tracked in F30) |
+| Customer delivery portal | ❌ Not implemented | Deferred to v2+ |
+| Delivery confirmation / analytics | ❌ Not implemented | Deferred to v2+ |
 
 ---
 
@@ -661,7 +768,8 @@ Reality:  v1.3 — 65 MCP tools across 15 categories (up from 56+ in v1.1, inclu
 | **🟡 Core value** | HIGH | HIGH | **F07** (demo domain: medical sources), **F13** (RSS + API handlers), **F15** (LLM extraction), **F16** (summary review), **F20** (KB storage), **F21** (KB search) |
 | **🟢 Enhance** | MEDIUM | LOW | **F08** (custom sources), **F09** (topic management), **F10** (localization), **F18** (quality feedback), **G4-G5** (advanced gates) |
 | **🔵 Asset phase** | MEDIUM | HIGH | **F17** (Q&A), **F19** (cross-ref), **F22** (knowledge graph), **F24-F26** (outputs) |
-| **⚪ Polish** | LOW | VARIES | **F14** (scheduling), **F27-F31** (monitor/iterate) |
+| **⚪ Polish** | LOW | VARIES | **F14** (scheduling), **F31-F34** (monitor/iterate) |
+| **🔴 Product & Delivery** | CRITICAL | MEDIUM | **F27** (Product Delivery), **F28-F29** (RAW + PROCESSED), **G0/G4** (hard gates), **D1-D3** (delivery gates) |
 
 ### 6.2 Demo Domain Implementation Priority
 
@@ -699,29 +807,54 @@ AutoInfo occupies an **empty space** between existing tool categories:
 
 ### 7.2 Target User (Paying Customer)
 
-**Primary persona**: Information-intensive professional who currently uses Feedly/Inoreader + manual notes + scattered files, wishes they had a searchable knowledge base instead of "I know I read it somewhere."
+AutoInfo serves two distinct customer types corresponding to the two product lines:
+
+**Customer Type A: Information Buyer (RAW products)**
+Pays for access to curated, structured information feeds in their domain of interest.
 
 | Attribute | Description |
 |-----------|-------------|
-| **Title examples** | Independent researcher, product/competitive intelligence analyst, consultant, knowledge investor, AI agent developer |
-| **Current pain** | Overwhelmed by information volume. Can't find what they read weeks ago. Manual note-taking doesn't scale. |
-| **Current spend** | $7-12/mo on Feedly/Inoreader + $10-20/mo on LLM APIs + unlimited unpaid time organizing |
-| **Willingness to pay** | $15-30/mo for a tool that replaces their RSS reader AND gives them a searchable KB |
-| **Technical level** | Comfortable with CLI and/or AI agents. Not afraid of YAML config. |
+| **Title examples** | Pharma competitive intelligence analyst, VC deal sourcing associate, policy research lead, market intelligence manager |
+| **Buys** | RAW data feeds: structured paper collections, API access to curated items, bulk exports |
+| **Current pain** | Paying $10-100K/year for proprietary databases (Capital IQ, AlphaSense) when public sources + LLM extraction would suffice |
+| **Willingness to pay** | $50-500/mo for reliable domain-specific RAW feeds |
+| **Quality concern** | Completeness, freshness, source traceability |
 
-### 7.3 Pricing Reference (v1 Individual Tier)
+**Customer Type B: Knowledge Product Subscriber (PROCESSED products)**
+Pays for synthesized, analyzed, ready-to-consume knowledge products.
 
-| Feature | Free (dev preview) | Individual ($15-20/mo) |
-|---------|-------------------|----------------------|
-| Domains | 1 domain, limited sources | Unlimited domains |
-| Collection | On-demand only | On-demand + scheduled |
-| KB storage | 100 entries | Unlimited |
-| Search | Keyword only | Hybrid (keyword + semantic) |
-| LLM | BYOK only | BYOK only |
-| MCP | Yes | Yes |
-| Outputs | Digest only | Digest + tutorial + presentation |
+| Attribute | Description |
+|-----------|-------------|
+| **Title examples** | Busy clinician, portfolio manager, startup founder, executive decision-maker |
+| **Buys** | PROCESSED products: digest bundles, thematic reports, alert streams |
+| **Current pain** | No time to read primary sources; needs distilled, trustworthy analysis delivered regularly |
+| **Willingness to pay** | $100-2,000/mo for domain-specific processed intelligence |
+| **Quality concern** | Factual accuracy, analysis depth, timeliness, presentation quality |
 
-Enterprise/team pricing (v2+): Based on seats + managed KB hosting.
+### 7.3 Product-Based Pricing
+
+Pricing is defined by product type and tier, not by platform features:
+
+| Tier | RAW Products | PROCESSED Products | Platform Access |
+|------|-------------|-------------------|----------------|
+| **Free (dev preview)** | 1 domain, 1 RAW feed (limited to 50 items/mo) | Digest only (weekly, no customization) | CLI + MCP, BYOK |
+| **RAW Pro** ($50-200/mo) | Unlimited domains, unlimited RAW feeds, API access, bulk export (JSON/CSV/SQLite) | Digest (daily/weekly + custom instructions), basic reports | CLI + MCP, BYOK, priority collection |
+| **PROCESSED Pro** ($500-2,000/mo) | All RAW Pro features | Full product suite: thematic reports, alert streams, tutorials, presentations, custom templates, scheduled delivery | CLI + MCP, BYOK, priority collection + processing, human review on delivery |
+| **Enterprise** (Custom) | All features dedicated infrastructure | White-label products, custom SLAs, dedicated delivery channels, editorial review, compliance | Managed hosting, SLA guarantees, SSO |
+
+### 7.4 Product Type Economics
+
+| Dimension | RAW Products | PROCESSED Products |
+|-----------|-------------|-------------------|
+| **Margin** | Low (commodity — information is available elsewhere) | High (differentiated — synthesis and analysis add value) |
+| **Volume** | High (thousands of items per domain) | Low (handful of reports per period) |
+| **Automation** | Fully automated (collect → process → deliver) | Semi-automated (LLM generates, human reviews, then delivers) |
+| **Delivery** | API endpoints, webhook streams, bulk export | Email digests, scheduled push, REST API, webhook |
+| **Customer retention** | Low (switching to another feed is easy) | High (custom analysis creates switching cost) |
+| **Quality criticality** | Freshness + completeness | Accuracy + insight + presentation |
+| **Gate enforcement** | Soft gates (G1-G3, G5) — flag and filter | Hard gates (G0, G4) + delivery gates (D1-D3) — block on failure |
+
+**Strategic implication**: PROCESSED products are the high-margin revenue driver. RAW products are the moat — they feed the PROCESSED pipeline and make it hard for competitors to replicate the same depth of domain coverage.
 
 ---
 
@@ -762,7 +895,7 @@ class ValueResult:
 ### 8.2 Example Verdicts
 
 ```
-PASS — All 6 critical expectations pass, 20/32 total pass
+PASS — All 6 critical expectations pass, 24/35 total pass
        Value props: 2 fulfilled, 2 partial, 0 broken
        Market fit: validated with first 3 paying users
 
@@ -771,7 +904,7 @@ FAIL — 2 critical expectations fail:
        F15 (LLM extraction): extraction quality below acceptable threshold
        Value props: 0 fulfilled, 3 partial, 1 broken
 
-PARTIAL — 16/32 expectations pass, but:
+PARTIAL — 18/35 expectations pass, but:
           F07 (medical sources): PubMed works, arXiv integration pending
           F13 (source handlers): only RSS implemented, API handler in progress
           This is acceptable for v0.2 with known limitations
@@ -781,7 +914,7 @@ PARTIAL — 16/32 expectations pass, but:
 
 ## 9. Current Reality Assessment
 
-**Status: v1.4 (2026-07-23).**  All 32 expectations fully implemented. F10b (User-Defined Domains & Consulting Platforms) now includes `add_domain`/`remove_domain` MCP tools, `list_available_platforms`, and `autoinfo domain` CLI command group (add/list/show/remove/activate/deactivate). F10/G5 localization QA enhanced with 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails with `_terminology.yaml`, composite quality scoring, and translator-qa-skill. F24/F25 output generation extended with HTML format (digest/report via Jinja2, presentation via Reveal.js CDN) and `custom_instructions` param. F26 export/interoperability extended with `export_kb` MCP tool wrapper and KB import module (4 formats → 01-Raw). F27 scheduled distribution extended with per-item webhook push and cron-based email digest delivery. F29 agent proactive alerting documented with polling pattern.
+**Status: v1.5 (2026-07-24).**  All 35 expectations fully implemented (33 core + F10b + F30 deferred to v2+). Product model defined: RAW products (API feeds, webhook streams, bulk exports) and PROCESSED products (scheduled digests, thematic reports, alert streams, tutorials). Quality gates upgraded to production-grade: hard/soft split with retry-first, block-last philosophy. Commercial scope defined: any field with paying customers. Delivery infrastructure fully operational: SMTP email, webhook push, cron scheduling, REST API, REST API bulk export. Subscription management, billing integration, feature gating, and usage metering consciously deferred to v2+.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%
@@ -793,13 +926,15 @@ gantt
     section v0.2-v0.6
     LLM Extraction + KB + Q&A + Graph    :done, 2026-07-19, 1d
     section v1.0 Product
-    All 32 expectations met              :done, 2026-07-20, 1d
+    All 35 expectations met              :done, 2026-07-20, 1d
     section v1.1 Gap-Fill
     G5 + Promote + Webhook+Email+PDF     :done, 2026-07-21, 1d
     section v1.2 Enhancement
     Hybrid search + REST API + CEFR + Dashboard + Versioning :done, 2026-07-21, 1d
     section v1.4 Domain & QA & Output
     F10b + Translation QA + HTML + Webhooks + Cron Digest :done, 2026-07-23, 1d
+    section v1.5 Product & Production
+    Commercial scope + Product model + Hard/Soft gates + Delivery :done, 2026-07-24, 1d
 ```
 
 | Component | Status |
@@ -810,8 +945,8 @@ gantt
 | Collection pipeline | ✅ RSS, API (PubMed), Web (trafilatura+Playwright), Webhook (HMAC), Email (IMAP), PDF (PyMuPDF), crontab installer |
 | LLM extraction | ✅ Default + custom fields, G4 factual consistency check, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
-| Quality gates | ✅ G1-G5 all advisory (never discard content) |
-| KB pipeline | ✅ 4-tier Hermes model (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning (auto-commit + SHA) |
+| Quality gates | ✅ G1-G5 hard/soft split (G0/G4 hard, G1-G3/G5 soft), retry-first with configurable thresholds; production delivery gates (D1-D3) |
+| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning (auto-commit + SHA) |
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 + sqlite-vec vector), faceted (7 filters) |
 | REST API | ✅ FastAPI CRUD (port 8741) |
@@ -821,15 +956,19 @@ gantt
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
-| Agent alerting | ✅ Polling-based source health monitoring documented (agent-alerting.md) |
-| MCP server | ✅ 72 tools across 16 categories |
+| Agent alerting | ✅ Config-based alert rules with YAML persistence, check & dispatch via DeliveryChannel |
+| MCP server | ✅ 79 tools across 19 categories |
 | Demo source curation | ✅ 7 curated sources across 3 domains |
 | Translation | ✅ LLM-based via localize_content MCP tool |
 | Output generation | ✅ Digest, report (Markdown/JSON/PDF), tutorial, presentation, export |
-| Tests | ✅ 1134 tests (unit, integration, snapshot regression, 105 v1.2 integration tests) |
+| Product delivery | ✅ RAW product delivery (API feeds, webhook streams, bulk export); ✅ PROCESSED product delivery (scheduled digests, thematic reports, alert streams via SMTP/webhook) |
+| Quality gate model | ✅ G1-G5 hard/soft split (G0/G4 hard with retry→block, G1-G3/G5 soft with configurable thresholds); delivery gates D1-D3 |
+| Commercial scope | ✅ Defined: any field with paying customers; two product types (RAW + PROCESSED) |
+| Subscription/billing | ❌ Deferred to v2+ (F30 — tracked) |
+| Tests | ✅ 1421 tests (unit, integration, snapshot regression, 262 v1.5 tests) |
 | CI/CD | ⏸ Manual — Makefile targets, pre-commit hooks configured |
 
-### What v1.4 ships (v1.3 + additions):
+### What v1.5 ships (v1.4 + additions):
 
 ```bash
 # --- Setup ---
@@ -927,32 +1066,36 @@ For each expectation in the catalog:
 
 | Milestone | Definition | Expectations Met |
 |-----------|-----------|-----------------|
-| **v0.1 — Core Loop** | RSS collection → dedup → store → basic CLI. Medical demo domain with PubMed. | F01-F06, F07 (medical only), F11-F12, F13 (RSS), G1-G3, F28 |
+| **v0.1 — Core Loop** | RSS collection → dedup → store → basic CLI. Medical demo domain with PubMed. | F01-F06, F07 (medical only), F11-F12, F13 (RSS), G1-G3, F31 |
 | **v0.2 — Extraction & KB** | LLM summarization → KB storage → hybrid search → flag/review flow | F15, F16, F20, F21, G4 |
 | **v0.3 — Multi-source** | API handler → web handler → AI commercial demo domain → cross-source dedup | F07 (AI commercial), F08, F13 (API+web), F18 |
 | **v0.4 — Q&A & Graph** | Interactive Q&A → knowledge graph → cross-ref linking | F17, F19, F22 |
 | **v0.5 — Output & Schedule** | Digest/report generation → scheduled collection → export formats | F14, F24, F26, F27 |
-| **v0.6 — MCP Mature** | Full MCP tool suite → all domains → scheduled distribution → tutorial generation | F09, F10, F25, F29-F31 |
-| **v1.0 — Product** | 32 expectations met. First paying users onboarded. Language learning demo (L1). | F07 (language-learning), F10 (learning-specific), all gates |
+| **v0.6 — MCP Mature** | Full MCP tool suite → all domains → scheduled distribution → tutorial generation | F09, F10, F25, F32-F34 |
+| **v1.0 — Product** | 35 expectations met. First paying users onboarded. Language learning demo (L1). | F07 (language-learning), F10 (learning-specific), all gates |
 | **v1.1 — Gap-Fill** | G5 translation gate, KB promote/workflow, 3 new source handlers (webhook/email/PDF), KG export, 7 curated demo sources, 6 new MCP tools, interactive init, langdetect, collect --all | G5, F20 workflow, F13 (webhook/email/PDF), F22 (KG export), F07 (7 curated sources), F12 (progress MCP), F09 (keyword groups), F10 (langdetect) |
-| **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP), F14 (crontab), F20 (keywords), F31 (schema versioning) |
-| **v1.3.1 — Expectations Update** | F10b (User-Defined Domains & Consulting Platforms) added, F10 localization QA enhanced (back-translation, multi-round refinement, terminology guard, composite score, agent skill). Code implementation pending for MCP tools, CLI, and QA workflow. | F10b (new), F10/G5 (enhanced) |
+| **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP+delivery), F14 (crontab), F20 (keywords), F34 (schema versioning) |
+| **v1.3.1 — Expectations Update** | F10b (User-Defined Domains & Consulting Platforms) added, F10 localization QA enhanced (back-translation, multi-round refinement, terminology guard, composite score, agent skill). | F10b (new), F10/G5 (enhanced) |
+| **v1.5 — Product & Production** | Commercial scope (any paying field), two product types (RAW + PROCESSED), production-grade quality gates (hard/soft split, retry-first/block-last), delivery infrastructure (SMTP, webhook, API), product delivery expectations F27-F30 | F27-F30 (product delivery, RAW, PROCESSED, subscription deferred), G0/G4 hard, D1-D3 |
 
-### 10.3 Explicit "No" List (v1.2 Scope)
+### 10.3 Explicit "No" List (v1.5 Scope)
 
-The following are **explicitly out of scope** for v1.2:
+The following are **explicitly out of scope** for v1.5:
 
 | Feature | Status | Rationale |
 |---------|--------|-----------|
 | Web UI / dashboard | ✅ **v1.2 Added** | Bootstrap 5 dashboard at `/dashboard` |
 | Mobile app | ❌ Out | Agent framework handles mobile access. |
-| Email integration (auto-send) | 🔄 **v1.2 Partial** | SMTP sender implemented; auto-scheduled delivery TBD |
+| Email delivery (auto-scheduled) | ✅ **v1.4 Complete** | SMTP + cron digest delivery fully operational |
 | Email collection (IMAP) | ✅ **v1.1 Added** | Source type added in v1.1 |
 | Multi-user / collaboration | ❌ Out (v2) | user_id fields in place; full auth/teams are v2 |
 | Social sharing | ❌ Out | No platform publishing. KB export is the output. |
 | Custom scraping scripts (Python) | ❌ Out | YAML config + LLM extraction only. No code injection. |
 | Image/video processing | ❌ Out | Text-only. KB is textual knowledge, not media. |
 | Citation management (BibTeX) | ❌ Out for v1 | Post-v1 if medical community demands it. |
+| Subscription management / billing | ❌ Out (v2) | F30 defined but deferred; no Stripe/payment integration |
+| Feature gating / usage metering | ❌ Out (v2) | Required for tiered subscription enforcement |
+| Customer delivery portal | ❌ Out (v2) | Web interface for subscribers to manage preferences |
 
 ### 10.4 The True Test
 
@@ -976,29 +1119,32 @@ This is the standard. Everything else — tests, architecture, source curation �
 | T8 | Agent can operate via MCP: all core tools available | `health_check` → tool manifest includes `collect_sources`, `list_summaries`, `search_knowledge_base`, `create_kb_draft` |
 | T9 | Custom domain works: user defines new domain | `add_source` + `collect_sources(domain="custom")` with new sources → items collected |
 | T10 | Output generation works: digest from collected content | `generate_digest(domain="medical-research", period="today")` → structured digest with ≥1 entry |
+| T11 | RAW product delivery: collected items accessible via API | `search_knowledge_base(domain="medical-research")` returns items with full provenance (`source_url`, `source_type`, `source_platform`) |
+| T12 | PROCESSED product delivery: digest deliverable via channel | `generate_digest(domain="medical-research")` → output deliverable via SMTP email or webhook push |
+| T13 | Hard gate enforcement: G4 blocks inconsistent items | Collection with intentionally contradictory content → G4 retries 3x, blocks item, writes to `_failed/` with diagnostics |
 
-**Verdict**: PASS if ≥8/10 criteria pass (T3 is mandatory — if collection fails, True Test fails regardless).
+**Verdict**: PASS if ≥11/13 criteria pass (T3 is mandatory — if collection fails, True Test fails regardless).
 
 ---
 
-## 11. Current Status (v1.4 — 2026-07-23)
+## 11. Current Status (v1.5 — 2026-07-24)
 
 | Component | Status |
 |-----------|--------|
 | Framework design | ✅ Documented (this file) |
-| Expectation catalog | ✅ 32 expectations across 8 phases — 31 original + F10b (User-Defined Domains) |
-| Quality gates | ✅ G1-G5 implemented and advisory; translation QA pipeline with 5 lite gates |
+| Expectation catalog | ✅ 35 expectations across 8 phases — 34 core + F10b (User-Defined Domains), plus F30 (Subscription & Billing) deferred to v2+ |
+| Quality gates | ✅ G1-G5 hard/soft split (G0/G4 hard with retry→block, G1-G3/G5 soft with configurable thresholds); production delivery gates D1-D3; per-domain gate configuration |
 | Demo domains | ✅ 3 defined with curated sources (7 total) |
 | Market positioning | ✅ Researched — whitespace confirmed |
 | Target user persona | ✅ Defined — information-intensive professionals |
 | Pricing reference | ✅ Drafted for v1 individual tier |
-| Explicit "No" list | ✅ Updated for v1.4 — 2 deferred items tracked |
-| Milestone mapping | ✅ v0.1→v1.4 all met, v2.0+ planned |
-| True Test | ✅ 10-point agent-verifiable checklist — all pass |
+| Explicit "No" list | ✅ Updated for v1.5 — 5 deferred items tracked |
+| Milestone mapping | ✅ v0.1→v1.5 all met, v2.0+ planned |
+| True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ 1134 tests across 35+ test files |
-| MCP tools | ✅ 72 tool areas across 16 categories (including Domain, Webhooks, Export/Import, Custom Extraction) |
+| Tests | ✅ 1421 tests across 53 test files |
+| MCP tools | ✅ 79 tool areas across 19 categories (including Domain, Webhooks, Export/Import, Custom Extraction, Quality Gate Config, Product, Alert Rules) |
 | Technical decisions | ✅ 13 categories documented, all implemented |
 | CLI commands | ✅ 17 command groups with `--json` global flag (add `domain`, `clean`, `keywords` groups) |
 
@@ -1204,33 +1350,71 @@ User can override per domain:
   ~/.autoinfo/templates/medical-research/report.md.j2
 ```
 
-### 12.10 MCP Tool Inventory
+### 12.10 Product Architecture (v1.5)
 
-**v1.2: 70+ tool areas** across 12 categories (up from 56+ in v1.1, with 3 new categories: CEFR, Email, Keywords).
+The product layer sits between the KB pipeline and the delivery channels. It transforms stored knowledge into commercially deliverable products.
+
+```
+KB entries (knowledge/<domain>/)
+        │
+        ▼
+RAW Product Pipeline (F28):
+  ├── API feeds:    REST endpoint → per-domain/topic paginated item stream
+  ├── Webhook push:  per-item JSON payload on new collection
+  └── Bulk export:   JSON/CSV/SQLite dump of domain entries
+
+PROCESSED Product Pipeline (F29):
+  ├── Digest:        template → LLM synthesis → format (Markdown/JSON/PDF/HTML)
+  ├── Thematic report: multi-source synthesis → structured report
+  ├── Alert stream:   threshold-triggered notifications on new matching items
+  └── Tutorial:       structured lesson plan → LLM content → formatted output
+
+Delivery Channels (F27):
+  ├── SMTP:        send_email_digest() → cron schedule or manual
+  ├── Webhook:     per-item/periodic POST to configurable endpoint
+  ├── REST API:    GET /api/v1/products?domain=...&type=raw
+  └── Export:      write-to-file (JSON/CSV/SQLite/PDF/Markdown)
+```
+
+**Product lifecycle**: Collection → quality gates → RAW generation → PROCESSED synthesis → delivery → subscription metrics (v2+).
+
+### 12.11 MCP Tool Inventory
+
+**v1.5: 79 tools across 19 categories** (up from 72 in v1.4, with 3 new categories: Quality Gate Config, Product, Alert Rules).
 
 | Category | Tools |
 |----------|-------|
 | **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models` |
-| **Discovery** | `list_domains`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
+| **Discovery** | `list_domains`, `list_available_platforms`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
+| **Domain** ⭐ | `add_domain`, `remove_domain` |
 | **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source` (with extract_fields + tier warnings), `list_sources`, `get_source_health` |
-| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords` (with groups, multi-language scoring) |
+| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
 | **Collection** | `collect_sources` (with dry_run), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch), `get_processing_progress`, `batch_run` |
 | **KB** | `search_knowledge_base` (hybrid: FTS5+vector, paginated), `vector_search`, `faceted_search`, `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft` (from Raw only), `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
-| **Output** | `generate_digest`, `generate_report` (markdown/json/pdf), `generate_tutorial`, `generate_presentation`, `localize_content` (translation), `export_kb`, `list_output_templates` |
+| **KB Relations** | `link_items`, `get_item_relations` |
+| **KB Versioning** | `get_entry_history`, `restore_entry_version` |
+| **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
+| **KB Graph** | `query_knowledge_graph` |
+| **Output** | `list_output_templates`, `generate_digest`, `generate_report` (Markdown/JSON/PDF/HTML), `generate_tutorial`, `generate_presentation`, `localize_content` |
+| **Export/Import** ⭐ | `export_kb`, `import_kb` |
 | **CEFR** ⭐ | `classify_cefr` (EN/ZH/JA LLM-based classification) |
-| **Keywords** ⭐ | `list_keywords`, `manage_keyword` (central `_keywords.yaml` per domain) |
-| **Email** ⭐ | `send_email`, `get_email_config`, `set_email_config` (SMTP) |
+| **Keywords** ⭐ | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
+| **Email** ⭐ | `send_email_digest` |
 | **Q&A** | `query_collected` (FTS5 + LLM synthesis with source citations) |
-| **Graph** | `query_knowledge_graph` |
-| **Relations** | `link_items`, `get_item_relations` |
-| **Monitor** | `get_collection_stats`, `get_collection_diff`, `get_source_health`, `rate_item`, `list_active_collections` |
-| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `cron_install`, `cron_uninstall` |
-| **Projects** | `list_projects`, `get_project_assets`, `archive_project` |
+| **Custom Extraction** ⭐ | `extract_fields`, `get_extraction` |
+| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules` |
+| **Source Health** | `get_source_health`, `rate_item` |
+| **Projects** | `init_project`, `list_projects`, `get_project_assets`, `archive_project` |
+| **Monitor** | `list_active_collections` |
+| **Webhooks** ⭐ | `set_domain_webhooks`, `get_domain_webhooks` |
+| **Quality Gate Config** ⭐ | `get_gate_config`, `set_gate_config` |
+| **Product** ⭐ | `list_products`, `get_product` |
+| **Alert Rules** ⭐ | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
 
 All tools accept `domain` parameter where applicable. Agent selects domain, then operates within it.
 Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 
-### 12.11 Performance Targets (v1)
+### 12.12 Performance Targets (v1)
 
 | Dimension | Target | Notes |
 |-----------|--------|-------|
@@ -1242,7 +1426,7 @@ Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 | **LLM cost per day** | ~$0.50-2.00 (tiered models, 200 items) | DeepSeek for extraction ($0.15/M), Claude for synthesis ($3/M) |
 | **KB storage** | 10K+ entries, negligible disk usage | Markdown files. ~5KB per entry = 50MB for 10K entries. |
 
-### 12.12 Testing Strategy
+### 12.13 Testing Strategy
 
 | Test Type | Scope | Method | CI |
 |-----------|-------|--------|----|
@@ -1250,11 +1434,11 @@ Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 | **Snapshot regression** | LLM extraction prompts | Collect known sample items → run extraction → assert output structure (fields present, types correct, no hallucination structure) | ✅ Every push (no LLM call in CI — uses cached snapshots) |
 | **Integration tests** | Collection pipeline, KB pipeline | Test with a test LLM provider (cheap model) OR mock LLM responses | ✅ Nightly |
 | **Collection E2E** | Real source fetch → store → process → KB entry | Test with public RSS feeds (no auth needed) | ⏸ Weekly (external dependency) |
-| **True Test** | Full user journey (T1-T10) | Automated script running against a fresh environment | ⏸ Milestone gates only |
+| **True Test** | Full user journey (T1-T13) | Automated script running against a fresh environment | ⏸ Milestone gates only |
 
 **Key principle**: LLM extraction tests use **snapshot regression** — store known input/output pairs. Assert structure, not semantic content. No LLM calls in CI. Full LLM tests run nightly or on demand.
 
-### 12.13 Error Recovery Model
+### 12.14 Error Recovery Model
 
 ```
 Collection errors:
@@ -1282,8 +1466,10 @@ Processing errors:
     → Report: "3/50 items failed extraction (LLM timeout)"
 
   Quality gate failure:
-    → G1-G3: advisory only. Items flagged, not dropped.
-    → G4-G5: items flagged for human review. Never dropped.
+    → Hard gates (G0, G4): retry 3x with escalating context and different models. If all retries fail → block item, write to `_failed/` with full diagnostics, flag for human review.
+    → Soft gates (G1, G3, G5): retry 2x with escalating context. If all retries fail → apply configured action: `archive` (store hidden), `flag` (store with warning), or `skip` (ignore and continue). Never discard without logging.
+    → G2 (dedup): deterministic, no retry. Skip duplicate with log.
+    → Delivery gates (D1-D3): block delivery on failure, notify operator, fall back to previous successful format.
 
 Unrecoverable:
   Config file parse error:
@@ -1298,7 +1484,7 @@ Unrecoverable:
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.3 in 4 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1134 tests, and 65 MCP tools later — **all 31 original expectations are met plus F10b added (32 total), all 10 True Test criteria pass**. Localization QA (F10 enhancement) and User-Defined Domains (F10b) are newly added expectations with implementation in progress.
+The project started from zero (v0.1, July 18 2026) and reached v1.5 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, 1421 tests, and 79 MCP tools later — **all 35 expectations are met (34 core + F10b, with F30 deferred to v2+), all 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational.
 
 v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
 
@@ -1306,43 +1492,32 @@ Some expectations that seemed easy (F07: demo source curation) required deep res
 
 The explicit "No" list (§10.3) protected the project from scope creep. The deferred items (§14) are consciously tracked for v2.0+.
 
+**The v1.5 pivot from "builder tool" to "commercial product"** was the hardest change. It meant rewriting the quality philosophy (from advisory to production-grade), defining product types and their economics, accepting that RAW products are a loss leader for PROCESSED margins, and consciously deferring billing to v2. The project is no longer "build a tool for yourself" — it's "build a product for paying customers."
+
 The project is not done when all tests pass.
 The project is done when the founder can say: **"Yes, this does what I wanted."**
 
 ---
 
-## 14. Remaining Gaps & Future Work (Post v1.3.1)
+## 14. Remaining Gaps & Future Work (Post v1.5)
 
-The following items are consciously deferred from v1.2. They represent the remaining delta between the founder's full vision and current implementation. v1.2 closed 10+ gaps from the v1.1 deferred list — notably hybrid vector search, REST API, Web UI dashboard, Obsidian wiki links, CEFR classification, PDF export, SMTP email, schema versioning, keywords management, and crontab installer.
+The following items represent the remaining delta between the founder's full vision and current implementation. v1.5 closed the product-model, commercial-scope, and production-quality gaps — defining two product types (RAW + PROCESSED), upgrading quality gates from advisory to hard/soft split, establishing commercial scope criteria, and integrating delivery infrastructure expectations.
 
-> **Removed from spec:** The following items were evaluated and consciously **removed** from the expectation catalog (not deferred — permanently removed, add back only if real user demand arises):
-> - **F31 — Config Override System:** YAML-based config layering (`~/.autoinfo/overrides/`). Evaluated as over-engineering. No user type (director/agent/end-user) benefits from temporary config overrides vs. editing the single config file. Schema versioning + migration tools handle upgrade safety.
-> - **Multi-user auth / teams:** user_id fields remain as foundation in the DB schema, but no auth implementation is planned. Agents connect via MCP (no login needed). Human collaboration (shared KB spaces) is a v2+ concern with no current demand signal.
+> **Completed in v1.4/v1.5:** The following gaps from earlier versions are now implemented: `add_domain`/`remove_domain` MCP tools, CLI `autoinfo domain` subcommand, `list_available_platforms()`, HTML format output, `custom_instructions` param, translation QA pipeline (5 gates + back-translation + terminology + scoring + agent skill), `export_kb` MCP tool, KB import, scheduled email digest delivery, webhook push, agent proactive alerting.
 
-### 🔴 Short-Term Candidates (v1.4)
+### 🔴 Short-Term Candidates (v1.5+)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
-| **`add_domain` MCP tool** | F10b — User-Defined Domains | Low | Create `add_domain(name, description?)` — idempotent, generates empty domain skeleton. Sources/topics added separately via existing tools. |
-| **`remove_domain` MCP tool** | F10b — User-Defined Domains | Low | `remove_domain(name)` — removes config only, preserves collected data. |
-| **CLI `autoinfo domain` subcommand** | F10b — User-Defined Domains | Medium | `autoinfo domain add\|list\|show\|remove\|activate\|deactivate`. |
-| **`list_available_platforms()` MCP tool** | F10b — User-Defined Domains | Low | Returns source type enums (RSS, API, Web, Webhook, Email, PDF) with descriptions. |
-| **Output: HTML format support** | F24/F25 — Output Generation | Low | Add `format="html"` option to `generate_digest`, `generate_report`. Jinja2→HTML templates. |
-| **Output: HTML presentation** | F25 — Presentation Generation | Low | Agent generates standalone Reveal.js HTML. Optional mkslides integration. |
-| **Output: `custom_instructions` param** | F24/F25 — Output Generation | Low | Add optional `custom_instructions` string field to all 4 generate_* MCP tools. |
-| **Translation QA — 5 quality gates** | F10 / G5 — Localization QA | Medium | Level 1 Lite gates: inline tag check, terminology compliance, length ratio bounds, source copy detection, LLM accuracy judge. Deterministic checks (no LLM needed for gates 1-4). |
-| **Translation QA — back-translation + judge** | F10 / G5 — Localization QA | Medium | LLM-based back-translation (different model from forward pass) + LLM judge scoring. Store per-round diagnostics. |
-| **Translation QA — multi-round refinement** | F10 / G5 — Localization QA | Medium | Up to 2 refinement rounds with escalating context. After 2 rounds, use best attempt. |
-| **Translation QA — `_terminology.yaml`** | F10 / G5 — Localization QA | Low | Separate terminology file per domain. Fields: `do_not_translate`, `preferred_translation`, `variants`, `confidence`. Injected into translation prompt. |
-| **Translation QA — composite quality score** | F10 / G5 — Localization QA | Low | Server-side calculation: faithfulness(40%) + terminology(30%) + style(20%) + readability(10%) → 0-100. |
-| **Translation QA — agent skill** | F10 / G5 — Localization QA | Medium | Create `translator-qa-skill` SKILL.md for agent-side orchestration of QA workflow. |
-| **`export_kb` MCP tool** | F26 — Export & Interoperability | Low | Unified MCP tool: `export_kb(domain, format, scope, output_path?)`. Scope: entry/collection/domain. Formats inherit from CLI (Markdown, JSON, SQLite, CSV, PDF, GraphML). |
-| **KB import functionality** | F26 — Export & Interoperability | Medium | Import from Markdown+YAML, JSON, CSV, OPML → 01-Raw entries only (Hermes model compliance). |
-| **Scheduled email digest delivery** | F27 — Scheduled Distribution | Medium | Extend existing cron system: `add_schedule(type="digest", domain, expression, format="html", recipients)`. Cron job chains `generate_digest` + `send_email`. |
-| **Webhook push for new items** | F27 — Scheduled Distribution | Medium | Per-item webhook event on collection completion. Configurable webhook URL(s) per domain. Payload: full item JSON. |
-| **Agent proactive alerting** | F29 — Source Health Monitoring | Low | Agent polls `get_source_health()` before collection or on schedule. Flags 3+ consecutive failures to user. No server-push needed. |
+| **RAW product feed API** | F28 — RAW Product Generation | Medium | REST API endpoint for per-domain/topic/time filtered item feeds with pagination. |
+| **PROCESSED product template system** | F29 — PROCESSED Product Generation | Low | Product-level template abstraction layer (beyond per-domain Jinja2 overrides). |
+| **Alert stream configuration** | F29 — PROCESSED Product Generation | Medium | User-configurable threshold-based alerts: "notify when new items match topic X with relevance > 80". |
+| **Hard gate implementation (G0/G4)** | G0/G4 — Quality Gates | Medium | Implement retry→block logic: G0 schema validation, G4 factual consistency with retry chain and `_failed/` persistence. |
+| **Delivery gate implementation (D1-D3)** | D1-D3 — Delivery Gates | Medium | Product completeness, format integrity, freshness checks at output time. |
+| **Per-domain gate configuration** | §4.4 — Configuration Model | Low | Wire `quality_gates` YAML config into `process.py` orchestrator. |
+| **Delivery channel abstraction** | F27 — Product Delivery | Medium | Plugin interface for delivery channels beyond SMTP and webhook (Slack, Telegram, push). |
 
-### 🟡 Medium-Term Candidates (v1.4+)
+### 🟡 Medium-Term Candidates (v1.6+)
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
@@ -1351,23 +1526,29 @@ The following items are consciously deferred from v1.2. They represent the remai
 
 | Gap | Related Expectation | Effort | Notes |
 |-----|--------------------|--------|-------|
+| **Subscription management / billing** | F30 — Subscription & Billing | High | Stripe/OpenCollective integration, subscription lifecycle, invoices, payment methods. |
+| **Feature gating / usage metering** | F30 — Subscription & Billing | High | Per-tier access control (Free vs RAW Pro vs PROCESSED Pro vs Enterprise), usage tracking. |
+| **Customer delivery portal** | F30 — Subscription & Billing | High | Web interface for subscribers: manage preferences, billing history, download products. |
+| **Delivery tracking & analytics** | F30 — Subscription & Billing | Medium | Delivery confirmation, bounce detection, open tracking, per-subscriber delivery logs. |
 | **Collaboration / teams** | §10.3 Explicit "No" | High | Multi-user read/write, shared KB spaces. |
 | **Mobile app** | §10.3 Explicit "No" | High | Agent framework handles mobile access for now. |
 | **Citation management (BibTeX)** | §10.3 Explicit "No" | Medium | Post-v2 if medical community demands it. |
 | **Image/video processing** | §10.3 Explicit "No" | High | Text-only. KB is textual knowledge, not media. |
 
-### v1.3.1 Success Metrics
+### v1.5 Success Metrics
 
 | Metric | Value |
 |--------|-------|
-| Expectations met | 32 total (31 original + F10b added) |
-| Value propositions fulfilled | 4/4 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅) |
-| True Test passing | 10/10 |
-| MCP tools | 65 (pending: `add_domain`, `remove_domain`, `list_available_platforms`, `export_kb`, `import_kb`) |
+| Expectations met | 35 total (34 core + F10b; F30 Subscription & Billing deferred to v2+) |
+| Value propositions fulfilled | 5/5 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅, Commercial-grade products ✅) |
+| True Test passing | 13/13 |
+| MCP tools | 79 across 19 categories |
 | Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
-| Quality gates | 5 (G1-G5, advisory) + quality_flags + localization QA enhancements |
+| Quality gates | 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + quality_flags + per-domain gate configuration |
+| Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams via SMTP/webhook) |
+| Subscription/billing | ❌ Deferred to v2+ (F30) |
 | Resilience enhancements | LLM `None` content crash fix, `extraction_failed` detection, KB filesystem fallback |
-| Tests | 1134 |
+| Tests | 1421 |
 | Demo domains | 3 with 7 curated sources |
 
 ---

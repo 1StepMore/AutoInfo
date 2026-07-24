@@ -1,4 +1,4 @@
-# Hermes KnowledgeBase — 基于 Obsidian 的知识库系统
+# KB Pipeline Reference Model — 基于 Obsidian 的知识库系统
 
 > **位置**：`D:\Hermes-KnowledgeBase\`
 > **引擎**：Obsidian + remotely-save 插件（自动同步）

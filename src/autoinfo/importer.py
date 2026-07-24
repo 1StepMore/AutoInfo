@@ -1,7 +1,7 @@
 """KB import module — handles 4 import formats (Markdown+YAML, JSON, CSV, OPML)
 and creates 01-Raw entries via ``KBStore.store_entry()``.
 
-All imports land in 01-Raw (Hermes model compliance). OPML imports return
+All imports land in 01-Raw (KB pipeline compliance). OPML imports return
 source *suggestions* only — they do NOT auto-add sources.
 
 Usage

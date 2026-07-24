@@ -32,6 +32,9 @@ Key categories:
 | Collection | `collect_sources` (supports `dry_run=true`), `get_collection_diff` |
 | KB | `search_knowledge_base`, `get_kb_entry`, `create_kb_draft`, `list_kb_tier` |
 | Output | `generate_digest`, `generate_tutorial`, `list_output_templates` |
+| Quality Gate Config | `get_gate_config`, `set_gate_config` |
+| Product | `list_products`, `get_product` |
+| Alert Rules | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
 
 ## Common Workflows
 
@@ -72,6 +75,25 @@ get_collection_diff(domain="medical-research", since_collection_id="...")
 ### Check system health
 ```
 diagnose_system()  → all-in-one health check
+```
+
+### Configure quality gate thresholds
+```
+get_gate_config(domain="medical-research") → current gate settings
+set_gate_config(domain="medical-research", gates={"G3": {"action": "pass", "threshold": 50}}) → customize
+```
+
+### Manage alert rules
+```
+add_alert_rule(domain="medical-research", name="source-down", condition="source_health == error", action="email")
+get_alert_rules(domain="medical-research") → current rules
+remove_alert_rule(domain="medical-research", rule_id="...")
+```
+
+### List available products
+```
+list_products(domain="medical-research", type="raw") → RAW product list
+get_product(domain="medical-research", product_id="...") → product details
 ```
 
 ## Important Constraints

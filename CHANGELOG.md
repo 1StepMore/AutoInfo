@@ -2,6 +2,42 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.5 (2026-07-24)
+
+### Added
+- **Commercial scope** — AutoInfo redefined as covering any field where customers pay for information products and reports. Three design principles: Product-first, Production-grade quality, Commercial viability. Paying Customer added as 4th user type with explicit design constraint.
+- **Two product types** — RAW products (API feeds, webhook streams, bulk export) and PROCESSED products (scheduled digests, thematic reports, alert streams, tutorials). Product architecture added with delivery channel abstraction (SMTP, webhook, REST API, export).
+- **Production-grade quality gates** — Hard/soft split: G0 (Schema integrity) and G4 (Factual consistency) are hard gates with retry→block; G1-G3/G5 are soft gates with configurable thresholds; 3 new delivery gates D1-D3 check product completeness, format integrity, and freshness at output time. Retry-first, block-last philosophy. Per-domain gate configuration.
+- **Product delivery expectations** — F27 renamed from "Scheduled Distribution" to "Product Delivery"; F28 (RAW Product Generation), F29 (PROCESSED Product Generation), F30 (Subscription & Billing deferred to v2+). Value propositions expanded from 4 to 5: Commercial-grade products.
+- **Product-based pricing model** — Two customer types (Information Buyer / Knowledge Product Subscriber), 4-tier pricing (Free / RAW Pro / PROCESSED Pro / Enterprise), product type economics (margin, volume, delivery, retention analysis).
+- **Founder's Priority Matrix updated** — New 🔴 Product & Delivery quadrant (CRITICAL/MEDIUM) added for F27-F29, G0/G4, D1-D3.
+- **Explicit "No" list expanded** — Subscription management/billing, feature gating/usage metering, customer delivery portal all explicitly deferred to v2+.
+- **§14 Gaps restructured** — Product delivery gaps (RAW feed API, PROCESSED template system, alert stream config, hard/delivery gate implementation, delivery channel abstraction) added as short-term; billing-related gaps moved to v2+.
+
+### Changed
+- **Quality philosophy rewrite** — From "all gates advisory" to production-grade: hard/soft split with retry-first, block-last. Never silently discard. G0 (new schema integrity gate) and G4 treated as hard gates. Delivery gates (D1-D3) block delivery on failure.
+- **§6 Priority Matrix** — Added 🔴 Product & Delivery quadrant for commercial product expectations.
+- **§12 Technical Decisions** — Added §12.10 Product Architecture with RAW/PROCESSED pipeline and delivery channels. MCP tool inventory updated from 72 tools across 16 categories to 79 across 19 categories (7 new tools: get_gate_config, set_gate_config, list_products, get_product, add_alert_rule, get_alert_rules, remove_alert_rule). Testing strategy updated (T1-T10 → T1-T13).
+- **§13 The Hard Truth** — v1.5 pivot from "builder tool" to "commercial product" acknowledged as the hardest change. Quality philosophy rewrite, product type economics, billing deferral consciously documented.
+- **README.md** — Quality gates row updated to 6 hard/soft + 3 delivery gates. Features list updated with product delivery + subscription-ready items. Known Limitations section updated to v1.5 (was v1.4). Architecture diagram extended with Product Pipeline and Delivery Channels. MCP tool count 72→79, test count 1134→1421, 3 new MCP categories added.
+- **AGENTS.md** — MCP tool count 72→79, test count 1134→1421, quality gates section rewritten to production-grade model, project structure updated with alerts.py/delivery.py modules.
+- **founder-expectations.md** — All version references updated from v1.4 to v1.5. Success metrics table updated with product delivery status. Component table updated with commercial scope, quality gate model, product delivery rows. Version status and gantt chart updated. All 6 "advisory" references updated to new hard/soft model.
+- **Expectation count updated** — From 32 to 35 (F28-F30 added, previous F28-F31 renumbered to F31-F34). True Test expanded from 10 to 13 (T11-T13 added).
+- Version bumped from `1.3.0` to `1.5.0`
+- Test suite expanded from 1134 to 1421 tests (53 test files, 262 v1.5 tests across 7 files)
+
+### Fixed
+- All stale version references (v1.3.1 → v1.5) in milestone table, gantt chart, explicit No list, success metrics headers
+- §14 gaps section header and all future-work version markers updated
+
+### Infrastructure
+- `src/autoinfo/delivery.py`: New module — DeliveryChannel ABC with SMTP, webhook, REST API, export implementations
+- `src/autoinfo/alerts.py`: New module — Alert rule CRUD, YAML persistence, check & dispatch via DeliveryChannel
+- `src/autoinfo/quality.py`: G0/G4 hard gate enforcement with 3× retry chain, D1-D3 delivery gates, per-domain gate config merge
+- `src/autoinfo/mcp/server.py`: 7 new MCP tool handlers (get_gate_config, set_gate_config, list_products, get_product, add_alert_rule, get_alert_rules, remove_alert_rule)
+- `tests/test_v1_5_*.py`: 7 new test files with 262 tests covering quality gates, delivery, alerts, feed API, MCP, config, integration
+- `docs/` (README.md, AGENTS.md, CHANGELOG.md): All documentation updated to v1.5 numbers and feature set
+
 ## v1.4.1 (2026-07-24)
 
 ### Added

@@ -13,13 +13,17 @@ requested via the ``--check-translation`` flag.
 
 from __future__ import annotations
 
+import html.parser
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Literal
 
 import yaml
 
+from autoinfo.config import QualityGateConfig
 from autoinfo.models import ExtractionResult, Item, KBEntry
 
 logger = logging.getLogger(__name__)
@@ -57,7 +61,12 @@ class G0SchemaIntegrity:
 
     MANDATORY_FIELDS = ["source_url", "source_type", "source_platform"]
 
-    def check(self, item: dict[str, Any], context: dict[str, Any] | None = None) -> QualityResult:
+    def check(
+        self,
+        item: dict[str, Any],
+        context: dict[str, Any] | None = None,
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
         """Validate *item* dict schema integrity.
 
         Parameters
@@ -66,6 +75,9 @@ class G0SchemaIntegrity:
             Raw collected item dict (not yet constructed into Item).
         context:
             Optional context dict (reserved for future use).
+        gate_config:
+            Optional gate config. If provided, ``retries`` controls how many
+            re-validation attempts are made on failure (default: 1).
 
         Returns
         -------
@@ -73,7 +85,7 @@ class G0SchemaIntegrity:
             ``passed=True`` when all mandatory fields are non-empty strings
             and frontmatter (if present) is valid YAML.
 
-            On persistent failure after one retry: ``passed=False`` with
+            On persistent failure after retries: ``passed=False`` with
             ``action="block"`` in details.
         """
         failed_fields: list[dict[str, object]] = []
@@ -114,15 +126,22 @@ class G0SchemaIntegrity:
         # First attempt
         failed_fields = _validate()
 
+        # Determine max retries from gate config (default 1 for backward compat)
+        max_retries = 1
+        if gate_config is not None and gate_config.retries is not None and gate_config.retries > 0:
+            max_retries = gate_config.retries
+
         retry_count = 0
         if failed_fields:
             logger.warning(
                 "G0 first attempt failed for fields: %s",
                 [f["field"] for f in failed_fields],
             )
-            retry_count = 1
-            # Retry once (re-parse)
-            failed_fields = _validate()
+            for _ in range(max_retries):
+                retry_count += 1
+                failed_fields = _validate()
+                if not failed_fields:
+                    break
 
         if not failed_fields:
             return QualityResult(
@@ -164,7 +183,12 @@ class G1SourceAuthority:
     This gate is **advisory only** — it never blocks or fails items.
     """
 
-    def check(self, item: Item, source_config: dict[str, Any] | None = None) -> QualityResult:
+    def check(
+        self,
+        item: Item,
+        source_config: dict[str, Any] | None = None,
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
         """Check source authority tier for *item*.
 
         Parameters
@@ -175,18 +199,31 @@ class G1SourceAuthority:
             Optional source configuration dict.  If provided, *quality_tier*
             from *source_config* takes precedence over ``item.quality_tier``
             (the latter is typically set at collection time).
+        gate_config:
+            Optional gate configuration dict.  If provided, the *action*
+            field controls what the caller should do on failure:
+
+            - ``"flag"`` (default): item passes with an advisory warning
+            - ``"skip"``: item is returned as ``passed=False`` with
+              ``action="skip"`` in details, signalling the caller to skip it.
+
+            When *gate_config* is ``None``, the default action ``"flag"``
+            is used (backward compatible with v1.4 behaviour).
 
         Returns
         -------
         QualityResult
-            Always returns ``passed=True``.  Items from tier 3+ sources
-            have ``flagged=True`` with an advisory warning.
+            When action is ``"skip"`` and tier > 2, returns ``passed=False``
+            with ``action="skip"`` in details.  Otherwise always returns
+            ``passed=True``.  Items from tier 3+ sources have
+            ``flagged=True`` with an advisory warning.
         """
         tier = (
             source_config.get("quality_tier", item.quality_tier)
             if source_config
             else item.quality_tier
         )
+        action = gate_config.action if gate_config else "flag"
 
         if tier <= 2:
             return QualityResult(
@@ -194,7 +231,26 @@ class G1SourceAuthority:
                 passed=True,
                 score=float(tier),
                 flagged=False,
-                details={"quality_tier": tier, "source_name": item.source_name},
+                details={
+                    "quality_tier": tier,
+                    "source_name": item.source_name,
+                    "action": action,
+                },
+            )
+
+        # tier 3+
+        if action == "skip":
+            return QualityResult(
+                gate_name="G1-SourceAuthority",
+                passed=False,
+                score=float(tier),
+                flagged=True,
+                details={
+                    "quality_tier": tier,
+                    "source_name": item.source_name,
+                    "action": action,
+                    "warning": "low quality source",
+                },
             )
 
         return QualityResult(
@@ -205,6 +261,7 @@ class G1SourceAuthority:
             details={
                 "quality_tier": tier,
                 "source_name": item.source_name,
+                "action": action,
                 "warning": "low quality source",
             },
         )
@@ -224,7 +281,12 @@ class G2Dedup:
         3. DOI match (from ``item.raw_data``)
     """
 
-    def check(self, item: Item, existing_entries: list[KBEntry]) -> QualityResult:
+    def check(
+        self,
+        item: Item,
+        existing_entries: list[KBEntry],
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
         """Check if *item* is a duplicate of any entry in *existing_entries*.
 
         Parameters
@@ -233,6 +295,16 @@ class G2Dedup:
             The collected item to check.
         existing_entries:
             Previously stored KB entries to compare against.
+        gate_config:
+            Optional gate configuration dict.  If provided, the *action*
+            field controls how the result is annotated:
+
+            - ``"flag"`` (default): duplicate is reported with ``flagged=True``
+            - ``"skip"``: duplicate is reported with ``action="skip"`` in
+              details, signalling the caller to skip this item.
+
+            When *gate_config* is ``None``, the default action ``"flag"``
+            is used (backward compatible with v1.4 behaviour).
 
         Returns
         -------
@@ -240,6 +312,8 @@ class G2Dedup:
             ``passed=True`` when the item appears unique,
             ``passed=False`` when a duplicate is found.
         """
+        action = gate_config.action if gate_config else "flag"
+
         # 1. URL match
         for entry in existing_entries:
             if entry.source_url and item.source_url and entry.source_url == item.source_url:
@@ -251,6 +325,7 @@ class G2Dedup:
                         "is_duplicate": True,
                         "matched_by": "url",
                         "existing_id": entry.entry_id,
+                        "action": action,
                     },
                 )
 
@@ -272,6 +347,7 @@ class G2Dedup:
                             "is_duplicate": True,
                             "matched_by": "pmid",
                             "existing_id": entry.entry_id,
+                            "action": action,
                         },
                     )
 
@@ -290,6 +366,7 @@ class G2Dedup:
                             "is_duplicate": True,
                             "matched_by": "doi",
                             "existing_id": entry.entry_id,
+                            "action": action,
                         },
                     )
 
@@ -298,7 +375,7 @@ class G2Dedup:
             gate_name="G2-Dedup",
             passed=True,
             score=1.0,
-            details={"is_duplicate": False, "matched_by": None},
+            details={"is_duplicate": False, "matched_by": None, "action": action},
         )
 
 
@@ -327,6 +404,7 @@ class G3RelevanceScoring:
         item: Item,
         topic_keywords: list[str] | dict[str, list[str]],
         threshold: int = 30,
+        gate_config: QualityGateConfig | None = None,
     ) -> QualityResult:
         """Score *item* relevance against *topic_keywords*.
 
@@ -341,13 +419,27 @@ class G3RelevanceScoring:
         threshold:
             Minimum score (0-100) below which the item is flagged as hidden.
             Defaults to 30.
+        gate_config:
+            Optional gate configuration dict.  If provided, the *action*
+            field controls how below-threshold items are annotated:
+
+            - ``"archive"`` (default): item is marked with both
+              ``hidden=True`` and ``archive=True`` in details.
+            - ``"flag"``: item is marked with ``hidden=True`` only.
+
+            When *gate_config* is ``None``, the default action ``"archive"``
+            is used (backward compatible with v1.4 behaviour).
 
         Returns
         -------
         QualityResult
             Contains the relevance ``score`` (0-100). Items below threshold
-            have ``flagged=True`` and ``details["hidden"] = True``.
+            have ``flagged=True`` and ``details["hidden"] = True``.  When
+            action is ``"archive"``, ``details["archive"]`` is also set to
+            ``True``.
         """
+        action = gate_config.action if gate_config else "archive"
+
         # Normalise multi-language keywords to a flat list
         if isinstance(topic_keywords, dict):
             # When multi-language, flatten all language keyword lists
@@ -363,6 +455,7 @@ class G3RelevanceScoring:
                 score=100.0,
                 details={
                     "hidden": False,
+                    "action": action,
                     "reason": "no keywords to match against",
                     "multi_language": True,
                 },
@@ -373,30 +466,36 @@ class G3RelevanceScoring:
         text = (item.title + " " + item.content).lower()
 
         matches = sum(1 for kw in topic_keywords if kw.lower() in text)
-        score = min(round((matches / len(topic_keywords)) * 100), 100)
+        score_val = min(round((matches / len(topic_keywords)) * 100), 100)
 
-        if score < threshold:
+        if score_val < threshold:
+            details: dict[str, object] = {
+                "hidden": True,
+                "action": action,
+                "reason": "below relevance threshold",
+                "keyword_matches": matches,
+                "total_keywords": len(topic_keywords),
+                "threshold": threshold,
+            }
+            if action == "archive":
+                details["archive"] = True
+
             return QualityResult(
                 gate_name="G3-RelevanceScoring",
                 passed=False,
-                score=float(score),
+                score=float(score_val),
                 flagged=True,
-                details={
-                    "hidden": True,
-                    "reason": "below relevance threshold",
-                    "keyword_matches": matches,
-                    "total_keywords": len(topic_keywords),
-                    "threshold": threshold,
-                },
+                details=details,
             )
 
         return QualityResult(
             gate_name="G3-RelevanceScoring",
             passed=True,
-            score=float(score),
+            score=float(score_val),
             flagged=False,
             details={
                 "hidden": False,
+                "action": action,
                 "keyword_matches": matches,
                 "total_keywords": len(topic_keywords),
             },
@@ -415,12 +514,17 @@ class G4FactualConsistency:
     extracted summary (TL;DR) and asks the model to determine whether the
     summary contradicts the source.
 
-    The gate is **advisory only** — it never blocks or fails items.
+    When a *gate_config* with retries is provided to :meth:`check`, the
+    gate implements a retry chain with escalating context and different
+    models per attempt.  On all retries exhausted the item is blocked and
+    diagnostics are written to ``collections/<domain>/_failed/<item_id>.json``.
 
     Parameters
     ----------
     model : str
         LiteLLM model string (e.g. ``"openrouter/deepseek/deepseek-chat"``).
+    collections_path : str | Path, optional
+        Root path for the collections directory (default ``"collections"``).
     """
 
     SYSTEM_PROMPT = (
@@ -429,32 +533,51 @@ class G4FactualConsistency:
         'Answer ONLY with JSON: {"contradiction": bool, "explanation": str}'
     )
 
-    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat") -> None:
+    def __init__(
+        self,
+        model: str = "openrouter/deepseek/deepseek-chat",
+        collections_path: str | Path = "collections",
+    ) -> None:
         self._model = model
+        self._collections_path = Path(collections_path)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def check(self, item: Item, extraction: ExtractionResult) -> QualityResult:
-        """Send an LLM prompt to compare *item* content with *extraction* summary.
+    def check(
+        self,
+        item: Item,
+        extraction: ExtractionResult,
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
+        """Compare *item* content with *extraction* summary using LLM.
+
+        When *gate_config* is provided with ``retries > 0``, the gate
+        implements a retry chain: each failed attempt uses the next model
+        from ``gate_config.retry_models`` and includes the previous
+        attempt's contradiction evidence in the prompt.  On all retries
+        exhausted the item is blocked and ``_failed/`` diagnostics are
+        written.
 
         Parameters
         ----------
         item:
             The collected item whose content is used as the source of truth.
         extraction:
-            The LLM extraction result containing the ``tl_dr`` summary to check.
+            The LLM extraction result containing the ``tl_dr`` summary.
+        gate_config:
+            Optional gate configuration.  When ``None`` (default), the
+            legacy single-call advisory behaviour is used.
 
         Returns
         -------
         QualityResult
-            ``flagged=True`` when the summary is found to contradict the source.
-            ``flagged=False`` when no contradiction is detected.
-            If the LLM call fails or returns malformed JSON, the item is flagged
-            as uncertain (``contradiction: None``).
+            When contradiction is found after all retries: ``passed=False``,
+            ``action="block"``, ``retry_count=N``.
+            When no contradiction: ``passed=True``, ``flagged=False``.
+            When litellm unavailable: ``flagged=True`` with explanation.
         """
-        # No summary to check — trivially consistent
         if not extraction.tl_dr:
             return QualityResult(
                 gate_name="G4-SummaryFactual",
@@ -478,67 +601,192 @@ class G4FactualConsistency:
                 },
             )
 
-        try:
-            response = _litellm.completion(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"SOURCE TEXT: {item.content[:4000]}\n\n"
-                            f"SUMMARY: {extraction.tl_dr}"
-                        ),
-                    },
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=500,
-                temperature=0.0,
-            )
+        if gate_config is not None and gate_config.retries > 0:
+            retry_models = list(gate_config.retry_models) if gate_config.retry_models else []
+            models = [self._model] + retry_models
+            max_attempts = gate_config.retries
+        else:
+            max_attempts = 1
+            models = [self._model]
 
-            content: str = response.choices[0].message.content  # type: ignore[union-attr]
-            parsed = json.loads(content)
-            contradiction = bool(parsed.get("contradiction", False))
-            explanation = str(parsed.get("explanation", ""))
+        retry_log: list[dict[str, Any]] = []
+        last_error: str | None = None
 
-            return QualityResult(
-                gate_name="G4-SummaryFactual",
-                passed=not contradiction,
-                score=0.0 if contradiction else 1.0,
-                flagged=contradiction,
-                details={
-                    "contradiction": contradiction,
+        for attempt in range(max_attempts):
+            model = models[min(attempt, len(models) - 1)]
+
+            try:
+                user_content = (
+                    f"SOURCE TEXT: {item.content[:4000]}\n\n"
+                    f"SUMMARY: {extraction.tl_dr}"
+                )
+
+                if attempt > 0 and retry_log:
+                    prev = retry_log[-1]
+                    if prev.get("explanation"):
+                        user_content += (
+                            f"\n\nPREVIOUS ASSESSMENT: The summary was previously "
+                            f"flagged as potentially contradictory:\n"
+                            f"{prev['explanation']}\n\n"
+                            f"Please re-evaluate carefully."
+                        )
+
+                response = _litellm.completion(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": self.SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ],
+                    response_format={"type": "json_object"},
+                    max_tokens=500,
+                    temperature=0.0,
+                )
+
+                raw_content: str = response.choices[0].message.content
+                parsed = json.loads(raw_content)
+                contradiction = bool(parsed.get("contradiction", False))
+                explanation = str(parsed.get("explanation", ""))
+
+                if not contradiction:
+                    return QualityResult(
+                        gate_name="G4-SummaryFactual",
+                        passed=True,
+                        score=1.0,
+                        flagged=False,
+                        details={
+                            "contradiction": False,
+                            "explanation": explanation,
+                            "retry_count": attempt,
+                            "retries": list(retry_log),
+                        },
+                    )
+
+                retry_log.append({
+                    "attempt": attempt + 1,
+                    "model": model,
+                    "contradiction": True,
                     "explanation": explanation,
-                },
-            )
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
 
-        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
-            logger.warning("G4 malformed LLM response: %s", exc)
+            except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+                logger.warning("G4 malformed LLM response (attempt %d): %s", attempt + 1, exc)
+                if gate_config is None or gate_config.retries <= 0:
+                    return QualityResult(
+                        gate_name="G4-SummaryFactual",
+                        passed=False,
+                        flagged=True,
+                        details={
+                            "contradiction": None,
+                            "explanation": f"Failed to parse LLM response: {exc}",
+                        },
+                    )
+                retry_log.append({
+                    "attempt": attempt + 1,
+                    "model": model,
+                    "error": f"Failed to parse LLM response: {exc}",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                last_error = str(exc)
+
+            except Exception as exc:
+                logger.warning("G4 LLM call failed (attempt %d): %s", attempt + 1, exc)
+                if gate_config is None or gate_config.retries <= 0:
+                    return QualityResult(
+                        gate_name="G4-SummaryFactual",
+                        passed=False,
+                        flagged=True,
+                        details={
+                            "contradiction": None,
+                            "explanation": f"LLM check failed: {exc}",
+                        },
+                    )
+                retry_log.append({
+                    "attempt": attempt + 1,
+                    "model": model,
+                    "error": f"LLM check failed: {exc}",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                last_error = str(exc)
+
+        if gate_config is not None and gate_config.retries > 0:
+            self._write_failed_diagnostics(item, extraction, retry_log, last_error)
             return QualityResult(
                 gate_name="G4-SummaryFactual",
                 passed=False,
                 flagged=True,
+                score=0.0,
                 details={
-                    "contradiction": None,
-                    "explanation": f"Failed to parse LLM response: {exc}",
+                    "contradiction": True,
+                    "action": "block",
+                    "retry_count": len(retry_log),
+                    "retries": list(retry_log),
+                    "explanation": (
+                        f"All {max_attempts} attempt(s) exhausted. "
+                        f"Last error: {last_error}" if last_error
+                        else f"All {max_attempts} attempt(s) exhausted. "
+                        f"Summary contradicts source."
+                    ),
                 },
             )
 
-        except Exception as exc:
-            logger.warning("G4 LLM call failed: %s", exc)
-            return QualityResult(
-                gate_name="G4-SummaryFactual",
-                passed=False,
-                flagged=True,
-                details={
-                    "contradiction": None,
-                    "explanation": f"LLM check failed: {exc}",
-                },
-            )
+        fallback_explanation = (
+            retry_log[0].get("explanation", "Contradiction detected")
+            if retry_log else "Contradiction detected"
+        )
+        return QualityResult(
+            gate_name="G4-SummaryFactual",
+            passed=False,
+            flagged=True,
+            score=0.0,
+            details={
+                "contradiction": True,
+                "explanation": fallback_explanation,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _write_failed_diagnostics(
+        self,
+        item: Item,
+        extraction: ExtractionResult,
+        retries: list[dict[str, Any]],
+        final_error: str | None,
+    ) -> None:
+        """Write blocked-item diagnostics to ``collections/<domain>/_failed/<item_id>.json``."""
+        domain = item.domain or "unknown"
+        failed_dir = self._collections_path / domain / "_failed"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+
+        diagnostics = {
+            "item_id": item.id,
+            "source_url": item.source_url,
+            "retries": retries,
+            "final_error": final_error,
+            "item_snapshot": {
+                "id": item.id,
+                "source_name": item.source_name,
+                "source_type": item.source_type,
+                "source_url": item.source_url,
+                "title": item.title,
+                "domain": item.domain,
+                "language": item.language,
+                "collected_at": item.collected_at,
+            },
+        }
+
+        failed_path = failed_dir / f"{item.id}.json"
+        with open(failed_path, "w", encoding="utf-8") as fh:
+            json.dump(diagnostics, fh, indent=2, ensure_ascii=False)
+
+        logger.warning(
+            "G4 blocked item %s — diagnostics written to %s",
+            item.id,
+            failed_path,
+        )
 
     @staticmethod
     def _get_litellm() -> Any:
@@ -741,6 +989,597 @@ class G5TranslationAccuracy:
         except (ImportError, ModuleNotFoundError):
             logger.error("litellm is not installed — run 'pip install litellm'")
             return None
+
+
+# ---------------------------------------------------------------------------
+# D1 — Product Completeness
+# ---------------------------------------------------------------------------
+
+
+class D1ProductCompleteness:
+    """Verify that a delivered product contains all required sections.
+
+    Checks for the presence and non-emptiness of sections like
+    ``key_findings``, ``summary``, and ``recommendations`` in the
+    product output dict.
+
+    This gate runs at **output time** for PROCESSED products only.
+    It is **skipped** for RAW products.
+
+    Parameters
+    ----------
+    action_on_failure:
+        What to do when the check fails.  One of ``"block"``, ``"fallback"``,
+        ``"flag"``.  Defaults to ``"block"``.
+    required_sections:
+        List of section keys that must be present and non-empty.
+        Defaults to ``["key_findings", "summary", "recommendations"]``.
+    """
+
+    gate_type: Literal["delivery"] = "delivery"
+
+    def __init__(
+        self,
+        action_on_failure: str = "block",
+        required_sections: list[str] | None = None,
+    ) -> None:
+        self.action_on_failure = action_on_failure
+        self.required_sections = required_sections or [
+            "key_findings",
+            "summary",
+            "recommendations",
+        ]
+
+    def check(
+        self,
+        product_output: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> QualityResult:
+        """Check *product_output* for completeness.
+
+        Parameters
+        ----------
+        product_output:
+            The rendered product output dict.  Expected to contain a
+            ``format`` key and one or more section keys (e.g.
+            ``key_findings``, ``summary``, ``recommendations``).
+            May also contain an ``entries`` list with individual entry
+            data.
+
+            A ``product_type`` in *product_output* or *context* set to
+            ``"RAW"`` causes this gate to **skip** (trivially pass).
+
+        context:
+            Optional context.  May contain ``product_type`` to override
+            the product type detected from *product_output*.
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when all required sections are present and
+            non-empty.  ``passed=False`` with a list of missing/empty
+            sections when the check fails.
+        """
+        ctx = context or {}
+        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+
+        # RAW products skip delivery-gate checks
+        if product_type.upper() == "RAW":
+            return QualityResult(
+                gate_name="D1-ProductCompleteness",
+                passed=True,
+                score=1.0,
+                details={
+                    "skipped": True,
+                    "reason": "RAW product type — delivery gates skipped",
+                },
+            )
+
+        missing: list[str] = []
+        empty: list[str] = []
+
+        for section in self.required_sections:
+            val = product_output.get(section)
+            if val is None or section not in product_output:
+                missing.append(section)
+            elif isinstance(val, str) and not val.strip():
+                empty.append(section)
+            elif isinstance(val, (list, dict)) and len(val) == 0:
+                empty.append(section)
+
+        if not missing and not empty:
+            return QualityResult(
+                gate_name="D1-ProductCompleteness",
+                passed=True,
+                score=1.0,
+                details={
+                    "required_sections": list(self.required_sections),
+                    "all_present": True,
+                },
+            )
+
+        passed = self.action_on_failure != "block"
+        return QualityResult(
+            gate_name="D1-ProductCompleteness",
+            passed=passed,
+            score=0.0,
+            flagged=True,
+            details={
+                "action": self.action_on_failure,
+                "missing_sections": missing,
+                "empty_sections": empty,
+                "required_sections": list(self.required_sections),
+                "error": (
+                    f"Missing sections: {missing}; "
+                    f"empty sections: {empty}"
+                ),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# D2 — Format Integrity
+# ---------------------------------------------------------------------------
+
+
+class _HTMLValidator(html.parser.HTMLParser):
+    """Minimal HTML validator — tracks tag balance.
+
+    Python's :class:`html.parser.HTMLParser` never raises parse errors
+    for malformed HTML (since Python 3.5).  This subclass tracks
+    opening/closing tag balance using a stack so that mismatched or
+    unclosed tags can be detected.
+    """
+
+    _SELF_CLOSING = frozenset({
+        "br", "hr", "img", "input", "meta", "link", "area", "base",
+        "col", "embed", "source", "track", "wbr",
+    })
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._tag_stack: list[str] = []
+        self.errors: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # Void / self-closing elements are never expected to have a closing tag
+        if tag.lower() not in self._SELF_CLOSING:
+            self._tag_stack.append(tag.lower())
+
+    def handle_endtag(self, tag: str) -> None:
+        tag_lower = tag.lower()
+        if tag_lower in self._SELF_CLOSING:
+            return
+        if self._tag_stack and self._tag_stack[-1] == tag_lower:
+            self._tag_stack.pop()
+        elif tag_lower in self._tag_stack:
+            # Tag mismatch — close up to the matching open tag
+            while self._tag_stack and self._tag_stack[-1] != tag_lower:
+                mismatched = self._tag_stack.pop()
+                self.errors.append(f"Unclosed tag <{mismatched}> closed by </{tag_lower}>")
+            if self._tag_stack:
+                self._tag_stack.pop()
+        else:
+            self.errors.append(f"Unexpected closing tag </{tag_lower}>")
+
+    def is_valid(self) -> bool:
+        """Return ``True`` when no tag-balance errors were found."""
+        if self._tag_stack:
+            for unclosed in self._tag_stack:
+                self.errors.append(f"Unclosed tag <{unclosed}>")
+        return len(self.errors) == 0
+
+
+class D2FormatIntegrity:
+    """Verify that the rendered output parses correctly for its format.
+
+    For *html* output, attempts to parse with :class:`html.parser.HTMLParser`.
+    For *json* output, attempts ``json.loads``.
+    For *markdown* output, the check is trivially skipped (Markdown is
+    always renderable).
+
+    This gate runs at **output time** for PROCESSED products only.
+    It is **skipped** for RAW products.
+
+    Parameters
+    ----------
+    action_on_failure:
+        What to do when the check fails.  One of ``"block"``, ``"fallback"``,
+        ``"flag"``.  Defaults to ``"fallback"``.
+    """
+
+    gate_type: Literal["delivery"] = "delivery"
+
+    def __init__(self, action_on_failure: str = "fallback") -> None:
+        self.action_on_failure = action_on_failure
+
+    def check(
+        self,
+        product_output: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> QualityResult:
+        """Check that *product_output* renders to valid output.
+
+        Parameters
+        ----------
+        product_output:
+            The rendered product output dict.  Must contain a ``format``
+            key (``"html"``, ``"json"``, ``"markdown"``, etc.) and
+            a ``body`` key with the rendered string.
+
+            A ``product_type`` in *product_output* or *context* set to
+            ``"RAW"`` causes this gate to **skip** (trivially pass).
+
+        context:
+            Optional context.  May contain ``product_type`` to override
+            the product type detected from *product_output*.
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when the output parses correctly for its
+            format.  ``passed=False`` with a description of the parse
+            error when the check fails.
+        """
+        ctx = context or {}
+        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+
+        # RAW products skip delivery-gate checks
+        if product_type.upper() == "RAW":
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=True,
+                score=1.0,
+                details={
+                    "skipped": True,
+                    "reason": "RAW product type — delivery gates skipped",
+                },
+            )
+
+        output_format = product_output.get("format", "").lower()
+        body = product_output.get("body", "")
+
+        if not body:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": output_format,
+                    "error": "Empty body — nothing to validate",
+                },
+            )
+
+        if output_format == "html":
+            return self._check_html(body)
+        elif output_format == "json":
+            return self._check_json(body)
+        elif output_format == "markdown":
+            # Markdown is trivially parseable — pass
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=True,
+                score=1.0,
+                details={
+                    "format": "markdown",
+                    "valid": True,
+                    "note": "Markdown trivially valid",
+                },
+            )
+        else:
+            # Unknown format — skip with advisory note
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=True,
+                score=1.0,
+                details={
+                    "format": output_format,
+                    "valid": True,
+                    "note": f"Unknown format '{output_format}' — skipped",
+                },
+            )
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    def _check_html(self, body: str) -> QualityResult:
+        """Validate *body* as HTML using tag-balance tracking."""
+        parser = _HTMLValidator()
+        parser.feed(body)
+        parser.close()
+
+        if not parser.is_valid():
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "html",
+                    "valid": False,
+                    "errors": parser.errors,
+                    "error": "; ".join(parser.errors),
+                },
+            )
+
+        return QualityResult(
+            gate_name="D2-FormatIntegrity",
+            passed=True,
+            score=1.0,
+            details={
+                "format": "html",
+                "valid": True,
+            },
+        )
+
+    def _check_json(self, body: str) -> QualityResult:
+        """Validate *body* as JSON."""
+        try:
+            json.loads(body)
+        except json.JSONDecodeError as exc:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "json",
+                    "valid": False,
+                    "error": f"JSON parse error: {exc}",
+                },
+            )
+
+        return QualityResult(
+            gate_name="D2-FormatIntegrity",
+            passed=True,
+            score=1.0,
+            details={
+                "format": "json",
+                "valid": True,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# D3 — Freshness
+# ---------------------------------------------------------------------------
+
+
+class D3Freshness:
+    """Check that all cited items are within a configured recency window.
+
+    Compares each entry's ``collected_at`` date (from the product output)
+    against the current UTC time minus the configured recency window.
+
+    Items outside the window are flagged.  Behaviour on failure is
+    configurable via *action_on_failure*.
+
+    This gate runs at **output time** for PROCESSED products only.
+    It is **skipped** for RAW products.
+
+    Parameters
+    ----------
+    action_on_failure:
+        What to do when the check fails.  One of ``"block"``, ``"fallback"``,
+        ``"flag"``.  Defaults to ``"flag"``.
+    recency_window_days:
+        Number of days defining the recency window.  Items older than
+        this are considered stale.  Defaults to 30.
+    """
+
+    gate_type: Literal["delivery"] = "delivery"
+
+    def __init__(
+        self,
+        action_on_failure: str = "flag",
+        recency_window_days: int = 30,
+    ) -> None:
+        self.action_on_failure = action_on_failure
+        self.recency_window_days = recency_window_days
+
+    def check(
+        self,
+        product_output: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> QualityResult:
+        """Check that all entries in *product_output* are fresh.
+
+        Parameters
+        ----------
+        product_output:
+            The rendered product output dict.  Should contain an
+            ``entries`` key with a list of entry dicts, each having
+            a ``collected_at`` or ``date`` field.
+
+            A ``product_type`` in *product_output* or *context* set to
+            ``"RAW"`` causes this gate to **skip** (trivially pass).
+
+        context:
+            Optional context.  May contain ``product_type`` to override
+            the product type detected from *product_output*.
+            May also contain ``recency_window_days`` to override the
+            configured window.
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when all entries are within the recency
+            window.  ``passed=False`` with a list of stale entries
+            when the check fails.
+        """
+        ctx = context or {}
+        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+
+        # RAW products skip delivery-gate checks
+        if product_type.upper() == "RAW":
+            return QualityResult(
+                gate_name="D3-Freshness",
+                passed=True,
+                score=1.0,
+                details={
+                    "skipped": True,
+                    "reason": "RAW product type — delivery gates skipped",
+                },
+            )
+
+        window_days = ctx.get(
+            "recency_window_days",
+            self.recency_window_days,
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+
+        entries = product_output.get("entries", [])
+        stale_entries: list[dict[str, Any]] = []
+
+        for entry in entries:
+            raw_date = entry.get("collected_at") or entry.get("date") or ""
+            if not raw_date:
+                continue  # No date — cannot check, skip
+
+            try:
+                if isinstance(raw_date, str):
+                    # Handle ISO-format strings with/without timezone
+                    if raw_date.endswith("Z"):
+                        raw_date = raw_date[:-1] + "+00:00"
+                    entry_date = datetime.fromisoformat(raw_date)
+                elif isinstance(raw_date, datetime):
+                    entry_date = raw_date
+                else:
+                    continue
+
+                # Make naive datetimes UTC-aware for comparison
+                if entry_date.tzinfo is None:
+                    entry_date = entry_date.replace(tzinfo=timezone.utc)
+
+                if entry_date < cutoff:
+                    stale_entries.append({
+                        "title": entry.get("title", "(untitled)"),
+                        "collected_at": entry.get("collected_at", str(raw_date)),
+                        "age_days": (datetime.now(timezone.utc) - entry_date).days,
+                    })
+            except (ValueError, TypeError):
+                # Unparseable date — skip
+                continue
+
+        if not stale_entries:
+            return QualityResult(
+                gate_name="D3-Freshness",
+                passed=True,
+                score=1.0,
+                details={
+                    "recency_window_days": window_days,
+                    "cutoff": cutoff.isoformat(),
+                    "stale_count": 0,
+                    "total_entries": len(entries),
+                },
+            )
+
+        passed = self.action_on_failure not in ("block",)
+        return QualityResult(
+            gate_name="D3-Freshness",
+            passed=passed,
+            score=0.0,
+            flagged=True,
+            details={
+                "action": self.action_on_failure,
+                "recency_window_days": window_days,
+                "cutoff": cutoff.isoformat(),
+                "stale_count": len(stale_entries),
+                "total_entries": len(entries),
+                "stale_entries": stale_entries,
+                "error": f"{len(stale_entries)} / {len(entries)} entries are stale",
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# Delivery gate orchestrator
+# ---------------------------------------------------------------------------
+
+
+def run_delivery_gates(
+    product_output: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, QualityResult]:
+    """Run all configured delivery gates (D1-D3) on *product_output*.
+
+    Parameters
+    ----------
+    product_output:
+        Rendered product output dict to check.
+    context:
+        Optional context dict.  May contain ``product_type`` (``"RAW"``
+        or ``"PROCESSED"``) to control which gates are applied.
+    delivery_gate_configs:
+        Optional dict mapping gate name (``"D1"``, ``"D2"``, ``"D3"``)
+        to config dicts.  Each config may contain:
+
+        - ``enabled`` — if ``False``, the gate is skipped
+        - ``action_on_failure`` — ``"block"``, ``"fallback"``, or ``"flag"``
+
+        When ``None``, all three gates run with their default settings.
+
+    Returns
+    -------
+    dict[str, QualityResult]
+        Mapping of ``gate_name`` → :class:`QualityResult`.
+    """
+    ctx = context or {}
+    configs = delivery_gate_configs or {}
+
+    gates: list[tuple[str, Any]] = [
+        (
+            "D1-ProductCompleteness",
+            D1ProductCompleteness(
+                action_on_failure=_resolve_dg_action(configs.get("D1", {}), "block"),
+            ),
+        ),
+        (
+            "D2-FormatIntegrity",
+            D2FormatIntegrity(
+                action_on_failure=_resolve_dg_action(configs.get("D2", {}), "fallback"),
+            ),
+        ),
+        (
+            "D3-Freshness",
+            D3Freshness(
+                action_on_failure=_resolve_dg_action(configs.get("D3", {}), "flag"),
+            ),
+        ),
+    ]
+
+    results: dict[str, QualityResult] = {}
+
+    for gate_name, gate_instance in gates:
+        dg_config = configs.get(gate_name.split("-")[0], {})
+        enabled = dg_config.get("enabled", True) if dg_config else True
+
+        if not enabled:
+            results[gate_name] = QualityResult(
+                gate_name=gate_name,
+                passed=True,
+                score=1.0,
+                details={"skipped": True, "reason": "Gate disabled in config"},
+            )
+            continue
+
+        results[gate_name] = gate_instance.check(product_output, ctx)
+
+    return results
+
+
+def _resolve_dg_action(
+    config: dict[str, Any],
+    default: str,
+) -> str:
+    """Extract *action_on_failure* from a delivery gate config dict."""
+    return str(config.get("action_on_failure", default))
 
 
 # ---------------------------------------------------------------------------
@@ -1000,6 +1839,7 @@ def run_translation_quality_gates(
 def run_quality_gates(
     item: Item,
     context: dict[str, Any] | None = None,
+    gate_config: dict[str, QualityGateConfig] | None = None,
 ) -> dict[str, QualityResult]:
     """Run all quality gates (G0, G1, G2, G3) on *item*.
 
@@ -1017,6 +1857,11 @@ def run_quality_gates(
         - ``existing_entries`` — list of :class:`KBEntry` (for G2)
         - ``topic_keywords`` — list of keyword strings (for G3)
         - ``threshold`` — relevance threshold integer (for G3)
+    gate_config:
+        Optional mapping of gate name → :class:`QualityGateConfig`.
+        If provided, per-gate values (retries, action, threshold) are
+        applied to matching gates.  When ``None`` or missing keys,
+        defaults are used (backward compatible).
 
     Returns
     -------
@@ -1025,10 +1870,27 @@ def run_quality_gates(
     """
     ctx = context or {}
 
+    # Validate gate_config type
+    if gate_config is not None and not isinstance(gate_config, dict):
+        logger.warning(
+            "Invalid gate_config type '%s', ignoring", type(gate_config).__name__
+        )
+        gate_config = None
+
     source_config: dict[str, Any] | None = ctx.get("source_config")
     existing_entries: list[KBEntry] = ctx.get("existing_entries", [])
     topic_keywords: list[str] = ctx.get("topic_keywords", [])
     threshold: int = ctx.get("threshold", 30)
+
+    # Resolve per-gate configs
+    g0_config = gate_config.get("G0-SchemaIntegrity") if gate_config else None
+    g1_config = gate_config.get("G1-SourceAuthority") if gate_config else None
+    g2_config = gate_config.get("G2-Dedup") if gate_config else None
+    g3_config = gate_config.get("G3-RelevanceScoring") if gate_config else None
+
+    # G3: gate_config.threshold overrides context threshold
+    if g3_config is not None and g3_config.threshold is not None:
+        threshold = int(g3_config.threshold)
 
     g0 = G0SchemaIntegrity()
     g1 = G1SourceAuthority()
@@ -1038,9 +1900,9 @@ def run_quality_gates(
     results: dict[str, QualityResult] = {}
 
     # G0 runs FIRST — validates raw item schema before further processing
-    results["G0-SchemaIntegrity"] = g0.check(item.to_dict(), ctx)
-    results["G1-SourceAuthority"] = g1.check(item, source_config)
-    results["G2-Dedup"] = g2.check(item, existing_entries)
-    results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold)
+    results["G0-SchemaIntegrity"] = g0.check(item.to_dict(), ctx, g0_config)
+    results["G1-SourceAuthority"] = g1.check(item, source_config, g1_config)
+    results["G2-Dedup"] = g2.check(item, existing_entries, g2_config)
+    results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold, g3_config)
 
     return results

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from autoinfo.config import Config, get_config_path, load_config
+from autoinfo.config import Config, QualityGateConfig, get_config_path, load_config
 from autoinfo.kb import KBStore
 from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import LLMExtractor
@@ -542,6 +542,17 @@ def run_processing(
                         topic_keywords = t.keywords
                         break
 
+    # Resolve gate config: merge global defaults with domain overrides
+    gate_config: dict[str, QualityGateConfig] = {}
+    if config:
+        # Start with global quality_gates
+        gate_config.update(config.quality_gates)
+        # Override with domain-specific config
+        for d in config.domains:
+            if d.name == domain:
+                gate_config.update(d.quality_gates)
+                break
+
     # Resolve custom extract_fields from domain config
     extract_fields: list[str] | None = None
     if config:
@@ -593,6 +604,7 @@ def run_processing(
                     "existing_entries": existing_entries,
                     "topic_keywords": topic_keywords,
                 },
+                gate_config=gate_config if gate_config else None,
             )
 
             # Step b2: Optional G4 factual consistency gate

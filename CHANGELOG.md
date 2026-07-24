@@ -2,6 +2,20 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.4.1 (2026-07-24)
+
+### Added
+- **source_platform field**: Added to all remaining collectors — `web_playwright.py`, `pdf.py`, `webhook.py` now populate `source_platform` (fixes #30 scope extension)
+- **collected_at field**: Added to `web_playwright.py`, `pdf.py`, `webhook.py` collectors that were missing it (fixes #31 scope extension)
+
+### Changed
+- **CLI --limit validation**: Upgraded from `min=0` to `min=1` across `collect.py`, `kb.py`, `summaries.py` — now rejects `--limit 0` as meaningless (strengthens #32 fix)
+
+### Fixed
+- **#30 — collectors: PubMed/RSS/Web source_platform**: Added `source_platform` field to `Item` dataclass and populated in all collectors (PubMed, RSS, Web, email_imap). KB mapping updated from `item.source_name` to `item.source_platform`.
+- **#31 — collectors/pubmed collected_at**: Added `collected_at` parameter from `pub_date` metadata in PubMed collector; also added to web collector from extracted date.
+- **#32 — CLI --limit negative values**: Added `min=1` Click range validation to all 4 `--limit` CLI parameters. Negative values are now rejected by Click's type validation.
+
 ## v1.4 (2026-07-23)
 
 ### Added
@@ -312,5 +326,6 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `AGENTS.md` — comprehensive agent onboarding guide
 - `README.md` — project overview and quick start
 - `.gitignore` — Python project hygiene
-- `.opencode/skills/autoinfo-SKILL.md` — OpenCode skill definition
+- `.opencode/skills/` — Coding agent skill definitions (development workflows)
+- `docs/skills/autoinfo-skill/SKILL.md` — AutoInfo operator skill (MCP operation guide for agent-users)
 - `Makefile` — `install`, `test`, `lint`, `clean` targets

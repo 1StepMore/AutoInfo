@@ -122,10 +122,12 @@ class WebhookHandler:
             id=item_id,
             source_name=self.source_name,
             source_type="webhook",
+            source_platform=self.source_name,
             source_url=source_url,
             title=title,
             content=content,
             content_type="text",
+            collected_at="",
             raw_data={
                 k: v for k, v in payload.items() if k not in REQUIRED_FIELDS
             },

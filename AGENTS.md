@@ -57,11 +57,14 @@ AutoInfo/
 ├── Makefile                        # Build automation
 ├── .gitignore
 ├── docs/
-│   └── dev/
-│       ├── founder-expectations.md # Full spec (32 expectations, 13 tech decisions)
-│       └── Hermes-KnowledgeBase-介绍.md  # KB pipeline reference model
+│   ├── dev/
+│   │   ├── founder-expectations.md # Full spec (32 expectations, 13 tech decisions)
+│   │   └── Hermes-KnowledgeBase-介绍.md  # KB pipeline reference model
+│   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
+│       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
+│       └── translator-qa-skill/    # Translation QA workflow
 ├── .opencode/
-│   └── skills/                     # Agent skill definitions
+│   └── skills/                     # Coding agent skills (for developing AutoInfo)
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 17 CLI command groups

@@ -32,7 +32,7 @@ def summaries_callback() -> None:
 def list_(
     domain: str = typer.Option(..., "--domain", help="Domain to list summaries for"),
     date_from: str = typer.Option(None, "--date-from", help="Start date (ISO 8601)"),
-    limit: int = typer.Option(20, "--limit", min=0, help="Max results"),
+    limit: int = typer.Option(20, "--limit", min=1, help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:

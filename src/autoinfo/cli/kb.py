@@ -24,7 +24,7 @@ app = typer.Typer(help="Knowledge base operations")
 def search(
     query: str = typer.Option(..., "--query", help="Search query"),
     domain: str = typer.Option("", "--domain", help="Domain to search in"),
-    limit: int = typer.Option(20, "--limit", min=0, help="Max results"),
+    limit: int = typer.Option(20, "--limit", min=1, help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
 ) -> None:
     """Search the knowledge base using FTS5 full-text search."""
@@ -41,7 +41,7 @@ def list(
     tier: str = typer.Option(
         "01-Raw", "--tier", help="KB tier (01-Raw, 02-Draft, 03-Wiki)"
     ),
-    limit: int = typer.Option(20, "--limit", min=0, help="Max entries"),
+    limit: int = typer.Option(20, "--limit", min=1, help="Max entries"),
     offset: int = typer.Option(0, "--offset", help="Pagination offset"),
 ) -> None:
     """List KB entries by domain and tier."""

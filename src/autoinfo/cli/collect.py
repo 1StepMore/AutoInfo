@@ -29,7 +29,7 @@ def collect(
     source: str = typer.Option(
         None, "--source", help="Source name filter (repeatable: --source pubmed --source rss)",
     ),
-    limit: int = typer.Option(20, "--limit", min=0, help="Max items to collect per source"),
+    limit: int = typer.Option(20, "--limit", min=1, help="Max items to collect per source"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without storing"),
     auto_process: bool = typer.Option(
         False, "--auto-process", help="Run processing immediately after collection",

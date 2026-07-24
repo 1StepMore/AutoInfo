@@ -50,7 +50,7 @@ import os
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from mcp.server import Server
@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 68,
+            "tools_count": 75,
     }
 
 
@@ -2618,6 +2618,356 @@ def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Gate config handlers
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_gate_config(domain: str, gate: str) -> dict[str, Any]:
+    """Return gate configuration for a domain.
+
+    Checks both quality gates (G0-G5 etc.) and delivery gates (D1-D3 etc.),
+    falling back to global defaults when the gate is not set at the domain level.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    from dataclasses import asdict as _asdict
+
+    # Check quality gates first, then delivery gates, then global defaults
+    gate_config: dict[str, Any] | None = None
+    gate_type: str = ""
+
+    if gate in domain_cfg.quality_gates:
+        gate_config = _asdict(domain_cfg.quality_gates[gate])
+        gate_type = "quality"
+    elif gate in domain_cfg.delivery_gates:
+        gate_config = _asdict(domain_cfg.delivery_gates[gate])
+        gate_type = "delivery"
+    elif gate in config.quality_gates:
+        gate_config = _asdict(config.quality_gates[gate])
+        gate_type = "quality"
+    elif gate in config.delivery_gates:
+        gate_config = _asdict(config.delivery_gates[gate])
+        gate_type = "delivery"
+
+    if gate_config is None:
+        return {
+            "error_code": "GateNotFound",
+            "message": f"Gate '{gate}' is not configured for domain '{domain}'",
+            "actionable": True,
+        }
+
+    # Remove internal fields from serialization
+    gate_config.pop("name", None)
+
+    return {
+        "domain": domain,
+        "gate": gate,
+        "gate_type": gate_type,
+        "config": gate_config,
+    }
+
+
+def _handle_set_gate_config(
+    domain: str,
+    gate: str,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """Update gate configuration for a domain.
+
+    *config* should contain gate-specific fields (e.g. ``action``, ``threshold``
+    for quality gates; ``enabled``, ``action_on_failure`` for delivery gates).
+    """
+    try:
+        cfg = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(cfg, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    from autoinfo.config import DeliveryGateConfig, QualityGateConfig
+
+    # Determine if this is a quality or delivery gate
+    is_delivery = (
+        gate in domain_cfg.delivery_gates
+        or ("action_on_failure" in config)
+        or ("enabled" in config and "category" not in config)
+    )
+    is_quality = (gate in domain_cfg.quality_gates) or not is_delivery
+
+    new_gc: QualityGateConfig | None = None
+    new_dc: DeliveryGateConfig | None = None
+
+    if is_quality:
+        new_gc = QualityGateConfig(
+            name=gate,
+            category=str(config.get("category", "soft")),
+            retries=int(config.get("retries", 0)),
+            retry_models=list(config.get("retry_models", [])),
+            action=str(config.get("action", "flag")),
+            threshold=config.get("threshold", None),
+        )
+        domain_cfg.quality_gates[gate] = new_gc
+    else:
+        new_dc = DeliveryGateConfig(
+            name=gate,
+            enabled=bool(config.get("enabled", True)),
+            action_on_failure=str(config.get("action_on_failure", "block")),
+        )
+        domain_cfg.delivery_gates[gate] = new_dc
+
+    _save_config(cfg)
+
+    # Both branches of is_quality/is_delivery set one of new_gc/new_dc
+    if is_quality and new_gc is not None:
+        from dataclasses import asdict as _asdict
+        config_dict = _asdict(new_gc)
+    elif new_dc is not None:
+        from dataclasses import asdict as _asdict
+        config_dict = _asdict(new_dc)
+    else:
+        config_dict = {}
+
+    return {
+        "domain": domain,
+        "gate": gate,
+        "updated": True,
+        "config": config_dict,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Product handlers
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
+    """Return product configuration for a domain and product type.
+
+    *product_type* is ``"RAW"`` or ``"PROCESSED"``.  Products are derived
+    from the domain's configuration (sources, quality gates, delivery
+    channels, etc.).
+    """
+    try:
+        cfg = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(cfg, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    product_type_upper = product_type.upper()
+    if product_type_upper not in ("RAW", "PROCESSED"):
+        return {
+            "error_code": "ValidationError",
+            "message": f"Invalid product_type '{product_type}'. Must be 'RAW' or 'PROCESSED'.",
+            "actionable": True,
+        }
+
+    if product_type_upper == "RAW":
+        product = {
+            "id": f"{domain}-raw",
+            "domain": domain,
+            "type": "raw",
+            "name": f"{domain} RAW Feed",
+            "config": {
+                "sources": [
+                    {"name": s.name, "type": s.type, "url": s.url}
+                    for s in domain_cfg.sources
+                ],
+                "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
+            },
+            "templates": [],
+            "delivery_channels": ["api"],
+            "quality_gates": list(domain_cfg.quality_gates.keys()),
+        }
+    else:
+        product = {
+            "id": f"{domain}-processed",
+            "domain": domain,
+            "type": "processed",
+            "name": f"{domain} PROCESSED Output",
+            "config": {
+                "delivery_gates": {
+                    dg: _gate_to_dict(gc)
+                    for dg, gc in domain_cfg.delivery_gates.items()
+                },
+                "webhook_urls": list(getattr(domain_cfg, "webhook_urls", [])),
+                "search_mode": getattr(domain_cfg, "search_mode", "keyword"),
+            },
+            "templates": ["digest", "report", "tutorial", "presentation"],
+            "delivery_channels": ["webhook", "smtp", "api", "export"],
+            "quality_gates": list(domain_cfg.quality_gates.keys()),
+        }
+
+    return {"product": product}
+
+
+def _handle_list_products(domain: str) -> dict[str, Any]:
+    """List all configured products for a domain.
+
+    Returns both RAW and PROCESSED product types derived from the
+    domain's configuration.
+    """
+    try:
+        cfg = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(cfg, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    raw_product = {
+        "id": f"{domain}-raw",
+        "domain": domain,
+        "type": "raw",
+        "name": f"{domain} RAW Feed",
+        "source_count": len(domain_cfg.sources),
+        "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
+        "quality_gate_count": len(domain_cfg.quality_gates),
+    }
+
+    processed_product = {
+        "id": f"{domain}-processed",
+        "domain": domain,
+        "type": "processed",
+        "name": f"{domain} PROCESSED Output",
+        "delivery_channel_count": len(
+            list(getattr(domain_cfg, "webhook_urls", [])) + ["smtp", "api", "export"]
+        ),
+        "delivery_gate_count": len(domain_cfg.delivery_gates),
+        "templates": ["digest", "report", "tutorial", "presentation"],
+    }
+
+    return {
+        "domain": domain,
+        "products": [raw_product, processed_product],
+        "count": 2,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Alert rule handlers
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_alert_rules(domain: str) -> dict[str, Any]:
+    """List alert rules for a domain."""
+    from autoinfo.alerts import list_alert_rules
+
+    try:
+        rules = list_alert_rules(domain=domain)
+    except Exception as exc:
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": f"Failed to list alert rules: {exc}",
+            "actionable": True,
+        }
+
+    from dataclasses import asdict as _asdict
+
+    return {
+        "domain": domain,
+        "alert_rules": [_asdict(r) for r in rules],
+        "count": len(rules),
+    }
+
+
+def _handle_add_alert_rule(
+    domain: str,
+    topic_keywords: list[str] | None = None,
+    relevance_threshold: float = 0.0,
+    channel: Literal["email", "webhook"] = "email",
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Add a new alert rule for a domain."""
+    from autoinfo.alerts import add_alert_rule
+
+    try:
+        rule = add_alert_rule(
+            domain=domain,
+            topic_keywords=topic_keywords,
+            relevance_threshold=relevance_threshold,
+            channel=channel,
+            enabled=enabled,
+        )
+    except Exception as exc:
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": f"Failed to add alert rule: {exc}",
+            "actionable": True,
+        }
+
+    from dataclasses import asdict as _asdict
+
+    return {
+        "alert_rule": _asdict(rule),
+        "created": True,
+    }
+
+
+def _handle_remove_alert_rule(id: str) -> dict[str, Any]:
+    """Remove an alert rule by ID."""
+    from autoinfo.alerts import remove_alert_rule
+
+    try:
+        removed = remove_alert_rule(id)
+    except Exception as exc:
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": f"Failed to remove alert rule: {exc}",
+            "actionable": True,
+        }
+
+    if not removed:
+        return {
+            "error_code": "AlertRuleNotFound",
+            "message": f"Alert rule '{id}' not found",
+            "actionable": True,
+        }
+
+    return {
+        "removed": True,
+        "alert_rule_id": id,
+    }
+
+
+def _gate_to_dict(gate_obj: Any) -> dict[str, Any]:
+    """Serialize a QualityGateConfig or DeliveryGateConfig to a plain dict."""
+    from dataclasses import asdict as _asdict
+
+    d = _asdict(gate_obj)
+    d.pop("name", None)
+    return d
+
+
 def _handle_get_config(section: str = "") -> dict[str, Any]:
     """Return the current configuration as a structured dict.
 
@@ -3910,7 +4260,7 @@ async def list_tools() -> list[Tool]:
                 "Import entries or source suggestions into the KB. "
                 "Supports 4 formats: markdown (YAML+Markdown frontmatter), "
                 "json, csv, and opml. "
-                "All entry imports land in 01-Raw (Hermes model). "
+                "All entry imports land in 01-Raw (KB pipeline). "
                 "OPML returns source suggestions only — does NOT auto-add sources."
             ),
             inputSchema={
@@ -4370,6 +4720,173 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
+        # -- Gate Config (2) ------------------------------------------------
+        Tool(
+            name="get_gate_config",
+            description="Return gate configuration (quality or delivery) for a domain — checks domain-level config, falls back to global defaults",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "gate": {
+                        "type": "string",
+                        "description": "Gate name (e.g. G0, G1, D1, D2)",
+                    },
+                },
+                "required": ["domain", "gate"],
+            },
+        ),
+        Tool(
+            name="set_gate_config",
+            description="Update gate configuration for a domain. Provide gate-specific fields (action, threshold, retries for quality gates; enabled, action_on_failure for delivery gates)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "gate": {
+                        "type": "string",
+                        "description": "Gate name (e.g. G0, G1, D1, D2)",
+                    },
+                    "config": {
+                        "type": "object",
+                        "description": "Gate configuration dict (e.g. {\"action\": \"block\", \"retries\": 3, \"retry_models\": [...]} for quality gates; {\"enabled\": true, \"action_on_failure\": \"flag\"} for delivery gates)",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "description": "Action on failure: block, retry, flag, skip, archive",
+                            },
+                            "retries": {
+                                "type": "integer",
+                                "description": "Number of retry attempts (quality gates)",
+                            },
+                            "retry_models": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Fallback model chain (quality gates)",
+                            },
+                            "threshold": {
+                                "type": "number",
+                                "description": "Score threshold 0-100 (quality gates)",
+                            },
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "Whether the gate is enabled (delivery gates)",
+                            },
+                            "action_on_failure": {
+                                "type": "string",
+                                "description": "Action on failure: block, fallback, flag (delivery gates)",
+                            },
+                        },
+                    },
+                },
+                "required": ["domain", "gate", "config"],
+            },
+        ),
+        # -- Product (2) ----------------------------------------------------
+        Tool(
+            name="get_product",
+            description="Return product configuration for a domain and product type (RAW or PROCESSED). Products are derived from domain config",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "product_type": {
+                        "type": "string",
+                        "description": "Product type: RAW or PROCESSED",
+                        "enum": ["RAW", "PROCESSED"],
+                    },
+                },
+                "required": ["domain", "product_type"],
+            },
+        ),
+        Tool(
+            name="list_products",
+            description="List all configured products (RAW and PROCESSED) for a domain, derived from its configuration",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        # -- Alert Rules (3) ------------------------------------------------
+        Tool(
+            name="get_alert_rules",
+            description="List alert rules for a domain. Returns all rules filtered by domain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="add_alert_rule",
+            description="Create a new threshold-based alert rule for a domain. Triggers notifications when collected items match the configured keywords and relevance threshold",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "topic_keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to match against item title and content. Empty list matches all items",
+                        "default": [],
+                    },
+                    "relevance_threshold": {
+                        "type": "number",
+                        "description": "Minimum relevance score (0-100) to trigger",
+                        "default": 0.0,
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": "Delivery channel: email or webhook",
+                        "default": "email",
+                        "enum": ["email", "webhook"],
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Whether the rule is active",
+                        "default": True,
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="remove_alert_rule",
+            description="Remove an alert rule by its ID",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Alert rule ID to remove (returned by add_alert_rule in the response)",
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
         # -- Init (1) --------------------------------------------------------
         Tool(
             name="init_project",
@@ -4606,6 +5123,26 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_active_collections()
         elif name == "get_config":
             result = _handle_get_config(**arguments)
+
+        # -- Gate Config (2) ------------------------------------------------
+        elif name == "get_gate_config":
+            result = _handle_get_gate_config(**arguments)
+        elif name == "set_gate_config":
+            result = _handle_set_gate_config(**arguments)
+
+        # -- Product (2) ----------------------------------------------------
+        elif name == "get_product":
+            result = _handle_get_product(**arguments)
+        elif name == "list_products":
+            result = _handle_list_products(**arguments)
+
+        # -- Alert Rules (3) ------------------------------------------------
+        elif name == "get_alert_rules":
+            result = _handle_get_alert_rules(**arguments)
+        elif name == "add_alert_rule":
+            result = _handle_add_alert_rule(**arguments)
+        elif name == "remove_alert_rule":
+            result = _handle_remove_alert_rule(**arguments)
 
         else:
             return [

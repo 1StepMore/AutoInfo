@@ -44,6 +44,7 @@ def three_items() -> list[Item]:
                 id=f"item-{i:03d}",
                 source_name="pubmed",
                 source_type="api",
+                source_platform="pubmed",
                 source_url=f"https://example.com/{i}",
                 title=f"Test article {i}",
                 content=f"Content of test article {i}.",

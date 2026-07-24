@@ -296,3 +296,98 @@ async def search_entries(
     # Normalise entries in the result
     result["entries"] = [_entry_to_response(e) for e in result.get("entries", [])]
     return result
+
+
+# ---------------------------------------------------------------------------
+# Feed endpoint (RAW product feed)
+# ---------------------------------------------------------------------------
+
+
+def _parse_tags(raw: dict[str, Any]) -> list[str]:
+    """Deserialise the ``tags`` column from a raw entry dict."""
+    import json as _json
+
+    tags_raw = raw.get("tags") or []
+    if isinstance(tags_raw, str):
+        try:
+            return list(_json.loads(tags_raw))
+        except (_json.JSONDecodeError, TypeError):
+            return [tags_raw] if tags_raw else []
+    return list(tags_raw) if tags_raw else []
+
+
+@router.get("/feeds", response_model=dict[str, Any])
+async def list_feeds(
+    domain: str = Query(..., min_length=1, description="Domain to query (required)"),
+    topic: str | None = Query(None, description="Filter by topic tag"),
+    source_type: str | None = Query(None, description="Filter by source type (e.g. rss, api)"),
+    since: str | None = Query(None, description="ISO date filter (collected_at >=)"),
+    limit: int = Query(50, ge=1, le=200, description="Max items to return"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+) -> dict[str, Any]:
+    """Return a RAW product feed of KB entries for *domain*.
+
+    Supports optional filtering by topic tag, source type, and collected-at
+    date.  Returns paginated results with ``{items, pagination}`` envelope.
+    """
+    if not domain.strip():
+        raise HTTPException(status_code=400, detail="domain is required")
+
+    store = _get_store()
+
+    # Fetch all entries for the domain — apply since filter at the DB level
+    all_raw = store.list_all_entries(
+        domain=domain,
+        date_from=since,
+        limit=10000,
+        offset=0,
+    )
+
+    # Apply topic filter (tags are a JSON string in the DB)
+    if topic:
+        topic_lower = topic.strip().lower()
+        filtered: list[dict[str, Any]] = []
+        for entry in all_raw:
+            tags = _parse_tags(entry)
+            if any(t.lower() == topic_lower for t in tags):
+                filtered.append(entry)
+        all_raw = filtered
+
+    # Apply source_type filter
+    if source_type:
+        st = source_type.strip().lower()
+        all_raw = [e for e in all_raw if e.get("source_type", "").lower() == st]
+
+    # Sort by collected_at DESC (newest first)
+    all_raw.sort(key=lambda e: e.get("collected_at", "") or "", reverse=True)
+
+    total = len(all_raw)
+
+    # Slice for pagination
+    page = all_raw[offset: offset + limit]
+
+    # Determine next offset
+    next_offset: int | None = offset + limit if offset + limit < total else None
+
+    items = []
+    for entry in page:
+        items.append({
+            "id": entry.get("entry_id", ""),
+            "title": entry.get("title", ""),
+            "url": entry.get("source_url", ""),
+            "source_type": entry.get("source_type", ""),
+            "source_platform": entry.get("source_platform", ""),
+            "collected_at": entry.get("collected_at", ""),
+            "summary": entry.get("summary", ""),
+            "relevance_score": entry.get("relevance_score", 0.0),
+        })
+
+    return {
+        "items": items,
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "next": next_offset,
+        },
+    }

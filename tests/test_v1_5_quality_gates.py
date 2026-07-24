@@ -14,11 +14,13 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from autoinfo.config import QualityGateConfig
 from autoinfo.models import ExtractionResult, Item, KBEntry
@@ -35,6 +37,7 @@ from autoinfo.quality import (
     run_delivery_gates,
     run_quality_gates,
 )
+from autoinfo.llm import LLMExtractor
 
 
 # ===================================================================
@@ -1472,3 +1475,353 @@ class TestGateConfigIntegration:
         assert merged["G1-SourceAuthority"].action == "skip"
         assert merged["G3-RelevanceScoring"].threshold == 50.0
         assert merged["G2-Dedup"].action == "flag"
+
+
+# ===================================================================
+# G0/G4 hard gate enforcement in processing pipeline
+# ===================================================================
+
+
+class TestG0G4InProcessingPipeline:
+    """G0 and G4 hard gate enforcement in ``run_processing()``.
+
+    Tests that:
+    - G0 runs BEFORE LLM extraction and blocks malformed items
+    - G4 retry chain can block items after extraction
+    - Both write ``_failed/`` diagnostics per domain
+    - Passing both gates stores items normally
+    """
+
+    # -- helpers -------------------------------------------------------
+
+    @staticmethod
+    def _make_config_yaml(
+        tmp_path: Path,
+        domain: str = "test-domain",
+        quality_gates: dict | None = None,
+    ) -> Path:
+        """Write a minimal config to ``tmp_path/.autoinfo/config.yaml``."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        config_data: dict = {
+            "project": {"name": "Test", "created_at": "2026-07-24"},
+            "llm": {"provider": "openrouter", "model": "test/model"},
+            "domains": [
+                {
+                    "name": domain,
+                    "active": True,
+                    "sources": [],
+                    "topics": [],
+                }
+            ],
+        }
+        if quality_gates:
+            config_data["quality_gates"] = quality_gates
+            config_data["domains"][0]["quality_gates"] = quality_gates
+
+        config_path = config_dir / "config.yaml"
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(config_data, fh, default_flow_style=False)
+        return config_path
+
+    @staticmethod
+    def _make_good_item(item_id: str = "good-item") -> Item:
+        """Return an Item with valid mandatory fields (passes G0)."""
+        return Item(
+            id=item_id,
+            source_name="pubmed",
+            source_type="api",
+            source_url="https://example.com/article",
+            title="Test article",
+            content=(
+                "Time-lapse embryo imaging significantly improves live birth "
+                "rates compared to standard morphological assessment in IVF "
+                "patients (48.2% vs. 39.5%, p=0.006)."
+            ),
+            content_type="text",
+            collected_at="2026-07-20T10:00:00Z",
+            language="en",
+            domain="test-domain",
+            source_platform="pubmed",
+            quality_tier=1,
+        )
+
+    @staticmethod
+    def _make_bad_item(item_id: str = "bad-item") -> Item:
+        """Return an Item with empty source_url (triggers G0 block)."""
+        return Item(
+            id=item_id,
+            source_name="pubmed",
+            source_type="api",
+            source_url="",  # empty → G0 blocks
+            title="Bad item",
+            content="Some content",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test-domain",
+        )
+
+    @staticmethod
+    def _make_mock_store() -> MagicMock:
+        """Return a mocked KBStore."""
+        from autoinfo.kb import KBEntry as KBEntryCls
+
+        mock_store = MagicMock()
+        mock_store.list_entries.return_value = []
+        mock_store.store_entry.return_value = KBEntryCls(
+            entry_id="mock-entry",
+            title="mock",
+            domain="test-domain",
+        )
+        return mock_store
+
+    @staticmethod
+    def _make_mock_litellm(return_json: dict | None = None) -> MagicMock:
+        """Return a mock litellm completion that returns *return_json*."""
+        mock_llm = MagicMock()
+        if return_json is not None:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = json.dumps(return_json)
+            mock_response.usage = MagicMock()
+            # Set all usage fields explicitly so getattr() returns ints, not MagicMocks
+            mock_response.usage.prompt_tokens = 50
+            mock_response.usage.completion_tokens = 30
+            mock_response.usage.total_tokens = 80
+            mock_llm.completion.return_value = mock_response
+        return mock_llm
+
+    # -- tests ---------------------------------------------------------
+
+    def test_g0_failure_skips_item_and_writes_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """G0 failure → item skipped, _failed/ written, no KB entry."""
+        config_path = self._make_config_yaml(tmp_path)
+        bad_item = self._make_bad_item()
+        mock_store = self._make_mock_store()
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            with (
+                patch(
+                    "autoinfo.process.get_config_path",
+                    return_value=config_path,
+                ),
+                patch(
+                    "autoinfo.process.load_cached_items",
+                    return_value=[bad_item],
+                ),
+                patch(
+                    "autoinfo.process.KBStore",
+                    return_value=mock_store,
+                ),
+            ):
+                from autoinfo.process import run_processing
+
+                result = run_processing(domain="test-domain")
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.kb_entries_created == 0
+        mock_store.store_entry.assert_not_called()
+
+        failed_dir = tmp_path / "collections" / "test-domain" / "_failed"
+        assert failed_dir.is_dir()
+        failed_file = failed_dir / "bad-item.json"
+        assert failed_file.exists()
+
+        with open(failed_file, encoding="utf-8") as fh:
+            diag = json.load(fh)
+        assert diag["item_id"] == "bad-item"
+        assert diag["gate"] == "G0"
+        assert diag["gate_result"]["passed"] is False
+        assert diag["gate_result"]["details"]["action"] == "block"
+
+        assert len(result.per_item_logs) == 0
+
+    def test_g4_failure_blocks_item_and_writes_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """G4 retry chain exhaustion → item blocked, not stored in KB."""
+        config_path = self._make_config_yaml(tmp_path)
+        good_item = self._make_good_item("g4-blocked-item")
+        mock_store = self._make_mock_store()
+
+        mock_extract_llm = self._make_mock_litellm({
+            "tl_dr": "Test summary that contradicts.",
+            "key_points": ["Point"],
+            "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
+            "relevance_score": 80.0,
+        })
+
+        block_result = QualityResult(
+            gate_name="G4-SummaryFactual",
+            passed=False,
+            flagged=True,
+            score=0.0,
+            details={
+                "contradiction": True,
+                "action": "block",
+                "retry_count": 3,
+                "explanation": "All 3 attempts exhausted.",
+            },
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            with (
+                patch(
+                    "autoinfo.process.get_config_path",
+                    return_value=config_path,
+                ),
+                patch(
+                    "autoinfo.process.load_cached_items",
+                    return_value=[good_item],
+                ),
+                patch(
+                    "autoinfo.process.KBStore",
+                    return_value=mock_store,
+                ),
+                patch.object(
+                    LLMExtractor,
+                    "_get_litellm",
+                    return_value=mock_extract_llm,
+                ),
+                patch.object(
+                    G4FactualConsistency,
+                    "check",
+                    return_value=block_result,
+                ),
+            ):
+                from autoinfo.process import run_processing
+
+                result = run_processing(
+                    domain="test-domain", check_factual=True
+                )
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.kb_entries_created == 0
+        mock_store.store_entry.assert_not_called()
+        assert len(result.per_item_logs) == 0
+
+    def test_g0_and_g4_pass_item_stored_normally(
+        self, tmp_path: Path
+    ) -> None:
+        """G0 + G4 pass → item stored in KB, no _failed/ for this item."""
+        config_path = self._make_config_yaml(tmp_path)
+        good_item = self._make_good_item("passing-item")
+        mock_store = self._make_mock_store()
+
+        mock_extract_llm = self._make_mock_litellm({
+            "tl_dr": "IVF success rates improve with time-lapse imaging.",
+            "key_points": ["Time-lapse imaging improves IVF outcomes"],
+            "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
+            "relevance_score": 85.0,
+        })
+
+        mock_g4_llm = self._make_mock_litellm(
+            {"contradiction": False, "explanation": "Summary matches source."}
+        )
+
+        with (
+            patch("autoinfo.process.get_config_path", return_value=config_path),
+            patch(
+                "autoinfo.process.load_cached_items",
+                return_value=[good_item],
+            ),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+            patch.object(
+                LLMExtractor, "_get_litellm", return_value=mock_extract_llm
+            ),
+            patch.object(
+                G4FactualConsistency,
+                "_get_litellm",
+                return_value=mock_g4_llm,
+            ),
+        ):
+            from autoinfo.process import run_processing
+            result = run_processing(
+                domain="test-domain", check_factual=True
+            )
+
+        assert result.kb_entries_created == 1
+        mock_store.store_entry.assert_called_once()
+
+        failed_dir = tmp_path / "collections" / "test-domain" / "_failed"
+        failed_file = failed_dir / "passing-item.json"
+        assert not failed_file.exists()
+
+        # Per-item log shows ok
+        assert len(result.per_item_logs) == 1
+        assert result.per_item_logs[0]["status"] == "ok"
+
+    def test_failed_dir_created_per_domain(
+        self, tmp_path: Path
+    ) -> None:
+        """_failed/ directory is created per domain on first G0 failure."""
+        config_path = self._make_config_yaml(tmp_path, domain="domain-a")
+        bad_item_a = self._make_bad_item("bad-a")
+        mock_store = self._make_mock_store()
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            with (
+                patch(
+                    "autoinfo.process.get_config_path",
+                    return_value=config_path,
+                ),
+                patch(
+                    "autoinfo.process.load_cached_items",
+                    return_value=[bad_item_a],
+                ),
+                patch(
+                    "autoinfo.process.KBStore",
+                    return_value=mock_store,
+                ),
+            ):
+                from autoinfo.process import run_processing
+
+                run_processing(domain="domain-a")
+
+            # _failed/ exists for domain-a
+            failed_a = tmp_path / "collections" / "domain-a" / "_failed"
+            assert failed_a.is_dir()
+            assert (failed_a / "bad-a.json").exists()
+
+            # Second domain also creates its own _failed/
+            config_path_b = self._make_config_yaml(
+                tmp_path, domain="domain-b"
+            )
+            bad_item_b = self._make_bad_item("bad-b")
+            mock_store_b = self._make_mock_store()
+
+            with (
+                patch(
+                    "autoinfo.process.get_config_path",
+                    return_value=config_path_b,
+                ),
+                patch(
+                    "autoinfo.process.load_cached_items",
+                    return_value=[bad_item_b],
+                ),
+                patch(
+                    "autoinfo.process.KBStore",
+                    return_value=mock_store_b,
+                ),
+            ):
+                run_processing(domain="domain-b")
+        finally:
+            os.chdir(original_cwd)
+
+        failed_b = tmp_path / "collections" / "domain-b" / "_failed"
+        assert failed_b.is_dir()
+        assert (failed_b / "bad-b.json").exists()
+        assert len(list(failed_a.iterdir())) == 1
+        assert len(list(failed_b.iterdir())) == 1

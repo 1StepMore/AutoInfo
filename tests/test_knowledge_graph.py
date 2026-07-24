@@ -410,6 +410,7 @@ class TestProcessIntegration:
             id="test-kg-001",
             source_name="pubmed",
             source_type="api",
+            source_platform="pubmed",
             source_url="https://example.com/kg-test",
             title="KG Integration Test",
             content="Test content about CRISPR and Gene Therapy.",

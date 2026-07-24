@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, TemplateNotFound
 
 from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore, SQLiteIndex
@@ -658,6 +658,130 @@ def _get_jinja_env() -> Environment:
 
 
 # ---------------------------------------------------------------------------
+# ProductTemplate — template selection with domain overrides
+# ---------------------------------------------------------------------------
+
+# Maps output format strings to template variant suffixes.
+# E.g. format="markdown" → template variant "md" → digest.md.j2
+FORMAT_TO_VARIANT: dict[str, str] = {
+    "markdown": "md",
+    "html": "html",
+    "json": "json",
+    "pdf": "pdf",
+}
+
+
+class ProductTemplate:
+    """Wraps Jinja2 rendering with product metadata and template selection.
+
+    Template selection strategy (first match wins):
+
+    1. ``.autoinfo/templates/<domain>/<type>/<variant>.j2`` — domain-specific
+       override (e.g. ``.autoinfo/templates/medical-research/digest/weekly.j2``)
+    2. ``data/templates/<type>/<variant>.j2`` — built-in base template
+       (e.g. ``data/templates/digest/weekly.j2``)
+    3. ``data/templates/<type>/default.j2`` — default variant for that type
+    4. ``data/templates/<type>.<variant>.j2`` — legacy flat naming (backward
+       compatible with the existing ``digest.md.j2`` convention)
+
+    Usage::
+
+        pt = ProductTemplate(domain="medical-research")
+        output = pt.render("digest", "md", context_dict)
+    """
+
+    def __init__(self, domain: str):
+        self.domain = domain
+        self._base_dir = _TEMPLATES_DIR
+        self._domain_dir = Path.cwd() / ".autoinfo" / "templates" / domain
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def render(
+        self,
+        product_type: str,
+        variant: str,
+        data: dict[str, Any],
+    ) -> str:
+        """Render a template for *product_type* and *variant* with *data*.
+
+        Parameters
+        ----------
+        product_type:
+            Template category (e.g. ``"digest"``, ``"report"``,
+            ``"tutorial"``, ``"presentation"``).
+        variant:
+            Template variant (e.g. ``"md"``, ``"html"``, ``"weekly"``).
+        data:
+            Template context variables.
+
+        Returns
+        -------
+        str
+            Rendered template output.
+
+        Raises
+        ------
+        FileNotFoundError
+            If no matching template is found in any search path.
+        """
+        env = self._get_env()
+
+        candidates = [
+            f"{product_type}/{variant}.j2",
+            f"{product_type}/default.j2",
+            f"{product_type}.{variant}.j2",   # legacy flat naming
+            f"{product_type}.default.j2",      # legacy default
+        ]
+
+        for name in candidates:
+            try:
+                template = env.get_template(name)
+                return template.render(**data)
+            except TemplateNotFound:
+                continue
+
+        raise FileNotFoundError(
+            f"No template found for domain={self.domain}, "
+            f"type={product_type}, variant={variant}"
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_env(self) -> Environment:
+        """Create a Jinja2 environment that checks domain overrides first.
+
+        Uses :class:`ChoiceLoader` so that domain-specific templates (in
+        ``.autoinfo/templates/<domain>/``) are preferred over built-in
+        base templates (in ``data/templates/``).
+        """
+        loaders: list[FileSystemLoader] = []
+        if self._domain_dir.is_dir():
+            loaders.append(FileSystemLoader(str(self._domain_dir)))
+        loaders.append(FileSystemLoader(str(self._base_dir)))
+
+        if len(loaders) == 1:
+            # Only base dir exists — no ChoiceLoader needed
+            return Environment(
+                loader=loaders[0],
+                autoescape=_html_autoescape,
+                trim_blocks=True,
+                lstrip_blocks=True,
+            )
+
+        return Environment(
+            loader=ChoiceLoader(loaders),
+            autoescape=_html_autoescape,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+
+
+# ---------------------------------------------------------------------------
 # LLM synthesis for digests
 # ---------------------------------------------------------------------------
 
@@ -809,6 +933,7 @@ def generate_digest(
     format: str = "markdown",
     llm_config: Config | None = None,
     custom_instructions: str = "",
+    product_template: ProductTemplate | None = None,
 ) -> str:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -828,6 +953,11 @@ def generate_digest(
     custom_instructions:
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    product_template:
+        Optional :class:`ProductTemplate` instance for template rendering.
+        When provided, the digest is rendered through the product template
+        system (with domain-specific overrides).  When ``None`` (default),
+        the existing direct Jinja2 rendering is used (backward compatible).
 
     Returns
     -------
@@ -901,6 +1031,10 @@ def generate_digest(
     }
 
     # --- Render --------------------------------------------------------------
+    if product_template is not None:
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        return product_template.render("digest", variant, context)
+
     if format == "json":
         return _render_json(context)
 
@@ -946,6 +1080,7 @@ def generate_report(
     format: str = "markdown",
     period: str = "month",
     custom_instructions: str = "",
+    product_template: ProductTemplate | None = None,
 ) -> str:
     """Generate a structured report for the given *domain*.
 
@@ -969,6 +1104,11 @@ def generate_report(
     custom_instructions : str, optional
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    product_template:
+        Optional :class:`ProductTemplate` instance for template rendering.
+        When provided, the report is rendered through the product template
+        system (with domain-specific overrides).  When ``None`` (default),
+        the existing direct Jinja2 rendering is used (backward compatible).
 
     Returns
     -------
@@ -1060,6 +1200,11 @@ def generate_report(
     )
 
     # -- Render -------------------------------------------------------------
+    if product_template is not None:
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        report_context = _report_data_to_dict(report_data)
+        return product_template.render("report", variant, report_context)
+
     if format == "json":
         return _render_report_json(report_data, period=period)
 
@@ -1238,6 +1383,32 @@ def _llm_json_extract(
     )
     result = extractor.extract(dummy, schema=[field])
     return result.custom_fields.get(field)
+
+
+def _report_data_to_dict(report_data: ReportData) -> dict[str, Any]:
+    """Convert a :class:`ReportData` instance to a flat dict for Jinja2 rendering.
+
+    Maps ``ReportSection.items`` → ``entries`` to match the variable
+    names expected by the report templates (``report.md.j2``,
+    ``report.html.j2``).
+    """
+    return {
+        "title": report_data.title,
+        "generated_at": report_data.generated_at,
+        "domain": report_data.domain,
+        "collection_id": report_data.collection_id,
+        "executive_summary": report_data.executive_summary,
+        "sections": [
+            {
+                "title": s.title,
+                "content": s.content,
+                "entries": s.items,
+            }
+            for s in report_data.sections
+        ],
+        "references": report_data.references,
+        "appendices": report_data.appendices,
+    }
 
 
 def _render_report_json(report_data: ReportData, period: str = "month") -> str:

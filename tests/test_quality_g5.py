@@ -89,6 +89,7 @@ def sample_item() -> Item:
         id="test-item-g5",
         source_name="pubmed",
         source_type="api",
+        source_platform="pubmed",
         source_url="https://example.com/article",
         title="Test article about IVF outcomes",
         content=(
@@ -170,6 +171,7 @@ def process_items() -> list[Item]:
             id="proc-item-g5",
             source_name="pubmed",
             source_type="api",
+            source_platform="pubmed",
             source_url="https://example.com/1",
             title="Test article about IVF",
             content="Content about IVF treatment outcomes.",

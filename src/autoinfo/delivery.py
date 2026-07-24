@@ -243,3 +243,14 @@ def get_channel(name: str) -> DeliveryChannel:
 def list_channels() -> list[str]:
     """Return the list of registered channel names."""
     return sorted(_CHANNEL_REGISTRY)
+
+
+def get_available_channels() -> list[str]:
+    """Return the list of available delivery channel names.
+
+    Returns
+    -------
+    list[str]
+        Sorted list of registered channel names (e.g. ``["smtp", "webhook"]``).
+    """
+    return sorted(_CHANNEL_REGISTRY)

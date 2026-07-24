@@ -1,7 +1,7 @@
-"""Tests for v1.5 delivery channel abstraction.
+"""Tests for v1.5 delivery channel abstraction and ProductTemplate.
 
 Covers: DeliveryChannel ABC, SMTPDeliveryChannel, WebhookDeliveryChannel,
-validate_config, get_channel factory, list_channels.
+validate_config, get_channel factory, list_channels, ProductTemplate.
 """
 
 from __future__ import annotations
@@ -12,10 +12,12 @@ from autoinfo.delivery import (
     DeliveryChannel,
     SMTPDeliveryChannel,
     WebhookDeliveryChannel,
+    get_available_channels,
     get_channel,
     list_channels,
 )
 from autoinfo.models import DeliveryResult, Product, ProductType
+from autoinfo.output import ProductTemplate, generate_digest, generate_report
 
 
 def _make_product(
@@ -226,3 +228,141 @@ class TestListChannels:
     def test_list_channels_sorted(self) -> None:
         channels = list_channels()
         assert channels == sorted(channels)
+
+
+# ===================================================================
+# get_available_channels
+# ===================================================================
+
+
+class TestGetAvailableChannels:
+    def test_get_available_channels_contains_smtp_and_webhook(self) -> None:
+        channels = get_available_channels()
+        assert "smtp" in channels
+        assert "webhook" in channels
+
+    def test_get_available_channels_returns_sorted(self) -> None:
+        channels = get_available_channels()
+        assert channels == sorted(channels)
+
+    def test_get_available_channels_matches_list_channels(self) -> None:
+        assert get_available_channels() == list_channels()
+
+
+# ===================================================================
+# ProductTemplate
+# ===================================================================
+
+
+class TestProductTemplate:
+    """Tests for ProductTemplate rendering and integration."""
+
+    def test_renders_digest_with_correct_template(self) -> None:
+        """ProductTemplate renders digest using the legacy flat template name."""
+        pt = ProductTemplate(domain="test")
+        data: dict[str, object] = {
+            "title": "Digest Title",
+            "domain": "test",
+            "period_label": "Daily",
+            "date_from": "2024-01-01",
+            "date_to": "2024-01-07",
+            "generated_at": "2024-01-07T00:00:00Z",
+            "entries": [],
+            "llm_synthesis": {},
+        }
+        result = pt.render("digest", "md", data)
+        assert isinstance(result, str)
+        assert "# Digest Title" in result
+        assert len(result) > 0
+
+    def test_domain_override(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Domain-specific template overrides the base template."""
+        domain = "test-domain"
+        domain_dir = (
+            tmp_path / ".autoinfo" / "templates" / domain / "digest"
+        )
+        domain_dir.mkdir(parents=True)
+        domain_dir.joinpath("custom.j2").write_text(
+            "CUSTOM OVERRIDE: {{ title }}"
+        )
+
+        pt = ProductTemplate(domain=domain)
+        pt._domain_dir = domain_dir.parent.parent / domain  # type: ignore[attr-defined]
+
+        data: dict[str, object] = {"title": "Hello"}
+        result = pt.render("digest", "custom", data)
+        assert "CUSTOM OVERRIDE: Hello" in result
+
+    def test_unknown_variant_falls_back_to_default(
+        self, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """Unknown variant falls back to the default template for the type."""
+        domain = "test-domain"
+        domain_dir = (
+            tmp_path / ".autoinfo" / "templates" / domain / "digest"
+        )
+        domain_dir.mkdir(parents=True)
+        domain_dir.joinpath("default.j2").write_text(
+            "DEFAULT FALLBACK: {{ title }}"
+        )
+
+        pt = ProductTemplate(domain=domain)
+        pt._domain_dir = domain_dir.parent.parent / domain  # type: ignore[attr-defined]
+
+        data: dict[str, object] = {"title": "Works"}
+        result = pt.render("digest", "nonexistent_variant", data)
+        assert "DEFAULT FALLBACK: Works" in result
+
+    def test_render_returns_non_empty_string(self) -> None:
+        """render() always returns a non-empty string for known templates."""
+        pt = ProductTemplate(domain="test")
+        data: dict[str, object] = {
+            "title": "Test",
+            "domain": "test",
+            "period_label": "Daily",
+            "date_from": "2024-01-01",
+            "date_to": "2024-01-07",
+            "generated_at": "2024-01-07T00:00:00Z",
+            "entries": [],
+            "llm_synthesis": {},
+        }
+        result = pt.render("digest", "md", data)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_backward_compatible_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """generate_digest still works without the product_template parameter."""
+        # Mock KBStore so we don't need a real knowledge base
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "Entry 1",
+                        "summary": "A test entry",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": "2024-01-01",
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+
+        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        # Prevent actual LLM calls during testing
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+
+        result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+        )
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Verify the result uses the old rendering path (no ProductTemplate)
+        assert "Entry 1" in result

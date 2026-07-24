@@ -75,6 +75,7 @@ SAMPLE_RAW_ITEMS = [
         id="pmid-1000001",
         source_name="pubmed",
         source_type="api",
+        source_platform="pubmed",
         source_url=(
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
             "efetch.fcgi?db=pubmed&id=1000001&retmode=xml"
@@ -98,6 +99,7 @@ SAMPLE_RAW_ITEMS = [
         id="pmid-1000002",
         source_name="pubmed",
         source_type="api",
+        source_platform="pubmed",
         source_url=(
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
             "efetch.fcgi?db=pubmed&id=1000002&retmode=xml"

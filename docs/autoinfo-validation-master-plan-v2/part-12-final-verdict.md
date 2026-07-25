@@ -1,6 +1,6 @@
 # Part 12: Final Verdict
 
-**This file aggregates all 60 questions from Parts 1-11 into a single PASS/FAIL summary.**
+**This file aggregates all 71 questions from Parts 1-15 into a single PASS/FAIL summary.**
 
 ---
 
@@ -19,8 +19,11 @@
 | 9 | `part-09-async-cron-email.md` | Q54-Q58 | Async job_id Polling, Cron Schedules, Email Digests, Webhooks, Batch Run | ⬜ |
 | 10 | `part-10-error-boundary.md` | Q59 | CLI Errors, Config Errors, LLM Errors, Network Errors, Data Integrity | ⬜ |
 | 11 | `part-11-production-validation.md` | Q60 | Doctor, MCP stdio, Stress Test, Test Suite, Entry Points | ⬜ |
+| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65 | End User lifecycle: profile, subscription, delivery SLA, portal, data privacy | ⬜ |
+| 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Human-Agent: intent clarification, failure escalation, review iteration, override compliance | ⬜ |
+| 15 | `part-15-cross-dimension-e2e.md` | Q70-Q71 | Cross-dimension E2E: Director→Agent→End User happy path and error recovery | ⬜ |
 
-**GRAND TOTAL: ⬜ / 60 Questions**
+**GRAND TOTAL: ⬜ / 71 Questions**
 
 **OVERALL VERDICT: ⬜**
 
@@ -132,6 +135,29 @@
 |---|-------|--------|
 | Q60 | Production Validation | ⬜ |
 
+### Part 13: End User Lifecycle
+| Q | Title | Result |
+|---|-------|--------|
+| Q61 | End User Profile & Subscription CRUD | ⬜ |
+| Q62 | Multi-Channel Delivery Configuration | ⬜ |
+| Q63 | Product Delivery Lifecycle & SLA | ⬜ |
+| Q64 | End User Self-Service Portal | ⬜ |
+| Q65 | Data Privacy (soft-delete, GDPR) | ⬜ |
+
+### Part 14: Human-Agent Collaboration
+| Q | Title | Result |
+|---|-------|--------|
+| Q66 | Ambiguous Intent Clarification | ⬜ |
+| Q67 | Failure Escalation & Human Decision | ⬜ |
+| Q68 | Human Review & Agent Iteration | ⬜ |
+| Q69 | Human Override & Agent Compliance | ⬜ |
+
+### Part 15: Cross-Dimension E2E
+| Q | Title | Result |
+|---|-------|--------|
+| Q70 | Full E2E Happy Path (Director→Agent→End User) | ⬜ |
+| Q71 | Full E2E with Error Recovery | ⬜ |
+
 ---
 
 ## Coverage Comparison: v1 vs v2
@@ -157,6 +183,9 @@
 | KB versioning | 0% | 100% | +100% |
 | E2E real tests | 4 questions | 5 questions (expanded) | +25% |
 | Error matrix | 3/4 areas | 6+ areas | +50% |
+| **End User lifecycle** | **0%** | **100% (Q61-Q65)** | **+100% (NEW)** |
+| **Human-Agent collaboration** | **0%** | **100% (Q66-Q69)** | **+100% (NEW)** |
+| **Cross-dimension E2E** | **0%** | **100% (Q70-Q71)** | **+100% (NEW)** |
 
 ---
 
@@ -187,8 +216,19 @@
 | Knowledge graph | ⬜ | Q46 |
 | MCP server stdio transport works | ⬜ | Q60 |
 | Error cases handled gracefully | ⬜ | Q59 |
-| Test suite passes (1134+) | ⬜ | Q60 |
+| Test suite passes (1405+) | ⬜ | Q60 |
 | Concurrency safe | ⬜ | Q59 |
+| End User profile & subscription CRUD | ⬜ | Q61 |
+| Delivery channel reachability validation | ⬜ | Q62 |
+| Product delivery with SLA compliance | ⬜ | Q63 |
+| End User self-service portal | ⬜ | Q64 |
+| Data privacy (soft-delete, restore, GDPR export) | ⬜ | Q65 |
+| Human-agent intent clarification | ⬜ | Q66 |
+| Failure escalation & human decision loop | ⬜ | Q67 |
+| Human review & agent iteration cycle | ⬜ | Q68 |
+| Human override & agent compliance (audit trail) | ⬜ | Q69 |
+| Cross-dimension E2E (Director→Agent→End User) | ⬜ | Q70 |
+| Cross-dimension E2E with error recovery | ⬜ | Q71 |
 
 ---
 
@@ -196,9 +236,9 @@
 
 | Level | Requirements | Met? |
 |-------|-------------|------|
-| **CI Gate** | All 60 questions attempted. No P0 failures (crash, data loss, unrecoverable error). | ⬜ |
-| **Release Candidate** | CI Gate + Q1-Q6 + Q49-Q53 all PASS + all production gaps addressed | ⬜ |
-| **Production Deploy** | Release Candidate + Q60 all PASS + no outstanding P0/P1 issues + all 1134 tests pass | ⬜ |
+| **CI Gate** | All 71 questions attempted. No P0 failures (crash, data loss, unrecoverable error). | ⬜ |
+| **Release Candidate** | CI Gate + Q1-Q6 + Q49-Q53 + Q70-Q71 all PASS + all production gaps addressed | ⬜ |
+| **Production Deploy** | Release Candidate + Q60 all PASS + no outstanding P0/P1 issues + all 1405+ tests pass | ⬜ |
 
 ---
 
@@ -206,7 +246,7 @@
 
 To produce your FINAL VERDICT:
 
-1. Execute every scenario in **Parts 1-11** sequentially
+1. Execute every scenario in **Parts 1-15** sequentially
 2. For each scenario, record the ACTUAL RESULT and PASS/FAIL
 3. Aggregate results per question, per part
 4. Copy the per-question verdicts into this file's rollup table
@@ -218,7 +258,7 @@ To produce your FINAL VERDICT:
 ### Final Verdict Report Template
 
 ```
-# AutoInfo v1.4 Validation Report
+# AutoInfo v1.6 Validation Report
 
 **Date:** _________
 **Validator:** _________
@@ -226,7 +266,7 @@ To produce your FINAL VERDICT:
 **SMTP Configured:** Yes / No
 
 ## Summary
-- Total Questions: 60
+- Total Questions: 71
 - ✅ Passed: ___
 - ❌ Failed: ___
 - ⚠️ Partial: ___

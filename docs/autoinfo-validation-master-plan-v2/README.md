@@ -64,8 +64,11 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 | 10 | `part-10-error-boundary.md` | Q59 | Comprehensive error/boundary matrix (all layers) |
 | 11 | `part-11-production-validation.md` | Q60 | Doctor diagnostics, MCP stdio, stress test, test suite |
 | 12 | `part-12-final-verdict.md` | — | Summary verdict, production gap checklist, sign-off criteria |
+| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65 | End User lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product delivery SLA, self-service portal, data privacy |
+| 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Human-Agent collaboration: ambiguous intent clarification, failure escalation, human review & iteration, human override & compliance |
+| 15 | `part-15-cross-dimension-e2e.md` | Q70-Q71 | Cross-dimension E2E journey spanning Director User → Direct User (Agent) → End User |
 
-**Total: 60 questions, 12 part files + verdict**
+**Total: 71 questions, 15 part files + verdict**
 
 ---
 

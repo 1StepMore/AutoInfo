@@ -131,6 +131,58 @@ class DeliveryGateConfig:
 
 
 @dataclass
+class LLMRateConfig:
+    """Per-model LLM token pricing."""
+    input_per_1k: float = 0.0
+    output_per_1k: float = 0.0
+
+
+@dataclass
+class ApiCallRateConfig:
+    """Per-source-type API call pricing."""
+    per_call: float = 0.0
+
+
+@dataclass
+class StorageRateConfig:
+    """Storage pricing — per item + per MB."""
+    per_item: float = 0.0
+    per_mb: float = 0.0
+
+
+@dataclass
+class CostRatesConfig:
+    """Cost rate configuration for LLM tokens, API calls, and storage.
+
+    Used by :class:`autoinfo.cost.CostMeter` to compute estimated costs.
+    """
+
+    llm: dict[str, LLMRateConfig] = field(default_factory=dict)
+    api_calls: dict[str, ApiCallRateConfig] = field(default_factory=dict)
+    storage: StorageRateConfig = field(default_factory=StorageRateConfig)
+
+    @classmethod
+    def defaults(cls) -> CostRatesConfig:
+        """Return a :class:`CostRatesConfig` with sensible default rates."""
+        return cls(
+            llm={
+                "deepseek/deepseek-chat": LLMRateConfig(
+                    input_per_1k=0.00015, output_per_1k=0.00060
+                ),
+                "gpt-4o-mini": LLMRateConfig(
+                    input_per_1k=0.00015, output_per_1k=0.00060
+                ),
+            },
+            api_calls={
+                "pubmed": ApiCallRateConfig(per_call=0.005),
+                "rss": ApiCallRateConfig(per_call=0.001),
+                "web": ApiCallRateConfig(per_call=0.002),
+            },
+            storage=StorageRateConfig(per_item=0.001, per_mb=0.01),
+        )
+
+
+@dataclass
 class RestAPIConfig:
     """REST API server settings."""
     enabled: bool = True
@@ -174,6 +226,7 @@ class Config:
     multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
     quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
+    cost_rates: CostRatesConfig = field(default_factory=CostRatesConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +403,29 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             action_on_failure=str(dc.get("action_on_failure", "block")),
         )
 
+    # --- Parse cost_rates section ---
+    cost_rates_raw: dict[str, Any] = raw.get("cost_rates", {}) or {}
+    llm_rates_raw: dict[str, Any] = cost_rates_raw.get("llm", {}) or {}
+    llm_rates: dict[str, LLMRateConfig] = {}
+    for model_name, rate_cfg in llm_rates_raw.items():
+        rc = rate_cfg or {}
+        llm_rates[str(model_name)] = LLMRateConfig(
+            input_per_1k=float(rc.get("input_per_1k", 0.0)),
+            output_per_1k=float(rc.get("output_per_1k", 0.0)),
+        )
+    api_calls_raw: dict[str, Any] = cost_rates_raw.get("api_calls", {}) or {}
+    api_call_rates: dict[str, ApiCallRateConfig] = {}
+    for source_name, rate_cfg in api_calls_raw.items():
+        rc = rate_cfg or {}
+        api_call_rates[str(source_name)] = ApiCallRateConfig(
+            per_call=float(rc.get("per_call", 0.0)),
+        )
+    storage_raw: dict[str, Any] = cost_rates_raw.get("storage", {}) or {}
+    storage_rate = StorageRateConfig(
+        per_item=float(storage_raw.get("per_item", 0.001)),
+        per_mb=float(storage_raw.get("per_mb", 0.01)),
+    )
+
     # --- Parse new v1.2 sections ---
     def _dict_or_empty(key: str) -> dict[str, Any]:
         return raw.get(key, {}) or {}
@@ -411,6 +487,11 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         ),
         quality_gates=quality_gates,
         delivery_gates=delivery_gates,
+        cost_rates=CostRatesConfig(
+            llm=llm_rates,
+            api_calls=api_call_rates,
+            storage=storage_rate,
+        ),
     )
 
 
@@ -623,6 +704,28 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         "enabled": config.multi_user.enabled,
         "default_user_id": config.multi_user.default_user_id,
     }
+
+    # --- Serialize cost_rates ---
+    if config.cost_rates.llm or config.cost_rates.api_calls or config.cost_rates.storage:
+        cost_rates_dict: dict[str, Any] = {}
+        if config.cost_rates.llm:
+            cost_rates_dict["llm"] = {
+                model: {
+                    "input_per_1k": rate.input_per_1k,
+                    "output_per_1k": rate.output_per_1k,
+                }
+                for model, rate in config.cost_rates.llm.items()
+            }
+        if config.cost_rates.api_calls:
+            cost_rates_dict["api_calls"] = {
+                source: {"per_call": rate.per_call}
+                for source, rate in config.cost_rates.api_calls.items()
+            }
+        cost_rates_dict["storage"] = {
+            "per_item": config.cost_rates.storage.per_item,
+            "per_mb": config.cost_rates.storage.per_mb,
+        }
+        raw["cost_rates"] = cost_rates_dict
 
     # --- Serialize v1.5 quality_gates & delivery_gates ---
     if config.quality_gates:

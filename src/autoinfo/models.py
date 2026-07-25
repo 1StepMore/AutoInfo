@@ -274,3 +274,68 @@ class CollectionStats:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CollectionStats:
         return cls(**data)
+
+
+@dataclass
+class DeliveryLog:
+    """A single delivery attempt record (append-only log)."""
+
+    log_id: str
+    subscription_id: str
+    channel: str
+    message_type: str
+    status: str
+    attempt_count: int = 0
+    last_attempt: str = ""
+    error_message: str = ""
+    sla_tier: str = "standard"
+
+
+@dataclass
+class AuditLog:
+    """Immutable audit log entry."""
+
+    log_id: str
+    timestamp: str
+    actor: str
+    action: str
+    resource_type: str
+    resource_id: str
+    details: dict[str, Any] = field(default_factory=dict)
+    ip_address: str = ""
+
+
+@dataclass
+class UserProfile:
+    """End-user profile with lifecycle status (trial→active→suspended→cancelled)."""
+
+    user_id: str
+    name: str
+    email: str = ""
+    status: str = "trial"
+    tier: str = "free"
+    delivery_preferences: dict[str, Any] = field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    trial_ends_at: str = ""
+    grace_period_days: int = 7
+    last_login_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Subscription:
+    """Subscription tied to a user profile with plan, status, and billing info."""
+
+    subscription_id: str
+    user_id: str
+    plan: str = "free"
+    status: str = "active"
+    start_date: str = ""
+    end_date: str = ""
+    auto_renew: bool = True
+    price_monthly: float = 0.0
+    currency: str = "USD"
+    features: dict[str, Any] = field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""

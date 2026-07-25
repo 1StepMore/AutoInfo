@@ -20,13 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from autoinfo.config import Config, QualityGateConfig, get_config_path, load_config
+from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore
 from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import Item
 from autoinfo.quality import (
-    G0SchemaIntegrity,
     G4FactualConsistency,
     G5TranslationAccuracy,
     QualityResult,
@@ -402,61 +401,6 @@ def _build_config_with_model(
     return cfg
 
 
-# ---------------------------------------------------------------------------
-# Failed-item diagnostics writer
-# ---------------------------------------------------------------------------
-
-
-def _write_failed_item(
-    failed_dir: Path,
-    item: Item,
-    result: QualityResult,
-    gate: str,
-) -> None:
-    """Write blocked-item diagnostics to ``collections/<domain>/_failed/<item_id>.json``.
-
-    Parameters
-    ----------
-    failed_dir : Path
-        The ``collections/<domain>/_failed/`` directory (already created).
-    item : Item
-        The item that was blocked.
-    result : QualityResult
-        The quality gate result that caused the block.
-    gate : str
-        Gate identifier (e.g. ``"G0"``, ``"G4"``).
-    """
-    diagnostics: dict[str, Any] = {
-        "item_id": item.id,
-        "source_url": item.source_url,
-        "gate": gate,
-        "gate_result": {
-            "passed": result.passed,
-            "score": result.score,
-            "details": result.details,
-        },
-        "item_snapshot": {
-            "id": item.id,
-            "source_name": item.source_name,
-            "source_type": item.source_type,
-            "source_url": item.source_url,
-            "title": item.title,
-            "domain": item.domain,
-            "language": item.language,
-            "collected_at": item.collected_at,
-        },
-    }
-    failed_path = failed_dir / f"{item.id}.json"
-    with open(failed_path, "w", encoding="utf-8") as fh:
-        json.dump(diagnostics, fh, indent=2, ensure_ascii=False)
-    logger.warning(
-        "%s blocked item %s — diagnostics written to %s",
-        gate,
-        item.id,
-        failed_path,
-    )
-
-
 def run_processing(
     domain: str,
     model: str | None = None,
@@ -598,17 +542,6 @@ def run_processing(
                         topic_keywords = t.keywords
                         break
 
-    # Resolve gate config: merge global defaults with domain overrides
-    gate_config: dict[str, QualityGateConfig] = {}
-    if config:
-        # Start with global quality_gates
-        gate_config.update(config.quality_gates)
-        # Override with domain-specific config
-        for d in config.domains:
-            if d.name == domain:
-                gate_config.update(d.quality_gates)
-                break
-
     # Resolve custom extract_fields from domain config
     extract_fields: list[str] | None = None
     if config:
@@ -616,10 +549,6 @@ def run_processing(
             if d.name == domain and d.extract_fields:
                 extract_fields = d.extract_fields
                 break
-
-    # -- Prepare _failed/ directory -----------------------------------------
-    collections_path = Path("collections")
-    failed_dir = collections_path / domain / "_failed"
 
     # -- Process each item --------------------------------------------------
     for item in items_slice:
@@ -631,30 +560,6 @@ def run_processing(
         }
 
         try:
-            # Step a0: G0 Schema Integrity — hard gate, runs BEFORE LLM
-            # extraction to avoid wasting LLM calls on malformed items.
-            g0_checker = G0SchemaIntegrity()
-            g0_raw_config = gate_config.get("G0-SchemaIntegrity") if gate_config else None
-            raw_dict = item.to_dict()
-            if item.raw_data:
-                raw_dict.update(item.raw_data)
-            g0_check_result = g0_checker.check(raw_dict, None, g0_raw_config)
-
-            if g0_check_result.details.get("action") == "block":
-                failed_dir.mkdir(parents=True, exist_ok=True)
-                _write_failed_item(failed_dir, item, g0_check_result, "G0")
-                item_log["status"] = "g0_blocked"
-                item_log["g0_reason"] = str(
-                    g0_check_result.details.get(
-                        "error", "Schema integrity check failed"
-                    )
-                )
-                logger.warning(
-                    "G0 blocked item %s — skipping extraction and storage",
-                    item.id,
-                )
-                continue
-
             # Step a: LLM extraction (with custom schema if configured)
             extraction = extractor.extract(item, schema=extract_fields)
             # Aggregate token usage from this item
@@ -688,7 +593,6 @@ def run_processing(
                     "existing_entries": existing_entries,
                     "topic_keywords": topic_keywords,
                 },
-                gate_config=gate_config if gate_config else None,
             )
 
             # Step b2: Optional G4 factual consistency gate
@@ -705,20 +609,9 @@ def run_processing(
                         else "deepseek/deepseek-chat"
                     )
                     g4_model = f"{g4_provider}/{g4_model_name}"
-                    g4_gate_config = gate_config.get("G4-SummaryFactual") if gate_config else None
                     g4 = G4FactualConsistency(model=g4_model)
-                    g4_result = g4.check(item, extraction, gate_config=g4_gate_config)
+                    g4_result = g4.check(item, extraction)
                     quality_results["G4-SummaryFactual"] = g4_result
-
-                    # G4 hard gate: block action → skip storage
-                    # (G4 already writes its own diagnostics to _failed/ internally)
-                    if g4_result.details.get("action") == "block":
-                        item_log["status"] = "g4_blocked"
-                        logger.warning(
-                            "G4 blocked item %s — skipping storage",
-                            item.id,
-                        )
-                        continue
                 except Exception as exc:
                     logger.warning(
                         "G4 factual check failed for item %s: %s", item.id, exc
@@ -904,8 +797,7 @@ def run_processing(
     # -- Auto-verify: compare expected entries vs KB store count ----------
     if result.kb_entries_created > 0:
         try:
-            actual = kb_store.list_entries(domain, limit=1, offset=0)
-            actual_count = len(actual) if isinstance(actual, list) else 0
+            actual_count = kb_store.count_entries(domain)
             if actual_count < result.kb_entries_created:
                 logger.warning(
                     "KB count mismatch: expected %d entries, SQLite returned %d. "

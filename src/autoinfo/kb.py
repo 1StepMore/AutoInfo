@@ -2033,7 +2033,7 @@ class KBStore:
             tier=tier,
             source_url=item.source_url,
             source_type=item.source_type,
-            source_platform=item.source_platform,
+            source_platform=item.source_name,
             collected_at=item.collected_at,
             summary=summary,
             tags=tags,
@@ -2319,6 +2319,13 @@ class KBStore:
                 if e.get("collected_at", "") >= date_from
             ]
         return fs_entries[offset: offset + limit]
+
+    def count_entries(self, domain: str | None = None) -> int:
+        """Return the total number of entries, optionally filtered by domain.
+
+        Delegates to :meth:`SQLiteIndex.count_entries`.
+        """
+        return self.index.count_entries(domain)
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.

@@ -2376,6 +2376,10 @@ class KBStore:
 
         return meta
 
+    def count_entries(self, domain: str | None = None) -> int:
+        """Return the total number of entries, optionally filtered by domain."""
+        return self.index.count_entries(domain)
+
     def get_entry_by_path(self, file_path: str) -> dict[str, Any] | None:
         """Look up an entry by its file path and return full content."""
         meta = self.index.search_by_field("file_path", file_path)

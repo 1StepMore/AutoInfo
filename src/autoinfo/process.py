@@ -904,8 +904,7 @@ def run_processing(
     # -- Auto-verify: compare expected entries vs KB store count ----------
     if result.kb_entries_created > 0:
         try:
-            actual = kb_store.list_entries(domain, limit=1, offset=0)
-            actual_count = len(actual) if isinstance(actual, list) else 0
+            actual_count = kb_store.count_entries(domain)
             if actual_count < result.kb_entries_created:
                 logger.warning(
                     "KB count mismatch: expected %d entries, SQLite returned %d. "

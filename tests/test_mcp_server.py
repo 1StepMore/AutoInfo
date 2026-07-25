@@ -780,7 +780,7 @@ class TestGenerateOutput:
         assert "# Slide 1" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", topic="IVF breakthroughs", slide_count=10, custom_instructions=""
+            domain="medical-research", topic="IVF breakthroughs", slide_count=10, format="markdown", custom_instructions=""
         )
 
 

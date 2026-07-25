@@ -2761,6 +2761,7 @@ The following minor gaps in otherwise-implemented expectations remain from the v
 | Resilience enhancements | LLM `None` content crash fix, `extraction_failed` detection, KB filesystem fallback |
 | Tests | 1405 (1 pre-existing collection error) |
 | Demo domains | 5 with curated sources (7 total) |
+| Validation coverage | ✅ 71 questions across 15 part files covering all 3 user dimensions (End User × Direct User × Director User) across lifecycle, middleware, and results axes. **NEW**: `part-13-enduser-lifecycle.md` (Q61-Q65), `part-14-human-agent-collaboration.md` (Q66-Q69), `part-15-cross-dimension-e2e.md` (Q70-Q71), `docs/dev/director-user-guide.md` |
 | **🔴 v1.6+ residual gaps** | **12 low-effort fixes** (listed above) |
 | **🔵 v2.0+ deferred** | **7 items** (billing, feature gating, analytics dashboard, collaboration, mobile, citation management, image/video) |
 
@@ -2770,3 +2771,5 @@ The following minor gaps in otherwise-implemented expectations remain from the v
 
 - This document — D3: Founder's expectations for AutoInfo v1
 - `docs/dev/architecture.md` — System architecture and design decisions (to be written)
+- `docs/dev/director-user-guide.md` — Human-Agent interaction lifecycle, communication patterns, escalation protocol
+- `docs/autoinfo-validation-master-plan-v2/README.md` — Comprehensive validation plan: 71 questions across 15 parts covering all 3 user dimensions

@@ -6,8 +6,8 @@ AutoInfo is a **universal information tracking and knowledge base platform**.
 You configure sources and topics; AutoInfo handles collection, LLM-based
 structured extraction, summarization, and builds a queryable knowledge base.
 
-**Key principle**: Domain-agnostic. The three demo domains (medical-research,
-ai-commercial, language-learning) are configurations, not hardcoded features.
+**Key principle**: Domain-agnostic. The five demo domains (medical-research,
+ai-commercial, financial-intelligence, tech-ai-developer, language-learning) are configurations, not hardcoded features.
 Users define their own domains.
 
 ## Agent Operating Model
@@ -67,7 +67,7 @@ AutoInfo/
 │   └── skills/                     # Coding agent skills (for developing AutoInfo)
 ├── src/
 │   └── autoinfo/
-│       ├── cli/                     # 17 CLI command groups
+│       ├── cli/                     # 22 CLI command groups
 │       ├── mcp/                     # MCP server (79 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
@@ -161,7 +161,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-79 MCP tools organized by category:
+80+ MCP tools organized by category:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -171,7 +171,7 @@ freshness at output time.
 | **Source** | `add_source`, `add_sources`, `remove_source`, `test_source`, `list_sources`, `get_source_health` |
 | **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
 | **Collection** | `collect_sources`, `get_collection_progress`, `get_collection_status`, `process_collection`, `get_processing_progress`, `batch_run` |
-| **KB** | `search_knowledge_base`, `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base`, `vector_search`, `faceted_search` |
+| **KB** | `search_knowledge_base` (hybrid/mode=vector/mode=faceted), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
 | **KB Relations** | `link_items`, `get_item_relations` |
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
@@ -275,7 +275,7 @@ freshness at output time.
 ```
 1. `search_knowledge_base(domain="medical-research", query="embryo development", mode="hybrid")` → FTS5 + vector
 2. `search_knowledge_base(domain="medical-research", query="embryo development", mode="vector")` → semantic only *(requires AutoInfo ≥ v1.2)*
-3. `faceted_search(domain="medical-research", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered *(requires AutoInfo ≥ v1.2)*
+3. `search_knowledge_base(domain="medical-research", mode="faceted", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered *(requires AutoInfo ≥ v1.2)*
 ```
 → Ranked results from KB with source citations.
 
@@ -349,12 +349,12 @@ Collection and processing now return a `job_id` for progress polling:
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 17 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, kb, output, cron, knowledge, cefr, email, keywords, clean) |
+| CLI | ✅ 22 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, enduser, portal, trace) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
-| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
+| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki; note: 00-Inbox is scaffolded but deprecated — 01-Raw is the sole entry point), git versioning + SHA tracking |
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
@@ -371,13 +371,33 @@ Collection and processing now return a `job_id` for progress polling:
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
+| Multi-channel delivery | ✅ 6 adapters: Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord |
+| End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
+| Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
+| End user portal | ✅ CLI-based self-service: preferences, history, product archive |
+| Immutable audit log | ✅ Append-only audit log with MCP + CLI query |
+| Structured pipeline logging | ✅ JSON structured logging per pipeline event |
+| Per-item traceability | ✅ UUID trace_id from collection through delivery, CLI trace |
+| Cost metering | ✅ LLM tokens, storage, API calls per domain/user |
+| Cost allocation | ✅ Pro-rata, usage-based, direct allocation strategies |
+| Cost dashboard | ✅ CLI + MCP dashboard with daily trends, top models, budgets |
+| Budget alerts | ✅ Threshold-based alerts with auto-remediation |
+| Source ToS compliance | ✅ Source classification tiers, per-tier output controls |
+| Data deletion & retention | ✅ Soft-delete, restore, GDPR export, 30-day auto-cleanup |
+| Per-domain TTL | ✅ Configurable freshness per domain with stale marking |
+| Versioned re-collection | ✅ Version tracking with structured diff between versions |
+| Stale content handling | ✅ Search demotion, digest exclusion, never deleted |
+| Domain decay metrics | ✅ Staleness ratio, avg TTL, decay grade (Green/Yellow/Red) |
+| Cross-collection dedup & merge | ✅ URL dedup, cross-source similarity, LLM-assisted merge |
+| Enhanced diagnostics | ✅ `doctor --verbose` with health score, error rates, latency |
+| Prometheus metrics | ✅ `http://localhost:8741/metrics` endpoint (configurable) |
 | Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
-| Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 1421 tests (53 test files, 262 v1.5 tests) |
+| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
+| Test suite | ✅ 1405 tests (1 collection error pre-existing) |
 
 ## References
 
-- `docs/dev/founder-expectations.md` — Full specification (35 expectations, 13 technical decisions)
+- `docs/dev/founder-expectations.md` — Full specification (57 expectations, 13 technical decisions)
 - `docs/dev/kb-pipeline-reference.md` — Reference KB pipeline model

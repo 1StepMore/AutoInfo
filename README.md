@@ -21,15 +21,28 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **REST API** — Full CRUD over HTTP (FastAPI, port 8741), no auth (localhost security)
 - **Web UI Dashboard** — Bootstrap 5, collection stats, KB search, source health overview
 - **CEFR classification** — LLM-based EN/ZH/JA reading level scoring for language learning
-- **Output formats** — Markdown, JSON, PDF, **HTML** (digest/report via Jinja2, presentation via Reveal.js CDN)
+- **Output formats** — Markdown, JSON, PDF, **HTML**, **RSS 2.0** (digest/report via Jinja2, presentation via Reveal.js CDN)
 - **Translation QA pipeline** — 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails, composite quality scoring
 - **Email sending** — SMTP-based digest delivery (manual and cron-scheduled)
 - **Webhook push** — Per-item webhook notification on collected content
 - **Quality gates** — 6 hard/soft gates (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3). Retry-first, block-last philosophy.
 - **Product delivery** — Two product types: RAW (API feeds, webhook streams, bulk export) and PROCESSED (scheduled digests, thematic reports, alert streams via SMTP/webhook)
+- **Multi-channel delivery** — 6 delivery adapters: Telegram Bot, WeChat Official Account, WeChat Work, DingTalk, FeiShu, Discord. Email as mandatory fallback. Per-channel rate limiting and message formatting.
+- **End user lifecycle management** — EndUserProfile + Subscription CRUD. Lifecycle state machine: trial → active → suspended → cancelled. Configurable trial and grace periods, transition hooks.
+- **Delivery reliability** — Per-subscription delivery log with SLA tracking (P0 ≤5min, P1 ≤30min, P2 ≤2hr). Retry chain with fallback. Never silently drop products.
+- **End user self-service portal** — CLI-based portal for delivery preference management, product archive access, delivery history browsing.
+- **Immutable audit logging** — Append-only audit log for all operations (MCP, CLI, pipeline). Queryable via MCP tool and CLI. Full actor/resource/action tracking.
+- **Structured pipeline logging** — JSON structured logging per pipeline event with daily rotation. Configurable log levels per stage. Filter and tail via CLI.
+- **Per-item traceability** — UUID trace_id propagated from collection through delivery. CLI displays full item journey: sources, gates, KB entries, delivery status.
+- **Cost governance** — Internal cost metering (LLM tokens, storage, API calls) with per-domain/per-user allocation. Cost dashboard with daily trends, top models, budget alerts. CLI and MCP tools.
+- **Budget alerts & cost control** — Threshold-based alerts (absolute, rate-based, projected overrun). Auto-remediation actions per alert. Configurable via MCP tools.
+- **Source ToS compliance** — Source classification (Open/Licensed/Restricted/Sensitive) with per-tier output controls. Attribution in generated outputs. Compliance checkpoint at G1 gate.
+- **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
+- **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
+- **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
 - **Agent-native** — 79 MCP tools. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
-- **Domain-agnostic** — 3 demo domains (medical, AI commercial, language learning). Any field with paying customers.
+- **Domain-agnostic** — 5 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning). Any field with paying customers.
 - **Subscription-ready** — F30 (billing, feature gating, usage metering) defined and deferred to v2+
 
 ## Status
@@ -37,12 +50,12 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 17 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, kb, output, cron, knowledge, cefr, email, keywords, clean) |
+| CLI | ✅ 22 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, enduser, portal, trace) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
-| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki), git versioning + SHA tracking |
+| KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki; note: 00-Inbox is scaffolded but deprecated — 01-Raw is the sole entry point), git versioning + SHA tracking |
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
@@ -59,11 +72,31 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
+| Multi-channel delivery | ✅ 6 adapters: Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord. Email as fallback. |
+| End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled. |
+| Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain, fallback channels. |
+| End user portal | ✅ CLI-based self-service: preferences, history, product archive. |
+| Immutable audit log | ✅ Append-only audit log for all operations. MCP + CLI query with full filters. |
+| Structured pipeline logging | ✅ JSON structured logging per pipeline event with daily rotation. |
+| Per-item traceability | ✅ UUID trace_id from collection through delivery. CLI trace command. |
+| Cost metering | ✅ LLM tokens, storage, API calls per domain/per user. Append-only cost log. |
+| Cost allocation | ✅ Pro-rata, usage-based, and direct allocation strategies. |
+| Cost dashboard | ✅ CLI + MCP dashboard with daily trends, top models, top sources. |
+| Budget alerts | ✅ Threshold-based alerts with auto-remediation actions. |
+| Source ToS compliance | ✅ Source classification tiers, per-tier output controls, attribution. |
+| Data deletion & retention | ✅ Soft-delete, restore, GDPR export, 30-day auto-cleanup, tier-based retention. |
+| Per-domain TTL | ✅ Configurable freshness per domain: medical 180d, AI 30d, financial 7d, general 90d. |
+| Versioned re-collection | ✅ Version tracking with structured diff between versions. |
+| Stale content handling | ✅ Search demotion, digest exclusion, never deleted. |
+| Domain decay metrics | ✅ Staleness ratio, avg TTL, decay grade (Green/Yellow/Red). |
+| Cross-collection dedup & merge | ✅ URL dedup, cross-source similarity, LLM-assisted merge. |
+| Enhanced diagnostics | ✅ `doctor --verbose` with health score, error rates, latency p95/p99. |
+| Prometheus metrics | ✅ `http://localhost:8741/metrics` endpoint (configurable). |
 | Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
-| Demo domains | ✅ medical-research, ai-commercial, language-learning |
-| Test suite | ✅ 1421 tests (53 test files, 262 v1.5 tests) |
+| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
+| Test suite | ✅ 1405 tests (1 collection error pre-existing) |
 
 ## Quick Start
 
@@ -113,10 +146,11 @@ Sources (RSS/API/Web)
         ├── autoinfo summaries list | status | kb search
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
+         ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
          └── MCP server (79 tools)
 ```
 
-## CLI Commands (17 groups)
+## CLI Commands (22 groups)
 
 ```bash
 autoinfo init --name <project>      # Initialize project
@@ -129,6 +163,7 @@ autoinfo summaries list|flag|show   # Browse summaries
 autoinfo sources add|list|remove|test  # Source management
 autoinfo topics add|list|remove     # Topic management
 autoinfo domain add|list|show|remove|activate|deactivate  # Domain management
+autoinfo audit query                # Query immutable audit log
 autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates
 autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall
@@ -137,6 +172,10 @@ autoinfo email send|config          # SMTP email sending
 autoinfo keywords add|remove|list   # Keyword management
 autoinfo knowledge graph            # Knowledge graph export
 autoinfo clean                       # Clean temporary artifacts
+autoinfo cost dashboard|allocation  # Cost tracking & allocation
+autoinfo enduser create|get|update|delete|list  # End-user profile management
+autoinfo portal preferences|history # End-user self-service portal
+autoinfo trace <trace_id>           # Per-item pipeline trace
 ```
 
 ## MCP Tools (79)
@@ -176,6 +215,8 @@ autoinfo clean                       # Clean temporary artifacts
 |--------|---------|----------|--------|
 | **Medical Research** | PubMed (REST API), arXiv, CrossRef, Unpaywall | 🔴 P0 | ✅ Implemented (4 curated sources) |
 | **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API, Crunchbase, LMSYS | 🟡 P1 | ✅ Implemented (4 curated sources) |
+| **Financial/Business Intelligence** | Alpha Vantage, FRED, SEC EDGAR, Yahoo Finance, OpenAlex (financial category) | 🟡 P1 | ✅ Implemented (4 curated sources) |
+| **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech), Stack Exchange, ProductHunt | 🟡 P1 | ✅ Implemented (4 curated sources) |
 | **Language Learning** | Project Gutenberg, BBC Learning English, news-in-levels, commonlit | 🟢 P2 | ✅ Implemented (4 curated sources) |
 
 ## Development
@@ -188,7 +229,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.5 adds **commercial scope** (any field with paying customers), **two product types** (RAW + PROCESSED with delivery infrastructure), **production-grade quality gates** (hard/soft split, retry-first/block-last philosophy), and **product architecture** with delivery channels (SMTP, webhook, REST API, export). v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo v1.6 adds **end-to-end commercial delivery** (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), **cost governance** (internal metering, allocation, dashboard, budget alerts), **operational observability** (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), **data privacy** (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and **knowledge lifecycle management** (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

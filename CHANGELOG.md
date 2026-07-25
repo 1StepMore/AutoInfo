@@ -2,6 +2,50 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.6 (2026-07-25)
+
+### Added
+- **End User Profile & Subscription CRUD (F36)** — `EndUserProfile` and `Subscription` models with SQLite-backed store. MCP tools: `create_end_user`, `get_end_user`, `update_end_user`, `delete_end_user`, `list_end_users`. CLI: `autoinfo enduser create|get|update|delete|list`. Profile fields include delivery channel IDs (telegram, wechat, dingtalk, discord), locale, timezone, tier, and status.
+- **Multi-Channel Delivery (F37)** — 6 delivery adapters: Telegram Bot, WeChat Official Account, WeChat Work, DingTalk, FeiShu, Discord. Each adapter implements `DeliveryChannel` ABC with `send()` and `validate()` methods. Email remains mandatory fallback. Per-channel rate limiting and message format support.
+- **End User Lifecycle State Machine (F38)** — `trial → active → suspended → cancelled` with configurable trial period (default 14d), grace period (7d), and transition hooks (welcome/payment-reminder/goodbye messages). Re-activation within 90 days preserves full history.
+- **Delivery Reliability & Logging (F39)** — `DeliveryLog` with per-attempt tracking (status, attempt count, error messages, SLA timestamps). Retry chain: primary → fallback → queue for next window (never silently drop). SLA targets: P0 ≤5min, P1 ≤30min, P2 ≤2hr. MCP: `get_delivery_log(subscription_id, period)`.
+- **End User Self-Service Portal (F40)** — Portal MVP via CLI + REST API (`autoinfo portal preferences show|update`, `autoinfo portal history`). Delivery preference management (enable/disable channels, quiet hours), product archive access, delivery history browsing.
+- **Internal Cost Metering (F41)** — Per-domain/per-user/per-stage cost tracking for LLM tokens, storage, and API calls. Append-only cost log with pre-populated unit prices (DeepSeek, Claude, embeddings). MCP: `get_cost_report(domain, period, group_by)`. CLI: `autoinfo cost dashboard|allocation`.
+- **Cost Allocation (F44)** — Three configurable strategies: pro-rata (equal split), usage-based (proportional to consumption), direct (definitively tied). Per-domain and per-end-user attribution with logged allocation method.
+- **Cost Dashboard (F43)** — CLI and MCP cost dashboard with breakdowns by domain, daily trend, top 5 models by cost, top 5 sources by cost, and budget status with usage percentages.
+- **Budget Alerts & Cost Control (F45)** — Threshold-based alert rules (absolute spend, rate-based, projected overrun). Configurable auto-remediation: pause collection, switch to cheaper model, skip non-critical quality gates. MCP: `set_budget_alert`, `get_budget_alerts`.
+- **Source ToS Compliance (F46)** — Source classification tiers (Open/Licensed/Restricted/Sensitive) with per-tier output controls. Licensed/Sensitive sources: only processed output deliverable, raw content never leaves internal storage. Attribution in generated outputs. Compliance checkpoint at G1 gate.
+- **Data Deletion & Retention (F47)** — Soft-delete model with `status: deleted`, `deleted_at`, `deleted_reason`. MCP: `soft_delete_entry`, `restore_entry`, `export_user_data`. 30-day auto-cleanup for expired items. Retention by subscription tier (trial/active/archived). Permanent deletion via `--purge` only (agent cannot purge).
+- **Immutable Audit Logging (F48)** — Append-only audit log for all operations: MCP tool calls, pipeline executions, config changes, user management. Schema: `audit_log_id, timestamp, actor_type, actor_id, action, resource_type, resource_id, details (JSON, secrets redacted), result, session_id`. MCP: `query_audit_log(filters)`. CLI: `autoinfo audit query`.
+- **Per-Domain TTL & Freshness (F49)** — Configurable freshness period per domain (defaults: medical 180d, AI commercial 30d, financial 7d, general 90d). TTL controls freshness scoring for search ranking and default output inclusion. Stale entries never deleted, fully accessible via direct lookup.
+- **Versioned Re-collection (F50)** — Same `source_url` collected again creates a new version with full history. Frontmatter tracks `version`, `previous_version_id`. MCP: `compare_versions(entry_id, v1, v2)` for structured diff. Retain last N versions (default 10), older versions archived.
+- **Stale Content Handling (F51)** — Entries past TTL marked `freshness: stale` with `staleness_date`. Search demotion (freshness contributes 20% to ranking). Stale entries excluded from digest/report by default; `--include-stale` flag overrides. Never deleted.
+- **Domain Decay Metrics (F52)** — Staleness ratio, avg remaining TTL, collection freshness, composite decay grade (Green/Yellow/Red). Displayed in `autoinfo status --domains` and MCP `get_collection_stats()`. Proactive agent alert when staleness >50%.
+- **Cross-Collection Dedup & Merge (F53)** — URL dedup across runs, cross-source similarity detection (title TF-IDF > 0.85, content Jaccard > 0.7). LLM-assisted merge with `merge_items(primary_id, secondary_ids, mode)`. Merged entries are Draft-tier (require human promotion).
+- **Structured Pipeline Logging (F54)** — JSON structured logging per pipeline event. Schema: `timestamp, level, trace_id, stage, domain, source, item_id, action, duration_ms, status, error, metadata`. Written to `logs/pipeline-YYYY-MM-DD.log` with daily rotation. CLI: `autoinfo logs --stage collect --domain medical --since 1h`.
+- **Per-Item Traceability (F55)** — UUID trace_id generated at collect time, propagated through entire pipeline. Append-only trace store indexed for sub-ms lookup. CLI: `autoinfo trace <trace_id>` — displays full item journey with stage timings, gate results, and delivery status.
+- **Enhanced Diagnostics (F56)** — `autoinfo doctor --verbose` with: recent pipeline runs per domain, error rates per source per stage (7d trend), latency p95/p99 per stage, LLM spend summary, KB health (entries per tier, stale ratio, storage). Composite health score (0-100) per domain.
+- **Metrics Export (F57)** — `autoinfo status --metrics` exports system health and usage indicators as structured JSON. Prometheus endpoint at `http://localhost:8741/metrics` (feature-gated). Standard metric names: `autoinfo_items_collected_total`, `autoinfo_llm_spend_usd`, etc.
+
+### Changed
+- **CLI expanded from 17 to 22 command groups** — 5 new groups: `audit` (immutable audit log queries), `cost` (cost dashboard and allocation), `enduser` (end-user profile CRUD), `portal` (self-service delivery preferences and history), `trace` (per-item pipeline history). CLI `__init__.py` updated to register all new modules.
+- **MCP tool inventory**: 79 tools across 19 categories (same count as v1.5 — new EndUser/Audit/Trace MCP tools balanced against internal refactoring). See README for full listing.
+- **founder-expectations.md**: All F36-F57 expectations updated from ❌ to ✅ with completion markers. Version references updated from v1.5 to v1.6 throughout. Success metrics table revised.
+- **Version bumped** from `1.5.0` to `1.6.0`
+- **README.md** — CLI command groups 17→22, known limitations updated to v1.6, status table updated with new components (cost metering, budget alerts, delivery reliability, per-item traceability, etc.)
+- **AGENTS.md** — Project structure updated with new modules (audit.py, cost.py, delivery_log.py, user_store.py, collectors/base.py). Status table updated. CLI count 17→22.
+
+### Infrastructure
+- `src/autoinfo/audit.py`: New module — immutable append-only audit log with SQLite backend and MCP/CLI query support
+- `src/autoinfo/cost.py`: New module — cost metering, allocation, dashboard, and budget alerts
+- `src/autoinfo/delivery_log.py`: New module — per-subscription delivery reliability tracking with SLA monitoring
+- `src/autoinfo/logging.py`: New module — structured JSON pipeline logging with daily rotation and filtering
+- `src/autoinfo/user_store.py`: New module — SQLite-backed EndUserProfile and Subscription CRUD
+- `src/autoinfo/collectors/base.py`: New module — BaseHandler ABC with 6 handler port interfaces
+- `src/autoinfo/cli/audit.py`, `cost.py`, `enduser.py`, `portal.py`, `trace.py`: 5 new CLI command groups
+- 6 delivery adapter files for Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord
+- All documentation updated to v1.6 numbers and feature set (README, AGENTS, CHANGELOG, founder-expectations, validation-plan-v2)
+
 ## v1.5 (2026-07-24)
 
 ### Added

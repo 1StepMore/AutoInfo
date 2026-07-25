@@ -1,8 +1,8 @@
 # AutoInfo Master Validation Plan v2 — 100% Feature Coverage
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
-**Date:** 2026-07-23
-**Baseline:** AutoInfo v1.4 — 1134 tests, 17 CLI command groups, 72 MCP tools (16 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA
+**Date:** 2026-07-25
+**Baseline:** AutoInfo v1.6 — 1405 tests, 22 CLI command groups, 79 MCP tools (19 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics
 
 ---
 
@@ -29,8 +29,8 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 - An **explicit PASS/FAIL check** (binary observable)
 
 **Improvement over v1**: v2 adds:
-- All 17 CLI commands with per-subcommand scenarios (was 6/17)
-- All 72 MCP tools with parameter validation (was 8/72)
+- All 22 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
+- All 79 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
 - 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki (was only 01-Raw)
 - Quality gates G1-G5 (was G1-G3 only)
 - All search modes: FTS5, vector, hybrid, faceted, Q&A, knowledge graph
@@ -53,7 +53,7 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 |------|------|-----------|----------|
 | 0 | `README.md` | — | Index, prerequisites, common patterns |
 | 1 | `part-01-core-pipeline.md` | Q1-Q6 | Init → Collect → Process → Browse → Status → Doctor |
-| 2 | `part-02-cli-full.md` | Q7-Q20 | All 17 CLI commands with subcommand testing |
+| 2 | `part-02-cli-full.md` | Q7-Q20 | All 22 CLI commands with subcommand testing |
 | 3 | `part-03-mcp-system-tools.md` | Q21-Q27 | MCP: System, Discovery, Domain, Source, Topic tools |
 | 4 | `part-04-mcp-kb-output.md` | Q28-Q36 | MCP: KB (all tiers), Search, Output, Cron, Email, CEFR |
 | 5 | `part-05-quality-gates.md` | Q37-Q41 | G1 source authority, G2 dedup, G3 relevance, G4 factual, G5 translation |
@@ -87,13 +87,13 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 pip install -e ".[dev]"
 
 # 2. Verify test infrastructure
-pytest --collect-only -q  # Should collect 1134+ tests without errors
+pytest --collect-only -q  # Should collect 1405+ tests without errors
 
 # 3. Set minimum env vars
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 
 # 4. Verify CLI works
-autoinfo --help  # Should show 17 command groups
+autoinfo --help  # Should show 22 command groups
 ```
 
 ### LLM-Dependent Sections

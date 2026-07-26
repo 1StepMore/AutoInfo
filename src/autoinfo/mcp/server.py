@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 86,
+            "tools_count": 87,
     }
 
 

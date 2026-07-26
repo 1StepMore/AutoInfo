@@ -2,7 +2,30 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
-## v1.6 (2026-07-25)
+## v1.6.1 (2026-07-25)
+
+### Fixed
+- **BLOCKING**: Added missing `UserProfile` and `Subscription` dataclasses to `models.py` (F36)
+- **BLOCKING**: Added missing `CostRatesConfig` dataclass to `config.py` (F41)
+- Fixed cascade import failure that broke all 22 CLI commands
+- `trace_item`, `get_metrics`, `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` MCP tools registered
+- `doctor --verbose` with health score (0-100), error rates, and latency percentiles (F56)
+- #34: MCP test tool count updated to 87
+- #35: `generate_presentation` mock test format param fixed
+- #37: `_slugify` max_len increased 80→255 to prevent entry_id truncation
+- #38: Standardized `--json` output format (6 CLIs now wrap lists in `{items, count}`)
+
+### Added
+- LLM fallback chain support — `_call_llm()` now iterates through configured fallback models (F04)
+- `RELATION_TYPES` enum with 11 standard relationship types (F19)
+- Per-domain TTL with freshness scoring (F49)
+- Versioned re-collection with auto-bump (F50)
+- Stale content handling (`mark_stale`, `get_active_entries`) (F51)
+- Domain decay metrics with grade calculation (F52)
+- Cross-collection dedup & merge with `difflib.SequenceMatcher` (F53)
+- Budget alerts with cost threshold evaluation (F45)
+- `get_domain_decay` MCP tool
+- `merge_items` MCP tool
 
 ### Added
 - **End User Profile & Subscription CRUD (F36)** — `EndUserProfile` and `Subscription` models with SQLite-backed store. MCP tools: `create_end_user`, `get_end_user`, `update_end_user`, `delete_end_user`, `list_end_users`. CLI: `autoinfo enduser create|get|update|delete|list`. Profile fields include delivery channel IDs (telegram, wechat, dingtalk, discord), locale, timezone, tier, and status.
@@ -34,6 +57,11 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **Version bumped** from `1.5.0` to `1.6.0`
 - **README.md** — CLI command groups 17→22, known limitations updated to v1.6, status table updated with new components (cost metering, budget alerts, delivery reliability, per-item traceability, etc.)
 - **AGENTS.md** — Project structure updated with new modules (audit.py, cost.py, delivery_log.py, user_store.py, collectors/base.py). Status table updated. CLI count 17→22.
+
+### Fixed
+- **#33 — KB count mismatch false warning**: Replaced `len(list_entries(domain, limit=1))` with `KBStore.count_entries(domain)` (backed by `SELECT COUNT(*)`) to prevent false-positive warnings on every multi-item processing run.
+- **#34 — Stale tool count assertions in `test_mcp_v2.py`**: Relaxed hardcoded `== 65` assertions to `>= 65` / `>= 70` to prevent false test failures as MCP tool inventory grows.
+- **#35 — Presentation mock missing `format` parameter**: Added `format="markdown"` to `test_generate_presentation` mock assertion to match actual `_handle_generate_presentation` call signature.
 
 ### Infrastructure
 - `src/autoinfo/audit.py`: New module — immutable append-only audit log with SQLite backend and MCP/CLI query support

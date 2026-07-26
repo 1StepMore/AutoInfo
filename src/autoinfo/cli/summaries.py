@@ -67,7 +67,7 @@ def list_(
         raise typer.Exit(code=1)
 
     if json_output:
-        typer.echo(json.dumps(entries, ensure_ascii=False, indent=2))
+        typer.echo(json.dumps({"items": entries, "count": len(entries)}, ensure_ascii=False, indent=2))
     else:
         _print_human(entries)
 

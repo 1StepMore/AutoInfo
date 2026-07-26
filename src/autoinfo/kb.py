@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _slugify(text: str, max_len: int = 80) -> str:
+def _slugify(text: str, max_len: int = 255) -> str:
     """Turn *text* into a lowercase, alphanumeric-plus-hyphens slug.
 
     Examples

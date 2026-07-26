@@ -135,7 +135,7 @@ def list_tiers(
         })
 
     if json_output:
-        typer.echo(json.dumps(tier_info, indent=2, ensure_ascii=False))
+        typer.echo(json.dumps({"items": tier_info, "count": len(tier_info)}, indent=2, ensure_ascii=False))
         return
 
     typer.echo(f"KB tiers for domain '{domain}':")
@@ -166,6 +166,48 @@ def wiki_links(
     store = KBStore()
     result = store.rebuild_wiki_links()
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command()
+def decay(
+    domain: str = typer.Option(
+        ..., "--domain", help="Domain to compute decay metrics for"
+    ),
+    ttl_days: int = typer.Option(
+        30, "--ttl-days", help="Days before an entry is considered stale"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
+) -> None:
+    """Compute decay / staleness metrics for a domain.
+
+    Shows staleness ratio, average TTL remaining, collection freshness,
+    decay grade (🟢🟡🔴), and re-collection suggestions.
+    """
+    store = KBStore()
+    result = store.get_domain_decay(domain=domain, ttl_days=ttl_days)
+
+    if json_output:
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+
+    grade = result["decay_grade"]
+    ratio = result["staleness_ratio"]
+    typer.echo(f"Domain decay metrics for '{domain}':")
+    typer.echo("")
+    typer.echo(f"  Decay grade:         {grade}")
+    typer.echo(f"  Total entries:       {result['total_entries']}")
+    typer.echo(f"  Stale entries:       {result['stale_count']}")
+    typer.echo(f"  Staleness ratio:     {ratio:.1%}")
+    typer.echo(f"  Avg TTL remaining:   {result['avg_ttl_remaining_days']:.1f} days")
+    fresh = result["collection_freshness_days"]
+    if fresh is not None:
+        typer.echo(f"  Collection freshness: {fresh} days ago")
+    typer.echo("")
+    typer.echo("  Suggestions:")
+    for s in result["suggestions"]:
+        typer.echo(f"    • {s}")
 
 
 @app.command()

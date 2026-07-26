@@ -282,7 +282,7 @@ def run(
         raise typer.Exit(code=1)
 
     if json_output:
-        typer.echo(json.dumps(results, ensure_ascii=False, indent=2))
+        typer.echo(json.dumps({"items": results, "count": len(results)}, ensure_ascii=False, indent=2))
         return
 
     due = [r for r in results if r.get("due")]
@@ -331,7 +331,7 @@ def list_schedules(
         data = []
         for name, s in schedules.items():
             data.append(asdict(s))
-        typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        typer.echo(json.dumps({"items": data, "count": len(data)}, ensure_ascii=False, indent=2))
         return
 
     if not schedules:

@@ -22,12 +22,15 @@ import logging
 import shutil
 import sqlite3
 import tarfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from autoinfo.llm import LLMExtractor
     from autoinfo.quality import QualityResult
 
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, TemplateNotFound
@@ -191,8 +194,8 @@ def export_kb(
     domain:
         Optional domain filter.  When ``None``, the entire KB is exported.
     format:
-        Output format: ``"markdown"`` (default), ``"json"``, ``"sqlite"``, or
-        ``"pdf"``.
+        Output format: ``"markdown"`` (default), ``"json"``, ``"sqlite"``,
+        ``"pdf"``, or ``"rss"``.
     collection_id:
         Reserved for future collection-scoped export (not yet implemented).
 
@@ -210,10 +213,10 @@ def export_kb(
     ValueError
         If *format* is not one of the supported values.
     """
-    if format not in ("markdown", "json", "sqlite", "pdf"):
+    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml"):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
-            f"Supported: markdown, json, sqlite, pdf"
+            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -281,6 +284,29 @@ def export_kb(
             export_dir=export_dir,
             domain=domain,
             entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
+    elif format == "rss":
+        result = _export_rss(
+            export_dir=export_dir,
+            domain=domain,
+            entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
+    elif format == "csv":
+        result = _export_csv(
+            export_dir=export_dir,
+            domain=domain,
+            entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
+    elif format == "graphml":
+        result = _export_graphml(
+            export_dir=export_dir,
+            domain=domain,
             timestamp=timestamp,
             domain_label=domain_label,
         )
@@ -573,6 +599,253 @@ def _export_pdf(
         "format": "pdf",
         "path": str(out_path),
         "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RSS export
+# ---------------------------------------------------------------------------
+
+
+def _export_rss(
+    export_dir: Path,
+    domain: str | None,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as an RSS 2.0 XML feed (stdlib only).
+
+    Builds a valid RSS 2.0 feed with channel metadata and one ``<item>``
+    per entry.  Written to ``exports/<domain>/autoinfo-rss-*.xml``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``.
+    """
+    # Create domain subdirectory under exports/
+    domain_dir = export_dir / (domain if domain else "all")
+    domain_dir.mkdir(parents=True, exist_ok=True)
+
+    out_name = f"autoinfo-rss-{domain_label}-{timestamp}.xml"
+    out_path = domain_dir / out_name
+
+    # --- Build RSS 2.0 XML --------------------------------------------------
+    rss = ET.Element("rss", version="2.0")
+    channel = ET.SubElement(rss, "channel")
+
+    title_text = domain_label if domain_label != "*" else "AutoInfo Knowledge Base"
+    ET.SubElement(channel, "title").text = f"AutoInfo - {title_text}"
+    ET.SubElement(channel, "link").text = "https://autoinfo.ai"
+    ET.SubElement(channel, "description").text = (
+        f"Knowledge base feed for {title_text}"
+    )
+    ET.SubElement(channel, "language").text = "en"
+    ET.SubElement(channel, "lastBuildDate").text = format_datetime(
+        datetime.now(timezone.utc)
+    )
+    ET.SubElement(channel, "generator").text = "AutoInfo v1.5"
+
+    for e in entries:
+        item = ET.SubElement(channel, "item")
+
+        title = e.get("title") or "Untitled"
+        source_url = e.get("source_url") or ""
+        description = e.get("summary") or ""
+        entry_id = e.get("entry_id") or ""
+        collected_at = e.get("collected_at") or ""
+
+        ET.SubElement(item, "title").text = title
+        if source_url:
+            ET.SubElement(item, "link").text = source_url
+        if description:
+            ET.SubElement(item, "description").text = description
+
+        guid = ET.SubElement(item, "guid", isPermaLink="false")
+        guid.text = entry_id or source_url or title
+
+        if collected_at:
+            try:
+                dt = datetime.fromisoformat(collected_at)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                ET.SubElement(item, "pubDate").text = format_datetime(dt)
+            except (ValueError, TypeError):
+                pass
+
+    # --- Serialize -----------------------------------------------------------
+    tree = ET.ElementTree(rss)
+    tree.write(str(out_path), encoding="utf-8", xml_declaration=True)
+
+    return {
+        "format": "rss",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+    }
+
+
+def _export_csv(
+    export_dir: Path,
+    domain: str | None,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as a CSV file (stdlib csv module).
+
+    Writes one row per entry with headers matching KBEntry field names.
+    Complex fields (lists, dicts) are serialised as JSON strings.
+    Written to ``exports/<domain>/autoinfo-csv-<timestamp>.csv``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``.
+    """
+    import csv as _csv
+    import json as _json
+
+    domain_dir = export_dir / (domain if domain else "all")
+    domain_dir.mkdir(parents=True, exist_ok=True)
+
+    out_name = f"autoinfo-csv-{domain_label}-{timestamp}.csv"
+    out_path = domain_dir / out_name
+
+    field_names: list[str] = []
+    field_set: set[str] = set()
+    for e in entries:
+        for k in e:
+            if k not in field_set:
+                field_set.add(k)
+                field_names.append(k)
+
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = _csv.DictWriter(f, fieldnames=field_names, extrasaction="ignore")
+        writer.writeheader()
+        for e in entries:
+            row: dict[str, str] = {}
+            for k in field_names:
+                val = e.get(k)
+                if isinstance(val, (list, dict)):
+                    row[k] = _json.dumps(val, ensure_ascii=False)
+                elif val is None:
+                    row[k] = ""
+                else:
+                    row[k] = str(val)
+            writer.writerow(row)
+
+    return {
+        "format": "csv",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+    }
+
+
+def _export_graphml(
+    export_dir: Path,
+    domain: str | None,
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export the knowledge graph as GraphML.
+
+    Uses :meth:`KBStore.export_knowledge_graph` to retrieve entities
+    and relations, then builds a GraphML XML document.
+
+    Written to ``exports/<domain>/autoinfo-graphml-<timestamp>.graphml``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``.
+    """
+    from xml.etree import ElementTree as _ET
+
+    store = KBStore()
+    data = store.export_knowledge_graph(domain=domain or "")
+
+    root = _ET.Element("graphml", xmlns="http://graphml.graphdrawing.org/xmlns")
+
+    key_id = _ET.SubElement(root, "key")
+    key_id.set("id", "k0")
+    key_id.set("for", "node")
+    key_id.set("attr.name", "entity_type")
+    key_id.set("attr.type", "string")
+
+    key_name = _ET.SubElement(root, "key")
+    key_name.set("id", "k1")
+    key_name.set("for", "node")
+    key_name.set("attr.name", "entity_name")
+    key_name.set("attr.type", "string")
+
+    key_rel = _ET.SubElement(root, "key")
+    key_rel.set("id", "k2")
+    key_rel.set("for", "edge")
+    key_rel.set("attr.name", "relation_type")
+    key_rel.set("attr.type", "string")
+
+    key_str = _ET.SubElement(root, "key")
+    key_str.set("id", "k3")
+    key_str.set("for", "edge")
+    key_str.set("attr.name", "strength")
+    key_str.set("attr.type", "double")
+
+    graph = _ET.SubElement(root, "graph")
+    graph.set("id", "G")
+    graph.set("edgedefault", "undirected")
+
+    for ent in data.get("entities", []):
+        eid = str(ent.get("id", ""))
+        if not eid:
+            continue
+        node = _ET.SubElement(graph, "node")
+        node.set("id", eid)
+        d0 = _ET.SubElement(node, "data")
+        d0.set("key", "k0")
+        d0.text = str(ent.get("entity_type", ent.get("type", "entity")))
+        d1 = _ET.SubElement(node, "data")
+        d1.set("key", "k1")
+        d1.text = str(ent.get("name", ent.get("label", eid)))
+
+    for rel in data.get("relations", []):
+        src = str(rel.get("source_id", ""))
+        tgt = str(rel.get("target_id", ""))
+        if not src or not tgt:
+            continue
+        edge = _ET.SubElement(graph, "edge")
+        edge.set("id", f"e{rel.get('id', '')}")
+        edge.set("source", src)
+        edge.set("target", tgt)
+        d2 = _ET.SubElement(edge, "data")
+        d2.set("key", "k2")
+        d2.text = str(rel.get("relation_type", rel.get("type", "related_to")))
+        d3 = _ET.SubElement(edge, "data")
+        d3.set("key", "k3")
+        d3.text = str(rel.get("strength", rel.get("weight", "1.0")))
+
+    xml_bytes = _ET.tostring(root, encoding="unicode", xml_declaration=True)
+
+    domain_dir = export_dir / (domain if domain else "all")
+    domain_dir.mkdir(parents=True, exist_ok=True)
+
+    out_name = f"autoinfo-graphml-{domain_label}-{timestamp}.graphml"
+    out_path = domain_dir / out_name
+    out_path.write_text(xml_bytes, encoding="utf-8")
+
+    return {
+        "format": "graphml",
+        "path": str(out_path),
+        "entries_count": len(data.get("entities", [])),
         "domain": domain_label,
         "success": True,
     }

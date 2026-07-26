@@ -22,10 +22,14 @@ import httpx
 
 from autoinfo.alerts import check_alerts
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
+from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import CollectionResult, Item, KBEntry
 
 logger = logging.getLogger(__name__)
+from autoinfo.logging import get_pipeline_logger
+
+plog = get_pipeline_logger("collect")
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +43,7 @@ def run_collection(
     sources: list[str] | None = None,
     limit: int = 20,
     dry_run: bool = False,
+    force_full: bool = False,
 ) -> dict[str, Any]:
     """Execute a full collection run for a domain.
 
@@ -111,10 +116,11 @@ def run_collection(
     all_new_items: list[Item] = []
 
     for src_cfg in source_configs:
-        logger.info(
-            "Collecting from source '%s' (type=%s) ...",
-            src_cfg.name,
-            src_cfg.type,
+        plog.info(
+            "Collecting from source",
+            source_type=src_cfg.type,
+            extra={"source_name": src_cfg.name},
+            trace_id=collection_id,
         )
 
         src_result = _collect_from_source(
@@ -127,6 +133,7 @@ def run_collection(
             collection_id=collection_id,
             checker=checker,
             new_items_collector=all_new_items,
+            force_full=force_full,
         )
         per_source.append(src_result)
 
@@ -204,6 +211,7 @@ def _collect_from_source(
     collection_id: str,
     checker: DedupChecker,
     new_items_collector: list[Item] | None = None,
+    force_full: bool = False,
 ) -> CollectionResult:
     """Fetch items from a single source, deduplicate, and optionally cache."""
     src_start = time.time()
@@ -213,7 +221,11 @@ def _collect_from_source(
     try:
         handler = _build_handler(source_config)
     except ValueError as exc:
-        logger.warning("Skipping source '%s': %s", source_config.name, exc)
+        plog.warning(
+            "Skipping source",
+            source_type=source_config.type,
+            extra={"source_name": source_config.name, "error": str(exc)},
+        )
         skipped_duration = round(time.time() - src_start, 3)
         _log_run(
             domain=domain,
@@ -240,7 +252,11 @@ def _collect_from_source(
     try:
         items = _fetch_items(handler, source_config, topic, limit)
     except Exception as exc:
-        logger.error("Fetch failed for source '%s': %s", source_config.name, exc)
+        plog.error(
+            "Fetch failed for source",
+            source_type=source_config.type,
+            extra={"source_name": source_config.name, "error": str(exc)},
+        )
         error_duration = round(time.time() - src_start, 3)
         _log_run(
             domain=domain,
@@ -265,14 +281,71 @@ def _collect_from_source(
 
     items_found = len(items)
 
-    # -- Apply dedup -------------------------------------------------------
+    # Log API call cost (non-blocking — failures are swallowed)
+    try:
+        CostMeter().log_api_call(
+            source_type=source_config.type,
+            domain=domain,
+            item_id="",
+        )
+    except Exception:
+        logger.debug("CostMeter log_api_call skipped", exc_info=True)
+
+    # -- Build source_url lookup for version bumping (F50) -----------------
+    url_to_existing: dict[str, KBEntry] = {}
+    for entry in existing_entries:
+        if entry.source_url:
+            existing_for_url = url_to_existing.get(entry.source_url)
+            if existing_for_url is None or entry.version > existing_for_url.version:
+                url_to_existing[entry.source_url] = entry
+
+    # -- Apply dedup + version bumping -------------------------------------
     new_items: list[Item] = []
     for item in items:
-        verdict = checker.check(item, existing_entries)
-        if not verdict["is_duplicate"]:
+        existing = url_to_existing.get(item.source_url) if item.source_url else None
+        if existing is not None:
+            # Re-collection of same URL — version bump
+            item.version = existing.version + 1
+            item.previous_version = existing.version
+            item.supersedes = existing.entry_id
             new_items.append(item)
+            plog.info(
+                "Version bump on re-collection",
+                item_id=item.id,
+                source_type=source_config.type,
+                extra={
+                    "source_url": item.source_url,
+                    "new_version": item.version,
+                    "previous_version": existing.version,
+                    "supersedes": existing.entry_id,
+                },
+            )
+        elif force_full:
+            new_items.append(item)
+        else:
+            verdict = checker.check(item, existing_entries)
+            if not verdict["is_duplicate"]:
+                new_items.append(item)
 
     items_new = len(new_items)
+
+    # -- Assign trace_id to each new item ----------------------------------
+    trace_ids: list[str] = []
+    for item in new_items:
+        if not item.trace_id:
+            item.trace_id = str(uuid.uuid4())
+        trace_ids.append(item.trace_id)
+        plog.info(
+            "Item collected",
+            item_id=item.id,
+            source_type=source_config.type,
+            trace_id=item.trace_id,
+            extra={
+                "source_name": source_config.name,
+                "domain": domain,
+                "title": item.title,
+            },
+        )
 
     elapsed = round(time.time() - src_start, 3)
 
@@ -286,6 +359,7 @@ def _collect_from_source(
             items_found, items_new,
             status="success",
             duration_s=elapsed,
+            trace_ids=trace_ids,
         )
 
     return CollectionResult(
@@ -369,11 +443,10 @@ def _fetch_items(
     """
     # -- Webhook handler path (push-based, no URL to pull) ----------------
     if hasattr(handler, "handle") and not hasattr(handler, "fetch"):
-        logger.info(
-            "Source '%s' is push-based (%s); "
-            "nothing to fetch during pull collection",
-            source_config.name,
-            type(handler).__name__,
+        plog.info(
+            "Source is push-based; nothing to fetch during pull collection",
+            source_type=source_config.type,
+            extra={"source_name": source_config.name, "handler_type": type(handler).__name__},
         )
         return []
 
@@ -406,7 +479,11 @@ def _fetch_items(
     if hasattr(handler, "fetch"):
         url = source_config.url
         if not url:
-            logger.warning("RSS source '%s' has no URL configured", source_config.name)
+            plog.warning(
+                "RSS source has no URL configured",
+                source_type=source_config.type,
+                extra={"source_name": source_config.name},
+            )
             return []
         items = handler.fetch(url)
         # Apply limit
@@ -445,6 +522,7 @@ def _build_webhook_payload(domain: str, item: Item) -> dict[str, Any]:
 
     return {
         "item_id": item.id or str(_uuid.uuid4()),
+        "trace_id": item.trace_id,
         "title": item.title,
         "url": item.source_url,
         "source": item.source_name,
@@ -479,8 +557,9 @@ async def _post_webhook(
             await asyncio.sleep(2**attempt)  # 2s, 4s, 8s
         except (httpx.TimeoutException, httpx.NetworkError):
             if attempt == retries - 1:
-                logger.error(
-                    "Webhook failed after %d attempts: %s", retries, url
+                plog.error(
+                    "Webhook failed after retries",
+                    extra={"retries": retries, "url": url},
                 )
             await asyncio.sleep(2**attempt)
 
@@ -537,6 +616,7 @@ def _log_run(
     status: str = "success",
     errors: list[dict[str, Any]] | None = None,
     duration_s: float = 0.0,
+    trace_ids: list[str] | None = None,
 ) -> None:
     """Append a run entry to ``collections/<domain>/<source>/_runs.json``.
 
@@ -562,6 +642,8 @@ def _log_run(
         "errors": errors or [],
         "duration_ms": round(duration_s * 1000, 1),
     }
+    if trace_ids:
+        entry["trace_ids"] = trace_ids
 
     if runs_path.exists():
         try:

@@ -1906,3 +1906,130 @@ def run_quality_gates(
     results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold, g3_config)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Cross-collection dedup & merge (F53)
+# ---------------------------------------------------------------------------
+
+
+def find_similar_items(query: str, threshold: float = 0.8) -> list[dict[str, Any]]:
+    """Find items similar to *query* using SequenceMatcher from difflib.
+
+    Searches all KB entries (up to 1000) and returns those whose
+    title+content similarity ratio meets or exceeds *threshold*.
+
+    Parameters
+    ----------
+    query:
+        Text to match against KB entries (title + content combined).
+    threshold:
+        Minimum SequenceMatcher ratio (0.0–1.0) to consider similar.
+        Default 0.8.
+
+    Returns
+    -------
+    list[dict]
+        Up to 20 results, sorted by similarity descending. Each entry:
+        ``{"entry_id": str, "similarity": float, "title": str}``.
+    """
+    from difflib import SequenceMatcher
+
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    all_entries_result = store.search_knowledge_base(query="", limit=1000)
+    entries: list[dict[str, Any]] = (
+        all_entries_result.get("entries", [])
+        if isinstance(all_entries_result, dict)
+        else all_entries_result
+    )
+
+    similar: list[dict[str, Any]] = []
+    query_lower = query.lower()
+
+    for entry in entries:
+        title = str(entry.get("title", ""))
+        content = str(entry.get("content", ""))
+        text = (content + " " + title).lower()
+        similarity = SequenceMatcher(None, query_lower, text).ratio()
+
+        if similarity >= threshold:
+            similar.append({
+                "entry_id": str(entry.get("entry_id", "")),
+                "similarity": float(similarity),
+                "title": title,
+            })
+
+    return sorted(similar, key=lambda x: x["similarity"], reverse=True)[:20]
+
+
+def merge_items(item_ids: list[str], strategy: str = "simple") -> dict[str, Any]:
+    """Merge multiple KB entries into one.
+
+    Retrieves each entry by ID and combines their content according
+    to *strategy*.  The merged result is returned as a dict for review —
+    it is **not** automatically saved to the KB.
+
+    Parameters
+    ----------
+    item_ids:
+        List of KB entry IDs to merge.
+    strategy:
+        Merge strategy:
+
+        - ``"simple"`` — concatenate content blocks with ``---`` separators
+        - ``"title_first"`` — use first item's title as heading, then render
+          each item as a subsection.
+
+        Default ``"simple"``.
+
+    Returns
+    -------
+    dict
+        ``{status, entry, original_items, strategy_used}`` on success,
+        or ``{error}`` when fewer than 2 items are found.
+    """
+    from datetime import datetime, timezone
+
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+
+    items: list[dict[str, Any]] = []
+    for eid in item_ids:
+        entry = store.get_entry(eid)
+        if entry:
+            items.append(entry)
+
+    if len(items) < 2:
+        return {"error": "Need at least 2 items to merge"}
+
+    if strategy == "simple":
+        merged_content = "\n\n---\n\n".join(
+            str(i.get("content", "")) for i in items
+        )
+    elif strategy == "title_first":
+        merged_content = "# " + str(items[0].get("title", "")) + "\n\n"
+        for idx, item in enumerate(items):
+            title = str(item.get("title", f"Part {idx + 1}"))
+            merged_content += f"## {title}\n\n"
+            merged_content += str(item.get("content", "")) + "\n\n"
+    else:
+        merged_content = "\n\n---\n\n".join(
+            str(i.get("content", "")) for i in items
+        )
+
+    merged_entry: dict[str, Any] = {
+        "title": f"Merge of {len(items)} items",
+        "content": merged_content,
+        "merged_from": item_ids,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return {
+        "status": "merged",
+        "entry": merged_entry,
+        "original_items": len(item_ids),
+        "strategy_used": strategy,
+    }

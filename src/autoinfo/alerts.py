@@ -191,6 +191,82 @@ def list_alert_rules(domain: str | None = None) -> list[AlertRule]:
 
 
 # ---------------------------------------------------------------------------
+# Budget alert evaluation  (F45: spend threshold monitoring)
+# ---------------------------------------------------------------------------
+
+
+def evaluate_budget_alerts() -> list:
+    """Evaluate spend against configured budget thresholds.
+
+    Queries the :class:`CostMeter` for total spend and compares it against
+    pre-configured percentage thresholds.  Returns a list of alert dicts when
+    thresholds are breached.
+
+    Returns
+    -------
+    list[dict]
+        One dict per breached threshold with keys ``type``, ``threshold``,
+        ``current_spend``, and ``severity``.  Returns an empty list when
+        cost tracking is not configured or no thresholds are breached.
+    """
+    try:
+        from autoinfo.cost import CostMeter
+
+        meter = CostMeter()
+        report = meter.get_report()
+        current_spend = report["total_cost"]
+
+        thresholds = [50.0, 75.0, 90.0, 100.0]  # default thresholds
+
+        alerts: list[dict[str, object]] = []
+        for threshold in thresholds:
+            if current_spend >= threshold:
+                alerts.append({
+                    "type": "budget_threshold",
+                    "threshold": threshold,
+                    "current_spend": current_spend,
+                    "severity": "warning" if threshold < 100 else "critical",
+                })
+
+        return alerts
+    except Exception:
+        logger.warning("Budget alert evaluation failed", exc_info=True)
+        return []
+
+
+def execute_auto_remediation(alert: dict) -> dict:
+    """Execute auto-remediation actions for critical alerts.
+
+    For critical-severity budget alerts this logs a warning and records
+    a ``notified`` action.  The remediation is intentionally conservative
+    (log + notify only) to avoid disrupting the pipeline.
+
+    Parameters
+    ----------
+    alert : dict
+        An alert dict as returned by :func:`evaluate_budget_alerts`.
+
+    Returns
+    -------
+    dict
+        Keys: ``status`` (``"executed"``) and ``actions`` (list of action
+        descriptions).
+    """
+    actions: list[str] = []
+
+    if alert.get("severity") == "critical":
+        actions.append("notified: budget threshold exceeded")
+        logger.warning(
+            "Budget alert: %s - current $%.2f / threshold $%.2f",
+            alert.get("severity"),
+            alert.get("current_spend", 0),
+            alert.get("threshold", 0),
+        )
+
+    return {"status": "executed", "actions": actions}
+
+
+# ---------------------------------------------------------------------------
 # Alert checking  (called post-collection)
 # ---------------------------------------------------------------------------
 

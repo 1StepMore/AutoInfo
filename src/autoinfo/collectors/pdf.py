@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ CHUNK_PAGE_SIZE = 10
 # ---------------------------------------------------------------------------
 
 
-class PDFHandler:
+class PDFHandler(BaseHandler):
     """Extract text content from PDF files and URLs.
 
     Parameters

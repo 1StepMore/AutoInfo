@@ -163,6 +163,78 @@ def keywords(
             typer.echo(f"No topics configured for domain '{domain}'")
 
 
+# ---------------------------------------------------------------------------
+# group subcommand (autoinfo topics group add|remove)
+# ---------------------------------------------------------------------------
+
+
+group_app = typer.Typer(help="Manage topic groups")
+app.add_typer(group_app, name="group")
+
+
+@group_app.command("add")
+def group_add(
+    domain: str = typer.Option(..., "--domain", help="Domain the topic belongs to"),
+    topic: str = typer.Argument(..., help="Topic name"),
+    group: str = typer.Option(..., "--group", help="Group name to assign"),
+) -> None:
+    """Assign a group to a topic."""
+    ensure_config_exists()
+    config_path = get_config_path()
+    if config_path is None:
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        raise typer.Exit(code=1)
+
+    config = load_config(config_path)
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
+        raise typer.Exit(code=1)
+
+    for t in domain_cfg.topics:
+        if t.name == topic:
+            t.group = group
+            save_config(config, config_path)
+            typer.echo(f"Set group '{group}' on topic '{topic}' in domain '{domain}'")
+            return
+
+    typer.echo(f"Error: Topic '{topic}' not found in domain '{domain}'", err=True)
+    raise typer.Exit(code=1)
+
+
+@group_app.command("remove")
+def group_remove(
+    domain: str = typer.Option(..., "--domain", help="Domain the topic belongs to"),
+    topic: str = typer.Argument(..., help="Topic name"),
+) -> None:
+    """Remove group assignment from a topic."""
+    ensure_config_exists()
+    config_path = get_config_path()
+    if config_path is None:
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        raise typer.Exit(code=1)
+
+    config = load_config(config_path)
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
+        raise typer.Exit(code=1)
+
+    for t in domain_cfg.topics:
+        if t.name == topic:
+            if not t.group:
+                typer.echo(f"Topic '{topic}' in domain '{domain}' has no group set")
+                return
+            old_group = t.group
+            t.group = ""
+            save_config(config, config_path)
+            typer.echo(f"Removed group '{old_group}' from topic '{topic}' in domain '{domain}'")
+            return
+
+    typer.echo(f"Error: Topic '{topic}' not found in domain '{domain}'", err=True)
+    raise typer.Exit(code=1)
+
+
 def _find_domain(config: object, name: str) -> DomainConfig | None:
     """Return the domain config for *name*, or ``None``."""
     from autoinfo.config import Config

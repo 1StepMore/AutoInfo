@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from autoinfo.kb import KBStore
@@ -390,4 +390,150 @@ async def list_feeds(
             "offset": offset,
             "next": next_offset,
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Portal endpoints — end-user self-service
+# ---------------------------------------------------------------------------
+
+
+@router.get("/portal/preferences", response_model=dict[str, Any])
+async def get_portal_preferences(
+    user_id: str = Query(..., min_length=1, description="End-user ID"),
+) -> dict[str, Any]:
+    """Return the delivery preferences for an end-user.
+
+    Delegates to :func:`autoinfo.user_store.get_profile` and returns the
+    ``delivery_prefs`` dict together with profile metadata.
+    """
+    from autoinfo.user_store import get_profile as _get_profile
+
+    profile = _get_profile(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
+
+    return {
+        "user_id": profile.user_id,
+        "name": profile.name,
+        "email": profile.email,
+        "delivery_prefs": profile.delivery_prefs,
+        "tier": profile.tier,
+        "status": profile.status,
+    }
+
+
+class PreferencesUpdate(BaseModel):
+    """Request body for ``PUT /portal/preferences``."""
+
+    delivery_prefs: dict[str, Any] = Field(
+        default_factory=dict, description="Delivery preferences key-value map"
+    )
+    email: str | None = Field(None, description="Optional new email address")
+
+
+@router.put("/portal/preferences", response_model=dict[str, Any])
+async def update_portal_preferences(
+    user_id: str = Query(..., min_length=1, description="End-user ID"),
+    body: PreferencesUpdate = Body(...),  # noqa: N803 — FastAPI parameter
+) -> dict[str, Any]:
+    """Update delivery preferences (and optionally email) for an end-user.
+
+    Accepts partial updates — only the fields provided in the request body
+    are changed on the stored profile.
+    """
+    from autoinfo.user_store import get_profile as _get_profile
+    from autoinfo.user_store import update_profile as _update_profile
+
+    # Verify the user exists first
+    existing = _get_profile(user_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
+
+    kwargs: dict[str, Any] = {}
+    if body.delivery_prefs:
+        kwargs["delivery_prefs"] = body.delivery_prefs
+    if body.email is not None:
+        kwargs["email"] = body.email
+
+    updated = _update_profile(user_id=user_id, **kwargs)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+    return {
+        "user_id": updated.user_id,
+        "name": updated.name,
+        "email": updated.email,
+        "delivery_prefs": updated.delivery_prefs,
+        "tier": updated.tier,
+        "status": updated.status,
+    }
+
+
+@router.get("/portal/delivery-history", response_model=dict[str, Any])
+async def get_portal_delivery_history(
+    user_id: str = Query(..., min_length=1, description="End-user ID"),
+    limit: int = Query(50, ge=1, le=200, description="Max entries to return"),
+    offset: int = Query(0, ge=0, description="Number of entries to skip"),
+    channel: str | None = Query(None, description="Optional channel filter (e.g. smtp, webhook)"),
+    date_from: str | None = Query(None, description="ISO date lower bound (last_attempt >=)"),
+    date_to: str | None = Query(None, description="ISO date upper bound (last_attempt <=)"),
+) -> dict[str, Any]:
+    """Return delivery history for an end-user.
+
+    Fetches the user's subscriptions and then queries the append-only
+    delivery log for matching entries.  Results are ordered newest-first.
+    """
+    from autoinfo.delivery_log import query_delivery_log as _query_log
+    from autoinfo.user_store import get_profile as _get_profile
+    from autoinfo.user_store import list_subscriptions as _list_subs
+
+    # Verify user exists
+    profile = _get_profile(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
+
+    # Collect subscription IDs for this user
+    subscriptions = _list_subs(user_id=user_id)
+    sub_ids = [s.sub_id for s in subscriptions if s.sub_id]
+
+    if not sub_ids:
+        return {
+            "user_id": user_id,
+            "subscriptions": [],
+            "entries": [],
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    # Query the delivery log for each subscription
+    all_entries: list[dict[str, Any]] = []
+    for sid in sub_ids:
+        raw = _query_log(
+            subscription_id=sid,
+            channel=channel,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=0,
+        )
+        for entry in raw:
+            all_entries.append(entry.to_dict())
+
+    # Sort by last_attempt DESC
+    all_entries.sort(key=lambda e: e.get("last_attempt", ""), reverse=True)
+
+    total = len(all_entries)
+
+    # Apply pagination slice
+    page = all_entries[offset: offset + limit]
+
+    return {
+        "user_id": user_id,
+        "subscriptions": [s.to_dict() for s in subscriptions],
+        "entries": page,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }

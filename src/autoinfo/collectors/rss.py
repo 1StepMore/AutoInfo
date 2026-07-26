@@ -12,6 +12,7 @@ from typing import Any
 
 import feedparser
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class RSSHandler:
+class RSSHandler(BaseHandler):
     """Fetch and parse RSS/Atom feeds into :class:`Item` instances.
 
     Supports both RSS 2.0 and Atom formats transparently — *feedparser*

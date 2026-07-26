@@ -33,6 +33,27 @@ from autoinfo.schema import check_schema
 
 logger = logging.getLogger(__name__)
 
+from enum import Enum
+
+
+class RelationType(str, Enum):
+    """Types of relationships between KB entries."""
+    RELATED = "related"
+    RELATED_TO = "related_to"
+    PARENT_OF = "parent_of"
+    CHILD_OF = "child_of"
+    REFERENCES = "references"
+    REFERENCED_BY = "referenced_by"
+    SUPERSEDES = "supersedes"
+    SUPERSEDED_BY = "superseded_by"
+    SIMILAR_TO = "similar_to"
+    DUPLICATE_OF = "duplicate_of"
+    VERSION_OF = "version_of"
+
+
+RELATION_TYPES = {rt.value for rt in RelationType}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -51,6 +72,24 @@ def _slugify(text: str, max_len: int = 255) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
     return slug[:max_len].rstrip("-")
+
+
+def calculate_freshness_score(entry: dict[str, Any], ttl_days: int = 90) -> float:
+    """Calculate freshness score (0.0 to 1.0) based on age and TTL."""
+    created_at = entry.get("collected_at") or entry.get("created_at") or ""
+    if not created_at:
+        return 1.0
+    try:
+        from datetime import datetime
+
+        created = datetime.fromisoformat(created_at)
+    except (ValueError, TypeError):
+        return 1.0
+    age_days = (datetime.now() - created).days
+    if age_days >= ttl_days:
+        return 0.0
+    freshness = 1.0 - (age_days / ttl_days)
+    return max(0.0, min(1.0, freshness))
 
 
 def _parse_date(s: str) -> date:
@@ -248,6 +287,18 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN version INTEGER DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN previous_version INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN supersedes TEXT DEFAULT ''")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -337,8 +388,10 @@ class SQLiteIndex:
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, file_path, tags,
-                     custom_fields, language, user_id, cefr)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     custom_fields, language, user_id, cefr,
+                     version, previous_version, supersedes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?)
                 """,
                 (
                     entry.entry_id,
@@ -359,6 +412,9 @@ class SQLiteIndex:
                     entry.language,
                     entry.user_id,
                     cefr_level,
+                    entry.version,
+                    entry.previous_version,
+                    entry.supersedes,
                 ),
             )
 
@@ -2052,6 +2108,9 @@ class KBStore:
             file_path=str(file_path),
             language=item.language,
             user_id=resolved_user_id,
+            version=getattr(item, "version", 1),
+            previous_version=getattr(item, "previous_version", 0),
+            supersedes=getattr(item, "supersedes", ""),
         )
 
         # --- write Markdown file ----------------------------------------------
@@ -3519,6 +3578,9 @@ def _build_frontmatter(
         "dedup_status": entry.dedup_status,
         "language": entry.language,
         "user_id": entry.user_id,
+        "version": entry.version,
+        "previous_version": entry.previous_version,
+        "supersedes": entry.supersedes,
     }
 
     # Expanded frontmatter fields (Draft+ tiers only — 01-Raw stays lean)
@@ -3696,3 +3758,70 @@ def update_frontmatter_field(file_path: str, key: str, value: Any) -> bool:
     body = raw[end + 3 :].lstrip("\n")
     fp.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
     return True
+
+
+def mark_stale(entry_id: str) -> dict[str, Any]:
+    """Mark a KB entry as stale in its YAML frontmatter.
+
+    Sets ``status: stale`` in the frontmatter.  Stale entries are
+    demoted in search results and excluded from digest generation
+    but are never deleted.
+
+    Returns ``{"success": True, "entry_id": ...}`` on success, or an
+    error dict when the entry is not found.
+    """
+    store = KBStore()
+    meta = store.index.get_entry(entry_id)
+    if meta is None:
+        return {
+            "success": False,
+            "entry_id": entry_id,
+            "error": "Entry not found",
+        }
+
+    file_path = meta.get("file_path", "")
+    if file_path:
+        ok = update_frontmatter_field(file_path, "status", "stale")
+        return {"success": ok, "entry_id": entry_id}
+
+    return {
+        "success": False,
+        "entry_id": entry_id,
+        "error": "No file path for entry",
+    }
+
+
+def get_active_entries(domain: str) -> list[dict[str, Any]]:
+    """Return entries for *domain* that are neither deleted nor stale.
+
+    Filters out entries where:
+    * The database ``deleted`` flag is set, or
+    * The YAML frontmatter contains ``status: stale``.
+
+    Returns a list of entry metadata dicts (same shape as
+    :meth:`SQLiteIndex.list_entries`).
+    """
+    store = KBStore()
+    all_entries = store.index.list_entries(domain, limit=10000)
+    active: list[dict[str, Any]] = []
+
+    for entry in all_entries:
+        if entry.get("deleted"):
+            continue
+        file_path = entry.get("file_path", "")
+        if file_path:
+            fp = Path(file_path)
+            if fp.is_file():
+                raw = fp.read_text(encoding="utf-8")
+                if raw.startswith("---"):
+                    end = raw.find("---", 3)
+                    if end != -1:
+                        try:
+                            fm = yaml.safe_load(raw[3:end]) or {}
+                            if fm.get("status") == "stale":
+                                continue
+                        except yaml.YAMLError:
+                            pass
+        active.append(entry)
+
+    return active

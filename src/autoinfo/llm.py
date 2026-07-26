@@ -107,6 +107,28 @@ class LLMExtractor:
             env_key = f"{provider.upper()}_API_KEY"
             os.environ.setdefault(env_key, config.llm.api_key)
 
+        # Build fallback model chain from config.llm.fallback.
+        # Each entry is a dict with "model" (provider/model string) and
+        # optional "base_url".  API keys are set via env vars so that
+        # LiteLLM picks them up automatically at call time.
+        self._fallback_models: list[dict[str, str]] = []
+        for fb in config.llm.fallback:
+            fb_provider = fb.provider or provider
+            fb_model = fb.model or model
+            fb_full = f"{fb_provider}/{fb_model}"
+            # Skip duplicates (e.g. same model already in chain)
+            if fb_full == self._model:
+                continue
+            # Set API key env var for this fallback provider
+            if fb.api_key:
+                env_key = f"{fb_provider.upper()}_API_KEY"
+                os.environ.setdefault(env_key, fb.api_key)
+            fb_burl = fb.base_url or ""
+            self._fallback_models.append({
+                "model": fb_full,
+                "base_url": fb_burl,
+            })
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -173,7 +195,10 @@ class LLMExtractor:
                     time.sleep(1)
 
         raise RuntimeError(
-            f"LLM extraction failed after {max_retries + 1} attempts"
+            f"LLM extraction failed after {max_retries + 1} attempts "
+            f"(no fallback configured)" if not self._fallback_models
+            else f"LLM extraction failed after {max_retries + 1} attempts "
+            f"(all primary + fallback models exhausted)"
         ) from last_exception
 
     # ------------------------------------------------------------------
@@ -253,8 +278,14 @@ class LLMExtractor:
     ) -> ExtractionResult:
         """Execute the LLM completion and parse the result.
 
-        Raises on network error, API error, or empty response.  The caller
-        (``extract`` / ``extract_with_retry``) decides how to handle failures.
+        Iterates through the configured model chain (``[primary] + fallback``)
+        so that when the primary model fails a fallback model is tried next.
+        Logs a warning for each failed model and an info message when a
+        fallback is used successfully.
+
+        Raises :class:`RuntimeError` only after **all** models have failed.
+        The caller (``extract`` / ``extract_with_retry``) decides how to
+        handle that final failure.
         """
         _litellm = self._get_litellm()
         if _litellm is None:
@@ -262,52 +293,87 @@ class LLMExtractor:
 
         system, user_prompt = self._build_prompt(item, schema)
 
-        response = _litellm.completion(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=2000,
-            temperature=0.1,
-            api_base=self._base_url or None,
-        )
+        models_to_try = [self._model] + [fb["model"] for fb in self._fallback_models]
+        attempted: list[str] = []
+        last_exception: Optional[Exception] = None
 
-        # Capture token usage from LiteLLM response
-        usage: dict[str, Any] = {}
-        if hasattr(response, "usage") and response.usage is not None:
-            usage = {
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                "total_tokens": getattr(response.usage, "total_tokens", 0),
-            }
+        for model_name in models_to_try:
+            attempted.append(model_name)
 
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
-        parsed = self._parse_response(content)
+            base_url = self._base_url
+            if model_name != self._model:
+                for fb in self._fallback_models:
+                    if fb["model"] == model_name and fb["base_url"]:
+                        base_url = fb["base_url"]
+                        break
 
-        # Determine which fields in the response are custom (not in defaults)
-        custom_field_names: list[str] = []
-        if schema is not None:
-            custom_field_names = [f for f in schema if f not in DEFAULT_FIELDS]
+            try:
+                response = _litellm.completion(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    max_tokens=2000,
+                    temperature=0.1,
+                    api_base=base_url or None,
+                )
 
-        custom_fields: dict[str, Any] = {}
-        for cf in custom_field_names:
-            if cf in parsed:
-                custom_fields[cf] = parsed[cf]
+                if model_name != self._model:
+                    logger.info(
+                        "Fallback to %s succeeded after primary %s failed",
+                        model_name,
+                        self._model,
+                    )
 
-        return ExtractionResult(
-            item_id=item.id,
-            title=item.title,
-            tl_dr=parsed.get("tl_dr", ""),
-            key_points=parsed.get("key_points", []),
-            entities=parsed.get("entities", []),
-            relevance_score=max(
-                0.0, min(100.0, float(parsed.get("relevance_score", 0)))
-            ),
-            custom_fields=custom_fields,
-            usage=usage,
-        )
+                usage: dict[str, Any] = {}
+                if hasattr(response, "usage") and response.usage is not None:
+                    usage = {
+                        "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                        "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                        "total_tokens": getattr(response.usage, "total_tokens", 0),
+                    }
+
+                content: str = response.choices[0].message.content  # type: ignore[union-attr]
+                parsed = self._parse_response(content)
+
+                custom_field_names: list[str] = []
+                if schema is not None:
+                    custom_field_names = [f for f in schema if f not in DEFAULT_FIELDS]
+
+                custom_fields: dict[str, Any] = {}
+                for cf in custom_field_names:
+                    if cf in parsed:
+                        custom_fields[cf] = parsed[cf]
+
+                return ExtractionResult(
+                    item_id=item.id,
+                    title=item.title,
+                    tl_dr=parsed.get("tl_dr", ""),
+                    key_points=parsed.get("key_points", []),
+                    entities=parsed.get("entities", []),
+                    relevance_score=max(
+                        0.0, min(100.0, float(parsed.get("relevance_score", 0)))
+                    ),
+                    custom_fields=custom_fields,
+                    usage=usage,
+                )
+            except Exception as exc:
+                last_exception = exc
+                logger.warning(
+                    "LLM model %s failed (attempted %d/%d): %s",
+                    model_name,
+                    len(attempted),
+                    len(models_to_try),
+                    exc,
+                )
+
+        raise RuntimeError(
+            f"LLM extraction failed (no fallback configured): {', '.join(attempted)}"
+            if not self._fallback_models
+            else f"All models (primary + fallback) failed: {', '.join(attempted)}"
+        ) from last_exception
 
     @staticmethod
     def _parse_response(content: str | None) -> dict[str, Any]:

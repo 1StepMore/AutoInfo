@@ -16,6 +16,7 @@ from email.header import decode_header
 from email.message import Message
 from typing import Any
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class EmailHandler:
+class EmailHandler(BaseHandler):
     """Fetch unseen emails from an IMAP mailbox and return ``Item`` instances.
 
     Usage::
@@ -48,6 +49,10 @@ class EmailHandler:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:  # type: ignore[override]
+        """Delegate to :meth:`collect` for BaseHandler compatibility."""
+        return self.collect(*args, **kwargs)
 
     def collect(self, config: dict[str, Any]) -> list[Item]:
         """Connect to an IMAP mailbox and return unseen messages as ``Item``.

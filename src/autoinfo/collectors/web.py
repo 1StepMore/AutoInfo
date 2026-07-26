@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 import trafilatura
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ RETRY_DELAYS = [2, 4, 8]  # exponential backoff in seconds
 # ---------------------------------------------------------------------------
 
 
-class WebHandler:
+class WebHandler(BaseHandler):
     """Fetch web pages and extract structured content via trafilatura.
 
     Usage::

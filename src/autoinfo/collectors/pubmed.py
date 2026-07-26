@@ -15,6 +15,7 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 # ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ RATE_LIMIT_WITH_KEY = 10  # requests / second (with API key)
 # ---------------------------------------------------------------------------
 
 
-class PubMedHandler:
+class PubMedHandler(BaseHandler):
     """Fetch PubMed articles using NCBI E-utilities.
 
     Usage::

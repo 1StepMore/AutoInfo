@@ -81,6 +81,8 @@ class DomainConfig:
     webhook_urls: list[str] = field(default_factory=list)
     quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
+    ttl_days: int = 90
+    freshness_threshold: float = 0.5
 
 
 @dataclass

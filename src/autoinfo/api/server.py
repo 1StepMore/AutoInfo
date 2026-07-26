@@ -20,7 +20,7 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from autoinfo import __version__
 from autoinfo.api.routes import router as api_v1_router
@@ -155,6 +155,15 @@ async def health() -> dict[str, Any]:
         "version": __version__,
         "uptime_s": round(time.time() - _server_start_time, 2),
     }
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Prometheus-format metrics for scraping."""
+    from autoinfo.metrics import format_prometheus, get_metrics
+
+    data = get_metrics()
+    return format_prometheus(data)
 
 
 # ---------------------------------------------------------------------------

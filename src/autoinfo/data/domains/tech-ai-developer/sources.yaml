@@ -1,0 +1,72 @@
+# AutoInfo demo domain: Tech/AI/Developer
+# Tracks trending open-source projects, developer news, tech community discussions, and product launches
+name: tech-ai-developer
+description: "Tech, AI, and developer intelligence — trending repos, developer news, community discussions"
+
+sources:
+  - name: GitHub Trending
+    type: api
+    url: https://api.github.com/repos
+    quality_tier: 1
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 60  # requests per hour (unauthenticated: 60)
+
+  - name: HackerNews API
+    type: api
+    url: https://hacker-news.firebaseio.com/v0
+    quality_tier: 2
+    frequency: hourly
+    access: free
+    rate_limit: 100
+
+  - name: Substack RSS (tech)
+    type: rss
+    url: https://example.com/tech-substack-feed
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+
+  - name: Stack Exchange
+    type: api
+    url: https://api.stackexchange.com/2.3
+    quality_tier: 2
+    frequency: hourly
+    access: free
+    rate_limit: 300  # requests per day
+
+  - name: ProductHunt
+    type: api
+    url: https://api.producthunt.com/v2/api/graphql
+    quality_tier: 2
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 10
+
+topics:
+  - name: "AI/ML Development"
+    keywords:
+      - artificial intelligence
+      - machine learning
+      - deep learning
+      - neural network
+      - AI tools
+      - LLM
+  - name: "Developer Tools"
+    keywords:
+      - developer tools
+      - framework
+      - open source
+      - github
+      - IDE
+      - devops
+  - name: "Tech Industry News"
+    keywords:
+      - technology news
+      - startup
+      - product launch
+      - funding
+      - software engineering
+      - tech community

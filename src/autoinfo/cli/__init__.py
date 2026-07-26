@@ -5,22 +5,27 @@ from __future__ import annotations
 import typer
 
 from . import (
+    audit,
     cefr,
     clean,
     collect,
+    cost,
     cron,
     doctor,
     domain,
     email,
+    enduser,
     kb,
     keywords,
     knowledge,
     output,
+    portal,
     process,
     sources,
     status,
     summaries,
     topics,
+    trace,
 )
 
 # Import init function directly (not as typer app — single-command module)
@@ -51,6 +56,7 @@ app.add_typer(status.app, name="status")
 app.add_typer(sources.app, name="sources")
 app.add_typer(topics.app, name="topics")
 app.add_typer(domain.app, name="domain")
+app.add_typer(audit.app, name="audit")
 app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
 app.add_typer(cefr.app, name="cefr")
@@ -60,6 +66,10 @@ app.add_typer(cron.app, name="cron")
 app.add_typer(summaries.app, name="summaries")
 app.add_typer(keywords.app, name="keywords", help="Manage per-domain keyword lifecycle")
 app.add_typer(knowledge.knowledge_app, name="knowledge")
+app.add_typer(cost.app, name="cost")
+app.add_typer(enduser.app, name="enduser")
+app.add_typer(portal.app, name="portal")
+app.add_typer(trace.app, name="trace")
 
 if __name__ == "__main__":
     app()

@@ -25,10 +25,11 @@ from autoinfo.config import (
     load_config,
     save_config,
 )
+from autoinfo.status import get_source_health
 
 app = typer.Typer(help="Manage collection sources")
 
-_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web"})
+_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf"})
 
 
 # ---------------------------------------------------------------------------
@@ -57,13 +58,31 @@ def _find_domain(config: Config, name: str) -> DomainConfig | None:
     return None
 
 
-def _validate_url(url: str) -> str | None:
-    """Return an error message if *url* is invalid, or ``None``."""
+def _validate_url(url: str, source_type: str | None = None) -> str | None:
+    """Return an error message if *url* is invalid, or ``None``.
+
+    Accepts different URL schemes depending on *source_type*:
+    - email: imap://, imaps://
+    - pdf: file://, http://, https://
+    - other types: http://, https://
+    """
     if not url or not isinstance(url, str):
         return "URL is required"
     url = url.strip()
-    if not url.startswith(("http://", "https://")):
-        return "URL must start with http:// or https://"
+    if not url:
+        return "URL is required"
+
+    _valid_schemes: tuple[str, ...]
+    if source_type == "email":
+        _valid_schemes = ("imap://", "imaps://")
+    elif source_type == "pdf":
+        _valid_schemes = ("file://", "http://", "https://")
+    else:
+        _valid_schemes = ("http://", "https://")
+
+    if not url.startswith(_valid_schemes):
+        schemes_str = ", ".join(s.rstrip("/") + "://" for s in _valid_schemes)
+        return f"URL must start with {schemes_str} for source type '{source_type or 'default'}'"
     parts = url.split("://", 1)
     if len(parts) != 2 or not parts[1]:
         return "URL must have a valid host"
@@ -109,7 +128,7 @@ def add(
 ) -> None:
     """Add a new source to a domain (idempotent by url + type + domain)."""
     # --- Validate arguments ---
-    url_error = _validate_url(url)
+    url_error = _validate_url(url, type)
     if url_error:
         typer.echo(f"Error: {url_error}", err=True)
         raise typer.Exit(1)
@@ -183,7 +202,7 @@ def add_sources(
         src_domain = src.get("domain", "")
 
         # Validate
-        url_err = _validate_url(src_url)
+        url_err = _validate_url(src_url, src_type)
         if url_err:
             typer.echo(f"  [{idx}] Error: {url_err} (name={src_name})", err=True)
             errored += 1
@@ -271,6 +290,9 @@ def remove(
     source_id: str = typer.Option(
         ..., "--source-id", help="Source identifier in 'domain:name' format"
     ),
+    domain: str = typer.Option(
+        None, "--domain", help="Domain name (deprecated — use --source-id instead)"
+    ),
 ) -> None:
     """Remove a source by its source_id (``domain:name``)."""
     parts = source_id.split(":", 1)
@@ -308,8 +330,6 @@ def health(
 ) -> None:
     """Check health status of a single source."""
     try:
-        from autoinfo.status import get_source_health
-
         result = get_source_health(source_id=source_id)
         if json_output:
             typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
@@ -329,7 +349,7 @@ def health(
         if latency is not None:
             typer.echo(f"Latency:      {latency:.0f} ms")
     except Exception as exc:
-        typer.echo(f"Error checking source health: {exc}", err=True)
+        typer.echo(f"Error checking source health: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -340,7 +360,7 @@ def test(
 ) -> None:
     """Test a source connection without adding it."""
     # Validate
-    url_error = _validate_url(url)
+    url_error = _validate_url(url, type)
     if url_error:
         typer.echo(f"Error: {url_error}", err=True)
         raise typer.Exit(1)

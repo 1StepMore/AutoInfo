@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 85,
+            "tools_count": 86,
     }
 
 
@@ -1611,6 +1611,16 @@ def _handle_get_collection_diff(since_collection_id: str) -> dict[str, Any]:
     return store.get_collection_diff(
         since_collection_id=since_collection_id
     )
+
+
+def _handle_get_domain_decay(
+    domain: str, ttl_days: int = 90
+) -> dict[str, Any]:
+    """Compute decay / staleness metrics for a domain."""
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    return store.get_domain_decay(domain=domain, ttl_days=ttl_days)
 
 
 def _handle_create_kb_draft(
@@ -3155,6 +3165,39 @@ def _handle_delete_user_data(name: str, arguments: dict) -> list[TextContent]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Cross-collection merge (F53)
+# ---------------------------------------------------------------------------
+
+
+def _handle_merge_items(
+    item_ids: list[str],
+    strategy: str = "simple",
+) -> dict[str, Any]:
+    """Merge multiple KB entries into one.
+
+    Parameters
+    ----------
+    item_ids:
+        List of KB entry IDs to merge (min 2).
+    strategy:
+        ``"simple"`` (default) or ``"title_first"``.
+
+    Returns
+    -------
+    dict
+        Merged result from :func:`autoinfo.quality.merge_items`.
+    """
+    from autoinfo.quality import merge_items
+
+    try:
+        result = merge_items(item_ids=item_ids, strategy=strategy)
+        return result
+    except Exception as exc:
+        logger.exception("merge_items failed")
+        return _error_dict(exc)
+
+
 def _error_dict(exc: Exception) -> dict[str, Any]:
     """Build a standardised error dict."""
     return {
@@ -4022,6 +4065,32 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["since_collection_id"],
+            },
+        ),
+        Tool(
+            name="get_domain_decay",
+            description=(
+                "Compute decay / staleness metrics for a domain. "
+                "Returns staleness ratio, average TTL remaining, "
+                "decay grade (GREEN/YELLOW/RED), and re-collection suggestions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name to compute decay metrics for",
+                    },
+                    "ttl_days": {
+                        "type": "integer",
+                        "description": (
+                            "Days before an entry is considered fully stale "
+                            "(default: 90)"
+                        ),
+                        "default": 90,
+                    },
+                },
+                "required": ["domain"],
             },
         ),
         # -- KB: Draft tools (3) ------------------------------------------
@@ -5133,6 +5202,27 @@ async def list_tools() -> list[Tool]:
                 "required": ["trace_id"],
             },
         ),
+        # -- Merge (1) -------------------------------------------------------
+        Tool(
+            name="merge_items",
+            description="Merge multiple KB entries into one (cross-collection dedup)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "item_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of KB entry IDs to merge",
+                    },
+                    "strategy": {
+                        "type": "string",
+                        "description": "Merge strategy: 'simple' or 'title_first'",
+                        "default": "simple",
+                    },
+                },
+                "required": ["item_ids"],
+            },
+        ),
     ]
 
 
@@ -5241,6 +5331,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_get_collection_stats(**arguments)
         elif name == "get_collection_diff":
             result = _handle_get_collection_diff(**arguments)
+
+        elif name == "get_domain_decay":
+            result = _handle_get_domain_decay(**arguments)
 
         # -- KB: Draft tools (3) ------------------------------------------
         elif name == "create_kb_draft":
@@ -5363,6 +5456,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return _handle_export_user_data(name, arguments)
         elif name == "delete_user_data":
             return _handle_delete_user_data(name, arguments)
+
+        # -- Merge (1) ------------------------------------------------
+        elif name == "merge_items":
+            result = _handle_merge_items(**arguments)
 
         else:
             return [

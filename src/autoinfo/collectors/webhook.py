@@ -18,6 +18,7 @@ import time
 from collections import deque
 from typing import Any
 
+from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ REQUIRED_FIELDS = frozenset({"title", "content", "source_url"})
 # ---------------------------------------------------------------------------
 
 
-class WebhookHandler:
+class WebhookHandler(BaseHandler):
     """Validate and process webhook payloads into :class:`Item` instances.
 
     Usage::
@@ -53,6 +54,10 @@ class WebhookHandler:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:  # type: ignore[override]
+        """Webhook is push-based; pull-based fetch returns nothing."""
+        return []
 
     def handle(
         self,

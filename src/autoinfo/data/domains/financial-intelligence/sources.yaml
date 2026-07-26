@@ -1,0 +1,65 @@
+# AutoInfo demo domain: Financial/Business Intelligence
+# Tracks market data, economic indicators, corporate filings, and financial news
+name: financial-intelligence
+description: "Financial and business intelligence — market data, economic indicators, corporate filings"
+
+sources:
+  - name: Alpha Vantage
+    type: api
+    url: https://www.alphavantage.co/query
+    quality_tier: 1
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 5  # requests per minute
+
+  - name: FRED
+    type: api
+    url: https://api.stlouisfed.org/fred
+    quality_tier: 1
+    frequency: daily
+    access: free
+    rate_limit: 120  # requests per minute
+
+  - name: SEC EDGAR
+    type: api
+    url: https://www.sec.gov/cgi-bin/browse-edgar
+    quality_tier: 1
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 10  # requests per second
+
+  - name: Yahoo Finance
+    type: api
+    url: https://query1.finance.yahoo.com/v8/finance/chart
+    quality_tier: 2
+    frequency: hourly
+    access: free
+    rate_limit: 100
+
+topics:
+  - name: "Market Trends"
+    keywords:
+      - stock market
+      - S&P 500
+      - market trends
+      - equities
+      - trading
+      - market analysis
+  - name: "Economic Indicators"
+    keywords:
+      - GDP
+      - inflation
+      - unemployment
+      - federal reserve
+      - economic data
+      - consumer price index
+  - name: "Corporate Filings"
+    keywords:
+      - SEC filing
+      - 10-K
+      - 10-Q
+      - earnings report
+      - financial disclosure
+      - quarterly results

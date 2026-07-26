@@ -28,6 +28,9 @@ class Item:
     topic_tags: list[str] = field(default_factory=list)
     quality_tier: int = 1
     raw_data: dict[str, Any] = field(default_factory=dict)
+    version: int = 1
+    previous_version: int = 0
+    supersedes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -188,6 +191,9 @@ class KBEntry:
     linked_entries: list[str] = field(default_factory=list)
     quality_flags: dict[str, bool] = field(default_factory=dict)
     user_id: str = ""  # Multi-user support — empty string means "all users"
+    version: int = 1
+    previous_version: int = 0
+    supersedes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

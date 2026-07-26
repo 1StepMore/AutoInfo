@@ -35,6 +35,10 @@ def collect(
         False, "--auto-process", help="Run processing immediately after collection",
     ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    force_full: bool = typer.Option(
+        False, "--force-full", "-f",
+        help="Skip dedup/incremental logic — collect all items fresh",
+    ),
 ) -> None:
     """Collect items from configured sources."""
     # -- Validate mutually exclusive flags ---------------------------------
@@ -87,13 +91,16 @@ def collect(
             results: list[dict[str, Any]] = []
             for dom in active_domains:
                 typer.echo(f"── Collecting for domain '{dom}' ──")
-                dom_result = run_collection(
+                run_kwargs: dict[str, Any] = dict(
                     domain=dom,
                     topic=topic,
                     sources=sources,
                     limit=limit,
                     dry_run=dry_run,
                 )
+                if force_full:
+                    run_kwargs["force_full"] = True
+                dom_result = run_collection(**run_kwargs)
                 results.append(dom_result)
                 if not json_output:
                     _print_human(dom_result)
@@ -125,13 +132,16 @@ def collect(
 
         else:
             # -- Single-domain collection (existing behavior) --------------
-            result = run_collection(
+            run_kwargs: dict[str, Any] = dict(
                 domain=domain,
                 topic=topic,
                 sources=sources,
                 limit=limit,
                 dry_run=dry_run,
             )
+            if force_full:
+                run_kwargs["force_full"] = True
+            result = run_collection(**run_kwargs)
 
             # -- Output ----------------------------------------------------
             if json_output:

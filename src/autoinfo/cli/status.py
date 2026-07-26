@@ -19,8 +19,22 @@ app = typer.Typer()
 def status(
     domain: str = typer.Option(None, "--domain", help="Domain filter"),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
+    metrics: bool = typer.Option(
+        False, "--metrics", help="Output Prometheus-formatted metrics"
+    ),
 ) -> None:
     """Show collection overview and system status."""
+    if metrics:
+        try:
+            from autoinfo.metrics import format_prometheus, get_metrics
+
+            data = get_metrics()
+            typer.echo(format_prometheus(data))
+        except Exception as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+        return
+
     try:
         from autoinfo.status import show_status
 

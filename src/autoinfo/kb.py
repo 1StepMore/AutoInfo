@@ -239,6 +239,15 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN cefr TEXT DEFAULT ''")
             except Exception:
                 pass
+            # Migration: add deleted / deleted_at columns (v1.6 — soft-delete)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN deleted INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -3332,6 +3341,154 @@ class KBStore:
             "files_found": files_found,
             "fts5_indexed": fts5_count,
             "errors": sync_errors,
+        }
+
+    # ------------------------------------------------------------------
+    # Soft-delete, restore, and GDPR user data management
+    # ------------------------------------------------------------------
+
+    def soft_delete_entry(self, entry_id: str) -> dict[str, Any]:
+        """Mark an entry as deleted without removing it from disk.
+
+        Sets ``deleted=1`` and ``deleted_at`` to the current UTC timestamp
+        in both the SQLite index and the YAML frontmatter of the Markdown
+        file.  The entry can be restored later with :meth:`restore_entry`.
+
+        Returns ``{"deleted": True, "entry_id": ...}`` on success, or an
+        error dict when the entry is not found.
+        """
+        meta = self.index.get_entry(entry_id)
+        if meta is None:
+            return {
+                "deleted": False,
+                "entry_id": entry_id,
+                "error": "Entry not found",
+            }
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self.index._connect() as conn:
+            conn.execute(
+                "UPDATE entries SET deleted = 1, deleted_at = ? WHERE entry_id = ?",
+                (now, entry_id),
+            )
+
+        file_path = Path(meta["file_path"]) if meta.get("file_path") else None
+        if file_path and file_path.is_file():
+            raw = file_path.read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end = raw.find("---", 3)
+                if end != -1:
+                    fm_data = yaml.safe_load(raw[3:end]) or {}
+                    fm_data["deleted"] = True
+                    fm_data["deleted_at"] = now
+                    new_fm = yaml.dump(
+                        fm_data,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                        sort_keys=False,
+                        width=120,
+                    )
+                    body = raw[end + 3:].lstrip("\n")
+                    file_path.write_text(
+                        f"---\n{new_fm}---\n\n{body}", encoding="utf-8"
+                    )
+
+        return {
+            "deleted": True,
+            "entry_id": entry_id,
+            "title": meta.get("title", ""),
+            "deleted_at": now,
+        }
+
+    def restore_entry(self, entry_id: str) -> dict[str, Any]:
+        """Restore a soft-deleted entry.
+
+        Removes the ``deleted`` and ``deleted_at`` flags from both the
+        SQLite index and the YAML frontmatter.
+
+        Returns ``{"restored": True, "entry_id": ...}`` on success, or an
+        error dict when the entry is not deleted or not found.
+        """
+        meta = self.index.get_entry(entry_id)
+        if meta is None:
+            return {
+                "restored": False,
+                "entry_id": entry_id,
+                "error": "Entry not found",
+            }
+
+        if not meta.get("deleted"):
+            return {
+                "restored": False,
+                "entry_id": entry_id,
+                "error": "Entry is not deleted",
+            }
+
+        with self.index._connect() as conn:
+            conn.execute(
+                "UPDATE entries SET deleted = 0, deleted_at = '' WHERE entry_id = ?",
+                (entry_id,),
+            )
+
+        file_path = Path(meta["file_path"]) if meta.get("file_path") else None
+        if file_path and file_path.is_file():
+            raw = file_path.read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end = raw.find("---", 3)
+                if end != -1:
+                    fm_data = yaml.safe_load(raw[3:end]) or {}
+                    fm_data.pop("deleted", None)
+                    fm_data.pop("deleted_at", None)
+                    new_fm = yaml.dump(
+                        fm_data,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                        sort_keys=False,
+                        width=120,
+                    )
+                    body = raw[end + 3:].lstrip("\n")
+                    file_path.write_text(
+                        f"---\n{new_fm}---\n\n{body}", encoding="utf-8"
+                    )
+
+        return {
+            "restored": True,
+            "entry_id": entry_id,
+            "title": meta.get("title", ""),
+        }
+
+    def delete_user_data(self, user_id: str) -> dict[str, Any]:
+        """Soft-delete all entries belonging to *user_id*.
+
+        Iterates over every entry in the index with a matching ``user_id``
+        and calls :meth:`soft_delete_entry` on each one.  This implements
+        the "right to be forgotten" soft-deletion path — entries remain
+        recoverable until the retention window expires.
+
+        Returns a summary dict with the count of deleted entries.
+        """
+        with self.index._connect() as conn:
+            rows = conn.execute(
+                "SELECT entry_id FROM entries WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+
+        deleted_ids: list[str] = []
+        errors: list[dict[str, Any]] = []
+
+        for row in rows:
+            result = self.soft_delete_entry(row["entry_id"])
+            if result.get("deleted"):
+                deleted_ids.append(row["entry_id"])
+            else:
+                errors.append(result)
+
+        return {
+            "deleted_count": len(deleted_ids),
+            "deleted_entry_ids": deleted_ids,
+            "errors": errors,
+            "user_id": user_id,
         }
 
 

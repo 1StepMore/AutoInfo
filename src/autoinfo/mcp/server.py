@@ -896,7 +896,7 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _handle_remove_source(source_id: str, confirm: bool = False) -> dict[str, Any]:
+def _handle_remove_source(source_id: str, confirm: bool = True) -> dict[str, Any]:
     """Remove a source by its source_id (``domain:name``)."""
     if not confirm:
         return {
@@ -1098,7 +1098,7 @@ def _handle_add_topic(
     }
 
 
-def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = False) -> dict[str, Any]:
+def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True) -> dict[str, Any]:
     """Remove a topic by its topic_id (``domain:name``)."""
     if not confirm:
         return {
@@ -3025,6 +3025,131 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
     return {"config": config_dict}
 
 
+def _handle_trace_item(name: str, arguments: dict) -> list[TextContent]:
+    """Trace the full pipeline history for a trace_id.
+
+    Searches pipeline logs (``logs/pipeline-*.log``) and KB frontmatter
+    for all events associated with the trace_id.
+    """
+    trace_id = arguments["trace_id"]
+
+    # -- Search pipeline logs ---------------------------------------------
+    pipeline_events: list[dict[str, Any]] = []
+    log_dir = Path("logs")
+    if log_dir.is_dir():
+        for log_file in sorted(log_dir.glob("pipeline-*.log"), reverse=True):
+            try:
+                lines = log_file.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if entry.get("trace_id") == trace_id or (
+                    isinstance(entry.get("extra"), dict)
+                    and entry["extra"].get("trace_ids")
+                    and trace_id in entry["extra"]["trace_ids"]
+                ):
+                    pipeline_events.append(entry)
+            if pipeline_events:
+                break
+
+    # -- Search KB frontmatter for the entry ----------------------------
+    kb_entries: list[dict[str, Any]] = []
+    knowledge_dir = Path("knowledge")
+    if knowledge_dir.is_dir():
+        import yaml as _yaml
+        for md_file in knowledge_dir.rglob("*.md"):
+            try:
+                content = md_file.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            if not content.startswith("---"):
+                continue
+            parts = content.split("---", 2)
+            if len(parts) < 3:
+                continue
+            try:
+                fm = _yaml.safe_load(parts[1])
+            except Exception:
+                continue
+            if isinstance(fm, dict) and fm.get("trace_id") == trace_id:
+                kb_entries.append({
+                    "entry_id": fm.get("entry_id", ""),
+                    "title": fm.get("title", ""),
+                    "domain": fm.get("domain", ""),
+                    "tier": fm.get("tier", ""),
+                    "file_path": str(md_file),
+                    "collected_at": fm.get("collected_at", ""),
+                    "language": fm.get("language", ""),
+                    "dedup_status": fm.get("dedup_status", ""),
+                })
+
+    # -- Timeline from pipeline events -----------------------------------
+    timeline: list[dict[str, Any]] = []
+    for evt in pipeline_events:
+        timeline.append({
+            "stage": evt.get("module", "?"),
+            "timestamp": evt.get("timestamp", ""),
+            "status": evt.get("level", "?"),
+            "message": evt.get("message", ""),
+            "item_id": evt.get("item_id", ""),
+        })
+
+    result: dict[str, Any] = {
+        "trace_id": trace_id,
+        "pipeline_events": pipeline_events,
+        "timeline": timeline,
+        "kb_entries": kb_entries,
+        "event_count": len(pipeline_events),
+        "kb_entry_count": len(kb_entries),
+    }
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+def _handle_get_metrics(name: str, arguments: dict) -> list[TextContent]:
+    domain = arguments.get("domain")
+    from autoinfo.metrics import get_metrics as _get_metrics
+    metrics = _get_metrics(domain=domain)
+    return [TextContent(type="text", text=json.dumps(metrics, indent=2))]
+
+
+def _handle_soft_delete_entry(name: str, arguments: dict) -> list[TextContent]:
+    from autoinfo.kb import KBStore
+    store = KBStore()
+    result = store.soft_delete_entry(arguments["entry_id"])
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+def _handle_restore_entry(name: str, arguments: dict) -> list[TextContent]:
+    from autoinfo.kb import KBStore
+    store = KBStore()
+    result = store.restore_entry(arguments["entry_id"])
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+def _handle_export_user_data(name: str, arguments: dict) -> list[TextContent]:
+    from autoinfo.user_store import get_profile
+    profile = get_profile(arguments["user_id"])
+    result = {"user_id": arguments["user_id"], "profile": profile}
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+def _handle_delete_user_data(name: str, arguments: dict) -> list[TextContent]:
+    from autoinfo.kb import KBStore
+    store = KBStore()
+    purge = arguments.get("purge", False)
+    if not purge:
+        return [TextContent(type="text", text=json.dumps({"error": "Must set purge=True for permanent deletion"}))]
+    result = store.delete_user_data(arguments["user_id"])
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
 # ---------------------------------------------------------------------------
 # Error response helper
 # ---------------------------------------------------------------------------
@@ -4932,6 +5057,82 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
+        # -- Metrics (1) --------------------------------------------------
+        Tool(
+            name="get_metrics",
+            description="Get Prometheus-format metrics for monitoring",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain filter",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        # -- Soft-delete & GDPR (4) -------------------------------------------
+        Tool(
+            name="soft_delete_entry",
+            description="Mark an entry as deleted without permanent removal",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                },
+                "required": ["entry_id"],
+            },
+        ),
+        Tool(
+            name="restore_entry",
+            description="Restore a soft-deleted entry",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                },
+                "required": ["entry_id"],
+            },
+        ),
+        Tool(
+            name="export_user_data",
+            description="Export all data for a user (GDPR compliance)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                },
+                "required": ["user_id"],
+            },
+        ),
+        Tool(
+            name="delete_user_data",
+            description="Delete all user data (GDPR right to be forgotten)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "purge": {"type": "boolean"},
+                },
+                "required": ["user_id"],
+            },
+        ),
+        # -- Trace (1) -------------------------------------------------------
+        Tool(
+            name="trace_item",
+            description="Trace the full pipeline history for a trace_id",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "trace_id": {
+                        "type": "string",
+                        "description": "UUID trace identifier from collection",
+                    },
+                },
+                "required": ["trace_id"],
+            },
+        ),
     ]
 
 
@@ -5110,6 +5311,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_get_domain_webhooks(**arguments)
 
         # -- Init / Project / Batch / Config (7) --------------------------
+        elif name == "init_project":
             result = _handle_init_project(**arguments)
         elif name == "list_projects":
             result = _handle_list_projects()
@@ -5144,6 +5346,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "remove_alert_rule":
             result = _handle_remove_alert_rule(**arguments)
 
+        # -- Metrics (1) --------------------------------------------------
+        elif name == "get_metrics":
+            return _handle_get_metrics(name, arguments)
+
+        # -- Trace (1) ----------------------------------------------------
+        elif name == "trace_item":
+            return _handle_trace_item(name, arguments)
+
+        # -- Soft-delete & GDPR (4) -----------------------------------------
+        elif name == "soft_delete_entry":
+            return _handle_soft_delete_entry(name, arguments)
+        elif name == "restore_entry":
+            return _handle_restore_entry(name, arguments)
+        elif name == "export_user_data":
+            return _handle_export_user_data(name, arguments)
+        elif name == "delete_user_data":
+            return _handle_delete_user_data(name, arguments)
+
         else:
             return [
                 TextContent(
@@ -5157,12 +5377,19 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             ]
 
         # Wrap non-health responses in uniform envelope
+        # Backward-compat: include both flat error_code (legacy) and nested error (new)
         if isinstance(result, dict) and "error_code" in result:
-            wrapped = error_response(
-                code=result["error_code"],
-                message=result.get("message", ""),
-                actionable=result.get("actionable", True),
-            )
+            wrapped = {
+                "success": False,
+                "error_code": result["error_code"],
+                "message": result.get("message", ""),
+                "actionable": result.get("actionable", True),
+                "error": {
+                    "code": result["error_code"],
+                    "message": result.get("message", ""),
+                    "actionable": result.get("actionable", True),
+                },
+            }
         else:
             wrapped = success_response(result)
         return [TextContent(type="text", text=json.dumps(wrapped))]

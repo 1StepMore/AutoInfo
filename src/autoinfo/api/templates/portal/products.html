@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Products — {{ user_id }} — AutoInfo Portal{% endblock %}
+{% block nav_products %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h3 mb-0">
+      <i class="bi bi-box-seam text-primary me-2"></i>Products
+    </h1>
+    <p class="text-muted small mb-0">Archive of delivered products across configured domains</p>
+  </div>
+  <span class="badge text-bg-secondary">{{ product_count }} total</span>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    {% if products %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Product ID</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Domain</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in products %}
+          <tr>
+            <td><code>{{ product.id }}</code></td>
+            <td>{{ product.name or "—" }}</td>
+            <td>
+              {% set pt = product.type %}
+              {% if pt == "raw" %}
+                <span class="badge text-bg-secondary"><i class="bi bi-file-earmark-raw"></i> {{ pt }}</span>
+              {% elif pt == "processed" %}
+                <span class="badge text-bg-info"><i class="bi bi-file-earmark-text"></i> {{ pt }}</span>
+              {% else %}
+                <span class="badge text-bg-light border">{{ pt }}</span>
+              {% endif %}
+            </td>
+            <td><span class="badge text-bg-light border">{{ product.domain }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-box-seam fs-1 d-block mb-2 opacity-50"></i>
+      <p class="mb-0">No products available.</p>
+      <p class="text-muted small">Products are derived from configured domains.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

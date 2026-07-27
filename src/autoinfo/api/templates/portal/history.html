@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Delivery History — {{ user_id }} — AutoInfo Portal{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h3 mb-0">
+      <i class="bi bi-clock-history text-primary me-2"></i>Delivery History
+    </h1>
+    <p class="text-muted small mb-0">Append-only log of all delivery attempts</p>
+  </div>
+  <span class="badge text-bg-secondary">{{ total }} total</span>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    {% if entries %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Log ID</th>
+            <th>Channel</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Attempts</th>
+            <th>Last Attempt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+          <tr>
+            <td><code>{{ entry.log_id[:8] }}…</code></td>
+            <td>
+              {% set ch = entry.channel %}
+              {% if ch == "smtp" %}
+                <span class="badge text-bg-primary"><i class="bi bi-envelope"></i> {{ ch }}</span>
+              {% elif ch == "webhook" %}
+                <span class="badge text-bg-info"><i class="bi bi-link-45deg"></i> {{ ch }}</span>
+              {% elif ch == "telegram" %}
+                <span class="badge text-bg-info"><i class="bi bi-telegram"></i> {{ ch }}</span>
+              {% else %}
+                <span class="badge text-bg-light border">{{ ch }}</span>
+              {% endif %}
+            </td>
+            <td>{{ entry.message_type }}</td>
+            <td>
+              {% set st = entry.status %}
+              {% if st == "success" %}
+                <span class="badge text-bg-success">{{ st }}</span>
+              {% elif st == "failed" %}
+                <span class="badge text-bg-danger">{{ st }}</span>
+              {% elif st == "retrying" %}
+                <span class="badge text-bg-warning">{{ st }}</span>
+              {% else %}
+                <span class="badge text-bg-light border">{{ st }}</span>
+              {% endif %}
+            </td>
+            <td>{{ entry.attempt_count }}</td>
+            <td><small>{{ entry.last_attempt or "—" }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+      <p class="mb-0">No delivery history found.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if entries or total > 0 %}
+<nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Pagination">
+  <span class="small text-muted">
+    {% if total > 0 %}
+      Showing {{ showing_from }}–{{ showing_to }} of {{ total }}
+    {% else %}
+      No entries
+    {% endif %}
+  </span>
+  <div class="btn-group btn-group-sm">
+    <a class="btn btn-outline-secondary {% if not has_prev %}disabled{% endif %}"
+       href="/portal/{{ user_id }}/history?limit={{ limit }}&offset={{ prev_offset }}"
+       {% if not has_prev %}aria-disabled="true" tabindex="-1"{% endif %}>
+      &laquo; Prev
+    </a>
+    <a class="btn btn-outline-secondary {% if not has_next %}disabled{% endif %}"
+       href="/portal/{{ user_id }}/history?limit={{ limit }}&offset={{ next_offset }}"
+       {% if not has_next %}aria-disabled="true" tabindex="-1"{% endif %}>
+      Next &raquo;
+    </a>
+  </div>
+</nav>
+{% endif %}
+{% endblock %}

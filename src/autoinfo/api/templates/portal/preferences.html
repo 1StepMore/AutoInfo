@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Preferences — {{ user_id }} — AutoInfo Portal{% endblock %}
+{% block nav_preferences %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h3 mb-0">
+      <i class="bi bi-sliders text-primary me-2"></i>Delivery Preferences
+    </h1>
+    <p class="text-muted small mb-0">Read-only view of your delivery configuration</p>
+  </div>
+  <span class="badge text-bg-secondary">
+    <i class="bi bi-eye"></i> Read-only
+  </span>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center">
+    <i class="bi bi-person me-2"></i>
+    <span class="fw-semibold">{{ profile.name or user_id }}</span>
+    <span class="text-muted small ms-2">· {{ profile.email or "no email" }}</span>
+  </div>
+  <div class="card-body">
+    {% if preferences_items %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 35%">Preference Key</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key, value in preferences_items %}
+          <tr>
+            <td><code class="pref-key">{{ key }}</code></td>
+            <td>
+              {% if value is mapping %}
+                <pre class="pref-val mb-0 small">{{ value | tojson(indent=2) }}</pre>
+              {% elif value is iterable and value is not string %}
+                <code class="pref-val">{{ value | join(", ") }}</code>
+              {% elif value is string %}
+                <code class="pref-val">{{ value }}</code>
+              {% elif value is boolean %}
+                {% if value %}
+                  <span class="badge text-bg-success">true</span>
+                {% else %}
+                  <span class="badge text-bg-secondary">false</span>
+                {% endif %}
+              {% elif value is none %}
+                <span class="text-muted">null</span>
+              {% else %}
+                <code class="pref-val">{{ value }}</code>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+      <p class="mb-0">No delivery preferences configured.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">
+    <i class="bi bi-info-circle me-2"></i>
+    <span class="fw-semibold">Raw JSON</span>
+  </div>
+  <div class="card-body">
+    {% if preferences_items %}
+    <pre class="mb-0 small bg-body-tertiary p-3 rounded"><code>{{ preferences | tojson(indent=2) }}</code></pre>
+    {% else %}
+    <pre class="mb-0 small bg-body-tertiary p-3 rounded"><code>{}</code></pre>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -126,6 +126,68 @@ def get_schedule(name: str) -> Schedule | None:
     return load_schedules().get(name)
 
 
+def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
+    """Return status for all schedules or a specific one.
+
+    Parameters
+    ----------
+    schedule_id : str | None
+        Optional schedule name to filter.  When ``None``, returns all.
+
+    Returns
+    -------
+    list[dict]
+        Each dict contains: ``schedule_id``, ``domain``, ``cron_expr``,
+        ``is_active``, ``last_run``, ``next_run``, ``schedule_type``,
+        ``recipients``.
+        Returns empty list when no schedules are configured.
+    """
+    import sys
+
+    now = datetime.now(timezone.utc)
+    result: list[dict] = []
+
+    schedules = load_schedules()
+    if not schedules:
+        return result
+
+    # Lazy import croniter — only needed for next_run computation
+    croniter_mod = sys.modules.get("croniter")
+    if croniter_mod is None:
+        try:
+            import croniter as croniter_mod  # type: ignore[no-redef]
+        except ImportError:
+            croniter_mod = None  # type: ignore[assignment]
+
+    for name, s in schedules.items():
+        if schedule_id is not None and name != schedule_id:
+            continue
+
+        next_run: str | None = None
+        if s.enabled and croniter_mod is not None:
+            try:
+                base = (
+                    datetime.fromisoformat(s.last_run) if s.last_run else now
+                )
+                cron = croniter_mod.croniter(s.expression, base)
+                next_run = cron.get_next(datetime).isoformat()
+            except Exception:
+                pass
+
+        result.append({
+            "schedule_id": name,
+            "domain": s.domain,
+            "cron_expr": s.expression,
+            "is_active": s.enabled,
+            "last_run": s.last_run,
+            "next_run": next_run,
+            "schedule_type": s.type,
+            "recipients": s.recipients if s.type == "digest" else [],
+        })
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Cron check logic
 # ---------------------------------------------------------------------------

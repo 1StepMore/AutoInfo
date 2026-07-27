@@ -11,18 +11,21 @@ Port and host are configurable via ``.autoinfo/config.yaml`` under the
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import uvicorn
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from autoinfo import __version__
+from autoinfo.api.portal import router as portal_router
 from autoinfo.api.routes import router as api_v1_router
 from autoinfo.config import RestAPIConfig
 
@@ -104,6 +107,12 @@ app.add_middleware(
 app.include_router(api_v1_router, prefix="/api/v1")
 
 # ---------------------------------------------------------------------------
+# Portal router — read-only end-user dashboard (Jinja2 + Bootstrap 5)
+# ---------------------------------------------------------------------------
+
+app.include_router(portal_router)
+
+# ---------------------------------------------------------------------------
 # Dashboard (read-only web UI)
 # ---------------------------------------------------------------------------
 
@@ -164,6 +173,81 @@ async def metrics() -> str:
 
     data = get_metrics()
     return format_prometheus(data)
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/webhook/stripe")
+async def stripe_webhook(request: Request) -> JSONResponse:
+    """Accept Stripe webhook events with signature verification.
+
+    Verifies the webhook signature using ``stripe.Webhook.construct_event``.
+    When ``STRIPE_WEBHOOK_SECRET`` is not configured, verification is
+    skipped and a warning is logged (dev/stripe-mock mode).
+
+    Returns a ``JSONResponse`` on invalid signature (400) or the result
+    dict from :func:`autoinfo.billing.handle_webhook` on success.
+    """
+    payload = await request.body()
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    # --- Resolve webhook secret ------------------------------------------------
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    if not webhook_secret:
+        # Try config file as fallback
+        try:
+            from autoinfo.config import get_config_path, load_config
+
+            config_path = get_config_path()
+            if config_path:
+                cfg = load_config(config_path)
+                webhook_secret = cfg.stripe.webhook_secret
+        except Exception:
+            logger.debug(
+                "Could not load stripe.webhook_secret from config", exc_info=True,
+            )
+
+    # --- Signature verification ------------------------------------------------
+    if webhook_secret:
+        try:
+            import stripe
+
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except ValueError as exc:
+            logger.warning("Stripe webhook: invalid payload: %s", exc)
+            return JSONResponse(
+                status_code=400,
+                content={"error": "invalid_signature", "detail": str(exc)},
+            )
+        except stripe.error.SignatureVerificationError as exc:
+            logger.warning("Stripe webhook: signature verification failed: %s", exc)
+            return JSONResponse(
+                status_code=400,
+                content={"error": "invalid_signature", "detail": str(exc)},
+            )
+    else:
+        # Dev mode: no secret configured — parse raw JSON
+        logger.warning(
+            "STRIPE_WEBHOOK_SECRET not set — "
+            "skipping signature verification (dev mode)",
+        )
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "invalid_payload", "detail": str(exc)},
+            )
+
+    # --- Dispatch to billing handler -------------------------------------------
+    from autoinfo.billing import handle_webhook
+
+    result = handle_webhook(dict(event))
+    return JSONResponse(content=result)
 
 
 # ---------------------------------------------------------------------------

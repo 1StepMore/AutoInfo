@@ -58,7 +58,20 @@ class SourceConfig:
     type: str = "api"
     url: str = ""
     quality_tier: int = 1
+    tos_classification: str = "open"
     settings: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Auto-map ``tos_classification`` from ``quality_tier`` when not explicitly set.
+
+        The heuristic: if the current value is ``"open"`` (the dataclass default)
+        but the tier maps to something different, the caller did not provide an
+        explicit value, so we derive from the tier.
+        """
+        _TIER_TOS_MAP: dict[int, str] = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+        mapped = _TIER_TOS_MAP.get(self.quality_tier, "open")
+        if self.tos_classification == "open" and mapped != "open":
+            self.tos_classification = mapped
 
 
 @dataclass
@@ -83,6 +96,20 @@ class DomainConfig:
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
     ttl_days: int = 90
     freshness_threshold: float = 0.5
+
+    def __post_init__(self):
+        """Apply domain-specific TTL defaults for built-in demo domains."""
+        domain_defaults = {
+            "medical-research": 180,
+            "ai-commercial": 30,
+            "financial-intelligence": 7,
+            "tech-ai-developer": 90,
+            "language-learning": 365,
+        }
+        if self.name in domain_defaults and self.ttl_days == 90:
+            # Only override when ttl_days is the global default (90),
+            # preserving any explicitly configured value.
+            self.ttl_days = domain_defaults[self.name]
 
 
 @dataclass
@@ -118,6 +145,7 @@ class QualityGateConfig:
     retry_models: list[str] = field(default_factory=list)
     action: str = "flag"  # hard: block | retry; soft: retry | flag | skip | archive
     threshold: float | None = None
+    window_days: int = 0  # G2 dedup time window (0 = no window limit)
 
 
 @dataclass
@@ -185,11 +213,37 @@ class CostRatesConfig:
 
 
 @dataclass
+class CostAlertsConfig:
+    """Budget alert thresholds and auto-remediation configuration.
+
+    Attributes
+    ----------
+    budget_thresholds:
+        Percentage thresholds (0-100+) at which budget alerts fire.
+        Defaults to ``[50.0, 75.0, 90.0, 100.0]``.
+    auto_remediation_enabled:
+        Whether auto-remediation is active (V2 — not implemented).
+    alert_webhook:
+        Optional webhook URL for budget alert notifications.
+    """
+
+    budget_thresholds: list[float] = field(default_factory=lambda: [50.0, 75.0, 90.0, 100.0])
+    auto_remediation_enabled: bool = False
+    alert_webhook: str = ""
+
+
+@dataclass
 class RestAPIConfig:
     """REST API server settings."""
     enabled: bool = True
     port: int = 8741
     host: str = "127.0.0.1"
+
+
+@dataclass
+class StripeConfig:
+    """Stripe integration settings."""
+    webhook_secret: str = ""
 
 
 @dataclass
@@ -223,12 +277,14 @@ class Config:
     cefr: CEFRConfig = field(default_factory=CEFRConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
     rest_api: RestAPIConfig = field(default_factory=RestAPIConfig)
+    stripe: StripeConfig = field(default_factory=StripeConfig)
     vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
     cron: CronConfig = field(default_factory=CronConfig)
     multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
     quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
     cost_rates: CostRatesConfig = field(default_factory=CostRatesConfig)
+    cost_alerts: CostAlertsConfig = field(default_factory=CostAlertsConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -323,17 +379,24 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     domains = []
     for d in domains_raw:
         sources_raw: list[dict[str, Any]] = d.get("sources", []) or []
-        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier"})
-        sources = [
-            SourceConfig(
-                name=s.get("name", ""),
-                type=s.get("type", "api"),
-                url=s.get("url", ""),
-                quality_tier=s.get("quality_tier", 1),
-                settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
+        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification"})
+        _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+        sources = []
+        for s in sources_raw:
+            tier = s.get("quality_tier", 1)
+            tos = s.get("tos_classification")
+            if not tos:
+                tos = _TIER_TOS_MAP.get(tier, "open")
+            sources.append(
+                SourceConfig(
+                    name=s.get("name", ""),
+                    type=s.get("type", "api"),
+                    url=s.get("url", ""),
+                    quality_tier=tier,
+                    tos_classification=tos,
+                    settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
+                )
             )
-            for s in sources_raw
-        ]
         topics_raw: list[dict[str, Any]] = d.get("topics", []) or []
         topics = [
             TopicConfig(
@@ -356,6 +419,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 retry_models=list(gc.get("retry_models", [])),
                 action=str(gc.get("action", "flag")),
                 threshold=gc.get("threshold", None),
+                window_days=int(gc.get("window_days", 0)),
             )
         # --- Parse per-domain delivery_gates ---
         domain_dg_raw: dict[str, Any] = d.get("delivery_gates", {}) or {}
@@ -393,6 +457,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             retry_models=list(gc.get("retry_models", [])),
             action=str(gc.get("action", "flag")),
             threshold=gc.get("threshold", None),
+            window_days=int(gc.get("window_days", 0)),
         )
 
     delivery_gates_raw: dict[str, Any] = raw.get("delivery_gates", {}) or {}
@@ -428,6 +493,14 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         per_mb=float(storage_raw.get("per_mb", 0.01)),
     )
 
+    # --- Parse cost_alerts section ---
+    cost_alerts_raw: dict[str, Any] = raw.get("cost_alerts", {}) or {}
+    cost_alerts = CostAlertsConfig(
+        budget_thresholds=list(cost_alerts_raw.get("budget_thresholds", [50.0, 75.0, 90.0, 100.0])),
+        auto_remediation_enabled=bool(cost_alerts_raw.get("auto_remediation_enabled", False)),
+        alert_webhook=str(cost_alerts_raw.get("alert_webhook", "")),
+    )
+
     # --- Parse new v1.2 sections ---
     def _dict_or_empty(key: str) -> dict[str, Any]:
         return raw.get(key, {}) or {}
@@ -435,6 +508,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     cefr_raw = _dict_or_empty("cefr")
     email_raw = _dict_or_empty("email")
     rest_api_raw = _dict_or_empty("rest_api")
+    stripe_raw = _dict_or_empty("stripe")
     vector_search_raw = _dict_or_empty("vector_search")
     cron_raw = _dict_or_empty("cron")
     multi_user_raw = _dict_or_empty("multi_user")
@@ -473,6 +547,9 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             port=int(rest_api_raw.get("port", 8741)),
             host=str(rest_api_raw.get("host", "127.0.0.1")),
         ),
+        stripe=StripeConfig(
+            webhook_secret=str(stripe_raw.get("webhook_secret", "")),
+        ),
         vector_search=VectorSearchConfig(
             enabled=bool(vector_search_raw.get("enabled", False)),
             model=str(vector_search_raw.get("model", "")),
@@ -494,6 +571,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             api_calls=api_call_rates,
             storage=storage_rate,
         ),
+        cost_alerts=cost_alerts,
     )
 
 
@@ -609,7 +687,8 @@ def create_default_config(domain: str) -> dict[str, Any]:
         "quality_gates": {
             "G0": {"category": "hard", "retries": 1, "action": "block"},
             "G1": {"category": "soft", "action": "flag"},
-            "G2": {"category": "soft", "action": "flag"},
+            "G1-TosCompliance": {"category": "soft", "action": "flag"},
+            "G2": {"category": "soft", "action": "flag", "window_days": 30},
             "G3": {"category": "soft", "retries": 2, "action": "archive", "threshold": 30},
             "G4": {
                 "category": "hard",
@@ -623,6 +702,11 @@ def create_default_config(domain: str) -> dict[str, Any]:
             "D1": {"enabled": True, "action_on_failure": "block"},
             "D2": {"enabled": True, "action_on_failure": "fallback"},
             "D3": {"enabled": True, "action_on_failure": "flag"},
+        },
+        "cost_alerts": {
+            "budget_thresholds": [50.0, 75.0, 90.0, 100.0],
+            "auto_remediation_enabled": False,
+            "alert_webhook": "",
         },
     }
 
@@ -692,6 +776,9 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         "port": config.rest_api.port,
         "host": config.rest_api.host,
     }
+    raw["stripe"] = {
+        "webhook_secret": config.stripe.webhook_secret,
+    }
     raw["vector_search"] = {
         "enabled": config.vector_search.enabled,
         "model": config.vector_search.model,
@@ -729,6 +816,14 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         }
         raw["cost_rates"] = cost_rates_dict
 
+    # --- Serialize cost_alerts ---
+    ca = config.cost_alerts
+    raw["cost_alerts"] = {
+        "budget_thresholds": ca.budget_thresholds,
+        "auto_remediation_enabled": ca.auto_remediation_enabled,
+        "alert_webhook": ca.alert_webhook,
+    }
+
     # --- Serialize v1.5 quality_gates & delivery_gates ---
     if config.quality_gates:
         raw["quality_gates"] = {}
@@ -742,6 +837,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                 entry["retry_models"] = gc.retry_models
             if gc.threshold is not None:
                 entry["threshold"] = gc.threshold
+            if gc.window_days:
+                entry["window_days"] = gc.window_days
             raw["quality_gates"][gate_name] = entry
     if config.delivery_gates:
         raw["delivery_gates"] = {}
@@ -761,6 +858,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "type": s.type,
                     "url": s.url,
                     "quality_tier": s.quality_tier,
+                    "tos_classification": s.tos_classification,
                     **s.settings,
                 }
                 for s in domain.sources
@@ -793,6 +891,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     entry["retry_models"] = gc.retry_models
                 if gc.threshold is not None:
                     entry["threshold"] = gc.threshold
+                if gc.window_days:
+                    entry["window_days"] = gc.window_days
                 domain_qg_dict[gate_name] = entry
             domain_dict["quality_gates"] = domain_qg_dict
         if domain.delivery_gates:

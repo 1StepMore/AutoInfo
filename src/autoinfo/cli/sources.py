@@ -156,7 +156,9 @@ def add(
 
     # --- Add source ---
     quality_tier = 1 if type in ("api", "rss") else 2
-    new_source = SourceConfig(name=name, type=type, url=url, quality_tier=quality_tier)
+    _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+    tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
+    new_source = SourceConfig(name=name, type=type, url=url, quality_tier=quality_tier, tos_classification=tos_classification)
     domain_cfg.sources.append(new_source)
     save_config(config, cfg_path)
     typer.echo(f"Source '{name}' added to domain '{domain}'.")
@@ -234,8 +236,10 @@ def add_sources(
             continue
 
         quality_tier = 1 if src_type in ("api", "rss") else 2
+        _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+        tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
         domain_cfg.sources.append(
-            SourceConfig(name=src_name, type=src_type, url=src_url, quality_tier=quality_tier)
+            SourceConfig(name=src_name, type=src_type, url=src_url, quality_tier=quality_tier, tos_classification=tos_classification)
         )
         save_config(config, cfg_path)
         typer.echo(f"  [{idx}] Added: {src_name}")

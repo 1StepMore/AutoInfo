@@ -131,7 +131,7 @@ def show(
     typer.echo(f"Search mode:   {domain_cfg.search_mode}")
     typer.echo(f"Sources:       {len(domain_cfg.sources)}")
     for s in domain_cfg.sources:
-        typer.echo(f"  - {s.name} ({s.type}, tier={s.quality_tier}): {s.url}")
+        typer.echo(f"  - {s.name} ({s.type}, tier={s.quality_tier}, tos={s.tos_classification}): {s.url}")
     typer.echo(f"Topics:        {len(domain_cfg.topics)}")
     for t in domain_cfg.topics:
         kw_str = ", ".join(t.keywords) if t.keywords else "(none)"

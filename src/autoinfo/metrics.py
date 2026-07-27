@@ -26,6 +26,7 @@ METRIC_NAMES: dict[str, str] = {
     "errors_total": "Total number of errors recorded across the pipeline",
     "active_users": "Number of active (non-cancelled) end-user profiles",
     "storage_bytes": "Total bytes used by knowledge base Markdown files",
+    "billing_stripe_sync_failures_total": "Total number of stripe_customer_id persistence failures in billing sync",
 }
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,9 @@ def get_metrics() -> dict[str, Any]:
     # --- storage_bytes ----------------------------------------------------
     storage_bytes = _sum_storage_bytes(knowledge_dir)
 
+    # --- billing_stripe_sync_failures_total --------------------------------
+    billing_stripe_sync_failures_total = _count_stripe_sync_failures()
+
     return {
         "items_collected_total": items_collected_total,
         "items_processed_total": items_processed_total,
@@ -73,6 +77,7 @@ def get_metrics() -> dict[str, Any]:
         "errors_total": errors_total,
         "active_users": active_users,
         "storage_bytes": storage_bytes,
+        "billing_stripe_sync_failures_total": billing_stripe_sync_failures_total,
     }
 
 
@@ -234,3 +239,13 @@ def _sum_storage_bytes(knowledge_dir: Path) -> int:
             except OSError:
                 pass
     return total
+
+
+def _count_stripe_sync_failures() -> int:
+    """Return the in-memory counter of stripe_customer_id persistence failures."""
+    try:
+        from autoinfo.billing import _stripe_sync_failures
+
+        return _stripe_sync_failures
+    except Exception:
+        return 0

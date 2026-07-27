@@ -6,6 +6,7 @@ import typer
 
 from . import (
     audit,
+    billing,
     cefr,
     clean,
     collect,
@@ -57,6 +58,7 @@ app.add_typer(sources.app, name="sources")
 app.add_typer(topics.app, name="topics")
 app.add_typer(domain.app, name="domain")
 app.add_typer(audit.app, name="audit")
+app.add_typer(billing.app, name="billing")
 app.add_typer(kb.app, name="kb")
 app.add_typer(output.app, name="output")
 app.add_typer(cefr.app, name="cefr")

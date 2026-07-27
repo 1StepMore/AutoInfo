@@ -62,7 +62,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
 | `docs/dev/specs/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (114 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (115 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
@@ -72,7 +72,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
 | `docs/autoinfo-validation-master-plan.md` | Original validation plan (~40% feature coverage) | 🟠 P2 — legacy | Rarely (superseded by v2) |
-| `docs/autoinfo-validation-master-plan-v2/README.md` | Validation plan v2 index: 100% coverage, 60 questions, 12 parts | 🟡 P1 — validation | When feature surface changes |
+| `docs/autoinfo-validation-master-plan-v2/README.md` | Validation plan v2 index: 100% coverage, 74 questions, 15 part files + verdict | 🟡 P1 — validation | When feature surface changes |
 | `docs/autoinfo-validation-master-plan-v2/part-01-core-pipeline.md` | Core pipeline: init, collect, process, browse, status, doctor | 🟡 P1 | When core pipeline changes |
 | `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md` | All 17 CLI commands with subcommand testing | 🟡 P1 | When CLI changes |
 | `docs/autoinfo-validation-master-plan-v2/part-03-mcp-system-tools.md` | MCP system/discovery/domain/source/topic tools | 🟡 P1 | When MCP tools change |
@@ -104,7 +104,7 @@ When you modify each code module below, the listed documentation files **must** 
 
 | Submodule | Docs to Update | What to Update |
 |-----------|---------------|----------------|
-| Any CLI file | `README.md` | CLI command table (verify 17 groups, add new groups, update descriptions) |
+| Any CLI file | `README.md` | CLI command table (verify 23 groups, add new groups, update descriptions) |
 | Any CLI file | `AGENTS.md` | CLI command references in patterns, operating model |
 | Any CLI file | `CHANGELOG.md` | Add entry under current version |
 | New CLI group | `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md` | Add scenarios for new command group |
@@ -114,14 +114,14 @@ When you modify each code module below, the listed documentation files **must** 
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
- | `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 87) |
+ | `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 115) |
  | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
  | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
  | `server.py` — new tool | `CHANGELOG.md` | Add entry |
  | `server.py` — new tool | `docs/dev/specs/mcp-tools.md` | Add tool to inventory table |
  | `server.py` — new param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
  | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Add error code to boundary matrix |
- | Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "87 tools" / "26 categories" references |
+ | Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "115 tools" / "32 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -276,6 +276,50 @@ When you modify each code module below, the listed documentation files **must** 
 | Channel logic | `AGENTS.md` | Quality Gates section (D1-D3), Status table |
 | Channel logic | `CHANGELOG.md` | Add entry |
 | New channel type | `README.md`, `AGENTS.md` | Update delivery channel listing |
+| Channel health check method | `README.md` | Feature list (channel health monitoring), MCP tools table (Monitor category — `get_channel_health`) |
+| Channel health check method | `AGENTS.md` | Status table (channel health monitoring row), Tool Discovery table |
+| Channel health check method | `CHANGELOG.md` | Add entry |
+| Channel health check method | `docs/autoinfo-validation-master-plan-v2/part-03-mcp-system-tools.md` | Add `get_channel_health` scenarios |
+
+### 2.20 Consumption Tracking (`src/autoinfo/consumption.py`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| ConsumptionEvent logic | `README.md` | Feature list (consumption tracking), Status table (consumption tracking row) |
+| ConsumptionEvent logic | `AGENTS.md` | Status table (consumption tracking row) |
+| ConsumptionEvent logic | `CHANGELOG.md` | Add entry |
+| Auto-record on delivery | `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | Add consumption tracking scenarios (Q36d) |
+| New store schema | `docs/dev/specs/data-models.md` | ConsumptionEvent schema (if spec updates allowed) |
+
+### 2.21 Notifications (`src/autoinfo/notifications.py`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| Notification logic | `README.md` | Feature list (automated notifications), Status table (automated notifications row) |
+| Notification logic | `AGENTS.md` | Status table (automated notifications row) |
+| Notification logic | `CHANGELOG.md` | Add entry |
+| Trial-ending / content-ready | `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | Add notification scenarios (Q36d) |
+
+### 2.22 Backup & Restore Scripts (`scripts/backup-db.sh`, `scripts/restore-db.sh`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| Backup logic | `README.md` | Feature list (SQLite backup), Status table (SQLite backup row) |
+| Backup logic | `AGENTS.md` | Status table (SQLite backup row) |
+| Backup logic | `CHANGELOG.md` | Add entry |
+| Backup target | `Makefile` | `backup` target |
+| Backup verification | `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Add backup verification scenarios (60.16, 60.17) |
+
+### 2.23 Subscription Tier Gating (`src/autoinfo/billing.py` — `check_access`, `src/autoinfo/models.py` — Subscription fields)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| `check_access` fast path | `README.md` | Feature list (access control), Status table (access control row) |
+| `check_access` fast path | `AGENTS.md` | Status table (access control row) |
+| `check_access` fast path | `CHANGELOG.md` | Add entry |
+| Subscription tier/channels/domains/products fields | `README.md` | Feature list (subscription tiers), Status table (subscription tiers row) |
+| Subscription tier/channels/domains/products fields | `AGENTS.md` | Status table (subscription tiers row) |
+| Access control verification | `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Add `check_access` scenario (60.18) |
 
 ---
 
@@ -298,8 +342,8 @@ Affected sections to check:
 - Status table → update checkmarks and descriptions
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
-- CLI Commands table → verify 17 groups, update descriptions
-- MCP Tools table → verify tool count (currently 114), update categories/tools
+- CLI Commands table → verify 23 groups, update descriptions
+- MCP Tools table → verify tool count (currently 115), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -358,12 +402,14 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 114 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 115 |
 | MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 32 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
 | Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1549 |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 5 |
+| Delivery channels (health-checked) | `README.md`, `AGENTS.md` | 11 (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) |
+| Subscription tiers | `README.md`, `AGENTS.md` | 3 (free, premium, enterprise) |
 
 After any change that affects these numbers, update EVERY location they appear.
 
@@ -439,7 +485,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 114), category count if new category
+**Quantities to bump**: MCP tool count (currently 115), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -457,7 +503,7 @@ CHANGELOG.md → "Added: MCP tool 'xxx'"
 
 **Docs to update**: `README.md` (CLI table, feature list), `AGENTS.md` (CLI references), `CHANGELOG.md`, `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md`
 
-**Quantities to bump**: CLI command group count (currently 22)
+**Quantities to bump**: CLI command group count (currently 23)
 
 **Verify**:
 ```
@@ -529,6 +575,11 @@ Terms that appear across docs and must be used consistently:
 | sqlite-vec | Vector embedding extension for SQLite | README.md |
 | Domain-agnostic | Platform works for any domain, demo domains are configs | AGENTS.md, founder-expectations.md |
 | MCP | Model Context Protocol (stdio transport) | All docs |
+| ConsumptionEvent | Auto-recorded event (view/open/click) on product delivery, SQLite-backed | README.md, consumption.py |
+| check_access | Freemium gating fast path (free/premium/enterprise) — G15 | README.md, billing.py |
+| Channel health | Per-channel health check (healthy, latency_ms, error) for all 11 delivery channels | README.md, AGENTS.md |
+| Cron heartbeat | Per-schedule heartbeat JSON for missed-schedule detection | README.md, cli/cron.py |
+| Subscription tiers | Free, Premium, Enterprise — per-tier channels, domains, products, platform limits | README.md, AGENTS.md, models.py |
 
 ---
 

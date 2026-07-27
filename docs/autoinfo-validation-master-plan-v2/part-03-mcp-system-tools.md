@@ -1,6 +1,6 @@
 # Part 3: MCP Tools — System, Discovery, Domain, Source, Topic (Q18-Q27c)
 
-**Coverage:** 35 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (2), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3)
+**Coverage:** 36 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (3), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3)
 
 ---
 
@@ -895,6 +895,38 @@ print(f"✅ list_active_deliveries: {len(deliveries)} active: {deliveries}")
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
+#### 27.3 🟢 get_channel_health (all channels)
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Omit channel_name to check all 11 delivery channels
+result = app.call_tool("get_channel_health", {})
+data = json.loads(result.content[0].text)
+print(f"✅ get_channel_health (all): {json.dumps(data, indent=2)[:400]}")
+# Expect health status for all 11 channels: smtp, webhook, rest_api, file_export,
+# discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss
+channels = data.get("channels", data.get("items", []))
+assert len(channels) >= 1, "Expected at least one channel health entry"
+for ch in channels:
+    print(f"  {ch.get('channel','?')}: healthy={ch.get('healthy','?')}, latency_ms={ch.get('latency_ms','?')}")
+```
+**Expected Result:** ✅ Returns health status (healthy, latency_ms, error) for all 11 delivery channels.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 27.4 🟢 get_channel_health (single channel)
+```python
+result = app.call_tool("get_channel_health", {"channel_name": "smtp"})
+data = json.loads(result.content[0].text)
+print(f"✅ get_channel_health (smtp): {data}")
+# Expect healthy, latency_ms, and error fields for the smtp channel
+assert "healthy" in data or "channels" in data or "status" in data
+```
+**Expected Result:** ✅ Returns health status for a single named channel (smtp). Includes `healthy`, `latency_ms`, `error` fields.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
 ---
 
 ### 📊 Q27 Verdict
@@ -903,6 +935,8 @@ print(f"✅ list_active_deliveries: {len(deliveries)} active: {deliveries}")
 |----------|--------|
 | 27.1 list_active_collections | ⬜ |
 | 27.2 list_active_deliveries | ⬜ |
+| 27.3 get_channel_health (all) | ⬜ |
+| 27.4 get_channel_health (single) | ⬜ |
 
 **OVERALL: ⬜**
 

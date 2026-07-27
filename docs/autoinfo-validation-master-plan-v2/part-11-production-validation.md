@@ -41,7 +41,7 @@ echo 'invalid json' | timeout 5 python3 -m autoinfo.mcp.server 2>/dev/null; echo
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 60.4 🟢 MCP server lists all 114 tools
+#### 60.4 🟢 MCP server lists all 115 tools
 ```python
 from autoinfo.mcp.server import app
 tools = app.list_tools()()
@@ -80,7 +80,7 @@ for cat, cat_tools in categories.items():
     present = [t for t in cat_tools if t in tool_names]
     print(f"  {cat}: {len(present)}/{len(cat_tools)} tools present")
 ```
-**Expected Result:** ✅ 114 tools registered with correct names. All 32 categories have expected tools.
+**Expected Result:** ✅ 115 tools registered with correct names. All 32 categories have expected tools.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -210,6 +210,61 @@ print("✅ get_prometheus_metrics response:", content[:300] if len(content) > 30
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
+#### 60.16 🟢 SQLite backup — `make backup` produces a backup file
+```bash
+cd /mnt/d/贯维/AutoInfo
+# Run the backup target
+make backup
+echo "Exit: $?"
+
+# Verify a backup file was created in the backups directory
+ls -la backups/ 2>/dev/null || ls -la .autoinfo/backups/ 2>/dev/null || echo "Check backup location"
+# At least one .db backup file should exist
+find . -name "*.db.bak" -o -name "*backup*.db" 2>/dev/null | head -5
+```
+**Expected Result:** ✅ `make backup` runs `scripts/backup-db.sh` and produces a SQLite backup of `autoinfo.db` and `.autoinfo/users.db`. Keeps the last 7 backups per prefix. Exit code 0.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 60.17 🟢 SQLite restore script — `scripts/restore-db.sh` runs without error
+```bash
+cd /mnt/d/贯维/AutoInfo
+# Verify the restore script exists and is executable
+test -f scripts/restore-db.sh && echo "restore-db.sh exists" || echo "MISSING"
+test -x scripts/restore-db.sh && echo "restore-db.sh executable" || chmod +x scripts/restore-db.sh
+
+# Dry-run check: script should accept a backup path argument
+bash scripts/restore-db.sh --help 2>/dev/null || bash scripts/restore-db.sh 2>&1 | head -5
+```
+**Expected Result:** ✅ `scripts/restore-db.sh` exists, is executable, and runs (prints usage or restores from the latest backup). No crash.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 60.18 🟢 Subscription tier gating — `check_access` fast path
+```python
+from autoinfo.billing import check_access
+
+# Free content is always allowed (no lookup needed)
+result = check_access(end_user_id="user-test", access_level="free")
+assert result["allowed"] is True, "Free content should always be allowed"
+assert result["upgrade_prompt"] is None
+print(f"✅ check_access (free): allowed={result['allowed']}, reason={result['reason']}")
+
+# Premium content requires active paid subscription
+result = check_access(end_user_id="user-test", access_level="premium")
+print(f"✅ check_access (premium): allowed={result['allowed']}, reason={result['reason']}")
+# For a user with no active subscription, allowed should be False with upgrade_prompt
+if not result["allowed"]:
+    assert result["upgrade_prompt"] is not None, "Blocked premium access should include upgrade_prompt"
+
+# Enterprise content requires enterprise-tier access
+result = check_access(end_user_id="user-test", access_level="enterprise")
+print(f"✅ check_access (enterprise): allowed={result['allowed']}, reason={result['reason']}")
+```
+**Expected Result:** ✅ `check_access()` implements G15 freemium gating. Free always allowed. Premium/enterprise require active paid subscription; blocked access returns `upgrade_prompt`.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
 ---
 
 ### 📊 Q60 Verdict
@@ -219,7 +274,7 @@ print("✅ get_prometheus_metrics response:", content[:300] if len(content) > 30
 | 60.1 | Doctor all checks | ⬜ |
 | 60.2 | MCP stdio ping | ⬜ |
 | 60.3 | Invalid JSON-RPC | ⬜ |
-| 60.4 | All 114 tools | ⬜ |
+| 60.4 | All 115 tools | ⬜ |
 | 60.5 | 3x stress run | ⬜ |
 | 60.6 | Clean import | ⬜ |
 | 60.7 | Test suite | ⬜ |
@@ -231,5 +286,8 @@ print("✅ get_prometheus_metrics response:", content[:300] if len(content) > 30
 | 60.13 | trace_item | ⬜ |
 | 60.14 | get_metrics | ⬜ |
 | 60.15 | get_prometheus_metrics | ⬜ |
+| 60.16 | SQLite backup | ⬜ |
+| 60.17 | SQLite restore script | ⬜ |
+| 60.18 | check_access fast path | ⬜ |
 
 **OVERALL: ⬜**

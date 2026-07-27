@@ -2,6 +2,51 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.7.0 (2026-07-28)
+
+### Added
+- **Subscription model tier/channels/domains/products fields** — `Subscription` dataclass extended with `tier` (free/premium/enterprise), `channels`, `domains`, `products`, and `platform_limit` fields (CD-024). Enables per-tier gating of channels, domains, and products.
+- **Free/Premium/Enterprise access control (check_access fast path)** — `billing.check_access(end_user_id, access_level)` implements G15 freemium gating. Free content always allowed (no lookup). Premium requires active paid subscription (not trial/cancelled/suspended). Enterprise requires enterprise-tier access. Returns `allowed`, `reason`, `upgrade_prompt`, `profile_status`, `plan`.
+- **Premium + Enterprise product templates** — Product templates gated by subscription tier. Premium and Enterprise tiers unlock additional product types beyond the free tier.
+- **Cron heartbeat tracking + missed-schedule detection + alert** — `cli/cron.py` now persists a heartbeat JSON (`.autoinfo/cron-heartbeat.json`) per schedule run. `autoinfo cron health` CLI reports per-schedule health (`ok`/`missed`/`error`/`unknown`) with missed-schedule detection based on cron cadence vs last heartbeat. Missed schedules trigger alerts.
+- **ConsumptionEvent auto-record on digest/report delivery** — New `consumption.py` module with `ConsumptionStore` (SQLite-backed) and `ConsumptionEvent` dataclass. Delivery of digests and reports auto-records view/open/click events. Enables consumption analytics per product/user.
+- **Automated notifications (trial-ending reminder, content-ready)** — New `notifications.py` module. `check_expiring_trials()` finds trial users expiring within 3 days and sends reminder notifications. `notify_content_ready()` sends a content-ready notification to a user when a product is generated.
+- **Delivery channel health checks (all 11 channels)** — `delivery/__init__.py` and all 11 channel adapters (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) now expose a health check returning `healthy`, `latency_ms`, and `error` fields.
+- **get_channel_health MCP tool** — New MCP tool in the Monitor category. Returns health status for one or all 11 delivery channels. When `channel_name` is omitted, all channels are checked.
+- **SQLite backup/restore scripts (make backup)** — `scripts/backup-db.sh` backs up the KBStore SQLite index (`autoinfo.db`) and user store (`.autoinfo/users.db`) using Python's built-in sqlite3 module, keeping the last 7 backups per prefix. `scripts/restore-db.sh` restores from a backup. `make backup` Makefile target runs the backup script.
+
+### Fixed
+- **Bug #39 — repeated `--tag` crashes with Typer TypeError**: `flag()` in `cli/summaries.py` declared `tag` without `: list[str]` annotation, causing a Typer TypeError on repeated `--tag` flags. Fixed with proper list annotation. Regression test added (`tests/test_bug_39.py`).
+- **Bug #40 — `create_draft()` raw_ids/tags parameter mismatch**: The `raw_ids` and `tags` parameters of `create_draft()` in `cli/kb.py` did not match the underlying `KBStore.create_draft()` signature, causing drafts to fail when passing raw IDs or tags. Fixed signature alignment. Regression test added (`tests/test_bug_42.py` covers related KB CLI fixes).
+- **Bug #42 — `list_tiers()` call mismatch in `cli/kb.py`**: In `list_tiers()` (`src/autoinfo/cli/kb.py:124`), the call did not match the updated `KBStore` method signature, causing a runtime error on `autoinfo kb list-tiers`. Fixed call alignment. Regression test added (`tests/test_bug_42.py`).
+
+### Changed
+- **MCP tool inventory**: Expanded from 114 tools across 32 categories to **115 tools across 32 categories**. New `get_channel_health` tool added to the Monitor category. See README for full listing.
+- **README.md**: MCP tool count 114→115. Added 7 new Status table rows (subscription tiers, access control, consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup). Added `get_channel_health` to Monitor category in MCP table. Added `autoinfo cron health` to CLI commands. Updated Known Limitations with v1.7 summary.
+- **AGENTS.md**: MCP tool count 114→115. Status table updated with 7 new rows. Tool Discovery table Monitor category updated with `get_channel_health`.
+- **Test suite**: Added regression tests for Bug #39, #40, #42 and Stripe integration tests (`tests/test_stripe.py`).
+
+### Infrastructure
+- `src/autoinfo/consumption.py`: New module — `ConsumptionStore` (SQLite-backed) + `ConsumptionEvent` dataclass for delivery consumption tracking.
+- `src/autoinfo/notifications.py`: New module — `check_expiring_trials()` and `notify_content_ready()` for automated end-user notifications.
+- `src/autoinfo/billing.py`: Added `check_access()` fast path for G15 freemium gating (free/premium/enterprise).
+- `src/autoinfo/models.py`: `Subscription` dataclass extended with `tier`, `channels`, `domains`, `products`, `platform_limit` fields (CD-024).
+- `src/autoinfo/output.py`: Digest/report delivery now auto-records `ConsumptionEvent`.
+- `src/autoinfo/mcp/server.py`: New `get_channel_health` tool (Monitor category). Tool count 114→115.
+- `src/autoinfo/delivery/__init__.py` + 11 channel adapters: Health check method added (`healthy`, `latency_ms`, `error`).
+- `src/autoinfo/cli/cron.py`: New `health` subcommand with heartbeat persistence and missed-schedule detection.
+- `src/autoinfo/cli/summaries.py`: Bug #39 fix — `tag` parameter list annotation.
+- `src/autoinfo/cli/kb.py`: Bug #40/#42 fixes — `create_draft()` and `list_tiers()` signature alignment.
+- `src/autoinfo/email_sender.py`, `src/autoinfo/api/routes.py`, `src/autoinfo/cli/portal.py`: Supporting changes for notifications and consumption tracking.
+- `scripts/backup-db.sh`, `scripts/restore-db.sh`: New scripts for SQLite backup/restore.
+- `Makefile`: New `backup` target.
+- `tests/test_bug_39.py`, `tests/test_bug_40.py`, `tests/test_bug_42.py`, `tests/test_stripe.py`: New regression and integration tests.
+
+### Docs
+- **README.md**: Updated for v1.7 (features, status table, MCP tools, CLI commands, known limitations).
+- **docs/autoinfo-validation-master-plan-v2/**: Part 03 (get_channel_health scenarios), Part 04 (consumption tracking, notifications, cron health scenarios), Part 11 (backup verification) updated.
+- **.opencode/skills/doc-manager-skill/SKILL.md**: Inventory, dependency map, and quantitative references updated for v1.7.
+
 ## v1.6.3 (2026-07-27)
 
 ### Added
@@ -40,6 +85,34 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `src/autoinfo/cli/billing.py`: New CLI command group for billing.
 - `src/autoinfo/api/portal.py`: New module — web portal read-only dashboard (4 routes, 6 Jinja2 templates).
 - `tests/`: 120 new tests across Stripe, G3, G5, adapters, portal, billing.
+
+## v1.6.4 (2026-07-27)
+
+### Added
+- **cross-dimensional-gap-catalog.md** — New document cataloging 42 gaps across 5 types (Consumer Output, Implementation, Pricing/Business, Quality Gate, Documentation/Knowledge) with a 119-cell cross-dimensional impact matrix and an implementation roadmap. Located at `docs/dev/cross-dimensional-gap-catalog.md`.
+- **multi-tenancy-auth.md** — New spec covering multi-tenancy architecture (domain isolation, tenant provisioning), auth system (OAuth2, SSO, session management), API rate limiting (token bucket, per-tenant quotas), and admin dashboard specification. Located at `docs/dev/specs/multi-tenancy-auth.md`.
+- **ops-runbook.md** — New spec covering backup/disaster recovery strategy (RPO/RTO targets, backup types, restore procedures), monitoring/alerting setup (Prometheus/Grafana, log aggregation, alert routing), and scaling strategy (horizontal scaling, caching, CDN, sharding). Located at `docs/dev/specs/ops-runbook.md`.
+- **expectations.md extended** — Added 7 new expectations (F58-F64) covering multi-tenancy (F58), auth system (F59), rate limiting (F60), admin dashboard (F61), backup/DR (F62), monitoring/alerting (F63), scaling strategy (F64). All 57 existing status markers verified and corrected. Located at `docs/dev/specs/expectations.md`.
+- **delivery.md extended** — Added product lifecycle management (status model, transition triggers), consumption tracking (view/click/download analytics), channel health monitoring (delivery success rate, latency metrics), and delivery preview capability. Located at `docs/dev/specs/delivery.md`.
+- **operations.md extended** — Added email template system (HTML/MJML templates, variable substitution, A/B testing), notification framework (event subscription model, delivery rules, mute/unsubscribe), cron reliability monitoring (missed runs, overruns, SLA), and business metrics (DAU/MAU, conversion funnel, retention cohorts). Located at `docs/dev/specs/operations.md`.
+- **data-models.md extended** — Added consolidated schemas for Product (status, lifecycle), Consumption (view/click/download events), Notification (templates, subscriptions, channels), and Auth (tenant, user, role, session). Located at `docs/dev/specs/data-models.md`.
+- **comprehensive-gap-audit.md extended** — Added cross-dimensional summary section, gap ID cross-reference table mapping 42 gaps to their location in 6 spec documents, and a color-coded heatmap visualizing gap density across dimensions. Located at `docs/dev/comprehensive-gap-audit.md`.
+- **consumer-output-gaps.md fixed** — G1 (Executive Alerts/Digest) and G11 (Integration Platform/Data API) corrected via CD cross-referencing. Added CD cross-references to all 10 gaps linking to implementation gap catalog entries. Located at `docs/dev/consumer-output-gaps.md`.
+
+### Changed
+- **README.md** — Status fixes for agent-native JSON and audio output rows. Added references to cross-dimensional-gap-catalog.md and new spec files to reference section.
+- **AGENTS.md** — Status table verified and aligned with README. Added references to cross-dimensional-gap-catalog.md, multi-tenancy-auth.md, ops-runbook.md in references section.
+
+### Infrastructure
+- `docs/dev/cross-dimensional-gap-catalog.md`: New document — 42-gap cross-dimensional catalog with 119-cell impact matrix and implementation roadmap
+- `docs/dev/specs/multi-tenancy-auth.md`: New spec — multi-tenancy, auth, rate limiting, admin dashboard
+- `docs/dev/specs/ops-runbook.md`: New spec — backup/DR, monitoring/alerting, scaling strategy
+- `docs/dev/specs/expectations.md`: Updated — F58-F64 added, all 57 status markers fixed
+- `docs/dev/specs/delivery.md`: Updated — product lifecycle, consumption, channel health, preview
+- `docs/dev/specs/operations.md`: Updated — email templates, notifications, cron reliability, business metrics
+- `docs/dev/specs/data-models.md`: Updated — product/consumption/notification/auth model schemas
+- `docs/dev/comprehensive-gap-audit.md`: Updated — cross-dimensional summary, gap ID cross-reference, heatmap
+- `docs/dev/consumer-output-gaps.md`: Updated — G1/G11 fixes, CD cross-references added
 
 ## v1.6.2 (2026-07-26)
 

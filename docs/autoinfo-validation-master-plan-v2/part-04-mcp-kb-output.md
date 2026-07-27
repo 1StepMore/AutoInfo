@@ -1,6 +1,6 @@
 # Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36c)
 
-**Coverage:** 44 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (6), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1)
+**Coverage:** 44 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (6), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1). Plus v1.7 additions: consumption tracking, automated notifications, cron health (CLI).
 
 ---
 
@@ -1124,5 +1124,137 @@ else:
 |----------|--------|
 | 36c.1 get_schedule_status | ⬜ |
 | 36c.2 get_product | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q36d: v1.7 Consumption Tracking, Notifications & Cron Health
+
+**Agent says:** "I need to verify the v1.7 additions: consumption event recording on delivery, automated notifications, and cron health monitoring."
+
+### Prerequisites
+```bash
+cd /tmp && rm -rf test-q36d && mkdir test-q36d && cd test-q36d
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 36d.1 🟢 ConsumptionEvent auto-record on digest delivery
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Generate a digest — delivery should auto-record a ConsumptionEvent
+result = app.call_tool("generate_digest", {
+    "domain": "medical-research",
+    "period": "week",
+    "format": "md"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ generate_digest: {json.dumps(data, indent=2)[:200]}")
+
+# Verify consumption events were recorded
+from autoinfo.consumption import ConsumptionStore
+store = ConsumptionStore()
+events = store.list_events()
+print(f"✅ ConsumptionEvent auto-record: {len(events)} events recorded")
+# Events should include view/open/click types tied to the delivered product
+```
+**Expected Result:** ✅ Digest generation auto-records a `ConsumptionEvent` (view/open/click) in the SQLite-backed `ConsumptionStore`. Events are retrievable via `store.list_events()`.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36d.2 🟢 ConsumptionStore — SQLite-backed event persistence
+```python
+from autoinfo.consumption import ConsumptionStore, ConsumptionEvent
+from datetime import datetime
+
+store = ConsumptionStore()
+event = ConsumptionEvent(
+    event_id="evt-test-1",
+    user_id="user-test",
+    product_id="prod-test",
+    event_type="view",
+    timestamp=datetime.utcnow().isoformat(),
+    metadata={"channel": "email"}
+)
+store.record(event)
+
+events = store.list_events(user_id="user-test")
+assert any(e["event_id"] == "evt-test-1" for e in events), "Event not persisted"
+print(f"✅ ConsumptionStore persistence: {len(events)} events for user-test")
+```
+**Expected Result:** ✅ `ConsumptionStore` persists `ConsumptionEvent` records to SQLite. `list_events()` retrieves events by user_id.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36d.3 🟢 Automated notification — trial-ending reminder
+```python
+from autoinfo.notifications import check_expiring_trials
+
+# check_expiring_trials finds trial users expiring within 3 days
+# and sends reminder notifications. Returns list of notified users.
+notified = check_expiring_trials()
+print(f"✅ check_expiring_trials: {len(notified)} users notified")
+# In a fresh project with no trial users, returns empty list (no crash)
+assert isinstance(notified, list)
+```
+**Expected Result:** ✅ `check_expiring_trials()` returns a list of expiring trial users that were notified. No crash when no trial users exist.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36d.4 🟢 Automated notification — content-ready
+```python
+from autoinfo.notifications import notify_content_ready
+
+# notify_content_ready sends a content-ready notification to a user
+result = notify_content_ready(
+    user_id="user-test",
+    product_id="prod-test",
+    product_title="Weekly Medical Research Digest"
+)
+print(f"✅ notify_content_ready: {result}")
+```
+**Expected Result:** ✅ `notify_content_ready()` sends a content-ready notification to the specified user. Returns a result dict confirming dispatch.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36d.5 🟢 Cron health — heartbeat + missed-schedule detection (CLI)
+```bash
+cd /tmp/test-q36d
+# Add a schedule
+autoinfo cron add-schedule --domain medical-research --topic "IVF" --cron "0 8 * * 1"
+# Check cron health — reports per-schedule health (ok/missed/error/unknown)
+autoinfo cron health
+echo "Exit: $?"
+```
+**Expected Result:** ✅ `autoinfo cron health` reports per-schedule health status (`ok`/`missed`/`error`/`unknown`) with heartbeat tracking. Missed schedules are flagged. Exit code 0.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36d.6 🟢 Cron heartbeat persistence
+```bash
+cd /tmp/test-q36d
+# After running a schedule, the heartbeat file should exist
+ls -la .autoinfo/cron-heartbeat.json 2>/dev/null && echo "Heartbeat file exists" || echo "Heartbeat file not yet created (run a schedule first)"
+```
+**Expected Result:** ✅ After a schedule run, `.autoinfo/cron-heartbeat.json` persists per-schedule heartbeat entries (last_run, status, error).
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q36d Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36d.1 ConsumptionEvent auto-record | ⬜ |
+| 36d.2 ConsumptionStore persistence | ⬜ |
+| 36d.3 Trial-ending reminder | ⬜ |
+| 36d.4 Content-ready notification | ⬜ |
+| 36d.5 Cron health CLI | ⬜ |
+| 36d.6 Cron heartbeat persistence | ⬜ |
 
 **OVERALL: ⬜**

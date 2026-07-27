@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (114 tools across 32 categories)
+2. **All capabilities** are exposed as MCP tools (115 tools across 32 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -66,16 +66,15 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── reality-assessment.md # Value propositions, current reality, gap metrics
-│   │   │   ├── mcp-tools.md        # 114 MCP tools across 32 categories
+│   │   │   ├── mcp-tools.md        # 115 MCP tools across 32 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
-│   │   │   ├── consumer-output-gaps.md  # Consumer-facing output gap analysis (10 gaps, 5 dimensions)
-│   │   │   └── implementation-gaps.md   # Feature-level implementation gap audit (27 items)
+│   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
+│   │   │   └── ops-runbook.md           # Operations runbook spec
+│   │   ├── cross-dimensional-catalog.md # Cross-dimensional catalog — keystone product matrix (A1-A7 × B1/B2/B3, supersedes archived gap docs)
 │   │   ├── archive/                  # Archived/historical docs
 │   │   ├── kb-pipeline-reference.md  # KB pipeline reference model (archived)
 │   │   ├── director-user-guide.md    # Human-Agent interaction lifecycle
-│   │   ├── consumer-output-gaps.md   # Consumer-facing output gap analysis (new 2026-07-26)
-│   │   └── implementation-gaps.md    # Feature-level gap audit (new 2026-07-26)
+│   │   └── consumer-output-gaps.md    # Consumer-facing output gap analysis (archived)
 │   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
 │       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
 │       └── translator-qa-skill/    # Translation QA workflow
@@ -84,7 +83,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (114 tools)
+│       ├── mcp/                     # MCP server (115 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
@@ -177,7 +176,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-114 MCP tools across 32 categories:
+115 MCP tools across 32 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -202,7 +201,7 @@ freshness at output time.
 | **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `get_schedule_status` |
 | **Source Health** | `get_source_health`, `rate_item` |
 | **Projects** | `init_project`, `list_projects`, `get_project_assets`, `archive_project` |
-| **Monitor** | `list_active_collections`, `list_active_deliveries` |
+| **Monitor** | `list_active_collections`, `list_active_deliveries`, `get_channel_health` |
 | **Webhooks** | `set_domain_webhooks`, `get_domain_webhooks` |
 | **Quality Gate Config** | `get_gate_config`, `set_gate_config` |
 | **Product** | `list_products`, `get_product` |
@@ -402,14 +401,14 @@ Collection and processing now return a `job_id` for progress polling:
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest, report (Markdown/JSON/PDF/HTML), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
+| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF), report (Markdown/JSON/HTML/Audio/Agent), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
 | Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
 | Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 114 tools across 32 categories |
+| MCP server | ✅ 115 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -440,13 +439,23 @@ Collection and processing now return a `job_id` for progress polling:
 | Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
+| Subscription tiers | ✅ Free/Premium/Enterprise tiers with per-tier channels, domains, products, platform limits |
+| Access control | ✅ `check_access()` fast path — free always allowed, premium/enterprise require active paid subscription (G15) |
+| Consumption tracking | ✅ `ConsumptionEvent` auto-record on digest/report delivery (view/open/click), SQLite-backed store |
+| Automated notifications | ✅ Trial-ending reminders (3-day window) + content-ready notifications to end users |
+| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 11 delivery channels |
+| Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
+| SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
 | Test suite | ✅ 1549 tests (1 collection error pre-existing) |
 
 ## References
 
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
-- `docs/dev/specs/` — Extracted spec files (9 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, reality-assessment.md, mcp-tools.md, data-models.md)
+- `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
-- `docs/dev/consumer-output-gaps.md` — Consumer-facing output gap analysis (10 gaps, 5 dimensions)
-- `docs/dev/implementation-gaps.md` — Feature-level implementation gap audit (27 items)
+- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes the archived gap docs below.
+- `docs/archive/comprehensive-gap-audit.md` — Comprehensive gap audit (archived)
+- `docs/archive/consumer-output-gaps.md` — Consumer-facing output gap analysis (archived)
+- `docs/archive/implementation-gaps.md` — Feature-level implementation gap audit (archived)
+- `docs/archive/reality-assessment.md` — Reality assessment (archived)

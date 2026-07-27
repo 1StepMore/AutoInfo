@@ -40,10 +40,17 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 114 MCP tools across 32 categories. Agent operates, human directs.
+- **Agent-native** — 115 MCP tools across 32 categories. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 5 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning). Any field with paying customers.
 - **Subscription-ready** — Stripe integration with webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, and usage metering
+- **Subscription tiers** — Free, Premium, and Enterprise tiers with per-tier channels, domains, products, and platform limits on the Subscription model
+- **Access control** — `check_access()` fast path gates content by tier (free always allowed, premium/enterprise require active paid subscription). Freemium gating (G15).
+- **Consumption tracking** — `ConsumptionEvent` auto-record on digest/report delivery (view/open/click events) with SQLite-backed store
+- **Automated notifications** — Trial-ending reminders (3-day window) and content-ready notifications dispatched to end users
+- **Channel health monitoring** — `get_channel_health` MCP tool checks all 11 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) with latency and error status
+- **Cron health monitoring** — `autoinfo cron health` CLI with heartbeat tracking and missed-schedule detection
+- **SQLite backup** — `make backup` target plus `scripts/backup-db.sh` and `scripts/restore-db.sh` for automated KB and user-store backups (keeps last 7)
 
 ## Status
 
@@ -59,14 +66,14 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest, report (Markdown/JSON/PDF/HTML), tutorial, presentation (Jinja2 + LLM, Reveal.js CDN) |
-| Agent-native JSON | 🔜 `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) — spec defined, impl pending |
-| Audio output | 🔜 TTS-rendered digest/report as MP3 — spec defined, impl pending |
+| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF), report (Markdown/JSON/HTML/Audio/Agent), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
+| Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
+| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) via `format='audio'` |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 114 tools across 32 categories |
+| MCP server | ✅ 115 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -97,6 +104,13 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
+| Subscription tiers | ✅ Free/Premium/Enterprise tiers with per-tier channels, domains, products, platform limits |
+| Access control | ✅ `check_access()` fast path — free always allowed, premium/enterprise require active paid subscription (G15) |
+| Consumption tracking | ✅ `ConsumptionEvent` auto-record on digest/report delivery (view/open/click), SQLite-backed store |
+| Automated notifications | ✅ Trial-ending reminders (3-day window) + content-ready notifications to end users |
+| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 11 delivery channels |
+| Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
+| SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
 | Test suite | ✅ 1549 tests (1 collection error pre-existing) |
 
@@ -149,7 +163,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (114 tools)
+         └── MCP server (115 tools)
 ```
 
 ## CLI Commands (23 groups)
@@ -168,7 +182,7 @@ autoinfo domain add|list|show|remove|activate|deactivate  # Domain management
 autoinfo audit query                # Query immutable audit log
 autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates
-autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall
+autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall|health  # health = heartbeat + missed-schedule detection
 autoinfo cefr classify|batch        # CEFR text classification
 autoinfo email send|config          # SMTP email sending
 autoinfo keywords add|remove|list   # Keyword management
@@ -181,7 +195,7 @@ autoinfo portal preferences|history # End-user self-service portal
 autoinfo trace <trace_id>           # Per-item pipeline trace
 ```
 
-## MCP Tools (114)
+## MCP Tools (115)
 
 | Category | Tools |
 |----------|-------|
@@ -206,7 +220,7 @@ autoinfo trace <trace_id>           # Per-item pipeline trace
 | **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules, get_schedule_status |
 | **Source Health** | get_source_health, rate_item |
 | **Projects** | init_project, list_projects, get_project_assets, archive_project |
-| **Monitor** | list_active_collections, list_active_deliveries |
+| **Monitor** | list_active_collections, list_active_deliveries, get_channel_health (health + latency for all 11 delivery channels) |
 | **Webhooks** | set_domain_webhooks, get_domain_webhooks |
 | **Quality Gate Config** | get_gate_config, set_gate_config |
 | **Product** | list_products, get_product |
@@ -238,7 +252,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.6 adds **end-to-end commercial delivery** (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), **cost governance** (internal metering, allocation, dashboard, budget alerts), **operational observability** (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), **data privacy** (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and **knowledge lifecycle management** (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo v1.7 adds **subscription tier gating** (Free/Premium/Enterprise with per-tier channels, domains, products), **access control** (`check_access` fast path, G15 freemium gating), **consumption tracking** (`ConsumptionEvent` auto-record on delivery), **automated notifications** (trial-ending + content-ready), **channel health monitoring** (`get_channel_health` MCP tool for all 11 channels), **cron health monitoring** (heartbeat tracking + missed-schedule detection), and **SQLite backup/restore** (`make backup` + scripts). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -247,7 +261,7 @@ AutoInfo v1.6 adds **end-to-end commercial delivery** (end user profiles, multi-
 | Subscription-ready billing (G14-G16) | ✅ Implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
 
 > See `docs/dev/founder-expectations.md` §14 for the full deferred-items catalog.
-> Full consumer-facing gap analysis: `docs/dev/consumer-output-gaps.md` (10 gaps, 5 dimensions).
+> Cross-dimensional catalog (keystone product matrix): `docs/dev/cross-dimensional-catalog.md` (42 cells, 5 gap types across A1-A7 Pipeline × B1/B2/B3 Users).
 
 ## License
 

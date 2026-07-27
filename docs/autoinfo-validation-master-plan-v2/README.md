@@ -2,9 +2,9 @@
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-27
-**Baseline:** AutoInfo v1.6 — 1549 tests, 23 CLI command groups, 114 MCP tools (32 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics
+**Baseline:** AutoInfo v1.7 — 1549 tests, 23 CLI command groups, 115 MCP tools (32 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
 
-> **Spec references**: See `docs/dev/specs/` for the full specification (9 files: `expectations.md` for F01-F57, `quality-gates.md` for G0-G5/D1-D3, `pipeline.md` for collection/KB pipeline, `delivery.md` for end user lifecycle, `operations.md` for cost/privacy/lifecycle/observability, `market-positioning.md` for competitive analysis, `reality-assessment.md` for current state). See `docs/archive/` for superseded/one-time historical docs.
+> **Spec references**: See `docs/dev/specs/` for the full specification (11 files). See also `docs/dev/cross-dimensional-catalog.md` (keystone product matrix, supersedes gap audit docs). See `docs/archive/` for superseded/one-time historical docs including `reality-assessment.md` (archived).
 
 ---
 
@@ -144,7 +144,7 @@ All CLI commands support these **global flags**:
 | Feature Area | Existing v1 | v2 Target | Status |
 |-------------|-------------|-----------|--------|
 | CLI commands tested | 6/17 (35%) | 23/23 (100%) | 📝 Part 2 |
-| MCP tools tested | 8/72 (11%) | 114/114 (100%) | 📝 Parts 3-4 |
+| MCP tools tested | 8/72 (11%) | 115/115 (100%) | 📝 Parts 3-4 |
 | KB tiers tested | 1/4 (01-Raw only) | 4/4 (Inbox→Raw→Draft→Wiki) | 📝 Part 6 |
 | Quality gates tested | 3/5 (G1-G3) | 5/5 (G1-G5) | 📝 Part 5 |
 | Search modes tested | 1 (summaries list) | 6 (FTS5, vector, hybrid, faceted, Q&A, graph) | 📝 Part 6 |

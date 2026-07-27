@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    container_name: autoinfo-stripe-mock
+    ports:
+      - "12111:12111"
+    healthcheck:
+      test: wget --spider -q http://localhost:12111/v1/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

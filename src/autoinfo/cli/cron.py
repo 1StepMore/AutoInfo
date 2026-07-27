@@ -32,6 +32,7 @@ app = typer.Typer(help="Manage scheduled collection jobs")
 # ---------------------------------------------------------------------------
 
 SCHEDULES_PATH = Path(".autoinfo/schedules.yaml")
+HEARTBEAT_PATH = Path(".autoinfo/cron-heartbeat.json")
 
 
 @dataclass
@@ -126,6 +127,73 @@ def get_schedule(name: str) -> Schedule | None:
     return load_schedules().get(name)
 
 
+# ---------------------------------------------------------------------------
+# Heartbeat persistence (cron health tracking)
+# ---------------------------------------------------------------------------
+
+
+def _heartbeat_path() -> Path:
+    return Path.cwd() / HEARTBEAT_PATH
+
+
+def _load_heartbeat() -> dict[str, Any]:
+    """Load the cron heartbeat JSON file.
+
+    Returns
+    -------
+    dict
+        ``{"schedules": {"name": {"last_run_at": "...", "status": "...", "last_error": "..."}}}``.
+        Empty ``{"schedules": {}}`` when no file exists or parse fails.
+    """
+    path = _heartbeat_path()
+    if not path.is_file():
+        return {"schedules": {}}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Failed to parse heartbeat file at %s", path)
+        return {"schedules": {}}
+    # Ensure "schedules" key exists
+    if "schedules" not in data:
+        data["schedules"] = {}
+    return data
+
+
+def _save_heartbeat(data: dict[str, Any]) -> None:
+    """Persist heartbeat data to disk."""
+    path = _heartbeat_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+
+
+def _update_heartbeat(
+    name: str,
+    status: str = "ok",
+    last_error: str | None = None,
+) -> None:
+    """Update a single schedule's heartbeat entry.
+
+    Parameters
+    ----------
+    name:
+        Schedule name.
+    status:
+        ``"ok"`` or ``"error"``.
+    last_error:
+        Error message when ``status="error"``.
+    """
+    heartbeat = _load_heartbeat()
+    schedules_heartbeat = heartbeat.setdefault("schedules", {})
+    schedules_heartbeat[name] = {
+        "last_run_at": _now_iso(),
+        "status": status,
+        "last_error": last_error,
+    }
+    _save_heartbeat(heartbeat)
+
+
 def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
     """Return status for all schedules or a specific one.
 
@@ -139,7 +207,8 @@ def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
     list[dict]
         Each dict contains: ``schedule_id``, ``domain``, ``cron_expr``,
         ``is_active``, ``last_run``, ``next_run``, ``schedule_type``,
-        ``recipients``.
+        ``recipients``, ``health`` (``"ok"`` | ``"missed"`` | ``"unknown"``),
+        ``last_error``.
         Returns empty list when no schedules are configured.
     """
     import sys
@@ -159,30 +228,61 @@ def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
         except ImportError:
             croniter_mod = None  # type: ignore[assignment]
 
+    heartbeat = _load_heartbeat()
+    schedules_heartbeat = heartbeat.get("schedules", {})
+
     for name, s in schedules.items():
         if schedule_id is not None and name != schedule_id:
             continue
 
+        hb = schedules_heartbeat.get(name, {})
+        hb_last_run = hb.get("last_run_at")
+        hb_status = hb.get("status")
+        hb_last_error = hb.get("last_error")
+
         next_run: str | None = None
+        health: str = "unknown"
+
         if s.enabled and croniter_mod is not None:
             try:
                 base = (
-                    datetime.fromisoformat(s.last_run) if s.last_run else now
+                    datetime.fromisoformat(hb_last_run)
+                    if hb_last_run
+                    else (datetime.fromisoformat(s.last_run) if s.last_run else now)
                 )
                 cron = croniter_mod.croniter(s.expression, base)
-                next_run = cron.get_next(datetime).isoformat()
+                next_dt = cron.get_next(datetime)
+                next_run = next_dt.isoformat()
+
+                # Missed detection: if next expected run is in the past,
+                # the schedule should have run but didn't
+                if hb_last_run:
+                    last_dt = datetime.fromisoformat(hb_last_run)
+                    expected_next = croniter_mod.croniter(s.expression, last_dt).get_next(datetime)
+                    if expected_next < now:
+                        health = "missed"
+                    else:
+                        health = "ok"
+                else:
+                    health = "unknown"
             except Exception:
                 pass
+
+        # Override health if last heartbeat recorded an error
+        if hb_status == "error":
+            health = "error"
 
         result.append({
             "schedule_id": name,
             "domain": s.domain,
             "cron_expr": s.expression,
             "is_active": s.enabled,
-            "last_run": s.last_run,
+            "last_run": hb_last_run or s.last_run,
             "next_run": next_run,
             "schedule_type": s.type,
             "recipients": s.recipients if s.type == "digest" else [],
+            "health": health,
+            "last_error": hb_last_error,
         })
 
     return result
@@ -283,6 +383,7 @@ def run_due_schedules(
                 send_digest(domain=sched.domain, period="daily", config=None)
                 sched.last_run = now.isoformat()
                 save_schedules(schedules)
+                _update_heartbeat(name, status="ok")
                 entry["ran"] = True
                 entry["type"] = "digest"
             else:
@@ -291,6 +392,7 @@ def run_due_schedules(
                 coll_result = run_collection(domain=sched.domain)
                 sched.last_run = now.isoformat()
                 save_schedules(schedules)
+                _update_heartbeat(name, status="ok")
                 entry["ran"] = True
                 if json_output:
                     entry["collection_result"] = coll_result
@@ -303,10 +405,19 @@ def run_due_schedules(
             entry["last_run"] = sched.last_run
         except Exception as exc:
             logger.exception("Schedule '%s' failed", name)
+            _update_heartbeat(name, status="error", last_error=str(exc))
             entry["ran"] = False
             entry["error"] = str(exc)
 
         results.append(entry)
+
+    # --- Trial expiry check (cron-based automated notification) -------------
+    try:
+        from autoinfo.notifications import check_expiring_trials  # noqa: PLC0415
+
+        _ = check_expiring_trials()
+    except Exception:
+        logger.debug("Trial expiry check failed", exc_info=True)
 
     return results
 
@@ -505,6 +616,139 @@ def remove_schedule(
     typer.echo(
         f"Schedule '{name}' removed (was: {removed.expression} → domain '{removed.domain}')."
     )
+
+
+@app.command(name="health")
+def health(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    notify: bool = typer.Option(
+        False, "--notify", help="Send email alerts for missed schedules",
+    ),
+) -> None:
+    """Show per-schedule health status with missed-schedule detection.
+
+    Reports ``health`` field for each schedule:
+    - ``ok`` — last run was on time
+    - ``missed`` — schedule was expected to run but didn't
+    - ``error`` — last run failed
+    - ``unknown`` — schedule has never run (no heartbeat data)
+
+    Use ``--notify`` to send email alerts to the admin address
+    (``AUTOINFO_ADMIN_EMAIL`` env var or ``email.to_addrs`` from config).
+    """
+    statuses = get_schedule_status()
+    if not statuses:
+        typer.echo("No schedules configured.")
+        return
+
+    # Collect missed schedules for notification
+    missed = [s for s in statuses if s["health"] == "missed"]
+
+    if notify and missed:
+        _send_missed_alerts(missed)
+
+    if json_output:
+        typer.echo(json.dumps({
+            "schedules": statuses,
+            "count": len(statuses),
+            "missed_count": len(missed),
+        }, ensure_ascii=False, indent=2))
+        return
+
+    # Table header
+    header = f"{'Name':<20} {'Health':<10} {'Domain':<22} {'Last Run':<28} {'Next Run':<28}"
+    typer.echo(header)
+    typer.echo("-" * len(header))
+
+    for s in statuses:
+        health_icon = _health_icon(s["health"])
+        health_label = f"{health_icon} {s['health']}"
+        last = s["last_run"] or "—"
+        next_r = s["next_run"] or "—"
+        typer.echo(
+            f"{s['schedule_id']:<20} {health_label:<10} {s['domain']:<22} "
+            f"{last:<28} {next_r:<28}"
+        )
+        if s.get("last_error"):
+            typer.echo(f"  ↳ Error: {s['last_error']}")
+
+    typer.echo("")
+    summary_parts = [f"{len(statuses)} schedule(s)"]
+    ok_count = sum(1 for s in statuses if s["health"] == "ok")
+    error_count = sum(1 for s in statuses if s["health"] == "error")
+    unknown_count = sum(1 for s in statuses if s["health"] == "unknown")
+    if ok_count:
+        summary_parts.append(f"{ok_count} ok")
+    if missed:
+        summary_parts.append(f"{len(missed)} missed")
+    if error_count:
+        summary_parts.append(f"{error_count} error")
+    if unknown_count:
+        summary_parts.append(f"{unknown_count} unknown")
+    typer.echo(", ".join(summary_parts))
+
+
+def _health_icon(health: str) -> str:
+    """Map health status to display icon."""
+    return {"ok": "✓", "missed": "✗", "error": "✗", "unknown": "?"}.get(health, "?")
+
+
+def _send_missed_alerts(missed_schedules: list[dict]) -> None:
+    """Send email notification for missed schedules.
+
+    Reads admin email from ``AUTOINFO_ADMIN_EMAIL`` env var or falls back
+    to the configured ``email.to_addrs`` list.
+
+    Parameters
+    ----------
+    missed_schedules : list[dict]
+        Schedule status dicts with ``health == "missed"``.
+    """
+    import os
+
+    from autoinfo.email_sender import send_notification
+
+    admin_email = os.environ.get("AUTOINFO_ADMIN_EMAIL", "")
+    if not admin_email:
+        try:
+            from autoinfo.config import get_config_path, load_config
+
+            config_path = get_config_path()
+            if config_path:
+                cfg = load_config(config_path)
+                if cfg.email.to_addrs:
+                    admin_email = cfg.email.to_addrs[0]
+        except Exception:
+            pass
+
+    if not admin_email:
+        logger.warning(
+            "Cannot send missed-schedule alert: no admin email configured. "
+            "Set AUTOINFO_ADMIN_EMAIL or configure email.to_addrs in config."
+        )
+        return
+
+    for s in missed_schedules:
+        name = s["schedule_id"]
+        domain = s["domain"]
+        expr = s["cron_expr"]
+        last_run = s["last_run"] or "never"
+        next_run = s["next_run"] or "unknown"
+
+        subject = f"[AutoInfo] Missed schedule: {name} ({domain})"
+        body = (
+            f"Schedule '{name}' was expected to run but didn't.\n\n"
+            f"  Domain:      {domain}\n"
+            f"  Cron expr:   {expr}\n"
+            f"  Last run:    {last_run}\n"
+            f"  Expected:    {next_run}\n\n"
+            f"Please check the AutoInfo cron configuration and logs.\n"
+        )
+        try:
+            send_notification(to=admin_email, subject=subject, body=body)
+            logger.info("Missed schedule alert sent for '%s' to %s", name, admin_email)
+        except Exception as exc:
+            logger.exception("Failed to send missed-schedule alert for '%s': %s", name, exc)
 
 
 # ---------------------------------------------------------------------------

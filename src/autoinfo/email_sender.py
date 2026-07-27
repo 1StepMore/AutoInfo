@@ -216,3 +216,132 @@ def _send_smtp(email_cfg: EmailConfig, msg: MIMEMultipart) -> None:
                 server.quit()
             except Exception:
                 pass
+
+
+# ---------------------------------------------------------------------------
+# send_notification — generic notification email (T6)
+# ---------------------------------------------------------------------------
+
+
+def send_notification(
+    to: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+) -> dict[str, Any]:
+    """Send a plain notification email to a single recipient via SMTP.
+
+    This is the generic notification primitive used by the notification
+    system (trial reminders, content-ready alerts, etc.).  Unlike
+    :func:`send_digest`, it does **not** generate content — it only
+    formats and sends the provided text.
+
+    Parameters
+    ----------
+    to:
+        Recipient email address.
+    subject:
+        Email subject line.
+    body:
+        Plain-text email body.
+    html_body:
+        Optional HTML body.  When provided, the email is sent as
+        ``multipart/alternative`` with both plain-text and HTML parts.
+        When ``None`` (default), only the plain-text part is included.
+
+    Returns
+    -------
+    dict
+        ``{success: bool, message: str, recipient: str}`` on success, or
+        ``{success: False, error: str, recipient: str}`` on failure.
+
+    Raises
+    ------
+    RuntimeError
+        If email is not enabled in config or SMTP is not configured.
+    """
+    config_path = get_config_path()
+    if config_path is None:
+        raise RuntimeError("No configuration file found. Run 'autoinfo init' first.")
+    config = load_config(config_path)
+    email_cfg = config.email
+
+    if not email_cfg.enabled:
+        raise RuntimeError(
+            "Email delivery is not enabled. Set 'email.enabled: true' in config."
+        )
+    if not email_cfg.smtp_host:
+        raise RuntimeError("SMTP host not configured (email.smtp_host)")
+    if not email_cfg.from_addr:
+        raise RuntimeError("From address not configured (email.from_addr)")
+
+    # --- Build email ---------------------------------------------------------
+    if html_body:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    msg["Subject"] = subject
+    msg["From"] = email_cfg.from_addr
+    msg["To"] = to
+    msg["Date"] = _format_date()
+
+    # --- Send via single-recipient SMTP wrapper ------------------------------
+    try:
+        _send_smtp_single(email_cfg, msg, to)
+        return {
+            "success": True,
+            "message": f"Notification sent to {to}",
+            "recipient": to,
+        }
+    except Exception as exc:
+        logger.error("Notification to %s failed: %s", to, exc)
+        return {
+            "success": False,
+            "error": str(exc),
+            "recipient": to,
+        }
+
+
+def _send_smtp_single(
+    email_cfg: EmailConfig,
+    msg: MIMEMultipart,
+    recipient: str,
+) -> None:
+    """Connect to SMTP and send *msg* to a single *recipient*.
+
+    Uses the same STARTTLS + optional auth flow as :func:`_send_smtp`,
+    but sends to a single address rather than the configured ``to_addrs``
+    list.  On failure, raises ``RuntimeError``.
+    """
+    server: smtplib.SMTP | None = None
+    try:
+        server = smtplib.SMTP(email_cfg.smtp_host, email_cfg.smtp_port, timeout=30)
+        server.ehlo()
+
+        if server.has_extn("STARTTLS"):
+            server.starttls()
+            server.ehlo()
+
+        if email_cfg.smtp_user and email_cfg.smtp_pass:
+            server.login(email_cfg.smtp_user, email_cfg.smtp_pass)
+
+        server.sendmail(email_cfg.from_addr, [recipient], msg.as_string())
+
+        logger.info("Notification sent to %s via %s:%d", recipient, email_cfg.smtp_host, email_cfg.smtp_port)
+
+    except smtplib.SMTPException as exc:
+        logger.error("SMTP delivery to %s failed: %s", recipient, exc)
+        raise RuntimeError(f"SMTP delivery failed: {exc}") from exc
+    except Exception as exc:
+        logger.error("Email delivery to %s failed: %s", recipient, exc)
+        raise RuntimeError(f"Email delivery failed: {exc}") from exc
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass

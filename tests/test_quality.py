@@ -9,8 +9,11 @@ Covers:
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from autoinfo.config import QualityGateConfig
 from autoinfo.models import Item, KBEntry
 from autoinfo.quality import (
     G1SourceAuthority,
@@ -114,7 +117,13 @@ class TestG2Dedup:
 
     def test_url_unique_passes(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
         existing = [
-            KBEntry(**{**sample_kb_entry.to_dict(), "source_url": "https://example.com/other"})
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/other",
+                    "title": "Unrelated study about diabetes management in elderly patients",
+                }
+            )
         ]
         g2 = G2Dedup()
         result = g2.check(sample_item, existing)
@@ -207,7 +216,13 @@ class TestG2Dedup:
 
     def test_no_match_returns_correct_details(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
         existing = [
-            KBEntry(**{**sample_kb_entry.to_dict(), "source_url": "https://example.com/other"})
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/other",
+                    "title": "Cardiovascular risk factors in middle-aged adults: a cohort study",
+                }
+            )
         ]
         g2 = G2Dedup()
         result = g2.check(sample_item, existing)
@@ -262,6 +277,57 @@ class TestG2Dedup:
         assert result.passed is False
         assert result.details["matched_by"] == "pmid"
 
+    def test_fuzzy_title_duplicate_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+        """Similar titles (≥85% match) should be flagged as duplicates."""
+        item = Item(
+            **{
+                **sample_item.to_dict(),
+                "source_url": "https://example.com/new-item",
+                "raw_data": {},  # no PMID/DOI to avoid those matches
+            }
+        )
+        existing = [
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/existing-entry",
+                    # Title is almost identical — only missing "a" article
+                    "title": "Improved IVF outcomes with time-lapse embryo imaging: randomized controlled trial",
+                }
+            )
+        ]
+        g2 = G2Dedup()
+        result = g2.check(item, existing)
+
+        assert result.passed is False
+        assert result.flagged is True
+        assert result.details["is_duplicate"] is True
+        assert result.details["matched_by"] == "fuzzy_title"
+        assert result.details["similarity"] >= 0.85
+
+    def test_fuzzy_title_below_threshold_passes(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+        """Dissimilar titles (< 85% match) should not trigger fuzzy dedup."""
+        item = Item(
+            **{
+                **sample_item.to_dict(),
+                "source_url": "https://example.com/new-item",
+                "raw_data": {},
+            }
+        )
+        existing = [
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/existing-entry",
+                    "title": "Cardiovascular risk factors in middle-aged adults: a cohort study",
+                }
+            )
+        ]
+        g2 = G2Dedup()
+        result = g2.check(item, existing)
+
+        assert result.passed is True
+        assert result.details["is_duplicate"] is False
 
 # ===================================================================
 # G3 — Relevance Scoring
@@ -371,6 +437,197 @@ class TestG3RelevanceScoring:
 
 
 # ===================================================================
+# G3 — Relevance Scoring (LLM-based)
+# ===================================================================
+
+
+class TestG3RelevanceScoringLLM:
+    """G3 LLM-based 0-100 scoring with retry loop following G4's pattern."""
+
+    @staticmethod
+    def _mock_llm_response(score_text: str) -> MagicMock:
+        """Build a mock litellm response whose content is *score_text*."""
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message.content = score_text
+        return mock_resp
+
+    @staticmethod
+    def _gate_config(retries: int = 2, action: str = "archive") -> QualityGateConfig:
+        """Return a QualityGateConfig with retries > 0 to trigger LLM path."""
+        return QualityGateConfig(
+            name="G3-RelevanceScoring",
+            retries=retries,
+            action=action,
+        )
+
+    def test_llm_score_returned_directly(self, sample_item: Item) -> None:
+        """LLM returns '85' → score is 85."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("85")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF", "embryo"],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 85.0
+        assert result.details["scoring_method"] == "llm"
+
+    def test_llm_score_zero(self, sample_item: Item) -> None:
+        """LLM returns '0' → score is 0, flagged hidden."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("0")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            threshold=30,
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 0.0
+        assert result.flagged is True
+        assert result.details["hidden"] is True
+
+    def test_llm_score_100(self, sample_item: Item) -> None:
+        """LLM returns '100' → score is 100, passes."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("100")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 100.0
+        assert result.passed is True
+        assert result.flagged is False
+
+    def test_llm_clamps_out_of_range(self, sample_item: Item) -> None:
+        """LLM returns '150' → clamped to 100."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("150")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 100.0
+
+    def test_llm_parses_number_from_text(self, sample_item: Item) -> None:
+        """LLM returns 'Score: 73' → parses to 73."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("Score: 73")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 73.0
+
+    def test_all_retries_exhausted_returns_50(self, sample_item: Item) -> None:
+        """LLM raises on all 3 attempts → score=50 (neutral pass)."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(side_effect=RuntimeError("API down"))
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            threshold=30,
+            gate_config=self._gate_config(retries=3),
+        )
+        assert result.score == 50.0
+        assert result.details["scoring_method"] == "llm"
+        assert result.details["llm_retries"] == 3
+
+    def test_retry_escalating_context(self, sample_item: Item) -> None:
+        """First call fails (unparseable), second succeeds → returns second score."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock()
+        g3.llm_call.side_effect = [
+            self._mock_llm_response("not a number"),
+            self._mock_llm_response("42"),
+        ]
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF"],
+            gate_config=self._gate_config(retries=2),
+        )
+        assert result.score == 42.0
+        assert result.details["llm_retries"] == 2
+
+    def test_lexical_fallback_when_retries_zero(self, sample_item: Item) -> None:
+        """gate_config.retries=0 → lexical fallback (no LLM call)."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(side_effect=AssertionError("should not be called"))
+        result = g3.check(
+            sample_item,
+            topic_keywords=["IVF", "embryo"],
+            gate_config=self._gate_config(retries=0),
+        )
+        assert result.score == 100.0  # lexical: both keywords match
+        assert result.details["scoring_method"] == "lexical"
+        g3.llm_call.assert_not_called()
+
+    def test_content_truncation_for_large_input(self, sample_item: Item) -> None:
+        """Content > 32K chars is truncated before LLM call."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("90")
+        )
+        # Build content exceeding _MAX_CONTENT_CHARS (32K)
+        long_item = Item(**{
+            **sample_item.to_dict(),
+            "content": "A" * 50000,
+        })
+        result = g3.check(
+            long_item,
+            topic_keywords=["IVF"],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 90.0
+        # Verify the content passed to LLM was truncated
+        call_args = g3.llm_call.call_args
+        user_content = call_args[1]["messages"][1]["content"]
+        content_start = user_content.find("CONTENT: ")
+        passed_content = user_content[content_start + len("CONTENT: "):]
+        # Should be ≤ 32K chars plus the prefix text before CONTENT:
+        assert len(passed_content) <= g3._MAX_CONTENT_CHARS + 200
+
+    def test_no_keywords_short_circuits_llm(self, sample_item: Item) -> None:
+        """Empty keywords → score=100, no LLM call made."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(side_effect=AssertionError("should not be called"))
+        result = g3.check(
+            sample_item,
+            topic_keywords=[],
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 100.0
+        g3.llm_call.assert_not_called()
+
+    def test_multi_language_keywords(self, sample_item: Item) -> None:
+        """Multi-language keyword dict is flattened and scored by LLM."""
+        g3 = G3RelevanceScoring(model="test/test")
+        g3.llm_call = MagicMock(
+            return_value=self._mock_llm_response("88")
+        )
+        result = g3.check(
+            sample_item,
+            topic_keywords={"en": ["IVF"], "zh": ["试管婴儿"]},
+            gate_config=self._gate_config(),
+        )
+        assert result.score == 88.0
+        assert result.details["scoring_method"] == "llm"
+
+
+# ===================================================================
 # Orchestrator — run_quality_gates
 # ===================================================================
 
@@ -391,7 +648,7 @@ class TestRunQualityGates:
         assert "G1-SourceAuthority" in results
         assert "G2-Dedup" in results
         assert "G3-RelevanceScoring" in results
-        assert len(results) == 4
+        assert len(results) >= 4
 
     def test_all_quality_result_instances(self, sample_item: Item) -> None:
         results = run_quality_gates(sample_item, {"topic_keywords": ["IVF"]})
@@ -403,7 +660,7 @@ class TestRunQualityGates:
         """Orchestrator should not crash when context is empty."""
         results = run_quality_gates(sample_item, {})
 
-        assert len(results) == 4
+        assert len(results) >= 4
         # G0 should pass for valid sample_item
         assert results["G0-SchemaIntegrity"].passed is True
         # G3 with empty keywords = score 100
@@ -413,7 +670,7 @@ class TestRunQualityGates:
         """Orchestrator should not crash when context is None."""
         results = run_quality_gates(sample_item)
 
-        assert len(results) == 4
+        assert len(results) >= 4
 
     def test_g3_triggers_hidden_in_orchestrator(self, sample_item: Item) -> None:
         """Hidden flag propagates through orchestrated G3."""

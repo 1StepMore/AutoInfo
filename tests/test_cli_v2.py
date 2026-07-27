@@ -85,8 +85,8 @@ class TestSourcesCommand:
         assert "--url" in result.stdout
         assert "--type" in result.stdout
 
-    def test_sources_add_stub_message(self, cli_runner: Any, app: Any) -> None:
-        """``autoinfo sources add`` with required args prints stub message."""
+    def test_sources_add_requires_domain(self, cli_runner: Any, app: Any) -> None:
+        """``autoinfo sources add`` fails when domain is not configured."""
         result = cli_runner.invoke(
             app,
             [
@@ -102,8 +102,8 @@ class TestSourcesCommand:
                 "test-domain",
             ],
         )
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.stdout
+        assert result.exit_code != 0
+        assert "not configured" in result.stderr
 
 
 # ---------------------------------------------------------------------------

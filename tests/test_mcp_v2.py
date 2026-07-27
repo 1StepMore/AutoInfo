@@ -145,7 +145,9 @@ class TestGetDomainSchema:
         assert "output_templates" in result
         assert "sources" in result
         assert "topics" in result
-        assert "digest" in result["output_templates"]
+        # output_templates is a list of dicts; check name field
+        template_names = {t["name"] for t in result["output_templates"]}
+        assert "digest" in template_names
 
     def test_sources_in_schema(self, tmp_config: Path) -> None:
         result = _handle_get_domain_schema(domain="medical-research")
@@ -475,10 +477,11 @@ class TestListOutputTemplates:
     def test_returns_templates(self) -> None:
         result = _handle_list_output_templates(domain="medical-research")
         assert result["count"] == 4
-        assert "digest" in result["templates"]
-        assert "report" in result["templates"]
-        assert "tutorial" in result["templates"]
-        assert "presentation" in result["templates"]
+        template_names = {t["name"] for t in result["templates"]}
+        assert "digest" in template_names
+        assert "report" in template_names
+        assert "tutorial" in template_names
+        assert "presentation" in template_names
 
     def test_works_without_domain(self) -> None:
         result = _handle_list_output_templates()

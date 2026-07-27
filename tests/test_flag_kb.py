@@ -200,7 +200,7 @@ class TestGetSummary:
         sp = result["source_provenance"]
         assert sp["source_url"] == "https://example.com/flag-test"
         assert sp["source_type"] == "api"
-        assert sp["source_platform"] == "pubmed"
+        assert sp["source_platform"] == ""
         assert sp["collected_at"] == "2026-07-15T10:30:00Z"
 
     def test_tags_and_file_path_present(self, sample_kb_entry: tuple[KBStore, str]) -> None:

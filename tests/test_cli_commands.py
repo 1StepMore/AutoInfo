@@ -363,10 +363,10 @@ class TestSummariesCommand:
 
         assert result.exit_code == 0
         data = json.loads(result.stdout)
-        assert isinstance(data, list)
-        assert len(data) == 2
-        assert data[0]["entry_id"] == "kb-entry-001"
-        assert data[1]["entry_id"] == "kb-entry-002"
+        assert isinstance(data, dict)
+        assert data["count"] == 2
+        assert data["items"][0]["entry_id"] == "kb-entry-001"
+        assert data["items"][1]["entry_id"] == "kb-entry-002"
 
     @patch("autoinfo.kb.KBStore")
     def test_summaries_empty(

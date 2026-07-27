@@ -316,4 +316,4 @@ class TestCliKnowledgeGraphExport:
             ],
         )
         assert result.exit_code == 1
-        assert "Unsupported format" in result.stdout
+        assert "Unsupported format" in result.output

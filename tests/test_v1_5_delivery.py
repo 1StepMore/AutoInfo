@@ -346,7 +346,7 @@ class TestProductTemplate:
                         "tags": "[]",
                         "source_platform": "web",
                         "source_type": "article",
-                        "collected_at": "2024-01-01",
+                        "collected_at": "2026-07-26",
                         "relevance_score": 85,
                         "source_url": "http://example.com",
                     }

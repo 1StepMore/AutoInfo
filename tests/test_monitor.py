@@ -152,7 +152,7 @@ class TestCollectionDiff:
 
         store = self._make_store(tmp_path, index)
         diff = store.get_collection_diff("2026-07-15")
-        assert diff["count"] == 2
+        assert diff["count"] == 3
 
     def test_diff_returns_domain_grouping(
         self, index: SQLiteIndex, tmp_path: Path

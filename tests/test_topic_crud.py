@@ -167,7 +167,7 @@ class TestTopicsAddCLI:
             catch_exceptions=False,
         )
         assert result.exit_code == 1
-        assert "not configured" in result.stdout
+        assert "not configured" in result.output
 
     def test_add_topic_no_config(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """Running topics add without a config file exits gracefully."""
@@ -177,7 +177,7 @@ class TestTopicsAddCLI:
                 ["topics", "add", "--domain", "x", "--name", "Test", "--keywords", "a"],
             )
             assert result.exit_code == 1
-            assert "Run 'autoinfo init' first" in result.stdout
+            assert "Run 'autoinfo init' first" in result.output
 
 
 # ======================================================================
@@ -230,14 +230,14 @@ class TestTopicsListCLI:
             catch_exceptions=False,
         )
         assert result.exit_code == 1
-        assert "not configured" in result.stdout
+        assert "not configured" in result.output
 
     def test_list_topics_no_config(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """Running topics list without a config file exits gracefully."""
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             result = cli_runner.invoke(app, ["topics", "list", "--domain", "x"])
             assert result.exit_code == 1
-            assert "Run 'autoinfo init' first" in result.stdout
+            assert "Run 'autoinfo init' first" in result.output
 
 
 # ======================================================================
@@ -279,7 +279,7 @@ class TestTopicsRemoveCLI:
                 catch_exceptions=False,
             )
         assert result.exit_code == 1
-        assert "not found" in result.stdout
+        assert "not found" in result.output
 
     def test_remove_topic_domain_not_found(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Removing a topic from a non-existent domain prints an error."""
@@ -289,7 +289,7 @@ class TestTopicsRemoveCLI:
             catch_exceptions=False,
         )
         assert result.exit_code == 1
-        assert "not configured" in result.stdout
+        assert "not configured" in result.output
 
     def test_remove_topic_no_config(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """Running topics remove without a config file exits gracefully."""
@@ -298,7 +298,7 @@ class TestTopicsRemoveCLI:
                 app, ["topics", "remove", "--domain", "x", "--topic-id", "y"]
             )
             assert result.exit_code == 1
-            assert "Run 'autoinfo init' first" in result.stdout
+            assert "Run 'autoinfo init' first" in result.output
 
 
 # ======================================================================

@@ -528,14 +528,62 @@ class TestD2FormatIntegrity:
         """Unknown format passes with advisory note."""
         product = {
             "product_type": "PROCESSED",
-            "format": "pdf",
-            "body": "%PDF-1.4 binary...",
+            "format": "xml",
+            "body": "<root><item/></root>",
         }
         gate = D2FormatIntegrity()
         result = gate.check(product)
 
         assert result.passed is True
         assert "Unknown format" in result.details["note"]
+
+    def test_valid_pdf_passes(self) -> None:
+        """Valid PDF parsed with fitz → passes with metadata."""
+        pdf_path = Path(__file__).parent / "fixtures" / "sample.pdf"
+        pdf_body = pdf_path.read_bytes()
+        product = {
+            "product_type": "PROCESSED",
+            "format": "pdf",
+            "body": pdf_body,
+        }
+        gate = D2FormatIntegrity()
+        result = gate.check(product)
+
+        assert result.passed is True
+        assert result.score == 1.0
+        assert result.details["valid"] is True
+        assert result.details["page_count"] == 1
+        assert result.details["title"] == "Test PDF"
+
+    def test_corrupted_pdf_fails(self) -> None:
+        """Corrupted PDF data → fails with descriptive error."""
+        product = {
+            "product_type": "PROCESSED",
+            "format": "pdf",
+            "body": "%%EOF",
+        }
+        gate = D2FormatIntegrity()
+        result = gate.check(product)
+
+        # Default action_on_failure is "fallback" → passed=True, flagged=True
+        assert result.passed is True
+        assert result.flagged is True
+        assert result.score == 0.0
+        assert "error" in result.details
+
+    def test_corrupted_pdf_blocks_when_configured(self) -> None:
+        """With action_on_failure='block', corrupted PDF blocks."""
+        product = {
+            "product_type": "PROCESSED",
+            "format": "pdf",
+            "body": "not a pdf at all",
+        }
+        gate = D2FormatIntegrity(action_on_failure="block")
+        result = gate.check(product)
+
+        assert result.passed is False
+        assert result.flagged is True
+        assert "error" in result.details
 
     def test_empty_body_fails(self) -> None:
         """Empty body → fails."""

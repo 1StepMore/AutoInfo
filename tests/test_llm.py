@@ -246,6 +246,143 @@ class TestExtractWithRetry:
         assert result.tl_dr != ""
         assert call_count == 3  # 2 failures + 1 success
 
+    # ------------------------------------------------------------------
+    # Fallback chain tests
+    # ------------------------------------------------------------------
+
+    def test_fallback_used_when_primary_exhausted(
+        self,
+        sample_item: Item,
+    ) -> None:
+        """Fallback model is tried after primary retries are exhausted."""
+        from autoinfo.config import Config, LLMConfig
+
+        fallback_cfg = LLMConfig(provider="openai", model="gpt-4o", api_key="")
+        cfg = Config(
+            llm=LLMConfig(
+                provider="openrouter",
+                model="deepseek/deepseek-chat",
+                api_key="",
+                fallback=[fallback_cfg],
+            )
+        )
+        extractor = LLMExtractor(config=cfg)
+
+        # Primary always fails; fallback succeeds
+        mock_lm = MagicMock()
+
+        def _side_effect(**kwargs: object) -> MagicMock:
+            model = str(kwargs.get("model", ""))
+            if "deepseek" in model:
+                raise Exception("Primary model error")
+            return MagicMock(
+                choices=[MagicMock(message=MagicMock(content=json.dumps({
+                    "tl_dr": "fallback model result",
+                    "key_points": ["recovered via fallback"],
+                    "entities": [],
+                    "relevance_score": 85,
+                })))]
+            )
+
+        mock_lm.completion.side_effect = _side_effect
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = extractor.extract_with_retry(sample_item, max_retries=2)
+
+        assert isinstance(result, ExtractionResult)
+        assert result.tl_dr == "fallback model result"
+        assert len(result.key_points) == 1
+
+    def test_fallback_all_fail(
+        self,
+        sample_item: Item,
+    ) -> None:
+        """RuntimeError is raised when both primary and all fallbacks fail."""
+        from autoinfo.config import Config, LLMConfig
+
+        fallback_cfg = LLMConfig(provider="openai", model="gpt-4o", api_key="")
+        cfg = Config(
+            llm=LLMConfig(
+                provider="openrouter",
+                model="deepseek/deepseek-chat",
+                api_key="",
+                fallback=[fallback_cfg],
+            )
+        )
+        extractor = LLMExtractor(config=cfg)
+
+        mock_lm = MagicMock()
+        mock_lm.completion.side_effect = Exception("Always fails")
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            with pytest.raises(RuntimeError, match="fallback"):
+                extractor.extract_with_retry(sample_item, max_retries=2)
+
+    def test_fallback_logged(
+        self,
+        sample_item: Item,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Fallback attempts are logged with model name and duration."""
+        import logging
+
+        caplog.set_level(logging.INFO)
+
+        from autoinfo.config import Config, LLMConfig
+
+        fallback_cfg = LLMConfig(provider="openai", model="gpt-4o", api_key="")
+        cfg = Config(
+            llm=LLMConfig(
+                provider="openrouter",
+                model="deepseek/deepseek-chat",
+                api_key="",
+                fallback=[fallback_cfg],
+            )
+        )
+        extractor = LLMExtractor(config=cfg)
+
+        mock_lm = MagicMock()
+
+        def _side_effect(**kwargs: object) -> MagicMock:
+            model = str(kwargs.get("model", ""))
+            if "deepseek" in model:
+                raise Exception("Primary error")
+            return MagicMock(
+                choices=[MagicMock(message=MagicMock(content=json.dumps({
+                    "tl_dr": "ok",
+                    "key_points": [],
+                    "entities": [],
+                    "relevance_score": 50,
+                })))]
+            )
+
+        mock_lm.completion.side_effect = _side_effect
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            extractor.extract_with_retry(sample_item, max_retries=2)
+
+        # Should see a fallback warning with model name
+        fallback_logs = [
+            rec.getMessage()
+            for rec in caplog.records
+            if "Fallback" in rec.getMessage()
+        ]
+        assert any("openai/gpt-4o" in msg for msg in fallback_logs)
+        assert any("succeeded" in msg for msg in fallback_logs)
+
+    def test_no_fallback_raises_immediately(
+        self,
+        sample_item: Item,
+        extractor: LLMExtractor,
+    ) -> None:
+        """When no fallback is configured, error message says so."""
+        mock_lm = MagicMock()
+        mock_lm.completion.side_effect = Exception("API error")
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            with pytest.raises(RuntimeError, match="no fallback"):
+                extractor.extract_with_retry(sample_item, max_retries=2)
+
 
 class TestParseResponseFallback:
     """``LLMExtractor._parse_response()`` — JSON parsing fallback strategies."""

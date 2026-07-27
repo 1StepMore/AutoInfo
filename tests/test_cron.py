@@ -249,9 +249,9 @@ class TestCliListSchedules:
             result = cli_runner.invoke(cron_app, ["list-schedules", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]["name"] == "weekly"
+        assert isinstance(data, dict)
+        assert data["count"] == 1
+        assert data["items"][0]["name"] == "weekly"
 
 
 # ======================================================================

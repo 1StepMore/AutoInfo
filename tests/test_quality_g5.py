@@ -403,12 +403,6 @@ class TestG5PipelineIntegration:
         """When --check-translation is set, G5 result is in quality_results."""
         mock_ext = MagicMock(return_value=process_extraction)
         mock_quality = MagicMock(return_value=_make_quality_results_base())
-        mock_g5_result = QualityResult(
-            gate_name="G5-TranslationAccuracy",
-            passed=False,
-            flagged=True,
-            details={"faithful": False, "explanation": "Mock unfaithful", "issues": ["mock"]},
-        )
 
         mock_entry = KBEntry(entry_id="test", title="test", domain="test")
         mock_store = MagicMock(spec=KBStore)
@@ -419,12 +413,26 @@ class TestG5PipelineIntegration:
             patch("autoinfo.process.load_cached_items", return_value=process_items),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
-            patch("autoinfo.process.G5TranslationAccuracy") as mock_g5_cls,
+            patch("autoinfo.process.llm_judge") as mock_llm_judge,
+            patch(
+                "autoinfo.translation_qa.calculate_quality_score",
+            ) as mock_calc_score,
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            mock_g5_instance = MagicMock()
-            mock_g5_instance.check.return_value = mock_g5_result
-            mock_g5_cls.return_value = mock_g5_instance
+            mock_llm_judge.return_value = {
+                "faithfulness": 85,
+                "terminology": 80,
+                "style": 75,
+                "readability": 90,
+                "issues": ["mock issue"],
+            }
+            mock_calc_score.return_value = {
+                "composite": 82.5,
+                "faithfulness": 85.0,
+                "terminology": 80.0,
+                "style": 75.0,
+                "readability": 90.0,
+            }
 
             result = run_processing("medical-research", check_translation=True)
 
@@ -432,19 +440,19 @@ class TestG5PipelineIntegration:
         assert result.kb_entries_created == 1
         assert result.errors == []
 
-        # Verify G5 was called
-        mock_g5_instance.check.assert_called_once()
-
         # Verify G5 result was passed to store_entry (3rd positional arg)
         call_args = mock_store.store_entry.call_args
         assert call_args is not None
         args, _ = call_args
         quality_results = args[2] if len(args) > 2 else {}
         assert "G5-TranslationAccuracy" in quality_results
-        assert quality_results["G5-TranslationAccuracy"].flagged is True
+        g5 = quality_results["G5-TranslationAccuracy"]
+        assert g5.flagged is not True  # composite >= 50 → faithful
+        assert g5.details.get("composite_score") == 82.5
 
-        # Item log should contain g5 info
-        assert result.per_item_logs[0].get("g5_flagged") is True
+        # Item log should contain g5 info and composite_score
+        assert result.per_item_logs[0].get("g5_flagged") is not True
+        assert result.per_item_logs[0].get("g5_composite_score") == 82.5
 
     def test_g5_skipped_without_flag(
         self,
@@ -488,9 +496,6 @@ class TestG5PipelineIntegration:
         mock_ext = MagicMock(return_value=process_extraction)
         mock_quality = MagicMock(return_value=_make_quality_results_base())
 
-        mock_g5_instance = MagicMock()
-        mock_g5_instance.check.side_effect = RuntimeError("G5 crashed")
-
         mock_entry = KBEntry(entry_id="test", title="test", domain="test")
         mock_store = MagicMock(spec=KBStore)
         mock_store.store_entry.return_value = mock_entry
@@ -500,7 +505,10 @@ class TestG5PipelineIntegration:
             patch("autoinfo.process.load_cached_items", return_value=process_items),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
-            patch("autoinfo.process.G5TranslationAccuracy", return_value=mock_g5_instance),
+            patch(
+                "autoinfo.process.llm_judge",
+                side_effect=RuntimeError("G5 crashed"),
+            ),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
             result = run_processing("medical-research", check_translation=True)
@@ -522,16 +530,9 @@ class TestG5PipelineIntegration:
         process_items: list[Item],
         process_extraction: ExtractionResult,
     ) -> None:
-        """Item log records g5_flagged and g5_faithful."""
+        """Item log records g5_flagged, g5_faithful, and g5_composite_score."""
         mock_ext = MagicMock(return_value=process_extraction)
         mock_quality = MagicMock(return_value=_make_quality_results_base())
-        mock_g5_result = QualityResult(
-            gate_name="G5-TranslationAccuracy",
-            passed=False,
-            flagged=True,
-            details={"faithful": False, "explanation": "Mock unfaithful", "issues": ["mock"]},
-        )
-        mock_g5_check = MagicMock(return_value=mock_g5_result)
 
         mock_entry = KBEntry(entry_id="test", title="test", domain="test")
         mock_store = MagicMock(spec=KBStore)
@@ -542,15 +543,30 @@ class TestG5PipelineIntegration:
             patch("autoinfo.process.load_cached_items", return_value=process_items),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
-            patch("autoinfo.process.G5TranslationAccuracy") as mock_g5_cls,
+            patch("autoinfo.process.llm_judge") as mock_llm_judge,
+            patch(
+                "autoinfo.translation_qa.calculate_quality_score",
+            ) as mock_calc_score,
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            mock_g5_instance = MagicMock()
-            mock_g5_instance.check.return_value = mock_g5_result
-            mock_g5_cls.return_value = mock_g5_instance
+            mock_llm_judge.return_value = {
+                "faithfulness": 30,
+                "terminology": 25,
+                "style": 20,
+                "readability": 40,
+                "issues": ["mock unfaithful", "wrong terms"],
+            }
+            mock_calc_score.return_value = {
+                "composite": 28.5,
+                "faithfulness": 30.0,
+                "terminology": 25.0,
+                "style": 20.0,
+                "readability": 40.0,
+            }
 
             result = run_processing("medical-research", check_translation=True)
 
         log = result.per_item_logs[0]
         assert log.get("g5_flagged") is True
         assert log.get("g5_faithful") is False
+        assert log.get("g5_composite_score") == 28.5

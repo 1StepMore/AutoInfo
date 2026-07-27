@@ -232,8 +232,9 @@ class TestKbListTiers:
             )
         assert result.exit_code == 0
         parsed = json.loads(result.stdout)
-        assert isinstance(parsed, list)
-        tiers = {item["tier"] for item in parsed}
+        assert isinstance(parsed, dict)
+        assert parsed["count"] == 3
+        tiers = {item["tier"] for item in parsed["items"]}
         assert "01-Raw" in tiers
         assert "02-Draft" in tiers
         assert "03-Wiki" in tiers
@@ -293,5 +294,6 @@ class TestOutputListTemplates:
         assert result.exit_code == 0
         parsed = json.loads(result.stdout)
         assert "templates" in parsed
-        assert "digest" in parsed["templates"]
+        names = {t["name"] for t in parsed["templates"]}
+        assert "digest" in names
         assert "count" in parsed

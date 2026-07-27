@@ -345,14 +345,14 @@ class TestErrors:
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
             with pytest.raises(ValueError, match="Unsupported export format"):
-                export_kb(format="csv")
+                export_kb(format="docx")
 
     def test_invalid_format_pdf(self, project_dir: Path) -> None:
-        """PDF export (not supported) raises ValueError."""
+        """Invalid format raises ValueError."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
             with pytest.raises(ValueError, match="Unsupported export format"):
-                export_kb(format="pdf")
+                export_kb(format="xml")
 
     def test_missing_config_raises(self) -> None:
         """Without config, export raises FileNotFoundError."""

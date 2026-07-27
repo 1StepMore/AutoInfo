@@ -9,6 +9,9 @@ plus a :func:`get_channel` factory.
 from __future__ import annotations
 
 import logging
+import os
+import socket
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any
@@ -217,6 +220,17 @@ class DeliveryChannel(ABC):
         (optionally) connectivity — but must **never** raise.
         """
 
+    @abstractmethod
+    def health_check(self) -> dict[str, Any]:
+        """Return channel health status.
+
+        Returns
+        -------
+        dict
+            Keys: ``healthy`` (bool), ``latency_ms`` (float),
+            ``error`` (str or None), ``channel`` (str).
+        """
+
 
 def _now_utc() -> str:
     """Return ISO-8601 UTC timestamp string."""
@@ -271,6 +285,23 @@ class SMTPDeliveryChannel(DeliveryChannel):
         port = config.get("smtp_port", 0)
         from_addr = config.get("from_addr", "")
         return bool(host and port and from_addr)
+
+    def health_check(self) -> dict[str, Any]:
+        start = time.time()
+        try:
+            host = os.environ.get("AUTOINFO_SMTP_HOST", "")
+            port_str = os.environ.get("AUTOINFO_SMTP_PORT", "")
+            if not host or not port_str:
+                latency = (time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_SMTP_HOST or AUTOINFO_SMTP_PORT not set", "channel": "smtp"}
+            port = int(port_str)
+            sock = socket.create_connection((host, port), timeout=5.0)
+            sock.close()
+            latency = (time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "smtp"}
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "smtp"}
 
 
 # ---------------------------------------------------------------------------
@@ -335,8 +366,24 @@ class WebhookDeliveryChannel(DeliveryChannel):
             return False
         return url.startswith("http://") or url.startswith("https://")
 
+    def health_check(self) -> dict[str, Any]:
+        start = time.time()
+        try:
+            url = os.environ.get("AUTOINFO_WEBHOOK_URL", "")
+            if not url:
+                latency = (time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_WEBHOOK_URL not set", "channel": "webhook"}
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.head(url)
+            latency = (time.time() - start) * 1000
+            healthy = resp.status_code < 500
+            return {"healthy": healthy, "latency_ms": latency, "error": None if healthy else f"HTTP {resp.status_code}", "channel": "webhook"}
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "webhook"}
+
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Internal helpers (Webhook)
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -435,6 +482,22 @@ class RESTAPIDeliveryChannel(DeliveryChannel):
         if not isinstance(url, str):
             return False
         return url.startswith("http://") or url.startswith("https://")
+
+    def health_check(self) -> dict[str, Any]:
+        start = time.time()
+        try:
+            url = os.environ.get("AUTOINFO_REST_API_URL", "")
+            if not url:
+                latency = (time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_REST_API_URL not set", "channel": "rest_api"}
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(url)
+            latency = (time.time() - start) * 1000
+            healthy = resp.status_code < 500
+            return {"healthy": healthy, "latency_ms": latency, "error": None if healthy else f"HTTP {resp.status_code}", "channel": "rest_api"}
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "rest_api"}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -553,6 +616,19 @@ class FileExportDeliveryChannel(DeliveryChannel):
         if not isinstance(path, str):
             return False
         return len(path.strip()) > 0
+
+    def health_check(self) -> dict[str, Any]:
+        start = time.time()
+        try:
+            out_dir = os.environ.get("AUTOINFO_EXPORT_DIR", os.getcwd())
+            if not os.access(out_dir, os.W_OK):
+                latency = (time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": f"directory not writable: {out_dir}", "channel": "file_export"}
+            latency = (time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "file_export"}
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "file_export"}
 
 
 # ---------------------------------------------------------------------------

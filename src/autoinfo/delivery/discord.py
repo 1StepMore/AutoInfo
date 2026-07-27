@@ -172,6 +172,21 @@ class DiscordDeliveryChannel(DeliveryChannel):
         token = config.get("bot_token") or config.get("discord_bot_token")
         return bool(token and isinstance(token, str) and len(token.strip()) > 0)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            token = _os.environ.get("DISCORD_BOT_TOKEN", "")
+            if not token:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: DISCORD_BOT_TOKEN not set", "channel": "discord"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "discord"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "discord"}
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

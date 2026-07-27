@@ -191,6 +191,22 @@ class DingTalkDeliveryChannel(DeliveryChannel):
         app_secret = config.get("app_secret", "")
         return bool(app_key and app_secret)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            app_key = _os.environ.get("DINGTALK_APP_KEY", "")
+            app_secret = _os.environ.get("DINGTALK_APP_SECRET", "")
+            if not app_key or not app_secret:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: DINGTALK_APP_KEY or DINGTALK_APP_SECRET not set", "channel": "dingtalk"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "dingtalk"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "dingtalk"}
+
     # ------------------------------------------------------------------
     # Robot webhook mode
     # ------------------------------------------------------------------

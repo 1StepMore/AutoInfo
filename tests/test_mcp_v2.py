@@ -476,16 +476,18 @@ class TestRemoveTopic:
 class TestListOutputTemplates:
     def test_returns_templates(self) -> None:
         result = _handle_list_output_templates(domain="medical-research")
-        assert result["count"] == 4
+        assert result["count"] == 6
         template_names = {t["name"] for t in result["templates"]}
         assert "digest" in template_names
         assert "report" in template_names
         assert "tutorial" in template_names
         assert "presentation" in template_names
+        assert "premium-briefing" in template_names
+        assert "enterprise-briefing" in template_names
 
     def test_works_without_domain(self) -> None:
         result = _handle_list_output_templates()
-        assert result["count"] == 4
+        assert result["count"] == 6
 
 
 class TestSearchKnowledgeBaseStub:
@@ -624,7 +626,7 @@ class TestNewToolDispatch:
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
         assert data["success"] is True
-        assert data["data"]["count"] == 4
+        assert data["data"]["count"] == 6
 
     @pytest.mark.asyncio
     async def test_unknown_tool_returns_error(self) -> None:

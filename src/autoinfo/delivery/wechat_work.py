@@ -154,6 +154,22 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
         agent_id = config.get("agent_id", "")
         return bool(corp_id and corp_secret and agent_id)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            corp_id = _os.environ.get("WECHAT_WORK_CORPID", "")
+            corp_secret = _os.environ.get("WECHAT_WORK_CORPSECRET", "")
+            if not corp_id or not corp_secret:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: WECHAT_WORK_CORPID or WECHAT_WORK_CORPSECRET not set", "channel": "wechat_work"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "wechat_work"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "wechat_work"}
+
     # ------------------------------------------------------------------
     # Token management
     # ------------------------------------------------------------------

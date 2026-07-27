@@ -239,6 +239,21 @@ class RSSDeliveryChannel(DeliveryChannel):
             and len(description.strip()) > 0
         )
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            out_dir = _os.environ.get("AUTOINFO_RSS_DIR", _os.getcwd())
+            if not _os.access(out_dir, _os.W_OK):
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": f"directory not writable: {out_dir}", "channel": "rss"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "rss"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "rss"}
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

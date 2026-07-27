@@ -183,6 +183,21 @@ class TelegramDeliveryChannel(DeliveryChannel):
         token = config.get("bot_token", "")
         return bool(token and isinstance(token, str) and len(token.strip()) > 0)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            token = _os.environ.get("TELEGRAM_BOT_TOKEN", "")
+            if not token:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: TELEGRAM_BOT_TOKEN not set", "channel": "telegram"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "telegram"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "telegram"}
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

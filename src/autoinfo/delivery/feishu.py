@@ -192,6 +192,22 @@ class FeiShuDeliveryChannel(DeliveryChannel):
         app_secret = config.get("app_secret", "")
         return bool(app_id and app_secret)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            app_id = _os.environ.get("FEISHU_APP_ID", "")
+            app_secret = _os.environ.get("FEISHU_APP_SECRET", "")
+            if not app_id or not app_secret:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: FEISHU_APP_ID or FEISHU_APP_SECRET not set", "channel": "feishu"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "feishu"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "feishu"}
+
     # ------------------------------------------------------------------
     # Webhook mode
     # ------------------------------------------------------------------

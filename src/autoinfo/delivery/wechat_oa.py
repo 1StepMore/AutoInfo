@@ -211,6 +211,22 @@ class WeChatOADeliveryChannel(DeliveryChannel):
         template_id = config.get("template_id", "")
         return bool(app_id and app_secret and template_id)
 
+    def health_check(self) -> dict[str, Any]:
+        import os as _os
+        import time as _time
+        start = _time.time()
+        try:
+            app_id = _os.environ.get("WECHAT_OA_APPID", "")
+            app_secret = _os.environ.get("WECHAT_OA_APPSECRET", "")
+            if not app_id or not app_secret:
+                latency = (_time.time() - start) * 1000
+                return {"healthy": False, "latency_ms": latency, "error": "missing config: WECHAT_OA_APPID or WECHAT_OA_APPSECRET not set", "channel": "wechat_oa"}
+            latency = (_time.time() - start) * 1000
+            return {"healthy": True, "latency_ms": latency, "error": None, "channel": "wechat_oa"}
+        except Exception as e:
+            latency = (_time.time() - start) * 1000
+            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "wechat_oa"}
+
     # ------------------------------------------------------------------
     # Token management
     # ------------------------------------------------------------------

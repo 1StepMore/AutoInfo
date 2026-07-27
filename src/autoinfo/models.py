@@ -31,6 +31,7 @@ class Item:
     version: int = 1
     previous_version: int = 0
     supersedes: str = ""
+    trace_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -324,9 +325,15 @@ class UserProfile:
     created_at: str = ""
     updated_at: str = ""
     trial_ends_at: str = ""
+    trial_started_at: str = ""
+    trial_days: int = 14
     grace_period_days: int = 7
     last_login_at: str = ""
+    preferences: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Stripe billing fields
+    stripe_customer_id: str = ""
+    stripe_subscription_id: str = ""
 
 
 @dataclass

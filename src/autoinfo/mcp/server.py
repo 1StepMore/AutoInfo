@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 87,
+            "tools_count": 111,
     }
 
 
@@ -168,6 +168,7 @@ def _handle_diagnose_system() -> dict[str, Any]:
                             "type": s.type,
                             "domain": d.name,
                             "quality_tier": s.quality_tier,
+                            "tos_classification": s.tos_classification,
                         })
             result["sources"] = {"count": len(sources), "items": sources}
     except Exception as exc:
@@ -551,6 +552,7 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
             "type": s.type,
             "url": s.url,
             "quality_tier": s.quality_tier,
+            "tos_classification": s.tos_classification,
         }
         for s in domain_cfg.sources
     ]
@@ -691,7 +693,7 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
         }
 
     sources = [
-        {"name": s.name, "type": s.type, "url": s.url, "quality_tier": s.quality_tier}
+        {"name": s.name, "type": s.type, "url": s.url, "quality_tier": s.quality_tier, "tos_classification": s.tos_classification}
         for s in domain_cfg.sources
     ]
     topics = [
@@ -717,7 +719,12 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
     return {
         "domain": domain,
         "extract_fields": extract_fields_schema,
-        "output_templates": ["digest", "report", "tutorial", "presentation"],
+        "output_templates": [
+            {"name": "digest", "description": "Scheduled knowledge digests", "access_level": "free"},
+            {"name": "report", "description": "Thematic structured reports", "access_level": "free"},
+            {"name": "tutorial", "description": "Learning path tutorials", "access_level": "free"},
+            {"name": "presentation", "description": "Slide-based presentations", "access_level": "free"},
+        ],
         "topics": topics,
         "sources": sources,
     }
@@ -825,6 +832,7 @@ def _handle_add_source(
                     "url": existing.url,
                     "domain": domain,
                     "quality_tier": existing.quality_tier,
+                    "tos_classification": existing.tos_classification,
                 },
                 "created": False,
                 "source_id": f"{domain}:{existing.name}",
@@ -835,10 +843,12 @@ def _handle_add_source(
 
     # Determine next quality_tier based on type
     quality_tier = 1 if type in ("api", "rss") else 2
+    _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+    tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
 
     from autoinfo.config import SourceConfig
 
-    new_source = SourceConfig(name=name, type=type, url=url, quality_tier=quality_tier)
+    new_source = SourceConfig(name=name, type=type, url=url, quality_tier=quality_tier, tos_classification=tos_classification)
     domain_cfg.sources.append(new_source)
     _save_config(config)
 
@@ -849,6 +859,7 @@ def _handle_add_source(
             "url": url,
             "domain": domain,
             "quality_tier": quality_tier,
+            "tos_classification": tos_classification,
         },
         "created": True,
         "source_id": f"{domain}:{name}",
@@ -1046,6 +1057,7 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
             "type": s.type,
             "url": s.url,
             "quality_tier": s.quality_tier,
+            "tos_classification": s.tos_classification,
         }
         for s in domain_cfg.sources
     ]
@@ -1470,6 +1482,7 @@ def _handle_search_knowledge_base(
     filter_content_type: str | None = None,
     filter_language: str | None = None,
     user_id: str | None = None,
+    include_stale: bool = False,
 ) -> dict[str, Any]:
     """Search the knowledge base using FTS5 full-text search.
 
@@ -1479,6 +1492,9 @@ def _handle_search_knowledge_base(
         Search mode: ``"fts5"`` (default), ``"hybrid"`` (FTS5 + vector),
         or ``"vector"``.  Falls back to FTS5 when vector search is
         unavailable.
+    include_stale:
+        If False (default), stale entries are demoted to the bottom
+        of search results.
     """
     from autoinfo.kb import KBStore
 
@@ -1497,6 +1513,7 @@ def _handle_search_knowledge_base(
         filter_content_type=filter_content_type,
         filter_language=filter_language,
         filter_user_id=user_id,
+        include_stale=include_stale,
     )
 
 
@@ -1593,6 +1610,18 @@ def _handle_restore_entry_version(version_id: str) -> dict[str, Any]:
 
     store = KBStore()
     return store.restore_entry_version(version_id=version_id)
+
+
+def _handle_compare_versions(
+    entry_id: str, version_a: str, version_b: str
+) -> dict[str, Any]:
+    """Compare two versions of a KB entry and return a structured diff."""
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    return store.compare_versions(
+        entry_id=entry_id, version_a=version_a, version_b=version_b
+    )
 
 
 def _handle_get_collection_stats(period: str = "daily") -> dict[str, Any]:
@@ -1694,9 +1723,25 @@ def _handle_list_kb_tier(
     }
 
 
+def _handle_reindex_kb(domain: str) -> dict[str, Any]:
+    """Rebuild SQLite index from disk frontmatter.
+
+    Dispatches to ``KBStore.reindex_knowledge_base``.
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    return store.reindex_knowledge_base(domain=domain)
+
+
 def _handle_list_output_templates(domain: str = "") -> dict[str, Any]:
     """List available output templates for a domain."""
-    templates = ["digest", "report", "tutorial", "presentation"]
+    templates = [
+        {"name": "digest", "description": "Scheduled knowledge digests", "access_level": "free"},
+        {"name": "report", "description": "Thematic structured reports", "access_level": "free"},
+        {"name": "tutorial", "description": "Learning path tutorials", "access_level": "free"},
+        {"name": "presentation", "description": "Slide-based presentations", "access_level": "free"},
+    ]
     return {"domain": domain, "templates": templates, "count": len(templates)}
 
 
@@ -1705,6 +1750,11 @@ def _handle_generate_digest(
     period: str = "weekly",
     format: str = "markdown",
     custom_instructions: str = "",
+    target_audience: str = "",
+    include_stale: bool = False,
+    recipients: list[str] | None = None,
+    user_id: str = "",
+    max_items: int = 0,
 ) -> dict[str, Any]:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -1713,12 +1763,30 @@ def _handle_generate_digest(
     from autoinfo.output import generate_digest as _generate_digest
 
     try:
-        result = _generate_digest(domain=domain, period=period, format=format, custom_instructions=custom_instructions)
-        if format == "json":
+        result = _generate_digest(
+            domain=domain,
+            period=period,
+            format=format,
+            custom_instructions=custom_instructions,
+            target_audience=target_audience,
+            include_stale=include_stale,
+            recipients=recipients,
+            user_id=user_id,
+            max_items=max_items,
+        )
+        if format in ("json", "agent"):
             # Parse JSON string back to dict for structured MCP response
             import json as _json
 
             return {"success": True, "format": format, "content": _json.loads(result)}
+        if format == "audio":
+            return {
+                "success": True,
+                "format": "audio",
+                "content_type": "audio/mp3",
+                "encoding": "base64",
+                "content": result,
+            }
         return {"success": True, "format": format, "content": result}
     except ValueError as exc:
         return {
@@ -1736,6 +1804,8 @@ def _handle_generate_report(
     format: str = "markdown",
     period: str = "month",
     custom_instructions: str = "",
+    target_audience: str = "",
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate a structured report for *domain* over the given *period*.
 
@@ -1744,7 +1814,28 @@ def _handle_generate_report(
     from autoinfo.output import generate_report as _generate_report
 
     try:
-        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions)
+        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id)
+        if format in ("json", "agent"):
+            import json as _json
+
+            parsed = _json.loads(result)
+            return {
+                "success": True,
+                "domain": domain,
+                "format": format,
+                "period": period,
+                "content": parsed,
+            }
+        if format == "audio":
+            return {
+                "success": True,
+                "domain": domain,
+                "format": "audio",
+                "period": period,
+                "content_type": "audio/mp3",
+                "encoding": "base64",
+                "content": result,
+            }
         return {
             "success": True,
             "domain": domain,
@@ -2178,6 +2269,22 @@ def _handle_run_schedules(
             "due_count": due_count,
             "ran_count": ran_count,
             "total_checked": len(results),
+        }
+    except Exception as exc:
+        return _error_dict(exc)
+
+
+def _handle_get_schedule_status(
+    schedule_id: str | None = None,
+) -> dict[str, Any]:
+    """Get status of all schedules or a specific one."""
+    try:
+        from autoinfo.cli.cron import get_schedule_status
+
+        schedules = get_schedule_status(schedule_id=schedule_id)
+        return {
+            "schedules": schedules,
+            "count": len(schedules),
         }
     except Exception as exc:
         return _error_dict(exc)
@@ -2764,6 +2871,97 @@ def _handle_set_gate_config(
 
 
 # ---------------------------------------------------------------------------
+# Budget threshold handlers (F45)
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_budget_thresholds() -> dict[str, Any]:
+    """Return current budget thresholds with spend status.
+
+    Reads ``cost_alerts.budget_thresholds`` from the project config and
+    queries ``CostMeter`` for total spend, then returns each threshold
+    with its comparison status.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    thresholds = config.cost_alerts.budget_thresholds
+    if not thresholds:
+        thresholds = [50.0, 75.0, 90.0, 100.0]
+
+    from autoinfo.cost import CostMeter
+    meter = CostMeter()
+    report = meter.get_report()
+    current_spend = report["total_cost"]
+
+    status: list[dict[str, Any]] = []
+    for t in sorted(thresholds):
+        pct = round(current_spend / t * 100, 2) if t > 0 else 0.0
+        breached = current_spend >= t
+        status.append({
+            "threshold": t,
+            "current_spend": round(current_spend, 8),
+            "pct_used": pct,
+            "breached": breached,
+            "severity": "critical" if t >= 100 and breached else "warning" if breached else "ok",
+        })
+
+    return {
+        "budget_thresholds": thresholds,
+        "current_spend": round(current_spend, 8),
+        "auto_remediation_enabled": config.cost_alerts.auto_remediation_enabled,
+        "alert_webhook": config.cost_alerts.alert_webhook,
+        "threshold_status": status,
+    }
+
+
+def _handle_set_budget_thresholds(
+    thresholds: list[float],
+    auto_remediation_enabled: bool = False,
+    alert_webhook: str = "",
+) -> dict[str, Any]:
+    """Update budget thresholds in the project config (in-memory + persist).
+
+    Parameters
+    ----------
+    thresholds:
+        New percentage thresholds (e.g. ``[30.0, 60.0, 90.0, 100.0]``).
+    auto_remediation_enabled:
+        Whether auto-remediation is active (V2 — not yet implemented).
+    alert_webhook:
+        Optional webhook URL for budget alert notifications.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    if not thresholds:
+        return {
+            "error_code": "InvalidArguments",
+            "message": "thresholds must be a non-empty list of floats",
+            "actionable": True,
+        }
+
+    config.cost_alerts.budget_thresholds = [float(t) for t in thresholds]
+    if auto_remediation_enabled:
+        config.cost_alerts.auto_remediation_enabled = True
+    if alert_webhook:
+        config.cost_alerts.alert_webhook = alert_webhook
+
+    _save_config(config)
+
+    return {
+        "budget_thresholds": config.cost_alerts.budget_thresholds,
+        "auto_remediation_enabled": config.cost_alerts.auto_remediation_enabled,
+        "alert_webhook": config.cost_alerts.alert_webhook,
+        "updated": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Product handlers
 # ---------------------------------------------------------------------------
 
@@ -2880,6 +3078,111 @@ def _handle_list_products(domain: str) -> dict[str, Any]:
         "domain": domain,
         "products": [raw_product, processed_product],
         "count": 2,
+    }
+
+
+def _handle_send_to_enduser(
+    end_user_id: str,
+    product_type: str,
+    product_id: str,
+    channel: str | None = None,
+) -> dict[str, Any]:
+    """Dispatch a product to an end user through a delivery channel.
+
+    Looks up the end-user profile, resolves the delivery channel
+    (from the *channel* parameter or the user's stored preferences),
+    builds a :class:`Product` model, and dispatches through the
+    existing :func:`deliver_with_retry` framework.
+
+    Parameters
+    ----------
+    end_user_id:
+        User ID of the recipient (must exist in the user store).
+    product_type:
+        ``"raw"`` or ``"processed"``.
+    product_id:
+        Product identifier (e.g. ``"medical-research-processed"``).
+    channel:
+        Delivery channel name (``"smtp"``, ``"webhook"``, …).
+        Falls back to the user's ``delivery_preferences["channel"]``
+        when omitted, then to ``"smtp"``.
+
+    Returns
+    -------
+    dict
+        ``{delivery_id, status, channel, recipient_count, error}``.
+    """
+    import uuid as _uuid
+
+    from autoinfo.delivery import deliver_with_retry, get_channel
+    from autoinfo.models import Product, ProductType
+    from autoinfo.user_store import get_profile as _get_profile
+
+    profile = _get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": f"End user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    channel_name: str = (
+        channel
+        or profile.delivery_preferences.get("channel")
+        or "smtp"
+    )
+
+    domain: str = product_id
+    for suffix in ("-raw", "-processed"):
+        if product_id.endswith(suffix):
+            domain = product_id[: -len(suffix)]
+            break
+
+    product = Product(
+        id=product_id,
+        domain=domain,
+        type=ProductType(product_type.lower()) if product_type.lower() in ("raw", "processed") else ProductType.PROCESSED,
+        name=f"Product {product_id}",
+        delivery_channels=[channel_name],
+    )
+
+    delivery_id = str(_uuid.uuid4())
+    payload: dict[str, Any] = {
+        "delivery_id": delivery_id,
+        "product_id": product_id,
+        "product_type": product_type,
+        "end_user_id": end_user_id,
+        "domain": domain,
+    }
+
+    recipients: list[str] = [profile.email] if profile.email else []
+
+
+    try:
+        channel_instance = get_channel(channel_name)
+        result = deliver_with_retry(
+            channel=channel_instance,
+            product=product,
+            payload=payload,
+            recipients=recipients,
+            subscription_id=delivery_id,
+        )
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("send_to_enduser dispatch failed")
+        return _error_dict(exc)
+
+    return {
+        "delivery_id": delivery_id,
+        "status": result.status,
+        "channel": channel_name,
+        "recipient_count": result.recipient_count,
+        "error": result.error,
     }
 
 
@@ -3129,10 +3432,24 @@ def _handle_get_metrics(name: str, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(metrics, indent=2))]
 
 
+def _handle_get_prometheus_metrics(name: str, arguments: dict) -> list[TextContent]:
+    """Return raw Prometheus exposition-format metrics text."""
+    from autoinfo.metrics import format_prometheus, get_metrics as _get_metrics
+
+    data = _get_metrics()
+    return [TextContent(type="text", text=format_prometheus(data))]
+
+
 def _handle_soft_delete_entry(name: str, arguments: dict) -> list[TextContent]:
     from autoinfo.kb import KBStore
     store = KBStore()
     result = store.soft_delete_entry(arguments["entry_id"])
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+def _handle_mark_stale(name: str, arguments: dict) -> list[TextContent]:
+    from autoinfo.kb import mark_stale
+    result = mark_stale(arguments["entry_id"])
     return [TextContent(type="text", text=json.dumps(result))]
 
 
@@ -3158,6 +3475,189 @@ def _handle_delete_user_data(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps({"error": "Must set purge=True for permanent deletion"}))]
     result = store.delete_user_data(arguments["user_id"])
     return [TextContent(type="text", text=json.dumps(result))]
+
+
+def _handle_query_delivery_log(name: str, arguments: dict) -> list[TextContent]:
+    import dataclasses
+    from autoinfo.delivery_log import query_delivery_log
+    subscription_id = arguments.get("subscription_id")
+    limit = arguments.get("limit", 50)
+    status = arguments.get("status")
+    from_date = arguments.get("from_date")
+    to_date = arguments.get("to_date")
+    results = query_delivery_log(
+        subscription_id=subscription_id,
+        limit=limit,
+        date_from=from_date,
+        date_to=to_date,
+    )
+    if status:
+        results = [r for r in results if r.status == status]
+    output = [dataclasses.asdict(r) for r in results]
+    return [TextContent(type="text", text=json.dumps(output))]
+
+
+def _handle_list_active_deliveries() -> dict[str, Any]:
+    """List all active/in-progress deliveries (status retrying/pending/in_progress)."""
+    try:
+        from autoinfo.delivery_log import list_active_deliveries
+
+        items = list_active_deliveries()
+        import dataclasses
+
+        return {
+            "deliveries": [dataclasses.asdict(item) for item in items],
+            "count": len(items),
+        }
+    except Exception as exc:
+        logger.exception("list_active_deliveries failed")
+        return _error_dict(exc)
+
+
+def _handle_get_delivery_log(
+    status: str | None = None,
+    domain: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Query delivery log with optional filters (status, domain) and pagination."""
+    try:
+        from autoinfo.delivery_log import query_delivery_log
+
+        items = query_delivery_log(
+            limit=limit,
+            offset=offset,
+        )
+        if status:
+            items = [item for item in items if item.status == status]
+        # domain filter is accepted for API compatibility; delivery_log
+        # table does not currently store domain — no-op filtering.
+        if domain:
+            pass
+        import dataclasses
+
+        return {
+            "deliveries": [dataclasses.asdict(item) for item in items],
+            "count": len(items),
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as exc:
+        logger.exception("get_delivery_log failed")
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# Portal / end-user self-service tools
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_enduser_history(end_user_id: str, limit: int = 20) -> dict[str, Any]:
+    """Return delivery history for an end-user.
+
+    Mirrors the ``portal history`` CLI command — looks up the end-user's
+    subscriptions and queries the delivery log for their delivery attempts.
+
+    Parameters
+    ----------
+    end_user_id:
+        End-user ID (e.g. ``alice``).
+    limit:
+        Max entries to return (default 20).
+
+    Returns
+    -------
+    dict
+        ``{end_user_id, entries, count, subscription_count}``.
+    """
+    from autoinfo.delivery_log import query_delivery_log as _query_log
+    from autoinfo.user_store import get_profile, list_subscriptions
+
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    subscriptions = list_subscriptions(user_id=end_user_id)
+    sub_ids: list[str] = []
+    for s in subscriptions:
+        sid = getattr(s, "sub_id", None) or getattr(s, "subscription_id", None)
+        if sid:
+            sub_ids.append(sid)
+
+    if not sub_ids:
+        return {
+            "end_user_id": end_user_id,
+            "entries": [],
+            "count": 0,
+            "subscription_count": 0,
+        }
+
+    all_entries: list[dict[str, Any]] = []
+    for sid in sub_ids:
+        raw = _query_log(subscription_id=sid, limit=limit)
+        for entry in raw:
+            all_entries.append(entry.to_dict())
+
+    all_entries.sort(key=lambda e: e.get("last_attempt", ""), reverse=True)
+    page = all_entries[:limit]
+
+    return {
+        "end_user_id": end_user_id,
+        "entries": page,
+        "count": len(page),
+        "subscription_count": len(sub_ids),
+    }
+
+
+def _handle_get_enduser_products(end_user_id: str) -> dict[str, Any]:
+    """Return products (subscriptions) for an end-user.
+
+    Mirrors the ``portal`` CLI's subscription lookup — retrieves all
+    subscriptions linked to the given end-user and returns their product
+    details (plan, status, dates, auto-renew flag).
+
+    Parameters
+    ----------
+    end_user_id:
+        End-user ID (e.g. ``alice``).
+
+    Returns
+    -------
+    dict
+        ``{end_user_id, products, count}``.
+    """
+    from autoinfo.user_store import get_profile, list_subscriptions
+
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    subscriptions = list_subscriptions(user_id=end_user_id)
+    products: list[dict[str, Any]] = []
+    for sub in subscriptions:
+        products.append({
+            "subscription_id": getattr(sub, "subscription_id", getattr(sub, "sub_id", "")),
+            "user_id": sub.user_id,
+            "plan": getattr(sub, "plan", getattr(sub, "product_id", "")),
+            "status": sub.status,
+            "start_date": sub.start_date,
+            "end_date": sub.end_date,
+            "auto_renew": sub.auto_renew,
+        })
+
+    return {
+        "end_user_id": end_user_id,
+        "products": products,
+        "count": len(products),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3196,6 +3696,369 @@ def _handle_merge_items(
     except Exception as exc:
         logger.exception("merge_items failed")
         return _error_dict(exc)
+
+
+def _handle_find_similar_items(
+    query: str,
+    threshold: float = 0.8,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Find items similar to *query* using text similarity.
+
+    Parameters
+    ----------
+    query:
+        Text to match against KB entries.
+    threshold:
+        Minimum similarity ratio (0.0–1.0). Default 0.8.
+    limit:
+        Maximum number of results to return. Default (None) returns
+        up to 20.
+
+    Returns
+    -------
+    dict
+        ``{"entries": [...]}`` from :func:`autoinfo.quality.find_similar_items`.
+    """
+    from autoinfo.quality import find_similar_items
+
+    try:
+        result = find_similar_items(query=query, threshold=threshold)
+        if limit is not None:
+            result = result[:limit]
+        return {"entries": result}
+    except Exception as exc:
+        logger.exception("find_similar_items failed")
+        return _error_dict(exc)
+
+
+def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle calculate_freshness_score — fetch entry, compute freshness."""
+    entry_id = arguments["entry_id"]
+    ttl_days = arguments.get("ttl_days", 90)
+    from autoinfo.kb import KBStore, calculate_freshness_score
+
+    store = KBStore()
+    entry = store.get_entry(entry_id)
+    if entry is None:
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    error_response(
+                        code=ErrorCode.NOT_FOUND,
+                        message=f"Entry not found: {entry_id}",
+                        actionable=True,
+                    )
+                ),
+            )
+        ]
+    score = calculate_freshness_score(entry, ttl_days)
+    return [TextContent(type="text", text=json.dumps({"entry_id": entry_id, "freshness_score": score, "ttl_days": ttl_days}))]
+
+
+# ---------------------------------------------------------------------------
+# End-User Trial handlers (Task 14)
+# ---------------------------------------------------------------------------
+
+
+def _handle_activate_trial(
+    end_user_id: str,
+    days: int = 14,
+) -> dict[str, Any]:
+    """Activate or reset the trial period for an end-user."""
+    from autoinfo.user_store import activate_trial
+
+    try:
+        return activate_trial(end_user_id=end_user_id, days=days)
+    except Exception as exc:
+        logger.exception("activate_trial failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_check_trial_expiry(end_user_id: str) -> dict[str, Any]:
+    """Check trial expiry status for an end-user."""
+    from autoinfo.user_store import check_trial_expiry
+
+    try:
+        return check_trial_expiry(end_user_id=end_user_id)
+    except Exception as exc:
+        logger.exception("check_trial_expiry failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Stripe Billing handlers (2)
+# ---------------------------------------------------------------------------
+
+
+def _handle_create_checkout_session(
+    product_id: str,
+    end_user_id: str,
+    *,
+    success_url: str = "http://localhost:8741/success",
+    cancel_url: str = "http://localhost:8741/cancel",
+    email: str = "",
+    name: str = "",
+) -> dict[str, Any]:
+    """Create a Stripe Checkout Session for a product."""
+    from autoinfo.billing import create_checkout_session
+
+    try:
+        return create_checkout_session(
+            product_id=product_id,
+            end_user_id=end_user_id,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            email=email,
+            name=name,
+        )
+    except Exception as exc:
+        logger.exception("create_checkout_session failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_get_subscription_status(end_user_id: str) -> dict[str, Any]:
+    """Check Stripe subscription status for an end-user."""
+    from autoinfo.billing import get_subscription_status
+
+    try:
+        return get_subscription_status(end_user_id=end_user_id)
+    except Exception as exc:
+        logger.exception("get_subscription_status failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_get_billing_summary(
+    user_id: str,
+    period: str = "month",
+) -> dict[str, Any]:
+    """Return combined billing summary — usage + subscription.
+
+    Combines CostMeter usage data with Stripe subscription status into
+    a single read-only summary.
+
+    Parameters
+    ----------
+    user_id:
+        AutoInfo end-user ID (e.g. ``alice``).
+    period:
+        Time period: ``"today"``, ``"week"``, ``"month"``, ``"all"``.
+        Defaults to ``"month"``.
+
+    Returns
+    -------
+    dict with keys: ``user_id``, ``period``, ``usage``, ``subscription``.
+    """
+    from autoinfo.billing import get_subscription_status
+    from autoinfo.cost import CostMeter
+
+    try:
+        meter = CostMeter()
+        usage = meter.get_enduser_usage(end_user_id=user_id, period=period)
+        subscription = get_subscription_status(end_user_id=user_id)
+    except Exception as exc:
+        logger.exception("get_billing_summary failed for '%s'", user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+    return {
+        "user_id": user_id,
+        "period": period,
+        "usage": {
+            "llm_units": usage.get("llm_units", 0),
+            "storage_mb": usage.get("storage_mb", 0.0),
+            "api_call_units": usage.get("api_call_units", 0),
+        },
+        "subscription": {
+            "status": subscription.get("profile_status", "unknown"),
+            "plan": subscription.get("plan", "free"),
+            "stripe_status": subscription.get("stripe_status", "none"),
+            "customer_id": subscription.get("customer_id", ""),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Usage-based billing handlers (G16 — 2)
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_enduser_usage(
+    end_user_id: str,
+    period: str = "month",
+) -> dict[str, Any]:
+    """Return billable usage for an end-user over a period.
+
+    Delegates to ``CostMeter.get_enduser_usage``, which queries the cost_log
+    and maps internal CostMeter units to customer-billable units:
+    LLM tokens → llm_units, storage items → storage_mb, API calls → api_call_units.
+    """
+    from autoinfo.cost import CostMeter
+
+    try:
+        meter = CostMeter()
+        return meter.get_enduser_usage(end_user_id=end_user_id, period=period)
+    except Exception as exc:
+        logger.exception("get_enduser_usage failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_get_enduser_invoice(
+    end_user_id: str,
+    period: str = "month",
+) -> dict[str, Any]:
+    """Return an invoice-like summary with usage and estimated cost.
+
+    Delegates to ``CostMeter.get_enduser_invoice``, which computes billable
+    units via get_enduser_usage and applies configurable unit pricing.
+    """
+    from autoinfo.cost import CostMeter
+
+    try:
+        meter = CostMeter()
+        return meter.get_enduser_invoice(end_user_id=end_user_id, period=period)
+    except Exception as exc:
+        logger.exception("get_enduser_invoice failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Agent Callback handlers (3)
+# ---------------------------------------------------------------------------
+# End-User Preferences handlers (Task 16)
+# ---------------------------------------------------------------------------
+
+
+def _handle_update_preferences(
+    end_user_id: str,
+    preferences: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge preferences into stored preferences for an end-user."""
+    from autoinfo.user_store import update_preferences
+
+    try:
+        return update_preferences(end_user_id=end_user_id, preferences=preferences)
+    except Exception as exc:
+        logger.exception("update_preferences failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
+    """Return stored preferences for an end-user."""
+    from autoinfo.user_store import get_preferences
+
+    try:
+        return get_preferences(end_user_id=end_user_id)
+    except Exception as exc:
+        logger.exception("get_preferences failed for '%s'", end_user_id)
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Agent Callback handlers (3)
+# ---------------------------------------------------------------------------
+
+def _handle_set_agent_callback(
+    agent_url: str,
+    events: list[str],
+) -> dict[str, Any]:
+    """Register a new agent callback URL for specified events."""
+    from autoinfo.agent_callback import register_agent_callback
+
+    try:
+        callback_id = register_agent_callback(agent_url=agent_url, events=events)
+        return {
+            "callback_id": callback_id,
+            "agent_url": agent_url,
+            "events": events,
+            "created": True,
+        }
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("set_agent_callback failed")
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_list_agent_callbacks() -> list[dict[str, Any]]:
+    """List all registered agent callbacks."""
+    from autoinfo.agent_callback import list_agent_callbacks
+
+    try:
+        return list_agent_callbacks()
+    except Exception as exc:
+        logger.exception("list_agent_callbacks failed")
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+
+
+def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
+    """Remove a registered agent callback."""
+    from autoinfo.agent_callback import remove_agent_callback
+
+    try:
+        removed = remove_agent_callback(callback_id)
+        if removed:
+            return {"callback_id": callback_id, "removed": True}
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"Callback '{callback_id}' not found",
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("remove_agent_callback failed")
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
 
 
 def _error_dict(exc: Exception) -> dict[str, Any]:
@@ -3685,6 +4548,10 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional domain name — returns all domains if omitted",
                         "default": "",
                     },
+                    "job_id": {
+                        "type": "string",
+                        "description": "Optional job_id to look up collection progress by job",
+                    },
                 },
                 "required": [],
             },
@@ -3728,7 +4595,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_processing_progress",
-            description="Get processing progress for a domain",
+            description="Get processing progress for a domain or job_id",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3736,8 +4603,12 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Domain name (e.g. medical-research)",
                     },
+                    "job_id": {
+                        "type": "string",
+                        "description": "Optional job_id to look up processing progress by job",
+                    },
                 },
-                "required": ["domain"],
+                "required": [],
             },
         ),
         # -- Knowledge Base (4) -------------------------------------------
@@ -3858,6 +4729,11 @@ async def list_tools() -> list[Tool]:
                     "user_id": {
                         "type": "string",
                         "description": "Optional user_id filter — only entries belonging to this user",
+                    },
+                    "include_stale": {
+                        "type": "boolean",
+                        "description": "If false (default), stale entries are demoted to the bottom of search results. If true, stale entries are mixed normally with fresh results.",
+                        "default": False,
                     },
                 },
                 "required": ["query"],
@@ -4030,6 +4906,38 @@ async def list_tools() -> list[Tool]:
                 "required": ["version_id"],
             },
         ),
+        Tool(
+            name="compare_versions",
+            description=(
+                "Compare two versions of a KB entry and return a "
+                "structured diff showing which fields changed, their "
+                "old and new values, and a summary of changes."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {
+                        "type": "string",
+                        "description": "KB entry ID whose versions to compare",
+                    },
+                    "version_a": {
+                        "type": "string",
+                        "description": (
+                            "First version identifier (version_id like "
+                            "'entry_abc--v1' or version number string like '1')"
+                        ),
+                    },
+                    "version_b": {
+                        "type": "string",
+                        "description": (
+                            "Second version identifier (version_id like "
+                            "'entry_abc--v2' or version number string like '2')"
+                        ),
+                    },
+                },
+                "required": ["entry_id", "version_a", "version_b"],
+            },
+        ),
         # -- KB: Monitor (2) ----------------------------------------------
         Tool(
             name="get_collection_stats",
@@ -4192,10 +5100,24 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain", "tier"],
             },
         ),
+        Tool(
+            name="reindex_kb",
+            description="Rebuild SQLite FTS5 search index from disk frontmatter",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain to reindex (empty = all domains)",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
         # -- Output (5) ---------------------------------------------------
         Tool(
             name="list_output_templates",
-            description="List available output templates for a domain",
+            description="List available output templates for a domain. Each template includes access_level (free/premium/enterprise) for freemium gating (G15).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -4213,7 +5135,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Generate a digest of KB entries for a domain over a given "
                 "period (daily, weekly, monthly).  Returns markdown by "
-                "default; also supports html and json.  "
+                "default; also supports html, json, agent (JSON-LD), and audio (base64-encoded MP3).  "
                 "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
@@ -4231,14 +5153,39 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, html, json",
+                        "description": "Output format: markdown, html, json, agent, audio",
                         "default": "markdown",
-                        "enum": ["markdown", "html", "json"],
+                        "enum": ["markdown", "html", "json", "agent", "audio"],
                     },
                     "custom_instructions": {
                         "type": "string",
                         "description": "Optional custom instructions to tailor the output content",
                         "default": "",
+                    },
+                    "target_audience": {
+                        "type": "string",
+                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
+                        "default": "",
+                    },
+                    "include_stale": {
+                        "type": "boolean",
+                        "description": "Include stale entries in the digest (default: false). When false, entries below the domain freshness threshold are excluded.",
+                        "default": False,
+                    },
+                    "recipients": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of email recipient addresses for direct digest delivery",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID for preference-based personalization. When provided, stored preferences (target_audience, format, max_items) are auto-loaded from the user's profile.",
+                        "default": "",
+                    },
+                    "max_items": {
+                        "type": "integer",
+                        "description": "Optional maximum number of KB entries to include (default: 0 = use built-in limit of 200). Can be auto-set from stored user preferences when user_id is provided.",
+                        "default": 0,
                     },
                 },
                 "required": ["domain"],
@@ -4249,7 +5196,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Generate a structured report for a domain over a given "
                 "period (day, week, month).  Returns markdown by default; "
-                "also supports json.  "
+                "also supports json, html, agent (JSON-LD), and audio.  "
                 "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
@@ -4261,9 +5208,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json",
+                        "description": "Output format: markdown, json, html, agent, audio",
                         "default": "markdown",
-                        "enum": ["markdown", "json"],
+                        "enum": ["markdown", "json", "html", "agent", "audio"],
                     },
                     "period": {
                         "type": "string",
@@ -4274,6 +5221,16 @@ async def list_tools() -> list[Tool]:
                     "custom_instructions": {
                         "type": "string",
                         "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
+                    "target_audience": {
+                        "type": "string",
+                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
+                        "default": "",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional end-user ID for freemium access gating (G15). Premium reports are blocked for non-subscribers.",
                         "default": "",
                     },
                 },
@@ -4414,7 +5371,7 @@ async def list_tools() -> list[Tool]:
             name="export_kb",
             description=(
                 "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml formats."
+                "Supports markdown, json, sqlite, csv, pdf, graphml, rss formats."
             ),
             inputSchema={
                 "type": "object",
@@ -4425,9 +5382,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml",
+                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss",
                         "default": "markdown",
-                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml"],
+                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss"],
                     },
                     "scope": {
                         "type": "string",
@@ -4638,6 +5595,23 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional single schedule name to run "
                             "(runs all due if omitted)"
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="get_schedule_status",
+            description="Get status of all schedules or a specific one (last_run, next_run, is_active, domain)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "schedule_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional schedule name to get status for. "
+                            "When omitted, returns status for all schedules."
                         ),
                     },
                 },
@@ -5016,6 +5990,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
+        # -- End User Delivery (1) -------------------------------------------
+        Tool(
+            name="send_to_enduser",
+            description="Dispatch a product to an end user through a delivery channel. Looks up the user profile, resolves the channel, and dispatches via the DeliveryChannel framework",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "User ID of the recipient (must exist in the user store)",
+                    },
+                    "product_type": {
+                        "type": "string",
+                        "description": "Product type: raw or processed",
+                        "enum": ["raw", "processed"],
+                    },
+                    "product_id": {
+                        "type": "string",
+                        "description": "Product identifier (e.g. medical-research-processed)",
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": "Delivery channel name (e.g. smtp, webhook, discord). Falls back to user's preferences, then smtp",
+                    },
+                },
+                "required": ["end_user_id", "product_type", "product_id"],
+            },
+        ),
         # -- Alert Rules (3) ------------------------------------------------
         Tool(
             name="get_alert_rules",
@@ -5081,6 +6083,49 @@ async def list_tools() -> list[Tool]:
                 "required": ["id"],
             },
         ),
+        # -- Budget Thresholds (2) -------------------------------------------
+        Tool(
+            name="get_budget_thresholds",
+            description=(
+                "Return current budget thresholds with spend status. "
+                "Compares total spend from CostMeter against each threshold "
+                "and reports breach status (ok/warning/critical)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="set_budget_thresholds",
+            description=(
+                "Update budget thresholds in the project config. "
+                "Thresholds are percentage values (0-100+) at which budget "
+                "alerts fire. Persisted to .autoinfo/config.yaml."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thresholds": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Percentage thresholds (e.g. [30.0, 60.0, 90.0, 100.0])",
+                    },
+                    "auto_remediation_enabled": {
+                        "type": "boolean",
+                        "description": "Whether auto-remediation is active (V2 — not yet implemented)",
+                        "default": False,
+                    },
+                    "alert_webhook": {
+                        "type": "string",
+                        "description": "Optional webhook URL for budget alert notifications",
+                        "default": "",
+                    },
+                },
+                "required": ["thresholds"],
+            },
+        ),
         # -- Init (1) --------------------------------------------------------
         Tool(
             name="init_project",
@@ -5126,7 +6171,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
-        # -- Metrics (1) --------------------------------------------------
+        # -- Metrics (2) --------------------------------------------------
         Tool(
             name="get_metrics",
             description="Get Prometheus-format metrics for monitoring",
@@ -5141,10 +6186,30 @@ async def list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="get_prometheus_metrics",
+            description="Get raw Prometheus exposition-format metrics (same format as /metrics HTTP endpoint)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
         # -- Soft-delete & GDPR (4) -------------------------------------------
         Tool(
             name="soft_delete_entry",
             description="Mark an entry as deleted without permanent removal",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                },
+                "required": ["entry_id"],
+            },
+        ),
+        Tool(
+            name="mark_stale",
+            description="Mark a knowledge base entry as stale (demoted in search, excluded from digests)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -5221,6 +6286,374 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["item_ids"],
+            },
+        ),
+        # -- Find Similar (1) -------------------------------------------------
+        Tool(
+            name="find_similar_items",
+            description="Find items similar to a query using text similarity",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "threshold": {
+                        "type": "number",
+                        "description": "Minimum similarity ratio (0.0–1.0)",
+                        "default": 0.8,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return",
+                        "default": 20,
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        # -- KB Freshness (1) --------------------------------------------------
+        Tool(
+            name="calculate_freshness_score",
+            description="Calculate freshness score (0.0–1.0) for a KB entry based on age and TTL",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {
+                        "type": "string",
+                        "description": "KB entry ID to calculate freshness for",
+                    },
+                    "ttl_days": {
+                        "type": "integer",
+                        "description": "Time-to-live in days (default: 90)",
+                        "default": 90,
+                    },
+                },
+                "required": ["entry_id"],
+            },
+        ),
+        # -- Portal / End-user Self-service (2) ------------------------------
+        Tool(
+            name="get_enduser_history",
+            description="Return delivery history for an end-user. Mirrors the portal CLI history command — looks up subscriptions and queries the delivery log for delivery attempts.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return (default: 20)",
+                        "default": 20,
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        Tool(
+            name="get_enduser_products",
+            description="Return products (subscriptions) for an end-user. Mirrors the portal CLI subscription lookup — returns plan, status, dates, and auto-renew flag.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        # -- Delivery Log (1) ------------------------------------------------
+        Tool(
+            name="query_delivery_log",
+            description="Query the delivery log with optional filters (subscription_id, status, date range)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "subscription_id": {
+                        "type": "string",
+                        "description": "Filter by subscription ID",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of entries to return (default: 50)",
+                        "default": 50,
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by delivery status (e.g. success, failed, retrying)",
+                    },
+                    "from_date": {
+                        "type": "string",
+                        "description": "Filter by last_attempt >= this ISO-8601 timestamp",
+                    },
+                    "to_date": {
+                        "type": "string",
+                        "description": "Filter by last_attempt <= this ISO-8601 timestamp",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        # -- Delivery Monitor (2) -------------------------------------------
+        Tool(
+            name="list_active_deliveries",
+            description="List all active/in-progress deliveries (status: retrying, pending, in_progress)",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="get_delivery_log",
+            description="Query delivery history with optional filters (status, domain) and pagination",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by delivery status (e.g. success, failed, retrying, pending)",
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Filter by domain name (delivery_log does not store domain yet — accepted for API compatibility)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return (default: 20)",
+                        "default": 20,
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Pagination offset (default: 0)",
+                        "default": 0,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        # -- End-User Trial (2) ------------------------------------------------
+        Tool(
+            name="activate_trial",
+            description="Activate or reset trial period for an end-user. Sets trial_started_at to now with configurable duration (default 14 days). Also sets user status to trial if not active.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Trial duration in days (default: 14)",
+                        "default": 14,
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        Tool(
+            name="check_trial_expiry",
+            description="Check trial status for an end-user. Returns days_remaining (int), status (expired/active/no_trial), trial_started_at, and trial_days.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        # -- End-User Preferences (2) ------------------------------------------
+        Tool(
+            name="update_preferences",
+            description="Merge preferences into stored preferences for an end-user. Accepts a dict of keys to update (format, delivery_channel, timezone, max_items). Deep-merges with existing preferences.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                    "preferences": {
+                        "type": "object",
+                        "description": "Dict of preference keys to set (e.g. {format: markdown, delivery_channel: email, timezone: UTC, max_items: 50})",
+                    },
+                },
+                "required": ["end_user_id", "preferences"],
+            },
+        ),
+        Tool(
+            name="get_preferences",
+            description="Return stored preferences for an end-user. Returns dict with user_id and preferences object.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        # -- Stripe Billing (2) ------------------------------------------------
+        Tool(
+            name="create_checkout_session",
+            description="Create a Stripe Checkout Session for a product. Creates (or looks up) a Stripe Customer for the end-user and generates a checkout URL. Works with stripe-mock (localhost:12111) or live/test Stripe keys via STRIPE_API_KEY env var.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "product_id": {
+                        "type": "string",
+                        "description": "Stripe Price ID (e.g. price_xxx)",
+                    },
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "AutoInfo end-user ID (e.g. alice)",
+                    },
+                    "success_url": {
+                        "type": "string",
+                        "description": "Redirect URL after successful payment (default: http://localhost:8741/success)",
+                        "default": "http://localhost:8741/success",
+                    },
+                    "cancel_url": {
+                        "type": "string",
+                        "description": "Redirect URL on cancellation (default: http://localhost:8741/cancel)",
+                        "default": "http://localhost:8741/cancel",
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Customer email (optional)",
+                        "default": "",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Customer display name (optional)",
+                        "default": "",
+                    },
+                },
+                "required": ["product_id", "end_user_id"],
+            },
+        ),
+        Tool(
+            name="get_subscription_status",
+            description="Check Stripe subscription status for an end-user. Looks up the Stripe subscription via stored stripe_subscription_id and returns status, plan, and customer info.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "AutoInfo end-user ID (e.g. alice)",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        Tool(
+            name="get_billing_summary",
+            description="Return combined billing summary — usage data and subscription status for an end-user. Combines CostMeter usage data (LLM tokens, storage, API calls) with Stripe subscription info in a single read-only result.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "AutoInfo end-user ID (e.g. alice)",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: today, week, month, all (default: month)",
+                        "default": "month",
+                    },
+                },
+                "required": ["user_id"],
+            },
+        ),
+        # -- End-user Usage & Invoice (G16 — 2) ------------------------------
+        Tool(
+            name="get_enduser_usage",
+            description="Return billable usage for an end-user over a period. Queries CostMeter and maps internal tracking to customer-billable units: LLM tokens → llm_units, storage items → storage_mb, API calls → api_call_units.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: today, week, month, all (default: month)",
+                        "default": "month",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        Tool(
+            name="get_enduser_invoice",
+            description="Return an invoice-like summary with usage and estimated cost for an end-user. Computes billable units via CostMeter and applies configurable unit pricing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "end_user_id": {
+                        "type": "string",
+                        "description": "End-user ID (e.g. alice)",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: today, week, month, all (default: month)",
+                        "default": "month",
+                    },
+                },
+                "required": ["end_user_id"],
+            },
+        ),
+        # -- Agent Callbacks (3) --------------------------------------------
+        Tool(
+            name="set_agent_callback",
+            description=(
+                "Register an agent callback URL for push events "
+                "(new_digest, new_report, new_tutorial). "
+                "Returns a callback_id for later removal. "
+                "NOT shared with set_domain_webhooks — this is a separate system."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_url": {
+                        "type": "string",
+                        "description": "Callback URL (must start with http:// or https://)",
+                    },
+                    "events": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Events to subscribe to: new_digest, new_report, new_tutorial",
+                    },
+                },
+                "required": ["agent_url", "events"],
+            },
+        ),
+        Tool(
+            name="list_agent_callbacks",
+            description="List all registered agent callbacks with their URLs and subscribed events",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="remove_agent_callback",
+            description="Remove a registered agent callback by its callback_id",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "callback_id": {
+                        "type": "string",
+                        "description": "Callback ID returned by set_agent_callback",
+                    },
+                },
+                "required": ["callback_id"],
             },
         ),
     ]
@@ -5326,6 +6759,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_get_entry_history(**arguments)
         elif name == "restore_entry_version":
             result = _handle_restore_entry_version(**arguments)
+        elif name == "compare_versions":
+            result = _handle_compare_versions(**arguments)
 
         elif name == "get_collection_stats":
             result = _handle_get_collection_stats(**arguments)
@@ -5342,6 +6777,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_reject_kb_draft(**arguments)
         elif name == "list_kb_tier":
             result = _handle_list_kb_tier(**arguments)
+        elif name == "reindex_kb":
+            result = _handle_reindex_kb(**arguments)
 
         # -- CEFR Classification (1) ----------------------------------------
         elif name == "classify_cefr":
@@ -5377,7 +6814,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "get_extraction":
             result = _handle_get_extraction(**arguments)
 
-        # -- Schedule Management (4) ---------------------------------------
+        # -- Schedule Management (5) ---------------------------------------
         elif name == "list_schedules":
             result = _handle_list_schedules()
         elif name == "add_schedule":
@@ -5386,6 +6823,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_remove_schedule(**arguments)
         elif name == "run_schedules":
             result = _handle_run_schedules(**arguments)
+        elif name == "get_schedule_status":
+            result = _handle_get_schedule_status(**arguments)
 
         # -- Q&A (1) -------------------------------------------------------
         elif name == "query_collected":
@@ -5431,6 +6870,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "list_products":
             result = _handle_list_products(**arguments)
 
+        # -- End User Delivery (1) -------------------------------------------
+        elif name == "send_to_enduser":
+            result = _handle_send_to_enduser(**arguments)
+
         # -- Alert Rules (3) ------------------------------------------------
         elif name == "get_alert_rules":
             result = _handle_get_alert_rules(**arguments)
@@ -5439,9 +6882,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "remove_alert_rule":
             result = _handle_remove_alert_rule(**arguments)
 
-        # -- Metrics (1) --------------------------------------------------
+        # -- Budget Thresholds (2) -------------------------------------------
+        elif name == "get_budget_thresholds":
+            result = _handle_get_budget_thresholds()
+        elif name == "set_budget_thresholds":
+            result = _handle_set_budget_thresholds(**arguments)
+
+        # -- Metrics (2) --------------------------------------------------
         elif name == "get_metrics":
             return _handle_get_metrics(name, arguments)
+        elif name == "get_prometheus_metrics":
+            return _handle_get_prometheus_metrics(name, arguments)
 
         # -- Trace (1) ----------------------------------------------------
         elif name == "trace_item":
@@ -5450,6 +6901,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # -- Soft-delete & GDPR (4) -----------------------------------------
         elif name == "soft_delete_entry":
             return _handle_soft_delete_entry(name, arguments)
+        elif name == "mark_stale":
+            return _handle_mark_stale(name, arguments)
         elif name == "restore_entry":
             return _handle_restore_entry(name, arguments)
         elif name == "export_user_data":
@@ -5457,9 +6910,65 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "delete_user_data":
             return _handle_delete_user_data(name, arguments)
 
-        # -- Merge (1) ------------------------------------------------
+        # -- Portal / End-user Self-service (2) ------------------------------
+        elif name == "get_enduser_history":
+            result = _handle_get_enduser_history(**arguments)
+        elif name == "get_enduser_products":
+            result = _handle_get_enduser_products(**arguments)
+
+        # -- Delivery Log (1) ------------------------------------------------
+        elif name == "query_delivery_log":
+            return _handle_query_delivery_log(name, arguments)
+
+        # -- Delivery Monitor (2) ------------------------------------------
+        elif name == "list_active_deliveries":
+            result = _handle_list_active_deliveries()
+        elif name == "get_delivery_log":
+            result = _handle_get_delivery_log(**arguments)
+
+        # -- Merge / Find Similar (2) ---------------------------------
         elif name == "merge_items":
             result = _handle_merge_items(**arguments)
+        elif name == "find_similar_items":
+            result = _handle_find_similar_items(**arguments)
+
+        # -- KB Freshness (1) ---------------------------------------------
+        elif name == "calculate_freshness_score":
+            return _handle_calculate_freshness_score(name, arguments)
+
+        # -- End-User Trial (2) ----------------------------------------------
+        elif name == "activate_trial":
+            result = _handle_activate_trial(**arguments)
+        elif name == "check_trial_expiry":
+            result = _handle_check_trial_expiry(**arguments)
+
+        # -- End-User Preferences (2) ----------------------------------------
+        elif name == "update_preferences":
+            result = _handle_update_preferences(**arguments)
+        elif name == "get_preferences":
+            result = _handle_get_preferences(**arguments)
+
+        # -- Stripe Billing (3) ------------------------------------------------
+        elif name == "create_checkout_session":
+            result = _handle_create_checkout_session(**arguments)
+        elif name == "get_subscription_status":
+            result = _handle_get_subscription_status(**arguments)
+        elif name == "get_billing_summary":
+            result = _handle_get_billing_summary(**arguments)
+
+        # -- Usage-based Billing (G16 — 2) -----------------------------------
+        elif name == "get_enduser_usage":
+            result = _handle_get_enduser_usage(**arguments)
+        elif name == "get_enduser_invoice":
+            result = _handle_get_enduser_invoice(**arguments)
+
+        # -- Agent Callbacks (3) --------------------------------------------
+        elif name == "set_agent_callback":
+            result = _handle_set_agent_callback(**arguments)
+        elif name == "list_agent_callbacks":
+            result = _handle_list_agent_callbacks()
+        elif name == "remove_agent_callback":
+            result = _handle_remove_agent_callback(**arguments)
 
         else:
             return [

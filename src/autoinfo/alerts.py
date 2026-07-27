@@ -199,8 +199,8 @@ def evaluate_budget_alerts() -> list:
     """Evaluate spend against configured budget thresholds.
 
     Queries the :class:`CostMeter` for total spend and compares it against
-    pre-configured percentage thresholds.  Returns a list of alert dicts when
-    thresholds are breached.
+    percentage thresholds from the project configuration (``cost_alerts.budget_thresholds``).
+    Returns a list of alert dicts when thresholds are breached.
 
     Returns
     -------
@@ -212,11 +212,19 @@ def evaluate_budget_alerts() -> list:
     try:
         from autoinfo.cost import CostMeter
 
+        # Load thresholds from config, falling back to defaults
+        thresholds: list[float] = [50.0, 75.0, 90.0, 100.0]
+        try:
+            config_path = get_config_path()
+            if config_path:
+                config = load_config(config_path)
+                thresholds = config.cost_alerts.budget_thresholds
+        except Exception:
+            logger.debug("Could not load budget thresholds from config — using defaults")
+
         meter = CostMeter()
         report = meter.get_report()
         current_spend = report["total_cost"]
-
-        thresholds = [50.0, 75.0, 90.0, 100.0]  # default thresholds
 
         alerts: list[dict[str, object]] = []
         for threshold in thresholds:

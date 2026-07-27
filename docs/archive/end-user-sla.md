@@ -120,7 +120,7 @@ If all channels fail:
 
 ## References
 
-- `docs/dev/specs/expectations.md` — F39 (Delivery Reliability & Logging)
-- `docs/dev/specs/delivery.md` §4.5 — Delivery SLA tracking details
-- `docs/dev/end-user-onboarding.md` — Full End User lifecycle guide
-- `docs/dev/user-authorization-matrix.md` — Authorization boundaries
+- `../dev/specs/expectations.md` — F39 (Delivery Reliability & Logging)
+- `../dev/specs/delivery.md` §4.5 — Delivery SLA tracking details
+- `./end-user-onboarding.md` — Full End User lifecycle guide
+- `./user-authorization-matrix.md` — Authorization boundaries

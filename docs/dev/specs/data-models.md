@@ -1,6 +1,7 @@
 # Data Models Reference
 
 > Consolidated data model schemas referenced across all spec files. Source truth for these schemas lives in `src/autoinfo/`.
+> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — the CD catalog defines what each pipeline stage (A1-A7) needs to produce for each user type (B1/B2/B3). This spec provides the data model definitions that implement those needs.
 
 ---
 
@@ -101,6 +102,9 @@ class DeliveryLog:
 
 ## 4. End User Models
 
+> **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §2.3 (B1 Subscription Config Model), §2.4 (Config Change & Billing Interaction)
+> The B1 lifecycle data models in §4.9-4.13 supplement the core delivery models above.
+
 ```python
 class UserStatus(Enum):
     TRIAL = "trial"
@@ -146,17 +150,190 @@ class QuietHours:
 
 @dataclass
 class Subscription:
-    id: str                          # "sub_{uuid8}"
-    user_id: str                     # FK to UserProfile
-    domain: str
-    topics: list[str]
-    products: list[str]
-    channels: list[str]
-    schedule: str                    # Cron expression
-    status: SubscriptionStatus
+    """Delivery-oriented subscription model. See cross-ref: CD-020, CD-024.
+    
+    ⚠ Spec/code gap: Current code model (src/autoinfo/models.py) is billing-focused
+    (plan, price_monthly, currency, features, stripe_*_id), missing domain/topics/products/
+    channels/schedule. This spec model represents the target delivery-oriented design.
+    Fields annotated with implementation status below.
+    """
+    id: str                          # "sub_{uuid8}"                         ✅ implemented
+    user_id: str                     # FK to UserProfile                     ✅ implemented
+    domain: str                      # Target domain                          📋 spec only; not in code model
+    topics: list[str]                # Subscribed topic names                 📋 spec only; not in code model
+    products: list[str]              # Subscribed product IDs                 📋 spec only; not in code model
+    channels: list[ChannelConfig]    # Delivery channels with per-channel cfg 📋 spec'd; code uses list[str] untyped
+    schedule: str                    # Cron expression for periodic delivery   📋 spec only; not linked to scheduler in code
+    status: SubscriptionStatus       # Lifecycle state                        ✅ implemented (SubscriptionStatus enum)
+    access_level: str = "free"       # Subscription tier → product gating     📋 spec only; code ProductTemplate hardcoded to "free"
+    created_at: datetime             # Subscription start                      ✅ implemented
+    updated_at: datetime             # Last update                             ✅ implemented
+    last_delivered_at: datetime | None = None  # Last delivery timestamp       📋 spec only; not in code model
+```
+
+---
+
+### 4.6 Product Data Models
+
+> Cross-ref: CD-017 (Product Lifecycle MCP Tools) — spec'd in delivery.md, 0% implemented.
+> No `ProductState` enum, no `ProductInstance`, no lifecycle state machine in current code.
+
+```python
+class ProductState(Enum):
+    """Lifecycle states for a product instance. State machine: 
+    draft → pending → active ↔ paused → archived → deprecated."""
+    DRAFT = "draft"           # Being configured/edited
+    PENDING = "pending"       # Scheduled for generation, awaiting trigger
+    ACTIVE = "active"         # Being generated and delivered
+    PAUSED = "paused"         # Temporarily suspended (manual or auto)
+    ARCHIVED = "archived"     # No longer generated; content retained
+    DEPRECATED = "deprecated" # Superseded; scheduled for removal
+
+
+@dataclass
+class ProductInstance:
+    """A concrete instance of a product template, tracked through its lifecycle.
+    Not to be confused with Product/ProductTemplate (the template definition)."""
+    id: str                          # "prod_{uuid8}"
+    template_id: str                 # FK to ProductTemplate
+    user_id: str                     # FK to UserProfile (owner/subscriber)
+    domain: str                      # Domain context
+    state: ProductState              # Current lifecycle state
     created_at: datetime
     updated_at: datetime
-    last_delivered_at: datetime | None = None
+    generated_at: datetime | None = None  # When product content was rendered
+    delivered_at: datetime | None = None  # When product was sent to channels
+    metadata: dict = field(default_factory=dict)  # generation params, content hash, etc.
+    version: int = 1                 # Incremented on regeneration
+
+
+class ProductLifecycle:
+    """State machine definition for ProductInstance transitions.
+
+    Valid transitions:
+      draft     → pending, archived
+      pending   → active, archived
+      active    → paused, archived
+      paused    → active, archived
+      archived  → (terminal)
+
+    DEPRECATED is a human-applied label on ARCHIVED instances.
+    """
+
+    TRANSITIONS: dict[ProductState, set[ProductState]] = {
+        ProductState.DRAFT:       {ProductState.PENDING, ProductState.ARCHIVED},
+        ProductState.PENDING:     {ProductState.ACTIVE, ProductState.ARCHIVED},
+        ProductState.ACTIVE:      {ProductState.PAUSED, ProductState.ARCHIVED},
+        ProductState.PAUSED:      {ProductState.ACTIVE, ProductState.ARCHIVED},
+        ProductState.ARCHIVED:    set(),
+        ProductState.DEPRECATED:  set(),
+    }
+
+    @classmethod
+    def can_transition(cls, from_state: ProductState, to_state: ProductState) -> bool:
+        return to_state in cls.TRANSITIONS.get(from_state, set())
+```
+
+### 4.7 Consumption Models
+
+> Cross-ref: CD-011 (Consumption Tracking), CD-018 (Consumption MCP Tools).
+> Entirely spec only — zero consumption tracking code exists,
+> no `ConsumptionEvent` model, no read receipt infrastructure.
+
+```python
+@dataclass
+class ConsumptionEvent:
+    """A single consumption action by an end user on a delivered product."""
+    id: str                          # "cns_{uuid8}"
+    product_id: str                  # FK to ProductInstance
+    user_id: str                     # FK to UserProfile
+    event_type: str                  # "delivered" | "opened" | "read" | "clicked" | "shared" | "discarded"
+    channel: str                     # Channel through which consumed (e.g., "email", "telegram")
+    timestamp: datetime
+    metadata: dict = field(default_factory=dict)  # user-agent, IP-geo, referrer, etc.
+
+
+@dataclass
+class EngagementMetrics:
+    """Aggregated engagement metrics for a product-user pair."""
+    product_id: str                  # FK to ProductInstance
+    user_id: str                     # FK to UserProfile
+    open_count: int = 0              # Number of times product was opened
+    read_count: int = 0              # Number of times product was read (scrolled through)
+    click_count: int = 0             # Number of in-content link clicks
+    share_count: int = 0             # Number of shares
+    time_spent_seconds: float = 0.0  # Estimated reading time
+    completion_rate: float = 0.0     # 0.0 - 1.0 estimated content completion
+    first_interaction: datetime | None = None
+    last_interaction: datetime | None = None
+
+
+@dataclass  
+class ReadReceipt:
+    """Per-channel delivery receipt with open/read timestamps."""
+    id: str                          # "rcpt_{uuid8}"
+    product_id: str                  # FK to ProductInstance
+    user_id: str                     # FK to UserProfile
+    channel: str                     # Delivery channel (email, telegram, wechat, etc.)
+    delivered_at: datetime           # Confirmed delivery timestamp
+    opened_at: datetime | None = None  # First open (tracking pixel / API callback)
+    read_at: datetime | None = None  # Sufficient scroll/time to count as "read"
+    metadata: dict = field(default_factory=dict)  # channel-specific delivery metadata
+```
+
+### 4.8 Notification Models
+
+> Cross-ref: CD-006 (Unified Notification Framework), CD-038 (No Unified Notification Architecture).
+> Current code has budget alerts (`alerts.py`) and delivery notifications (`delivery.py`)
+> as separate subsystems with no shared notification bus, templates, or preferences.
+> These models define the target unified architecture.
+
+```python
+@dataclass
+class NotificationTemplate:
+    """A reusable notification template with locale support."""
+    id: str                          # "ntpl_{uuid8}"
+    type: str                        # "welcome" | "trial_ending" | "digest_ready" | "cancellation" | "system_alert" | "budget_alert"
+    subject_template: str            # Jinja2 template for subject line
+    body_template: str               # Jinja2 template for body
+    channel: str                     # "email" | "telegram" | "wechat" | "webhook"
+    locale: str = "en"               # ISO language code
+    variables_schema: dict = field(default_factory=dict)  # JSON Schema for template variables
+
+
+@dataclass
+class UserNotification:
+    """A rendered notification instance sent to a specific user."""
+    id: str                          # "notif_{uuid8}"
+    user_id: str                     # FK to UserProfile
+    type: str                        # Notification type (matches template type)
+    channel: str                     # Delivery channel used
+    template_id: str                 # FK to NotificationTemplate
+    status: str                      # "pending" | "sent" | "failed" | "read"
+    rendered_subject: str = ""       # Rendered subject (filled at send time)
+    rendered_body: str = ""          # Rendered body (filled at send time)
+    created_at: datetime = field(default_factory=datetime.now)
+    sent_at: datetime | None = None
+    read_at: datetime | None = None
+    error: str | None = None         # Failure reason if status == "failed"
+
+
+@dataclass
+class NotificationPreferences:
+    """Per-user notification channel and timing preferences."""
+    user_id: str                     # FK to UserProfile
+    per_type_channel_preference: dict[str, list[str]] = field(default_factory=dict)
+    # Example: {"digest_ready": ["email"], "budget_alert": ["telegram", "email"]}
+    quiet_hours: QuietHours | None = None  # Reuses existing QuietHours model
+    digest_frequency: str = "daily"  # "realtime" | "daily" | "weekly" | "never"
+    max_notifications_per_day: int = 10
+
+
+# ── Notification State Machine ──
+# pending  → sent  (delivered to channel)
+# pending  → failed (channel error)
+# sent     → read  (user acknowledged)
+# failed   → pending (retry)
 ```
 
 ---
@@ -215,3 +392,244 @@ class SystemHealth:
     error_rate_last_24h: float
     overall_health_score: int        # 0-100
 ```
+
+---
+
+## 6. Auth & Multi-Tenancy Models
+
+> Cross-ref: CD-001 (Multi-Tenancy Isolation), CD-002 (End-User Authentication),
+> CD-003 (Rate Limiting / Abuse Prevention).
+> Entirely spec only — no auth layer, no tenant model, no rate limiting in current code.
+> `user_id` fields exist on entries but there is no authentication, session management,
+> or tenant isolation anywhere in the system.
+
+```python
+@dataclass
+class Tenant:
+    """A multi-tenancy context. All data, users, and configurations are scoped
+    to a tenant. In single-tenant mode, there is one unnamed default tenant."""
+    id: str                          # "tnt_{uuid8}"
+    name: str                        # Display name
+    slug: str                        # URL-safe unique identifier
+    settings: dict = field(default_factory=dict)  # Tenant-wide config overrides
+    created_at: datetime = field(default_factory=datetime.now)
+    is_active: bool = True
+
+
+@dataclass
+class ApiKey:
+    """API key for programmatic access (MCP/CLI agents, webhook senders)."""
+    id: str                          # "apk_{uuid8}"
+    tenant_id: str                   # FK to Tenant
+    name: str = ""                   # Human-readable label (e.g., "Production CLI")
+    key_hash: str                    # SHA256 hash of the actual key (key never stored)
+    prefix: str = ""                 # First 8 chars for display/identification
+    permissions: list[str] = field(default_factory=list)
+    # Example: ["kb:read", "kb:write", "collection:run", "delivery:send"]
+    created_at: datetime = field(default_factory=datetime.now)
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    is_revoked: bool = False
+
+
+@dataclass
+class UserSession:
+    """Authenticated user session. Created on login, invalidated on logout/expiry."""
+    id: str                          # "sess_{uuid8}"
+    user_id: str                     # FK to UserProfile
+    tenant_id: str                   # FK to Tenant (session is tenant-scoped)
+    token_hash: str                  # SHA256 hash of the session token
+    created_at: datetime = field(default_factory=datetime.now)
+    expires_at: datetime
+    ip_address: str = ""
+    user_agent: str = ""
+    is_active: bool = True
+
+
+@dataclass
+class RateLimit:
+    """Per-tenant, per-endpoint rate limit tracking.
+    Uses a sliding-window counter pattern."""
+    tenant_id: str                   # FK to Tenant (or "*" for global)
+    endpoint: str                    # e.g., "mcp:collect_sources", "api:/v1/search"
+    limit: int                       # Max requests in the window
+    window_seconds: int              # Window size in seconds
+    current_count: int = 0           # Requests in current window
+    window_start: datetime | None = None
+    blocked_until: datetime | None = None  # If limit exceeded, cooldown expiry
+
+
+# ── Auth Architecture Notes ──
+# 
+# 1. Session tokens: JWT or opaque token stored as HTTP-only cookie / Bearer header.
+#    Sessions are tenant-scoped — a user must select or be assigned a tenant.
+#
+# 2. API keys: Generated via MCP/CLI, transmitted as `Authorization: Bearer <key>`
+#    or `X-API-Key: <key>`. Hashed with SHA256 before storage; raw key shown once.
+#
+# 3. Rate limiting: Per-tenant, per-endpoint sliding window. On exceed:
+#    - 429 response with Retry-After header
+#    - Cooldown = window_seconds before re-enabling
+#    - Configurable per tenant via Tenant.settings
+#
+# 4. Tenant isolation: All queries include `WHERE tenant_id = ?` or are scoped
+#    to the tenant's database partition. In single-tenant SQLite mode, tenant
+#    isolation is at the application layer (query filtering).
+#
+# 5. Future considerations:
+#    - OAuth 2.0 / OIDC integration (Google, GitHub, enterprise SSO)
+#    - RBAC with predefined roles (admin, editor, viewer, enduser)
+#    - Per-tenant DB partitioning (separate SQLite files or PostgreSQL schemas)
+```
+
+---
+
+### 4.9 B1 Subscription Config Model
+
+> **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §2.3 (Subscription Config Model)
+>
+> This is the structured config that results from the NL→Config pipeline (B1 NL → Agent + LLM → structured config).
+> The config is stored as part of the Subscription record and drives pipeline execution.
+
+```python
+@dataclass
+class SubscriptionConfig:
+    """Structured subscription configuration — the output of the NL→Config pipeline.
+
+    Created at B1.2 Subscribe (via NL→Config pipeline) and modified at B1.5 Modify Config.
+    Drives pipeline execution: what domains to collect, how often, where to deliver.
+    """
+    tier: str                          # "free" | "premium" | "enterprise" — pricing tier
+    domains: list[str]                 # Domain names to track (e.g., ["medical-research", "tech-ai"])
+    content_preference: str            # "raw_only" | "processed_only" | "both"
+    channels: list[ChannelBinding]     # Delivery channels with per-channel config
+    frequency: str                     # Cron expression or preset: "realtime" | "daily" | "weekly" | "monthly"
+    active: bool = True                # If False, pipeline runs but no products delivered (pause)
+    max_items_per_delivery: int = 10   # Max items per product delivery
+    language: str = "zh"               # Preferred content language
+
+@dataclass
+class ChannelBinding:
+    channel_type: str                  # "email" | "telegram" | "wechat_oa" | "wechat_work" | "dingtalk" | "feishu" | "discord"
+    config: dict                       # Channel-specific config (e.g., {"chat_id": "..."} for Telegram)
+    enabled: bool = True
+
+@dataclass
+class ConfigChange:
+    """Records a single config change (from NL→Config pipeline or direct edit)."""
+    field: str                         # Which field changed
+    old_value: Any                     # Previous value
+    new_value: Any                     # New value
+    change_type: str                   # "non-billing" | "billing_affecting"
+    change_source: str                 # "nl_config_pipeline" | "direct_edit" | "admin_override"
+    applied_at: datetime
+    effective_immediately: bool
+```
+
+### 4.10 Discovery & Referral Models
+
+```python
+@dataclass
+class ReferralRecord:
+    """Tracks a B1-to-B1 referral. Created when referred B1 subscribes."""
+    id: str                            # "ref_{uuid8}"
+    referring_user_id: str             # B1 who shared the referral link
+    referred_user_id: str             # B1 who subscribed via the referral link
+    referral_code: str                 # Unique code embedded in the referral link
+    status: str                        # "pending" | "rewarded" | "expired"
+    reward_type: str | None           # e.g., "free_month", "discount_50"
+    reward_status: str | None          # "granted" | "pending" | "failed"
+    created_at: datetime
+    reward_granted_at: datetime | None = None
+
+@dataclass
+class ProductCatalogEntry:
+    """A product listing in the catalog/storefront (F64)."""
+    id: str                            # "pce_{uuid8}"
+    name: str                          # Product display name
+    description: str                   # Short description for listing
+    domain: str                        # Associated domain
+    product_type: str                  # "digest" | "report" | "tutorial" | "presentation"
+    output_format: list[str]           # Available formats (["markdown", "html", "json"])
+    cadence: str                       # "realtime" | "daily" | "weekly" | "monthly" | "on_demand"
+    pricing_tiers: list[str]           # Tiers this product is available on
+    sample_output: str | None         # Path or URL to sample output
+    subscribe_action: str              # MCP tool call to execute on subscribe
+```
+
+### 4.11 Onboarding Model
+
+```python
+class OnboardingStep(str, Enum):
+    FIRST_DELIVERY = "first_delivery"
+    PREFERENCE_VERIFICATION = "preference_verification"
+    CROSS_PRODUCT_INTRO = "cross_product_intro"
+    CHANNEL_CONFIRMATION = "channel_confirmation"
+    COMPLETE = "complete"
+
+@dataclass
+class OnboardingRecord:
+    """Tracks B1.3 Onboarding progress."""
+    id: str                            # "ob_{uuid8}"
+    subscription_id: str               # FK to Subscription
+    status: str                        # "in_progress" | "complete" | "failed"
+    current_step: OnboardingStep       # Current onboarding step
+    first_delivery_at: datetime | None = None
+    preference_verified_at: datetime | None = None
+    config_refinement_rounds: int = 0  # Number of NL→Config refinement loops
+    cross_product_delivered_at: datetime | None = None
+    channels_confirmed: list[str] = field(default_factory=list)
+    completed_at: datetime | None = None
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+```
+
+### 4.12 Reactivation Model
+
+```python
+@dataclass
+class ConfigSnapshot:
+    """Pre-churn config snapshot for reactivation."""
+    id: str                            # "cs_{uuid8}"
+    subscription_id: str              # FK to original Subscription
+    config: SubscriptionConfig         # Frozen config at time of churn
+    delivery_history_ref: str | None  # Reference to archived delivery log
+    captured_at: datetime
+
+@dataclass
+class ReactivationRecord:
+    """Tracks B1.7 Reactivation."""
+    id: str                            # "rea_{uuid8}"
+    original_subscription_id: str      # FK to pre-churn Subscription
+    new_subscription_id: str           # FK to new/reactivated Subscription
+    config_snapshot_id: str | None     # FK to ConfigSnapshot (may be None if snapshot unavailable)
+    retention_window_expired: bool     # Whether retention window has passed
+    data_restored: list[str]           # List of restored data types: ["config", "kb_entries", "delivery_history"]
+    reactivated_at: datetime
+    welcome_back_digest_id: str | None = None  # "Since you were away" digest product
+```
+
+### 4.13 NL→Config Audit Model
+
+```python
+@dataclass
+class NLConfigAuditEntry:
+    """Records a single NL→Config pipeline execution for audit trail.
+
+    Created every time B1's NL utterance is parsed into structured config changes.
+    Provides traceability for: what B1 said, what the agent understood, what changed.
+    """
+    id: str                            # "nlcfg_{uuid8}"
+    subscription_id: str               # FK to Subscription being modified
+    nl_intent: str                     # B1's original NL utterance
+    parsed_config: dict                # LLM-parsed structured intent
+    confidence_score: float            # LLM confidence in parsing (0-1)
+    change_type: str                   # "non-billing" | "billing_affecting" | "ambiguous"
+    changes_applied: list[ConfigChange]  # List of actual config changes
+    human_confirmed: bool              # Whether B1 confirmed the parsed changes
+    ambiguous: bool                    # Whether LLM needed clarification
+    clarification_prompt: str | None  # If ambiguous, what agent asked B1
+    created_at: datetime
+```
+
+> **Note on implementation**: These models are specification-only until the corresponding F-expectations (F65-F68) are implemented. The existing `Subscription` model in code (`src/autoinfo/models.py`) will need to be extended with a `config: SubscriptionConfig` field when F67 (NL→Config pipeline) is built.

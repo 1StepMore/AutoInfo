@@ -1,10 +1,16 @@
-# Expectations Catalog — F01 to F57
+# Expectations Catalog — F01 to F72
 
 > © Extracted from `founder-expectations.md §3` (lines 119-963) on 2026-07-26.
+> Updated 2026-07-27 with F58-F64 (Phase 13: Blank Spaces) from cross-dimensional gap analysis.
+> Updated 2026-07-27 with F65-F72 (Phase 14-16: B1/B2/B3 Lifecycle Gaps) from the user lifecycle definition.
 > This file is the source of truth for the founder's expectation catalog. The original
 > `founder-expectations.md` retains a stub cross-referencing this file.
 
-> References: F01-F57 as defined in `founder-expectations.md`. See
+> References: F01-F57 as defined in `founder-expectations.md`. F58-F64 added 2026-07-27 from
+> [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) Type 1
+> gaps (CD-001..CD-006, CD-010). F65-F72 added 2026-07-27 from
+> [`docs/dev/specs/user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5
+> (B1/B2/B3 lifecycle gaps). See
 > [`docs/dev/specs/pipeline.md`](./pipeline.md) for pipeline details,
 > [`docs/dev/specs/quality-gates.md`](./quality-gates.md) for gate details,
 > [`docs/dev/specs/delivery.md`](./delivery.md) for end user lifecycle,
@@ -15,12 +21,21 @@
 
 ## 3. Expectation Catalog
 
-**Status legend:** ✅ Fully implemented | 🔄 Partially implemented (basic version works, enhancements pending) | ❌ Not yet implemented
+**Status legend:** ✅ Fully implemented | 🟡 Partially implemented (basic version works, enhancements pending) | ❌ Not yet implemented
 
 Each expectation is a statement of what the founder expects the project to do.
 Expectations are grouped by journey phase.
 
 > **Note on domains**: References to "medical", "AI commercial", and "language learning" throughout this catalog are **demo domain configurations**. The system is designed to support **any domain** a user defines. Demo domains ship with curated sources and templates to prove value. Users can define their own domains, sources, extraction schemas, and output formats.
+>
+> **Unified end-user definition** (binding throughout this catalog): "End User" refers collectively to all paying customer types — individual consumer, creator, publisher, enterprise buyer, institutional buyer, platform operator, and content licensor — plus their authorized agent delegates. AutoInfo treats all end users uniformly with a single lifecycle model. **No demographic or persona-based segmentation is applied.** Persona-aware output (`target_audience` parameter: researcher, clinician, executive, student) is a content-level feature, not a user-profile differentiation.
+>
+> **Three operating modes** define how the end user interacts with AutoInfo:
+> - **B1 End User (Direct Consumer)** — interacts in NL, Agent+LLM translates to structured config per the NL→Config pipeline defined in [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.1. Consumes products directly (email, chat, RSS, portal).
+> - **B2 Direct User (Agent Operator)**: An AI agent operates AutoInfo via MCP tools on behalf of the end user.
+> - **B3 Director User (Human Commander)**: A human operator defines domains, configures sources, and monitors the system.
+>
+> **Current status: 55/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 11/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).**
 
 ### 3.1 Phase 1: Setup
 
@@ -247,7 +262,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Multi-language keywords** | Topics support keywords in multiple languages. Useful for cross-lingual domains. |
 | **Topic scoring & suggestions** | System can suggest keyword refinements based on initial collection results and LLM analysis. |
 
-#### F10 — Multi-language & Localization 🔄
+#### F10 — Multi-language & Localization ✅
 
 *Content comes in many languages; the system handles it gracefully. Essential for the language learning demo domain and general usability.*
 
@@ -412,6 +427,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 *KB architecture follows the proven KB pipeline design (`docs/archive/kb-pipeline-reference.md`): a 4-level pipeline with sequential promotion.*
 
+> **Lifecycle cross-ref:** Supports B3.3 Intervene — the promote Draft→Wiki operation is a B3 intervention action (human-only per KB pipeline rules). See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path) for the full intervention model.
+
 | UX Detail | Specification |
 |-----------|---------------|
 | **Pipeline model** | 4-level sequential pipeline, **no skipping allowed**:
@@ -563,6 +580,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 #### F30 — Subscription & Billing Infrastructure 🟡
 
+*This expectation covers B1.2 Subscribe lifecycle stage — the subscription record created at subscribe time contains the config fields defined in [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.3. B1.5 Modify Config (config changes) is a separate lifecycle stage covered by F67.*
+
 | UX Detail | Specification |
 |-----------|---------------|
 | **Current status** | Partially implemented. Stripe integration (`create_checkout_session`, `handle_webhook`, subscription status), freemium access gating (`check_access()` in `billing.py`, enforced in `output.py`), and usage metering (CostMeter in `cost.py`) are coded. Stripe webhook REST endpoint and stripe-mock dev setup are pending. |
@@ -577,6 +596,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 > "I can see what's been collected and how the system is doing."
 
 #### F31 — Collection Overview ✅
+
+> **Lifecycle cross-ref:** Supports B2.5 Monitor — collection status data feeds into B2's monitoring of pipeline execution. See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §3.2 (B2.5 Monitor stage).
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -616,6 +637,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Breaking changes** | If structural changes necessary: (1) deprecation period with dual-format support, (2) migration tool. |
 
 #### F36 — End User Profile & Subscription Registration ✅
+
+*Covers B1.2 Subscribe. The NL→Config pipeline (B1 speaks NL → Agent + LLM parses → structured config) is the interaction layer; the profile/subscription records are the storage layer. See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.1 for the full NL→Config pipeline design.*
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -863,18 +886,301 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Use cases** | External monitoring (Grafana dashboards), automated cost tracking, SLA reporting to enterprise customers, capacity planning for storage and LLM budget. |
 | **MCP tool** | `get_metrics(domain=None)` — returns metrics JSON for agent consumption. Agent uses for proactive reporting: "This month: 5200 items collected across 5 active domains, \$45.20 total LLM spend." |
 
-### 3.13 Notes on Expectation Numbering
+### 3.13 Phase 13: Blank Spaces (Cross-Dimensional Gaps)
 
-The catalog uses the following identifiers: F01-F06 (Phase 1: Setup), F07-F10b (Phase 2: Domain & Topic Config), F11-F15 (Phase 3: Information Gathering), F16-F19 (Phase 4: Curation & Interaction), F20-F23 (Phase 5: Knowledge Base Building), F24-F30 (Phase 6: Output & Asset Creation), F31-F32 (Phase 7: Monitor), F33-F34 (Phase 8: Iterate), F36-F40 (Phase 8.5: Product & Delivery — note: no F35 in source), F41-F45 (Phase 9: Cost Governance), F46-F48 (Phase 10: Data Privacy), F49-F53 (Phase 11: Knowledge Lifecycle), F54-F57 (Phase 12: Operational Observability). Note that F08 (Custom Sources) and F35 are not separately numbered in the source document — F08 appears as the F07b sub-section's continuation (the unheaded table after F07b's preamble concludes with the add-source UX), and F35 is omitted from the source ordering.
+> "Concepts that were never designed — no spec, no code, no MCP tools. These are the blank spaces discovered during the cross-dimensional gap analysis (Dimension A: Pipeline Value Chain × Dimension B: User Types × Lifecycle Stages). Each maps to a Type 1 gap in the cross-dimensional gap catalog."
+>
+> **Source:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) §2, Type 1: Never Designed / Blank Spaces (CD-001..CD-006, CD-010).
+
+#### F58 — Multi-Tenancy Isolation ❌
+
+*No tenant isolation model. `user_id` fields exist on entries but there is no tenant context, no data isolation boundary, no cross-tenant access control. All KB entries share one SQLite database.*
+
+> **Cross-ref:** CD-001 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md).
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | AutoInfo stores all users' KB entries in a single SQLite database. `user_id` fields exist on entry schemas but are advisory, not enforced. No query filters by tenant. No access control prevents one user from seeing another's data if a query is crafted to bypass the user_id filter. |
+| **User flow** | Director User onboards a second tenant. Today: both tenants share the same KB, same collections, same search results. There is no way to partition data, no per-tenant config, no tenant-scoped source or topic isolation. |
+| **Rationale** | Multi-tenant isolation is a prerequisite for commercial multi-customer deployment. Without it, AutoInfo can only serve a single tenant per instance. Enterprise customers require data isolation guarantees before adoption. |
+| **Acceptance criteria** | (1) Tenant entity model with CRUD. (2) All KB entries, collections, sources, topics, subscriptions scoped to a tenant_id. (3) All MCP tools and REST API endpoints enforce tenant context — no cross-tenant data access. (4) Per-tenant config isolation (LLM keys, schedules, alert rules). (5) Tenant provisioning and deprovisioning workflow. |
+| **Dependencies** | F59 (End-User Authentication) — tenant identity requires user identity. F20 (KB Storage) — schema migration to add tenant_id enforcement. Data model changes in `data-models.md`. |
+| **Deferred scope** | Per-tenant compute quotas, per-tenant LLM cost caps, tenant-to-tenant data sharing APIs, tenant hierarchy (sub-tenants under a parent org). |
+
+#### F59 — End-User Authentication ❌
+
+*No authentication system. No login, no sessions, no OAuth, no magic links. The CLI portal uses no auth. The REST API has no auth (localhost security only). End users are identified by manual ID assignment.*
+
+> **Cross-ref:** CD-002 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md). Related: AUD-05, G15.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | End users are identified by a direct `enduser_id` parameter passed to MCP tools. `activate_trial()` takes an `enduser_id` with no identity verification. `send_to_enduser` takes an ID with no session context. The REST API has no auth (localhost security only). The CLI portal (`autoinfo portal`) uses no authentication at all. |
+| **User flow** | End user wants to access their portal. Today: they cannot. There is no login page, no magic link, no OAuth flow. An operator must manually pass the user's ID to every tool call. End users have no way to self-serve their profile, preferences, or delivery history without operator intervention. |
+| **Rationale** | Without authentication, end users cannot self-serve. Every action requires operator intervention. This blocks the self-service portal (F40), the end-user cost dashboard (F43), and any consumer-facing product. Authentication is the identity foundation for the entire end-user lifecycle. |
+| **Acceptance criteria** | (1) Email-based magic link authentication (no password). Link expires in 15 minutes, session token valid for 7 days. (2) Optional social login (WeChat OAuth, Telegram OAuth) for push-channel users. (3) Session management with token refresh. (4) All REST API endpoints require auth token (except `/health`). (5) MCP tools accept session context for user-scoped operations. (6) Password reset / magic link regeneration flow. |
+| **Dependencies** | F58 (Multi-Tenancy Isolation) — auth resolves to a tenant + user. F40 (End User Self-Service Portal) — portal requires auth. Email sending (F27) for magic link delivery. |
+| **Deferred scope** | SSO/SAML for enterprise tenants, MFA/2FA, role-based access control (RBAC) beyond admin vs end-user, API key management for programmatic access, session revocation admin UI. |
+
+#### F60 — Rate Limiting & Abuse Prevention ❌
+
+*No rate limiting on any API surface (MCP, REST API, CLI). No per-tenant or per-user request quotas. No backpressure mechanism. A single user can saturate all resources.*
+
+> **Cross-ref:** CD-003 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md).
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | `collect_sources`, `process_collection`, and all MCP tools have zero rate limiting code. `batch_run` has no concurrency cap. The REST API has no rate limiting middleware. A single user or agent can trigger unlimited collection runs, exhausting LLM API quotas, source API rate limits, and local compute resources. |
+| **User flow** | Agent calls `collect_sources` in a tight loop. Today: each call spawns a full collection run with no throttle. LLM API quota is exhausted. Source APIs (PubMed, arXiv) may IP-ban the instance. No backpressure tells the agent to slow down. |
+| **Rationale** | Without rate limiting, a single misconfigured agent or abusive user can take down the entire instance. Source APIs (PubMed 3 req/s, arXiv 1 req/3s) will IP-ban AutoInfo if rate limits are exceeded. LLM API costs can spike uncontrollably. Rate limiting is a production prerequisite. |
+| **Acceptance criteria** | (1) Per-user and per-tenant request quotas on MCP tools and REST API. (2) Per-source rate limiting respecting each source's ToS (PubMed 3 req/s, arXiv 1 req/3s, etc.). (3) `batch_run` concurrency cap (configurable, default 5). (4) Backpressure: 429 Too Many Requests with Retry-After header on REST API. (5) MCP tools return rate limit warnings in tool result metadata. (6) Configurable quotas per subscription tier. |
+| **Dependencies** | F59 (End-User Authentication) — rate limits are per-user. F58 (Multi-Tenancy Isolation) — quotas are per-tenant. Source handler infrastructure (F13). |
+| **Deferred scope** | Adaptive rate limiting based on system load, circuit breaker pattern for source APIs, per-IP rate limiting (vs per-user), distributed rate limiting (for multi-node deployment), rate limit bypass tokens for admin operations. |
+
+#### F61 — Cron Reliability & Backup ❌
+
+*Cron scheduling exists but there is no: missed-schedule detection, cron failure alerts, backup of cron jobs, fallback mechanism if cron daemon fails. No crond health monitoring.*
+
+> **Cross-ref:** CD-004 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md).
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | `schedule.py` uses `croniter` + `subprocess` to install crontab entries. No health checks on cron execution. No `get_schedule_status` MCP tool (spec'd but not registered). If the cron daemon fails, scheduled collections silently stop. No alert is sent. No missed-schedule detection. No backup of cron job definitions. |
+| **User flow** | Director User sets up a daily medical collection schedule. Cron daemon crashes or server reboots. Today: collection silently stops. No alert. The director discovers the gap weeks later when the KB is stale. No way to backfill missed runs. No way to know cron failed without manually checking. |
+| **Rationale** | Scheduled collection is the backbone of automated information tracking. If cron fails silently, the KB goes stale, products stop delivering, and users churn. Cron reliability is a P0 operational requirement. Without it, the system cannot be trusted for production use. |
+| **Acceptance criteria** | (1) `get_schedule_status` MCP tool registered and functional — returns last run, next run, last status, failure count. (2) Missed-schedule detection: if a schedule misses its window by >2x the interval, alert fires. (3) Cron failure alerts via notification framework (F63). (4) Cron job definition backup and restore. (5) Backfill mechanism for missed runs (`run_schedules --backfill-since <timestamp>`). (6) Crond health check in `diagnose_system()`. |
+| **Dependencies** | F63 (Unified Notification Framework) — alerts need a notification system. F55 (Per-Item Traceability) — schedule execution should be traceable. F56 (Enhanced Diagnostics) — cron health in diagnostics. |
+| **Deferred scope** | Distributed cron (multi-node with leader election), cron job dependencies (run B only after A succeeds), cron job versioning, cron execution sandboxing, per-tenant cron isolation. |
+
+#### F62 — Admin Dashboard ❌
+
+*No web-based admin console exists. The only dashboards are CLI (`autoinfo status`, `autoinfo cost dashboard`) and MCP tools. No visual overview of system health, user activity, collection status, delivery metrics.*
+
+> **Cross-ref:** CD-005 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md).
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | No admin routes in the FastAPI server. The Web UI Dashboard (Bootstrap 5) exists but shows only collection stats and KB search — no admin functions. There is no visual overview of: system health, active users, collection status, delivery metrics, cost trends, error rates, source health across all domains. Directors must use CLI or MCP tools piecemeal. |
+| **User flow** | Director User wants a system overview. Today: they run `autoinfo status`, `autoinfo cost dashboard`, `autoinfo doctor --verbose`, and call multiple MCP tools (`diagnose_system`, `get_collection_stats`, `get_metrics`). No single view. No visual trends. No way to see everything at a glance. |
+| **Rationale** | Directors need operational visibility to manage the platform. CLI and MCP tools are powerful but require multiple commands and produce text output. A visual admin dashboard provides at-a-glance system health, enables faster incident response, and supports non-technical director users who cannot use CLI or MCP. |
+| **Acceptance criteria** | (1) Web-based admin dashboard at `/admin` (auth required — F59). (2) System health overview: composite health score, per-domain status, error rates, latency p95. (3) User activity: active users, trial users, churned users, new signups. (4) Collection status: last run per domain, items collected, source health. (5) Delivery metrics: delivery success rate, SLA compliance, channel health. (6) Cost trends: LLM spend over time, per-domain cost breakdown. (7) Alert feed: recent alerts from budget, cron, source health monitoring. |
+| **Dependencies** | F59 (End-User Authentication) — admin dashboard requires auth. F56 (Enhanced Diagnostics) — data source. F57 (Metrics Export) — data source. F63 (Unified Notification Framework) — alert feed. REST API (existing) — data transport. |
+| **Deferred scope** | Real-time WebSocket updates, drag-and-drop dashboard customization, saved views per director, export dashboard as PDF report, multi-language admin UI, mobile-responsive admin layout. |
+
+#### F63 — Unified Notification Framework ❌
+
+*No unified notification system. Budget alerts exist in `alerts.py` but are separate from user lifecycle notifications (trial ending, digest ready). System alerts (cron failure, disk usage) don't exist. No notification templates, no notification preferences per user.*
+
+> **Cross-ref:** CD-006 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md). Related: CD-038 (Architecture Gap — No Unified Notification Architecture).
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Notifications are handled ad-hoc per subsystem. Budget alerts exist in `alerts.py` with YAML persistence and DeliveryChannel dispatch. No email template for "trial ending" or "digest ready". No webhook for system events. No notification bus, no notification routing rules, no notification preferences in `EndUserProfile` or `Subscription`. System alerts (cron failure, disk usage, source down) do not exist at all. |
+| **User flow** | End user's trial is about to expire. Today: no notification is sent. The trial silently expires, deliveries stop, and the user churns without warning. Budget alerts work but only for cost thresholds. There is no unified system to notify users about lifecycle events, system issues, or content availability. |
+| **Rationale** | Notifications are the communication backbone between AutoInfo and its users. Without a unified framework, every subsystem invents its own notification mechanism (or none). This leads to inconsistent user experience, missed critical alerts, and duplicated effort. A unified framework enables: lifecycle emails (trial ending, payment failed), system alerts (cron down, source unreachable), content notifications (digest ready, new alert triggered), and user-configurable notification preferences. |
+| **Acceptance criteria** | (1) `Notification` model with type, recipient, channel, template, status, sent_at. (2) Notification template engine (Jinja2) with templates for: welcome, trial-ending, digest-ready, payment-failed, cancellation-confirmed, cron-failure, source-unreachable, budget-threshold. (3) Notification routing rules: which events trigger which notifications to which users via which channels. (4) Per-user notification preferences: opt-in/opt-out per type, preferred channel per type, quiet hours. (5) MCP tools: `send_notification`, `list_notifications`, `get_notification_preferences`, `update_notification_preferences`. (6) Integration with existing budget alerts (`alerts.py`) — budget alerts route through the unified framework. |
+| **Dependencies** | F59 (End-User Authentication) — notifications are per-user. F27 (Product Delivery) — delivery channels reused for notifications. F37 (Multi-Channel Delivery) — channel adapters reused. Email sending (existing `email_sender.py`). |
+| **Deferred scope** | Push notifications (mobile), in-app notification center, notification digest (batch notifications into a daily summary), notification A/B testing, notification analytics (open rates, click rates), SMS notifications. |
+
+#### F64 — Product Catalog / Storefront ❌
+
+*No product discovery for end users. No storefront, no product listing page, no pricing page. End users have no way to browse available products.*
+
+> **Cross-ref:** CD-010 in [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md). Related: G7 (consumer-facing gap: "no Substack-style discovery").
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | `list_products` MCP tool exists but returns products for agent use, not for end-user browsing. No public product catalog. No storefront page. No pricing page. End users have no way to discover what products are available, what they cost, or what domains they cover. Product templates (briefing, deep-dive, weekly-roundup, alert) exist in code but are invisible to end users. |
+| **User flow** | Potential end user wants to see what AutoInfo offers. Today: they cannot. There is no product listing, no pricing page, no trial signup page. The only way to discover products is through an operator who calls `list_products` via MCP. End users cannot self-discover, self-select, or self-subscribe to products. |
+| **Rationale** | Product discovery is the top of the funnel for end-user acquisition. Without a storefront, AutoInfo cannot acquire end users at scale. Every consumer product needs a discovery surface. The storefront is the difference between a platform that requires sales outreach and one that supports self-service signup. |
+| **Acceptance criteria** | (1) Public product catalog page listing all available products with: name, description, domain, format, cadence, sample output, pricing tier. (2) Product detail pages with full description, sample output preview, pricing, and subscribe button. (3) Pricing page showing all tiers (Free, RAW Pro, PROCESSED Pro, Enterprise) with feature comparison. (4) Trial signup flow from product page. (5) Search and filter by domain, format, cadence, price. (6) REST API endpoint `/api/v1/catalog` for programmatic product discovery. (7) Product catalog managed via MCP tools (`list_products`, `get_product` extended with public-facing fields). |
+| **Dependencies** | F59 (End-User Authentication) — signup and subscription require auth. F30 (Subscription & Billing) — checkout flow connects to billing. F58 (Multi-Tenancy Isolation) — catalog is per-tenant for white-label deployments. Product templates (existing `product.py`). |
+| **Deferred scope** | Product reviews and ratings, product recommendations, product bundles, seasonal/limited-time products, affiliate product listings, multi-language product catalog, product A/B testing for catalog layout. |
+
+### 3.14 Phase 14: B1 Lifecycle Gaps
+
+> "End-User (B1) lifecycle stages not covered by F01-F64. These expectations close the gaps identified in the user lifecycle definition. Added 2026-07-27 to achieve 100% coverage of the B1 End User Lifecycle."
+>
+> **Source:** [`docs/dev/specs/user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2, B1 End User Lifecycle (B1.1-B1.7).
+
+#### F65 — B1.1 End-User Product Discovery ❌
+
+*B1 discovers AutoInfo via marketing, search, or referral. Includes a referral sub-path for existing B1 users to refer new B1 users.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.2 (B1.1 table row). F64 (Product Catalog/Storefront) is a sub-component of this lifecycle stage — F64 covers the storefront surface; F65 covers the full discovery journey including referral and trial signup.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today there is no end-user acquisition surface. F64 documents the missing storefront, but the full B1.1 discovery journey — including how a potential B1 finds AutoInfo via external channels (search, marketing, referral) and converts to a trial signup — has no spec and no code. The discovery funnel precedes the storefront: it spans external search visibility, inbound marketing pages, and the referral loop. |
+| **Product catalog visibility** | Public product catalog page (extends F64) listing all available products with: name, description, domain, format, cadence, sample output, pricing tier. Catalog is the landing surface for B1.1 discovery — B1 browses, filters, and selects a product to trial. |
+| **Referral link & reward mechanism** | Existing B1 users can generate a referral link (`https://autoinfo.app/r/<referral_code>`) from their portal. New B1 who signs up via the referral link receives a trial extension or discount; the referring B1 receives account credit or a free month. Reward rules are tier-dependent and configurable by B3 (F70). Referral attribution tracked from signup through first paid conversion. |
+| **Trial signup flow** | B1 selects a product from the catalog → enters email → magic link auth (F59) → trial subscription created (F38 `trial` state) → onboarding begins (F66). No credit card required for trial. Trial duration configurable per product (default 14 days per F38). Watermark/attribution on trial outputs per F38. |
+| **Sample output preview** | Each product in the catalog has a sample output preview — a real (anonymized or dated) example of what the product delivers. B1 can preview before signing up. Reduces trial-to-paid churn by setting expectations upfront. Preview rendered from the product template with sample data. |
+| **User flow** | Potential B1 discovers AutoInfo via search/marketing/referral → lands on product catalog → previews sample outputs → selects a product → trial signup with email → magic link → trial active → onboarding (F66). |
+| **Rationale** | Product discovery is the top of the B1 acquisition funnel. Without a complete discovery journey — including the referral loop and sample preview — AutoInfo cannot acquire B1 users at scale. F64 covers the storefront surface but not the full discovery-to-trial conversion path. |
+| **Acceptance criteria** | (1) Public product catalog with sample output previews (extends F64 acceptance criteria). (2) Referral link generation from end-user portal: `generate_referral_link(user_id)` MCP tool. (3) Referral attribution tracking from signup to first paid conversion. (4) Reward mechanism with configurable rules (credit, trial extension, discount). (5) Trial signup flow from catalog → auth → trial subscription. (6) SEO-friendly marketing pages for inbound discovery. (7) REST API endpoints for catalog browse and referral link resolution. |
+| **Dependencies** | F64 (Product Catalog/Storefront) — F65 extends F64 with referral and discovery. F59 (End-User Authentication) — trial signup requires auth. F38 (End User Lifecycle State Machine) — trial state. F36 (End User Profile) — profile creation at signup. |
+| **Deferred scope** | Affiliate marketing program (third-party referrers), SEO content marketing automation, A/B testing of catalog landing pages, social sharing buttons, referral fraud detection, multi-tier referral chains. |
+
+#### F66 — B1.3 End-User Onboarding ❌
+
+*First-product experience after subscription. Initial delivery with explanation, preference verification, cross-product introduction, channel delivery confirmation, and config refinement loop.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.2 (B1.3 table row). F38 (End User Lifecycle State Machine) — the `trial→active` transition hook triggers onboarding. F36 (End User Profile) — profile and preferences verified during onboarding.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, when a B1 subscribes (F38 `trial→active`), the system sends a welcome message via configured channels (F38 state transition hook). But there is no structured onboarding flow: no first-delivery design, no preference verification, no cross-product introduction, no config refinement loop. The B1's first experience is whatever the next scheduled delivery happens to be. |
+| **First delivery design** | The first delivery to a new B1 is a specially designed "welcome digest" — not a standard scheduled product. It includes: (1) a welcome message explaining what AutoInfo does and what the B1 will receive, (2) a sample of the subscribed product with annotations explaining each section ("This is your TL;DR, this is your key points section, this is your source citation"), (3) a "what to expect next" preview of the next 3 scheduled deliveries, (4) a call-to-action to verify or adjust preferences. The welcome digest uses the product template but with onboarding-specific frontmatter. |
+| **Preference verification step** | After the first delivery, the B1 is prompted to verify their preferences: "You signed up for the Medical Research Weekly Digest, delivered via Email + Telegram. Is this correct? Adjust here." This is a confirmation step, not a re-configuration step — it surfaces the NL→Config interpretation (F36/F67) for the B1 to confirm or refine. Verification via portal link (F40) or inline reply (channel-dependent). |
+| **Cross-product up-sell timing** | After the B1 has received 2-3 successful deliveries of their subscribed product, the system introduces cross-products: "You're enjoying the Medical Research Weekly Digest. You might also like the Medical Research Alert Stream (real-time breakthroughs) or the Deep-Dive Report (monthly comprehensive review)." Up-sell timing is configurable (default: after 3rd delivery). Up-sell is non-intrusive — a footer note in the regular delivery, not a separate marketing message. |
+| **Channel delivery confirmation** | For each configured delivery channel, the B1 receives a test delivery during onboarding: "This is a test delivery to confirm your Telegram channel is working. Reply to confirm." Each channel must be confirmed before it is marked active. Unconfirmed channels after 7 days → reminder, after 14 days → deactivated (email fallback remains). |
+| **Config refinement loop** | If the initial NL→Config interpretation (at subscribe time, F36) was imprecise — e.g., the B1 said "I want IVF breakthroughs" but the config captured too broad or too narrow a scope — the onboarding period (first 14 days) includes a refinement loop: the B1 can re-express their intent in NL, the Agent re-parses to config, and the subscription config is updated (F67). This is the safety net for imprecise initial config. |
+| **User flow** | B1 subscribes (F38) → `trial→active` hook triggers onboarding → welcome digest delivered to all configured channels → B1 verifies preferences → channel test deliveries sent → B1 confirms each channel → after 3 deliveries, cross-product up-sell begins → if config imprecise, B1 refines via NL during first 14 days. |
+| **Rationale** | The first experience determines trial-to-paid conversion and long-term retention. A well-designed onboarding reduces churn by setting expectations, confirming the config is correct, and introducing the product ecosystem. Without onboarding, the B1's first delivery is a generic scheduled product with no context — leading to confusion and early cancellation. |
+| **Acceptance criteria** | (1) Welcome digest template with annotated product sample and "what to expect next" preview. (2) Preference verification flow triggered after first delivery, via portal link and inline reply. (3) Channel test delivery with confirmation tracking per channel. (4) Cross-product up-sell mechanism with configurable timing (default after 3rd delivery). (5) Config refinement loop during first 14 days — B1 can re-express NL intent, Agent re-parses to config (F67). (6) Onboarding state tracking: `onboarding_status` field on subscription (welcomed, preferences_verified, channels_confirmed, onboarded). (7) MCP tools: `trigger_onboarding(subscription_id)`, `get_onboarding_status(subscription_id)`. |
+| **Dependencies** | F38 (End User Lifecycle State Machine) — `trial→active` hook triggers onboarding. F36 (End User Profile) — preferences verified. F37 (Multi-Channel Delivery) — channel test deliveries. F40 (End User Self-Service Portal) — preference verification via portal. F67 (Subscription Config Modification) — config refinement loop. F27 (Product Delivery) — welcome digest delivery. |
+| **Deferred scope** | Onboarding video tutorials, interactive product walkthrough, onboarding gamification (badges for completing setup steps), personalized onboarding based on B1's stated use case, onboarding A/B testing. |
+
+#### F67 — B1.5 Subscription Config Modification (NL→Config) ❌
+
+*B1 modifies subscription config via NL. Agent+LLM parses NL → structured config update. Billing vs non-billing change rules.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.4 (Config Change & Billing Interaction). F30 (Subscription & Billing) — subscription record contains config fields; F67 covers the modification interaction.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, B1 can modify subscription config only via direct config manipulation (operator updates the subscription record fields directly via MCP tools `update_preferences`, `update_end_user`). There is no NL→Config path for modifications: the B1 cannot say "send me digests on Mondays instead of Fridays" or "add the AI Commercial domain to my subscription" and have the Agent parse that to a structured config update. The NL→Config pipeline exists at subscribe time (F36) but not for post-subscription modifications. |
+| **NL input → Agent parses → structured update → confirmation to B1** | B1 expresses config change in NL (via portal, chat, or reply to a delivery): "Change my digest to weekly instead of daily" → Agent + LLM parses NL → structured config update diff (`{field: "cadence", old: "daily", new: "weekly"}`) → Agent applies update to subscription record → confirmation sent to B1: "Updated: your Medical Research digest is now weekly. Next delivery: [date]." Confirmation includes the parsed change for B1 to verify. |
+| **Non-billing changes immediate** | Config changes that do not affect billing (e.g., cadence change within same tier, channel preference update, quiet hours adjustment, language/locale change, keyword refinement) take effect immediately. The next scheduled delivery uses the new config. |
+| **Billing changes next cycle** | Config changes that affect billing (e.g., tier upgrade/downgrade, adding/removing a domain subscription, changing product type from RAW to PROCESSED) take effect at the next billing cycle. The B1 is notified: "Your tier upgrade from RAW Pro to PROCESSED Pro will take effect on [next billing date]. You will be billed $X/month instead of $Y/month." This prevents mid-cycle proration complexity and gives B1 a window to cancel the change. |
+| **Config change audit trail** | Every config change (NL or direct) is logged in the audit log (F47) with: `subscription_id`, `change_type` (nl_parsed / direct_edit), `nl_input` (if applicable), `parsed_diff`, `applied_by` (b1 / agent / b3_direct), `applied_at`, `billing_impact` (none / next_cycle / immediate), `effective_at`. The B1 can view their config change history via the portal. |
+| **User flow** | B1 sends NL config change request → Agent + LLM parses to structured diff → Agent classifies change as billing or non-billing → if non-billing: apply immediately, send confirmation → if billing: schedule for next cycle, send preview notification → config change logged in audit trail → B1 receives confirmation with parsed change. |
+| **Rationale** | B1 should be able to refine their subscription config in the same way they initially expressed it — in natural language. Forcing B1 to use direct config manipulation (or to go through an operator) for every change is friction. The NL→Config pipeline at subscribe time (F36) proved the model; F67 extends it to the full subscription lifetime. |
+| **Acceptance criteria** | (1) NL→Config parsing for config modifications using the same LLM pipeline as subscribe-time parsing (F36). (2) Change classification: billing vs non-billing (rules table mapping each config field to billing_impact). (3) Non-billing changes applied immediately, confirmed to B1. (4) Billing changes scheduled for next cycle, preview notification sent. (5) Config change audit trail with full NL input, parsed diff, and billing impact. (6) MCP tool: `modify_subscription_config(subscription_id, nl_input)` → returns parsed diff, classification, and confirmation. (7) Portal UI for NL config change input and history view. (8) Rate limiting on NL config changes (max 10/day per subscription) to prevent abuse. |
+| **Dependencies** | F36 (End User Profile) — NL→Config pipeline reused. F30 (Subscription & Billing) — subscription record fields modified. F38 (End User Lifecycle State Machine) — billing change timing tied to billing cycle. F47 (Audit Log) — config change audit trail. F40 (End User Self-Service Portal) — NL input UI. |
+| **Deferred scope** | NL config change undo/rollback within 24h, NL config change preview before applying, batch NL config changes (multiple changes in one NL message), NL config change templates ("apply the 'power user' preset"). |
+
+#### F68 — B1.7 Subscription Reactivation ❌
+
+*Churned B1 returns within retention window. Restore subscription + data from pre-churn config snapshot.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.2 (B1.7 table row). F38 (End User Lifecycle State Machine) — mentions 90-day reactivation window but no implementation: `cancelled→active` transition is not coded, no config snapshot mechanism, no data restoration.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | F38 states "Cancelled users can re-activate within 90 days with full history preserved. After 90 days, profile is archived." But this is spec only — there is no implementation: no `cancelled→active` transition in the state machine, no config snapshot taken at cancellation time, no data restoration mechanism, no reactivation flow. A churned B1 who returns must be treated as a new signup with no history. |
+| **Retention window duration (tier-dependent)** | The retention window — the period during which a churned B1 can reactivate with full data restoration — is tier-dependent: Free tier: 30 days, RAW Pro: 90 days, PROCESSED Pro: 180 days, Enterprise: 365 days (configurable per contract). After the window expires, the B1 profile is archived (data retained per GDPR/privacy policy F46-F48) but reactivation is no longer possible — the B1 must sign up as a new user. |
+| **Config snapshot mechanism** | At the moment of `active→cancelled` (or `suspended→cancelled`) transition, the system takes a config snapshot: the complete subscription config (domains, products, channels, preferences, NL-originated config fields, tier, billing info) is serialized to a snapshot record (`ReactivationSnapshot` model). The snapshot is stored with `cancelled_at` timestamp and `retention_expires_at` = `cancelled_at` + retention window. Snapshot is immutable. |
+| **Data continuity rules** | On reactivation within the retention window: (1) subscription config restored from snapshot, (2) delivery preferences restored, (3) product archive (past delivered products, F40) restored and accessible, (4) KB entries created by/for this B1 (if any custom KB scope) restored, (5) audit log history preserved and linked, (6) cost/billing history preserved. Data that was soft-deleted (F46) during the cancelled period is restored if within its own retention window. |
+| **Reactivation notification** | When a churned B1 returns and signs in (via magic link, F59) within the retention window, the system detects the existing cancelled subscription and presents: "Welcome back! Your [Product Name] subscription was cancelled on [date]. You have [N] days left to reactivate with full history. Reactivate now?" If B1 confirms, the `cancelled→active` transition fires, config is restored from snapshot, and a reactivation welcome message is sent (extends F38 state transition hooks). |
+| **User flow** | Churned B1 returns → signs in via magic link (F59) → system detects cancelled subscription within retention window → presents reactivation offer → B1 confirms → `cancelled→active` transition → config restored from snapshot → data continuity verified → reactivation welcome sent → next scheduled delivery resumes. If outside retention window → B1 treated as new signup (F65). |
+| **Rationale** | Reactivation within the retention window preserves the B1's investment in configuring their subscription (NL→Config at subscribe time, F36; refinements via F67). Forcing a returning B1 to reconfigure from scratch is friction that reduces reactivation conversion. The 90-day window in F38 is a spec promise that is currently unfulfilled. |
+| **Acceptance criteria** | (1) `ReactivationSnapshot` model with: `subscription_id`, `config_snapshot` (full config JSON), `cancelled_at`, `retention_expires_at`, `tier_at_cancellation`. (2) Config snapshot taken automatically at `active→cancelled` and `suspended→cancelled` transitions. (3) `cancelled→active` transition implemented in state machine (F38 extension). (4) Tier-dependent retention window configuration (F70 unified config). (5) Reactivation detection: returning B1 within window → reactivation offer presented. (6) Data restoration: config, preferences, product archive, audit history, cost history. (7) Reactivation welcome message (extends F38 hooks). (8) MCP tools: `reactivate_subscription(subscription_id)`, `check_reactivation_eligibility(user_id)`. (9) Automatic archival after retention window expires. |
+| **Dependencies** | F38 (End User Lifecycle State Machine) — `cancelled→active` transition. F36 (End User Profile) — profile restoration. F40 (End User Self-Service Portal) — product archive restoration. F46-F48 (Data Privacy) — soft-deleted data restoration, GDPR compliance. F59 (End-User Authentication) — returning B1 identity. F30 (Subscription & Billing) — billing resume on reactivation. |
+| **Deferred scope** | Partial reactivation (restore some products but not others), reactivation with tier downgrade, reactivation A/B testing (different offers for different churn reasons), win-back campaigns (proactive outreach to churned B1 before retention window expires), reactivation analytics (churn reason correlation with reactivation likelihood). |
+
+### 3.15 Phase 15: B2 Lifecycle
+
+> "Direct User (B2) lifecycle stages not covered by F01-F64. B2 is the AI agent that operates AutoInfo via MCP tools on behalf of the end user. This phase closes the B2 reporting gap identified in the user lifecycle definition."
+>
+> **Source:** [`docs/dev/specs/user-lifecycle-definition.md`](./user-lifecycle-definition.md) §3, B2 Direct User Lifecycle (B2.1-B2.6).
+
+#### F69 — B2.6 Structured Execution Reporting ❌
+
+*B2 generates periodic execution reports for B3: what was collected, what was delivered, errors, cost summary, anomaly flags.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §3.2 (B2.6 Report stage). F54-F57 (Operational Observability) — these observability tools are the data sources for B2's execution reports. F31 (Collection Overview) and F32 (Source Health) feed collection stats into the report.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, B2 (the AI agent operating via MCP tools) has access to individual observability tools (F54-F57: `get_metrics`, `trace_item`, `diagnose_system`, `get_prometheus_metrics`) and collection tools (F31: `get_collection_stats`, F32: `get_source_health`). But there is no structured "execution report" that B2 generates for B3 — a periodic summary of what the system did, what it delivered, what errors occurred, what it cost, and what anomalies were flagged. B3 must actively query individual tools to piece together the system's execution state. |
+| **Report format (structured JSON + human-readable summary)** | The execution report has two layers: (1) **Structured JSON** — machine-readable, for B3's dashboard ingestion (F71) and automated alert routing: `{report_id, period: {start, end}, collection: {items_collected, items_processed, items_failed, by_domain: [...]}, delivery: {products_delivered, deliveries_failed, sla_misses, by_channel: [...]}, errors: [{error_code, count, first_seen, last_seen, affected_domains}], cost: {total_tokens, total_cost_usd, by_domain: [...], by_model: [...]}, anomalies: [{type, severity, description, detected_at}]}`. (2) **Human-readable summary** — Markdown digest for B3 to read: "本周执行报告: 收集 145 条, 处理 142 条, 失败 3 条. 交付 28 个产品, SLA 全部达成. 总成本 $12.50. 异常: PubMed 源响应时间 P99 超阈值." |
+| **Report frequency** | Configurable per B3 preference: daily (default for high-frequency domains), weekly (default), monthly. B2 generates the report at the end of each period and delivers it to B3 via B3's preferred channel (email, webhook, or dashboard update). Report generation is a scheduled job (extends cron system, F26). |
+| **Anomaly detection criteria** | B2 flags anomalies in the report based on configurable criteria: (1) Source health degradation (3+ consecutive failures, F32), (2) SLA misses (P0 >5min, P1 >30min, P2 >2hr, F39), (3) Cost spike (>2x rolling 7-day average), (4) Collection volume anomaly (>50% deviation from rolling 30-day average), (5) Quality gate block rate spike (G0/G4 block rate >5%), (6) Delivery failure rate >10%. Anomaly flags include severity (Critical/Degraded/Recoverable — aligns with F72 severity classification). |
+| **Delivery method to B3** | Report delivered to B3 via: (1) B3's dashboard (F71 — report appears in the "Execution Reports" view), (2) Email (if B3 prefers email summaries), (3) Webhook push (if B3 has configured a webhook for report ingestion), (4) MCP tool query (`get_execution_report(period="week")` — B3 or B3's agent can query on demand). Delivery method configurable per B3 preference. |
+| **User flow** | B2 collects and processes throughout the period → at period end, B2 aggregates data from F54-F57, F31, F32, F39, cost metering → B2 generates structured JSON + human-readable summary → B2 runs anomaly detection → B2 delivers report to B3 via configured channel → B3 reviews (F71) or is alerted (F72) if anomalies are Critical. |
+| **Rationale** | B3's oversight model is passive (F71) — B3 does not proactively query individual tools. B2 must proactively report execution state to B3. Without structured execution reports, B3 has no periodic visibility into what B2 is doing, what errors are occurring, and what the system is costing. The report is the primary B2→B3 communication channel. |
+| **Acceptance criteria** | (1) `ExecutionReport` model with the structured JSON schema above. (2) `generate_execution_report(period="week", domain=None)` MCP tool — B2 generates the report. (3) Human-readable Markdown summary generated alongside JSON. (4) Anomaly detection with 6 configurable criteria (source health, SLA, cost, volume, gate block rate, delivery failure rate). (5) Anomaly severity classification aligned with F72 (Critical/Degraded/Recoverable). (6) Scheduled report generation via cron (extends F26). (7) Report delivery to B3 via dashboard (F71), email, webhook, or MCP query. (8) Report archive (past reports queryable for trend analysis). (9) Configurable report frequency per B3 preference. |
+| **Dependencies** | F54-F57 (Operational Observability) — data sources. F31 (Collection Overview) — collection stats. F32 (Source Health Monitoring) — source health data. F39 (Delivery Reliability) — SLA and delivery failure data. F26 (Cron Scheduling) — scheduled report generation. F71 (Director Monitoring & Dashboard) — report display surface. F72 (Incident Intervention) — anomaly flags route to incident workflow. Cost metering (F41-F45) — cost summary data. |
+| **Deferred scope** | Predictive anomaly detection (ML-based forecasting), report comparison/diff between periods, report export to external BI tools (Tableau, Looker), report sharing with stakeholders outside B3, natural language report queries ("show me last week's report for medical domain"). |
+
+### 3.16 Phase 16: B3 Lifecycle
+
+> "Director User (B3) lifecycle stages not covered by F01-F64. B3 is the human commander who deploys, configures, monitors, and intervenes. This phase closes the B3 configuration, monitoring, and intervention gaps identified in the user lifecycle definition."
+>
+> **Source:** [`docs/dev/specs/user-lifecycle-definition.md`](./user-lifecycle-definition.md) §4-§5, B3 Director User Lifecycle (B3.1-B3.3) and Error Escalation Path (§5.3).
+
+#### F70 — B3.1 Unified Director Configuration 🟡
+
+*B3 sets all configuration at deploy time: pricing tier definitions, domain quotas, quality thresholds, delivery SLA targets, data retention policies. Unified config scope.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §4.3 (B3 Configuration Scope). [`quality-gates.md`](./quality-gates.md) — quality thresholds. [`operations.md`](./operations.md) — cost/privacy/lifecycle/observability config. Partially implemented: config exists but is scattered across multiple config files and code-level defaults — there is no unified B3 config surface.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, B3-relevant configuration is scattered across: `.autoinfo/config.yaml` (LLM config, domain config), per-domain config files (sources, topics, quality gate thresholds), code-level defaults (delivery SLA targets in `delivery.py`, retention policies in privacy modules, pricing tiers in `billing.py`). There is no unified "B3 config" surface where a director can set all deployment-wide policies in one place. B3 must edit multiple files and know which code-level defaults to override. |
+| **Config scope table** | Unified B3 config covers five scopes: (1) **Pricing tier definitions** — tier names, prices, feature flags, quotas per tier (Free, RAW Pro, PROCESSED Pro, Enterprise). (2) **Domain quotas** — max domains per tenant, max sources per domain, max topics per domain, max items per collection run. (3) **Quality thresholds** — G1-G5 gate thresholds per domain, gate action defaults (archive/flag/pass), retry counts for hard gates. (4) **Delivery SLA targets** — P0/P1/P2 latency targets, retry chain config, fallback channel policy. (5) **Data retention policies** — per-domain TTL, soft-delete retention window, GDPR export format, auto-cleanup schedule. |
+| **Config format (demo vs production)** | **Demo / single-tenant**: B3 config is a single YAML file (`.autoinfo/director-config.yaml`) edited at deploy time. Schema-validated, with defaults inherited from code-level values. **Production / multi-tenant**: B3 config is managed via an admin UI (web dashboard, extends F71) with form-based editing, validation, and version history. CLI equivalent: `autoinfo director config get|set|list|export|import`. MCP tools: `get_director_config()`, `set_director_config(scope, key, value)`. |
+| **Config versioning** | Every B3 config change is versioned: `{version, changed_by, changed_at, scope, key, old_value, new_value, reason}`. Config version history is queryable via `get_config_history(scope, since_version)`. Rollback to a previous version: `rollback_config(to_version)`. Config changes are logged in the audit log (F47). This enables B3 to understand what changed when and roll back problematic changes. |
+| **Config precedence** | B3 unified config is the deployment-wide default. Per-domain config can override B3 defaults (e.g., a specific domain with stricter quality thresholds). Per-tenant config (when F58 multi-tenancy is implemented) can override domain defaults. Per-subscription config (F30, F67) is the most specific. Precedence: subscription > tenant > domain > B3 unified > code-level default. |
+| **User flow** | B3 deploys AutoInfo → edits `director-config.yaml` (demo) or uses admin UI (production) → sets pricing tiers, domain quotas, quality thresholds, SLA targets, retention policies → config validated against schema → config applied (some changes immediate, some require restart) → config version recorded → downstream configs inherit B3 defaults unless overridden. |
+| **Rationale** | B3 is responsible for deployment-wide policy. Without a unified config surface, B3 must know the location and format of every scattered config file and code-level default — this is expert knowledge, not director-level operation. A unified config surface makes B3's deploy-time configuration explicit, validated, and version-controlled. |
+| **Acceptance criteria** | (1) `DirectorConfig` schema covering all 5 scopes (pricing, domain quotas, quality thresholds, SLA, retention). (2) Single YAML file for demo/single-tenant: `.autoinfo/director-config.yaml`. (3) Schema validation with defaults inherited from code-level values. (4) Admin UI for production (extends F71 dashboard). (5) CLI: `autoinfo director config get|set|list|export|import`. (6) MCP tools: `get_director_config()`, `set_director_config(scope, key, value)`, `get_config_history()`, `rollback_config(to_version)`. (7) Config versioning with full audit trail. (8) Config precedence: subscription > tenant > domain > B3 > code default. (9) Validation: invalid config values rejected with explanation. (10) Hot-reload for non-restart-requiring changes. |
+| **Dependencies** | F47 (Audit Log) — config change audit trail. F58 (Multi-Tenancy Isolation) — per-tenant config override. Quality gate config (existing `get_gate_config`/`set_gate_config`). Cost config (F41-F45). Data privacy config (F46-F48). Delivery SLA config (F39). Pricing/billing config (F30). |
+| **Deferred scope** | Config templates per deployment type (single-tenant SaaS, enterprise on-prem, white-label), config diff between deployments, config import from external CMDB, config drift detection, config change approval workflow (B3 proposes, second B3 approves). |
+
+#### F71 — B3.2 Director Monitoring & Dashboard 🟡
+
+*B3 monitors B2 via dashboard and reports. Passive oversight — B3 does not proactively intervene unless alerted.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §4.2 (B3.2 Monitor). F54-F57 (Operational Observability) — observability data sources. F31/F32 (Collection Overview, Source Health) — existing monitor tools. F52 (Audit Log Query) — audit data for dashboard. Partially implemented: all data exists via CLI and MCP tools, but there is no unified B3 dashboard surface.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, all the data B3 needs for monitoring exists and is accessible: `autoinfo status` (F31), `autoinfo sources health` (F32), `autoinfo cost dashboard` (F43), `autoinfo audit query` (F52), `autoinfo doctor --verbose` (F54), Prometheus metrics (F57), and B2's execution reports (F69). But there is no unified dashboard that aggregates these into a single B3-facing view. B3 must run multiple CLI commands or query multiple MCP tools to get a complete picture. The existing Web UI Dashboard (Bootstrap 5, collection stats + KB search + source health) is end-user-facing, not B3-director-facing. |
+| **Dashboard views** | B3 dashboard aggregates 5 views: (1) **System health** — composite health score (F54), LLM key status, DB disk usage, source reachability summary, active collection/processing jobs. (2) **Collection stats** — items collected per domain per period, KB entries added, source health by domain (extends F31/F32). (3) **Delivery metrics** — products delivered, delivery success rate, SLA compliance per tier, bounce/failure rates per channel (extends F39). (4) **Cost trends** — daily LLM spend, top models by cost, top domains by cost, budget threshold status, cost projection (extends F43). (5) **Anomaly flags** — active anomalies from B2 execution reports (F69), severity classification, time since detection, resolution status. |
+| **Report frequency** | Dashboard is real-time (data refreshes on page load, or via WebSocket push for active monitoring). B2's execution reports (F69) appear in the dashboard on their schedule (daily/weekly/monthly). B3 can configure dashboard alert thresholds: "notify me if health score < 80" or "notify me if cost > $50/day." Alerts route via B3's preferred channel (email, webhook). |
+| **Alert routing** | Dashboard anomalies and threshold breaches route to B3 via: (1) Dashboard notification badge (real-time), (2) Email digest of alerts (configurable frequency), (3) Webhook push for integration with external monitoring (PagerDuty, Slack), (4) MCP tool query (`get_b3_alerts(severity="Critical")`). Critical anomalies (F72 severity) trigger immediate alert regardless of B3's quiet hours. |
+| **Passive oversight model** | B3's monitoring is passive: B3 reviews the dashboard when they choose, and is alerted only when anomalies or threshold breaches occur. B3 does not need to actively poll the system. The dashboard + B2 execution reports (F69) + alert routing form the passive oversight loop. B3 proactively intervenes only when alerted (F72). |
+| **User flow** | B3 opens dashboard (web UI or CLI `autoinfo director dashboard`) → sees 5 views with current data → reviews anomalies and cost trends → if Critical anomaly flagged → B3 initiates intervention (F72) → B3 reviews B2's latest execution report (F69) → B3 adjusts config if needed (F70). Between dashboard visits, B3 receives alerts only on anomalies/threshold breaches. |
+| **Rationale** | B3's oversight is passive by design (user-lifecycle-definition §4.2). Without a unified dashboard, passive oversight requires B3 to actively run multiple commands — which is not passive. The dashboard aggregates the existing data into a single surface that supports true passive monitoring: B3 glances, is alerted on anomalies, and intervenes only when needed. |
+| **Acceptance criteria** | (1) B3 dashboard web UI aggregating 5 views (system health, collection stats, delivery metrics, cost trends, anomaly flags). (2) Real-time data refresh (page load or WebSocket). (3) B2 execution reports (F69) displayed in dashboard. (4) Configurable alert thresholds (health score, cost, anomaly severity). (5) Alert routing via dashboard badge, email, webhook, MCP query. (6) Critical anomalies bypass quiet hours. (7) CLI equivalent: `autoinfo director dashboard` — text-based dashboard for terminal-only B3. (8) MCP tools: `get_b3_dashboard()`, `get_b3_alerts(severity)`. (9) Dashboard access control (B3 role only, extends F59 auth). (10) Dashboard extends existing Web UI (Bootstrap 5) with a B3-specific view. |
+| **Dependencies** | F54-F57 (Operational Observability) — data sources. F31/F32 (Collection/Source Health) — collection stats. F39 (Delivery Reliability) — delivery metrics. F43 (Cost Dashboard) — cost data. F52 (Audit Log) — audit data. F69 (Execution Reports) — B2 reports displayed. F59 (End-User Authentication) — dashboard access control. Existing Web UI Dashboard (Bootstrap 5). |
+| **Deferred scope** | Custom dashboard widgets, dashboard sharing with stakeholders, dashboard export to PDF/email, historical dashboard snapshots (point-in-time view), multi-deployment dashboard (monitor multiple AutoInfo instances), dashboard mobile app. |
+
+#### F72 — B3.3 Incident Intervention Workflow 🟡
+
+*Structured B3 intervention when B2 encounters critical errors. Severity classification, intervention steps, post-incident audit.*
+
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path). F20 (KB Storage) — promote Draft→Wiki is a B3 intervention action (human-only per KB pipeline rules). F47 (Audit Log) — intervention actions are audit-logged. Partially implemented: CLI operations exist (`autoinfo doctor`, `autoinfo trace`, `autoinfo kb promote`) but there is no structured incident workflow with severity classification and post-incident audit.
+
+| UX Detail | Specification |
+|-----------|---------------|
+| **Context** | Today, B3 has individual tools for intervention: `autoinfo doctor --verbose` (diagnose system health, F54), `autoinfo trace <trace_id>` (trace an item's pipeline journey, F55), `autoinfo kb promote` (promote Draft→Wiki, F20), `autoinfo sources remove` (remove a failing source), `autoinfo clean` (clean artifacts), `diagnose_system()` MCP tool (F54). But there is no structured incident workflow: no severity classification, no defined intervention steps per severity, no incident record format, no post-mortem requirements. B3's intervention today is ad-hoc — B3 sees a problem, runs a command, hopes it's fixed. |
+| **Severity classification (Critical/Degraded/Recoverable)** | Incidents are classified into 3 severity levels: **Critical** — system down, data loss risk, all deliveries failing, security breach. B3 must intervene immediately. Examples: LLM key invalid (all extraction blocked), DB corruption, all sources unreachable. **Degraded** — partial failure, some deliveries failing, some sources degraded, SLA misses accumulating. B3 should intervene within 1 hour. Examples: 2+ sources failing, SLA miss rate >20%, cost spike >2x average. **Recoverable** — minor issue, self-healing expected, no user impact. B3 is informed but intervention optional. Examples: single source timeout (auto-retry will handle), single delivery bounce (retry chain will handle). Severity is assigned by B2's anomaly detection (F69) or by B3 manually. |
+| **Intervention steps table** | Defined intervention steps per severity: **Critical**: (1) B3 alerted immediately (bypasses quiet hours, F71), (2) B3 opens incident record, (3) B3 runs `diagnose_system()` + `trace_item()` on affected items, (4) B3 applies immediate fix (rollback config F70, remove failing source, promote/reject KB Draft F20, restart service), (5) B3 verifies system recovery, (6) B3 closes incident record with post-mortem. **Degraded**: (1) B3 alerted within 1 hour, (2) B3 reviews B2 execution report (F69) for context, (3) B3 applies targeted fix (adjust quality threshold F70, switch to fallback source, pause degraded source), (4) B3 monitors for recovery, (5) B3 closes incident record. **Recoverable**: (1) B3 informed via dashboard (F71) or next execution report (F69), (2) B3 reviews at next convenience, (3) no incident record required (logged as observed anomaly). |
+| **Incident record format** | `Incident` model: `{incident_id, severity, status (open/investigating/resolved/closed), title, description, detected_at, detected_by (b2_anomaly / b3_manual / b2_report), affected_domains[], affected_sources[], intervention_steps[], applied_fixes[], resolution, post_mortem (required for Critical), post_mortem_url, closed_at, closed_by}`. Incident records are stored and queryable: `get_incidents(severity, status, since)`, `get_incident(incident_id)`. Critical incidents require a post-mortem document linked from the incident record. |
+| **Post-mortem requirements** | Critical incidents require a post-mortem within 72 hours of resolution. Post-mortem document includes: (1) timeline of incident (detection → intervention → resolution), (2) root cause analysis, (3) impact assessment (users affected, data affected, cost impact), (4) what went well in the intervention, (5) what went poorly, (6) preventive actions (config changes F70, monitoring improvements F71, code fixes). Post-mortem is linked from the incident record and archived for future reference. Post-mortem template provided. |
+| **User flow** | B2 detects anomaly (F69) or B3 notices issue on dashboard (F71) → severity classified (Critical/Degraded/Recoverable) → B3 alerted per severity rules → B3 opens incident record → B3 runs diagnostic tools → B3 applies intervention steps per severity → B3 verifies recovery → B3 closes incident record → if Critical: B3 writes post-mortem within 72h → incident + post-mortem archived in audit log (F47). |
+| **Rationale** | B3's intervention today is ad-hoc. Without a structured workflow, intervention quality depends on B3's expertise and memory — not on a defined process. Severity classification ensures B3 prioritizes correctly. Defined intervention steps ensure B3 doesn't miss critical actions. Incident records ensure institutional knowledge is preserved. Post-mortems ensure learning from Critical incidents. |
+| **Acceptance criteria** | (1) `Incident` model with the schema above. (2) Severity classification (Critical/Degraded/Recoverable) with defined criteria. (3) Intervention steps table per severity (3 levels). (4) Incident record CRUD: MCP tools `create_incident()`, `get_incident()`, `get_incidents()`, `update_incident()`, `close_incident()`. (5) CLI: `autoinfo incident list|show|open|close|postmortem`. (6) Alert routing per severity (Critical bypasses quiet hours, Degraded within 1h, Recoverable via dashboard). (7) Post-mortem requirement for Critical incidents (72h deadline, template provided, linked from incident). (8) Incident + post-mortem archived in audit log (F47). (9) Integration with F69 anomaly detection (auto-create incident on Critical anomaly) and F71 dashboard (incident status visible). (10) Integration with F20 (KB promote/reject as intervention action), F70 (config rollback as intervention action). |
+| **Dependencies** | F69 (B2 Execution Reporting) — anomaly detection triggers incidents. F71 (Director Dashboard) — incident status displayed, alerts routed. F54-F57 (Observability) — diagnostic tools for intervention. F47 (Audit Log) — incident records and post-mortems archived. F20 (KB Storage) — promote/reject as intervention action. F70 (Unified Director Config) — config rollback as intervention action. F38 (Lifecycle State Machine) — subscription state changes as intervention (e.g., suspend delivery to affected B1). |
+| **Deferred scope** | Automated incident response (auto-rollback on Critical), incident on-call rotation, incident severity auto-escalation (Recoverable → Degraded if not resolved in N hours), incident analytics (MTTR, incident frequency by domain), incident integration with external incident management (PagerDuty, Jira Service Desk), post-mortem review workflow (peer review before closing). |
+
+### 3.17 Notes on Expectation Numbering
+
+The catalog uses the following identifiers: F01-F06 (Phase 1: Setup), F07-F10b (Phase 2: Domain & Topic Config), F11-F15 (Phase 3: Information Gathering), F16-F19 (Phase 4: Curation & Interaction), F20-F23 (Phase 5: Knowledge Base Building), F24-F30 (Phase 6: Output & Asset Creation), F31-F32 (Phase 7: Monitor), F33-F34 (Phase 8: Iterate), F36-F40 (Phase 8.5: Product & Delivery — note: no F35 in source), F41-F45 (Phase 9: Cost Governance), F46-F48 (Phase 10: Data Privacy), F49-F53 (Phase 11: Knowledge Lifecycle), F54-F57 (Phase 12: Operational Observability), F58-F64 (Phase 13: Blank Spaces — added 2026-07-27 from cross-dimensional gap analysis), F65-F68 (Phase 14: B1 Lifecycle Gaps), F69 (Phase 15: B2 Lifecycle), F70-F72 (Phase 16: B3 Lifecycle). Note that F08 (Custom Sources) and F35 are not separately numbered in the source document — F08 appears as the F07b sub-section's continuation (the unheaded table after F07b's preamble concludes with the add-source UX), and F35 is omitted from the source ordering. F58-F64 were added on 2026-07-27 to document blank spaces (Type 1: Never Designed gaps) discovered during the cross-dimensional gap analysis — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010. F65-F68 (Phase 14: B1 Lifecycle Gaps), F69 (Phase 15: B2 Lifecycle), F70-F72 (Phase 16: B3 Lifecycle) — added 2026-07-27 to achieve 100% coverage of the user lifecycle definition ([`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).
 
 ---
 
 Associated spec files:
 
-- [`expectations.md`](./expectations.md) — F01-F57 founder expectation catalog (this file)
+- [`expectations.md`](./expectations.md) — F01-F72 founder expectation catalog (this file)
 - [`pipeline.md`](./pipeline.md) — Collection pipeline, KB pipeline, processing & LLM extraction, import, CEFR, cross-collection dedup & merge
 - [`quality-gates.md`](./quality-gates.md) — G0-G5 quality gates, D1-D3 delivery gates: catalog, philosophy, retry strategies, configuration
 - [`delivery.md`](./delivery.md) — Output generation, delivery channels, error recovery & resilience, end user lifecycle
 - [`operations.md`](./operations.md) — Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability
 - [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (114 tools across 32 categories)
 - [`data-models.md`](./data-models.md) — Consolidated data model schemas (Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth)
+- [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) — B1/B2/B3 user types with complete lifecycles (root spec for F65-F72)

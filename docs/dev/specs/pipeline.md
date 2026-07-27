@@ -1,12 +1,16 @@
 # Collection & Processing Pipeline
 
 > Extracted from `founder-expectations.md §§12.2-12.8, 12.12, 12.18`. References: F5-F9 (Collection), F10-F14 (Processing/Extraction), F15 (LLM Config).
+> **B2 lifecycle:** `docs/dev/specs/user-lifecycle-definition.md` §3 (B2 Direct User Lifecycle). Pipeline execution occurs in the B2.4 Operate stage. See §9 for the full B2 lifecycle mapping.
+> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — the A1 (Collection) and A2 (Extraction) columns define what this pipeline stage must produce. CD entries cross-reference specific gaps.
 
 ---
 
 ## 1. Collection Pipeline (§12.2)
 
 ### 1.1 Item Dataclass Schema
+
+> **Format scope note**: The current pipeline is **text-only**. Video and audio content are not supported as source formats. See [`cross-dimensional-catalog.md §CD-999`](../cross-dimensional-catalog.md) (archived `comprehensive-gap-audit.md §11.6`) for tracked gaps MG-1 (video format pipeline) and MG-2 (audio format expansion).
 
 Every collected source item is represented as an `Item`:
 
@@ -87,7 +91,7 @@ On `collect`, the handler requests **only items newer than** `last_collected_at`
 
 ---
 
-## 2. KB Pipeline (§12.4, 12.7)
+## 2. KB Pipeline (§12.4, 12.7) (executes in B2.4 Operate stage)
 
 ### 2.1 Four-Tier Architecture
 
@@ -379,3 +383,98 @@ All imports create 01-Raw entries identical to collected items (same `source_url
 | **Processing latency** | <5 min for 50 items (with LLM extraction) | Async batch. User doesn't wait synchronously. |
 | **LLM cost per day** | ~$0.50-2.00 (tiered models, 200 items) | DeepSeek for extraction ($0.15/M), Claude for synthesis ($3/M) |
 | **KB storage** | 10K+ entries, negligible disk usage | Markdown files. ~5KB per entry = 50MB for 10K entries. |
+
+---
+
+## 9. B2 Lifecycle Integration
+
+> **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §3 (B2 Direct User Lifecycle)
+> **F-expectations:** F05-F06 (B2.1 Discover, B2.2 Connect), F05/F08-F10b/F14 (B2.3 Configure), F11-F15 (B2.4 Operate), F31/F32/F52 (B2.5 Monitor), F69 (B2.6 Report)
+> **Delivery spec:** `docs/dev/specs/delivery.md` for delivery-stage mapping
+
+This section maps each B2 lifecycle stage (from the root spec) to the pipeline sections that implement it. The pipeline is the operational backbone of B2's execution.
+
+### 9.1 B2.1 Discover
+
+**B2 discovers available AutoInfo capabilities.**
+
+| Capability | Pipeline Section | MCP Tool(s) |
+|-----------|-----------------|-------------|
+| MCP tool discovery | N/A (MCP protocol) | Protocol-level `tools/list` — auto-discovery |
+| Domain listing | — | `list_domains()` |
+| Available sources | §1 (Collection Pipeline) | `list_available_platforms()` |
+| Available models | §3 (LLM Config) | `list_available_models()` |
+| Output templates | §1.1 (Product Types) | `list_output_templates()` |
+
+### 9.2 B2.2 Connect
+
+**B2 establishes session and verifies system health.**
+
+| Capability | Pipeline Section | MCP Tool(s) |
+|-----------|-----------------|-------------|
+| System health check | — | `health_check()`, `diagnose_system()` |
+| MCP session establishment | N/A (transport layer) | stdio/SSE connection — no pipeline involvement |
+| LLM connectivity | §3.1 (LLM Configuration) | `diagnose_system()` checks LLM key |
+
+### 9.3 B2.3 Configure
+
+**B2 configures sources, topics, extraction schemas, and schedules. Done once (or when domains change), not per-cycle.**
+
+| Capability | Pipeline Section | MCP Tool(s) |
+|-----------|-----------------|-------------|
+| Domain activation | §1.1 (Domain as config) | `activate_domain()`, `add_domain()` |
+| Source registration | §1.4 (Source Handler Architecture) | `add_source()`, `add_sources()` |
+| Topic configuration | §1.2 (Topic → Keyword matching) | `add_topic()` |
+| Schedule setup | §1.6 (Cron scheduling) | `add_schedule()` |
+| Gate configuration | Quality gates spec | `set_gate_config()` |
+
+### 9.4 B2.4 Operate
+
+**This is the core pipeline execution — the primary B2 activity. Repeated on every schedule tick.**
+
+| Pipeline Phase | B2 Action | Pipeline Section |
+|---------------|-----------|-----------------|
+| **Collect** | `collect_sources(domain, topic)` → fetch items from all configured sources | §1 (Two-Phase Collection) |
+| **Process** | `process_collection(domain)` → LLM extraction + quality gates | §2 (KB Pipeline), §3 (LLM Extraction) |
+| **Store** | Create KB entries (Raw → Draft pipeline) | §2 (KB Pipeline: 01-Raw→02-Draft) |
+| **Generate** | `generate_digest()` / `generate_report()` etc. | delivery.md §1 (Output Generation) |
+| **Deliver** | `send_email_digest()` / delivery via channels | delivery.md §2 (Delivery Channels) |
+
+B2.4 Operate reads the B1 subscription configs to determine:
+- Which domains to collect (from B1's `domains`)
+- How frequently to run (from B1's `frequency`)
+- What to generate (from B1's `content_preference`)
+- Where to deliver (from B1's `channels`)
+- Which products to generate (from B1's tier → product mapping)
+
+### 9.5 B2.5 Monitor
+
+**B2 monitors pipeline execution health. This is ongoing.**
+
+| Monitoring Action | Data Source | Pipeline Section |
+|------------------|-------------|-----------------|
+| Collection progress | `get_collection_progress()` | §1.7 (Async Collection) |
+| Processing progress | `get_processing_progress()` | §2 (KB Processing) |
+| Source health | `get_source_health()` | §1.4 (Source Handler) |
+| KB freshness decay | `calculate_freshness_score()` | operations.md §3 (Knowledge Lifecycle) |
+| Delivery SLA compliance | `query_delivery_log()` | delivery.md §4 (Delivery Reliability) |
+| LLM cost tracking | `get_cost_report()` | operations.md §1 (Cost Governance) |
+| System diagnostics | `diagnose_system()` | operations.md §4 (Observability) |
+
+### 9.6 B2.6 Report
+
+> **F-expectation:** F69 — Not yet implemented. See `docs/dev/specs/expectations.md` Phase 15.
+
+**B2 generates structured execution reports for B3 (Director).**
+
+| Report Content | Data Source | Format |
+|---------------|-------------|--------|
+| What was collected (items per domain, dedup stats) | Collection log + G1-G3 gate results | JSON + summary |
+| What was delivered (products per B1, channel status) | DeliveryLog (delivery.md §4) | JSON + summary |
+| Errors encountered (source failures, gate blocks, delivery failures) | Trace log + audit log | JSON + summary |
+| Cost summary (LLM tokens, storage, API calls) | CostLog (operations.md §1) | JSON |
+| Anomaly flags (source health degraded, budget threshold breached, cron missed) | Alert rules + health check | JSON + alert |
+
+**Report delivery**: Reports are pushed to B3 via dashboard (see operations.md §7.2) or stored for B3 query.
+
+> **Implementation gap**: No structured reporting mechanism exists. B2 can query all the data sources listed above individually, but no consolidated report format or periodic generation exists. This is a gap tracked by F69.

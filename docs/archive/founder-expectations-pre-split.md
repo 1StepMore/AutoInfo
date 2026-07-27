@@ -118,7 +118,7 @@ The journey has 8 phases. Each phase has specific expectations.
 
 ## 3. Expectation Catalog
 
-**Status legend:** ✅ Fully implemented | 🔄 Partially implemented (basic version works, enhancements pending) | ❌ Not yet implemented
+**Status legend:** ✅ Fully implemented | 🟡 Partially implemented (basic version works, enhancements pending) | ❌ Not yet implemented
 
 Each expectation is a statement of what the founder expects the project to do.
 Expectations are grouped by journey phase.
@@ -159,7 +159,7 @@ Expectations are grouped by journey phase.
 | **What init creates** | Full project skeleton: `config.yaml` + `sources.yaml` (empty, ready to populate) + `domains.yaml` + `topics.yaml` + directory structure (`sources/`, `collections/`, `knowledge/`, `outputs/`). `knowledge/` contains the 4 pipeline tiers: `00-Inbox/` (scaffolded but deprecated — no code writes to it), `01-Raw/`, `02-Draft/`, `03-Wiki/`. If demo domains selected, ships demo source lists. |
 | **Demo domains shipped** | Five pre-configured domain templates: `medical-research`, `ai-commercial`, `financial-intelligence`, `tech-ai-developer`, `language-learning`. Each includes curated default sources, suggested topics, and output templates. User can activate any subset. |
 
-#### F04 — LLM Configuration (BYOK) 🟡
+#### F04 — LLM Configuration (BYOK) ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -350,7 +350,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Multi-language keywords** | Topics support keywords in multiple languages. Useful for cross-lingual domains. |
 | **Topic scoring & suggestions** | System can suggest keyword refinements based on initial collection results and LLM analysis. |
 
-#### F10 — Multi-language & Localization 🔄
+#### F10 — Multi-language & Localization ✅
 
 *Content comes in many languages; the system handles it gracefully. Essential for the language learning demo domain and general usability.*
 
@@ -421,7 +421,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent: processing** | After collection, `process_collection(domain="medical-research", model="deepseek/deepseek-chat")` — runs LLM extraction + quality gates on cached raw items. Separable from collection: collect now, process later. |
 | **Agent: completion** | `get_collection_status(collection_id)` returns full collection result with all items. |
 
-#### F13 — Source Type Handlers 🟡
+#### F13 — Source Type Handlers ✅
 
 *Each supported source type has a dedicated handler. Handlers are pluggable — new source types can be added without changing core pipeline.*
 
@@ -511,7 +511,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "Collected information transforms into a structured, searchable, reusable knowledge asset."
 
-#### F20 — Knowledge Base Storage (4-tier Pipeline) 🟡
+#### F20 — Knowledge Base Storage (4-tier Pipeline) ✅
 
 *KB architecture follows the proven KB pipeline design (`docs/dev/kb-pipeline-reference.md`): a 4-level pipeline with sequential promotion.*
 
@@ -609,7 +609,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Presentation structure** | Title slide, agenda, key finding slides (each sourced from KB), summary, references. Exportable as Markdown (Marp/slides) or PPTX. |
 | **Audience adaptation** | Content depth adapts to audience: `researcher` (technical), `clinician` (practical), `executive` (strategic), `student` (educational). |
 
-#### F26 — Export & Interoperability 🟡
+#### F26 — Export & Interoperability ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -619,7 +619,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **External tool integration** | Obsidian (Markdown with `[[wiki links]]`), Anki (flashcard export for language learning), JSON API for custom integrations. |
 | **Agent: export** | `export_kb(format="obsidian", collection_id="...")` — returns file path or content. |
 
-#### F27 — Product Delivery 🟡
+#### F27 — Product Delivery ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -630,7 +630,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **PROCESSED product delivery** | Scheduled digest emails (SMTP), thematic report push (webhook), alert streams (configurable thresholds per topic). |
 | **Agent: manage delivery** | `send_email_digest(domain, period, recipients)`, `set_domain_webhooks(urls)`, `list_schedules()`, `add_schedule(type="digest", ...)`. |
 
-#### F28 — RAW Product Generation (NEW) 🟡
+#### F28 — RAW Product Generation (NEW) ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -643,7 +643,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent: serve RAW product** | `search_knowledge_base()`, `get_kb_entry()`, `export_kb(format="json"|"rss")`, webhook push on collect. |
 | **Agent-native RAW delivery** | Agent serves RAW items directly in conversation via MCP tool output. User queries "what's new in medical research" → agent calls `search_knowledge_base()` → returns structured results with source citations. No separate delivery channel needed. |
 
-#### F29 — PROCESSED Product Generation (NEW) 🟡
+#### F29 — PROCESSED Product Generation (NEW) ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -657,16 +657,16 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent: generate PROCESSED** | `generate_digest()`, `generate_report()`, `generate_tutorial()`, `generate_presentation()`, `localize_content()`. All accept format, audience, custom_instructions params. |
 | **Agent-native PROCESSED delivery** | Agent generates PROCESSED products and delivers them directly in conversation via MCP tool output. User says "给我这周的AI商业情报摘要" → agent calls `generate_digest(domain="ai-commercial", period="week")` → returns structured digest as tool result. No separate email client or webhook needed. Agent also proactively pushes: "本周AI商业有新动态，需要我生成简报吗？" |
 
-#### F30 — Subscription & Billing Infrastructure (DEFERRED to v2+) ❌
+#### F30 — Subscription & Billing Infrastructure 🟡
 
 | UX Detail | Specification |
 |-----------|---------------|
-| **Current status** | Not implemented. Feature gating, usage metering, billing integration, and subscription management are consciously deferred to v2+. |
-| **Feature gating** | Planned: per-tier feature access (Free vs RAW Pro vs PROCESSED Pro vs Enterprise) via config-level gating. |
-| **Usage metering** | Planned: tracking items collected/mo, API calls, KB storage per subscription tier. |
-| **Billing integration** | Planned: Stripe/OpenCollective integration for subscription lifecycle (create, update, cancel, refund). |
-| **Delivery tracking** | Planned: delivery confirmation, bounce detection, open tracking, delivery logs per subscriber per product. |
-| **Customer portal** | Planned: web interface for subscribers to manage preferences, view billing history, download purchased products. |
+| **Current status** | Partially implemented. Stripe webhook endpoint with signature verification (`api/stripe.py`) exists. Stripe-mock dev setup for testing. `CostMeter` tracks LLM tokens/storage/API calls internally. `EndUserProfile` + `Subscription` models with CRUD and state machine (trial→active→suspended→cancelled) implemented. **Remaining**: full payment lifecycle (checkout session, invoice generation, payment method management), feature gating per tier, freemium access control, customer-facing billing portal. |
+| **Feature gating** | Partially planned: `ProductTemplate` has no `access_level` field. Per-tier access control requires implementation. |
+| **Usage metering** | Partially implemented: `CostMeter` tracks internal units (LLM tokens, storage, API calls) per domain/per user. Not yet linked to product billing units or subscription tier limits. |
+| **Billing integration** | Partially implemented: Stripe webhook endpoint (`/api/v1/stripe/webhook`) with event dispatch. Checkout session creation (`create_checkout_session` MCP tool). Stripe-mock for dev testing. Missing: full subscription lifecycle (create, update, cancel, refund), invoice generation, payment method management. |
+| **Delivery tracking** | ✅ Implemented: per-subscription `DeliveryLog` with SLA tracking, bounce detection, retry chain. |
+| **Customer portal** | Partially implemented: CLI-based portal (`autoinfo portal preferences|history`). Web UI not yet available. |
 
 ### 3.7 Phase 7: Monitor
 
@@ -695,7 +695,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "I can improve the system without breaking existing behavior."
 
-#### F33 — Source Handler Isolation 🟡
+#### F33 — Source Handler Isolation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -711,7 +711,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Readability guarantee** | KB format, collection output format, and config schema are versioned. New versions maintain backward compat. |
 | **Breaking changes** | If structural changes necessary: (1) deprecation period with dual-format support, (2) migration tool. |
 
-#### F36 — End User Profile & Subscription Registration ❌
+#### F36 — End User Profile & Subscription Registration ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -721,7 +721,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **CRUD** | MCP tools: `create_end_user`, `get_end_user`, `update_end_user`, `delete_end_user`, `list_end_users`. CLI equivalents for human direct-users. Bulk import for onboarding. |
 | **Validation** | At least one delivery channel must be configured. At least one domain must be subscribed. Email is mandatory (fallback channel). |
 
-#### F37 — Multi-Channel Delivery Configuration ❌
+#### F37 — Multi-Channel Delivery Configuration ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -732,7 +732,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Product-to-channel mapping** | Certain products route to specific channels by type: short alerts → Telegram/WeChat Work/DingTalk (instant), daily digests → Email + optional push channel, weekly reports → Email (primary) + optional secondary channel. Configurable per subscription. |
 | **Channel capacity limits** | Per-channel rate limits: Telegram (30 msg/s per bot), WeChat OA (unlimited via template), WeChat Work (unlimited), DingTalk (unlimited), Discord (5 msg/s per webhook). Agent queues and batches deliveries respecting each platform's constraints. |
 
-#### F38 — End User Lifecycle State Machine ❌
+#### F38 — End User Lifecycle State Machine ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -742,7 +742,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **State transition hooks** | On `trial→active`: send welcome message via all configured channels. On `active→cancelled`: send goodbye message, offer re-activation link. On `active→suspended`: send payment reminder with link. On `suspended→active`: send confirmation of restored delivery. |
 | **Re-activation** | Cancelled users can re-activate within 90 days with full history preserved. After 90 days, profile is archived (data retained per GDPR/privacy policy). |
 
-#### F39 — Delivery Reliability & Logging ❌
+#### F39 — Delivery Reliability & Logging ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -752,7 +752,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Per-subscriber delivery log** | MCP tool `get_delivery_log(subscription_id, period)` — returns delivery history with status per product per channel. Agent can query for troubleshooting. End user can view via portal (F40). |
 | **Delivery SLA targets** | P0 (digests, alerts): ≤5min from generation to first delivery attempt. P1 (reports, exports): ≤30min. P2 (bulk): ≤2hr. SLA tracking per subscription, alert agent on repeated SLA misses. |
 
-#### F40 — End User Self-Service Portal ❌
+#### F40 — End User Self-Service Portal ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -766,7 +766,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "I can track and manage the costs of operating AutoInfo, both internally and for end users."
 
-#### F41 — Internal Cost Metering ❌
+#### F41 — Internal Cost Metering ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -777,19 +777,20 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **MCP tool** | `get_cost_report(domain, period, group_by)` — returns aggregated cost breakdown by specified dimension. Agent queries to answer "what did medical research cost me this month?" |
 | **CLI** | `autoinfo cost --domain <domain> --period <period> --group-by <dimension>` — human-direct equivalent. |
 
-#### F42 — External Billing Model ❌
+#### F42 — External Billing Model 🟡
 
 | UX Detail | Specification |
 |-----------|---------------|
+| **Current status** | Partially implemented. Internal cost metering (LLM tokens, storage, API calls) fully operational via `CostMeter`. Per-domain and per-user cost allocation works (pro-rata, usage-based, direct). Cost dashboard with daily trends available via CLI and MCP. Stripe webhook endpoint exists. **Remaining**: full external billing integration — payment processing, invoice generation, subscription lifecycle (create/update/cancel/refund), conversion layer from internal cost units to product billing units, tier enforcement. See F30 for Stripe status. |
 | **Billing model** | Hybrid: base subscription (monthly fee for tier) + usage-based overage. Billing units are product-level (items, API calls, storage GB), NOT token-based. End users never see token counts. |
 | **Overage units** | Per-item collected beyond tier limit, per-API-call beyond tier cap, per-GB-storage beyond tier allowance, per-premium-output-format generated. Priced in USD per unit. |
 | **Tier structure** | Free (trial, watermarked, limited items), RAW Pro (unlimited collection, API access), PROCESSED Pro (all outputs, delivery channels), Enterprise (custom SLA, white-label, dedicated support). |
-| **Conversion layer** | Internal cost units → product billing units via configurable mapping table. Maps LLM token cost + storage + API calls → per-item or per-report price. Conversion factors are domain-configurable. |
-| **Invoice structure** | Monthly invoice with section: base subscription (fixed), overage per category (itemized), credits/adjustments. Generated at period end. |
-| **MCP tool** | `get_billing_summary(user_id, period)` — current charges, usage vs limits, projected overage with expected invoice total. |
-| **CLI** | `autoinfo billing --user <user_id> --period <period>` — human-direct for support scenarios. |
+| **Conversion layer** | Planned: internal cost units → product billing units via configurable mapping table. Maps LLM token cost + storage + API calls → per-item or per-report price. Conversion factors are domain-configurable. Not yet implemented. |
+| **Invoice structure** | Planned: Monthly invoice with section: base subscription (fixed), overage per category (itemized), credits/adjustments. Generated at period end. Not yet implemented. |
+| **MCP tool** | ✅ `get_billing_summary(user_id, period)` — current charges, usage vs limits, projected overage with expected invoice total. Implemented. |
+| **CLI** | ✅ `autoinfo billing --user <user_id> --period <period>` — human-direct for support scenarios. Implemented. |
 
-#### F43 — End-User Cost Dashboard ❌
+#### F43 — End-User Cost Dashboard ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -800,7 +801,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent assistance** | Agent can query and explain charges conversationally: "Your medical research digest overage was due to 500 items exceeding your 200-item tier limit." |
 | **Cost transparency** | Dashboard always distinguishes between "base fee" (fixed) and "overage" (variable). Never hides overage charges. |
 
-#### F44 — Cost Allocation ❌
+#### F44 — Cost Allocation ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -810,7 +811,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Configuration** | `cost_allocation.strategy: usage_based` in global config. Overridable per domain. Allocation method logged in cost audit trail. |
 | **MCP tool** | `get_cost_allocation(period)` — returns cost breakdown per domain and per end user with allocation method and rule identifier. |
 
-#### F45 — Budget Alerts & Cost Control ❌
+#### F45 — Budget Alerts & Cost Control ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -825,7 +826,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "I can trust AutoInfo with sensitive or licensed data, knowing it handles sources and user information responsibly."
 
-#### F46 — Source ToS Compliance ❌
+#### F46 — Source ToS Compliance ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -835,7 +836,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Attribution in outputs** | Generated digests/reports from licensed sources include: "Content derived from [source] under their terms of service." Configurable attribution template per source type. |
 | **Compliance checkpoint** | G1 gate extended: source tier classification verified at collection time. If source tier and output tier are incompatible (e.g., trying to deliver raw items from a Licensed source), the pipeline blocks with a clear compliance error. |
 
-#### F47 — Data Deletion & Retention ❌
+#### F47 — Data Deletion & Retention ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -845,7 +846,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **30-day auto-cleanup** | Soft-deleted entries older than 30 days auto-purged by scheduled cleanup job (`autoinfo clean --purge-expired`). Configurable retention period per domain. |
 | **Retention by subscription tier** | Trial: 14-day post-cancellation retention. Active: full retention for subscription duration + 30 days. Archived: 90-day post-cancellation retention. Purged entries are logged in audit trail with deletion confirmation. |
 
-#### F48 — Audit Logging ❌
+#### F48 — Audit Logging ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -861,7 +862,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "The knowledge base stays fresh and relevant — old content is gracefully aged, not forgotten."
 
-#### F49 — Per-Domain TTL 🟡
+#### F49 — Per-Domain TTL ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -881,7 +882,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Version comparison** | MCP tool `compare_versions(entry_id, v1, v2)` — returns structured diff: title changes, summary changes, key point additions/removals. Agent uses to highlight "what changed since last collection." |
 | **History pruning** | Retain last N versions per entry (configurable, default: 10). Older versions archived to compressed storage after 90 days. Never automatically deleted without explicit purge. |
 
-#### F51 — Stale Content Handling 🟡
+#### F51 — Stale Content Handling ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -891,7 +892,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Default visibility** | Standard views (digest generation, summary lists, API feeds) exclude stale entries by default. `--include-stale` flag overrides. Admin views display stale entries with visual indicator (e.g., 🟡 stale badge). |
 | **Re-fresh on re-collection** | When same source is collected again (F50), the new version supersedes the old. The old entry's staleness status becomes irrelevant — it is superseded rather than stale. |
 
-#### F52 — Domain Decay Metrics 🟡
+#### F52 — Domain Decay Metrics ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -902,7 +903,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent alert** | When staleness ratio exceeds configurable threshold (default: 50%), agent proactively suggests re-collection: "Medical research domain is 60% stale. Recommend re-collection." |
 | **MCP tool** | `get_domain_decay(domain)` — returns staleness ratio, avg remaining TTL, decay grade, and suggested actions. |
 
-#### F53 — Cross-Collection Dedup & Merge 🟡
+#### F53 — Cross-Collection Dedup & Merge ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -917,7 +918,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 > "I can see what the system is doing, trace any item through the pipeline, and diagnose issues efficiently."
 
-#### F54 — Structured Pipeline Logging ❌
+#### F54 — Structured Pipeline Logging ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -928,7 +929,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Viewing** | `autoinfo logs --stage collect --domain medical --since 1h` — tail/filter structured logs with colorized output. `--json` for machine parsing. `--follow` for live tail. |
 | **Retention** | 30 days of pipeline logs retained. Older logs automatically archived or deleted (configurable). |
 
-#### F55 — Per-Item Traceability ❌
+#### F55 — Per-Item Traceability ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -938,7 +939,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Error trace** | If item fails at any pipeline stage: trace includes error type, error message, retry attempts and outcomes, final resolution (skipped/blocked/failed). Failed item traces preserved for post-mortem diagnostics. |
 | **MCP tool** | `trace_item(trace_id)` — returns full item trace with all stages, statuses, and timestamps. Agent uses for support: "Why wasn't paper X in yesterday's digest?" → trace shows it failed quality gate G3 (low relevance). |
 
-#### F56 — Enhanced Diagnostics ❌
+#### F56 — Enhanced Diagnostics ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -949,7 +950,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **MCP tool** | `diagnose_system(verbose=true)` — when `verbose=true`, returns full diagnostic report as structured JSON instead of basic health summary. |
 | **Remediation suggestions** | `doctor --verbose` includes actionable suggestions derived from health data: "PubMed API returned 3 errors in 24h — check API key validity or network connectivity." "Medical research domain is 60% stale — consider re-collection (run `autoinfo collect --domain medical`)." |
 
-#### F57 — Metrics Export ❌
+#### F57 — Metrics Export ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -1489,7 +1490,7 @@ PARTIAL — 18/35 expectations pass, but:
 
 ## 9. Current Reality Assessment
 
-**Status: v1.6 (2026-07-25).** Gap analysis completed — 53/57 expectations fully implemented (✅), plus F30 (Subscription & Billing) deferred to v2+ (❌). All 13 v1.5+ residual gaps (P0) are closed. All 17 v1.6 new development expectations (F36-F57) across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) are now implemented. All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented per spec. Product model defined: RAW products and PROCESSED products with 10 delivery channels (SMTP, Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord, Webhook, REST API, File Export) with email as mandatory fallback. End User lifecycle operational: UserProfile/Subscription CRUD, state machine (trial→active→suspended→cancelled), delivery logging with SLA tracking, CLI self-service portal. Cost governance: internal metering, per-domain/per-user allocation, dashboard, budget alerts. Data privacy: source ToS compliance, soft-delete with GDPR export, immutable audit logging. Knowledge lifecycle: per-domain TTL, versioned re-collection with diff, stale content handling, decay metrics, cross-collection dedup & merge. Operational observability: structured JSON pipeline logging, per-item trace_id propagation, enhanced diagnostics with health score, Prometheus metrics export. Subscription management, billing integration, feature gating, and usage metering consciously deferred to v2+.
+**Status: v1.6 (2026-07-26).** Gap analysis completed — 55/57 expectations fully implemented (✅), F30 (Subscription & Billing) partially implemented (🟡 — Stripe webhook endpoint exists, checkout session creation works, subscription model operational), F42 (External Billing) partially implemented (🟡 — CostMeter fully operational, Stripe billing flow pending). All 13 v1.5+ residual gaps (P0) are closed. All expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) are implemented as of v1.6. All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented per spec. Product model defined: RAW products and PROCESSED products with 10 delivery channels (SMTP, Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord, Webhook, REST API, File Export) with email as mandatory fallback. End User lifecycle operational: UserProfile/Subscription CRUD, state machine (trial→active→suspended→cancelled), delivery logging with SLA tracking, CLI self-service portal. Cost governance: internal metering, per-domain/per-user allocation, dashboard, budget alerts. Data privacy: source ToS compliance, soft-delete with GDPR export, immutable audit logging. Knowledge lifecycle: per-domain TTL, versioned re-collection with diff, stale content handling, decay metrics, cross-collection dedup & merge. Operational observability: structured JSON pipeline logging, per-item trace_id propagation, enhanced diagnostics with health score, Prometheus metrics export. Comprehensive gap audit (2026-07-26) finds 8 gap categories documented in `docs/dev/comprehensive-gap-audit.md`. Remaining gaps tracked as: Wave 0 documentation ✅, Wave 1 expectations status fixes in progress, Wave 2 MCP tool registration pending, Wave 3 SPEC updates pending, Wave 4 consumer-facing gaps deferred.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%
@@ -1687,7 +1688,7 @@ For each expectation in the catalog:
 | **v1.1 — Gap-Fill** | G5 translation gate, KB promote/workflow, 3 new source handlers (webhook/email/PDF), KG export, 7 curated demo sources, 6 new MCP tools, interactive init, langdetect, collect --all | G5, F20 workflow, F13 (webhook/email/PDF), F22 (KG export), F07 (7 curated sources), F12 (progress MCP), F09 (keyword groups), F10 (langdetect) |
 | **v1.2 — Enhancement** | Hybrid vector search (sqlite-vec), faceted search, REST API (FastAPI CRUD), Web UI dashboard, Obsidian [[wiki links]], CEFR classification, git versioning + SHA, PDF export, SMTP email, crontab installer, keywords management, schema versioning, multi-user foundation | F21 (hybrid+faceted), F23 (REST API+wiki links+versioning), F10 (CEFR), F26 (PDF export), F27 (SMTP+delivery), F14 (crontab), F20 (keywords), F34 (schema versioning) |
 | **v1.3.1 — Expectations Update** | F10b (User-Defined Domains & Consulting Platforms) added, F10 localization QA enhanced (back-translation, multi-round refinement, terminology guard, composite score, agent skill). | F10b (new), F10/G5 (enhanced) |
-| **v1.5 — Product & Production** | Commercial scope (any paying field), two product types (RAW + PROCESSED), production-grade quality gates (hard/soft split, retry-first/block-last), delivery infrastructure (SMTP, webhook, API), product delivery expectations F27-F30 | F27-F30 (product delivery, RAW, PROCESSED, subscription deferred), G0/G4 hard, D1-D3 |
+| **v1.5 — Product & Production** | Commercial scope (any paying field), two product types (RAW + PROCESSED), production-grade quality gates (hard/soft split, retry-first/block-last), delivery infrastructure (SMTP, webhook, API), product delivery expectations F27-F30 | F27-F30 (product delivery ✅, RAW ✅, PROCESSED ✅, subscription 🟡 partially — Stripe webhook exists, full billing deferred), G0/G4 hard, D1-D3 |
 | **v1.5+ → v1.6 — End User Lifecycle** | End User model (F36-F40) implemented: unified End User=Paying Customer role, profile/subscription CRUD, 6-channel delivery adapters (Telegram Bot, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord + email fallback), lifecycle state machine (trial→active→suspended→cancelled), delivery logging & SLA tracking, CLI self-service portal. | F36-F40, §12.15 |
 | **v1.6 — Cost Governance** | Internal cost metering (LLM tokens + storage + API calls), per-domain/per-user cost allocation (pro-rata, usage-based, direct), cost dashboard with daily trends, budget alerts with auto-remediation. External billing (Stripe) deferred to v2+. | F41-F45, §12.16 |
 | **v1.6 — Data Privacy** | Source ToS compliance framework (access tier classification + disclaimer + processed-only output for sensitive sources), soft-delete with 30-day auto-cleanup + GDPR export, immutable audit logging for all operations. | F46-F48, §12.17 |
@@ -1709,7 +1710,7 @@ The following are **explicitly out of scope** for v1.6:
 | Custom scraping scripts (Python) | ❌ Out | YAML config + LLM extraction only. No code injection. |
 | Image/video processing | ❌ Out | Text-only. KB is textual knowledge, not media. |
 | Citation management (BibTeX) | ❌ Out for v1 | Post-v1 if medical community demands it. |
-| Subscription management / billing | ❌ Out (v2) | F30 defined but deferred; no Stripe/payment integration |
+| Subscription management / billing | 🟡 Partial (v1.6) | F30 partially implemented: Stripe webhook endpoint exists, subscription model operational. Full billing lifecycle deferred to v2+. |
 | Feature gating / usage metering | ❌ Out (v2) | Required for tiered subscription enforcement |
 
 ### 10.4 The True Test
@@ -1747,7 +1748,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | Component | Status |
 |-----------|--------|
 | Framework design | ✅ Documented (this file) |
-| Expectation catalog | ✅ 57 expectations across 12 phases — 53/57 implemented (✅), F30 (Subscription & Billing) deferred to v2+ (❌), F04/F08/F11/F13 minor gaps (🟡) |
+| Expectation catalog | ✅ 57 expectations across 12 phases — 55/57 implemented (✅), F30/F42 partially implemented (🟡), 0 ❌ not implemented |
 | Quality gates | ✅ G1-G5 hard/soft split (G0/G4 hard with retry→block, G1-G3/G5 soft with configurable thresholds); production delivery gates D1-D3; per-domain gate configuration |
 | Demo domains | ✅ 5 defined with curated sources (7 total across medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning) |
 | Market positioning | ✅ Researched — whitespace confirmed |
@@ -2015,6 +2016,8 @@ The explicit "No" list (§10.3) protected the project from scope creep. The defe
 
 **The v1.6 delivery of 5 domain pillars (End User Lifecycle, Cost Governance, Data Privacy, Knowledge Lifecycle, Operational Observability)** was the largest single release in the project's history. Every gap identified in the v1.5+ analysis was closed. 17 new expectations were implemented across 5 new code modules (`audit.py`, `cost.py`, `logging.py`, `delivery_log.py`, `user_store.py`) and enhanced by 6 delivery adapter modules. The project went from "commercial product scaffold" to "production-ready information delivery platform" in a single development cycle.
 
+**Post-v1.6 comprehensive gap audit (2026-07-26)** cross-referenced all 57 expectations against 3 user types (End User × Direct User × Director User) across their respective lifecycles. Key findings documented in `docs/dev/comprehensive-gap-audit.md`: 55/57 ✅, 2 🟡 (F30/F42), 8 consumer-facing output gaps (3 critical), 9 unregistered MCP tools, 7 doc-code mismatches, and 17 stale status markers in this document — now corrected.
+
 The project is not done when all tests pass.
 The project is done when the founder can say: **"Yes, this does what I wanted."**
 
@@ -2077,20 +2080,21 @@ The following minor gaps in otherwise-implemented expectations remain from the v
 
 | Metric | Value |
 |--------|-------|
-| Expectations documented | 57 total (53 ✅ fully implemented, 4 🟡 partial/minor gaps, F30 ❌ deferred to v2+) |
+| Expectations documented | 57 total (55 ✅ fully implemented, 2 🟡 partial: F30/F42, 0 ❌ not implemented) |
 | Value propositions fulfilled | 5/5 (universal collector ✅, LLM extraction ✅, KB as asset ✅, Agent ops ✅, Commercial-grade products ✅) |
 | True Test passing | 13/13 |
-| MCP tools | 79 across 19 categories |
+| MCP tools | **114 across 32 categories** (v1.6.2) |
 | Source handlers | 6 (RSS, API, Web, Webhook, Email, PDF) + crontab installer |
 | Quality gates | All 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) — fully implemented |
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams via SMTP + 9 delivery channels) |
 | Delivery channels | 10 channels (SMTP, Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord, Webhook, REST API, File Export) |
-| Subscription/billing | ❌ Deferred to v2+ (F30) |
+| Subscription/billing | 🟡 Partially implemented — Stripe webhook endpoint exists, subscription model operational; full billing lifecycle deferred |
 | Resilience enhancements | LLM `None` content crash fix, `extraction_failed` detection, KB filesystem fallback |
-| Tests | 1405 (1 pre-existing collection error) |
+| Tests | 1549 (1 pre-existing collection error) |
 | Demo domains | 5 with curated sources (7 total) |
 | Validation coverage | ✅ 71 questions across 15 part files covering all 3 user dimensions (End User × Direct User × Director User) across lifecycle, middleware, and results axes. **NEW**: `part-13-enduser-lifecycle.md` (Q61-Q65), `part-14-human-agent-collaboration.md` (Q66-Q69), `part-15-cross-dimension-e2e.md` (Q70-Q71), `docs/dev/director-user-guide.md` |
-| **🔴 v1.6+ residual gaps** | **12 low-effort fixes** (listed above) |
+| Comprehensive gap audit | 8 categories: consumer output gaps (16), MCP tool registration gaps (9), doc-code mismatches (7), expectations status staleness (17 fixed), stakeholder lifecycle gaps (1), KB pipeline gaps (2), monetization pipeline (1), audio/visual gaps (2) |
+| **🔴 v1.6+ residual gaps** | **~20 items** (documented in `docs/dev/comprehensive-gap-audit.md`) |
 | **🔵 v2.0+ deferred** | **7 items** (billing, feature gating, analytics dashboard, collaboration, mobile, citation management, image/video) |
 
 ---

@@ -1,6 +1,7 @@
 # Market Positioning & Priority Matrix
 
 > Extracted from `founder-expectations.md §§6-7`. References: F30 (Billing), F42 (External Billing), F28 (RAW Products), F29 (PROCESSED Products).
+> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — the priority fix matrix (§4) and implementation roadmap (§5) in the CD catalog derive from the market priorities defined here.
 
 ---
 
@@ -374,3 +375,13 @@ AutoInfo's Position:
 | **Revenue model** | Subscription + advertising (high CPM) | One-time license fee ($1-50M/yr) + micro revenue share (Comet: 80% back) | Multiple revenue streams: subscription + licensing + future revenue share |
 | **Publisher control** | Full (SEO optimization, paywall) | Low (AI decides what to cite) | AutoInfo gives publishers control over how their content is packaged for agent consumption |
 | **Data回流** | Complete (UTM, click tracking) | Almost none (citation count only) | AutoInfo maintains full provenance + usage analytics |
+
+---
+
+### 7.8 Scope Note: End-User Uniformity
+
+> **All end-user types are treated uniformly.** The persona-based differentiation described in this document's market analysis (e.g., "researcher" vs "clinician" vs "executive" vs "student" in §7.5.2, regional demographics in §7.6) is **market research reference only**. The AutoInfo product itself applies **no demographic, role-based, or accessibility-based segmentation** to end-user profiles.
+>
+> The `target_audience` parameter available on digest and report generation is a **content-level output feature** that adjusts LLM tone and depth — it is not a user-profile attribute, not a gating mechanism, and not a segmentation strategy. All end users, regardless of their role, region, or accessibility needs, receive the same product capabilities.
+>
+> This is a deliberate architectural decision: AutoInfo remains a general-purpose information platform. Market-specific variations (persona preferences, payment methods, regulatory requirements, accessibility standards) are handled by the **domain configuration layer** (topic sets, extraction schemas, output templates) and by the **delivery channel's own capabilities**, not by differentiated end-user profiles.

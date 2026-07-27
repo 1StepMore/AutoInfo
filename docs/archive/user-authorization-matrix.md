@@ -2,7 +2,7 @@
 
 **Purpose**: Single reference for what each user type can do, who to escalate to,
 and handoff protocols. Consolidates rules from F20, F36-F40, F47, F53,
-`director-user-guide.md`, `AGENTS.md`, and `autoinfo-skill/SKILL.md`.
+`../dev/director-user-guide.md`, `../../AGENTS.md`, and `../skills/autoinfo-skill/SKILL.md`.
 
 ## Role Definitions
 
@@ -80,7 +80,7 @@ Human provides clarification
 Agent proceeds
 ```
 
-Reference: `director-user-guide.md` §4 (Intent Capture & Clarification),
+Reference: `../dev/director-user-guide.md` §4 (Intent Capture & Clarification),
 validation Part 14 Q66.
 
 ### Source Health Failure → Human Decision
@@ -99,7 +99,7 @@ Agent informs human: "Source X has failed N times. Options:
 Human decides → Agent executes
 ```
 
-Reference: `agent-alerting.md`, validation Part 14 Q67.
+Reference: `../dev/agent-alerting.md`, validation Part 14 Q67.
 
 ### Budget Threshold → Auto-Remediation (then Escalate)
 
@@ -117,7 +117,7 @@ If ≥ 100% (critical):
 Director User reviews, may override auto-remediation
 ```
 
-Reference: `expectations.md` F45, `operations.md` §1.4.
+Reference: `../dev/specs/expectations.md` F45, `../dev/specs/operations.md` §1.4.
 
 ### Human Override of Agent Action
 
@@ -135,7 +135,7 @@ presents options to revert or modify
 Human confirms → Agent executes reversal
 ```
 
-Reference: `director-user-guide.md` §9 (Override & Compliance),
+Reference: `../dev/director-user-guide.md` §9 (Override & Compliance),
 validation Part 14 Q69.
 
 ### End User Issue → Agent → Director User
@@ -160,7 +160,7 @@ If issue requires human authority:
   - Wiki content correction → escalate to Director User
 ```
 
-Reference: `expectations.md` F47, F53, `director-user-guide.md` §8.
+Reference: `../dev/specs/expectations.md` F47, F53, `../dev/director-user-guide.md` §8.
 
 ## What Agent Can Do Automatically (Without Asking)
 
@@ -203,10 +203,10 @@ Reference: `expectations.md` F47, F53, `director-user-guide.md` §8.
 
 ## References
 
-- `docs/dev/specs/expectations.md` — F20 (KB pipeline), F36-F40 (End User), F47 (Data Privacy), F53 (Dedup & Merge)
-- `docs/dev/director-user-guide.md` — Full Director User interaction lifecycle
-- `AGENTS.md` — Agent constraints (MUST NOT), architecture rules
-- `docs/skills/autoinfo-skill/SKILL.md` — Agent operation skill with auth boundaries
-- `docs/dev/agent-alerting.md` — Agent proactive alerting escalation
-- `docs/dev/specs/operations.md` — Data privacy, cost governance rules
-- `docs/autoinfo-validation-master-plan-v2/part-14-human-agent-collaboration.md` — Validation scenarios for escalation paths
+- `../dev/specs/expectations.md` — F20 (KB pipeline), F36-F40 (End User), F47 (Data Privacy), F53 (Dedup & Merge)
+- `../dev/director-user-guide.md` — Full Director User interaction lifecycle
+- `../../AGENTS.md` — Agent constraints (MUST NOT), architecture rules
+- `../skills/autoinfo-skill/SKILL.md` — Agent operation skill with auth boundaries
+- `../dev/agent-alerting.md` — Agent proactive alerting escalation
+- `../dev/specs/operations.md` — Data privacy, cost governance rules
+- `../autoinfo-validation-master-plan-v2/part-14-human-agent-collaboration.md` — Validation scenarios for escalation paths

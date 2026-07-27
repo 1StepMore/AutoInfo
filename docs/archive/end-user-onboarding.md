@@ -179,9 +179,9 @@ The operator (agent) **cannot**:
 
 ## References
 
-- `docs/dev/specs/expectations.md` — F36-F40 (End User lifecycle specs)
-- `docs/dev/specs/delivery.md` §4 — End User lifecycle data models
-- `docs/dev/specs/delivery.md` §5 — Product lifecycle & delivery
-- `docs/dev/specs/operations.md` §2 — Data privacy & retention
-- `docs/dev/user-authorization-matrix.md` — Authorization boundaries
-- `docs/dev/end-user-sla.md` — Delivery SLA targets & tracking
+- `../dev/specs/expectations.md` — F36-F40 (End User lifecycle specs)
+- `../dev/specs/delivery.md` §4 — End User lifecycle data models
+- `../dev/specs/delivery.md` §5 — Product lifecycle & delivery
+- `../dev/specs/operations.md` §2 — Data privacy & retention
+- `./user-authorization-matrix.md` — Authorization boundaries
+- `./end-user-sla.md` — Delivery SLA targets & tracking

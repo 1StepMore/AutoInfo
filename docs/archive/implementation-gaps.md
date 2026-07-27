@@ -18,9 +18,9 @@ Audited 57 expectations + 2 additional claimed capabilities. Results:
 | 🟡 Partially Implemented | 9 | Some tests pass but missing edge cases, coverage gaps |
 | ❌ Not Implemented | 12 | Includes expectations with no code, no tests, no MCP tools |
 | ⚪ Deferred / Not Needed | 2 | Multi-user auth (F38-F40 pushed to v2+), CLI async flow (legacy) |
-| ❓ Not Assessed | 15 | Model classes, dedup, etc. (detailed gap analysis in `docs/archive/gap-analysis-v1.6.md`) |
+| ❓ Not Assessed | 15 | Model classes, dedup, etc. (detailed gap analysis in `./gap-analysis-v1.6.md`) |
 
-> **Note:** This audit supersedes the deprecated `docs/archive/gap-analysis-v1.6.md` which covered F01-F57 at a lower granularity. This document covers new analysis including MCP-CLAIMED vs ACTUAL capability gaps.
+> **Note:** This audit supersedes the deprecated `./gap-analysis-v1.6.md` which covered F01-F57 at a lower granularity. This document covers new analysis including MCP-CLAIMED vs ACTUAL capability gaps.
 
 ---
 
@@ -182,13 +182,13 @@ Tools in AGENTS.md that don't exist in MCP schema:
 
 ## References
 
-- `docs/dev/specs/expectations.md` — Full F01-F57 expectation catalog
-- `docs/dev/specs/mcp-tools.md` — MCP tool specifications
-- `docs/dev/specs/quality-gates.md` — G0-G5, D1-D3 gate specifications
-- `docs/dev/specs/pipeline.md` — Pipeline specifications
-- `docs/dev/specs/delivery.md` — Delivery channel specifications
-- `docs/archive/gap-analysis-v1.6.md` — DEPRECATED predecessor (2026-07-25)
-- `docs/dev/consumer-output-gaps.md` — Consumer-facing output gap analysis (2026-07-26)
+- `../dev/specs/expectations.md` — Full F01-F57 expectation catalog
+- `../dev/specs/mcp-tools.md` — MCP tool specifications
+- `../dev/specs/quality-gates.md` — G0-G5, D1-D3 gate specifications
+- `../dev/specs/pipeline.md` — Pipeline specifications
+- `../dev/specs/delivery.md` — Delivery channel specifications
+- `./gap-analysis-v1.6.md` — DEPRECATED predecessor (2026-07-25)
+- `./consumer-output-gaps.md` — Consumer-facing output gap analysis (2026-07-26)
 - `AGENTS.md` — Agent operating model + capability claims
 - `src/autoinfo/mcp/server.py` — MCP tool registry (114 tools)
 - `src/autoinfo/output.py` — Output generation (3289 lines)

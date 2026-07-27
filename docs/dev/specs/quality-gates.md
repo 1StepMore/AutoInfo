@@ -1,6 +1,9 @@
 # Quality Gates Specification
 
 > Extracted from `founder-expectations.md §4, §12.13`. See also: F18 (Quality Rating & Filtering), F24-F25 (Output Generation).
+> **B3 lifecycle:** `docs/dev/specs/user-lifecycle-definition.md` §4.3 (B3 Configuration Scope). Quality gate thresholds are configured by B3 as part of the unified director configuration. See also `operations.md §7.1` (B3.1 Unified Director Configuration).
+>
+> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — this spec covers G0-G5 quality gates (A1-A7 Pipeline) and D1-D3 delivery gates (A4 Products). Cross-reference CD entries in the catalog for gap context.
 
 Quality gates run automatically on each collection and (for delivery-quality gates) at product output time. They verify output quality and ensure paying customers receive genuinely high-quality products.
 

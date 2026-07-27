@@ -575,11 +575,17 @@ def run_processing(
     kb_store = KBStore()
 
     # Load existing entries for G2 dedup checking
-    # Convert SQLite dicts back to KBEntry objects for type safety
+    # Convert SQLite dicts back to KBEntry objects for type safety.
+    # Filter row dicts to only KBEntry's dataclass fields — SQLite may
+    # return extra columns (created_at, cefr, etc.) that KBEntry doesn't
+    # accept as constructor args.
+    from dataclasses import fields as _dc_fields
     from autoinfo.models import KBEntry
+    _KB_FIELDS = {f.name for f in _dc_fields(KBEntry)}
     existing_entries_raw = kb_store.list_entries(domain, limit=10000)
     existing_entries: list[KBEntry] = [
-        KBEntry(**row) for row in existing_entries_raw
+        KBEntry(**{k: v for k, v in row.items() if k in _KB_FIELDS})
+        for row in existing_entries_raw
     ]
 
     # Deserialize JSON fields (tags, custom_fields) stored as JSON strings in SQLite

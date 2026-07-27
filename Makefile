@@ -1,4 +1,4 @@
-.PHONY: install dev-install test lint clean stripe-mock
+.PHONY: install dev-install test lint clean stripe-mock backup
 
 install:
 	pip install -e .
@@ -26,3 +26,6 @@ clean:
 
 stripe-mock:
 	docker compose up -d stripe-mock
+
+backup:
+	bash scripts/backup-db.sh

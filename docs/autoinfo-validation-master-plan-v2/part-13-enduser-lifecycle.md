@@ -1,8 +1,8 @@
-# Part 13: End User Lifecycle — Paying Customer Perspective (Q61-Q65)
+# Part 13: End User Lifecycle — Paying Customer Perspective (Q61-Q65d)
 
-**Coverage:** End user profile & subscription CRUD, lifecycle state machine, multi-channel delivery configuration, product delivery with SLA tracking, self-service portal, data privacy (soft-delete, restore, GDPR export)
+**Coverage:** End user profile & subscription CRUD, lifecycle state machine, multi-channel delivery configuration, product delivery with SLA tracking, self-service portal, data privacy (soft-delete, restore, GDPR export), End User MCP tools (8), Cost/Billing (6), data privacy full lifecycle (4)
 
-**Expectations referenced:** F36 (Profile & Subscription), F37 (Multi-Channel Delivery), F38 (Lifecycle State Machine), F39 (Delivery Reliability & Logging), F40 (Self-Service Portal), F42 (External Billing — deferred to v2+, partial), F43 (End-User Cost Dashboard), F47 (Data Deletion & Retention)
+**Expectations referenced:** F36 (Profile & Subscription), F37 (Multi-Channel Delivery), F38 (Lifecycle State Machine), F39 (Delivery Reliability & Logging), F40 (Self-Service Portal), F41 (Cost Metering), F42 (External Billing), F43 (End-User Cost Dashboard), F46 (GDPR Data Export/Deletion), F47 (Data Deletion & Retention)
 
 ---
 
@@ -1518,6 +1518,9 @@ except Exception as e:
 | Q63 | Product delivery lifecycle (RAW + PROCESSED, DeliveryLog, P0/P1/P2 SLA) | ⬜ |
 | Q64 | End user self-service portal (preferences, history, product archive) | ⬜ |
 | Q65 | Data privacy (soft-delete, restore, GDPR export, retention) | ⬜ |
+| Q65b | End User MCP tools (8: trial, preferences, subscription, history, products, delivery log) | ⬜ |
+| Q65c | Cost & Billing tools (6: billing summary, budgets, checkout, usage, invoice) | ⬜ |
+| Q65d | Data Privacy MCP tools (export_user_data, delete_user_data) & Agent Observability | ⬜ |
 
 ### Expectations Coverage
 
@@ -1531,6 +1534,10 @@ except Exception as e:
 | F42 | External Billing Model (deferred to v2+) | ➖ (partial) |
 | F43 | End-User Cost Dashboard | ⬜ |
 | F47 | Data Deletion & Retention | ⬜ |
+| F41 | Cost Metering (token counting, per-user allocation) | ⬜ |
+| F42 | External Billing Model (Stripe checkout, invoice) | ⬜ |
+| F43 | End-User Cost Dashboard (MCP tools) | ⬜ |
+| F46 | GDPR Data Export / Deletion | ⬜ |
 
 **PART 13 OVERALL: ⬜**
 
@@ -1545,3 +1552,581 @@ except Exception as e:
 | ⚠️ PARTIAL | Some scenarios pass, some fail |
 | ➖ SKIP | Scenarios intentionally skipped (reason documented) |
 | ⬜ PENDING | Not yet validated |
+
+---
+
+## Q65b: End User MCP Tools — activate_trial, check_trial_expiry, preferences, subscription, history, products, delivery_log
+
+**User says:** "As an agent, I can manage the end user's entire lifecycle through MCP tools — from trial activation to preference management to delivery history."
+
+### Prerequisites
+
+```bash
+cd /tmp && rm -rf test-q65b && mkdir test-q65b && cd test-q65b
+autoinfo init --demo medical-research
+
+# Create end user via CLI
+autoinfo enduser create --user-id grace --name "Grace MCP" --email grace@example.com --trial --tier pro
+
+# Set initial preferences
+autoinfo portal preferences update \
+  --user-id grace \
+  --delivery-prefs '{"email":true,"telegram":false,"digest_channel":"email","timezone":"UTC"}'
+```
+
+### Scenarios
+
+#### 65b.1 🟢 activate_trial — activate trial subscription via MCP
+
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Activate trial for grace
+result = app.call_tool("activate_trial", {
+    "user_id": "grace",
+    "tier": "pro",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ activate_trial: {json.dumps(data, indent=2)[:200]}")
+
+# Verify subscription became active
+assert "subscription" in data or "status" in data or "trial_start" in data
+```
+
+**Expected Result:**
+- ✅ Trial activated for user "grace" with tier "pro"
+- ✅ Response includes subscription details or trial_start timestamp
+- ✅ `autoinfo enduser get --user-id grace` shows status as "trial" or "active"
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.2 🟢 check_trial_expiry — check trial expiration date
+
+```python
+result = app.call_tool("check_trial_expiry", {
+    "user_id": "grace",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ check_trial_expiry: {json.dumps(data, indent=2)[:200]}")
+
+# Verify expiry date exists and is in the future
+assert "expiry" in data or "trial_end" in data or "days_remaining" in data
+```
+
+**Expected Result:**
+- ✅ Trial expiry information returned
+- ✅ Includes expiry date or days remaining
+- ✅ Expiry is 14 days from activation (default trial period)
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.3 🟢 update_preferences — update delivery channel preferences via MCP
+
+```python
+result = app.call_tool("update_preferences", {
+    "user_id": "grace",
+    "preferences": {
+        "email": True,
+        "telegram": True,
+        "telegram_chat_id": "11223344",
+        "digest_channel": "email",
+        "alert_channel": "telegram",
+        "timezone": "Asia/Shanghai",
+    },
+})
+data = json.loads(result.content[0].text)
+print(f"✅ update_preferences: {json.dumps(data, indent=2)[:200]}")
+assert "user_id" in data or "preferences" in data or data.get("success")
+```
+
+**Expected Result:**
+- ✅ Preferences updated successfully
+- ✅ Response confirms changes applied
+- ✅ `get_preferences` tool reflects new settings
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.4 🟢 get_preferences — retrieve and verify preferences
+
+```python
+result = app.call_tool("get_preferences", {
+    "user_id": "grace",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_preferences: {json.dumps(data, indent=2)[:300]}")
+
+# Verify updated preferences from 65b.3
+prefs = data.get("preferences", data)
+assert prefs.get("telegram") == True, f"Expected telegram=True, got {prefs.get('telegram')}"
+assert prefs.get("telegram_chat_id") == "11223344"
+assert prefs.get("timezone") == "Asia/Shanghai"
+print(f"✅ Preferences verified: telegram={prefs.get('telegram')}, chat_id={prefs.get('telegram_chat_id')}, tz={prefs.get('timezone')}")
+```
+
+**Expected Result:**
+- ✅ All preferences returned matching what was set in 65b.3
+- ✅ telegram=True, telegram_chat_id="11223344", timezone="Asia/Shanghai"
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.5 🟢 get_subscription_status — retrieve subscription details
+
+```python
+result = app.call_tool("get_subscription_status", {
+    "user_id": "grace",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_subscription_status: {json.dumps(data, indent=2)[:300]}")
+
+# Verify subscription fields
+assert "status" in data or "subscriptions" in data or "tier" in data
+```
+
+**Expected Result:**
+- ✅ Subscription details returned for user "grace"
+- ✅ Includes status, tier, and subscription metadata
+- ✅ Linked to the trial activated in 65b.1
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.6 🟢 get_enduser_history — retrieve delivery history via MCP
+
+```python
+# First seed some delivery log entries
+from autoinfo.user_store import create_subscription
+from autoinfo.delivery_log import append_delivery_log
+
+sub = create_subscription(user_id="grace", product_id="daily-digest", status="active")
+append_delivery_log(subscription_id=sub.sub_id, channel="email", message_type="digest", status="delivered", attempt_count=1, sla_tier="standard")
+append_delivery_log(subscription_id=sub.sub_id, channel="telegram", message_type="alert", status="delivered", attempt_count=1, sla_tier="critical")
+
+# Now query via MCP
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("get_enduser_history", {
+    "user_id": "grace",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_enduser_history: {json.dumps(data, indent=2)[:400]}")
+
+entries = data.get("history", data.get("entries", data.get("items", [])))
+assert len(entries) >= 1, f"Expected at least 1 history entry, got {len(entries)}"
+print(f"✅ {len(entries)} delivery history entries for grace")
+```
+
+**Expected Result:**
+- ✅ Delivery history returned with log entries
+- ✅ Each entry has log_id, channel, message_type, status
+- ✅ Both seeded entries visible (email + telegram)
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.7 🟢 get_enduser_products — retrieve products delivered to end user
+
+```python
+result = app.call_tool("get_enduser_products", {
+    "user_id": "grace",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_enduser_products: {json.dumps(data, indent=2)[:400]}")
+
+products = data.get("products", data.get("items", data.get("templates", [])))
+print(f"✅ {len(products)} product(s) available/assignable to grace")
+```
+
+**Expected Result:**
+- ✅ Products associated with the end user returned
+- ✅ Includes product name, type, and delivery status
+- ✅ At least the "daily-digest" product visible from subscription
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65b.8 🟢 get_delivery_log — retrieve a specific delivery log entry
+
+```python
+# Use the subscription ID from 65b.6 to query a specific log
+from autoinfo.user_store import list_subscriptions
+subs = list_subscriptions(user_id="grace")
+sub_id = subs[0].sub_id if subs else "unknown"
+
+result = app.call_tool("get_delivery_log", {
+    "user_id": "grace",
+    "subscription_id": sub_id,
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_delivery_log for sub {sub_id}: {json.dumps(data, indent=2)[:400]}")
+
+entries = data.get("log", data.get("entries", data.get("items", [])))
+if isinstance(entries, list):
+    assert len(entries) >= 1, f"Expected at least 1 log entry, got {len(entries)}"
+else:
+    # Single entry returned
+    entries = [entries]
+print(f"✅ {len(entries)} delivery log entry(ies) for subscription {sub_id}")
+for e in entries:
+    print(f"  channel={e.get('channel','?')}, status={e.get('status','?')}, sla={e.get('sla_tier','?')}")
+```
+
+**Expected Result:**
+- ✅ Specific delivery log entries returned for the given subscription
+- ✅ Each entry includes channel, status, attempt_count, sla_tier
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q65b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 65b.1 activate_trial MCP | ⬜ |
+| 65b.2 check_trial_expiry MCP | ⬜ |
+| 65b.3 update_preferences MCP | ⬜ |
+| 65b.4 get_preferences MCP | ⬜ |
+| 65b.5 get_subscription_status MCP | ⬜ |
+| 65b.6 get_enduser_history MCP | ⬜ |
+| 65b.7 get_enduser_products MCP | ⬜ |
+| 65b.8 get_delivery_log MCP | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q65c: Cost & Billing Tools — get_billing_summary, get/set_budget_thresholds, create_checkout_session, get_enduser_usage, get_enduser_invoice
+
+**User says:** "As a paying customer, I want to see my billing summary, check my budget limits, and access my invoices."
+
+### Prerequisites
+
+```bash
+cd /tmp && rm -rf test-q65c && mkdir test-q65c && cd test-q65c
+autoinfo init --demo medical-research
+
+# Create an active paying end user
+autoinfo enduser create --user-id henry --name "Henry Billing" --email henry@example.com --trial --tier pro
+
+# Transition to active (simulate payment)
+python3 -c "
+from autoinfo.user_store import transition_end_user
+transition_end_user('henry', 'active')
+print('Henry transitioned to active')
+"
+```
+
+### Scenarios
+
+#### 65c.1 🟢 get_billing_summary — retrieve billing summary via MCP
+
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("get_billing_summary", {
+    "user_id": "henry",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_billing_summary: {json.dumps(data, indent=2)[:400]}")
+
+# Verify billing fields
+assert "user_id" in data or "total" in data or "summary" in data
+```
+
+**Expected Result:**
+- ✅ Billing summary returned for user "henry"
+- ✅ Includes total charges, line items, or usage breakdown
+- ✅ Covers LLM token costs, storage, API call counts
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65c.2 🟢 get_budget_thresholds — retrieve current budget threshold settings
+
+```python
+result = app.call_tool("get_budget_thresholds", {
+    "user_id": "henry",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_budget_thresholds: {json.dumps(data, indent=2)[:400]}")
+
+# Verify threshold structure
+thresholds = data.get("thresholds", data)
+print(f"  Current thresholds: {json.dumps(thresholds, indent=2)[:300]}")
+```
+
+**Expected Result:**
+- ✅ Budget thresholds returned with current values
+- ✅ Includes monthly limit, per-category caps, or alert thresholds
+- ✅ Default thresholds present for new users
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65c.3 🟢 set_budget_thresholds — configure and verify budget thresholds
+
+```python
+# Set custom budget thresholds
+new_thresholds = {
+    "monthly_limit": 50.00,
+    "per_domain_limit": 25.00,
+    "alert_at_80_percent": True,
+    "auto_block_at_limit": False,
+    "notification_channel": "email",
+}
+
+result = app.call_tool("set_budget_thresholds", {
+    "user_id": "henry",
+    "thresholds": new_thresholds,
+})
+data = json.loads(result.content[0].text)
+print(f"✅ set_budget_thresholds: {json.dumps(data, indent=2)[:300]}")
+assert data.get("success") or "thresholds" in data
+
+# Verify thresholds persisted
+result2 = app.call_tool("get_budget_thresholds", {
+    "user_id": "henry",
+})
+data2 = json.loads(result2.content[0].text)
+verified = data2.get("thresholds", data2)
+print(f"✅ Verified thresholds: {json.dumps(verified, indent=2)[:300]}")
+assert verified.get("monthly_limit") == 50.00 or verified.get("monthly_limit") == "50.00"
+print(f"✅ Threshold round-trip: set→get verified")
+```
+
+**Expected Result:**
+- ✅ Budget thresholds configured for user "henry"
+- ✅ `get_budget_thresholds` confirms the new values
+- ✅ monthly_limit=50.00 persisted and retrievable
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65c.4 🟢 create_checkout_session — create a Stripe checkout session
+
+```python
+result = app.call_tool("create_checkout_session", {
+    "user_id": "henry",
+    "tier": "enterprise",
+    "success_url": "https://example.com/success",
+    "cancel_url": "https://example.com/cancel",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ create_checkout_session: {json.dumps(data, indent=2)[:400]}")
+
+# Verify checkout session response
+# In stripe-mock or without Stripe key: may return a simulated URL
+assert "session_id" in data or "url" in data or "checkout_url" in data or "id" in data
+```
+
+**Expected Result:**
+- ✅ Checkout session created (or simulated in dev mode)
+- ✅ Response includes session ID or checkout URL
+- ✅ If Stripe key configured: real Stripe checkout URL returned
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65c.5 🟢 get_enduser_usage — retrieve usage metering data
+
+```python
+result = app.call_tool("get_enduser_usage", {
+    "user_id": "henry",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_enduser_usage: {json.dumps(data, indent=2)[:400]}")
+
+# Verify usage fields
+usage = data.get("usage", data)
+print(f"  Usage data returned for henry")
+
+# May include: tokens_used, storage_bytes, api_calls, cost_estimate
+if "tokens" in usage or "token_count" in usage or "cost" in usage or "storage" in usage:
+    print(f"  ✅ Usage breakdown present")
+```
+
+**Expected Result:**
+- ✅ Usage data returned for user "henry"
+- ✅ Includes at least one of: token count, storage usage, API call count, estimated cost
+- ✅ Data is per-user and cumulative (or date-range filterable)
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65c.6 🟢 get_enduser_invoice — retrieve invoice data
+
+```python
+result = app.call_tool("get_enduser_invoice", {
+    "user_id": "henry",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_enduser_invoice: {json.dumps(data, indent=2)[:400]}")
+
+# Verify invoice structure
+invoices = data.get("invoices", data.get("items", data.get("invoice", [])))
+if isinstance(invoices, dict):
+    invoices = [invoices]
+print(f"✅ {len(invoices)} invoice(s) for henry")
+
+# Invoice fields: invoice_id, amount, currency, status, period, created_at
+for inv in invoices:
+    print(f"  {inv.get('id', inv.get('invoice_id','?'))}: {inv.get('amount','?')} {inv.get('currency','?')} [{inv.get('status','?')}]")
+```
+
+**Expected Result:**
+- ✅ Invoice data returned (may be empty for new users)
+- ✅ Each invoice includes: id, amount, currency, status, billing period
+- ✅ Invoices sorted by date descending
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q65c Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 65c.1 get_billing_summary MCP | ⬜ |
+| 65c.2 get_budget_thresholds MCP | ⬜ |
+| 65c.3 set_budget_thresholds MCP | ⬜ |
+| 65c.4 create_checkout_session MCP | ⬜ |
+| 65c.5 get_enduser_usage MCP | ⬜ |
+| 65c.6 get_enduser_invoice MCP | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q65d: Data Privacy MCP Tools — export_user_data, delete_user_data
+
+**User says:** "I want to exercise my GDPR rights — export all my personal data or permanently delete everything."
+
+### Prerequisites
+
+```bash
+cd /tmp && rm -rf test-q65d && mkdir test-q65d && cd test-q65d
+autoinfo init --demo medical-research
+
+# Create end user with history
+autoinfo enduser create --user-id iris --name "Iris GDPR" --email iris@example.com --trial --tier pro
+
+# Add subscription and delivery history
+python3 -c "
+from autoinfo.user_store import create_subscription
+from autoinfo.delivery_log import append_delivery_log
+
+sub = create_subscription(user_id='iris', product_id='daily-digest', status='active')
+append_delivery_log(subscription_id=sub.sub_id, channel='email', message_type='digest', status='delivered', attempt_count=1, sla_tier='standard')
+append_delivery_log(subscription_id=sub.sub_id, channel='telegram', message_type='alert', status='delivered', attempt_count=1, sla_tier='critical')
+print(f'Iris set up with subscription {sub.sub_id} and 2 delivery log entries')
+"
+```
+
+### Scenarios
+
+#### 65d.1 🟢 export_user_data — GDPR data export via MCP
+
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("export_user_data", {
+    "user_id": "iris",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ export_user_data: {json.dumps(data, indent=2)[:600]}")
+
+# Verify GDPR export structure
+assert "profile" in data or "user" in data or "export" in data
+
+# Extract export content
+export = data.get("export", data.get("data", data))
+profile = export.get("profile", export.get("user", export))
+
+print(f"  User: {profile.get('name','?')} <{profile.get('email','?')}>")
+print(f"  Status: {profile.get('status','?')}, Tier: {profile.get('tier','?')}")
+
+# Verify subscription data included
+subscriptions = export.get("subscriptions", [])
+print(f"  Subscriptions: {len(subscriptions)}")
+
+# Verify delivery history included
+history = export.get("delivery_history", export.get("history", []))
+print(f"  Delivery history entries: {len(history)}")
+
+print(f"✅ GDPR export complete for iris")
+```
+
+**Expected Result:**
+- ✅ Full user data exported in machine-readable JSON format
+- ✅ Includes: profile (name, email, status, tier, preferences), subscriptions, delivery history
+- ✅ Export timestamp and data scope documented
+- ✅ Per F46: export covers all personal data attributable to the user
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 65d.2 🔴 delete_user_data — GDPR right to erasure via MCP
+
+```python
+# Note: Per AGENTS.md constraint, agent cannot permanently purge —
+# only Human Director User can with explicit --purge flag.
+# This test verifies the MCP tool exists and respects the constraints.
+
+# First, export to have a copy (best practice before deletion)
+result_export = app.call_tool("export_user_data", {
+    "user_id": "iris",
+})
+export_data = json.loads(result_export.content[0].text)
+print(f"✅ Exported iris data before deletion ({len(json.dumps(export_data))} bytes)")
+
+# Request deletion via MCP
+result = app.call_tool("delete_user_data", {
+    "user_id": "iris",
+    "reason": "GDPR right to erasure request",
+})
+data = json.loads(result.content[0].text)
+print(f"✅ delete_user_data: {json.dumps(data, indent=2)[:400]}")
+
+# Verify deletion outcome
+# Per F47: agent-initiated deletion may soft-delete but NOT permanently purge
+# Check if user is soft-deleted vs purged
+from autoinfo.user_store import get_profile
+
+profile_after = get_profile("iris")
+if profile_after is None:
+    print(f"✅ User iris physically removed (purge)")
+elif profile_after.status == "deleted":
+    print(f"⚠️ User iris soft-deleted — data retained within retention window")
+    print(f"   This is the expected agent behavior per F47")
+else:
+    print(f"⚠️ User iris still exists with status={profile_after.status}")
+
+# Verify audit log recorded the deletion
+from autoinfo.audit import query_audit_log
+try:
+    audit_entries = query_audit_log(
+        actor="system",
+        action="delete_user_data",
+        resource_id="iris",
+    )
+    print(f"✅ Audit log: {len(audit_entries)} deletion event(s) recorded")
+    for a in audit_entries:
+        print(f"  action={a.get('action','?')}, reason={a.get('details',{}).get('reason','?')}")
+except Exception as e:
+    print(f"  Audit log check: {e}")
+```
+
+**Expected Result:**
+- ✅ `delete_user_data` MCP tool exists and accepts user_id + reason
+- ⚠️ Agent-initiated deletion may soft-delete (retain data) rather than permanently purge
+- ❌ Per F47: permanent purge requires Human Director User with explicit `--purge` flag
+- ✅ Deletion recorded in immutable audit log with actor, reason, and timestamp
+- ✅ Data export BEFORE deletion succeeds (GDPR best practice)
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q65d Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 65d.1 export_user_data MCP | ⬜ |
+| 65d.2 delete_user_data MCP | ⬜ |
+
+**OVERALL: ⬜**

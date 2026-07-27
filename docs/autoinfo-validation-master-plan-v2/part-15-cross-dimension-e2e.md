@@ -1,4 +1,4 @@
-# Part 15: Cross-Dimension End-to-End User Journey (Q70-Q71)
+# Part 15: Cross-Dimension End-to-End User Journey (Q70-Q71b)
 
 **Coverage:** Full E2E spanning all three user dimensions — Director User (human), Direct User (agent), End User (paying customer)
 
@@ -12,7 +12,7 @@
 
 **Story format:** Each question tells a complete story. Scenarios are sequential (N depends on N-1 output). Start with Director User instruction, transition through Agent execution, end with End User verification.
 
-**References:** F01-F57 expectations from `docs/dev/founder-expectations.md`
+**References:** F01-F57 expectations from `docs/dev/specs/expectations.md` (the standalone spec). See also `docs/dev/founder-expectations.md` for the index and cross-reference map.
 
 ---
 
@@ -1027,6 +1027,7 @@ for e in events[:3]:
 |----------|-------------|-------------------|-----------------|-----------|
 | **Q70** | Full E2E Happy Path | ✅ Director, Agent, End User | N/A (happy path) | ⬜ |
 | **Q71** | Full E2E with Error Recovery | ✅ Director, Agent, End User | ✅ Source failure + G4 block + escalation + recovery | ⬜ |
+| **Q71b** | Agent Callback Subscription Pattern | ✅ Director, Agent, End User | N/A (push registration) | ⬜ |
 
 **OVERALL CROSS-DIMENSION E2E: ⬜**
 
@@ -1034,28 +1035,259 @@ for e in events[:3]:
 
 ## Cross-Dimension Coverage Summary
 
-| Capability | Q70 | Q71 | F Reference |
-|------------|-----|-----|-------------|
-| Director User gives NL instruction | 70.1 | 71.1 | F01-F05 |
-| Agent configures domain/source/topic | 70.1 | 71.1 | F05, F09 |
-| Dry-run collection preview | 70.2 | - | F11 |
-| Async collection with progress polling | 70.3 | 71.2 | F11, F12 |
-| LLM extraction processing | 70.4 | 71.4 | F15 |
-| Knowledge base (01-Raw) storage | 70.4 | 71.4 | F20 |
-| KB search and retrieval | 70.5 | - | F21 |
-| Quality gates (G0/G4 hard gates) | 70.4 | 71.5 | G0, G4 |
-| Digest generation | 70.6 | 71.6 | F24, F29 |
-| End user profile management | 70.Prereq | 71.7 | F36 |
-| Multi-channel delivery | 70.7 | 71.8 | F27, F37 |
-| Delivery fallback chain | - | 71.8 | F39 |
-| Delivery SLA verification | 70.8 | 71.9 | F39 |
-| Audit log verification | 70.8 | 71.9 | F48 |
-| Delivery gate checks (D1-D3) | 70.7 | 71.8, 71.10 | D1-D3 |
-| Source failure isolation | - | 71.2, 71.3 | F33 |
-| Agent escalation to Director | - | 71.3 | F32, F34 |
-| Director decision + recovery | - | 71.4 | F34 |
-| End user receives product | 70.9 | 71.10 | F38 |
-| Agent proposes improvements | - | 71.10 | F31 |
-| Source health monitoring | - | 71.3 | F32 |
-| G4 factual consistency retry+block | - | 71.5 | G4 |
-| End-to-end trace (collection to delivery) | 70.8 | 71.9 | F55 |
+| Capability | Q70 | Q71 | Q71b | F Reference |
+|------------|-----|-----|------|-------------|
+| Director User gives NL instruction | 70.1 | 71.1 | 71b.1 | F01-F05 |
+| Agent configures domain/source/topic | 70.1 | 71.1 | - | F05, F09 |
+| Dry-run collection preview | 70.2 | - | - | F11 |
+| Async collection with progress polling | 70.3 | 71.2 | - | F11, F12 |
+| LLM extraction processing | 70.4 | 71.4 | - | F15 |
+| Knowledge base (01-Raw) storage | 70.4 | 71.4 | - | F20 |
+| KB search and retrieval | 70.5 | - | - | F21 |
+| Quality gates (G0/G4 hard gates) | 70.4 | 71.5 | - | G0, G4 |
+| Digest generation | 70.6 | 71.6 | - | F24, F29 |
+| End user profile management | 70.Prereq | 71.7 | - | F36 |
+| Multi-channel delivery | 70.7 | 71.8 | - | F27, F37 |
+| Delivery fallback chain | - | 71.8 | - | F39 |
+| Delivery SLA verification | 70.8 | 71.9 | - | F39 |
+| Audit log verification | 70.8 | 71.9 | - | F48 |
+| Delivery gate checks (D1-D3) | 70.7 | 71.8, 71.10 | - | D1-D3 |
+| Source failure isolation | - | 71.2, 71.3 | - | F33 |
+| Agent escalation to Director | - | 71.3 | - | F32, F34 |
+| Director decision + recovery | - | 71.4 | - | F34 |
+| End user receives product | 70.9 | 71.10 | - | F38 |
+| Agent proposes improvements | - | 71.10 | - | F31 |
+| Source health monitoring | - | 71.3 | - | F32 |
+| G4 factual consistency retry+block | - | 71.5 | - | G4 |
+| End-to-end trace (collection to delivery) | 70.8 | 71.9 | - | F55 |
+| Agent callback registration & push delivery | - | - | 71b.1, 71b.2, 71b.3 | F27, F37 |
+
+---
+
+## Q71b: Agent Callback Subscription Pattern — Push Notifications Without Polling
+
+> **Director User says:** "设置当有新摘要生成时，推送到我的 agent webhook，以后不要再轮询了"
+
+Unlike traditional polling where the agent repeatedly checks for new content, the Agent Callback pattern allows an agent to register a webhook URL with AutoInfo. When a matching event occurs (e.g., a digest is generated), AutoInfo pushes structured JSON to the agent's callback URL. This reduces latency and eliminates polling overhead.
+
+### Prerequisites
+
+```bash
+cd /tmp && rm -rf test-q71b && mkdir test-q71b && cd test-q71b
+
+export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
+
+# Initialize with medical-research demo domain
+autoinfo init --demo medical-research
+
+# Verify MCP server is accessible
+python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'health_check',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+print(f'Health check: status={data.get(\"status\",\"?\")}, version={data.get(\"version\",\"?\")}')
+"
+```
+
+**Expected Result:** ✅ Project initialized. MCP server healthy. Agent callback tools available.
+
+---
+
+### Scenarios
+
+#### 71b.1 🟢 Agent registers a callback for digest events
+
+**User says:** "当生成 IVF 研究摘要时，推送到 https://my-agent.example.com/callback，事件类型包括 new_digest 和 new_report"
+
+**Agent executes:**
+
+```python
+# Agent registers a callback webhook using the MCP tool
+python3 -c "
+import json, subprocess
+
+# Register callback for new digest and report events
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'set_agent_callback',
+     json.dumps({
+         'url': 'https://my-agent.example.com/callback',
+         'events': ['new_digest', 'new_report'],
+         'description': 'IVF research digest push notifications',
+         'secret': 'whsec_abc123xyz'
+     })],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+print(f'Callback registered: {json.dumps(data, indent=2)[:500]}')
+
+# Verify the callback ID is returned
+callback_id = data.get('callback_id', data.get('id', ''))
+if callback_id:
+    print(f'PASS: Callback created with ID: {callback_id}')
+else:
+    print('FAIL: No callback_id returned')
+"
+```
+
+**Expected Result:**
+- ✅ `set_agent_callback` returns success with a `callback_id`
+- ✅ Callback registered for URL `https://my-agent.example.com/callback`
+- ✅ Events configured: `new_digest` and `new_report`
+- ✅ Optional `secret` for HMAC signature verification accepted
+- ✅ F27 (Delivery) — agent push delivery pattern registered
+
+**PASS / FAIL:** _________
+
+#### 71b.2 🟢 Agent lists registered callbacks to verify configuration
+
+**User says:** "确认一下目前的回调注册情况，看看有几个活跃的回调"
+
+**Agent executes:**
+
+```python
+# List all registered agent callbacks
+python3 -c "
+import json, subprocess
+
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'list_agent_callbacks',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+callbacks = data.get('callbacks', data.get('items', []))
+print(f'Registered callbacks: {len(callbacks)}')
+for cb in callbacks:
+    url = cb.get('url', '?')
+    events = cb.get('events', [])
+    cb_id = cb.get('callback_id', cb.get('id', '?'))
+    active = cb.get('active', cb.get('status', '?'))
+    print(f'  [{cb_id}] {url}')
+    print(f'    Events: {events} | Active: {active}')
+
+# Verify our callback appears in the list
+our_url = 'https://my-agent.example.com/callback'
+found = any(cb.get('url', '') == our_url for cb in callbacks)
+if found:
+    print(f'PASS: Callback for {our_url} found in list')
+else:
+    print(f'FAIL: Callback for {our_url} NOT found in list')
+"
+```
+
+**Expected Result:**
+- ✅ `list_agent_callbacks` returns all registered callbacks
+- ✅ Callback to `https://my-agent.example.com/callback` appears in the list
+- ✅ Each callback shows URL, events, and active status
+- ✅ Agent can confirm the Director User's callback is properly configured
+
+**PASS / FAIL:** _________
+
+#### 71b.3 🟢 Agent removes a callback when no longer needed
+
+**User says:** "我们现在不需要这个回调了，暂时移除它，以后需要再注册"
+
+**Agent executes:**
+
+```python
+# Remove the previously registered callback
+python3 -c "
+import json, subprocess
+
+# First, get the callback ID from list
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'list_agent_callbacks',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+callbacks = data.get('callbacks', data.get('items', []))
+
+# Find our callback
+target_url = 'https://my-agent.example.com/callback'
+target = next((cb for cb in callbacks if cb.get('url', '') == target_url), None)
+if not target:
+    print('WARN: Callback not found in list (may have already been removed)')
+    print('PASS: Nothing to remove (already clean)')
+else:
+    target_id = target.get('callback_id', target.get('id', ''))
+    print(f'Removing callback: {target_id} ({target_url})')
+
+    # Remove the callback
+    result2 = subprocess.run(
+        ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'remove_agent_callback',
+         json.dumps({'callback_id': target_id})],
+        capture_output=True, text=True, timeout=15
+    )
+    data2 = json.loads(result2.stdout) if result2.stdout else {}
+    status = data2.get('status', data2.get('result', '?'))
+    print(f'Removal result: {status}')
+
+    # Verify removal
+    result3 = subprocess.run(
+        ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'list_agent_callbacks',
+         json.dumps({})],
+        capture_output=True, text=True, timeout=15
+    )
+    data3 = json.loads(result3.stdout) if result3.stdout else {}
+    remaining = data3.get('callbacks', data3.get('items', []))
+    still_present = any(cb.get('url', '') == target_url for cb in remaining)
+    if not still_present:
+        print(f'PASS: Callback {target_id} successfully removed')
+    else:
+        print(f'FAIL: Callback {target_id} still present after removal')
+"
+```
+
+**Expected Result:**
+- ✅ `remove_agent_callback` returns success status
+- ✅ After removal, `list_agent_callbacks` no longer includes the removed callback
+- ✅ Idempotent — removing a non-existent callback does not cause a crash
+- ✅ Agent demonstrates full lifecycle: register → list/verify → remove
+
+**PASS / FAIL:** _________
+
+---
+
+### 📊 Q71b Verdict
+
+| # | Scenario | Dimension(s) Verified | Result |
+|---|----------|----------------------|--------|
+| 71b.1 | Director instructs Agent to register callback | Director to Agent | ⬜ |
+| 71b.2 | Agent lists callbacks to verify registration | Agent (Direct) | ⬜ |
+| 71b.3 | Director instructs Agent to remove callback | Director to Agent | ⬜ |
+
+**OVERALL: ⬜**
+
+**F expectations verified:** F27 (Delivery — agent callback push pattern for digest delivery), F37 (Multi-Channel Delivery — webhook as a delivery channel for agent subscribers)
+
+---
+
+**Agent Callback Subscription Pattern — Full Lifecycle:**
+
+```
+Director User          Agent (Direct User)          AutoInfo Server          Agent Webhook
+     |                        |                           |                       |
+     |--"设置回调推送"-->       |                           |                       |
+     |                        |--set_agent_callback()-->  |                       |
+     |                        |<---callback_id----------  |                       |
+     |                        |--list_agent_callbacks()-> |                       |
+     |                        |<---[callback list]------  |                       |
+     |<--"回调已注册"---------|                           |                       |
+     |                        |                           |                       |
+     |                        |    (Later: digest gen)    |                       |
+     |                        |                           |--POST /callback----->  |
+     |                        |                           |   {event:new_digest}   |
+     |                        |                           |<---200 OK-------------|
+     |                        |                           |                       |
+     |--"不需要了，取消"-->    |                           |                       |
+     |                        |--remove_agent_callback()->|                       |
+     |                        |<---success--------------  |                       |
+     |<--"回调已取消"---------|                           |                       |
+```
+
+**Key Pattern:** Agent registers once → AutoInfo pushes on events → Agent never polls. When no longer needed, Agent removes the callback. This is the preferred pattern for low-latency agent integration versus polling-based approaches. *(requires AutoInfo ≥ v1.7)*

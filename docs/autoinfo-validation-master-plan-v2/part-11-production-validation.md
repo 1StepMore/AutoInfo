@@ -1,6 +1,6 @@
 # Part 11: Production Validation (Q60)
 
-**Coverage:** Doctor diagnostics, MCP stdio, stress test, test suite, package import
+**Coverage:** Doctor diagnostics, MCP stdio, stress test, test suite, package import, observability
 
 ---
 
@@ -41,13 +41,13 @@ echo 'invalid json' | timeout 5 python3 -m autoinfo.mcp.server 2>/dev/null; echo
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 60.4 🟢 MCP server lists all 72 tools
+#### 60.4 🟢 MCP server lists all 114 tools
 ```python
 from autoinfo.mcp.server import app
 tools = app.list_tools()()
 tool_names = [t.name for t in tools]
 print(f"Total tools: {len(tool_names)}")
-assert len(tool_names) >= 68, f"Expected ≥68 tools, got {len(tool_names)}"
+assert len(tool_names) >= 105, f"Expected ≥105 tools, got {len(tool_names)}"
 
 # Check tools from every category
 expected_core = ["health_check", "diagnose_system", "collect_sources", "process_collection",
@@ -80,7 +80,7 @@ for cat, cat_tools in categories.items():
     present = [t for t in cat_tools if t in tool_names]
     print(f"  {cat}: {len(present)}/{len(cat_tools)} tools present")
 ```
-**Expected Result:** ✅ 72 tools registered with correct names. All categories have expected tools.
+**Expected Result:** ✅ 114 tools registered with correct names. All 32 categories have expected tools.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -109,7 +109,7 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 ```bash
 cd /mnt/d/贯维/AutoInfo && pytest -v --tb=short -x 2>&1 | tail -30
 ```
-**Expected Result:** ✅ 1134+ tests pass. 0 failures.
+**Expected Result:** ✅ 1405+ tests pass. 0 failures.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -117,7 +117,7 @@ cd /mnt/d/贯维/AutoInfo && pytest -v --tb=short -x 2>&1 | tail -30
 ```bash
 cd /mnt/d/贯维/AutoInfo && pytest --collect-only -q
 ```
-**Expected Result:** ✅ All 1134+ tests collected without import errors.
+**Expected Result:** ✅ All 1405+ tests collected without import errors.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -154,6 +154,62 @@ timeout 3 python3 -m autoinfo.api.server 2>&1 | head -5; echo "Exit: $?"
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
+#### 60.13 🟢 trace_item — full pipeline trace
+```python
+from autoinfo.mcp.server import app
+
+# trace_item requires a valid trace_id; we test the tool is callable
+# (In production: get a trace_id from a collection run first, then trace it)
+# For validation, we test tool presence and parameter schema
+tools = app.list_tools()()
+trace_tool = next((t for t in tools if t.name == "trace_item"), None)
+assert trace_tool is not None, "trace_item tool not found"
+assert hasattr(trace_tool, 'inputSchema'), "trace_item missing inputSchema"
+
+# Verify inputSchema has expected properties
+schema = trace_tool.inputSchema
+assert "properties" in schema
+assert "trace_id" in schema["properties"], "trace_item missing trace_id param"
+print("✅ trace_item tool found, schema valid:", list(schema["properties"].keys()))
+```
+**Expected Result:** ✅ `trace_item` MCP tool exists with correct schema (`trace_id` parameter). Tool is callable (requires real trace_id for meaningful output).
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 60.14 🟢 get_metrics — system metrics
+```python
+from autoinfo.mcp.server import app
+
+# get_metrics returns system-wide usage metrics
+result = app.call_tool("get_metrics", {"period": "day"})
+assert result is not None, "get_metrics returned None"
+
+# Check expected metric keys
+content = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
+import json
+data = json.loads(content)
+assert isinstance(data, (dict, list)), f"Expected dict or list, got {type(data)}"
+print("✅ get_metrics returned data with", len(data) if isinstance(data, list) else len(data.keys()), "entries")
+```
+**Expected Result:** ✅ `get_metrics` returns data. Response is valid JSON (dict or list). No error.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 60.15 🟢 get_prometheus_metrics — Prometheus endpoint accessible
+```python
+from autoinfo.mcp.server import app
+
+# get_prometheus_metrics checks if Prometheus endpoint is accessible
+result = app.call_tool("get_prometheus_metrics", {})
+assert result is not None, "get_prometheus_metrics returned None"
+
+content = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
+print("✅ get_prometheus_metrics response:", content[:300] if len(content) > 300 else content)
+```
+**Expected Result:** ✅ `get_prometheus_metrics` returns data about Prometheus endpoint (status, metrics availability, or prometheus-formatted data). No crash.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
 ---
 
 ### 📊 Q60 Verdict
@@ -163,7 +219,7 @@ timeout 3 python3 -m autoinfo.api.server 2>&1 | head -5; echo "Exit: $?"
 | 60.1 | Doctor all checks | ⬜ |
 | 60.2 | MCP stdio ping | ⬜ |
 | 60.3 | Invalid JSON-RPC | ⬜ |
-| 60.4 | All 72 tools | ⬜ |
+| 60.4 | All 114 tools | ⬜ |
 | 60.5 | 3x stress run | ⬜ |
 | 60.6 | Clean import | ⬜ |
 | 60.7 | Test suite | ⬜ |
@@ -172,5 +228,8 @@ timeout 3 python3 -m autoinfo.api.server 2>&1 | head -5; echo "Exit: $?"
 | 60.10 | Module entry | ⬜ |
 | 60.11 | MCP entry | ⬜ |
 | 60.12 | API entry | ⬜ |
+| 60.13 | trace_item | ⬜ |
+| 60.14 | get_metrics | ⬜ |
+| 60.15 | get_prometheus_metrics | ⬜ |
 
 **OVERALL: ⬜**

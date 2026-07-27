@@ -1,14 +1,16 @@
 # AutoInfo Master Validation Plan v2 — 100% Feature Coverage
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
-**Date:** 2026-07-25
-**Baseline:** AutoInfo v1.6 — 1405 tests, 22 CLI command groups, 79 MCP tools (19 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics
+**Date:** 2026-07-27
+**Baseline:** AutoInfo v1.6 — 1549 tests, 23 CLI command groups, 114 MCP tools (32 categories), KB pipeline (4 tiers), 6 collector types, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics
+
+> **Spec references**: See `docs/dev/specs/` for the full specification (9 files: `expectations.md` for F01-F57, `quality-gates.md` for G0-G5/D1-D3, `pipeline.md` for collection/KB pipeline, `delivery.md` for end user lifecycle, `operations.md` for cost/privacy/lifecycle/observability, `market-positioning.md` for competitive analysis, `reality-assessment.md` for current state). See `docs/archive/` for superseded/one-time historical docs.
 
 ---
 
 ## Purpose
 
-Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a comprehensive plan covering **100% of AutoInfo's feature surface**. Every CLI command, MCP tool, KB tier, quality gate, search mode, output format, API endpoint, async operation, and integration point has explicit scenarios.
+Replace the original `docs/archive/autoinfo-validation-master-plan.md` (~40% coverage) with a comprehensive plan covering **100% of AutoInfo's feature surface**. Every CLI command, MCP tool, KB tier, quality gate, search mode, output format, API endpoint, async operation, and integration point has explicit scenarios.
 
 ---
 
@@ -30,7 +32,7 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 
 **Improvement over v1**: v2 adds:
 - All 22 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
-- All 79 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
+- All 91 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
 - 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki (was only 01-Raw)
 - Quality gates G1-G5 (was G1-G3 only)
 - All search modes: FTS5, vector, hybrid, faceted, Q&A, knowledge graph
@@ -44,6 +46,13 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 - KB import/export/versioning/relations
 - Agent alerting / source health monitoring
 - Error/boundary matrix across every layer
+- Knowledge lifecycle (TTL, versioning, decay, dedup/merge)
+- End User MCP tools (trial, preferences, subscription, history, delivery log)
+- Cost governance (billing, budgets, checkout, usage, invoices)
+- Data privacy MCP (GDPR export, right to erasure)
+- Agent callback subscription pattern (register/list/remove callbacks)
+- Observability MCP (trace_item, get_metrics, get_prometheus_metrics)
+- Quality Gate Config and Alert Rules management
 
 ---
 
@@ -54,21 +63,21 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 | 0 | `README.md` | — | Index, prerequisites, common patterns |
 | 1 | `part-01-core-pipeline.md` | Q1-Q6 | Init → Collect → Process → Browse → Status → Doctor |
 | 2 | `part-02-cli-full.md` | Q7-Q20 | All 22 CLI commands with subcommand testing |
-| 3 | `part-03-mcp-system-tools.md` | Q21-Q27 | MCP: System, Discovery, Domain, Source, Topic tools |
-| 4 | `part-04-mcp-kb-output.md` | Q28-Q36 | MCP: KB (all tiers), Search, Output, Cron, Email, CEFR |
+| 3 | `part-03-mcp-system-tools.md` | Q21-Q27c | MCP: System, Discovery, Domain, Source, Topic, Monitor, Quality Gate Config, Alert Rules |
+| 4 | `part-04-mcp-kb-output.md` | Q28-Q36c | MCP: KB (all tiers), Search, Output, Cron, Email, CEFR, Knowledge Lifecycle, Product |
 | 5 | `part-05-quality-gates.md` | Q37-Q41 | G1 source authority, G2 dedup, G3 relevance, G4 factual, G5 translation |
 | 6 | `part-06-kb-pipeline.md` | Q42-Q46 | KB 4-tier (Inbox→Raw→Draft→Wiki), import/export, versioning, relations, graph |
 | 7 | `part-07-rest-api-webui.md` | Q47-Q48 | REST API CRUD (FastAPI port 8741), Web UI dashboard |
 | 8 | `part-08-agent-e2e.md` | Q49-Q53 | Real API E2E (PubMed/RSS/Web + real LLM), multi-domain, config override |
 | 9 | `part-09-async-cron-email.md` | Q54-Q58 | Async job_id polling, cron schedules, email digests, webhooks, agent alerting |
 | 10 | `part-10-error-boundary.md` | Q59 | Comprehensive error/boundary matrix (all layers) |
-| 11 | `part-11-production-validation.md` | Q60 | Doctor diagnostics, MCP stdio, stress test, test suite |
+| 11 | `part-11-production-validation.md` | Q60 | Doctor diagnostics, MCP stdio, stress test, test suite, observability |
 | 12 | `part-12-final-verdict.md` | — | Summary verdict, production gap checklist, sign-off criteria |
-| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65 | End User lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product delivery SLA, self-service portal, data privacy |
+| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65d | End User lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product delivery SLA, self-service portal, data privacy, End User MCP (8 tools), Cost/Billing (6 tools), GDPR MCP tools |
 | 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Human-Agent collaboration: ambiguous intent clarification, failure escalation, human review & iteration, human override & compliance |
-| 15 | `part-15-cross-dimension-e2e.md` | Q70-Q71 | Cross-dimension E2E journey spanning Director User → Direct User (Agent) → End User |
+| 15 | `part-15-cross-dimension-e2e.md` | Q70-Q71b | Cross-dimension E2E journey spanning Director User → Direct User (Agent) → End User, Agent Callbacks |
 
-**Total: 71 questions, 15 part files + verdict**
+**Total: 74 questions, 15 part files + verdict**
 
 ---
 
@@ -90,13 +99,13 @@ Replace the original `autoinfo-validation-master-plan.md` (~40% coverage) with a
 pip install -e ".[dev]"
 
 # 2. Verify test infrastructure
-pytest --collect-only -q  # Should collect 1405+ tests without errors
+pytest --collect-only -q  # Should collect 1549+ tests without errors
 
 # 3. Set minimum env vars
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 
 # 4. Verify CLI works
-autoinfo --help  # Should show 22 command groups
+autoinfo --help  # Should show 23 command groups
 ```
 
 ### LLM-Dependent Sections
@@ -134,8 +143,8 @@ All CLI commands support these **global flags**:
 
 | Feature Area | Existing v1 | v2 Target | Status |
 |-------------|-------------|-----------|--------|
-| CLI commands tested | 6/17 (35%) | 17/17 (100%) | 📝 Part 2 |
-| MCP tools tested | 8/72 (11%) | 72/72 (100%) | 📝 Parts 3-4 |
+| CLI commands tested | 6/17 (35%) | 23/23 (100%) | 📝 Part 2 |
+| MCP tools tested | 8/72 (11%) | 114/114 (100%) | 📝 Parts 3-4 |
 | KB tiers tested | 1/4 (01-Raw only) | 4/4 (Inbox→Raw→Draft→Wiki) | 📝 Part 6 |
 | Quality gates tested | 3/5 (G1-G3) | 5/5 (G1-G5) | 📝 Part 5 |
 | Search modes tested | 1 (summaries list) | 6 (FTS5, vector, hybrid, faceted, Q&A, graph) | 📝 Part 6 |
@@ -172,6 +181,7 @@ All CLI commands support these **global flags**:
 | REST API | `http://127.0.0.1:8741/api/v1/...` |
 | Web UI | `http://127.0.0.1:8741/dashboard` |
 | MCP server | `python -m autoinfo.mcp.server` (stdio) |
+| Archives | `docs/archive/` — superseded/one-time docs |
 
 ---
 
@@ -191,7 +201,10 @@ docs/autoinfo-validation-master-plan-v2/
 ├── part-09-async-cron-email.md
 ├── part-10-error-boundary.md
 ├── part-11-production-validation.md
-└── part-12-final-verdict.md
+├── part-12-final-verdict.md
+├── part-13-enduser-lifecycle.md
+├── part-14-human-agent-collaboration.md
+└── part-15-cross-dimension-e2e.md
 ```
 
 ---

@@ -4,7 +4,7 @@
 
 **Note:** These scenarios simulate agent behavior via scripted MCP tool calls. The tester reads the "User says:" dialogue, executes the corresponding tool calls, and verifies the agent's response matches the simulated behavior. The "User" in this part is the **Director User** (human commander) who speaks natural language to the agent - never touches AutoInfo directly.
 
-**References:** F16 (Summary Review), F20 (KB Pipeline / human promotion), F29 (custom_instructions), F40 (agent override), F53 (cross-collection dedup & merge) from `founder-expectations.md`. See the References table at the end of this file.
+**References:** F16 (Summary Review), F20 (KB Pipeline / human promotion), F29 (custom_instructions), F40 (agent override), F53 (cross-collection dedup & merge) from `docs/dev/specs/expectations.md`. See the References table at the end of this file.
 
 ---
 
@@ -840,10 +840,10 @@ Override Documentation:
 
 | Reference | Source | Relevance |
 |-----------|--------|-----------|
-| F16 - Summary Review | `founder-expectations.md` §3.4 | Batch review and flagging pattern used in Q68 |
-| F20 - KB Pipeline (4-tier) | `founder-expectations.md` §3.5 | Human-only promotion to Wiki, agent creates Draft - central to Q68 |
-| F29 - PROCESSED Products / Custom Instructions | `founder-expectations.md` §3.6 | `custom_instructions` parameter for digest/report generation - Q68, Q69 |
-| F40 - End User Self-Service / Agent Overrides | `founder-expectations.md` §3.8 | Agent updates fields with `updated_by: agent` audit trail - Q69 |
-| F53 - Cross-Collection Dedup & Merge | `founder-expectations.md` §3.11 | Merge decisions logged, agent needs human approval - Q67, Q69 |
+| F16 - Summary Review | `docs/dev/specs/expectations.md` §3.4 | Batch review and flagging pattern used in Q68 |
+| F20 - KB Pipeline (4-tier) | `docs/dev/specs/expectations.md` §3.5, `docs/dev/specs/pipeline.md` §2 | Human-only promotion to Wiki, agent creates Draft - central to Q68 |
+| F29 - PROCESSED Products / Custom Instructions | `docs/dev/specs/expectations.md` §3.6, `docs/dev/specs/delivery.md` | `custom_instructions` parameter for digest/report generation - Q68, Q69 |
+| F40 - End User Self-Service / Agent Overrides | `docs/dev/specs/expectations.md` §3.8, `docs/dev/specs/delivery.md` §4 | Agent updates fields with `updated_by: agent` audit trail - Q69 |
+| F53 - Cross-Collection Dedup & Merge | `docs/dev/specs/expectations.md` §3.11, `docs/dev/specs/pipeline.md` §7 | Merge decisions logged, agent needs human approval - Q67, Q69 |
 | Agent Alerting Dialogue Pattern | `docs/dev/agent-alerting.md` | Failure detection -> report -> human decision pattern - Q67 |
-| Director User Definition | `founder-expectations.md` §1.3 | Three user types: Director (human NL commander), Direct (agent executor), End User (paying customer) |
+| Director User Definition | `docs/dev/founder-expectations.md` §1.3 (index) | Three user types: Director (human NL commander), Direct (agent executor), End User (paying customer) |

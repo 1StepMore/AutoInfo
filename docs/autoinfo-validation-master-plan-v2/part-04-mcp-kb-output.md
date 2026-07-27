@@ -1,6 +1,6 @@
-# Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36)
+# Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36c)
 
-**Coverage:** 36 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (6), Export/Import (2), CEFR (1), Cron (4), Email (1), Custom Extraction (2), Q&A (1), Keywords (3)
+**Coverage:** 44 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (6), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1)
 
 ---
 
@@ -861,5 +861,268 @@ print(f"✅ MCP error (bad domain): {json.dumps(data, indent=2)[:200]}")
 | 36.2 Nonexistent tool | ⬜ |
 | 36.3 Bad parameter types | ⬜ |
 | 36.4 Nonexistent domain | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q36b: MCP Knowledge Lifecycle Tools
+
+**Agent says:** "I need to compare versions, find/merge similar items, check domain decay, mark items stale, and calculate freshness."
+
+### Prerequisites
+```bash
+cd /tmp && rm -rf test-q36b && mkdir test-q36b && cd test-q36b
+autoinfo init --demo medical-research
+autoinfo collect --domain medical-research --topic "IVF" --limit 5
+autoinfo process --domain medical-research 2>/dev/null || true
+```
+
+### Scenarios
+
+#### 36b.1 🟢 compare_versions
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Get a summary and flag it to KB to create a versioned entry
+result = app.call_tool("list_summaries", {"domain": "medical-research", "limit": 1})
+data = json.loads(result.content[0].text)
+entries = data.get("entries", [])
+if entries:
+    entry_id = entries[0].get("entry_id", "") or entries[0].get("id", "")
+    # Flag to KB first
+    app.call_tool("flag_for_knowledge_base", {
+        "summary_id": entry_id,
+        "tags": ["version-test"]
+    })
+    # Now compare versions (may compare current vs. previous if re-processed)
+    result = app.call_tool("compare_versions", {
+        "entry_id": entry_id
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ compare_versions: {json.dumps(data, indent=2)[:300]}")
+else:
+    print("⚠️ No entries to compare")
+```
+**Expected Result:** ✅ Returns version diff or confirmation that only one version exists.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36b.2 🟢 find_similar_items
+```python
+# Need at least 2 items in KB — flag another one
+result = app.call_tool("list_summaries", {"domain": "medical-research", "limit": 2})
+data = json.loads(result.content[0].text)
+entries = data.get("entries", [])
+if len(entries) >= 2:
+    # Get the first entry's ID (the known one)
+    entry_id = entries[0].get("entry_id", "") or entries[0].get("id", "")
+    # Flag second entry to KB too
+    entry_id2 = entries[1].get("entry_id", "") or entries[1].get("id", "")
+    app.call_tool("flag_for_knowledge_base", {
+        "summary_id": entry_id2,
+        "tags": ["similarity-test"]
+    })
+
+    result = app.call_tool("find_similar_items", {
+        "entry_id": entry_id,
+        "domain": "medical-research",
+        "limit": 5
+    })
+    data = json.loads(result.content[0].text)
+    similar = data.get("similar_items", data.get("entries", data.get("items", [])))
+    print(f"✅ find_similar_items: {len(similar)} similar items found")
+    for item in similar[:3]:
+        print(f"  - {item.get('title','?')[:60]}: score={item.get('similarity_score', item.get('score','?'))}")
+else:
+    print("⚠️ Need ≥ 2 entries to find similarities")
+```
+**Expected Result:** ✅ Returns semantically similar items with similarity scores.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36b.3 🟢 merge_items
+```python
+# Find two similar items, then merge them
+result = app.call_tool("list_summaries", {"domain": "medical-research", "limit": 2})
+data = json.loads(result.content[0].text)
+entries = data.get("entries", [])
+if len(entries) >= 2:
+    id1 = entries[0].get("entry_id", "") or entries[0].get("id", "")
+    id2 = entries[1].get("entry_id", "") or entries[1].get("id", "")
+
+    result = app.call_tool("merge_items", {
+        "source_ids": [id1, id2],
+        "domain": "medical-research",
+        "strategy": "auto"  # or "llm" for LLM-assisted merge
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ merge_items: {json.dumps(data, indent=2)[:300]}")
+else:
+    print("⚠️ Need ≥ 2 entries to merge")
+```
+**Expected Result:** ✅ Items merged. Returns merged entry data or confirmation.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36b.4 🟢 get_domain_decay
+```python
+result = app.call_tool("get_domain_decay", {
+    "domain": "medical-research"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ get_domain_decay: {json.dumps(data, indent=2)[:300]}")
+assert "grade" in data or "decay_grade" in data or "staleness_ratio" in data or "statistics" in data
+```
+**Expected Result:** ✅ Returns decay grade (Green/Yellow/Red), staleness ratio, and statistics.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36b.5 🟢 mark_stale
+```python
+# Mark an entry as stale
+result = app.call_tool("list_summaries", {"domain": "medical-research", "limit": 1})
+data = json.loads(result.content[0].text)
+entries = data.get("entries", [])
+if entries:
+    entry_id = entries[0].get("entry_id", "") or entries[0].get("id", "")
+
+    result = app.call_tool("mark_stale", {
+        "entry_id": entry_id,
+        "reason": "Content older than domain TTL"
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ mark_stale: {json.dumps(data, indent=2)[:300]}")
+
+    # Verify the stale flag is set
+    result = app.call_tool("get_kb_entry", {"entry_id": entry_id})
+    data = json.loads(result.content[0].text)
+    stale = data.get("stale", data.get("is_stale", False))
+    print(f"  Stale flag: {stale}")
+else:
+    print("⚠️ No entries to mark stale")
+```
+**Expected Result:** ✅ Entry marked stale. Stale flag visible on entry retrieval.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36b.6 🟢 calculate_freshness_score
+```python
+result = app.call_tool("calculate_freshness_score", {
+    "domain": "medical-research"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ calculate_freshness_score: {json.dumps(data, indent=2)[:300]}")
+assert "score" in data or "freshness" in data or "statistics" in data
+```
+**Expected Result:** ✅ Returns freshness score (0-100) for the domain.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q36b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36b.1 compare_versions | ⬜ |
+| 36b.2 find_similar_items | ⬜ |
+| 36b.3 merge_items | ⬜ |
+| 36b.4 get_domain_decay | ⬜ |
+| 36b.5 mark_stale | ⬜ |
+| 36b.6 calculate_freshness_score | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q36c: MCP Cron Status & Product Tools
+
+**Agent says:** "I need to check schedule execution status and retrieve individual products."
+
+### Prerequisites
+```bash
+cd /tmp && rm -rf test-q36c && mkdir test-q36c && cd test-q36c
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 36c.1 🟢 get_schedule_status
+```python
+from autoinfo.mcp.server import app
+import json
+
+# First add a schedule
+result = app.call_tool("add_schedule", {
+    "domain": "medical-research",
+    "topic": "IVF",
+    "cron": "0 8 * * 1"
+})
+add_data = json.loads(result.content[0].text)
+print(f"  Schedule added: {add_data}")
+
+# Get schedule ID from the add response or from list
+result = app.call_tool("list_schedules", {})
+data = json.loads(result.content[0].text)
+schedules = data.get("schedules", data.get("items", []))
+if schedules:
+    sched_id = schedules[0].get("id", schedules[0].get("schedule_id", ""))
+
+    result = app.call_tool("get_schedule_status", {
+        "schedule_id": sched_id
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ get_schedule_status: {json.dumps(data, indent=2)[:300]}")
+    assert "status" in data or "enabled" in data or "cron" in data or "last_run" in data
+else:
+    print("⚠️ No schedules to check status")
+```
+**Expected Result:** ✅ Returns schedule status including enabled flag, cron expression, last run time.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 36c.2 🟢 get_product
+```python
+# First list products to get a valid product_id
+result = app.call_tool("list_products", {
+    "domain": "medical-research"
+})
+data = json.loads(result.content[0].text)
+products = data.get("products", data.get("entries", data.get("items", [])))
+print(f"  list_products returned: {len(products)} products")
+
+if products:
+    product_id = products[0].get("product_id", products[0].get("id", ""))
+    print(f"  Using product_id: {product_id}")
+
+    result = app.call_tool("get_product", {
+        "product_id": product_id
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ get_product: {json.dumps(data, indent=2)[:300]}")
+    assert "product_id" in data or "title" in data or "type" in data or "content" in data
+else:
+    # No products yet — still test that the tool handles gracefully
+    print("⚠️ No products available — testing error handling")
+    result = app.call_tool("get_product", {
+        "product_id": "nonexistent-product-id"
+    })
+    data = json.loads(result.content[0].text)
+    print(f"✅ get_product (error case): {json.dumps(data, indent=2)[:200]}")
+```
+**Expected Result:** ✅ Returns full product details (title, type, content, metadata).
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q36c Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36c.1 get_schedule_status | ⬜ |
+| 36c.2 get_product | ⬜ |
 
 **OVERALL: ⬜**

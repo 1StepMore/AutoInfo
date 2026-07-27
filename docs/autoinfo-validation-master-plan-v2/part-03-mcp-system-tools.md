@@ -1,6 +1,6 @@
-# Part 3: MCP Tools — System, Discovery, Domain, Source, Topic (Q18-Q27)
+# Part 3: MCP Tools — System, Discovery, Domain, Source, Topic (Q18-Q27c)
 
-**Coverage:** 30 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (1), Webhooks (2), Source Health (3)
+**Coverage:** 35 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (2), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3)
 
 ---
 
@@ -864,7 +864,7 @@ else:
 
 ---
 
-## Q27: MCP Monitor Tool
+## Q27: MCP Monitor & Active Delivery Tools
 
 **Agent says:** "I need to see what's currently running."
 
@@ -884,6 +884,17 @@ print(f"✅ list_active_collections: {len(collections)} active: {collections}")
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
+#### 27.2 🟢 list_active_deliveries
+```python
+result = app.call_tool("list_active_deliveries", {})
+data = json.loads(result.content[0].text)
+deliveries = data.get("deliveries", data.get("items", []))
+print(f"✅ list_active_deliveries: {len(deliveries)} active: {deliveries}")
+```
+**Expected Result:** ✅ Returns currently active delivery tasks with job_ids, channels, and status.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
 ---
 
 ### 📊 Q27 Verdict
@@ -891,5 +902,155 @@ print(f"✅ list_active_collections: {len(collections)} active: {collections}")
 | Scenario | Result |
 |----------|--------|
 | 27.1 list_active_collections | ⬜ |
+| 27.2 list_active_deliveries | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27b: MCP Quality Gate Config Tools
+
+**Agent says:** "I need to inspect and configure quality gate thresholds per domain."
+
+### Prerequisites
+```bash
+cd /tmp && rm -rf test-q27b && mkdir test-q27b && cd test-q27b
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27b.1 🟢 get_gate_config
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("get_gate_config", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "gates" in data or "config" in data
+print(f"✅ get_gate_config: {json.dumps(data, indent=2)[:300]}")
+```
+**Expected Result:** ✅ Returns all gate configurations for the domain (G0-G5 thresholds, actions).
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 27b.2 🟢 set_gate_config
+```python
+result = app.call_tool("set_gate_config", {
+    "domain": "medical-research",
+    "gate": "G3",
+    "threshold": 60,
+    "action": "flag"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ set_gate_config: {data}")
+
+# Verify the change persists
+result = app.call_tool("get_gate_config", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+gates = data.get("gates", data.get("config", {}))
+g3 = gates.get("G3", gates.get("g3", {}))
+print(f"  G3 threshold={g3.get('threshold','?')}, action={g3.get('action','?')}")
+```
+**Expected Result:** ✅ Gate configuration updated. Change persists on subsequent read.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q27b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27b.1 get_gate_config | ⬜ |
+| 27b.2 set_gate_config | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27c: MCP Alert Rules Tools
+
+**Agent says:** "I need to manage alert rules programmatically — view, add, and remove."
+
+### Prerequisites
+```bash
+cd /tmp && rm -rf test-q27c && mkdir test-q27c && cd test-q27c
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27c.1 🟢 get_alert_rules
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("get_alert_rules", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+rules = data.get("rules", data.get("items", []))
+print(f"✅ get_alert_rules: {len(rules)} rules defined")
+for r in rules:
+    print(f"  - {r.get('name','?')}: {r.get('trigger','?')} → {r.get('action','?')}")
+```
+**Expected Result:** ✅ Returns all alert rules for the domain with triggers and actions.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 27c.2 🟢 add_alert_rule
+```python
+result = app.call_tool("add_alert_rule", {
+    "domain": "medical-research",
+    "name": "test-collection-failure",
+    "trigger": "collection_error_rate > 0.5",
+    "action": "notify_agent",
+    "channel": "webhook",
+    "threshold": 0.5
+})
+data = json.loads(result.content[0].text)
+print(f"✅ add_alert_rule: {data}")
+
+# Verify it appears in list
+result = app.call_tool("get_alert_rules", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+rules = data.get("rules", data.get("items", []))
+names = [r.get("name") for r in rules]
+assert "test-collection-failure" in names
+print("✅ Rule confirmed in get_alert_rules")
+```
+**Expected Result:** ✅ Alert rule added. Listed in get_alert_rules.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+#### 27c.3 🟢 remove_alert_rule
+```python
+result = app.call_tool("remove_alert_rule", {
+    "domain": "medical-research",
+    "name": "test-collection-failure"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ remove_alert_rule: {data}")
+
+# Verify removed
+result = app.call_tool("get_alert_rules", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+rules = data.get("rules", data.get("items", []))
+names = [r.get("name") for r in rules]
+assert "test-collection-failure" not in names
+print("✅ Rule confirmed removed")
+```
+**Expected Result:** ✅ Alert rule removed. No longer listed.
+
+**Actual Result:** _________ **PASS / FAIL:** _________
+
+---
+
+### 📊 Q27c Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27c.1 get_alert_rules | ⬜ |
+| 27c.2 add_alert_rule | ⬜ |
+| 27c.3 remove_alert_rule | ⬜ |
 
 **OVERALL: ⬜**

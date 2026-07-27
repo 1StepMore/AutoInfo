@@ -1,8 +1,9 @@
 """Delivery channel abstraction for AutoInfo.
 
 Provides a pluggable :class:`DeliveryChannel` ABC with concrete
-:class:`SMTPDeliveryChannel` and :class:`WebhookDeliveryChannel`
-implementations, plus a :func:`get_channel` factory.
+:class:`SMTPDeliveryChannel`, :class:`WebhookDeliveryChannel`,
+:class:`RSSDeliveryChannel`, and additional channel implementations,
+plus a :func:`get_channel` factory.
 """
 
 from __future__ import annotations
@@ -294,12 +295,25 @@ class WebhookDeliveryChannel(DeliveryChannel):
         payload: dict[str, Any],
         recipients: list[str],
     ) -> DeliveryResult:
+        config = product.config or {}
+        hmac_secret: str | None = config.get("hmac_secret")
+
+        # Warn if hmac_secret is configured for non-HTTPS URLs
+        if hmac_secret:
+            for url in recipients:
+                if isinstance(url, str) and not url.startswith("https://"):
+                    logger.warning(
+                        "HMAC secret configured but URL %s is not HTTPS — "
+                        "signature transmitted in cleartext",
+                        url,
+                    )
+
         failed_urls: list[str] = []
         success_count = 0
 
         for url in recipients:
             try:
-                self._post_webhook(url, payload)
+                self._post_webhook(url, payload, hmac_secret=hmac_secret)
                 success_count += 1
             except Exception as exc:
                 logger.warning("Webhook to %s failed: %s", url, exc)
@@ -330,18 +344,38 @@ class WebhookDeliveryChannel(DeliveryChannel):
         url: str,
         payload: dict[str, Any],
         retries: int = 3,
+        hmac_secret: str | None = None,
     ) -> None:
         """POST *payload* to *url* with exponential backoff.
+
+        When *hmac_secret* is provided the body is HMAC-SHA256 signed and
+        the ``X-Signature`` header is added (``sha256=<hex>``).
 
         Retries on 5xx and network errors.  2xx and 4xx are terminal.
         Raises the last exception when all retries are exhausted.
         """
+        import hashlib as _hashlib
+        import hmac as _hmac
+        import json as _json
         import time as _time
+
+        # Serialise once for both signing and sending
+        body = _json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+
+        if hmac_secret:
+            secret_bytes = (
+                hmac_secret.encode("utf-8")
+                if isinstance(hmac_secret, str)
+                else hmac_secret
+            )
+            sig = _hmac.new(secret_bytes, body, _hashlib.sha256).hexdigest()
+            headers["X-Signature"] = f"sha256={sig}"
 
         for attempt in range(retries):
             try:
                 with httpx.Client(timeout=10.0) as client:
-                    resp = client.post(url, json=payload)
+                    resp = client.post(url, content=body, headers=headers)
                 if resp.status_code < 500:
                     return  # 2xx or 4xx — terminal
             except (httpx.TimeoutException, httpx.NetworkError):
@@ -372,12 +406,15 @@ class RESTAPIDeliveryChannel(DeliveryChannel):
         payload: dict[str, Any],
         recipients: list[str],
     ) -> DeliveryResult:
+        config = product.config or {}
+        api_key: str | None = config.get("api_key")
+
         failed_urls: list[str] = []
         success_count = 0
 
         for url in recipients:
             try:
-                self._post_payload(url, payload)
+                self._post_payload(url, payload, api_key=api_key)
                 success_count += 1
             except Exception as exc:
                 logger.warning("REST API POST to %s failed: %s", url, exc)
@@ -408,18 +445,29 @@ class RESTAPIDeliveryChannel(DeliveryChannel):
         url: str,
         payload: dict[str, Any],
         retries: int = 3,
+        api_key: str | None = None,
     ) -> None:
         """POST *payload* to *url* with exponential backoff.
+
+        When *api_key* is provided the ``Authorization: Bearer`` header
+        is added to the request.
 
         Retries on 5xx and network errors.  2xx and 4xx are terminal.
         Raises the last exception when all retries are exhausted.
         """
+        import json as _json
         import time as _time
+
+        body = _json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         for attempt in range(retries):
             try:
                 with httpx.Client(timeout=10.0) as client:
-                    resp = client.post(url, json=payload)
+                    resp = client.post(url, content=body, headers=headers)
                 if resp.status_code < 500:
                     return  # 2xx or 4xx — terminal
             except (httpx.TimeoutException, httpx.NetworkError):
@@ -517,6 +565,7 @@ from autoinfo.delivery.wechat_work import WeChatWorkDeliveryChannel  # noqa: E40
 from autoinfo.delivery.wechat_oa import WeChatOADeliveryChannel  # noqa: E402
 from autoinfo.delivery.dingtalk import DingTalkDeliveryChannel  # noqa: E402
 from autoinfo.delivery.feishu import FeiShuDeliveryChannel  # noqa: E402
+from autoinfo.delivery.rss import RSSDeliveryChannel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -533,6 +582,7 @@ _CHANNEL_REGISTRY: dict[str, type[DeliveryChannel]] = {
     "wechat_oa": WeChatOADeliveryChannel,
     "dingtalk": DingTalkDeliveryChannel,
     "feishu": FeiShuDeliveryChannel,
+    "rss": RSSDeliveryChannel,
 }
 
 
@@ -543,7 +593,9 @@ def get_channel(name: str) -> DeliveryChannel:
     ----------
     name:
         Channel name — ``"smtp"``, ``"webhook"``, ``"rest_api"``,
-        ``"file_export"``, ``"discord"``, ``"feishu"``, ``"wechat_work"``, …
+        ``"file_export"``, ``"discord"``, ``"telegram"``,
+        ``"wechat_work"``, ``"wechat_oa"``, ``"dingtalk"``,
+        ``"feishu"``, ``"rss"``, …
 
     Returns
     -------
@@ -575,6 +627,6 @@ def get_available_channels() -> list[str]:
     Returns
     -------
     list[str]
-        Sorted list of registered channel names (e.g. ``["discord", "file_export", "rest_api", "smtp", "webhook"]``).
+        Sorted list of registered channel names (e.g. ``["discord", "dingtalk", "feishu", "file_export", "rest_api", "rss", "smtp", "telegram", "wechat_oa", "wechat_work", "webhook"]``).
     """
     return sorted(_CHANNEL_REGISTRY)

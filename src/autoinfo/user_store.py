@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +74,41 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
             );
         """)
+    _ensure_columns_exist()
+
+
+def _ensure_columns_exist() -> None:
+    """Add missing columns to existing user_profiles table.
+
+    Checks for trial_started_at, trial_days, and preferences columns
+    and adds them via ``ALTER TABLE`` if they are absent.  This allows
+    the schema to evolve without breaking existing databases.
+    """
+    _REQUIRED_COLS: list[tuple[str, str]] = [
+        ("trial_started_at", "TEXT DEFAULT ''"),
+        ("trial_days", "INTEGER DEFAULT 14"),
+        ("preferences", "TEXT DEFAULT '{}'"),
+        ("stripe_customer_id", "TEXT DEFAULT ''"),
+        ("stripe_subscription_id", "TEXT DEFAULT ''"),
+    ]
+    with _connect() as conn:
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(user_profiles)").fetchall()
+        }
+        for col_name, col_def in _REQUIRED_COLS:
+            if col_name not in existing:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE user_profiles ADD COLUMN {col_name} {col_def}"
+                    )
+                    logger.info(
+                        "Added column '%s' to user_profiles table", col_name
+                    )
+                except sqlite3.OperationalError:
+                    logger.warning(
+                        "Could not add column '%s' (may already exist)", col_name
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +118,50 @@ def init_db() -> None:
 
 def _row_to_profile(row: sqlite3.Row) -> UserProfile:
     data = dict(row)
-    raw_prefs = data.get("delivery_prefs", "{}")
+
+    # Map delivery_prefs (DB) → delivery_preferences (model)
+    raw_prefs = data.pop("delivery_prefs", "{}")
     try:
-        data["delivery_prefs"] = json.loads(raw_prefs) if isinstance(raw_prefs, str) else raw_prefs
+        data["delivery_preferences"] = json.loads(raw_prefs) if isinstance(raw_prefs, str) else raw_prefs
     except (json.JSONDecodeError, TypeError):
-        data["delivery_prefs"] = {}
+        data["delivery_preferences"] = {}
+
+    # Map trial_start (legacy DB) → trial_started_at (model)
+    if "trial_start" in data:
+        if "trial_started_at" not in data or not data["trial_started_at"]:
+            data["trial_started_at"] = data.pop("trial_start")
+        else:
+            data.pop("trial_start")
+
+    # Map trial_end (legacy DB) → trial_ends_at (model)
+    if "trial_end" in data:
+        if "trial_ends_at" not in data or not data["trial_ends_at"]:
+            data["trial_ends_at"] = data.pop("trial_end")
+        else:
+            data.pop("trial_end")
+
+    # Parse preferences JSON
+    raw_preferences = data.get("preferences", "{}")
+    if isinstance(raw_preferences, str):
+        try:
+            data["preferences"] = json.loads(raw_preferences)
+        except (json.JSONDecodeError, TypeError):
+            data["preferences"] = {}
+    elif raw_preferences is None:
+        data["preferences"] = {}
+
+    # Coerce trial_days to int
+    trial_days = data.get("trial_days", 14)
+    try:
+        data["trial_days"] = int(trial_days) if trial_days is not None else 14
+    except (ValueError, TypeError):
+        data["trial_days"] = 14
+
+    # Filter to known UserProfile fields only
+    from autoinfo.models import UserProfile as _UP
+    valid_fields = set(_UP.__dataclass_fields__.keys())
+    data = {k: v for k, v in data.items() if k in valid_fields}
+
     return UserProfile(**data)
 
 
@@ -119,20 +193,21 @@ def create_profile(
     """
     init_db()
     now = datetime.now(timezone.utc).isoformat()
-    from datetime import timedelta
     trial_start = now if status == "trial" else ""
     trial_end = (datetime.now(timezone.utc) + timedelta(days=14)).isoformat() if status == "trial" else ""
     profile = UserProfile(
         user_id=user_id,
         name=name,
         email=email,
-        delivery_prefs=delivery_prefs or {},
+        delivery_preferences=delivery_prefs or {},
         status=status,
         tier=tier,
         created_at=now,
         updated_at=now,
-        trial_start=trial_start,
-        trial_end=trial_end,
+        trial_started_at=trial_start,
+        trial_ends_at=trial_end,
+        trial_days=14,
+        preferences={},
     )
     with _connect() as conn:
         conn.execute(
@@ -143,13 +218,13 @@ def create_profile(
                 profile.user_id,
                 profile.name,
                 profile.email,
-                json.dumps(profile.delivery_prefs),
+                json.dumps(profile.delivery_preferences),
                 profile.status,
                 profile.tier,
                 profile.created_at,
                 profile.updated_at,
-                profile.trial_start,
-                profile.trial_end,
+                profile.trial_started_at,
+                profile.trial_ends_at,
             ),
         )
     return profile
@@ -172,6 +247,8 @@ def update_profile(
     delivery_prefs: dict[str, Any] | None = None,
     status: str | None = None,
     tier: str | None = None,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
 ) -> UserProfile | None:
     """Update fields on an existing user profile.
 
@@ -186,14 +263,25 @@ def update_profile(
     now = datetime.now(timezone.utc).isoformat()
     new_name = name if name is not None else existing.name
     new_email = email if email is not None else existing.email
-    new_prefs = delivery_prefs if delivery_prefs is not None else existing.delivery_prefs
+    new_prefs = delivery_prefs if delivery_prefs is not None else existing.delivery_preferences
     new_status = status if status is not None else existing.status
     new_tier = tier if tier is not None else existing.tier
+    new_stripe_customer = (
+        stripe_customer_id
+        if stripe_customer_id is not None
+        else existing.stripe_customer_id
+    )
+    new_stripe_subscription = (
+        stripe_subscription_id
+        if stripe_subscription_id is not None
+        else existing.stripe_subscription_id
+    )
 
     with _connect() as conn:
         conn.execute(
             """UPDATE user_profiles
-               SET name=?, email=?, delivery_prefs=?, status=?, tier=?, updated_at=?
+               SET name=?, email=?, delivery_prefs=?, status=?, tier=?,
+                   stripe_customer_id=?, stripe_subscription_id=?, updated_at=?
                WHERE user_id=?""",
             (
                 new_name,
@@ -201,6 +289,8 @@ def update_profile(
                 json.dumps(new_prefs),
                 new_status,
                 new_tier,
+                new_stripe_customer,
+                new_stripe_subscription,
                 now,
                 user_id,
             ),
@@ -231,6 +321,235 @@ def list_profiles() -> list[UserProfile]:
             "SELECT * FROM user_profiles ORDER BY created_at DESC"
         ).fetchall()
     return [_row_to_profile(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Stripe customer ID persistence (replaces volatile billing._user_stripe_map)
+# ---------------------------------------------------------------------------
+
+
+def set_stripe_customer_id(user_id: str, customer_id: str) -> None:
+    """Persist *customer_id* to the user profile in the DB.
+
+    Thin wrapper around :func:`update_profile` that only touches
+    ``stripe_customer_id``.  Thread-safe via SQLite transaction.
+
+    Raises :class:`ValueError` if *user_id* does not exist.
+    """
+    init_db()
+    result = update_profile(user_id=user_id, stripe_customer_id=customer_id)
+    if result is None:
+        raise ValueError(
+            f"Cannot set stripe_customer_id: user '{user_id}' not found"
+        )
+
+
+def get_stripe_customer_id(user_id: str) -> str | None:
+    """Retrieve the persisted ``stripe_customer_id`` from the DB.
+
+    Returns ``None`` if *user_id* does not exist or has no customer ID.
+    """
+    init_db()
+    profile = get_profile(user_id)
+    if profile is None:
+        return None
+    return profile.stripe_customer_id or None
+
+
+def list_stripe_customer_ids() -> dict[str, str]:
+    """Return all non-empty stripe_customer_id mappings from the DB.
+
+    Useful for backfilling the in-memory cache on startup.
+    """
+    init_db()
+    result: dict[str, str] = {}
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT user_id, stripe_customer_id FROM user_profiles "
+            "WHERE stripe_customer_id IS NOT NULL AND stripe_customer_id != ''"
+        ).fetchall()
+    for row in rows:
+        result[row["user_id"]] = row["stripe_customer_id"]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Trial management — Task 14
+# ---------------------------------------------------------------------------
+
+
+def activate_trial(
+    end_user_id: str,
+    days: int = 14,
+) -> dict[str, Any]:
+    """Activate or reset the trial period for an end user.
+
+    Sets ``trial_started_at`` to now and ``trial_days`` to the
+    requested duration.  Also moves the user to ``status="trial"``
+    when they are not currently ``active``.
+    """
+    init_db()
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": "NotFound",
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    trial_ends = (now_dt + timedelta(days=days)).isoformat()
+
+    new_status = profile.status
+    if profile.status != "active":
+        new_status = "trial"
+
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE user_profiles
+               SET trial_started_at=?, trial_days=?, trial_end=?,
+                   status=?, updated_at=?
+               WHERE user_id=?""",
+            (now, days, trial_ends, new_status, now, end_user_id),
+        )
+
+    try:
+        from autoinfo.audit import append_audit_log
+
+        append_audit_log(
+            actor="system",
+            action="activate_trial",
+            resource_type="user_profile",
+            resource_id=end_user_id,
+            details={"trial_days": days, "trial_started_at": now},
+        )
+    except Exception:
+        logger.warning(
+            "Failed to write audit log for trial activation '%s'",
+            end_user_id,
+            exc_info=True,
+        )
+
+    return {
+        "success": True,
+        "trial_started_at": now,
+        "trial_ends_at": trial_ends,
+        "trial_days": days,
+        "status": new_status,
+    }
+
+
+def check_trial_expiry(end_user_id: str) -> dict[str, Any]:
+    """Check the trial status for an end user.
+
+    Computes ``days_remaining`` from the user's ``trial_started_at``
+    and ``trial_days``.  Status is ``"expired"``, ``"active"``, or
+    ``"no_trial"``.
+    """
+    init_db()
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": "NotFound",
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    trial_started = profile.trial_started_at
+    trial_days = profile.trial_days
+
+    if not trial_started or trial_days <= 0:
+        return {
+            "days_remaining": 0,
+            "status": "no_trial",
+            "trial_started_at": trial_started,
+            "trial_days": trial_days,
+        }
+
+    try:
+        started_dt = datetime.fromisoformat(trial_started)
+        if started_dt.tzinfo is None:
+            started_dt = started_dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return {
+            "days_remaining": 0,
+            "status": "no_trial",
+            "trial_started_at": trial_started,
+            "trial_days": trial_days,
+        }
+
+    elapsed = datetime.now(timezone.utc) - started_dt
+    total_seconds = trial_days * 86400
+    remaining_seconds = int(total_seconds - elapsed.total_seconds())
+    days_remaining = max(0, remaining_seconds // 86400)
+
+    status = "expired" if days_remaining <= 0 else "active"
+
+    return {
+        "days_remaining": days_remaining,
+        "status": status,
+        "trial_started_at": trial_started,
+        "trial_days": trial_days,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Preferences management — Task 16
+# ---------------------------------------------------------------------------
+
+
+def update_preferences(
+    end_user_id: str,
+    preferences: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge *preferences* into the stored preferences for an end user.
+
+    Deep-merges on top of existing preferences so callers only need
+    to pass the keys they want to change (e.g. ``format``,
+    ``delivery_channel``, ``timezone``, ``max_items``).
+    """
+    init_db()
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": "NotFound",
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    existing = profile.preferences or {}
+    merged = {**existing, **preferences}
+
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE user_profiles SET preferences=?, updated_at=? WHERE user_id=?",
+            (json.dumps(merged), now, end_user_id),
+        )
+
+    return {
+        "success": True,
+        "user_id": end_user_id,
+        "preferences": merged,
+    }
+
+
+def get_preferences(end_user_id: str) -> dict[str, Any]:
+    """Return stored preferences for an end user."""
+    init_db()
+    profile = get_profile(end_user_id)
+    if profile is None:
+        return {
+            "error_code": "NotFound",
+            "message": f"End-user '{end_user_id}' not found",
+            "actionable": True,
+        }
+
+    return {
+        "user_id": end_user_id,
+        "preferences": profile.preferences or {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +693,8 @@ def transition_end_user(
         }
 
     now = datetime.now(timezone.utc).isoformat()
-    trial_start = profile.trial_start or ""
-    trial_end = profile.trial_end or ""
+    trial_start = profile.trial_started_at or ""
+    trial_end = profile.trial_ends_at or ""
 
     if old_status == "trial" and new_status == "active" and not trial_end:
         trial_end = now

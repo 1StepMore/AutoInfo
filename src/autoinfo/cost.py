@@ -374,6 +374,7 @@ class CostMeter:
         self,
         domain: str = "",
         period: str = "all",
+        thresholds: list[float] | None = None,
     ) -> dict[str, Any]:
         """Return aggregated cost report.
 
@@ -384,6 +385,10 @@ class CostMeter:
         period:
             Time period filter: ``"all"``, ``"today"``, ``"week"``,
             ``"month"``.  Defaults to ``"all"``.
+        thresholds:
+            Optional budget threshold list (percentages 0-100+).  When
+            provided, the report includes a ``threshold_status`` section
+            comparing ``total_cost`` against each threshold.
 
         Returns
         -------
@@ -393,7 +398,7 @@ class CostMeter:
             ``by_category`` (dict of meter_category → cost),
             ``llm_models`` (dict of model → tokens + cost),
             ``api_sources`` (dict of source_type → calls + cost),
-            ``log_count``, ``domain_filter``.
+            ``log_count``, ``domain_filter``, ``threshold_status`` (when *thresholds* is given).
         """
         clauses: list[str] = []
         params: list[Any] = []
@@ -493,7 +498,22 @@ class CostMeter:
                         "cost": r["cost"],
                     }
 
-        return {
+        # --- Threshold comparison (when thresholds provided) ---
+        threshold_status: list[dict[str, Any]] | None = None
+        if thresholds:
+            threshold_status = []
+            for t in sorted(thresholds):
+                pct = round(total_cost / t * 100, 2) if t > 0 else 0.0
+                breached = total_cost >= t
+                threshold_status.append({
+                    "threshold": t,
+                    "current_spend": round(total_cost, 8),
+                    "pct_used": pct,
+                    "breached": breached,
+                    "severity": "critical" if t >= 100 and breached else "warning" if breached else "ok",
+                })
+
+        result: dict[str, Any] = {
             "period": period,
             "domain": domain or "*",
             "total_cost": round(total_cost, 8),
@@ -504,6 +524,9 @@ class CostMeter:
             "log_count": log_count,
             "domain_filter": domain if domain else None,
         }
+        if threshold_status is not None:
+            result["threshold_status"] = threshold_status
+        return result
 
     def get_cost_allocation(
         self,
@@ -814,6 +837,230 @@ class CostMeter:
             "top_models": top_models,
             "top_sources": top_sources,
             "budget_status": budget_status,
+        }
+
+    # ------------------------------------------------------------------
+    # End-user usage & invoice (G16 — usage-based billing)
+    # ------------------------------------------------------------------
+
+    # Customer-facing unit pricing defaults (configurable)
+    _DEFAULT_UNIT_PRICES: dict[str, float] = {
+        "llm_units": 0.01,      # per 1000 tokens
+        "storage_mb": 0.10,     # per MB
+        "api_call_units": 0.005,  # per API call
+    }
+    """Default customer-facing unit prices."""
+
+    _STORAGE_MB_PER_ITEM: float = 0.05
+    """Estimated MB per stored KB item (used when bytes not available)."""
+
+    def get_enduser_usage(
+        self,
+        end_user_id: str,
+        period: str = "month",
+    ) -> dict[str, Any]:
+        """Return billable usage for an end-user over a period.
+
+        Queries the ``cost_log`` table filtered by *end_user_id* and *period*,
+        aggregates internal CostMeter units by meter type, and maps them to
+        customer-billable units:
+
+        - ``llm_tokens`` units (tokens) → ``llm_units``
+        - ``storage`` units (item count) → ``storage_mb`` (estimated)
+        - ``api_call`` units (call count) → ``api_call_units``
+
+        Parameters
+        ----------
+        end_user_id:
+            The end-user ID (maps to ``user_id`` in cost_log).
+        period:
+            Time period: ``"today"``, ``"week"``, ``"month"``, ``"all"``.
+            Defaults to ``"month"``.
+
+        Returns
+        -------
+        dict
+            Keys: ``end_user_id``, ``period``, ``llm_units``, ``storage_mb``,
+            ``api_call_units``, ``by_domain`` (list of per-domain breakdowns),
+            ``log_count``.
+        """
+        clauses: list[str] = ["user_id = ?"]
+        params: list[Any] = [end_user_id]
+
+        if period and period != "all":
+            if period == "today":
+                clauses.append("DATE(created_at) = DATE('now')")
+            elif period == "week":
+                clauses.append("created_at >= DATE('now', '-7 days')")
+            elif period == "month":
+                clauses.append("created_at >= DATE('now', '-30 days')")
+
+        where = " WHERE " + " AND ".join(clauses)
+
+        with self._connect() as conn:
+            # -- Breakdown by meter_type -----------------------------------
+            row = conn.execute(
+                f"SELECT COALESCE(SUM(estimated_cost), 0) AS total_cost,"
+                f"       COUNT(*) AS log_count"
+                f"  FROM cost_log{where}",
+                params,
+            ).fetchone()
+            total_estimated_cost = row["total_cost"] if row else 0.0
+            log_count = row["log_count"] if row else 0
+
+            rows = conn.execute(
+                f"SELECT meter_type, SUM(units) AS total_units"
+                f"  FROM cost_log{where}"
+                f"  GROUP BY meter_type",
+                params,
+            ).fetchall()
+
+        # Map meter_type → customer units
+        llm_units = 0.0
+        storage_mb = 0.0
+        api_call_units = 0.0
+
+        for r in rows:
+            mtype = r["meter_type"]
+            units = r["total_units"] or 0.0
+            if mtype == "llm_tokens":
+                llm_units = units
+            elif mtype == "storage":
+                storage_mb = round(units * self._STORAGE_MB_PER_ITEM, 4)
+            elif mtype == "api_call":
+                api_call_units = units
+
+        # -- By-domain breakdown -------------------------------------------
+        with self._connect() as conn:
+            domain_rows = conn.execute(
+                f"SELECT domain, meter_type, SUM(units) AS total_units"
+                f"  FROM cost_log{where}"
+                f"  GROUP BY domain, meter_type"
+                f"  ORDER BY domain, meter_type",
+                params,
+            ).fetchall()
+
+        by_domain: dict[str, dict[str, float]] = {}
+        for r in domain_rows:
+            dom = r["domain"] or "(unknown)"
+            mtype = r["meter_type"]
+            units = r["total_units"] or 0.0
+            if dom not in by_domain:
+                by_domain[dom] = {"llm_units": 0.0, "storage_mb": 0.0, "api_call_units": 0.0}
+            if mtype == "llm_tokens":
+                by_domain[dom]["llm_units"] = units
+            elif mtype == "storage":
+                by_domain[dom]["storage_mb"] = round(units * self._STORAGE_MB_PER_ITEM, 4)
+            elif mtype == "api_call":
+                by_domain[dom]["api_call_units"] = units
+
+        return {
+            "end_user_id": end_user_id,
+            "period": period,
+            "llm_units": llm_units,
+            "storage_mb": storage_mb,
+            "api_call_units": api_call_units,
+            "total_estimated_cost": round(total_estimated_cost, 8),
+            "by_domain": [
+                {"domain": d, **u} for d, u in sorted(by_domain.items())
+            ],
+            "log_count": log_count,
+            "unit_descriptions": {
+                "llm_units": "LLM processing units (total tokens processed)",
+                "storage_mb": "Storage units in MB (estimated from item count × "
+                              f"{self._STORAGE_MB_PER_ITEM} MB/item)",
+                "api_call_units": "API call units (number of external API calls)",
+            },
+        }
+
+    def get_enduser_invoice(
+        self,
+        end_user_id: str,
+        period: str = "month",
+    ) -> dict[str, Any]:
+        """Return an invoice-like summary with usage and estimated cost.
+
+        Uses :meth:`get_enduser_usage` to compute billable units, then applies
+        configurable unit pricing to generate an invoice.
+
+        Parameters
+        ----------
+        end_user_id:
+            The end-user ID.
+        period:
+            Time period: ``"today"``, ``"week"``, ``"month"``, ``"all"``.
+            Defaults to ``"month"``.
+
+        Returns
+        -------
+        dict
+            Keys: ``end_user_id``, ``period``, ``invoice_date``,
+            ``line_items`` (list with unit_type, quantity, unit_price, subtotal),
+            ``subtotal``, ``currency``, ``usage_summary``.
+        """
+        usage = self.get_enduser_usage(end_user_id=end_user_id, period=period)
+
+        prices = self._DEFAULT_UNIT_PRICES
+        line_items: list[dict[str, Any]] = []
+
+        # LLM units
+        llm_qty = usage["llm_units"]
+        llm_price = prices["llm_units"]
+        llm_subtotal = round(llm_qty * llm_price / 1000.0, 8)  # per-1k pricing
+        line_items.append({
+            "unit_type": "llm_units",
+            "description": "LLM processing units",
+            "quantity": llm_qty,
+            "unit": "tokens",
+            "unit_price": llm_price,
+            "unit_price_desc": f"${llm_price} per 1000 tokens",
+            "subtotal": llm_subtotal,
+        })
+
+        # Storage
+        storage_qty = usage["storage_mb"]
+        storage_price = prices["storage_mb"]
+        storage_subtotal = round(storage_qty * storage_price, 8)
+        line_items.append({
+            "unit_type": "storage_mb",
+            "description": "Storage units",
+            "quantity": storage_qty,
+            "unit": "MB",
+            "unit_price": storage_price,
+            "unit_price_desc": f"${storage_price} per MB",
+            "subtotal": storage_subtotal,
+        })
+
+        # API calls
+        api_qty = usage["api_call_units"]
+        api_price = prices["api_call_units"]
+        api_subtotal = round(api_qty * api_price, 8)
+        line_items.append({
+            "unit_type": "api_call_units",
+            "description": "API call units",
+            "quantity": api_qty,
+            "unit": "calls",
+            "unit_price": api_price,
+            "unit_price_desc": f"${api_price} per call",
+            "subtotal": api_subtotal,
+        })
+
+        subtotal = round(llm_subtotal + storage_subtotal + api_subtotal, 8)
+
+        return {
+            "end_user_id": end_user_id,
+            "period": period,
+            "invoice_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "currency": "USD",
+            "line_items": line_items,
+            "subtotal": subtotal,
+            "estimated_total": round(subtotal, 2),
+            "usage_summary": {
+                "llm_units": llm_qty,
+                "storage_mb": storage_qty,
+                "api_call_units": api_qty,
+            },
+            "details": usage,
         }
 
     def clear_logs(self, domain: str = "") -> int:

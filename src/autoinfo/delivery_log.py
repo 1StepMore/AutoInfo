@@ -337,6 +337,33 @@ def get_delivery_stats(
         conn.close()
 
 
+def list_active_deliveries(
+    db_path: Path | None = None,
+) -> list[DeliveryLog]:
+    """Return deliveries with active/pending status (``"retrying"``, ``"pending"``, ``"in_progress"``).
+
+    Parameters
+    ----------
+    db_path:
+        Path to the SQLite database.  Defaults to ``autoinfo.db`` in CWD.
+
+    Returns
+    -------
+    list[DeliveryLog]
+        Matching entries ordered by **last_attempt descending** (newest first).
+    """
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            """SELECT * FROM delivery_log
+               WHERE status IN ('retrying', 'pending', 'in_progress')
+               ORDER BY last_attempt DESC""",
+        ).fetchall()
+        return [_row_to_delivery_log(r) for r in rows]
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Convenience: ensure the table exists
 # ---------------------------------------------------------------------------

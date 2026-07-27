@@ -502,6 +502,28 @@ class SQLiteIndex:
         """
         return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)
 
+    def count_entries_by_tier(self, domain: str, tier: str) -> int:
+        """Return the number of entries in *domain* for *tier*.
+
+        Parameters
+        ----------
+        domain:
+            Domain to filter by.
+        tier:
+            Tier to count (e.g. ``"01-Raw"``, ``"02-Draft"``).
+
+        Returns
+        -------
+        int
+            Number of matching entries.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE domain=? AND tier=?",
+                (domain, tier),
+            ).fetchone()
+            return row[0] if row else 0
+
     def list_all_entries(
         self,
         domain: str | None = None,
@@ -3086,6 +3108,14 @@ class KBStore:
             Entries in the specified tier.
         """
         return self.index.list_entries_by_tier(domain, tier, limit, offset, user_id=user_id)
+
+    def count_entries_by_tier(self, domain: str, tier: str) -> int:
+        """Return entry count for *domain* and *tier*.
+
+        Delegates to the underlying index — uses ``SELECT COUNT(*)``
+        instead of fetching rows.
+        """
+        return self.index.count_entries_by_tier(domain, tier)
 
     # ------------------------------------------------------------------
     # Flag for KB inclusion

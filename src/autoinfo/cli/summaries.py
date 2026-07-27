@@ -75,7 +75,7 @@ def list_(
 @app.command()
 def flag(
     entry_id: str = typer.Argument(..., help="Entry ID to flag for KB inclusion"),
-    tag = typer.Option(
+    tag: list[str] = typer.Option(
         [], "--tag", help="Tags to apply (can be repeated)"
     ),
     importance: int = typer.Option(

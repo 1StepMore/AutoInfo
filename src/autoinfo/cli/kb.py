@@ -66,12 +66,12 @@ def reindex(
 
 @app.command(name="create-draft")
 def create_draft(
-    raw_ids = typer.Option(
+    raw_ids: list[str] = typer.Option(
         ..., "--raw-id", help="Raw entry ID(s) to compile into a Draft (repeatable)"
     ),
     title: str = typer.Option(..., "--title", help="Title for the new Draft entry"),
     summary: str = typer.Option("", "--summary", help="Optional summary text"),
-    tags = typer.Option(
+    tags: list[str] = typer.Option(
         [], "--tag", help="Optional tag (repeatable)"
     ),
 ) -> None:
@@ -121,9 +121,7 @@ def list_tiers(
     tiers = ["01-Raw", "02-Draft", "03-Wiki"]
     tier_info = []
     for tier in tiers:
-        entries = store.list_kb_tier(
-            domain=domain, tier=tier, limit=0, offset=0
-        )
+        entry_count = store.count_entries_by_tier(domain=domain, tier=tier)
         tier_info.append({
             "tier": tier,
             "description": {
@@ -131,7 +129,7 @@ def list_tiers(
                 "02-Draft": "Agent-created drafts from Raw entries",
                 "03-Wiki": "Human-promoted, reviewed entries (append-only)",
             }.get(tier, ""),
-            "entry_count": len(entries),
+            "entry_count": entry_count,
         })
 
     if json_output:

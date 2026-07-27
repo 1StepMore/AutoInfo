@@ -21,7 +21,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **REST API** — Full CRUD over HTTP (FastAPI, port 8741), no auth (localhost security)
 - **Web UI Dashboard** — Bootstrap 5, collection stats, KB search, source health overview
 - **CEFR classification** — LLM-based EN/ZH/JA reading level scoring for language learning
-- **Output formats** — Markdown, JSON, PDF, **HTML**, **RSS 2.0** (digest/report via Jinja2, presentation via Reveal.js CDN)
+- **Output formats** — Markdown, JSON, PDF, **HTML** (digest/report via Jinja2 + LLM, presentation via Reveal.js CDN)
 - **Translation QA pipeline** — 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails, composite quality scoring
 - **Email sending** — SMTP-based digest delivery (manual and cron-scheduled)
 - **Webhook push** — Per-item webhook notification on collected content
@@ -40,17 +40,17 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 79 MCP tools. Agent operates, human directs.
+- **Agent-native** — 114 MCP tools across 32 categories. Agent operates, human directs.
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 5 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning). Any field with paying customers.
-- **Subscription-ready** — F30 (billing, feature gating, usage metering) defined and deferred to v2+
+- **Subscription-ready** — Stripe integration with webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, and usage metering
 
 ## Status
 
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 22 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, enduser, portal, trace) |
+| CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
@@ -60,15 +60,17 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
 | Output generation | ✅ Digest, report (Markdown/JSON/PDF/HTML), tutorial, presentation (Jinja2 + LLM, Reveal.js CDN) |
+| Agent-native JSON | 🔜 `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) — spec defined, impl pending |
+| Audio output | 🔜 TTS-rendered digest/report as MP3 — spec defined, impl pending |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 79 tools across 19 categories |
+| MCP server | ✅ 114 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
-| Agent alerting | ✅ Polling-based source health monitoring documented (agent-alerting.md) |
+| Agent alerting | ✅ Config-based alert rules with YAML persistence, check & dispatch via DeliveryChannel |
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
@@ -83,7 +85,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Cost allocation | ✅ Pro-rata, usage-based, and direct allocation strategies. |
 | Cost dashboard | ✅ CLI + MCP dashboard with daily trends, top models, top sources. |
 | Budget alerts | ✅ Threshold-based alerts with auto-remediation actions. |
-| Source ToS compliance | ✅ Source classification tiers, per-tier output controls, attribution. |
+| Source ToS compliance | ✅ Source classification (Open/Licensed/Restricted/Sensitive) with per-tier output controls, G1 compliance gate, D2 delivery gate, and attribution templates |
 | Data deletion & retention | ✅ Soft-delete, restore, GDPR export, 30-day auto-cleanup, tier-based retention. |
 | Per-domain TTL | ✅ Configurable freshness per domain: medical 180d, AI 30d, financial 7d, general 90d. |
 | Versioned re-collection | ✅ Version tracking with structured diff between versions. |
@@ -96,7 +98,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 1405 tests (1 collection error pre-existing) |
+| Test suite | ✅ 1549 tests (1 collection error pre-existing) |
 
 ## Quick Start
 
@@ -147,10 +149,10 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (79 tools)
+         └── MCP server (114 tools)
 ```
 
-## CLI Commands (22 groups)
+## CLI Commands (23 groups)
 
 ```bash
 autoinfo init --name <project>      # Initialize project
@@ -173,41 +175,48 @@ autoinfo keywords add|remove|list   # Keyword management
 autoinfo knowledge graph            # Knowledge graph export
 autoinfo clean                       # Clean temporary artifacts
 autoinfo cost dashboard|allocation  # Cost tracking & allocation
+autoinfo billing summary|usage|invoice  # Billing & usage overview
 autoinfo enduser create|get|update|delete|list  # End-user profile management
 autoinfo portal preferences|history # End-user self-service portal
 autoinfo trace <trace_id>           # Per-item pipeline trace
 ```
 
-## MCP Tools (79)
+## MCP Tools (114)
 
 | Category | Tools |
 |----------|-------|
 | **System** | health_check, diagnose_system, get_config, list_available_models |
 | **Discovery** | list_domains, list_available_platforms, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Domain** | add_domain, remove_domain |
-| **Source** | add_source, add_sources, remove_source, test_source, list_sources, get_source_health |
+| **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health |
 | **Topic** | add_topic, remove_topic, list_topics, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
-| **Collection** | collect_sources, get_collection_progress, get_collection_status, process_collection, get_processing_progress, batch_run |
-| **KB** | search_knowledge_base (hybrid), get_kb_entry, list_summaries, get_summary, create_kb_draft, reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base, vector_search, faceted_search |
+| **Collection** | collect_sources (with dry_run), get_collection_progress, get_collection_status, process_collection (with batch), get_processing_progress, batch_run |
+| **KB** | search_knowledge_base (hybrid: FTS5+vector, paginated), get_kb_entry, list_summaries, get_summary, create_kb_draft (from Raw only), reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
 | **KB Relations** | link_items, get_item_relations |
 | **KB Versioning** | get_entry_history, restore_entry_version |
 | **KB Monitor** | get_collection_stats, get_collection_diff |
 | **KB Graph** | query_knowledge_graph |
 | **Output** | list_output_templates, generate_digest, generate_report (Markdown/JSON/PDF/HTML), generate_tutorial, generate_presentation, localize_content |
 | **Export/Import** | export_kb, import_kb |
-| **CEFR** | classify_cefr |
+| **CEFR** | classify_cefr (EN/ZH/JA LLM-based classification) |
 | **Keywords** | approve_keyword, reject_keyword, suggest_keywords |
 | **Email** | send_email_digest |
-| **Q&A** | query_collected |
+| **Q&A** | query_collected (FTS5 + LLM synthesis with source citations) |
 | **Custom Extraction** | extract_fields, get_extraction |
-| **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules |
+| **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules, get_schedule_status |
 | **Source Health** | get_source_health, rate_item |
 | **Projects** | init_project, list_projects, get_project_assets, archive_project |
-| **Monitor** | list_active_collections |
+| **Monitor** | list_active_collections, list_active_deliveries |
 | **Webhooks** | set_domain_webhooks, get_domain_webhooks |
 | **Quality Gate Config** | get_gate_config, set_gate_config |
 | **Product** | list_products, get_product |
 | **Alert Rules** | add_alert_rule, get_alert_rules, remove_alert_rule |
+| **End User** | send_to_enduser, get_enduser_history, get_enduser_products, query_delivery_log, get_delivery_log, activate_trial, check_trial_expiry, update_preferences, get_preferences, get_subscription_status |
+| **Cost** | get_billing_summary, get_budget_thresholds, set_budget_thresholds, create_checkout_session, get_enduser_usage, get_enduser_invoice |
+| **Data Privacy** | soft_delete_entry, restore_entry, export_user_data, delete_user_data |
+| **Knowledge Lifecycle** | compare_versions, find_similar_items, merge_items, get_domain_decay, mark_stale, calculate_freshness_score |
+| **Observability** | trace_item, get_metrics, get_prometheus_metrics, diagnose_system |
+| **Agent Callbacks** | set_agent_callback, list_agent_callbacks, remove_agent_callback |
 
 ## Demo Domains
 
@@ -235,8 +244,10 @@ AutoInfo v1.6 adds **end-to-end commercial delivery** (end user profiles, multi-
 |---------|--------|-------|
 | Config override system (~/.autoinfo/overrides/) | 📋 Planned | Per-project config layering |
 | Multi-user / collaboration (auth, teams) | 📋 Planned | user_id fields in place; full auth v2 |
+| Subscription-ready billing (G14-G16) | ✅ Implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
 
 > See `docs/dev/founder-expectations.md` §14 for the full deferred-items catalog.
+> Full consumer-facing gap analysis: `docs/dev/consumer-output-gaps.md` (10 gaps, 5 dimensions).
 
 ## License
 

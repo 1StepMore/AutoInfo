@@ -17,7 +17,7 @@ AutoInfo has three distinct user roles. This document is for the first one:
 | Role | Description | Interface | Example |
 |------|-------------|-----------|---------|
 | **Director User** (人类指挥者) | **You.** Gives high-level intent in natural language. Never touches AutoInfo directly. The agent is your interface. | Natural language conversation with the agent | "帮我追踪本周辅助生殖领域的重要论文，按创新程度排序，出一份简报" |
-| **Direct User** (Agent / 直接执行者) | The AI agent that executes commands. Translates your NL into MCP tool calls, runs collection pipelines, generates output, reports results. | MCP tools (79 tools, 19 categories). CLI is fallback. | Calling `collect_sources()`, `generate_digest()`, `search_knowledge_base()` |
+| **Direct User** (Agent / 直接执行者) | The AI agent that executes commands. Translates your NL into MCP tool calls, runs collection pipelines, generates output, reports results. | MCP tools (114 tools, 32 categories). CLI is fallback. | Calling `collect_sources()`, `generate_digest()`, `search_knowledge_base()` |
 | **End User** (最终用户 / 付费客户) | The paying customer who consumes the knowledge products you produce. They receive digests, reports, data feeds. You never talk to them through AutoInfo -- the system delivers to them. | Email digests, Telegram messages, WeChat pushes, API feeds | A pharmaceutical company receiving "IVF Research Weekly" via email |
 
 See `docs/dev/founder-expectations.md` SS1.3 for the full role specification.
@@ -68,7 +68,7 @@ The flow is always the same:
 
 ### What the Agent Can Do (In Brief)
 
-The agent has 79 MCP tools organized into 19 categories. Everything AutoInfo can do, the agent can do on your behalf:
+The agent has 114 MCP tools organized into 32 categories. Everything AutoInfo can do, the agent can do on your behalf:
 
 - Configure domains, sources, and topics
 - Run collection and processing pipelines
@@ -315,7 +315,7 @@ You can then:
 - **Reject**: Tell the agent "Reject #3, needs more sources" -- agent calls `reject_kb_draft()`
 - **Request changes**: Tell the agent "Expand the summary on #2 before promotion"
 
-See `docs/dev/founder-expectations.md` F20 for the full KB pipeline spec.
+See `docs/dev/specs/expectations.md` F20 and `docs/dev/specs/pipeline.md` for the full KB pipeline spec.
 
 ### 5.2 Permanent Deletion / Purge
 
@@ -332,7 +332,7 @@ But only you can:
 - Run `delete_user_data(user_id, scope)` -- GDPR compliance deletion
 - Approve auto-cleanup of expired entries older than 30 days
 
-See `docs/dev/founder-expectations.md` F47.
+See `docs/dev/specs/expectations.md` F47.
 
 ### 5.3 Remove Sources or Domains
 
@@ -380,7 +380,7 @@ The `custom_instructions` parameter is available on these MCP tools:
 | `generate_presentation` | Controls slide content emphasis, narrative arc |
 | `localize_content` | Specifies tone, formality level, regional variants |
 
-See `docs/dev/founder-expectations.md` F29.
+See `docs/dev/specs/expectations.md` F29 and `docs/dev/specs/delivery.md`.
 
 ### Examples
 
@@ -746,11 +746,11 @@ These are not interruptions. The agent presents them as observations and asks fo
 ## References
 
 - `AGENTS.md` -- Agent operating model, MCP tool catalog, common patterns
-- `docs/dev/founder-expectations.md` SS1.3 -- Three user types definition
-- `docs/dev/founder-expectations.md` F20 -- KB pipeline and human-only promotion
-- `docs/dev/founder-expectations.md` F29 -- PROCESSED product generation and custom instructions
-- `docs/dev/founder-expectations.md` F40 -- End user portal, agent override constraints
-- `docs/dev/founder-expectations.md` F47 -- Data deletion and human-only purge
-- `docs/dev/founder-expectations.md` F53 -- Cross-collection merge trust boundary
+- `docs/dev/founder-expectations.md` §1.3 -- Three user types definition (stayed in index)
+- `docs/dev/specs/expectations.md` F20 -- KB pipeline and human-only promotion
+- `docs/dev/specs/expectations.md` F29 -- PROCESSED product generation and custom instructions
+- `docs/dev/specs/expectations.md` F40 -- End user portal, agent override constraints
+- `docs/dev/specs/expectations.md` F47 -- Data deletion and human-only purge
+- `docs/dev/specs/expectations.md` F53 -- Cross-collection merge trust boundary
 - `docs/dev/agent-alerting.md` -- Source health monitoring and escalation pattern
 - `docs/skills/autoinfo-skill/SKILL.md` -- Agent's operating skill (for reference; this is for the agent, not for you)

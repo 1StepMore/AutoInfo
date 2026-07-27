@@ -1,4 +1,4 @@
-.PHONY: install dev-install test lint clean
+.PHONY: install dev-install test lint clean stripe-mock
 
 install:
 	pip install -e .
@@ -23,3 +23,6 @@ clean:
 	rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .ruff_cache/ .mypy_cache/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
+
+stripe-mock:
+	docker compose up -d stripe-mock

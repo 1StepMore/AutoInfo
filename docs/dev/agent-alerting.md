@@ -1,5 +1,11 @@
 # Agent Proactive Alerting
 
+> **Note**: As of v1.6, AutoInfo also supports **config-based alert rules** via `alerts.py`
+> (`add_alert_rule`/`get_alert_rule`/`remove_alert_rule` MCP tools) with threshold-based triggers
+> and auto-remediation actions. The polling pattern below remains valid for source health checks;
+> for cost/budget/knowledge-lifecycle alerts, prefer the config-based rule system.
+> See `docs/dev/specs/operations.md` for cost alert rules.
+
 ## Pattern
 
 Agents should proactively monitor source health by polling `get_source_health()`

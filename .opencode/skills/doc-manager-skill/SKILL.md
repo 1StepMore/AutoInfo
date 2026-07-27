@@ -50,9 +50,20 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 
 ### 1.4 Developer Docs (architecture and specification)
 
+> All spec content was extracted from `docs/dev/founder-expectations.md` (2108 lines pre-split) into standalone spec files under `docs/dev/specs/` on 2026-07-26. See `founder-expectations-pre-split.md` for the exact pre-split backup. The current `founder-expectations.md` is a **446-line simplified index** with stubs + cross-references. The dedicated spec files below are the source truth for each topic.
+
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
-| `docs/dev/founder-expectations.md` | Full project specification: 32 expectations, 13 technical decisions, design principles, 3 user types, deferred items catalog | 🔴 P0 — spec | Every architecture/feature change |
+| `docs/dev/founder-expectations.md` | **Index document** (446 lines) — §1-2 kept, §10-14 kept, all other sections → stubs → spec files. Full backup: `founder-expectations-pre-split.md` (2108 lines). | 🔴 P0 — spec anchor | When high-level scope/status changes |
+| `docs/dev/specs/expectations.md` | **Expectation Catalog — F01 to F57** (873 lines). All 57 expectations across 12 phases with UX Detail tables and status markers. | 🔴 P0 — extracted spec | When expectations/status change |
+| `docs/dev/specs/quality-gates.md` | G0-G5 quality gates, D1-D3 delivery gates: gate catalog, philosophy, retry strategies, configuration model, testing strategy | 🔴 P0 — extracted spec | When quality gate logic changes |
+| `docs/dev/specs/pipeline.md` | Collection pipeline, KB pipeline (4-tier), LLM config, processing & LLM extraction, import pipeline, CEFR, cross-collection dedup & merge, performance targets | 🔴 P0 — extracted spec | When pipeline logic changes |
+| `docs/dev/specs/delivery.md` | Output generation, delivery channels (10-channel matrix), error recovery & resilience, end user lifecycle (UserProfile/Subscription/DeliveryLog) | 🔴 P0 — extracted spec | When delivery/end-user logic changes |
+| `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
+| `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
+| `docs/dev/specs/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec | When reality/gap status changes |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (114 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
 
@@ -97,20 +108,20 @@ When you modify each code module below, the listed documentation files **must** 
 | Any CLI file | `AGENTS.md` | CLI command references in patterns, operating model |
 | Any CLI file | `CHANGELOG.md` | Add entry under current version |
 | New CLI group | `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md` | Add scenarios for new command group |
-| CLI flag changes | `README.md`, `docs/dev/founder-expectations.md` | Update flag examples |
+| CLI flag changes | `README.md` | Update flag examples |
 
 ### 2.2 MCP Server (`src/autoinfo/mcp/`)
-
-| Submodule | Docs to Update | What to Update |
-|-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 79) |
-| `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
-| `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
-| `server.py` — new tool | `CHANGELOG.md` | Add entry |
-| `server.py` — new tool | `docs/autoinfo-validation-master-plan-v2/` parts 03/04 | Add validation scenarios |
-| `server.py` — tool param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
-| `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Add error code to boundary matrix |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Update "79 tools" / "72 tools" references |
+ 
+ | Submodule | Docs to Update | What to Update |
+ |-----------|---------------|----------------|
+ | `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 87) |
+ | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
+ | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
+ | `server.py` — new tool | `CHANGELOG.md` | Add entry |
+ | `server.py` — new tool | `docs/dev/specs/mcp-tools.md` | Add tool to inventory table |
+ | `server.py` — new param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
+ | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Add error code to boundary matrix |
+ | Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "87 tools" / "26 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -118,10 +129,10 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | KB tier logic | `AGENTS.md` | Architecture Rules (KB Pipeline) |
 | KB tier logic | `docs/dev/kb-pipeline-reference.md` | Pipeline design details |
-| KB tier logic | `docs/dev/founder-expectations.md` | KB pipeline expectations |
+| KB tier logic | `docs/dev/specs/pipeline.md` | KB pipeline section |
 | KB tier logic | `README.md` | Status table (KB pipeline row) |
-| KB entry schema | `docs/dev/founder-expectations.md` | Entry field specifications |
-| KB search/index | `README.md`, `AGENTS.md` | Search features description |
+| KB entry schema | `docs/dev/specs/data-models.md` | KB entry schema |
+| KB search/index | `README.md`, `AGENTS.md`, `docs/dev/specs/pipeline.md` | Search features description |
 
 ### 2.4 REST API (`src/autoinfo/api/`)
 
@@ -141,7 +152,7 @@ When you modify each code module below, the listed documentation files **must** 
 | New collector type | `README.md` | Feature list (multi-source collection), demo domains table |
 | New collector type | `CHANGELOG.md` | Add entry |
 | New collector type | `docs/autoinfo-validation-master-plan-v2/part-01-core-pipeline.md` | Add collection scenarios |
-| Collector config change | `docs/dev/founder-expectations.md` | Collection pipeline expectations |
+| Collector config change | `docs/dev/specs/pipeline.md` | Collection pipeline specification |
 | Demo source change | `README.md` | Demo Domains table (sources per domain) |
 
 ### 2.6 LLM Extraction (`src/autoinfo/llm.py`)
@@ -149,7 +160,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
 | Extraction fields | `AGENTS.md` | Common patterns (extraction, domain schema) |
-| Extraction fields | `docs/dev/founder-expectations.md` | LLM extraction expectations |
+| Extraction fields | `docs/dev/specs/pipeline.md` | LLM extraction specification |
 | Model/provider config | `AGENTS.md` | LLM Configuration section |
 | Model/provider config | `README.md` | Quick Start (LLM key), LLM Configuration info |
 | Extraction behavior | `README.md` | Status table (LLM extraction row) |
@@ -170,7 +181,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Gate logic change | `AGENTS.md` | Quality Gates table (advisory, not blocking) |
 | Gate logic change | `README.md` | Quality gates feature description |
 | Gate logic change | `docs/autoinfo-validation-master-plan-v2/part-05-quality-gates.md` | Update scenarios |
-| New gate | `docs/dev/founder-expectations.md` | Quality expectations |
+| New gate | `docs/dev/specs/quality-gates.md` | Quality gate specification |
 | New gate | `CHANGELOG.md` | Add entry |
 
 ### 2.9 Translation QA (`src/autoinfo/translation_qa.py`)
@@ -178,7 +189,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
 | Pipeline logic | `translator-qa-skill/SKILL.md` | Update workflow steps, thresholds, code examples |
-| Pipeline logic | `docs/dev/founder-expectations.md` | Localization/translation expectations |
+| Pipeline logic | `docs/dev/specs/pipeline.md` | Processing/extraction specification |
 | Score calculation | `translator-qa-skill/SKILL.md` | Update score example, weights |
 | New feature | `CHANGELOG.md` | Add entry |
 
@@ -187,7 +198,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
 | Loader logic | `translator-qa-skill/SKILL.md` | Update terminology loading example |
-| Format change | `docs/dev/founder-expectations.md` | Terminology expectations |
+| Format change | `docs/dev/specs/pipeline.md` | Terminology/custom extraction specification |
 
 ### 2.11 CEFR (`src/autoinfo/cefr.py`)
 
@@ -245,7 +256,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | Version bump in `pyproject.toml` | `README.md` | Version references in Known Limitations |
 | Version bump in `pyproject.toml` | `CHANGELOG.md` | Add version header and notes |
-| Version bump in `pyproject.toml` | `docs/dev/founder-expectations.md` | Version references, gantt chart, status tables |
+| Version bump in `pyproject.toml` | `docs/dev/specs/expectations.md` (status markers), `docs/dev/specs/reality-assessment.md` (gantt chart/metrics), `docs/dev/founder-expectations.md` (top-level index status table) | Version references, gantt chart, status tables |
 | Any release prep | All P0 docs | Comprehensive review of all docs for accuracy |
 
 ### 2.18 Alerts (`src/autoinfo/alerts.py`)
@@ -288,7 +299,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 17 groups, update descriptions
-- MCP Tools table → verify tool count (currently 79), update categories/tools
+- MCP Tools table → verify tool count (currently 114), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -347,12 +358,12 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 79 |
-| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 19 |
-| CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 17 |
-| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1421 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 114 |
+| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 32 |
+| CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
+| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1549 |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
-| Demo domains count | `README.md`, `AGENTS.md` | 3 |
+| Demo domains count | `README.md`, `AGENTS.md` | 5 |
 
 After any change that affects these numbers, update EVERY location they appear.
 
@@ -428,7 +439,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 79), category count if new category
+**Quantities to bump**: MCP tool count (currently 114), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -446,7 +457,7 @@ CHANGELOG.md → "Added: MCP tool 'xxx'"
 
 **Docs to update**: `README.md` (CLI table, feature list), `AGENTS.md` (CLI references), `CHANGELOG.md`, `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md`
 
-**Quantities to bump**: CLI command group count (currently 17)
+**Quantities to bump**: CLI command group count (currently 22)
 
 **Verify**:
 ```
@@ -460,7 +471,7 @@ Validation plan part-02 → new scenarios cover new command group
 
 **When**: You modify `src/autoinfo/kb.py`, changing how the 4-tier pipeline works.
 
-**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/dev/kb-pipeline-reference.md`, `docs/dev/founder-expectations.md`, `README.md` (Status table), `CHANGELOG.md`
+**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/dev/kb-pipeline-reference.md`, `docs/dev/specs/pipeline.md`, `README.md` (Status table), `CHANGELOG.md`
 
 **Critical**: The KB pipeline rules (01-Raw is sole entry point, agent cannot write to 03-Wiki, 03-Wiki is append-only) are **hard architecture constraints**. If these rules change, the update is a breaking change and must be clearly communicated in ALL docs.
 
@@ -468,7 +479,7 @@ Validation plan part-02 → new scenarios cover new command group
 ```
 AGENTS.md Architecture Rules → KB Pipeline table matches new behavior
 kb-pipeline-reference.md → pipeline diagram and rules updated
-founder-expectations.md → expectations reflect new pipeline
+pipeline.md spec → pipeline behavior reflects new design
 ```
 
 ### Scenario D: Version release
@@ -482,7 +493,7 @@ founder-expectations.md → expectations reflect new pipeline
 - [ ] `CHANGELOG.md` — new version header with all changes documented
 - [ ] `README.md` — Known Limitations version references, feature list updated
 - [ ] `AGENTS.md` — Status table, tool counts, CLI counts verified
-- [ ] `docs/dev/founder-expectations.md` — gantt chart, version references, status tables
+- [ ] `docs/dev/founder-expectations.md` (index §11), `docs/dev/specs/expectations.md` (status markers), `docs/dev/specs/reality-assessment.md` (gantt chart, metrics) — version references, gantt chart, status tables
 - [ ] Cross-doc consistency verified
 - [ ] All MCP/CLI tool counts match actual code inventory
 
@@ -506,7 +517,7 @@ Terms that appear across docs and must be used consistently:
 
 | Term | Definition | Used In |
 |------|-----------|---------|
-| KB pipeline (4-tier) | 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki | AGENTS.md, kb-pipeline-reference.md, founder-expectations.md |
+| KB pipeline (4-tier) | 4-tier KB pipeline: 01-Raw → 02-Draft → 03-Wiki (00-Inbox deprecated) | AGENTS.md, kb-pipeline-reference.md, docs/dev/specs/pipeline.md |
 | G1-G5 | Quality gates: Source authority, Dedup, Relevance, Factual, Translation | AGENTS.md, README.md, quality.md |
 | P0/P1/P2 | Priority levels used in status tables | README.md, AGENTS.md |
 | 01-Raw | Sole entry point for all collected content | All KB-related docs |

@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (79 tools across 19 categories)
+2. **All capabilities** are exposed as MCP tools (114 tools across 32 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -58,8 +58,24 @@ AutoInfo/
 ├── .gitignore
 ├── docs/
 │   ├── dev/
-│   │   ├── founder-expectations.md # Full spec (35 expectations, 13 tech decisions)
-│   │   └── kb-pipeline-reference.md  # KB pipeline reference model
+│   │   ├── founder-expectations.md # Index doc (simplified; full content in specs/)
+│   │   ├── specs/                  # Extracted spec files (2026-07-26 restructuring)
+│   │   │   ├── expectations.md     # F01-F57 expectation catalog (57 expectations, 12 phases)
+│   │   │   ├── quality-gates.md    # G0-G5, D1-D3 gate catalog & configuration + testing strategy
+│   │   │   ├── pipeline.md         # Collection pipeline, KB pipeline, LLM config, extraction, search, performance targets
+│   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
+│   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
+│   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
+│   │   │   ├── reality-assessment.md # Value propositions, current reality, gap metrics
+│   │   │   ├── mcp-tools.md        # 114 MCP tools across 32 categories
+│   │   │   ├── data-models.md      # Consolidated data model schemas
+│   │   │   ├── consumer-output-gaps.md  # Consumer-facing output gap analysis (10 gaps, 5 dimensions)
+│   │   │   └── implementation-gaps.md   # Feature-level implementation gap audit (27 items)
+│   │   ├── archive/                  # Archived/historical docs
+│   │   ├── kb-pipeline-reference.md  # KB pipeline reference model (archived)
+│   │   ├── director-user-guide.md    # Human-Agent interaction lifecycle
+│   │   ├── consumer-output-gaps.md   # Consumer-facing output gap analysis (new 2026-07-26)
+│   │   └── implementation-gaps.md    # Feature-level gap audit (new 2026-07-26)
 │   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
 │       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
 │       └── translator-qa-skill/    # Translation QA workflow
@@ -67,8 +83,8 @@ AutoInfo/
 │   └── skills/                     # Coding agent skills (for developing AutoInfo)
 ├── src/
 │   └── autoinfo/
-│       ├── cli/                     # 22 CLI command groups
-│       ├── mcp/                     # MCP server (79 tools)
+│       ├── cli/                     # 23 CLI command groups
+│       ├── mcp/                     # MCP server (114 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
@@ -161,36 +177,42 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-80+ MCP tools organized by category:
+114 MCP tools across 32 categories:
 
 | Category | Key Tools |
 |----------|-----------|
 | **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models` |
 | **Discovery** | `list_domains`, `list_available_platforms`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
 | **Domain** | `add_domain`, `remove_domain` |
-| **Source** | `add_source`, `add_sources`, `remove_source`, `test_source`, `list_sources`, `get_source_health` |
+| **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health` |
 | **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
-| **Collection** | `collect_sources`, `get_collection_progress`, `get_collection_status`, `process_collection`, `get_processing_progress`, `batch_run` |
+| **Collection** | `collect_sources` (with dry_run), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch), `get_processing_progress`, `batch_run` |
 | **KB** | `search_knowledge_base` (hybrid/mode=vector/mode=faceted), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
 | **KB Relations** | `link_items`, `get_item_relations` |
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
 | **KB Graph** | `query_knowledge_graph` |
-| **Output** | `list_output_templates`, `generate_digest`, `generate_report`, `generate_tutorial`, `generate_presentation`, `localize_content` |
+| **Output** | `list_output_templates`, `generate_digest` (format=md/html/json), `generate_report` (format=md/json), `generate_tutorial` (format=md), `generate_presentation` (format=md), `localize_content` |
 | **Export/Import** | `export_kb`, `import_kb` |
 | **CEFR** | `classify_cefr` |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
 | **Email** | `send_email_digest` |
 | **Q&A** | `query_collected` |
 | **Custom Extraction** | `extract_fields`, `get_extraction` |
-| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules` |
+| **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `get_schedule_status` |
 | **Source Health** | `get_source_health`, `rate_item` |
 | **Projects** | `init_project`, `list_projects`, `get_project_assets`, `archive_project` |
-| **Monitor** | `list_active_collections` |
+| **Monitor** | `list_active_collections`, `list_active_deliveries` |
 | **Webhooks** | `set_domain_webhooks`, `get_domain_webhooks` |
 | **Quality Gate Config** | `get_gate_config`, `set_gate_config` |
 | **Product** | `list_products`, `get_product` |
 | **Alert Rules** | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
+| **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
+| **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice` |
+| **Data Privacy** | `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` |
+| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score` |
+| **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
+| **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 
 **Discovery flow**:
 1. Call `health_check()` first to verify server is alive and get version info
@@ -287,11 +309,33 @@ freshness at output time.
 
 ### "Manage keywords for a domain"
 ```
-1. `list_keywords(domain="medical-research")` → view current keywords
-2. `manage_keyword(domain="medical-research", action="add", keyword="CRISPR")` → add new keyword
-3. `manage_keyword(domain="medical-research", action="remove", keyword="obsolete-term")` → remove keyword
+1. `list_keywords(domain="medical-research")` → view current keywords and pending candidates
+2. `suggest_keywords(domain="medical-research", topic="IVF breakthroughs")` → LLM suggests new keyword candidates
+3. `approve_keyword(keyword_id="kw_123")` → accept a suggested keyword into the active set
+4. `reject_keyword(keyword_id="kw_456")` → reject a suggested or obsolete keyword
 ```
-→ Keywords updated for source filtering and topic matching.
+→ Keywords curated for source filtering and topic matching. Use the CLI (`autoinfo keywords add|remove|list`) for direct add/remove outside the suggest-then-approve workflow.
+
+### "Generate agent-native JSON output"
+```
+1. `generate_digest(domain="medical-research", period="week", format="agent")` → returns structured JSON-LD optimized for LLM re-consumption
+```
+→ Returns `{"@type": "KnowledgeDigest", "entries": [{uuid, title, tl_dr, source_url, confidence_score, entities, key_points}], "trends": [...], "metadata": {entry_count, quality_gates}}`. Agent can re-synthesize, cache, or combine with other data.
+
+### "Subscribe to agent push delivery"
+```
+1. `set_agent_callback(url="https://my-agent.example.com/callback", events=["new_digest", "new_report"])` → register callback
+2. AutoInfo pushes structured JSON when a matching product is generated
+3. Agent receives `{callback_event: "new_digest", product: {...}}` via HTTP POST
+```
+→ Agent subscription pattern: register once, receive pushes without polling. *(requires AutoInfo ≥ v1.7)*
+
+### "Generate and deliver a digest email"  
+```
+1. `generate_digest(domain="medical-research", period="week", format="html")` → digest HTML
+2. `send_email_digest(domain="medical-research", period="week", recipients=["user@example.com"])` → sends via SMTP
+```
+→ Digest generated as HTML and emailed to subscribers.
 
 ### "Use the REST API"
 ```
@@ -349,7 +393,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 22 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, enduser, portal, trace) |
+| CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
 | Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
@@ -358,12 +402,14 @@ Collection and processing now return a `job_id` for progress polling:
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest, report (Markdown/JSON/PDF/HTML), tutorial, presentation (Jinja2 + LLM, Reveal.js CDN) |
+| Output generation | ✅ Digest, report (Markdown/JSON/PDF/HTML), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
+| Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
+| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 79 tools across 19 categories |
+| MCP server | ✅ 114 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -395,9 +441,12 @@ Collection and processing now return a `job_id` for progress polling:
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 1405 tests (1 collection error pre-existing) |
+| Test suite | ✅ 1549 tests (1 collection error pre-existing) |
 
 ## References
 
-- `docs/dev/founder-expectations.md` — Full specification (57 expectations, 13 technical decisions)
-- `docs/dev/kb-pipeline-reference.md` — Reference KB pipeline model
+- `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
+- `docs/dev/specs/` — Extracted spec files (9 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, reality-assessment.md, mcp-tools.md, data-models.md)
+- `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
+- `docs/dev/consumer-output-gaps.md` — Consumer-facing output gap analysis (10 gaps, 5 dimensions)
+- `docs/dev/implementation-gaps.md` — Feature-level implementation gap audit (27 items)

@@ -2,6 +2,80 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.6.3 (2026-07-27)
+
+### Added
+- **Stripe webhook REST endpoint** — `POST /api/v1/webhook/stripe` FastAPI route with signature verification via `stripe.Webhook.construct_event()`. Dispatches to `billing.py:handle_webhook()` for `checkout.session.completed`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_failed` events. Webhook secret configurable via env var and `.autoinfo/config.yaml`. stripe-mock dev setup added via Docker Compose.
+- **G3 LLM-based relevance scoring** — Upgraded from lexical keyword overlap to LLM-based scoring (0-100) following G4's proven retry pattern. Includes 3× retry with escalating context on LLM failure, fallback to lexical scoring. Configurable model and threshold per domain.
+- **G5 full 5-gate translation QA pipeline** — Integrated 4 deterministic gates (terminology compliance, grammar check, format check, completeness check) as pre-checks, with LLM faithfulness as composite final gate. Configurable weights per gate.
+- **`list_active_deliveries` + `get_delivery_log` MCP tools** — New Delivery Monitor category. `list_active_deliveries` returns in-flight deliveries with status/retry info; `get_delivery_log` returns per-subscription delivery history with SLA compliance metrics.
+- **`get_billing_summary` MCP tool + `autoinfo billing` CLI** — New Cost category tool and CLI group. `get_billing_summary(domain, period)` returns total spend, per-model/itemized costs, and budget status. CLI: `autoinfo billing summary|usage|invoice`.
+- **Web portal read-only dashboard MVP** — Read-only dashboard at `/portal/` with preferences, delivery history, and product archive views. Built with FastAPI + Jinja2 (Bootstrap 5, consistent with existing dashboard).
+- **Webhook HMAC signing + REST API Authorization header** — Webhook payloads now HMAC-signed with configurable secret. REST API accepts `Authorization: Bearer <token>` header (configurable via `api.auth_token` in config).
+- **D1 operator notification via Alert Rules** — D1 gate now triggers Alert Rules dispatch (email/webhook) on delivery failure, notifying operator with item_id, failure reason, and retry status.
+- **D2 PDF validation via PyMuPDF** — D2 gate validates PDF output files with PyMuPDF: checks page count, file size, and rendering integrity before delivery.
+- **G2 configurable time window** — G2 dedup gate now accepts `time_window_hours` parameter (default 720h/30 days). URL-based exact dedup always-on; fuzzy title dedup uses time window as secondary filter.
+- **`target_audience` MCP parameter plumbing** — `target_audience` parameter added to `generate_digest` and `generate_report` MCP tool schemas (backend already supported it).
+- **Adapter unit tests** — 9 delivery adapter unit tests + `deliver_with_retry` test covering all 6 channels (Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord) plus SMTP, webhook, and export.
+- **Persistent user-store** — `_user_stripe_map` upgraded from volatile dict to SQLite-backed persistent storage with migration path.
+
+### Changed
+- **MCP tool inventory**: Expanded from 109 tools across 26 categories to **114 tools across 32 categories**. 5 new categories: End User (10 tools), Cost (6 tools), Data Privacy (4 tools), Knowledge Lifecycle (6 tools), Observability (4 tools), Agent Callbacks (3 tools). Added `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`. See README for full listing.
+- **README.md**: MCP tool count 109→114, categories 26→32, test count 1429→1549, CLI groups 22→23 (billing added). MCP tools table rewritten to match 32 categories. Architecture diagram updated. Stripe webhook "pending" note removed.
+- **AGENTS.md**: MCP tool count 109→114, categories 26→32, test count 1429→1549, CLI groups 22→23. Tool Discovery table expanded to 32 categories. Status table updated.
+- **docs/dev/specs/mcp-tools.md**: Header updated from "91 tools across 26 categories" to "114 tools across 32 categories". All 32 categories and their tools listed. Phantom tools removed.
+- **Test suite expanded**: 1429 → 1549 tests (+120 new tests covering Stripe webhook, G3 scoring, G5 pipeline, adapter tests, web portal, billing CLI).
+
+### Fixed
+- **mcp-tools.md tool count mismatch**: Oracle F1 audit revealed doc header said "111 tools" but actual was 114. Fixed: header corrected to "114 tools across 32 categories", 18 phantom entries removed, `list_active_deliveries` added.
+- **test_mcp_full.py tool count assertion**: Assertion `== 111` updated to `== 114` to match actual tool count.
+
+### Infrastructure
+- `src/autoinfo/api/server.py`: Added Stripe webhook route (`POST /api/v1/webhook/stripe`) with signature verification.
+- `src/autoinfo/billing.py`: Persistent `_user_stripe_map` (SQLite-backed), fixed silent failure in `_sync_user_stripe_id()`.
+- `src/autoinfo/quality.py`: G3 upgraded to LLM-based scoring with retry. G5 full 5-gate QA pipeline. G2 `time_window_hours` parameter. D1 operator notification via Alert Rules. D2 PDF validation.
+- `src/autoinfo/translation_qa.py`: Full 5-gate pipeline with composite scoring.
+- `src/autoinfo/delivery.py`, `src/autoinfo/delivery_log.py`: `list_active_deliveries` and `get_delivery_log` implementations.
+- `src/autoinfo/mcp/server.py`: 3 new tools — `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`. `target_audience` parameter added to digest/report tools. HMAC signing for webhooks.
+- `src/autoinfo/cli/billing.py`: New CLI command group for billing.
+- `src/autoinfo/api/portal.py`: New module — web portal read-only dashboard (4 routes, 6 Jinja2 templates).
+- `tests/`: 120 new tests across Stripe, G3, G5, adapters, portal, billing.
+
+## v1.6.2 (2026-07-26)
+
+### Fixed
+- **F52 — Runtime crash in `KBStore.get_domain_decay()`**: Implemented the missing method — `KBStore` called `get_domain_decay()` from CLI and MCP but the method did not exist, causing `AttributeError` on every invocation. Now returns 6-field decay report (staleness_ratio, avg_ttl_remaining_days, collection_freshness_days, decay_grade GREEN/YELLOW/RED, total_entries, stale_count, fresh_entries, suggestions). Reuses existing `calculate_freshness_score()` and `get_active_entries()`.
+- **F46 — Source ToS compliance gaps**: README claimed ✅ but zero implementation existed.
+  - Added `tos_classification` field (`open`/`licensed`/`restricted`/`sensitive`) to `SourceConfig` dataclass with auto-mapping from `quality_tier`
+  - Extended G1 quality gate with `G1TosCompliance` — checks source tier vs `tos_classification` consistency, flags restricted/sensitive sources with compliance warning
+  - Extended D2 delivery gate to block RAW delivery (API/webhook/export) for restricted/sensitive sources; PROCESSED delivery (digest/report) allowed with compliance notice
+  - Added `_build_attribution_footer()` to output generation — digest/report/export include "Source: {name} ({url}) — {tos_classification}" attribution
+  - Updated CLI `domain show` and MCP `get_domain_config` to display `tos_classification`
+- **F45 — Budget thresholds from config instead of hardcoded**: `evaluate_budget_alerts()` now reads thresholds from `config.yaml` via `CostAlertsConfig` dataclass instead of hardcoded `[50.0, 75.0, 90.0, 100.0]`. Added `get_budget_thresholds` and `set_budget_thresholds` MCP tools for runtime configuration.
+- **F20 — Missing `reindex_kb` MCP tool**: `KBStore.reindex_knowledge_base()` existed but no MCP tool was registered. Now registered with 3-part pattern (Tool declaration, handler, dispatch branch).
+- **F53 — Missing `find_similar_items` MCP tool**: `find_similar_items()` existed in `quality.py` but no MCP tool was registered. Now registered with text similarity search (threshold/limit params).
+- **F51 — Stale content not wired into search or digest**: `mark_stale()` existed but consumers ignored it.
+  - Search: `search_knowledge_base()` now applies freshness weight (20%) to relevance score. Stale entries demoted. Added `include_stale` param (default: False) and `freshness_score`/`is_stale` fields to results.
+  - Digest: `generate_digest()` now filters out stale entries by default. Added `include_stale` param. Logs count of excluded entries.
+- **F11 — Fuzzy title dedup**: G2 gate (and `DedupChecker`) extended with `difflib.SequenceMatcher` comparison at 0.85 threshold after exact URL/PMID/DOI matching. Short-title guard (<20 chars) skips fuzzy match to prevent false positives.
+- **F49 — Demo domain TTL defaults not set**: `activate_domain()` now applies per-domain defaults: medical-research 180d, ai-commercial 30d, financial-intelligence 7d, tech-ai-developer 90d, language-learning 365d.
+- **F12 — Missing `job_id` param on progress MCP schemas**: `get_collection_progress` and `get_processing_progress` MCP tool schemas now expose optional `job_id` string property (internal handlers already supported it).
+
+### Changed
+- **README.md**: MCP tool count 87→91, test count 1405→1429, added new tools to MCP table (reindex_kb, find_similar_items, get_budget_thresholds, set_budget_thresholds). Source ToS compliance description updated with G1/D2/attribution details.
+- **AGENTS.md**: MCP tool count 79→91 across 26 categories, test count 1405→1429, KB category now includes `find_similar_items`, new Budget category with `get_budget_thresholds`/`set_budget_thresholds`, reindex_kb already listed under KB.
+- **expectations.md**: Status markers corrected for F07b/F33/F41/F44/F46/F49/F50/F52 — 6 upgraded ✅, 2 downgraded ❌ (F46/F52).
+- Version bumped from `1.6.0` to `1.6.2`
+
+### Infrastructure
+- `src/autoinfo/kb.py`: Added `KBStore.get_domain_decay()` (6-field decay report). Modified `search_knowledge_base()` with freshness demotion and `include_stale` param.
+- `src/autoinfo/config.py`: Added `tos_classification` to SourceConfig, `CostAlertsConfig` dataclass, per-domain TTL defaults.
+- `src/autoinfo/quality.py`: Extended G1 with `G1TosCompliance` gate. Extended D2FormatIntegrity with ToS delivery blocking. Extended G2Dedup with fuzzy title matching.
+- `src/autoinfo/output.py`: Added `_build_attribution_footer()`, stale exclusion in `generate_digest()`.
+- `src/autoinfo/alerts.py`: `evaluate_budget_alerts()` reads from `CostAlertsConfig` instead of hardcoded thresholds.
+- `src/autoinfo/dedup.py`: Extended DedupChecker with `_fuzzy_title_match()` using SequenceMatcher.
+- `src/autoinfo/mcp/server.py`: 4 new tools — `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`. job_id param added to progress schemas.
+
 ## v1.6.1 (2026-07-25)
 
 ### Fixed

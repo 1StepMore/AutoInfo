@@ -147,7 +147,7 @@ All CLI commands support these **global flags**:
 | MCP tools tested | 8/72 (11%) | 115/115 (100%) | 📝 Parts 3-4 |
 | KB tiers tested | 1/4 (01-Raw only) | 4/4 (Inbox→Raw→Draft→Wiki) | 📝 Part 6 |
 | Quality gates tested | 3/5 (G1-G3) | 5/5 (G1-G5) | 📝 Part 5 |
-| Search modes tested | 1 (summaries list) | 6 (FTS5, vector, hybrid, faceted, Q&A, graph) | 📝 Part 6 |
+| Search modes tested | 1 (summaries list) | FTS5 (currently only FTS5 implemented; vector/hybrid/faceted/Q&A/graph planned) | 📝 Part 6 |
 | REST API | 0% | 100% (all endpoints) | 📝 Part 7 |
 | Web UI | 0% | 100% (dashboard) | 📝 Part 7 |
 | Output formats | 0% | 100% (digest/report/tutorial/presentation/export/localize) | 📝 Part 4 |

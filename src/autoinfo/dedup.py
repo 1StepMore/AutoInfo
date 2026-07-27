@@ -1,11 +1,12 @@
 """Deduplication checker for the collection pipeline.
 
 Provides the :class:`DedupChecker` which detects duplicate items by URL
-exact match and then by PMID/DOI identifiers.
+exact match, PMID/DOI identifiers, and fuzzy title matching.
 """
 
 from __future__ import annotations
 
+import difflib
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class DedupChecker:
-    """Detect duplicate items using URL + PMID/DOI matching.
+    """Detect duplicate items using URL + PMID/DOI + fuzzy title matching.
 
     Priority:
         1. URL exact match (comparing ``item.source_url``)
         2. PMID/DOI match (if the item has raw_data with these identifiers)
+        3. Fuzzy title match (SequenceMatcher, threshold 0.85)
 
     Usage::
 
@@ -80,6 +82,12 @@ class DedupChecker:
     ) -> dict[str, Any]:
         """Check *item* against a list of existing KB entries for duplicates.
 
+        Matches are attempted in order:
+            1. Exact URL match
+            2. PMID match (from ``item.raw_data``)
+            3. DOI match (from ``item.raw_data``)
+            4. Fuzzy title match (SequenceMatcher, threshold 0.85)
+
         Args:
             item: The freshly collected item to check.
             existing_entries: Previously stored KB entries to compare against.
@@ -124,6 +132,30 @@ class DedupChecker:
                     "matched_by": "doi",
                     "existing_id": entry.entry_id,
                 }
+
+        # -- 3. Fuzzy title match ----------------------------------------
+        item_title = (item.title or "").strip().lower()
+        if item_title:
+            for entry in existing_entries:
+                entry_title = (entry.title or "").strip().lower()
+                if entry_title:
+                    similarity = difflib.SequenceMatcher(
+                        None, item_title, entry_title
+                    ).ratio()
+                    if similarity >= 0.85:
+                        logger.info(
+                            "DedupChecker: duplicate detected (fuzzy title: %.2f) - "
+                            "new='%s' matched existing='%s' (%s)",
+                            similarity,
+                            item_title,
+                            entry_title,
+                            entry.entry_id,
+                        )
+                        return {
+                            "is_duplicate": True,
+                            "matched_by": "fuzzy_title",
+                            "existing_id": entry.entry_id,
+                        }
 
         return {
             "is_duplicate": False,

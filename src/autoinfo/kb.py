@@ -80,12 +80,14 @@ def calculate_freshness_score(entry: dict[str, Any], ttl_days: int = 90) -> floa
     if not created_at:
         return 1.0
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         created = datetime.fromisoformat(created_at)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return 1.0
-    age_days = (datetime.now() - created).days
+    age_days = (datetime.now(timezone.utc) - created).days
     if age_days >= ttl_days:
         return 0.0
     freshness = 1.0 - (age_days / ttl_days)
@@ -935,6 +937,174 @@ class SQLiteIndex:
             "comment": version.get("comment", ""),
         }
 
+    def compare_versions(
+        self, entry_id: str, version_a: str, version_b: str
+    ) -> dict[str, Any]:
+        """Compare two versions of a KB entry and return a structured diff.
+
+        Reads the ``.bak`` files for two versions, parses their YAML
+        frontmatter, and produces a field-by-field comparison.
+
+        Parameters
+        ----------
+        entry_id:
+            The KB entry ID whose versions to compare.
+        version_a:
+            Version identifier (version_id like ``entry_abc--v1`` or
+            version number as a string like ``"1"``).
+        version_b:
+            Same format as *version_a*.
+
+        Returns
+        -------
+        dict
+            ``{entry_id, version_a, version_b, field_diffs, summary,
+            changed_fields_count}``.  *field_diffs* is a list of
+            ``{field, old_value, new_value}`` dicts.
+
+            If a version cannot be found the result contains an ``error``
+            key and empty diffs.
+        """
+        self._ensure_versioning_table()
+
+        def _resolve_version_id(version_ref: str) -> str | None:
+            """Resolve a version reference to a full version_id."""
+            # Already a full version_id (e.g. "entry_abc--v2")
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT * FROM entry_versions WHERE version_id = ? AND entry_id = ?",
+                    (version_ref, entry_id),
+                ).fetchone()
+                if row is not None:
+                    return version_ref
+                # Try as version_num
+                try:
+                    ver_num = int(version_ref)
+                except ValueError:
+                    return None
+                row = conn.execute(
+                    "SELECT * FROM entry_versions WHERE version_num = ? AND entry_id = ?",
+                    (ver_num, entry_id),
+                ).fetchone()
+                if row is not None:
+                    return dict(row)["version_id"]
+                return None
+
+        va_id = _resolve_version_id(version_a)
+        vb_id = _resolve_version_id(version_b)
+
+        if va_id is None:
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Version '{version_a}' not found for entry '{entry_id}'",
+                "changed_fields_count": 0,
+            }
+        if vb_id is None:
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Version '{version_b}' not found for entry '{entry_id}'",
+                "changed_fields_count": 0,
+            }
+
+        with self._connect() as conn:
+            va_row = conn.execute(
+                "SELECT * FROM entry_versions WHERE version_id = ?",
+                (va_id,),
+            ).fetchone()
+            vb_row = conn.execute(
+                "SELECT * FROM entry_versions WHERE version_id = ?",
+                (vb_id,),
+            ).fetchone()
+
+        if va_row is None:
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Version '{version_a}' not found",
+                "changed_fields_count": 0,
+            }
+        if vb_row is None:
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Version '{version_b}' not found",
+                "changed_fields_count": 0,
+            }
+
+        va_path = Path(dict(va_row)["file_path"])
+        vb_path = Path(dict(vb_row)["file_path"])
+
+        if not va_path.is_file():
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Backup file not found for version '{version_a}': {va_path}",
+                "changed_fields_count": 0,
+            }
+        if not vb_path.is_file():
+            return {
+                "entry_id": entry_id,
+                "version_a": version_a,
+                "version_b": version_b,
+                "field_diffs": [],
+                "summary": f"Backup file not found for version '{version_b}': {vb_path}",
+                "changed_fields_count": 0,
+            }
+
+        text_a = va_path.read_text(encoding="utf-8")
+        text_b = vb_path.read_text(encoding="utf-8")
+        fm_a = _parse_frontmatter(text_a)
+        fm_b = _parse_frontmatter(text_b)
+
+        field_diffs: list[dict[str, Any]] = []
+        all_keys: set[str] = set(fm_a.keys()) | set(fm_b.keys())
+
+        def _serialize(val: Any) -> Any:
+            """Make values JSON-safe for diff output."""
+            if isinstance(val, (list, dict)):
+                return val
+            if isinstance(val, (str, int, float, bool, type(None))):
+                return val
+            return str(val)
+
+        for key in sorted(all_keys):
+            old_val = _serialize(fm_a.get(key))
+            new_val = _serialize(fm_b.get(key))
+            if old_val != new_val:
+                field_diffs.append({
+                    "field": key,
+                    "old_value": old_val,
+                    "new_value": new_val,
+                })
+
+        summary = (
+            f"Compared {version_a} (v{dict(va_row)['version_num']}, "
+            f"{dict(va_row)['created_at']}) with {version_b} "
+            f"(v{dict(vb_row)['version_num']}, {dict(vb_row)['created_at']}): "
+            f"{len(field_diffs)} field(s) changed"
+        )
+
+        return {
+            "entry_id": entry_id,
+            "version_a": version_a,
+            "version_b": version_b,
+            "field_diffs": field_diffs,
+            "summary": summary,
+            "changed_fields_count": len(field_diffs),
+        }
+
     def count_entries_today(self, domain: str | None = None) -> int:
         """Return the number of entries collected today, optionally filtered by domain."""
         today = date.today().isoformat()  # "YYYY-MM-DD"
@@ -1272,7 +1442,8 @@ class SQLiteIndex:
 
                 rows = conn.execute(
                     f"""SELECT e.entry_id, e.title, e.summary, e.relevance_score,
-                               e.file_path, e.domain, f.rank
+                               e.file_path, e.domain, e.collected_at,
+                               e.created_at, f.rank
                         FROM entries_fts5 f
                         JOIN entries e ON e.rowid = f.rowid
                         WHERE {where_clause}
@@ -2275,6 +2446,17 @@ class KBStore:
         """Restore an entry from a saved version backup."""
         return self.index.restore_entry_version(version_id=version_id)
 
+    def compare_versions(
+        self, entry_id: str, version_a: str, version_b: str
+    ) -> dict[str, Any]:
+        """Compare two versions of a KB entry and return a structured diff.
+
+        See :meth:`SQLiteIndex.compare_versions` for details.
+        """
+        return self.index.compare_versions(
+            entry_id=entry_id, version_a=version_a, version_b=version_b
+        )
+
     # ------------------------------------------------------------------
     # Collection stats / diff
     # ------------------------------------------------------------------
@@ -3129,6 +3311,7 @@ class KBStore:
         filter_content_type: str | None = None,
         filter_language: str | None = None,
         filter_user_id: str | None = None,
+        include_stale: bool = False,
     ) -> dict[str, Any]:
         """Search the knowledge base.
 
@@ -3163,14 +3346,19 @@ class KBStore:
         filter_user_id:
             Only entries with this exact ``user_id``.
             ``None`` means no filter (returns all).
+        include_stale:
+            If ``False`` (default), stale entries are demoted to the
+            bottom of search results.  If ``True``, stale entries are
+            mixed normally with fresh entries.
 
         Returns
         -------
         dict
             ``{query, domain, entries, total_count, limit, offset, method}``.
+            Each entry includes ``freshness_score`` and ``is_stale`` fields.
             Falls back to LIKE search if FTS5 syntax is invalid.
         """
-        return self.index.search_fts5(
+        results = self.index.search_fts5(
             query=query,
             domain=domain,
             limit=limit,
@@ -3185,6 +3373,47 @@ class KBStore:
             filter_language=filter_language,
             filter_user_id=filter_user_id,
         )
+
+        # Resolve domain-specific TTL and freshness threshold from config.
+        ttl_days = 90
+        freshness_threshold = 0.5
+        if domain:
+            try:
+                from autoinfo.config import get_config_path, load_config
+                config_path = get_config_path()
+                if config_path:
+                    cfg = load_config(config_path)
+                    for dc in cfg.domains:
+                        if dc.name == domain:
+                            ttl_days = dc.ttl_days
+                            freshness_threshold = dc.freshness_threshold
+                            break
+            except Exception:
+                pass
+
+        entries = results.get("entries", [])
+        scored_entries: list[dict[str, Any]] = []
+        for entry in entries:
+            freshness_score = calculate_freshness_score(entry, ttl_days)
+            is_stale = freshness_score < freshness_threshold
+            relevance_score = entry.get("relevance_score", 0.5) or 0.5
+            combined_score = relevance_score * 0.8 + freshness_score * 0.2
+            entry["freshness_score"] = round(freshness_score, 4)
+            entry["is_stale"] = is_stale
+            entry["combined_score"] = round(combined_score, 4)
+            scored_entries.append(entry)
+
+        # Demote stale entries when include_stale is False (default).
+        _sort_key = lambda e: (e["is_stale"], -e["combined_score"])
+        if include_stale:
+            _sort_key = lambda e: -e["combined_score"]
+        scored_entries.sort(key=_sort_key)
+
+        for e in scored_entries:
+            e.pop("combined_score", None)
+
+        results["entries"] = scored_entries
+        return results
 
     # ------------------------------------------------------------------
     # Wiki links (Obsidian-style [[links]])
@@ -3550,6 +3779,94 @@ class KBStore:
             "user_id": user_id,
         }
 
+    def get_domain_decay(self, domain: str, ttl_days: int = 90) -> dict[str, Any]:
+        """Compute decay / staleness metrics for a domain.
+
+        Analyses all entries for *domain* and returns:
+        - staleness_ratio (fraction of entries past TTL)
+        - avg_ttl_remaining_days (TTL * (1 - staleness_ratio))
+        - collection_freshness_days (days since most recent collection)
+        - decay_grade (GREEN / YELLOW / RED based on ratio thresholds)
+        - total_entries, stale_count, fresh_entries
+        - suggestions based on decay grade
+        """
+        all_entries = self.index.list_entries(domain, limit=10000)
+        if not all_entries:
+            return {
+                "staleness_ratio": 0.0,
+                "avg_ttl_remaining_days": float(ttl_days),
+                "collection_freshness_days": 0,
+                "decay_grade": "GREEN",
+                "total_entries": 0,
+                "stale_count": 0,
+                "fresh_entries": 0,
+                "suggestions": ["No entries found for domain"],
+            }
+
+        total_entries = len(all_entries)
+        stale_count = 0
+        latest_collected: str | None = None
+
+        now = datetime.now(timezone.utc)
+        for entry in all_entries:
+            if entry.get("deleted"):
+                continue
+            created_at = entry.get("collected_at") or entry.get("created_at") or ""
+            if created_at:
+                try:
+                    created_dt = datetime.fromisoformat(created_at)
+                    age_days = (now - created_dt).days
+                    is_stale = age_days >= ttl_days
+                except (ValueError, TypeError):
+                    is_stale = False
+            else:
+                is_stale = False
+            if is_stale:
+                stale_count += 1
+
+            if created_at and (latest_collected is None or created_at > latest_collected):
+                latest_collected = created_at
+
+        fresh_entries = total_entries - stale_count
+        staleness_ratio = stale_count / total_entries if total_entries > 0 else 0.0
+
+        if latest_collected:
+            try:
+                latest_dt = datetime.fromisoformat(latest_collected)
+                collection_freshness_days = (datetime.now(timezone.utc) - latest_dt).days
+            except (ValueError, TypeError):
+                collection_freshness_days = 0
+        else:
+            collection_freshness_days = 0
+
+        if staleness_ratio > 0.5:
+            decay_grade = "RED"
+        elif staleness_ratio > 0.2:
+            decay_grade = "YELLOW"
+        else:
+            decay_grade = "GREEN"
+
+        avg_ttl_remaining_days = round(ttl_days * (1.0 - staleness_ratio), 1)
+
+        suggestions: list[str] = []
+        if decay_grade == "RED":
+            suggestions.append("Consider reducing TTL or re-collecting domain")
+        elif decay_grade == "YELLOW":
+            suggestions.append("Monitor domain freshness")
+        else:
+            suggestions.append("Domain is healthy")
+
+        return {
+            "staleness_ratio": staleness_ratio,
+            "avg_ttl_remaining_days": avg_ttl_remaining_days,
+            "collection_freshness_days": collection_freshness_days,
+            "decay_grade": decay_grade,
+            "total_entries": total_entries,
+            "stale_count": stale_count,
+            "fresh_entries": fresh_entries,
+            "suggestions": suggestions,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers — frontmatter / body building
@@ -3593,12 +3910,23 @@ def _build_frontmatter(
 
     # Include quality gate flags in frontmatter for transparency
     flags: dict[str, bool] = dict(entry.quality_flags)
+    tos_compliant: bool | None = None
+    tos_classification: str | None = None
     if quality_results:
         # quality_results overrides entry.quality_flags when provided
         for gname, gresult in quality_results.items():
             flags[gname] = gresult.flagged
+        # Extract ToS compliance metadata from G1-TosCompliance gate
+        g1tos = quality_results.get("G1-TosCompliance")
+        if g1tos is not None:
+            tos_compliant = bool(g1tos.details.get("tos_compliant"))
+            tos_classification = str(g1tos.details.get("source_tos", "")) or None
     if flags:
         data["quality_flags"] = flags
+    if tos_compliant is not None:
+        data["tos_compliant"] = tos_compliant
+    if tos_classification is not None:
+        data["tos_classification"] = tos_classification
 
     # Include custom extracted fields in frontmatter
     if extraction and extraction.custom_fields:

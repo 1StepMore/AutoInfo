@@ -13,6 +13,7 @@ requested via the ``--check-translation`` flag.
 
 from __future__ import annotations
 
+import difflib
 import html.parser
 import json
 import logging
@@ -268,6 +269,183 @@ class G1SourceAuthority:
 
 
 # ---------------------------------------------------------------------------
+# G1-ToS — Terms-of-Service Compliance (F46)
+# ---------------------------------------------------------------------------
+
+
+class G1TosCompliance:
+    """Check source ToS compliance classification against its quality tier.
+
+    Uses the ``tos_classification`` field on ``SourceConfig`` (one of
+    ``"open"``, ``"licensed"``, ``"restricted"``, ``"sensitive"``) and
+    verifies it is consistent with the source's ``quality_tier``.
+
+    When the source is classified as ``"restricted"`` or ``"sensitive"``,
+    a compliance warning is raised.  This gate is **advisory only** —
+    it never blocks or fails items unless explicitly configured to
+    ``"block"``.
+
+    Tier–ToS mapping (authoritative):
+        - Tier 1 → ``"open"``
+        - Tier 2 → ``"licensed"``
+        - Tier 3 → ``"restricted"``
+        - Tier 4 → ``"sensitive"``
+    """
+
+    # ------------------------------------------------------------------
+    # Tier → ToS classification mapping (mirrors config.py)
+    # ------------------------------------------------------------------
+
+    _TIER_TOS_MAP: dict[int, str] = {
+        1: "open",
+        2: "licensed",
+        3: "restricted",
+        4: "sensitive",
+    }
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def check(
+        self,
+        item: Item,
+        source_config: dict[str, Any] | None = None,
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
+        """Check source ToS compliance for *item*.
+
+        Parameters
+        ----------
+        item:
+            The collected item to check.
+        source_config:
+            Optional source configuration dict.  If provided,
+            ``tos_classification`` and ``quality_tier`` are read from
+            *source_config*; otherwise they are derived from
+            ``item.quality_tier`` via the tier→ToS mapping.
+        gate_config:
+            Optional gate configuration.  The *action* field controls
+            what the caller should do:
+
+            - ``"flag"`` (default): compliance warning is raised but
+              item still passes.
+            - ``"skip"``: item is returned as ``passed=False`` with
+              ``action="skip"`` in details.
+            - ``"block"``: item is returned as ``passed=False`` with
+              ``action="block"`` in details.
+
+            When *gate_config* is ``None``, the default action ``"flag"``
+            is used (backward compatible).
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when ToS is compliant (``"open"`` or
+            ``"licensed"``) or when no source_config is available.
+
+            When ``tos_classification`` is ``"restricted"`` or
+            ``"sensitive"``, ``flagged=True`` and ``details["compliance_warning"]``
+            is set.  ``details["tos_compliant"]`` is ``True`` only for
+            ``"open"`` and ``"licensed"`` sources.
+        """
+        action = gate_config.action if gate_config else "flag"
+
+        # Resolve tos_classification and tier from source_config or item
+        if source_config is not None:
+            tos_classification = source_config.get("tos_classification", "open")
+            tier = source_config.get("quality_tier", item.quality_tier)
+        else:
+            # Derive from item tier using the canonical mapping
+            tier = item.quality_tier
+            tos_classification = self._TIER_TOS_MAP.get(tier, "open")
+
+        # Normalise
+        tos_classification = str(tos_classification).strip().lower()
+        tier = int(tier)
+
+        # Compute expected ToS from tier for consistency check
+        expected_tos = self._TIER_TOS_MAP.get(tier, "open")
+        tier_tos_consistent = tos_classification == expected_tos
+
+        # Determine compliance status
+        tos_compliant = tos_classification in ("open", "licensed")
+
+        if tos_compliant:
+            return QualityResult(
+                gate_name="G1-TosCompliance",
+                passed=True,
+                score=1.0,
+                flagged=False,
+                details={
+                    "source_tos": tos_classification,
+                    "quality_tier": tier,
+                    "tos_compliant": True,
+                    "tier_tos_consistent": tier_tos_consistent,
+                    "action": action,
+                },
+            )
+
+        # Non-compliant (restricted or sensitive)
+        compliance_warning = (
+            f"Source ToS classification is '{tos_classification}' — "
+            "content may have usage restrictions"
+        )
+
+        if action == "skip":
+            return QualityResult(
+                gate_name="G1-TosCompliance",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "source_tos": tos_classification,
+                    "quality_tier": tier,
+                    "tos_compliant": False,
+                    "tier_tos_consistent": tier_tos_consistent,
+                    "compliance_warning": compliance_warning,
+                    "action": action,
+                },
+            )
+
+        if action == "block":
+            return QualityResult(
+                gate_name="G1-TosCompliance",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "source_tos": tos_classification,
+                    "quality_tier": tier,
+                    "tos_compliant": False,
+                    "tier_tos_consistent": tier_tos_consistent,
+                    "compliance_warning": compliance_warning,
+                    "action": action,
+                    "error": (
+                        f"ToS compliance check blocked: source classified as "
+                        f"'{tos_classification}' (tier {tier})"
+                    ),
+                },
+            )
+
+        # Default: flag (advisory)
+        return QualityResult(
+            gate_name="G1-TosCompliance",
+            passed=True,
+            score=0.0,
+            flagged=True,
+            details={
+                "source_tos": tos_classification,
+                "quality_tier": tier,
+                "tos_compliant": False,
+                "tier_tos_consistent": tier_tos_consistent,
+                "compliance_warning": compliance_warning,
+                "action": action,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
 # G2 — Dedup
 # ---------------------------------------------------------------------------
 
@@ -276,10 +454,22 @@ class G2Dedup:
     """Checks whether an item is a duplicate of an existing KB entry.
 
     Matches are attempted in order:
-        1. Exact URL match
-        2. PMID match (from ``item.raw_data``)
-        3. DOI match (from ``item.raw_data``)
+        1. Exact URL match (always-on, no time window)
+        2. PMID match (always-on, no time window)
+        3. DOI match (always-on, no time window)
+        4. Fuzzy title match (respects ``window_days`` time window)
+
+    Parameters
+    ----------
+    window_days:
+        Time window in days for fuzzy title dedup.  Entries older than this
+        many days relative to the item's ``collected_at`` are skipped during
+        fuzzy title matching.  ``0`` or ``None`` means no window limit
+        (backward compatible).  Default is 30.
     """
+
+    def __init__(self, window_days: int = 30) -> None:
+        self.window_days = window_days
 
     def check(
         self,
@@ -306,6 +496,10 @@ class G2Dedup:
             When *gate_config* is ``None``, the default action ``"flag"``
             is used (backward compatible with v1.4 behaviour).
 
+            If *gate_config* has ``window_days > 0`` it overrides the
+            instance-level ``window_days``.  See :class:`G2Dedup` for
+            window semantics.
+
         Returns
         -------
         QualityResult
@@ -313,6 +507,14 @@ class G2Dedup:
             ``passed=False`` when a duplicate is found.
         """
         action = gate_config.action if gate_config else "flag"
+
+        effective_window_days = self.window_days
+        if gate_config is not None and gate_config.window_days:
+            effective_window_days = gate_config.window_days
+
+        item_dt = self._parse_iso_datetime(item.collected_at)
+        if item_dt is None:
+            effective_window_days = 0
 
         # 1. URL match
         for entry in existing_entries:
@@ -370,6 +572,51 @@ class G2Dedup:
                         },
                     )
 
+        # 4. Fuzzy title match
+        item_title = (item.title or "").strip().lower()
+        if item_title:
+            if effective_window_days:
+                logger.info(
+                    "G2 time window: %dd, total entries: %d",
+                    effective_window_days,
+                    len(existing_entries),
+                )
+
+            for entry in existing_entries:
+                if effective_window_days and item_dt:
+                    entry_dt = self._parse_iso_datetime(entry.collected_at)
+                    if entry_dt is not None:
+                        age_days = (item_dt - entry_dt).days
+                        if age_days > effective_window_days:
+                            continue
+
+                entry_title = (entry.title or "").strip().lower()
+                if entry_title:
+                    similarity = difflib.SequenceMatcher(
+                        None, item_title, entry_title
+                    ).ratio()
+                    if similarity >= 0.85:
+                        logger.info(
+                            "G2-Dedup: duplicate detected (fuzzy title: %.2f) - "
+                            "new='%s' matched existing='%s' (%s)",
+                            similarity,
+                            item_title,
+                            entry_title,
+                            entry.entry_id,
+                        )
+                        return QualityResult(
+                            gate_name="G2-Dedup",
+                            passed=False,
+                            flagged=True,
+                            details={
+                                "is_duplicate": True,
+                                "matched_by": "fuzzy_title",
+                                "existing_id": entry.entry_id,
+                                "similarity": similarity,
+                                "action": action,
+                            },
+                        )
+
         # No match found — unique
         return QualityResult(
             gate_name="G2-Dedup",
@@ -378,6 +625,15 @@ class G2Dedup:
             details={"is_duplicate": False, "matched_by": None, "action": action},
         )
 
+    @staticmethod
+    def _parse_iso_datetime(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError):
+            return None
+
 
 # ---------------------------------------------------------------------------
 # G3 — Relevance Scoring
@@ -385,19 +641,49 @@ class G2Dedup:
 
 
 class G3RelevanceScoring:
-    """Scores item relevance against a set of topic keywords.
+    """Scores item relevance against a set of topic keywords using LLM-based
+    0-100 scoring with a retry loop following G4's pattern.
 
-    Uses simple keyword overlap scoring (term-count / total-keywords × 100).
-    Items scoring below *threshold* are flagged with ``hidden: true``.
+    When *gate_config* has ``retries > 0`` and litellm is available, an LLM
+    prompt is sent asking the model to rate content relevance to the keywords
+    on a 0-100 scale.  The retry loop attempts up to ``retries`` calls with
+    escalating context on each failure.  After all retries are exhausted the
+    gate returns score=50 (neutral pass — a soft gate).
+
+    Content exceeding ~8K tokens is truncated before the LLM call to stay
+    within reasonable context limits.
+
+    When litellm is unavailable or *gate_config.retries* is ``0`` / ``None``,
+    the gate falls back to lexical keyword overlap scoring (backward
+    compatible with v1.x).  No keywords → score=100 (always pass).
 
     Supports both single-language keywords (``list[str]``) and multi-language
-    keywords (``dict[str, list[str]]``) for backwards compatibility.
-
-    Future enhancement:
-        LLM-based semantic scoring will be added in a later version.
-        The current implementation is purely lexical and serves as a
-        reasonable heuristic for v0.1.
+    keywords (``dict[str, list[str]]``).
     """
+
+    SYSTEM_PROMPT = (
+        "You are a relevance scoring assistant. "
+        "Rate the relevance of the given content to the specified keywords "
+        "on a 0-100 scale. 0 = completely irrelevant, 100 = highly relevant. "
+        "Return ONLY a single integer number, nothing else."
+    )
+
+    # Approximate character limit for 8K tokens (~4 chars per English token).
+    _MAX_CONTENT_CHARS = 32000
+
+    def __init__(
+        self,
+        model: str = "openrouter/deepseek/deepseek-chat",
+    ) -> None:
+        self._model = model
+        # Mockable LLM call function for CI tests.
+        # When set, this callable is used instead of litellm.completion.
+        # Tests can assign a MagicMock here to avoid real API calls.
+        self.llm_call: Any = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def check(
         self,
@@ -420,15 +706,19 @@ class G3RelevanceScoring:
             Minimum score (0-100) below which the item is flagged as hidden.
             Defaults to 30.
         gate_config:
-            Optional gate configuration dict.  If provided, the *action*
-            field controls how below-threshold items are annotated:
+            Optional :class:`QualityGateConfig`.  When *retries* > 0 and
+            litellm is available, the gate uses LLM-based scoring with a
+            retry loop.  Otherwise it falls back to lexical keyword overlap.
+
+            The *action* field controls how below-threshold items are
+            annotated:
 
             - ``"archive"`` (default): item is marked with both
               ``hidden=True`` and ``archive=True`` in details.
             - ``"flag"``: item is marked with ``hidden=True`` only.
 
-            When *gate_config* is ``None``, the default action ``"archive"``
-            is used (backward compatible with v1.4 behaviour).
+            When *gate_config* is ``None``, lexical scoring is used
+            (backward compatible with v1.x).
 
         Returns
         -------
@@ -440,15 +730,17 @@ class G3RelevanceScoring:
         """
         action = gate_config.action if gate_config else "archive"
 
-        # Normalise multi-language keywords to a flat list
+        # ---- Normalise multi-language keywords to a flat list -----------
         if isinstance(topic_keywords, dict):
-            # When multi-language, flatten all language keyword lists
             flat_keywords: list[str] = []
             for lang_kws in topic_keywords.values():
                 flat_keywords.extend(lang_kws)
-            topic_keywords = flat_keywords
+            keywords: list[str] = flat_keywords
+        else:
+            keywords = list(topic_keywords)
 
-        if not topic_keywords:
+        # ---- No keywords → always pass ----------------------------------
+        if not keywords:
             return QualityResult(
                 gate_name="G3-RelevanceScoring",
                 passed=True,
@@ -457,26 +749,48 @@ class G3RelevanceScoring:
                     "hidden": False,
                     "action": action,
                     "reason": "no keywords to match against",
-                    "multi_language": True,
+                    "multi_language": isinstance(topic_keywords, dict),
+                    "scoring_method": "none",
                 },
             )
 
-        # Combine title + content into a single searchable text.
-        # Lower-case everything for case-insensitive matching.
+        # ---- Combine title + content (lowercase for lexical fallback)-----
         text = (item.title + " " + item.content).lower()
 
-        matches = sum(1 for kw in topic_keywords if kw.lower() in text)
-        score_val = min(round((matches / len(topic_keywords)) * 100), 100)
+        # ---- Choose scoring method --------------------------------------
+        llm_retries_used = 0
+        if gate_config is not None and gate_config.retries > 0:
+            _litellm_mod = self._get_litellm()
+            if _litellm_mod is not None and self._model:
+                score_val, llm_retries_used = self._llm_score(
+                    text, keywords, gate_config, _litellm_mod,
+                )
+                if score_val is None:
+                    # All retries exhausted → neutral pass
+                    score_val = 50
+                scoring_method: str = "llm"
+            else:
+                score_val = self._lexical_score(text, keywords)
+                scoring_method = "lexical"
+        else:
+            score_val = self._lexical_score(text, keywords)
+            scoring_method = "lexical"
 
+        # ---- Threshold logic (shared) -----------------------------------
         if score_val < threshold:
             details: dict[str, object] = {
                 "hidden": True,
                 "action": action,
                 "reason": "below relevance threshold",
-                "keyword_matches": matches,
-                "total_keywords": len(topic_keywords),
                 "threshold": threshold,
+                "scoring_method": scoring_method,
+                "llm_retries": llm_retries_used,
             }
+            if scoring_method == "lexical":
+                details["keyword_matches"] = sum(
+                    1 for kw in keywords if kw.lower() in text
+                )
+                details["total_keywords"] = len(keywords)
             if action == "archive":
                 details["archive"] = True
 
@@ -488,18 +802,194 @@ class G3RelevanceScoring:
                 details=details,
             )
 
+        details_pass: dict[str, object] = {
+            "hidden": False,
+            "action": action,
+            "scoring_method": scoring_method,
+            "llm_retries": llm_retries_used,
+        }
+        if scoring_method == "lexical":
+            details_pass["keyword_matches"] = sum(
+                1 for kw in keywords if kw.lower() in text
+            )
+            details_pass["total_keywords"] = len(keywords)
+
         return QualityResult(
             gate_name="G3-RelevanceScoring",
             passed=True,
             score=float(score_val),
             flagged=False,
-            details={
-                "hidden": False,
-                "action": action,
-                "keyword_matches": matches,
-                "total_keywords": len(topic_keywords),
-            },
+            details=details_pass,
         )
+
+    # ------------------------------------------------------------------
+    # LLM-based scoring (retry loop following G4's pattern)
+    # ------------------------------------------------------------------
+
+    def _llm_score(
+        self,
+        text: str,
+        keywords: list[str],
+        gate_config: QualityGateConfig,
+        litellm_mod: Any,
+    ) -> tuple[int | None, int]:
+        """Run LLM-based relevance scoring with retry loop.
+
+        Returns (score_or_none, retries_used).  On all retries exhausted
+        returns (None, retries_used) — caller assigns score=50.
+        """
+        # Truncate content to ~8K tokens
+        truncated = text[: self._MAX_CONTENT_CHARS]
+        keyword_str = ", ".join(keywords[:20])  # cap keywords to 20
+
+        # Build retry chain (same pattern as G4FactualConsistency.check)
+        retry_models = (
+            list(gate_config.retry_models) if gate_config.retry_models else []
+        )
+        models = [self._model] + retry_models
+        max_attempts = gate_config.retries
+
+        retries_used = 0
+
+        for attempt in range(max_attempts):
+            model = models[min(attempt, len(models) - 1)]
+            retries_used = attempt + 1
+
+            try:
+                user_content = (
+                    f"Rate relevance of this content to keywords "
+                    f"{keyword_str} on 0-100 scale. "
+                    f"Return only a number.\n\n"
+                    f"CONTENT: {truncated}"
+                )
+
+                # Escalating context on retry
+                if attempt > 0:
+                    user_content += (
+                        f"\n\nPrevious attempt failed to produce a valid "
+                        f"score (0-100). Please ensure you return ONLY a "
+                        f"single integer between 0 and 100."
+                    )
+
+                if self.llm_call is not None:
+                    response = self.llm_call(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": self.SYSTEM_PROMPT},
+                            {"role": "user", "content": user_content},
+                        ],
+                        max_tokens=10,
+                        temperature=0.0,
+                    )
+                    raw: str = response.choices[0].message.content
+                else:
+                    response = litellm_mod.completion(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": self.SYSTEM_PROMPT},
+                            {"role": "user", "content": user_content},
+                        ],
+                        max_tokens=10,
+                        temperature=0.0,
+                    )
+                    raw = response.choices[0].message.content
+
+                parsed = self._parse_score(raw)
+                if parsed is not None:
+                    logger.info(
+                        "G3 LLM score=%d (attempt %d, model=%s)",
+                        parsed,
+                        attempt + 1,
+                        model,
+                    )
+                    return parsed, retries_used
+
+                logger.warning(
+                    "G3 LLM returned unparseable score (attempt %d): %r",
+                    attempt + 1,
+                    raw[:200],
+                )
+
+            except (json.JSONDecodeError, ValueError, KeyError, AttributeError) as exc:
+                logger.warning(
+                    "G3 LLM parse error (attempt %d, model=%s): %s",
+                    attempt + 1,
+                    model,
+                    exc,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "G3 LLM call failed (attempt %d, model=%s): %s",
+                    attempt + 1,
+                    model,
+                    exc,
+                )
+
+        # All retries exhausted
+        logger.warning(
+            "G3 all %d attempt(s) exhausted — returning neutral score 50",
+            max_attempts,
+        )
+        return None, retries_used
+
+    # ------------------------------------------------------------------
+    # Lexical keyword overlap (fallback)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _lexical_score(text: str, keywords: list[str]) -> int:
+        """Compute relevance score using lexical keyword overlap.
+
+        Returns ``round((matches / len(keywords)) * 100)``, capped at 100.
+        """
+        if not keywords:
+            return 100
+        matches = sum(1 for kw in keywords if kw.lower() in text)
+        return min(round((matches / len(keywords)) * 100), 100)
+
+    # ------------------------------------------------------------------
+    # Score parsing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_score(raw: str) -> int | None:
+        """Parse an LLM response string into a 0-100 integer score.
+
+        Returns ``None`` when no parseable number is found.
+        """
+        import re
+
+        raw = raw.strip()
+        # Direct integer parse
+        try:
+            score = int(raw)
+            return max(0, min(100, score))
+        except ValueError:
+            pass
+        # Extract first 1-3 digit number from the string
+        match = re.search(r"\b(\d{1,3})\b", raw)
+        if match:
+            score = int(match.group(1))
+            return max(0, min(100, score))
+        return None
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_litellm() -> Any:
+        """Lazily import and return the ``litellm`` module.
+
+        Returns ``None`` when the package is not available.
+        """
+        try:
+            import litellm  # noqa: PLC0415 — deferred import
+
+            return litellm
+        except (ImportError, ModuleNotFoundError):
+            logger.error("litellm is not installed — run 'pip install litellm'")
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -1099,6 +1589,11 @@ class D1ProductCompleteness:
             )
 
         passed = self.action_on_failure != "block"
+
+        # Dispatch D1-BLOCKED alert when gate blocks delivery
+        if self.action_on_failure == "block":
+            self._dispatch_d1_alert(product_output, ctx, missing, empty)
+
         return QualityResult(
             gate_name="D1-ProductCompleteness",
             passed=passed,
@@ -1115,6 +1610,71 @@ class D1ProductCompleteness:
                 ),
             },
         )
+
+    # ------------------------------------------------------------------
+    # D1 alert dispatch
+    # ------------------------------------------------------------------
+
+    def _dispatch_d1_alert(
+        self,
+        product_output: dict[str, Any],
+        context: dict[str, Any],
+        missing: list[str],
+        empty: list[str],
+    ) -> None:
+        """Dispatch a D1-BLOCKED alert via existing alert infrastructure.
+
+        Only called when the gate action_on_failure is ``"block"``.
+        Uses :func:`autoinfo.alerts._dispatch_notification` to send the
+        alert through configured channels (webhook or email).
+
+        The notification gracefully degrades if no channel is configured.
+        """
+        try:
+            from autoinfo.alerts import _dispatch_notification  # noqa: PLC0415
+            from autoinfo.models import AlertRule, Item  # noqa: PLC0415
+
+            domain = str(context.get("domain", product_output.get("domain", "unknown")))
+            product_id = str(
+                context.get("product_id", product_output.get("product_id", "unknown"))
+            )
+
+            parts: list[str] = []
+            if missing:
+                parts.append(f"missing sections: {missing}")
+            if empty:
+                parts.append(f"empty sections: {empty}")
+            reason = "; ".join(parts) if parts else "incomplete product"
+
+            rule = AlertRule(
+                id="D1-BLOCKED",
+                domain=domain,
+                channel="webhook",
+                enabled=True,
+            )
+            item = Item(
+                id=product_id,
+                source_name="D1 gate",
+                source_type="delivery_gate",
+                source_url="",
+                title=f"D1-BLOCKED: {product_id}",
+                content=(
+                    f"D1 product completeness check blocked delivery. "
+                    f"Domain: {domain}. Product: {product_id}. "
+                    f"Reason: {reason}"
+                ),
+                domain=domain,
+            )
+
+            result = _dispatch_notification(rule, item, domain)
+            logger.warning(
+                "D1-BLOCKED alert dispatched: product=%s domain=%s status=%s",
+                product_id,
+                domain,
+                result.get("status", "unknown"),
+            )
+        except Exception:
+            logger.warning("Failed to dispatch D1-BLOCKED alert", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1178,8 +1738,17 @@ class D2FormatIntegrity:
     For *markdown* output, the check is trivially skipped (Markdown is
     always renderable).
 
-    This gate runs at **output time** for PROCESSED products only.
-    It is **skipped** for RAW products.
+    In addition to format integrity, this gate performs a **ToS delivery
+    compliance** check on every entry's source classification (F46):
+
+    - For **RAW** products (API/webhook/export): entries from
+      ``"restricted"`` or ``"sensitive"`` sources **block** delivery.
+    - For **PROCESSED** products (digest/report/tutorial): entries from
+      ``"restricted"`` or ``"sensitive"`` sources are **allowed** but a
+      compliance notice is attached.
+
+    This gate runs at **output time** for both RAW and PROCESSED products.
+    Format integrity is only checked for PROCESSED products.
 
     Parameters
     ----------
@@ -1190,25 +1759,144 @@ class D2FormatIntegrity:
 
     gate_type: Literal["delivery"] = "delivery"
 
+    # ------------------------------------------------------------------
+    # Tier → ToS classification mapping (consistent with SourceConfig)
+    # ------------------------------------------------------------------
+    _TIER_TOS_MAP: dict[int, str] = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+    _RESTRICTED_TOS: frozenset[str] = frozenset({"restricted", "sensitive"})
+
     def __init__(self, action_on_failure: str = "fallback") -> None:
         self.action_on_failure = action_on_failure
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def tos_delivery_check(
+        self,
+        product_output: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> QualityResult:
+        """Check ToS delivery compliance for each entry in *product_output*.
+
+        For every entry, determines the source ``tos_classification``.
+        If any entry originates from a ``"restricted"`` or ``"sensitive"``
+        source:
+
+        - **RAW** products are **blocked**.
+        - **PROCESSED** products pass but carry a compliance notice.
+
+        Parameters
+        ----------
+        product_output:
+            The rendered product output dict.  Must contain
+            ``product_type`` and optionally ``entries`` (list of entry
+            dicts, each with ``quality_tier`` or ``tos_classification``).
+
+        context:
+            Optional context dict (reserved).
+
+        Returns
+        -------
+        QualityResult
+            For RAW blocked: ``passed=False``, ``flagged=True``,
+            ``action="block"``, ``tos_blocked=True``.
+            For PROCESSED with restricted sources: ``passed=True``,
+            ``tos_compliance_notice=True``.
+            For no restricted sources: ``passed=True``,
+            ``tos_blocked=False``.
+        """
+        ctx = context or {}
+        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+        entries: list[dict[str, Any]] = product_output.get("entries", [])
+
+        restricted_entries: list[dict[str, Any]] = []
+
+        for entry in entries:
+            # Prefer explicit ``tos_classification`` field; fall back to
+            # ``quality_tier`` → tier-to-TOS mapping
+            tos: str = entry.get("tos_classification", "")  # type: ignore[assignment]
+            if not tos:
+                tier: int = entry.get("quality_tier", 1)
+                tos = self._TIER_TOS_MAP.get(tier, "open")
+
+            if tos in self._RESTRICTED_TOS:
+                restricted_entries.append({
+                    "entry_id": entry.get("entry_id", ""),
+                    "title": entry.get("title", ""),
+                    "tos_classification": tos,
+                    "source_url": entry.get("source_url", ""),
+                })
+
+        if not restricted_entries:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=True,
+                score=1.0,
+                details={"tos_blocked": False},
+            )
+
+        classifications = sorted({e["tos_classification"] for e in restricted_entries})
+        count = len(restricted_entries)
+
+        if product_type.upper() == "RAW":
+            # Single classification → clear message
+            if len(classifications) == 1:
+                error_msg = (
+                    f"Delivery blocked: source tos_classification is "
+                    f"{classifications[0]!r} ({count} entry{'s' if count > 1 else ''})"
+                )
+            else:
+                error_msg = (
+                    f"Delivery blocked: entries from "
+                    f"{', '.join(repr(c) for c in classifications)} sources"
+                )
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "tos_blocked": True,
+                    "action": "block",
+                    "blocked_count": count,
+                    "classifications": classifications,
+                    "error": error_msg,
+                    "blocked_entries": restricted_entries[:10],
+                },
+            )
+
+        # PROCESSED — allow but add compliance notice
+        return QualityResult(
+            gate_name="D2-FormatIntegrity",
+            passed=True,
+            score=1.0,
+            details={
+                "tos_blocked": False,
+                "tos_compliance_notice": True,
+                "compliance_message": (
+                    f"Contains {count} item{'s apply' if count == 1 else 's'} "
+                    f"from restricted/sensitive sources — for internal use only"
+                ),
+                "restricted_count": count,
+                "classifications": classifications,
+            },
+        )
 
     def check(
         self,
         product_output: dict[str, Any],
         context: dict[str, Any] | None = None,
     ) -> QualityResult:
-        """Check that *product_output* renders to valid output.
+        """Check format integrity and ToS delivery compliance.
 
         Parameters
         ----------
         product_output:
             The rendered product output dict.  Must contain a ``format``
-            key (``"html"``, ``"json"``, ``"markdown"``, etc.) and
-            a ``body`` key with the rendered string.
-
-            A ``product_type`` in *product_output* or *context* set to
-            ``"RAW"`` causes this gate to **skip** (trivially pass).
+            key (``"html"``, ``"json"``, ``"markdown"``, etc.), a
+            ``body`` key with the rendered string, a ``product_type``
+            (``"RAW"`` or ``"PROCESSED"``), and ``entries``.
 
         context:
             Optional context.  May contain ``product_type`` to override
@@ -1217,48 +1905,62 @@ class D2FormatIntegrity:
         Returns
         -------
         QualityResult
-            ``passed=True`` when the output parses correctly for its
-            format.  ``passed=False`` with a description of the parse
-            error when the check fails.
+            ``passed=True`` when the output parses correctly and no
+            ToS block applies.
+            ``passed=False`` with ``action="block"`` when ToS stops
+            RAW delivery from restricted/sensitive sources.
         """
         ctx = context or {}
         product_type = product_output.get("product_type") or ctx.get("product_type", "")
 
-        # RAW products skip delivery-gate checks
+        # --- Step 1: ToS delivery compliance check (all product types) ----
+        tos_result = self.tos_delivery_check(product_output, ctx)
+        tos_details: dict[str, Any] = dict(tos_result.details)
+
+        # ToS blocks RAW delivery from restricted/sensitive sources
+        if not tos_result.passed:
+            return tos_result
+
+        # --- Step 2: RAW products without ToS concerns → skip format check -
         if product_type.upper() == "RAW":
+            details: dict[str, Any] = {
+                "skipped": True,
+                "reason": "RAW product type — delivery gates skipped",
+            }
+            details.update(tos_details)
             return QualityResult(
                 gate_name="D2-FormatIntegrity",
                 passed=True,
                 score=1.0,
-                details={
-                    "skipped": True,
-                    "reason": "RAW product type — delivery gates skipped",
-                },
+                details=details,
             )
 
+        # --- Step 3: PROCESSED products → format integrity check ---------
         output_format = product_output.get("format", "").lower()
         body = product_output.get("body", "")
 
         if not body:
+            details = {
+                "action": self.action_on_failure,
+                "format": output_format,
+                "error": "Empty body — nothing to validate",
+            }
+            details.update(tos_details)
             return QualityResult(
                 gate_name="D2-FormatIntegrity",
                 passed=False,
                 score=0.0,
                 flagged=True,
-                details={
-                    "action": self.action_on_failure,
-                    "format": output_format,
-                    "error": "Empty body — nothing to validate",
-                },
+                details=details,
             )
 
+        # Dispatch to format-specific validator
         if output_format == "html":
-            return self._check_html(body)
+            result = self._check_html(body)
         elif output_format == "json":
-            return self._check_json(body)
+            result = self._check_json(body)
         elif output_format == "markdown":
-            # Markdown is trivially parseable — pass
-            return QualityResult(
+            result = QualityResult(
                 gate_name="D2-FormatIntegrity",
                 passed=True,
                 score=1.0,
@@ -1268,9 +1970,10 @@ class D2FormatIntegrity:
                     "note": "Markdown trivially valid",
                 },
             )
+        elif output_format == "pdf":
+            result = self._check_pdf(body)
         else:
-            # Unknown format — skip with advisory note
-            return QualityResult(
+            result = QualityResult(
                 gate_name="D2-FormatIntegrity",
                 passed=True,
                 score=1.0,
@@ -1280,6 +1983,10 @@ class D2FormatIntegrity:
                     "note": f"Unknown format '{output_format}' — skipped",
                 },
             )
+
+        # Merge ToS compliance info into format result
+        result.details.update(tos_details)
+        return result
 
     # ------------------------------------------------------------------
     # Internals
@@ -1341,6 +2048,117 @@ class D2FormatIntegrity:
             details={
                 "format": "json",
                 "valid": True,
+            },
+        )
+
+    def _check_pdf(self, body: str) -> QualityResult:
+        """Validate *body* as PDF using PyMuPDF (fitz).
+
+        Opens the content stream with ``fitz.open(stream=..., filetype="pdf")``.
+        On success, logs PDF metadata (page count, title, author).
+        On failure (encrypted, corrupt, or unparseable), returns a descriptive
+        error message.
+
+        Parameters
+        ----------
+        body:
+            The rendered PDF content as a string or bytes-like object.
+
+        Returns
+        -------
+        QualityResult
+            ``passed=True`` when the PDF is valid and parseable.
+            ``passed=False`` with ``error`` details when validation fails.
+        """
+        try:
+            import fitz  # noqa: PLC0415 — deferred import
+        except ImportError:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "pdf",
+                    "valid": False,
+                    "error": "PyMuPDF (fitz) is not available",
+                },
+            )
+
+        # Convert string body to bytes for fitz
+        content = body.encode("utf-8", errors="replace") if isinstance(body, str) else body
+
+        try:
+            doc = fitz.open(stream=content, filetype="pdf")
+        except fitz.EmptyFileError as exc:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "pdf",
+                    "valid": False,
+                    "error": f"PDF file is empty: {exc}",
+                },
+            )
+        except fitz.FileDataError as exc:
+            error_msg = str(exc).lower()
+            if "password" in error_msg or "encrypt" in error_msg:
+                label = "PDF is encrypted and requires a password"
+            else:
+                label = "PDF data is corrupt or not a valid PDF"
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "pdf",
+                    "valid": False,
+                    "error": f"{label}: {exc}",
+                },
+            )
+        except Exception as exc:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=self.action_on_failure != "block",
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": self.action_on_failure,
+                    "format": "pdf",
+                    "valid": False,
+                    "error": f"PDF validation error: {exc}",
+                },
+            )
+
+        metadata = doc.metadata or {}
+        page_count = doc.page_count
+        title = metadata.get("title", "") or ""
+        author = metadata.get("author", "") or ""
+        doc.close()
+
+        logger.info(
+            "D2 PDF validation passed: pages=%d, title=%s, author=%s",
+            page_count,
+            title,
+            author,
+        )
+
+        return QualityResult(
+            gate_name="D2-FormatIntegrity",
+            passed=True,
+            score=1.0,
+            details={
+                "format": "pdf",
+                "valid": True,
+                "page_count": page_count,
+                "title": title,
+                "author": author,
             },
         )
 
@@ -1841,9 +2659,10 @@ def run_quality_gates(
     context: dict[str, Any] | None = None,
     gate_config: dict[str, QualityGateConfig] | None = None,
 ) -> dict[str, QualityResult]:
-    """Run all quality gates (G0, G1, G2, G3) on *item*.
+    """Run all quality gates (G0, G1, G1-ToS, G2, G3) on *item*.
 
-    G0 runs first (schema integrity), followed by G1-G3. G4 and G5
+    G0 runs first (schema integrity), followed by G1 (authority),
+    G1-ToS (compliance), G2 (dedup), and G3 (relevance).  G4 and G5
     are run separately in the processing pipeline.
 
     Parameters
@@ -1853,7 +2672,7 @@ def run_quality_gates(
     context:
         Optional dictionary that may contain:
 
-        - ``source_config`` — source configuration dict (for G1)
+        - ``source_config`` — source configuration dict (for G1, G1-ToS)
         - ``existing_entries`` — list of :class:`KBEntry` (for G2)
         - ``topic_keywords`` — list of keyword strings (for G3)
         - ``threshold`` — relevance threshold integer (for G3)
@@ -1885,6 +2704,7 @@ def run_quality_gates(
     # Resolve per-gate configs
     g0_config = gate_config.get("G0-SchemaIntegrity") if gate_config else None
     g1_config = gate_config.get("G1-SourceAuthority") if gate_config else None
+    g1tos_config = gate_config.get("G1-TosCompliance") if gate_config else None
     g2_config = gate_config.get("G2-Dedup") if gate_config else None
     g3_config = gate_config.get("G3-RelevanceScoring") if gate_config else None
 
@@ -1894,6 +2714,7 @@ def run_quality_gates(
 
     g0 = G0SchemaIntegrity()
     g1 = G1SourceAuthority()
+    g1tos = G1TosCompliance()
     g2 = G2Dedup()
     g3 = G3RelevanceScoring()
 
@@ -1902,6 +2723,7 @@ def run_quality_gates(
     # G0 runs FIRST — validates raw item schema before further processing
     results["G0-SchemaIntegrity"] = g0.check(item.to_dict(), ctx, g0_config)
     results["G1-SourceAuthority"] = g1.check(item, source_config, g1_config)
+    results["G1-TosCompliance"] = g1tos.check(item, source_config, g1tos_config)
     results["G2-Dedup"] = g2.check(item, existing_entries, g2_config)
     results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold, g3_config)
 

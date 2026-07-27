@@ -16,23 +16,29 @@ Usage::
 
 from __future__ import annotations
 
+import base64
 import html
 import json
 import logging
+import os
+import re
 import shutil
 import sqlite3
 import tarfile
+import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 if TYPE_CHECKING:
+    from autoinfo.config import SourceConfig  # noqa: F811
     from autoinfo.llm import LLMExtractor
     from autoinfo.quality import QualityResult
 
+import httpx
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, TemplateNotFound
 
 from autoinfo.config import Config, get_config_path, load_config
@@ -146,23 +152,34 @@ def _apply_delivery_gates(
             delivery_blocked = True
             warnings.append(f"D1 blocked: {error_detail}")
 
-    # --- D2: Format integrity (fallback) ---------------------------------
+    # --- D2: Format integrity (ToS block + format fallback) ----------------
     d2_result = gate_results.get("D2-FormatIntegrity")
-    if d2_result is not None and d2_result.flagged:
-        action = d2_result.details.get("action", "fallback")
-        if action == "fallback":
-            d2_error = d2_result.details.get("error", "format integrity issue")
-            if fallback_render_fn is not None and output_format != "markdown":
-                logger.warning(
-                    "D2 fallback: %s — re-rendering as markdown",
-                    d2_error,
-                )
-                output = fallback_render_fn()
-                final_format = "markdown"
-                warnings.append("D2 fallback: re-rendered as markdown")
-            else:
-                logger.warning("D2 flagged: %s", d2_error)
-                warnings.append(f"D2 flagged: {d2_error}")
+    if d2_result is not None:
+        # ToS-based block: RAW delivery from restricted/sensitive sources (F46)
+        if not d2_result.passed:
+            action = d2_result.details.get("action", "")
+            if action == "block":
+                error_detail = d2_result.details.get("error", "delivery blocked")
+                logger.warning("Delivery blocked by D2 (ToS): %s", error_detail)
+                delivery_blocked = True
+                warnings.append(f"D2 blocked (ToS): {error_detail}")
+
+        # Format integrity fallback (flagged with action="fallback")
+        if d2_result.flagged:
+            action = d2_result.details.get("action", "fallback")
+            if action == "fallback":
+                d2_error = d2_result.details.get("error", "format integrity issue")
+                if fallback_render_fn is not None and output_format != "markdown":
+                    logger.warning(
+                        "D2 fallback: %s — re-rendering as markdown",
+                        d2_error,
+                    )
+                    output = fallback_render_fn()
+                    final_format = "markdown"
+                    warnings.append("D2 fallback: re-rendered as markdown")
+                else:
+                    logger.warning("D2 flagged: %s", d2_error)
+                    warnings.append(f"D2 flagged: {d2_error}")
 
     # --- D3: Freshness (flag) -------------------------------------------
     d3_result = gate_results.get("D3-Freshness")
@@ -246,6 +263,28 @@ def export_kb(
                 entries.extend(index.list_entries(d, limit=99999))
 
     domain_label = domain if domain else "*"
+
+    # --- Source attribution enrichment for text formats (F46) --------------
+    if entries and format in ("json", "csv"):
+        if domain:
+            srcs = _get_domain_source_configs(domain)
+        else:
+            srcs = []
+            for d_name in {e.get("domain", "") for e in entries if e.get("domain")}:
+                srcs.extend(_get_domain_source_configs(d_name))
+        url_to_source: dict[str, Any] = {}
+        for s in srcs:
+            url_to_source[(s.url or "").strip().rstrip("/")] = s
+        for entry in entries:
+            url = (entry.get("source_url") or "").strip().rstrip("/")
+            if url in url_to_source:
+                s = url_to_source[url]
+                entry["attribution"] = (
+                    f"Source: {s.name} ({s.url}) — "
+                    f"Tier {s.quality_tier}, {s.tos_classification}"
+                )
+            else:
+                entry["attribution"] = ""
 
     # --- Prepare export directory -----------------------------------------
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -393,6 +432,7 @@ def _export_json(
             "source_url": e.get("source_url"),
             "source_type": e.get("source_type"),
             "source_platform": e.get("source_platform"),
+            "attribution": e.get("attribution", ""),
             "collected_at": e.get("collected_at"),
             "summary": e.get("summary"),
             "tags": json.loads(e.get("tags", "[]")) if e.get("tags") else [],
@@ -1096,14 +1136,25 @@ class ProductTemplate:
     4. ``data/templates/<type>.<variant>.j2`` — legacy flat naming (backward
        compatible with the existing ``digest.md.j2`` convention)
 
+    The *access_level* controls freemium gating (G15):
+
+    - ``"free"`` (default) — available to all users
+    - ``"premium"`` — requires active paid subscription
+    - ``"enterprise"`` — requires enterprise-tier subscription
+
     Usage::
 
-        pt = ProductTemplate(domain="medical-research")
+        pt = ProductTemplate(domain="medical-research", access_level="premium")
         output = pt.render("digest", "md", context_dict)
     """
 
-    def __init__(self, domain: str):
+    def __init__(
+        self,
+        domain: str,
+        access_level: Literal["free", "premium", "enterprise"] = "free",
+    ):
         self.domain = domain
+        self.access_level: Literal["free", "premium", "enterprise"] = access_level
         self._base_dir = _TEMPLATES_DIR
         self._domain_dir = Path.cwd() / ".autoinfo" / "templates" / domain
 
@@ -1335,6 +1386,110 @@ def _parse_json_response(content: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Source attribution (F46)
+# ---------------------------------------------------------------------------
+
+
+def _get_domain_source_configs(domain: str) -> list["SourceConfig"]:
+    """Load SourceConfig objects for *domain* from the project config.
+
+    Returns an empty list when the config cannot be loaded or the domain
+    is not found.
+    """
+    config_path = get_config_path()
+    if config_path is None or not config_path.is_file():
+        return []
+    try:
+        config = load_config(config_path)
+    except Exception:
+        return []
+    for d in config.domains:
+        if d.name == domain:
+            return list(d.sources)
+    return []
+
+
+def _build_attribution_footer(
+    sources: list["SourceConfig"],
+    output_format: str = "markdown",
+) -> str:
+    """Build a source attribution section for generated outputs.
+
+    Deduplicates by URL.  Each source is formatted as::
+
+        Source: **{name}** ({url}) — Tier {quality_tier}, {tos_classification}
+
+    Parameters
+    ----------
+    sources : list[SourceConfig]
+        Source configurations to attribute.  Deduplicated by URL before
+        rendering.
+    output_format : str
+        Output format: ``"markdown"`` (default), ``"html"``, or ``"json"``.
+
+    Returns
+    -------
+    str
+        Formatted attribution string.  Empty string when *sources* is
+        empty or contains no valid URLs.
+    """
+    # Deduplicate by URL
+    seen: set[str] = set()
+    unique: list[SourceConfig] = []
+    for s in sources:
+        url = (s.url or "").strip().rstrip("/")
+        if url and url not in seen:
+            seen.add(url)
+            unique.append(s)
+
+    if not unique:
+        return ""
+
+    if output_format == "json":
+        return json.dumps(
+            [
+                {
+                    "name": s.name,
+                    "url": s.url,
+                    "quality_tier": s.quality_tier,
+                    "tos_classification": s.tos_classification,
+                }
+                for s in unique
+            ],
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    lines: list[str] = []
+    for s in unique:
+        lines.append(
+            f"- **{s.name}** ({s.url}) — "
+            f"Tier {s.quality_tier}, {s.tos_classification}"
+        )
+    body = "\n".join(lines)
+
+    if output_format == "html":
+        escaped_lines = "\n".join(
+            "    <li>"
+            + html.escape(
+                f"{s.name} ({s.url}) — "
+                f"Tier {s.quality_tier}, {s.tos_classification}"
+            )
+            + "</li>"
+            for s in unique
+        )
+        return (
+            '<footer class="source-attribution">\n'
+            f"  <h2>Source Attribution</h2>\n"
+            f"  <ul>\n{escaped_lines}\n  </ul>\n"
+            f"</footer>"
+        )
+
+    # Default: markdown
+    return f"---\n\n## Source Attribution\n\n{body}\n"
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -1345,9 +1500,14 @@ def generate_digest(
     format: str = "markdown",
     llm_config: Config | None = None,
     custom_instructions: str = "",
+    target_audience: str = "",
+    include_stale: bool = False,
+    recipients: list[str] | None = None,
     product_template: ProductTemplate | None = None,
     product_type: str = "PROCESSED",
     delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+    user_id: str = "",
+    max_items: int = 0,
 ) -> str | DeliveryOutput:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -1359,7 +1519,9 @@ def generate_digest(
         Digest period.  One of ``"daily"``, ``"weekly"``, ``"monthly"``.
         Defaults to ``"weekly"``.
     format:
-        Output format.  One of ``"markdown"``, ``"html"``, ``"json"``.
+        Output format.  One of ``"markdown"``, ``"html"``, ``"json"``,
+        ``"agent"``.  The ``"agent"`` format returns JSON-LD
+        (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
         Defaults to ``"markdown"``.
     llm_config:
         Optional :class:`Config` override for LLM settings.  When omitted,
@@ -1367,6 +1529,14 @@ def generate_digest(
     custom_instructions:
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    include_stale:
+        When ``True``, include stale entries (below domain freshness
+        threshold) in the digest.  Defaults to ``False``, which excludes
+        them and logs the count of excluded items.
+    recipients:
+        Optional list of email recipient addresses for direct delivery.
+        When provided, the digest can be sent to these addresses via
+        the delivery channel.  Defaults to ``None``.
     product_template:
         Optional :class:`ProductTemplate` instance for template rendering.
         When provided, the digest is rendered through the product template
@@ -1382,6 +1552,17 @@ def generate_digest(
         type changes to :class:`DeliveryOutput`.  When ``None`` (default),
         no gates are run and a plain ``str`` is returned (backward
         compatible).
+    user_id:
+        Optional user ID.  When non-empty, stored preferences from
+        :func:`autoinfo.user_store.get_preferences` are auto-loaded and
+        used to set *target_audience*, *format*, and *max_items* if they
+        were not explicitly provided.  When empty (default), behavior is
+        unchanged and no preferences are loaded.
+    max_items:
+        Optional maximum number of KB entries to include in the digest.
+        Defaults to ``0`` (uses built-in limit of 200).  When *user_id*
+        is provided and the user's stored preferences include a
+        ``max_items`` key, that value is used instead.
 
     Returns
     -------
@@ -1394,18 +1575,91 @@ def generate_digest(
     ------
     ValueError
         If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
-        or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``.
+        or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
+        ``"agent"``.
     """
     # --- Validate parameters ------------------------------------------------
     if period not in PERIOD_DAYS:
         raise ValueError(
             f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
         )
-    valid_formats = {"markdown", "html", "json"}
+    valid_formats = {"markdown", "html", "json", "agent", "audio"}
     if format not in valid_formats:
         raise ValueError(
             f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
         )
+
+    # --- Auto-load preferences from user profile (G10) -----------------------
+    if user_id:
+        try:
+            from autoinfo.user_store import get_preferences  # noqa: PLC0415
+            prefs_result = get_preferences(user_id)
+            if "preferences" in prefs_result:
+                stored_prefs: dict[str, Any] = prefs_result["preferences"]
+                # Auto-set target_audience if not explicitly provided
+                if not target_audience and stored_prefs.get("target_audience"):
+                    target_audience = str(stored_prefs["target_audience"])
+                    logger.debug(
+                        "Applied stored target_audience='%s' for user '%s'",
+                        target_audience,
+                        user_id,
+                    )
+                # Auto-set format if still at default
+                if format == "markdown" and stored_prefs.get("format"):
+                    stored_fmt = str(stored_prefs["format"]).lower()
+                    if stored_fmt in valid_formats:
+                        format = stored_fmt
+                        logger.debug(
+                            "Applied stored format='%s' for user '%s'",
+                            format,
+                            user_id,
+                        )
+                # Auto-set max_items if not explicitly provided
+                if max_items == 0 and stored_prefs.get("max_items"):
+                    try:
+                        max_items = int(stored_prefs["max_items"])
+                        if max_items < 1:
+                            max_items = 0
+                        logger.debug(
+                            "Applied stored max_items=%d for user '%s'",
+                            max_items,
+                            user_id,
+                        )
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            logger.debug(
+                "Failed to load preferences for user '%s'",
+                user_id,
+                exc_info=True,
+            )
+
+    # --- Freemium access gating (G15) ----------------------------------------
+    if user_id and product_template is not None:
+        product_access = getattr(product_template, "access_level", "free")
+        if product_access != "free":
+            from autoinfo.billing import check_access  # noqa: PLC0415
+
+            access_result = check_access(user_id, product_access)
+            if not access_result["allowed"]:
+                period_label = PERIOD_LABELS.get(period, period.capitalize())
+                blocked_message = (
+                    f"# {period_label} Digest \u2014 {domain}\n\n"
+                    f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                    f"_Reason_: {access_result['reason']}\n\n"
+                    f"_Access level required_: `{product_access}`\n"
+                    f"_Your status_: {access_result['profile_status']} "
+                    f"(plan: {access_result['plan']})\n"
+                )
+                if delivery_gate_configs is not None:
+                    return DeliveryOutput(
+                        output=blocked_message,
+                        gate_results={},
+                        delivery_blocked=True,
+                        delivery_format=format,
+                        warnings=[f"G15 blocked: {access_result['reason']}"],
+                    )
+                return blocked_message
 
     # --- Compute date range --------------------------------------------------
     date_from, date_to = _compute_date_range(period)
@@ -1415,10 +1669,11 @@ def generate_digest(
     from autoinfo.kb import KBStore  # noqa: PLC0415
 
     store = KBStore()
+    query_limit = max_items if max_items > 0 else 200
     entries = store.list_entries(
         domain=domain,
         date_from=date_from,
-        limit=200,
+        limit=query_limit,
     )
 
     # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
@@ -1432,12 +1687,55 @@ def generate_digest(
         elif not isinstance(tags_raw, list):
             entry["tags"] = []
 
+    # --- Stale filtering (F51) -----------------------------------------------
+    excluded_stale_count = 0
+    if not include_stale:
+        # Resolve domain-specific TTL and freshness threshold from config.
+        ttl_days = 90
+        freshness_threshold = 0.5
+        try:
+            from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
+
+            config_path = get_config_path()
+            if config_path and config_path.is_file():
+                cfg = load_config(config_path)
+                for dc in cfg.domains:
+                    if dc.name == domain:
+                        ttl_days = dc.ttl_days
+                        freshness_threshold = dc.freshness_threshold
+                        break
+        except Exception:
+            pass
+
+        from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
+
+        active_entries: list[dict[str, Any]] = []
+        for entry in entries:
+            entry_freshness = calculate_freshness_score(entry, ttl_days)
+            entry["freshness_score"] = round(entry_freshness, 4)
+            if entry_freshness < freshness_threshold:
+                entry["is_stale"] = True
+                excluded_stale_count += 1
+            else:
+                entry["is_stale"] = False
+                active_entries.append(entry)
+
+        if excluded_stale_count > 0:
+            logger.info(
+                "Excluded %d stale entries from digest for domain '%s'",
+                excluded_stale_count,
+                domain,
+            )
+        entries = active_entries
+
     # --- LLM synthesis -------------------------------------------------------
     llm_synthesis: dict[str, Any] = {}
     if entries:
         prompt = _build_digest_llm_prompt(entries)
         if custom_instructions:
             prompt += f"\n\nAdditional instructions: {custom_instructions}"
+        if target_audience:
+            prompt += f"\n\nTarget audience: {target_audience}"
         llm_synthesis = _call_llm_for_digest(prompt, config=llm_config)
     else:
         llm_synthesis = {}
@@ -1454,6 +1752,7 @@ def generate_digest(
         "generated_at": generated_at,
         "entries": entries,
         "llm_synthesis": llm_synthesis,
+        "target_audience": target_audience,
     }
 
     # --- Render --------------------------------------------------------------
@@ -1464,8 +1763,43 @@ def generate_digest(
         rendered = _render_json(context)
     elif format == "html":
         rendered = _render_digest_html(context)
+    elif format == "agent":
+        rendered = _render_agent_json(entries, context)
+    elif format == "audio":
+        markdown_text = _render_markdown(context)
+        mp3_bytes = _render_audio(markdown_text)
+        rendered = base64.b64encode(mp3_bytes).decode("ascii")
     else:
         rendered = _render_markdown(context)
+
+    # --- Source attribution (F46) ------------------------------------------
+    src_configs = _get_domain_source_configs(domain)
+    if src_configs and entries:
+        entry_urls = {
+            (e.get("source_url") or "").strip().rstrip("/")
+            for e in entries
+            if e.get("source_url")
+        }
+        used_sources = [
+            s for s in src_configs
+            if (s.url or "").strip().rstrip("/") in entry_urls
+        ]
+        if used_sources:
+            attribution = _build_attribution_footer(used_sources, format)
+            if attribution:
+                if format in ("json", "agent"):
+                    try:
+                        data = json.loads(rendered)
+                        data["sources"] = json.loads(
+                            _build_attribution_footer(used_sources, "json")
+                        )
+                        rendered = json.dumps(
+                            data, indent=2, ensure_ascii=False, default=str
+                        )
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                else:
+                    rendered = rendered.rstrip() + "\n\n" + attribution
 
     # --- Delivery gates (D1-D3) ---------------------------------------------
     if delivery_gate_configs is not None:
@@ -1518,9 +1852,11 @@ def generate_report(
     format: str = "markdown",
     period: str = "month",
     custom_instructions: str = "",
+    target_audience: str = "",
     product_template: ProductTemplate | None = None,
     product_type: str = "PROCESSED",
     delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
+    user_id: str = "",
 ) -> str | DeliveryOutput:
     """Generate a structured report for the given *domain*.
 
@@ -1537,7 +1873,9 @@ def generate_report(
         are included.
     format : str, optional
         Output format (default ``"markdown"``).  Supports ``"markdown"``,
-        ``"json"``, and ``"html"``.
+        ``"json"``, ``"html"``, ``"audio"``, ``"agent"``.  The ``"agent"``
+        format returns JSON-LD (``@type: KnowledgeDigest``) optimized for
+        LLM re-consumption.
     period : str, optional
         Report period label (default ``"month"``).  Used for metadata
         in JSON output.
@@ -1549,6 +1887,7 @@ def generate_report(
         When provided, the report is rendered through the product template
         system (with domain-specific overrides).  When ``None`` (default),
         the existing direct Jinja2 rendering is used (backward compatible).
+        The product's ``access_level`` controls freemium gating (G15).
     product_type:
         Product type for delivery gate checking.  ``"PROCESSED"`` (default)
         enables D1-D3 checks when *delivery_gate_configs* is provided.
@@ -1574,11 +1913,37 @@ def generate_report(
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
-    if format not in ("markdown", "json", "html"):
+    if format not in ("markdown", "json", "html", "audio", "agent"):
         raise ValueError(
             f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, json, html"
+            f"Supported: markdown, json, html, audio, agent"
         )
+
+    # --- Freemium access gating (G15) ----------------------------------------
+    if user_id and product_template is not None:
+        product_access = getattr(product_template, "access_level", "free")
+        if product_access != "free":
+            from autoinfo.billing import check_access  # noqa: PLC0415
+
+            access_result = check_access(user_id, product_access)
+            if not access_result["allowed"]:
+                blocked_message = (
+                    f"# {domain} \u2014 Report\n\n"
+                    f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                    f"_Reason_: {access_result['reason']}\n\n"
+                    f"_Access level required_: `{product_access}`\n"
+                    f"_Your status_: {access_result['profile_status']} "
+                    f"(plan: {access_result['plan']})\n"
+                )
+                if delivery_gate_configs is not None:
+                    return DeliveryOutput(
+                        output=blocked_message,
+                        gate_results={},
+                        delivery_blocked=True,
+                        delivery_format=format,
+                        warnings=[f"G15 blocked: {access_result['reason']}"],
+                    )
+                return blocked_message
 
     # -- Load KB entries --------------------------------------------------
     from autoinfo.llm import LLMExtractor  # noqa: PLC0415
@@ -1588,8 +1953,8 @@ def generate_report(
 
     if not entries:
         rendered: str
-        if format == "json":
-            empty_data = {
+        if format in ("json", "agent"):
+            empty_data: dict[str, Any] = {
                 "title": f"{domain} \u2014 Report",
                 "summary": "",
                 "entries": [],
@@ -1597,13 +1962,22 @@ def generate_report(
                     "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                     "domain": domain,
                     "period": period,
-                    "format": "json",
+                    "format": format,
                     "entry_count": 0,
                 },
             }
-            rendered = json.dumps(empty_data, indent=2, ensure_ascii=False)
+            if format == "agent":
+                empty_data["@context"] = "https://autoinfo.ai/schemas/knowledge-digest-v1"
+                empty_data["@type"] = "KnowledgeDigest"
+                empty_data["uuid"] = str(uuid.uuid4())
+                empty_data["trends"] = []
+            rendered = json.dumps(empty_data, indent=2, ensure_ascii=False, default=str)
         elif format == "html":
             rendered = _render_empty_report_html(domain)
+        elif format == "audio":
+            empty_md = _render_empty_report(domain)
+            mp3_bytes = _render_audio(empty_md)
+            rendered = base64.b64encode(mp3_bytes).decode("ascii")
         else:
             rendered = _render_empty_report(domain)
 
@@ -1634,7 +2008,7 @@ def generate_report(
     groupings = _group_by_theme(extractor, entries)
 
     # -- Generate executive summary via LLM --------------------------------
-    executive_summary = _generate_executive_summary(extractor, entries, groupings, custom_instructions)
+    executive_summary = _generate_executive_summary(extractor, entries, groupings, custom_instructions, target_audience=target_audience)
 
     # -- Build report data -------------------------------------------------
     sections = [
@@ -1682,8 +2056,72 @@ def generate_report(
         rendered = _render_report_json(report_data, period=period)
     elif format == "html":
         rendered = _render_report_html(report_data, period=period)
+    elif format == "audio":
+        markdown_text = _render_report_template(report_data)
+        mp3_bytes = _render_audio(markdown_text)
+        rendered = base64.b64encode(mp3_bytes).decode("ascii")
+    elif format == "agent":
+        # Build entry-like dicts from report items for JSON-LD rendering
+        agent_entries: list[dict[str, Any]] = []
+        for section in report_data.sections:
+            for item in section.items:
+                agent_entries.append({
+                    "entry_id": "",
+                    "title": item.get("title", ""),
+                    "summary": item.get("summary", ""),
+                    "source_url": item.get("source_url", ""),
+                    "source_platform": "",
+                    "collected_at": item.get("date", ""),
+                    "relevance_score": item.get("relevance_score", 0),
+                    "tags": [],
+                })
+        agent_context: dict[str, Any] = {
+            "domain": domain,
+            "period": period,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "llm_synthesis": {
+                "executive_summary": report_data.executive_summary,
+                "key_findings": [
+                    {"topic": s.title, "detail": s.content}
+                    for s in report_data.sections
+                ],
+                "trends": [],
+                "recommendations": [],
+            },
+            "target_audience": target_audience,
+        }
+        rendered = _render_agent_json(agent_entries, agent_context)
     else:
         rendered = _render_report_template(report_data)
+
+    # -- Source attribution (F46) --------------------------------------------
+    src_configs = _get_domain_source_configs(domain)
+    if src_configs and entries:
+        entry_urls = {
+            (e.get("source_url") or "").strip().rstrip("/")
+            for e in entries
+            if e.get("source_url")
+        }
+        used_sources = [
+            s for s in src_configs
+            if (s.url or "").strip().rstrip("/") in entry_urls
+        ]
+        if used_sources:
+            attribution = _build_attribution_footer(used_sources, format)
+            if attribution:
+                if format in ("json", "agent"):
+                    try:
+                        data = json.loads(rendered)
+                        data["sources"] = json.loads(
+                            _build_attribution_footer(used_sources, "json")
+                        )
+                        rendered = json.dumps(
+                            data, indent=2, ensure_ascii=False, default=str
+                        )
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                else:
+                    rendered = rendered.rstrip() + "\n\n" + attribution
 
     # -- Delivery gates (D1-D3) ---------------------------------------------
     if delivery_gate_configs is not None:
@@ -1806,6 +2244,7 @@ def _generate_executive_summary(
     entries: list[dict[str, Any]],
     groupings: list[dict[str, Any]],
     custom_instructions: str = "",
+    target_audience: str = "",
 ) -> str:
     """Generate an executive summary via LLM.
 
@@ -1826,6 +2265,8 @@ def _generate_executive_summary(
     )
     if custom_instructions:
         prompt += f"\n\nAdditional instructions: {custom_instructions}"
+    if target_audience:
+        prompt += f"\n\nTarget audience: {target_audience}"
 
     try:
         raw = _llm_json_extract(extractor, prompt, "executive_summary")
@@ -2937,6 +3378,161 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
 # Renderers
 # ---------------------------------------------------------------------------
 
+# Default TTS voice for audio output.
+DEFAULT_TTS_VOICE = "alloy"
+
+# Markdown patterns to strip when converting to plain text for TTS.
+_MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_MD_HEADING_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+_MD_BOLD_PATTERN = re.compile(r"\*\*([^*]+)\*\*")
+_MD_ITALIC_PATTERN = re.compile(r"\*([^*]+)\*")
+_MD_CODE_PATTERN = re.compile(r"`([^`]+)`")
+_MD_HR_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
+_MD_QUOTE_PATTERN = re.compile(r"^>\s?", re.MULTILINE)
+_MD_LIST_PATTERN = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
+_MD_ORDERED_LIST_PATTERN = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
+
+
+def _strip_markdown(text: str) -> str:
+    """Convert Markdown text to plain text suitable for TTS.
+
+    Strips links, images, headings, bold/italic markers, code fences,
+    horizontal rules, blockquotes, and list markers.  Keeps the content
+    readable for speech synthesis.
+    """
+    # Images: replace with alt text
+    text = _MD_IMAGE_PATTERN.sub(r"\1", text)
+    # Links: keep link text, drop URL
+    text = _MD_LINK_PATTERN.sub(r"\1", text)
+    # Bold: keep inner text
+    text = _MD_BOLD_PATTERN.sub(r"\1", text)
+    # Italic: keep inner text
+    text = _MD_ITALIC_PATTERN.sub(r"\1", text)
+    # Inline code: keep inner text
+    text = _MD_CODE_PATTERN.sub(r"\1", text)
+    # Headings: remove # markers
+    text = _MD_HEADING_PATTERN.sub("", text)
+    # Horizontal rules: remove
+    text = _MD_HR_PATTERN.sub("", text)
+    # Blockquotes: remove > prefix
+    text = _MD_QUOTE_PATTERN.sub("", text)
+    # Unordered list markers
+    text = _MD_LIST_PATTERN.sub("", text)
+    # Ordered list markers
+    text = _MD_ORDERED_LIST_PATTERN.sub("", text)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _render_audio(
+    text: str,
+    voice: str = DEFAULT_TTS_VOICE,
+    timeout: float = 120.0,
+) -> bytes:
+    """Render *text* as MP3 audio using the OpenAI Text-to-Speech API.
+
+    Parameters
+    ----------
+    text:
+        Plain text (or Markdown; will be stripped) to convert to speech.
+        Maximum 4096 characters per request.
+    voice:
+        One of OpenAI's TTS voices: ``"alloy"`` (default), ``"echo"``,
+        ``"fable"``, ``"onyx"``, ``"nova"``, ``"shimmer"``.
+    timeout:
+        HTTP request timeout in seconds (default 120).
+
+    Returns
+    -------
+    bytes
+        MP3 audio data.
+
+    Raises
+    ------
+    RuntimeError
+        If the API key is not configured, the API returns an error, or
+        the network request fails.
+    ValueError
+        If *text* is empty or exceeds the character limit.
+    """
+    if not text or not text.strip():
+        raise ValueError("Cannot render empty text as audio")
+
+    text = text.strip()
+    if len(text) > 4096:
+        # Truncate at 4000 characters and append a note.
+        text = text[:4000] + "... [truncated]"
+
+    # Strip markdown for cleaner TTS output.
+    text = _strip_markdown(text)
+
+    if not text:
+        raise ValueError("Text is empty after stripping markdown formatting")
+
+    # --- API key resolution ---
+    api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+    if not api_key:
+        # Fall back to config
+        try:
+            config_path = get_config_path()
+            if config_path and config_path.is_file():
+                cfg = load_config(config_path)
+                api_key = cfg.llm.api_key or ""
+        except Exception:
+            pass
+    if not api_key:
+        # Last resort: OpenAI env var (set by LiteLLM)
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(
+            "AUTOINFO_LLM_API_KEY is not set.  Set the environment "
+            "variable or configure `llm.api_key` in config.yaml to "
+            "use audio output."
+        )
+
+    # --- OpenAI TTS API call ---
+    url = "https://api.openai.com/v1/audio/speech"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "tts-1",
+        "voice": voice,
+        "input": text,
+        "response_format": "mp3",
+    }
+
+    try:
+        response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        mp3_bytes = response.content
+        if not mp3_bytes:
+            raise RuntimeError("OpenAI TTS API returned empty audio data")
+        logger.info(
+            "Generated audio: %d chars text → %d bytes MP3 (voice=%s)",
+            len(text), len(mp3_bytes), voice,
+        )
+        return mp3_bytes
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json()
+        except Exception:
+            detail = exc.response.text
+        logger.error("OpenAI TTS API error: %s %s", exc.response.status_code, detail)
+        raise RuntimeError(
+            f"OpenAI TTS API error (HTTP {exc.response.status_code}): "
+            f"{detail}"
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.error("OpenAI TTS network error: %s", exc)
+        raise RuntimeError(
+            f"OpenAI TTS network error: {exc}"
+        ) from exc
+
 
 def _render_markdown(context: dict[str, Any]) -> str:
     """Render the Jinja2 digest template to Markdown."""
@@ -3043,4 +3639,132 @@ def _render_json(context: dict[str, Any]) -> str:
         "llm_synthesis": context["llm_synthesis"],
         "entries": context["entries"],
     }
+    return json.dumps(output, indent=2, ensure_ascii=False, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Agent-native JSON-LD output format (F28 / G11)
+# ---------------------------------------------------------------------------
+
+
+def _render_agent_json(
+    entries: list[dict[str, Any]],
+    context: dict[str, Any],
+) -> str:
+    """Render entries as agent-native JSON-LD (``@type: KnowledgeDigest``).
+
+    Produces a structured JSON-LD payload optimized for LLM re-consumption.
+    Agents can parse, re-synthesize, store in their own KB, or combine
+    with other data sources.
+
+    Parameters
+    ----------
+    entries:
+        List of KB entry dicts (from :meth:`KBStore.list_entries`).
+        Expected keys: ``entry_id``, ``title``, ``summary``, ``source_url``,
+        ``source_platform``, ``collected_at``, ``relevance_score``, ``tags``.
+    context:
+        Rendering context dict.  Expected keys: ``domain``, ``period``,
+        ``generated_at``, ``llm_synthesis``, ``target_audience``.
+
+    Returns
+    -------
+    str
+        Indented JSON-LD string.
+    """
+    import re
+
+    generated_at = context.get("generated_at", datetime.now(timezone.utc).isoformat())
+    domain = context.get("domain", "")
+    period = context.get("period", "")
+    target_audience = context.get("target_audience", "")
+    llm_synthesis = context.get("llm_synthesis", {})
+
+    # --- Build entry list ----------------------------------------------------
+    agent_entries: list[dict[str, Any]] = []
+    for e in entries:
+        entry_uuid = e.get("entry_id", "")
+        tags: list[str] = []
+        tags_raw = e.get("tags", "")
+        if isinstance(tags_raw, list):
+            tags = tags_raw
+        elif isinstance(tags_raw, str):
+            try:
+                tags = json.loads(tags_raw)
+            except (json.JSONDecodeError, TypeError):
+                tags = [tags_raw] if tags_raw else []
+
+        # Derive entities from tags
+        entities = [
+            {"name": tag, "type": "topic", "relation": "tagged"}
+            for tag in tags
+        ]
+
+        # Confidence score: use relevance_score/100 as proxy if available
+        relevance = e.get("relevance_score")
+        if relevance is not None:
+            try:
+                confidence = round(float(relevance) / 100.0, 4)
+            except (ValueError, TypeError):
+                confidence = None
+        else:
+            confidence = None
+
+        # Key points: split summary into sentences as approximate key points
+        summary = e.get("summary", "") or ""
+        key_points: list[str] = []
+        if summary:
+            sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
+            key_points = [s.strip() for s in sentences[:3] if s.strip()]
+
+        agent_entries.append({
+            "uuid": entry_uuid,
+            "title": e.get("title", ""),
+            "tl_dr": summary,
+            "source_url": e.get("source_url", ""),
+            "source_platform": e.get("source_platform", ""),
+            "collected_at": e.get("collected_at", ""),
+            "relevance_score": e.get("relevance_score"),
+            "confidence_score": confidence,
+            "key_points": key_points,
+            "entities": entities,
+        })
+
+    # --- Build trends from LLM synthesis --------------------------------------
+    trends: list[dict[str, Any]] = []
+    for trend in llm_synthesis.get("trends", []):
+        if isinstance(trend, str):
+            trends.append({"topic": trend, "direction": "", "evidence": ""})
+        elif isinstance(trend, dict):
+            trends.append(trend)
+    # Also pull from key_findings
+    for finding in llm_synthesis.get("key_findings", []):
+        topic = finding.get("topic", "") if isinstance(finding, dict) else str(finding)
+        if topic and not any(t.get("topic") == topic for t in trends):
+            detail = finding.get("detail", "") if isinstance(finding, dict) else ""
+            trends.append({"topic": topic, "direction": "observed", "evidence": detail})
+
+    # --- Build metadata -------------------------------------------------------
+    metadata: dict[str, Any] = {
+        "entry_count": len(entries),
+        "generated_at": generated_at,
+        "domain": domain,
+    }
+    if period:
+        metadata["period"] = period
+
+    # --- Assemble JSON-LD payload ---------------------------------------------
+    output: dict[str, Any] = {
+        "@context": "https://autoinfo.ai/schemas/knowledge-digest-v1",
+        "@type": "KnowledgeDigest",
+        "uuid": str(uuid.uuid4()),
+        "generated_at": generated_at,
+        "domain": domain,
+        "period": period,
+        "target_audience": target_audience or None,
+        "entries": agent_entries,
+        "trends": trends,
+        "metadata": metadata,
+    }
+
     return json.dumps(output, indent=2, ensure_ascii=False, default=str)

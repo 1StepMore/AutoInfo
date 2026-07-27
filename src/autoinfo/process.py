@@ -30,6 +30,11 @@ from autoinfo.quality import (
     G4FactualConsistency,
     G5TranslationAccuracy,
     QualityResult,
+    check_inline_tags,
+    check_length_ratio,
+    check_source_copy,
+    check_terminology,
+    llm_judge,
     run_quality_gates,
 )
 
@@ -735,31 +740,175 @@ def run_processing(
                     quality_results["G4-SummaryFactual"] = g4_result
 
             # Step b3: Optional G5 translation accuracy gate
+            # Augmentation approach: deterministic gates 1-4 as fast pre-check,
+            # LLM judge (gate 5) as composite final gate only if pre-checks pass.
+            # Falls back to single-LLM-check path if 5-gate pipeline fails.
             if check_translation:
-                try:
+                translation = (extraction.custom_fields or {}).get("translation", "")
+
+                if not translation:
+                    # No translation to check — trivially pass (backward compat)
+                    g5_result = QualityResult(
+                        gate_name="G5-TranslationAccuracy",
+                        passed=True,
+                        flagged=False,
+                        details={
+                            "faithful": True,
+                            "explanation": "No translation to check",
+                            "issues": [],
+                        },
+                    )
+                else:
+                    # Resolve model string (also used by fallback path)
                     g5_model = (
                         f"{proc_config.llm.provider}/{proc_config.llm.model}"
                         if proc_config and proc_config.llm.provider and proc_config.llm.model
                         else "openrouter/deepseek/deepseek-chat"
                     )
-                    g5 = G5TranslationAccuracy(model=g5_model)
-                    g5_result = g5.check(item, extraction)
-                    quality_results["G5-TranslationAccuracy"] = g5_result
-                except Exception as exc:
-                    logger.warning(
-                        "G5 translation check failed for item %s: %s", item.id, exc
-                    )
-                    g5_result = QualityResult(
-                        gate_name="G5-TranslationAccuracy",
-                        passed=False,
-                        flagged=True,
-                        details={
-                            "faithful": None,
-                            "explanation": str(exc),
-                            "issues": [],
-                        },
-                    )
-                    quality_results["G5-TranslationAccuracy"] = g5_result
+                    try:
+                        source_text = item.content or ""
+                        target_text = translation
+                        source_lang = item.language or "en"
+                        target_lang = (
+                            extraction.custom_fields or {}
+                        ).get("target_language", "zh")
+
+                        # Resolve terminology dictionary from domain config
+                        terminology_dict: dict[str, Any] = {}
+                        if config:
+                            for d in config.domains:
+                                if d.name == domain:
+                                    terminology_dict = (
+                                        getattr(d, "terminology", {}) or {}
+                                    )
+                                    break
+
+                        # --- Deterministic pre-checks (gates 1-4, no LLM) ---
+                        g1_pre = check_inline_tags(source_text, target_text)
+                        g2_pre = check_terminology(
+                            source_text, target_text, terminology_dict
+                        )
+                        g3_pre = check_length_ratio(source_text, target_text)
+                        g4_pre = check_source_copy(source_text, target_text)
+
+                        pre_checks = [g1_pre, g2_pre, g3_pre, g4_pre]
+                        pre_check_failed = any(
+                            not g["passed"] for g in pre_checks
+                        )
+
+                        if pre_check_failed:
+                            # Pre-checks failed → skip LLM judge, composite failure
+                            failed_gates = [
+                                k for g, k in zip(
+                                    pre_checks,
+                                    ["inline_tags", "terminology",
+                                     "length_ratio", "source_copy"],
+                                ) if not g["passed"]
+                            ]
+                            logger.info(
+                                "G5 deterministic pre-checks failed for "
+                                "item %s: %s — skipping LLM judge",
+                                item.id, ", ".join(failed_gates),
+                            )
+                            g5_result = QualityResult(
+                                gate_name="G5-TranslationAccuracy",
+                                passed=False,
+                                flagged=True,
+                                score=0.0,
+                                details={
+                                    "faithful": False,
+                                    "explanation": (
+                                        "Deterministic pre-checks failed: "
+                                        + ", ".join(failed_gates)
+                                        + " — LLM judge skipped"
+                                    ),
+                                    "issues": [],
+                                    "gates": {
+                                        "inline_tags": g1_pre,
+                                        "terminology": g2_pre,
+                                        "length_ratio": g3_pre,
+                                        "source_copy": g4_pre,
+                                    },
+                                    "composite_score": 0.0,
+                                },
+                            )
+                        else:
+                            # Pre-checks pass → run LLM judge (gate 5)
+                            from autoinfo.translation_qa import calculate_quality_score  # noqa: PLC0415
+
+                            g5_scores = llm_judge(
+                                source_text, target_text,
+                                source_lang, target_lang,
+                                model=g5_model,
+                            )
+
+                            composite = calculate_quality_score(
+                                faithfulness=float(
+                                    g5_scores.get("faithfulness", 0)
+                                ),
+                                terminology=float(
+                                    g5_scores.get("terminology", 0)
+                                ),
+                                style=float(g5_scores.get("style", 0)),
+                                readability=float(
+                                    g5_scores.get("readability", 0)
+                                ),
+                            )
+
+                            composite_score = float(
+                                composite.get("composite", 0.0)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+                            )
+
+                            # Threshold: faithful when composite >= 50
+                            faithful = composite_score >= 50.0
+
+                            g5_result = QualityResult(
+                                gate_name="G5-TranslationAccuracy",
+                                passed=faithful,
+                                flagged=not faithful,
+                                score=composite_score / 100.0,
+                                details={
+                                    "faithful": faithful,
+                                    "explanation": "5-gate pipeline evaluation",
+                                    "issues": g5_scores.get("issues", []),
+                                    "gates": {
+                                        "inline_tags": g1_pre,
+                                        "terminology": g2_pre,
+                                        "length_ratio": g3_pre,
+                                        "source_copy": g4_pre,
+                                        "llm_judge": g5_scores,
+                                    },
+                                    "composite_score": composite_score,
+                                },
+                            )
+
+                    except Exception as five_gate_exc:
+                        logger.warning(
+                            "G5 5-gate pipeline failed for item %s: %s — "
+                            "falling back to single-LLM-check path",
+                            item.id, five_gate_exc,
+                        )
+                        # Fallback: single-LLM-check path (existing behavior)
+                        try:
+                            g5 = G5TranslationAccuracy(model=g5_model)
+                            g5_result = g5.check(item, extraction)
+                        except Exception as single_exc:
+                            logger.warning(
+                                "G5 fallback also failed for item %s: %s",
+                                item.id, single_exc,
+                            )
+                            g5_result = QualityResult(
+                                gate_name="G5-TranslationAccuracy",
+                                passed=False,
+                                flagged=True,
+                                details={
+                                    "faithful": None,
+                                    "explanation": str(single_exc),
+                                    "issues": [],
+                                },
+                            )
+
+                quality_results["G5-TranslationAccuracy"] = g5_result
 
             g1 = quality_results.get("G1-SourceAuthority")
             g2 = quality_results.get("G2-Dedup")
@@ -791,6 +940,9 @@ def run_processing(
             if g5_result is not None:
                 item_log["g5_flagged"] = g5_result.flagged
                 item_log["g5_faithful"] = g5_result.details.get("faithful")
+                item_log["g5_composite_score"] = g5_result.details.get(
+                    "composite_score"
+                )
 
             # Step c0: Language detection (non-blocking)
             text_for_lang = f"{item.title} {item.content}"

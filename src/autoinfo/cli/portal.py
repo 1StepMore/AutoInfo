@@ -111,7 +111,7 @@ def history(
         raise typer.Exit(code=1)
 
     subscriptions = list_subscriptions(user_id=user_id)
-    sub_ids = [s.sub_id for s in subscriptions if s.sub_id]
+    sub_ids = [s.subscription_id for s in subscriptions if s.subscription_id]
 
     if not sub_ids:
         typer.echo(f"No subscriptions found for end-user '{user_id}'")

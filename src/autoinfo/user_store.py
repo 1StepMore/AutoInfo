@@ -71,6 +71,14 @@ def init_db() -> None:
                 start_date TEXT DEFAULT '',
                 end_date   TEXT DEFAULT '',
                 auto_renew INTEGER DEFAULT 1,
+                tier       TEXT DEFAULT 'free',
+                channels   TEXT DEFAULT '[]',
+                domains    TEXT DEFAULT '[]',
+                products   TEXT DEFAULT '[]',
+                platform_limit  INTEGER DEFAULT 1,
+                domain_limit    INTEGER DEFAULT 1,
+                raw_access      INTEGER DEFAULT 0,
+                processed_access INTEGER DEFAULT 1,
                 FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
             );
         """)
@@ -78,37 +86,53 @@ def init_db() -> None:
 
 
 def _ensure_columns_exist() -> None:
-    """Add missing columns to existing user_profiles table.
+    """Add missing columns to existing tables.
 
-    Checks for trial_started_at, trial_days, and preferences columns
-    and adds them via ``ALTER TABLE`` if they are absent.  This allows
-    the schema to evolve without breaking existing databases.
+    Handles both ``user_profiles`` and ``subscriptions`` tables by
+    checking for missing columns via ``PRAGMA table_info`` and adding
+    them with ``ALTER TABLE``.
     """
-    _REQUIRED_COLS: list[tuple[str, str]] = [
+    _USER_COLS: list[tuple[str, str]] = [
         ("trial_started_at", "TEXT DEFAULT ''"),
         ("trial_days", "INTEGER DEFAULT 14"),
         ("preferences", "TEXT DEFAULT '{}'"),
         ("stripe_customer_id", "TEXT DEFAULT ''"),
         ("stripe_subscription_id", "TEXT DEFAULT ''"),
     ]
+    _SUB_COLS: list[tuple[str, str]] = [
+        ("tier", "TEXT DEFAULT 'free'"),
+        ("channels", "TEXT DEFAULT '[]'"),
+        ("domains", "TEXT DEFAULT '[]'"),
+        ("products", "TEXT DEFAULT '[]'"),
+        ("platform_limit", "INTEGER DEFAULT 1"),
+        ("domain_limit", "INTEGER DEFAULT 1"),
+        ("raw_access", "INTEGER DEFAULT 0"),
+        ("processed_access", "INTEGER DEFAULT 1"),
+    ]
+
     with _connect() as conn:
-        existing = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(user_profiles)").fetchall()
-        }
-        for col_name, col_def in _REQUIRED_COLS:
-            if col_name not in existing:
-                try:
-                    conn.execute(
-                        f"ALTER TABLE user_profiles ADD COLUMN {col_name} {col_def}"
-                    )
-                    logger.info(
-                        "Added column '%s' to user_profiles table", col_name
-                    )
-                except sqlite3.OperationalError:
-                    logger.warning(
-                        "Could not add column '%s' (may already exist)", col_name
-                    )
+        for table, col_list in [("user_profiles", _USER_COLS), ("subscriptions", _SUB_COLS)]:
+            existing = {
+                row[1]
+                for row in conn.execute(
+                    f"PRAGMA table_info({table})"
+                ).fetchall()
+            }
+            for col_name, col_def in col_list:
+                if col_name not in existing:
+                    try:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"
+                        )
+                        logger.info(
+                            "Added column '%s' to %s table", col_name, table
+                        )
+                    except sqlite3.OperationalError:
+                        logger.warning(
+                            "Could not add column '%s' to %s (may already exist)",
+                            col_name,
+                            table,
+                        )
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +191,54 @@ def _row_to_profile(row: sqlite3.Row) -> UserProfile:
 
 def _row_to_subscription(row: sqlite3.Row) -> Subscription:
     data = dict(row)
+
+    # Map SQL column names → dataclass field names
+    _COL_MAP = {
+        "sub_id": "subscription_id",
+        "product_id": "plan",
+    }
+    for db_col, model_field in _COL_MAP.items():
+        if db_col in data:
+            data[model_field] = data.pop(db_col)
+
+    # Coerce bool fields
     data["auto_renew"] = bool(data.get("auto_renew", True))
+    data["raw_access"] = bool(data.get("raw_access", False))
+    data["processed_access"] = bool(data.get("processed_access", True))
+
+    # Coerce int fields
+    for int_col in ("platform_limit", "domain_limit"):
+        val = data.get(int_col, 1)
+        try:
+            data[int_col] = int(val) if val is not None else 1
+        except (ValueError, TypeError):
+            data[int_col] = 1
+
+    # Parse JSON list fields
+    for json_col in ("channels", "domains", "products"):
+        raw = data.get(json_col, "[]")
+        if isinstance(raw, str):
+            try:
+                data[json_col] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                data[json_col] = []
+        elif raw is None:
+            data[json_col] = []
+
+    # Parse features JSON
+    raw_features = data.get("features", "{}")
+    if isinstance(raw_features, str):
+        try:
+            data["features"] = json.loads(raw_features)
+        except (json.JSONDecodeError, TypeError):
+            data["features"] = {}
+    elif raw_features is None:
+        data["features"] = {}
+
+    # Filter to known Subscription fields only
+    valid_fields = set(Subscription.__dataclass_fields__.keys())
+    data = {k: v for k, v in data.items() if k in valid_fields}
+
     return Subscription(**data)
 
 
@@ -559,38 +630,64 @@ def get_preferences(end_user_id: str) -> dict[str, Any]:
 
 def create_subscription(
     user_id: str,
-    product_id: str = "",
+    plan: str = "free",
     status: str = "active",
     start_date: str = "",
     end_date: str = "",
     auto_renew: bool = True,
+    tier: str = "free",
+    channels: list[str] | None = None,
+    domains: list[str] | None = None,
+    products: list[str] | None = None,
+    platform_limit: int = 1,
+    domain_limit: int = 1,
+    raw_access: bool = False,
+    processed_access: bool = True,
 ) -> Subscription:
     """Create a new subscription for a user."""
     init_db()
     import uuid
 
     sub = Subscription(
-        sub_id=str(uuid.uuid4()),
+        subscription_id="sub_" + str(uuid.uuid4())[:12],
         user_id=user_id,
-        product_id=product_id,
+        plan=plan,
         status=status,
         start_date=start_date or datetime.now(timezone.utc).isoformat(),
         end_date=end_date,
         auto_renew=auto_renew,
+        tier=tier,
+        channels=channels or [],
+        domains=domains or [],
+        products=products or [],
+        platform_limit=platform_limit,
+        domain_limit=domain_limit,
+        raw_access=raw_access,
+        processed_access=processed_access,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO subscriptions
-               (sub_id, user_id, product_id, status, start_date, end_date, auto_renew)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (sub_id, user_id, product_id, status, start_date, end_date, auto_renew,
+                tier, channels, domains, products,
+                platform_limit, domain_limit, raw_access, processed_access)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                sub.sub_id,
+                sub.subscription_id,
                 sub.user_id,
-                sub.product_id,
+                sub.plan,
                 sub.status,
                 sub.start_date,
                 sub.end_date,
                 int(sub.auto_renew),
+                sub.tier,
+                json.dumps(sub.channels),
+                json.dumps(sub.domains),
+                json.dumps(sub.products),
+                sub.platform_limit,
+                sub.domain_limit,
+                int(sub.raw_access),
+                int(sub.processed_access),
             ),
         )
     return sub

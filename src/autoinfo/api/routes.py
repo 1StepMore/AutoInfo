@@ -495,7 +495,7 @@ async def get_portal_delivery_history(
 
     # Collect subscription IDs for this user
     subscriptions = _list_subs(user_id=user_id)
-    sub_ids = [s.sub_id for s in subscriptions if s.sub_id]
+    sub_ids = [s.subscription_id for s in subscriptions if s.subscription_id]
 
     if not sub_ids:
         return {

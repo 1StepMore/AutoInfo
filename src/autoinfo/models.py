@@ -338,7 +338,11 @@ class UserProfile:
 
 @dataclass
 class Subscription:
-    """Subscription tied to a user profile with plan, status, and billing info."""
+    """Subscription tied to a user profile with plan, status, and billing info.
+
+    CD-024 fields: tier, channels, domains, products, platform_limit,
+    domain_limit, raw_access, processed_access.
+    """
 
     subscription_id: str
     user_id: str
@@ -352,3 +356,11 @@ class Subscription:
     features: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""
     updated_at: str = ""
+    tier: str = "free"
+    channels: list[str] = field(default_factory=list)
+    domains: list[str] = field(default_factory=list)
+    products: list[str] = field(default_factory=list)
+    platform_limit: int = 1
+    domain_limit: int = 1
+    raw_access: bool = False
+    processed_access: bool = True

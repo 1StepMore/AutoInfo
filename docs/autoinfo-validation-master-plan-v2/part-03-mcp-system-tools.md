@@ -3,6 +3,14 @@
 **Coverage:** 36 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (3), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3)
 
 ---
+**Important — Parameter Names:** MCP tools use specific parameter names that differ from the documentation examples below. Key differences:
+- `get_domain_config` expects `{"name": "..."}` (not `domain`)
+- `get_source_health` expects `{"source_id": "..."}` (not `domain`)
+- `get_kb_entry` expects `{"entry_id": "..."}` (not `domain`)
+
+If a tool returns "got an unexpected keyword argument", check that the parameter name matches the tool's inputSchema (use `list_tools()` to discover schema at runtime).
+
+---
 
 ## Q18: MCP System Tools
 

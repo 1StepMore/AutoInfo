@@ -317,7 +317,7 @@ autoinfo summaries list --domain medical-research
 ```bash
 autoinfo summaries list --domain medical-research --json
 ```
-**Expected Result:** ✅ Valid JSON with entries array. Each entry has title, summary, relevance_score, collected_at, tier.
+**Expected Result:** ✅ Valid JSON with items array. Each item has entry_id, title, summary, relevance_score, collected_at, tier.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -433,15 +433,15 @@ autoinfo sources list --domain medical-research
 
 #### 5.3 🟢 Test source reachability
 ```bash
-autoinfo sources test --name pubmed
+autoinfo sources test --url https://eutils.ncbi.nlm.nih.gov/entrez/eutils/ --type api
 ```
-**Expected Result:** ✅ Shows reachability result (ok/timeout/error) with latency.
+**Expected Result:** ✅ Shows reachability result (ok/timeout/error) with latency. (Note: uses `--url` + `--type`, not `--name`.)
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.4 🟢 Add new source
 ```bash
-autoinfo sources add --name my-rss --type rss --url https://example.com/feed --domain medical-research --quality-tier 2
+autoinfo sources add --name my-rss --type rss --url https://example.com/feed --domain medical-research
 ```
 **Expected Result:** ✅ Source added. Shows confirmation. Listed in `sources list`.
 
@@ -449,7 +449,7 @@ autoinfo sources add --name my-rss --type rss --url https://example.com/feed --d
 
 #### 5.5 🟢 Remove source
 ```bash
-autoinfo sources remove --name my-rss
+autoinfo sources remove --source-id "medical-research:my-rss"
 ```
 **Expected Result:** ✅ Source removed. Confirmation shown. No longer in `sources list`.
 
@@ -519,7 +519,7 @@ autoinfo topics add --name "Gene Therapy" --keywords "CRISPR,gene editing,AAV" -
 
 #### 6.3 🟢 Remove topic
 ```bash
-autoinfo topics remove --name "Gene Therapy" --domain medical-research
+autoinfo topics remove --topic-id "Gene Therapy" --domain medical-research
 ```
 **Expected Result:** ✅ Topic removed. Confirmation shown.
 

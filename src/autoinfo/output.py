@@ -71,6 +71,38 @@ class DeliveryOutput:
 
 
 # ---------------------------------------------------------------------------
+# Content-ready notification helper
+# ---------------------------------------------------------------------------
+
+
+def _try_notify_content_ready(
+    user_id: str,
+    product_type: str,
+    title: str,
+) -> None:
+    """Call :func:`autoinfo.notifications.notify_content_ready` with error suppression.
+
+    Any failure is logged at DEBUG level — notification errors must never
+    prevent the generated product from being returned to the caller.
+    """
+    try:
+        from autoinfo.notifications import notify_content_ready  # noqa: PLC0415
+
+        notify_content_ready(
+            user_id=user_id,
+            product_type=product_type,
+            title=title,
+        )
+    except Exception:
+        logger.debug(
+            "Content-ready notification failed for user '%s' (%s)",
+            user_id,
+            product_type,
+            exc_info=True,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1245,6 +1277,69 @@ class ProductTemplate:
 
 
 # ---------------------------------------------------------------------------
+# Product template registry
+# ---------------------------------------------------------------------------
+
+PRODUCT_TEMPLATES: list[dict[str, Any]] = [
+    {
+        "name": "digest",
+        "description": "Scheduled knowledge digests",
+        "access_level": "free",
+        "template": ProductTemplate(domain="*", access_level="free"),
+    },
+    {
+        "name": "report",
+        "description": "Thematic structured reports",
+        "access_level": "free",
+        "template": ProductTemplate(domain="*", access_level="free"),
+    },
+    {
+        "name": "tutorial",
+        "description": "Learning path tutorials",
+        "access_level": "free",
+        "template": ProductTemplate(domain="*", access_level="free"),
+    },
+    {
+        "name": "presentation",
+        "description": "Slide-based presentations",
+        "access_level": "free",
+        "template": ProductTemplate(domain="*", access_level="free"),
+    },
+    {
+        "name": "premium-briefing",
+        "description": "Premium briefings with deep analysis and actionable insights",
+        "access_level": "premium",
+        "template": ProductTemplate(domain="*", access_level="premium"),
+    },
+    {
+        "name": "enterprise-briefing",
+        "description": "Enterprise briefings with custom data, white-labeling, and priority support",
+        "access_level": "enterprise",
+        "template": ProductTemplate(domain="*", access_level="enterprise"),
+    },
+]
+
+
+def list_output_templates(domain: str = "") -> dict[str, Any]:
+    """List available output templates for a domain.
+
+    Parameters
+    ----------
+    domain:
+        Domain name filter (optional; empty string = all domains).
+
+    Returns
+    -------
+    dict with keys: ``domain``, ``templates``, ``count``.
+    """
+    templates = [
+        {"name": t["name"], "description": t["description"], "access_level": t["access_level"]}
+        for t in PRODUCT_TEMPLATES
+    ]
+    return {"domain": domain, "templates": templates, "count": len(templates)}
+
+
+# ---------------------------------------------------------------------------
 # LLM synthesis for digests
 # ---------------------------------------------------------------------------
 
@@ -1801,9 +1896,34 @@ def generate_digest(
                 else:
                     rendered = rendered.rstrip() + "\n\n" + attribution
 
+    # --- Record consumption event (CD-018) -----------------------------------
+    if user_id:
+        try:
+            from autoinfo.consumption import ConsumptionStore  # noqa: PLC0415
+
+            ConsumptionStore().record_event(
+                user_id=user_id,
+                product_type="digest",
+                product_id=f"{domain}-{period}",
+                event_type="delivered",
+                metadata={
+                    "domain": domain,
+                    "period": period,
+                    "format": format,
+                    "entries_count": len(entries),
+                    "stale_excluded": excluded_stale_count if not include_stale else 0,
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record consumption event for user '%s'",
+                user_id,
+                exc_info=True,
+            )
+
     # --- Delivery gates (D1-D3) ---------------------------------------------
     if delivery_gate_configs is not None:
-        return _apply_delivery_gates(
+        result = _apply_delivery_gates(
             rendered_output=rendered,
             output_format=format,
             entries=entries,
@@ -1812,7 +1932,20 @@ def generate_digest(
             delivery_gate_configs=delivery_gate_configs,
             fallback_render_fn=lambda: _render_markdown(context),
         )
+        if user_id:
+            _try_notify_content_ready(
+                user_id=user_id,
+                product_type="digest",
+                title=f"{period_label} Digest \u2014 {domain}",
+            )
+        return result
 
+    if user_id:
+        _try_notify_content_ready(
+            user_id=user_id,
+            product_type="digest",
+            title=f"{period_label} Digest \u2014 {domain}",
+        )
     return rendered
 
 
@@ -2123,9 +2256,33 @@ def generate_report(
                 else:
                     rendered = rendered.rstrip() + "\n\n" + attribution
 
+    # --- Record consumption event (CD-018) -----------------------------------
+    if user_id:
+        try:
+            from autoinfo.consumption import ConsumptionStore  # noqa: PLC0415
+
+            ConsumptionStore().record_event(
+                user_id=user_id,
+                product_type="report",
+                product_id=f"{domain}-{period}",
+                event_type="delivered",
+                metadata={
+                    "domain": domain,
+                    "format": format,
+                    "entries_count": len(entries),
+                    "collection_id": collection_id or "",
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record consumption event for user '%s'",
+                user_id,
+                exc_info=True,
+            )
+
     # -- Delivery gates (D1-D3) ---------------------------------------------
     if delivery_gate_configs is not None:
-        return _apply_delivery_gates(
+        result = _apply_delivery_gates(
             rendered_output=rendered,
             output_format=format,
             entries=entries,
@@ -2134,7 +2291,20 @@ def generate_report(
             delivery_gate_configs=delivery_gate_configs,
             fallback_render_fn=lambda: _render_report_template(report_data),
         )
+        if user_id:
+            _try_notify_content_ready(
+                user_id=user_id,
+                product_type="report",
+                title=f"{domain} \u2014 Report",
+            )
+        return result
 
+    if user_id:
+        _try_notify_content_ready(
+            user_id=user_id,
+            product_type="report",
+            title=f"{domain} \u2014 Report",
+        )
     return rendered
 
 

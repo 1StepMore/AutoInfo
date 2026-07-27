@@ -595,3 +595,109 @@ class TestCreateCheckoutSession:
 
         assert "error" in result
         assert result["end_user_id"] == "user_fail"
+
+
+# ======================================================================
+# Tier-based check_access() (T5 — subscription model extension)
+# ======================================================================
+
+
+class TestCheckAccessTierFastPath:
+    """Verify check_access() uses UserProfile.tier as fast path (no Stripe).
+
+    Tier mapping: free=0, premium=1, enterprise=2.
+    """
+
+    @staticmethod
+    def _profile(tier: str = "free", status: str = "active") -> object:
+        """Create a minimal UserProfile-like object for tier-based tests."""
+        # We use a simple object to avoid user_store dependency.
+        return type(
+            "_FakeProfile",
+            (),
+            {"tier": tier, "status": status, "stripe_customer_id": "", "stripe_subscription_id": ""},
+        )()
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_free_user_accesses_free_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="free")
+        result = check_access("user_free", "free")
+        assert result["allowed"] is True
+        assert "Free content" in result["reason"]
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_free_user_denied_premium_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="free")
+        # Must also mock get_subscription_status since fast path won't pass
+        with patch("autoinfo.billing.get_subscription_status") as mock_sub:
+            mock_sub.return_value = {
+                "end_user_id": "user_free",
+                "profile_status": "active",
+                "stripe_status": "none",
+                "subscription_id": "",
+                "customer_id": "",
+                "plan": "free",
+            }
+            result = check_access("user_free", "premium")
+        assert result["allowed"] is False
+        assert "upgrade_prompt" in result
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_premium_user_accesses_premium_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="premium")
+        result = check_access("user_premium", "premium")
+        assert result["allowed"] is True
+        assert "tier fast path" in result["reason"]
+        assert result["plan"] == "premium"
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_enterprise_user_accesses_enterprise_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="enterprise")
+        result = check_access("user_enterprise", "enterprise")
+        assert result["allowed"] is True
+        assert "tier fast path" in result["reason"]
+        assert result["plan"] == "enterprise"
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_premium_user_accesses_free_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="premium")
+        result = check_access("user_premium", "free")
+        assert result["allowed"] is True
+        assert "Free content" in result["reason"]
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_enterprise_user_accesses_premium_template(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = self._profile(tier="enterprise")
+        result = check_access("user_enterprise", "premium")
+        assert result["allowed"] is True
+        assert "tier fast path" in result["reason"]
+
+    @patch("autoinfo.billing._load_user_profile")
+    def test_no_profile_falls_back_to_stripe(self, mock_load: MagicMock) -> None:
+        from autoinfo.billing import check_access
+
+        mock_load.return_value = None
+        with patch("autoinfo.billing.get_subscription_status") as mock_sub:
+            mock_sub.return_value = {
+                "end_user_id": "user_unknown",
+                "profile_status": "active",
+                "stripe_status": "active",
+                "subscription_id": "sub_xxx",
+                "customer_id": "cus_xxx",
+                "plan": "premium",
+            }
+            result = check_access("user_unknown", "premium")
+        assert result["allowed"] is True
+        assert "active premium subscription" in result["reason"]

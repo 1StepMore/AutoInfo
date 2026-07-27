@@ -130,7 +130,7 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 111,
+            "tools_count": 112,
     }
 
 
@@ -1734,15 +1734,29 @@ def _handle_reindex_kb(domain: str) -> dict[str, Any]:
     return store.reindex_knowledge_base(domain=domain)
 
 
-def _handle_list_output_templates(domain: str = "") -> dict[str, Any]:
-    """List available output templates for a domain."""
-    templates = [
-        {"name": "digest", "description": "Scheduled knowledge digests", "access_level": "free"},
-        {"name": "report", "description": "Thematic structured reports", "access_level": "free"},
-        {"name": "tutorial", "description": "Learning path tutorials", "access_level": "free"},
-        {"name": "presentation", "description": "Slide-based presentations", "access_level": "free"},
-    ]
-    return {"domain": domain, "templates": templates, "count": len(templates)}
+def _handle_list_output_templates(domain: str = "", user_id: str | None = None) -> dict[str, Any]:
+    """List available output templates for a domain, optionally filtered by user tier.
+
+    When *user_id* is provided, templates are filtered so that only those
+    whose ``access_level`` is accessible to the user are returned.
+    When *user_id* is ``None``, all templates are returned (backward compatible).
+    """
+    from autoinfo.output import list_output_templates as _list_output_templates
+    from autoinfo.billing import check_access
+
+    result = _list_output_templates(domain=domain)
+    templates: list[dict[str, Any]] = result["templates"]
+
+    if user_id is not None:
+        filtered: list[dict[str, Any]] = []
+        for t in templates:
+            access = check_access(user_id, t["access_level"])
+            if access["allowed"]:
+                filtered.append(t)
+        result["templates"] = filtered
+        result["count"] = len(filtered)
+
+    return result
 
 
 def _handle_generate_digest(
@@ -3547,6 +3561,29 @@ def _handle_get_delivery_log(
         return _error_dict(exc)
 
 
+def _handle_get_channel_health(
+    channel_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return health status for all or a specific delivery channel."""
+    from autoinfo.delivery import _CHANNEL_REGISTRY
+
+    results: list[dict[str, Any]] = []
+    if channel_name is not None:
+        channel_cls = _CHANNEL_REGISTRY.get(channel_name)
+        if channel_cls is None:
+            return [{"healthy": False, "latency_ms": 0.0, "error": f"unknown channel: {channel_name}", "channel": channel_name}]
+        instance = channel_cls()
+        results.append(instance.health_check())
+    else:
+        for name, channel_cls in _CHANNEL_REGISTRY.items():
+            try:
+                instance = channel_cls()
+                results.append(instance.health_check())
+            except Exception as exc:
+                results.append({"healthy": False, "latency_ms": 0.0, "error": str(exc), "channel": name})
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Portal / end-user self-service tools
 # ---------------------------------------------------------------------------
@@ -5126,6 +5163,14 @@ async def list_tools() -> list[Tool]:
                         "description": "Domain name (optional)",
                         "default": "",
                     },
+                    "user_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional end-user ID for tier-based filtering. "
+                            "When set, only templates accessible to this user "
+                            "are returned. When omitted, all templates are returned."
+                        ),
+                    },
                 },
                 "required": [],
             },
@@ -6608,6 +6653,29 @@ async def list_tools() -> list[Tool]:
                 "required": ["end_user_id"],
             },
         ),
+        # -- Channel Health (1) -------------------------------------------
+        Tool(
+            name="get_channel_health",
+            description=(
+                "Check health of delivery channels. "
+                "Return health status (healthy, latency_ms, error) for one or all channels. "
+                "When channel_name is omitted, returns health for all 11 channels."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel_name": {
+                        "type": "string",
+                        "description": (
+                            "Specific channel to check (smtp, webhook, rest_api, file_export, "
+                            "discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss). "
+                            "When omitted, all channels are checked."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        ),
         # -- Agent Callbacks (3) --------------------------------------------
         Tool(
             name="set_agent_callback",
@@ -6925,6 +6993,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_active_deliveries()
         elif name == "get_delivery_log":
             result = _handle_get_delivery_log(**arguments)
+
+        # -- Channel Health (1) ------------------------------------------
+        elif name == "get_channel_health":
+            result = _handle_get_channel_health(**arguments)
 
         # -- Merge / Find Similar (2) ---------------------------------
         elif name == "merge_items":

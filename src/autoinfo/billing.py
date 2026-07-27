@@ -590,7 +590,29 @@ def check_access(
             "plan": "any",
         }
 
-    # Resolve user's subscription status
+    # --- Fast path: check UserProfile.tier (no Stripe dependency) ----------
+    TIER_MAP: dict[str, int] = {"free": 0, "premium": 1, "enterprise": 2}
+    required_tier_num = TIER_MAP.get(access_level, 0)
+
+    profile = _load_user_profile(end_user_id)
+    if profile is not None:
+        user_tier = getattr(profile, "tier", "free") or "free"
+        user_tier_num = TIER_MAP.get(user_tier, 0)
+        if user_tier_num >= required_tier_num:
+            return {
+                "allowed": True,
+                "reason": (
+                    f"User tier '{user_tier}' grants access to "
+                    f"'{access_level}' content (tier fast path)."
+                ),
+                "access_level": access_level,
+                "end_user_id": end_user_id,
+                "upgrade_prompt": None,
+                "profile_status": getattr(profile, "status", "active"),
+                "plan": user_tier,
+            }
+
+    # Fall through to Stripe-based subscription check
     sub = get_subscription_status(end_user_id)
     profile_status = sub.get("profile_status", "unknown")
     plan = sub.get("plan", "free")

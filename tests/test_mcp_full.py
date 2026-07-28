@@ -537,7 +537,7 @@ class TestJobId:
     def test_get_collection_progress_unknown_job_id(self) -> None:
         progress = mcp_server._handle_get_collection_progress(job_id="nonexistent-job")
         assert progress["status"] == "not_found"
-        assert progress["is_complete"] is True
+        assert progress["is_complete"] is False
 
     def test_get_processing_progress_by_job_id(self) -> None:
         from autoinfo.process import ProcessResult
@@ -555,7 +555,7 @@ class TestJobId:
     def test_get_processing_progress_unknown_job_id(self) -> None:
         progress = mcp_server._handle_get_processing_progress(job_id="nonexistent-job")
         assert progress["status"] == "not_found"
-        assert progress["is_complete"] is True
+        assert progress["is_complete"] is False
 
 
 # ======================================================================

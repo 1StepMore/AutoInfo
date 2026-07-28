@@ -668,11 +668,23 @@ def run_processing(
 
             # Step a: LLM extraction (with custom schema if configured)
             extraction = extractor.extract(item, schema=extract_fields)
-            # Aggregate token usage from this item
+            # Aggregate token usage from this item, and record to the cost
+            # meter so billing / budget-alert / cost-dashboard tools have
+            # real data to query after processing completes.
             if extraction.usage:
                 for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                     result.token_usage[k] += extraction.usage.get(k, 0)
                 result.token_usage["items_with_usage"] += 1
+
+                from autoinfo.cost import CostMeter  # noqa: PLC0415
+
+                CostMeter().log_llm_tokens(
+                    model=extractor._model,
+                    input_tokens=extraction.usage.get("prompt_tokens", 0),
+                    output_tokens=extraction.usage.get("completion_tokens", 0),
+                    domain=domain,
+                    item_id=item.id,
+                )
             item_log["tl_dr_length"] = len(extraction.tl_dr)
             item_log["key_points_count"] = len(extraction.key_points)
             item_log["relevance_score"] = extraction.relevance_score

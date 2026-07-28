@@ -48,10 +48,11 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import httpx
 from mcp.server import Server
@@ -95,28 +96,145 @@ def _find_domain(config: Any, name: str) -> Any | None:
     return None
 
 # ---------------------------------------------------------------------------
-# Module-level state (in-memory, not persisted)
+# Job state persistence (SQLite-backed, survives server restarts)
 # ---------------------------------------------------------------------------
 
-_collection_state: dict[str, Any] = {}
-"""In-memory state tracking active collection runs, keyed by domain.
+# Reuse the same autoinfo.db that KBStore uses.
+# KBStore places it at ``Path("knowledge").resolve().parent / "autoinfo.db"``,
+# which resolves to ``<cwd>/autoinfo.db`` when running from the project root.
 
-Each entry has the shape::
 
-    {
-        "status": "running" | "completed" | "idle",
-        "started_at": "ISO timestamp" | "",
-        "completed_at": "ISO timestamp" | "",
-        "progress_pct": 0.0 .. 100.0,
-        "items_collected": int,
-        "errors": int,
-        "items_per_source": dict[str, int],
-        "duration_s": float,
-    }
-"""
+def _job_db_path() -> Path:
+    """Return the path to the shared ``autoinfo.db``."""
+    return Path.cwd() / "autoinfo.db"
 
-# In-memory job state for progress tracking via job_id (collect_sources / process_collection)
-_job_state: dict[str, dict[str, Any]] = {}
+
+def _with_job_db[T](fn: Callable[[sqlite3.Connection], T]) -> T:
+    """Open a connection, call *fn*, then close.
+
+    Uses the same PRAGMA settings as :class:`~autoinfo.kb.SQLiteIndex`.
+    """
+    conn = sqlite3.connect(str(_job_db_path()))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    _init_job_state_table(conn)
+    try:
+        return fn(conn)
+    finally:
+        conn.close()
+
+
+def _init_job_state_table(conn: sqlite3.Connection) -> None:
+    """Create the ``job_state`` table if it does not exist."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_state (
+            job_id          TEXT PRIMARY KEY,
+            state_type      TEXT NOT NULL,
+            domain          TEXT NOT NULL DEFAULT '',
+            status          TEXT NOT NULL DEFAULT 'running',
+            progress_pct    REAL NOT NULL DEFAULT 0.0,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            metadata        TEXT NOT NULL DEFAULT '{}'
+        )
+    """)
+    conn.commit()
+
+
+def _save_job_state(job_id: str, state_type: str, domain: str, status: str,
+                    progress_pct: float, metadata: dict[str, Any]) -> None:
+    """Insert-or-update a row in ``job_state``."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    meta_json = json.dumps(metadata)
+
+    def _write(conn: sqlite3.Connection) -> None:
+        existing = conn.execute(
+            "SELECT job_id FROM job_state WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE job_state
+                   SET state_type = ?, domain = ?, status = ?,
+                       progress_pct = ?, updated_at = ?,
+                       metadata = ?
+                   WHERE job_id = ?""",
+                (state_type, domain, status, progress_pct, now, meta_json, job_id),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO job_state
+                   (job_id, state_type, domain, status, progress_pct,
+                    created_at, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, state_type, domain, status, progress_pct,
+                 now, now, meta_json),
+            )
+        conn.commit()
+
+    _with_job_db(_write)
+
+
+def _load_job_state(job_id: str) -> dict[str, Any] | None:
+    """Return the full job state row as a dict, or ``None``."""
+
+    def _read(conn: sqlite3.Connection) -> dict[str, Any] | None:
+        row = conn.execute(
+            "SELECT * FROM job_state WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        meta = _safe_json_load(row["metadata"])
+        return {
+            "job_id": row["job_id"],
+            "state_type": row["state_type"],
+            "domain": row["domain"],
+            "status": row["status"],
+            "progress_pct": row["progress_pct"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            **meta,
+        }
+
+    return _with_job_db(_read)
+
+
+def _load_latest_domain_state(domain: str, state_type: str) -> dict[str, Any] | None:
+    """Return the most recent job state for *domain*+*state_type*, or ``None``."""
+
+    def _read(conn: sqlite3.Connection) -> dict[str, Any] | None:
+        row = conn.execute(
+            """SELECT * FROM job_state
+               WHERE domain = ? AND state_type = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (domain, state_type),
+        ).fetchone()
+        if row is None:
+            return None
+        meta = _safe_json_load(row["metadata"])
+        return {
+            "job_id": row["job_id"],
+            "state_type": row["state_type"],
+            "domain": row["domain"],
+            "status": row["status"],
+            "progress_pct": row["progress_pct"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            **meta,
+        }
+
+    return _with_job_db(_read)
+
+
+def _safe_json_load(raw: str) -> dict[str, Any]:
+    """Parse JSON string, returning ``{}`` on failure."""
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 # ---------------------------------------------------------------------------
 # Tool implementations
@@ -201,55 +319,118 @@ def _handle_diagnose_system() -> dict[str, Any]:
     return result
 
 
-def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
-    """Execute a collection run via ``autoinfo.collect.run_collection``."""
+def _handle_collect_sources(
+    domain: str | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Execute a collection run via ``autoinfo.collect.run_collection``.
+
+    When *domain* is ``None``, collects from all active domains and returns a
+    ``{domains: {name: job_id, ...}, collected_count: N}`` mapping.
+    """
     from datetime import datetime, timezone
 
     from autoinfo.collect import run_collection
 
-    domain = kwargs.get("domain", "unknown")
+    # -- Domain-less: collect from ALL active domains ------------------------
+    if domain is None:
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if config_path is None:
+            raise FileNotFoundError(
+                "No configuration found. Run 'autoinfo init' first."
+            )
+        config = load_config(config_path)
+        active_domains = [d.name for d in config.domains if d.active]
+
+        if not active_domains:
+            return {
+                "domains": {},
+                "collected_count": 0,
+                "message": "No active domains found in configuration.",
+            }
+
+        domain_results: dict[str, str] = {}
+        for dom in active_domains:
+            job_id = str(uuid.uuid4())
+            started_at = datetime.now(timezone.utc).isoformat()
+            _save_job_state(job_id, "collection", dom, "running", 0.0, {
+                "started_at": started_at,
+                "completed_at": "",
+                "items_collected": 0,
+                "errors": 0,
+                "items_per_source": {},
+                "duration_s": 0.0,
+            })
+
+            try:
+                result = run_collection(domain=dom, **kwargs)
+                total_new = (
+                    result.get("total_new", 0)
+                    if isinstance(result, dict)
+                    else 0
+                )
+                total_found = (
+                    result.get("total_found", 0)
+                    if isinstance(result, dict)
+                    else 0
+                )
+                errors = (
+                    result.get("errors", 0)
+                    if isinstance(result, dict)
+                    else 0
+                )
+                _save_job_state(job_id, "collection", dom, "completed", 100.0, {
+                    "started_at": started_at,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "items_collected": total_new,
+                    "errors": errors,
+                    "items_per_source": (
+                        result.get("items_per_source", {})
+                        if isinstance(result, dict)
+                        else {}
+                    ),
+                    "duration_s": 0.0,
+                })
+                domain_results[dom] = job_id
+            except Exception:
+                _save_job_state(job_id, "collection", dom, "error", 0.0, {
+                    "started_at": started_at,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                })
+                # Continue to next domain on failure
+
+        return {
+            "domains": domain_results,
+            "collected_count": len(domain_results),
+        }
+
+    # -- Single-domain collection (existing behavior) -----------------------
     job_id = str(uuid.uuid4())
-    _collection_state[domain] = {
-        "status": "running",
-        "started_at": datetime.now(timezone.utc).isoformat(),
+    started_at = datetime.now(timezone.utc).isoformat()
+    _save_job_state(job_id, "collection", domain, "running", 0.0, {
+        "started_at": started_at,
         "completed_at": "",
-        "progress_pct": 0.0,
         "items_collected": 0,
         "errors": 0,
         "items_per_source": {},
         "duration_s": 0.0,
-        "job_id": job_id,
-    }
-    _job_state[job_id] = {
-        "domain": domain,
-        "tool": "collect_sources",
-        "status": "running",
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "items_collected": 0,
-        "errors": 0,
-        "progress_pct": 0.0,
-    }
+    })
 
     try:
-        result = run_collection(**kwargs)
+        result = run_collection(domain=domain, **kwargs)
         # Attempt to extract stats from result
         total_new = result.get("total_new", 0) if isinstance(result, dict) else 0
         total_found = result.get("total_found", 0) if isinstance(result, dict) else 0
         errors = result.get("errors", 0) if isinstance(result, dict) else 0
-        _collection_state[domain].update({
-            "status": "completed",
+        _save_job_state(job_id, "collection", domain, "completed", 100.0, {
+            "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
-            "progress_pct": 100.0,
             "items_collected": total_new,
             "errors": errors,
             "items_per_source": result.get("items_per_source", {}) if isinstance(result, dict) else {},
-        })
-        _job_state[job_id].update({
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "items_collected": total_new,
-            "errors": errors,
-            "progress_pct": 100.0,
+            "duration_s": 0.0,
         })
         if isinstance(result, dict):
             result["job_id"] = job_id
@@ -257,13 +438,8 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
             result = {"job_id": job_id, "result": result}
         return result
     except Exception:
-        _collection_state[domain].update({
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "progress_pct": 100.0,
-        })
-        _job_state[job_id].update({
-            "status": "error",
+        _save_job_state(job_id, "collection", domain, "error", 0.0, {
+            "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
         })
         raise
@@ -272,12 +448,17 @@ def _handle_collect_sources(**kwargs: Any) -> dict[str, Any]:
 def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
     """Return current collection progress. Supports lookup by domain or job_id."""
     if job_id:
-        state = _job_state.get(job_id)
+        state = _load_job_state(job_id)
         if state:
-            return {"job_id": job_id, **state, "is_complete": state.get("status") in ("completed", "error")}
-        return {"job_id": job_id, "status": "not_found", "is_complete": True}
+            is_complete = state.get("status") in ("completed", "error")
+            return {"job_id": job_id, **state, "is_complete": is_complete}
+        return {"job_id": job_id, "status": "not_found", "is_complete": False}
     if domain:
-        state = _collection_state.get(domain, {
+        state = _load_latest_domain_state(domain, "collection")
+        if state:
+            return {"domain": domain, **state}
+        return {
+            "domain": domain,
             "status": "idle",
             "started_at": "",
             "completed_at": "",
@@ -286,30 +467,52 @@ def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[
             "errors": 0,
             "items_per_source": {},
             "duration_s": 0.0,
-        })
-        return {"domain": domain, **state}
+        }
 
-    # Return all
-    results: dict[str, Any] = {}
-    for d in list(_collection_state.keys()):
-        results[d] = {k: v for k, v in _collection_state[d].items()}
-    return {"domains": results, "count": len(results)}
+    # Return all — query distinct domains with collection entries
+    def _read_all(conn: sqlite3.Connection) -> dict[str, Any]:
+        rows = conn.execute(
+            """SELECT DISTINCT domain FROM job_state
+               WHERE state_type = 'collection'
+               ORDER BY domain"""
+        ).fetchall()
+        results: dict[str, Any] = {}
+        for row in rows:
+            dom = row["domain"]
+            latest = conn.execute(
+                """SELECT * FROM job_state
+                   WHERE domain = ? AND state_type = 'collection'
+                   ORDER BY created_at DESC LIMIT 1""",
+                (dom,),
+            ).fetchone()
+            if latest:
+                meta = _safe_json_load(latest["metadata"])
+                results[dom] = {
+                    "status": latest["status"],
+                    "progress_pct": latest["progress_pct"],
+                    "created_at": latest["created_at"],
+                    "updated_at": latest["updated_at"],
+                    **meta,
+                }
+        return {"domains": results, "count": len(results)}
+
+    return _with_job_db(_read_all)
 
 
 def _handle_get_collection_status(domain: str) -> dict[str, Any]:
     """Return full collection results for *domain* (last run)."""
-    from datetime import datetime
-
-    state = _collection_state.get(domain, {
-        "status": "idle",
-        "started_at": "",
-        "completed_at": "",
-        "progress_pct": 0.0,
-        "items_collected": 0,
-        "errors": 0,
-        "items_per_source": {},
-        "duration_s": 0.0,
-    })
+    state = _load_latest_domain_state(domain, "collection")
+    if state is None:
+        state = {
+            "status": "idle",
+            "started_at": "",
+            "completed_at": "",
+            "progress_pct": 0.0,
+            "items_collected": 0,
+            "errors": 0,
+            "items_per_source": {},
+            "duration_s": 0.0,
+        }
 
     # Compute duration if available
     duration = 0.0
@@ -339,32 +542,29 @@ def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
 
     from autoinfo.process import run_processing
 
+    domain = kwargs.get("domain", "unknown")
     job_id = str(uuid.uuid4())
-    _job_state[job_id] = {
-        "domain": kwargs.get("domain", "unknown"),
-        "tool": "process_collection",
-        "status": "running",
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "progress_pct": 0.0,
+    started_at = datetime.now(timezone.utc).isoformat()
+    _save_job_state(job_id, "processing", domain, "running", 0.0, {
+        "started_at": started_at,
         "kb_entries_created": 0,
         "total_items": 0,
-    }
+    })
 
     try:
         result = run_processing(**kwargs)
         result_dict = asdict(result)
-        _job_state[job_id].update({
-            "status": "completed",
+        _save_job_state(job_id, "processing", domain, "completed", 100.0, {
+            "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
-            "progress_pct": 100.0,
             "kb_entries_created": result_dict.get("kb_entries_created", 0),
             "total_items": result_dict.get("total_items", result_dict.get("total_new", 0)),
         })
         result_dict["job_id"] = job_id
         return result_dict
     except Exception:
-        _job_state[job_id].update({
-            "status": "error",
+        _save_job_state(job_id, "processing", domain, "error", 0.0, {
+            "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
         })
         raise
@@ -373,10 +573,11 @@ def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
 def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
     """Return processing progress. Supports lookup by domain or job_id."""
     if job_id:
-        state = _job_state.get(job_id)
+        state = _load_job_state(job_id)
         if state:
-            return {"job_id": job_id, **state, "is_complete": state.get("status") in ("completed", "error")}
-        return {"job_id": job_id, "status": "not_found", "is_complete": True}
+            is_complete = state.get("status") in ("completed", "error")
+            return {"job_id": job_id, **state, "is_complete": is_complete}
+        return {"job_id": job_id, "status": "not_found", "is_complete": False}
     if domain:
         from autoinfo.process import get_processing_progress
 
@@ -5733,13 +5934,20 @@ async def list_tools() -> list[Tool]:
         # -- Collection / Processing (5) ----------------------------------
         Tool(
             name="collect_sources",
-            description="Execute a collection run for a domain",
+            description=(
+                "Execute a collection run for a domain. When domain is "
+                "omitted, collects from ALL active domains and returns a "
+                "{domains: {name: job_id, ...}, collected_count: N} mapping."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "domain": {
                         "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
+                        "description": (
+                            "Domain name (e.g. medical-research). "
+                            "Omit to collect from all active domains."
+                        ),
                     },
                     "topic": {
                         "type": "string",
@@ -5765,7 +5973,7 @@ async def list_tools() -> list[Tool]:
                         "default": False,
                     },
                 },
-                "required": ["domain"],
+                "required": [],
             },
         ),
         Tool(
@@ -5804,7 +6012,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="process_collection",
             description=(
-                "Execute a processing (LLM extraction) run for a domain"
+                "Execute a processing (LLM extraction) run for a domain. "
+                "Optionally runs G4 factual consistency gate (check_factual) "
+                "and G5 translation accuracy gate (check_translation)."
             ),
             inputSchema={
                 "type": "object",
@@ -5819,6 +6029,32 @@ async def list_tools() -> list[Tool]:
                             "Optional LLM model override "
                             "(e.g. deepseek/deepseek-chat)"
                         ),
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "description": (
+                            "Max number of items to process per run "
+                            "(0 = all, default 0)"
+                        ),
+                        "default": 0,
+                    },
+                    "check_factual": {
+                        "type": "boolean",
+                        "description": (
+                            "Run G4 factual consistency gate "
+                            "(LLM-based check of summary vs source). "
+                            "Default: False."
+                        ),
+                        "default": False,
+                    },
+                    "check_translation": {
+                        "type": "boolean",
+                        "description": (
+                            "Run G5 translation accuracy gate "
+                            "(LLM-based check of translation vs source). "
+                            "Default: False."
+                        ),
+                        "default": False,
                     },
                 },
                 "required": ["domain"],

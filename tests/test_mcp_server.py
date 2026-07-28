@@ -22,7 +22,6 @@ from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
 
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
-    _collection_state,
     _error_response,
     _handle_activate_domain,
     _handle_add_source,
@@ -549,53 +548,50 @@ class TestGetKBEntry:
 
 class TestCollectionProgressStatus:
     def setup_method(self) -> None:
-        _collection_state.clear()
+        """No-op: tests use _save_job_state with unique ids to avoid interference."""
 
     def test_get_collection_progress_idle(self) -> None:
-        result = _handle_get_collection_progress(domain="test")
-        assert result["domain"] == "test"
+        result = _handle_get_collection_progress(domain="test-nonexistent-xyz")
+        assert result["domain"] == "test-nonexistent-xyz"
         assert result["status"] == "idle"
         assert result["progress_pct"] == 0.0
 
     def test_get_collection_progress_all(self) -> None:
-        _collection_state["test"] = {
-            "status": "running",
+        from autoinfo.mcp.server import _save_job_state
+
+        _save_job_state("job-test-all", "collection", "test-all-progress", "running", 50.0, {
             "started_at": "2026-01-01T00:00:00",
             "completed_at": "",
-            "progress_pct": 50.0,
             "items_collected": 5,
             "errors": 1,
             "items_per_source": {"src1": 3},
             "duration_s": 0.0,
-        }
+        })
         result = _handle_get_collection_progress(domain="")
-        assert result["count"] == 1
-        assert result["domains"]["test"]["status"] == "running"
-        assert result["domains"]["test"]["items_collected"] == 5
+        assert result["count"] >= 1
+        domains = result["domains"]
+        assert "test-all-progress" in domains
+        assert domains["test-all-progress"]["status"] == "running"
+        assert domains["test-all-progress"]["items_collected"] == 5
 
     def test_get_collection_status_with_state(self) -> None:
-        import datetime
+        from autoinfo.mcp.server import _save_job_state
 
-        from autoinfo.mcp.server import _collection_state
-
-        _collection_state["test"] = {
-            "status": "completed",
+        _save_job_state("job-test-status", "collection", "test-status-domain", "completed", 100.0, {
             "started_at": "2026-01-01T00:00:00",
             "completed_at": "2026-01-01T01:00:00",
-            "progress_pct": 100.0,
             "items_collected": 10,
             "errors": 0,
             "items_per_source": {"pubmed": 10},
             "duration_s": 0.0,
-        }
-        result = _handle_get_collection_status(domain="test")
-        assert result["domain"] == "test"
+        })
+        result = _handle_get_collection_status(domain="test-status-domain")
+        assert result["domain"] == "test-status-domain"
         assert result["status"] == "completed"
         assert result["items_collected"] == 10
         assert result["duration_s"] > 0
 
     def test_get_collection_status_idle(self) -> None:
-        _collection_state.clear()
         result = _handle_get_collection_status(domain="nonexistent")
         assert result["domain"] == "nonexistent"
         assert result["status"] == "idle"

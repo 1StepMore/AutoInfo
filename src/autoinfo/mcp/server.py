@@ -136,6 +136,15 @@ def _handle_health_check() -> dict[str, Any]:
     }
 
 
+def _handle_get_tool_count() -> dict[str, Any]:
+    """Return the number of registered MCP tools."""
+    return {
+        "tools_count": len(
+            [name for name in globals() if name.startswith("_handle_")]
+        ),
+    }
+
+
 def _handle_diagnose_system() -> dict[str, Any]:
     """Comprehensive system diagnostics — llm, sources, disk, db."""
     result: dict[str, Any] = {
@@ -2447,10 +2456,17 @@ def _handle_init_project(
             d.name for d in _DEMO_DOMAINS_DIR.iterdir()
             if d.is_dir()
         )
-        return error_dict(
-            ErrorCode.VALIDATION_ERROR,
-            f"Unknown demo domain '{domain}'. Available: {available}",
-        )
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": f"Unknown demo domain '{domain}'. Available: {available}",
+            "actionable": True,
+            "success": False,
+            "error": {
+                "code": ErrorCode.VALIDATION_ERROR.value,
+                "message": f"Unknown demo domain '{domain}'. Available: {available}",
+                "actionable": True,
+            },
+        }
 
     if dry_run:
         return {
@@ -2508,7 +2524,17 @@ def _handle_init_project(
         }
     except Exception as exc:
         logger.exception("Init project failed for domain '%s'", domain)
-        return error_dict(ErrorCode.INTERNAL_ERROR, str(exc))
+        return {
+            "error_code": ErrorCode.INTERNAL_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+            "success": False,
+            "error": {
+                "code": ErrorCode.INTERNAL_ERROR.value,
+                "message": str(exc),
+                "actionable": True,
+            },
+        }
 
 
 def _handle_list_projects(status: str = "") -> dict[str, Any]:
@@ -3354,7 +3380,7 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
     return {"config": config_dict}
 
 
-def _handle_trace_item(name: str, arguments: dict) -> list[TextContent]:
+def _handle_trace_item(name: str, arguments: dict) -> dict[str, Any]:
     """Trace the full pipeline history for a trace_id.
 
     Searches pipeline logs (``logs/pipeline-*.log``) and KB frontmatter
@@ -3430,7 +3456,7 @@ def _handle_trace_item(name: str, arguments: dict) -> list[TextContent]:
             "item_id": evt.get("item_id", ""),
         })
 
-    result: dict[str, Any] = {
+    return {
         "trace_id": trace_id,
         "pipeline_events": pipeline_events,
         "timeline": timeline,
@@ -3438,62 +3464,65 @@ def _handle_trace_item(name: str, arguments: dict) -> list[TextContent]:
         "event_count": len(pipeline_events),
         "kb_entry_count": len(kb_entries),
     }
-    return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-def _handle_get_metrics(name: str, arguments: dict) -> list[TextContent]:
+def _handle_get_metrics(name: str, arguments: dict) -> dict[str, Any]:
     domain = arguments.get("domain")
     from autoinfo.metrics import get_metrics as _get_metrics
-    metrics = _get_metrics(domain=domain)
-    return [TextContent(type="text", text=json.dumps(metrics, indent=2))]
+    return _get_metrics(domain=domain)
 
 
-def _handle_get_prometheus_metrics(name: str, arguments: dict) -> list[TextContent]:
-    """Return raw Prometheus exposition-format metrics text."""
+def _handle_get_prometheus_metrics(name: str, arguments: dict) -> dict[str, Any]:
+    """Return raw Prometheus exposition-format metrics in a dict wrapper."""
     from autoinfo.metrics import format_prometheus, get_metrics as _get_metrics
 
     data = _get_metrics()
-    return [TextContent(type="text", text=format_prometheus(data))]
+    return {"format": "prometheus", "metrics_text": format_prometheus(data)}
 
 
-def _handle_soft_delete_entry(name: str, arguments: dict) -> list[TextContent]:
+def _handle_soft_delete_entry(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import KBStore
     store = KBStore()
-    result = store.soft_delete_entry(arguments["entry_id"])
-    return [TextContent(type="text", text=json.dumps(result))]
+    return store.soft_delete_entry(arguments["entry_id"])
 
 
-def _handle_mark_stale(name: str, arguments: dict) -> list[TextContent]:
+def _handle_mark_stale(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import mark_stale
-    result = mark_stale(arguments["entry_id"])
-    return [TextContent(type="text", text=json.dumps(result))]
+    return mark_stale(arguments["entry_id"])
 
 
-def _handle_restore_entry(name: str, arguments: dict) -> list[TextContent]:
+def _handle_restore_entry(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import KBStore
     store = KBStore()
-    result = store.restore_entry(arguments["entry_id"])
-    return [TextContent(type="text", text=json.dumps(result))]
+    return store.restore_entry(arguments["entry_id"])
 
 
-def _handle_export_user_data(name: str, arguments: dict) -> list[TextContent]:
+def _handle_export_user_data(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.user_store import get_profile
     profile = get_profile(arguments["user_id"])
-    result = {"user_id": arguments["user_id"], "profile": profile}
-    return [TextContent(type="text", text=json.dumps(result))]
+    return {"user_id": arguments["user_id"], "profile": profile}
 
 
-def _handle_delete_user_data(name: str, arguments: dict) -> list[TextContent]:
+def _handle_delete_user_data(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import KBStore
     store = KBStore()
     purge = arguments.get("purge", False)
     if not purge:
-        return [TextContent(type="text", text=json.dumps({"error": "Must set purge=True for permanent deletion"}))]
-    result = store.delete_user_data(arguments["user_id"])
-    return [TextContent(type="text", text=json.dumps(result))]
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": "Must set purge=True for permanent deletion",
+            "actionable": True,
+            "success": False,
+            "error": {
+                "code": ErrorCode.VALIDATION_ERROR.value,
+                "message": "Must set purge=True for permanent deletion",
+                "actionable": True,
+            },
+        }
+    return store.delete_user_data(arguments["user_id"])
 
 
-def _handle_query_delivery_log(name: str, arguments: dict) -> list[TextContent]:
+def _handle_query_delivery_log(name: str, arguments: dict) -> dict[str, Any] | list[dict[str, Any]]:
     import dataclasses
     from autoinfo.delivery_log import query_delivery_log
     subscription_id = arguments.get("subscription_id")
@@ -3509,8 +3538,7 @@ def _handle_query_delivery_log(name: str, arguments: dict) -> list[TextContent]:
     )
     if status:
         results = [r for r in results if r.status == status]
-    output = [dataclasses.asdict(r) for r in results]
-    return [TextContent(type="text", text=json.dumps(output))]
+    return [dataclasses.asdict(r) for r in results]
 
 
 def _handle_list_active_deliveries() -> dict[str, Any]:
@@ -3771,7 +3799,7 @@ def _handle_find_similar_items(
         return _error_dict(exc)
 
 
-def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Handle calculate_freshness_score — fetch entry, compute freshness."""
     entry_id = arguments["entry_id"]
     ttl_days = arguments.get("ttl_days", 90)
@@ -3780,20 +3808,19 @@ def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> l
     store = KBStore()
     entry = store.get_entry(entry_id)
     if entry is None:
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    error_response(
-                        code=ErrorCode.NOT_FOUND,
-                        message=f"Entry not found: {entry_id}",
-                        actionable=True,
-                    )
-                ),
-            )
-        ]
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"Entry not found: {entry_id}",
+            "actionable": True,
+            "success": False,
+            "error": {
+                "code": ErrorCode.NOT_FOUND.value,
+                "message": f"Entry not found: {entry_id}",
+                "actionable": True,
+            },
+        }
     score = calculate_freshness_score(entry, ttl_days)
-    return [TextContent(type="text", text=json.dumps({"entry_id": entry_id, "freshness_score": score, "ttl_days": ttl_days}))]
+    return {"entry_id": entry_id, "freshness_score": score, "ttl_days": ttl_days}
 
 
 # ---------------------------------------------------------------------------
@@ -4101,11 +4128,25 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
 
 
 def _error_dict(exc: Exception) -> dict[str, Any]:
-    """Build a standardised error dict."""
+    """Build a dual-format error dict (flat + envelope) for backward compat.
+
+    Returns both the legacy flat fields (``error_code``, ``message``,
+    ``actionable``) and the new envelope fields (``success``, ``error``).
+    Callers receive a fully populated error dict that passes through the
+    standard call_tool wrapping unchanged (idempotent).
+    """
+    code_str = ErrorCode.INTERNAL_ERROR.value
+    message_str = str(exc)
     return {
-        "error_code": ErrorCode.INTERNAL_ERROR.value,
-        "message": str(exc),
+        "error_code": code_str,
+        "message": message_str,
         "actionable": True,
+        "success": False,
+        "error": {
+            "code": code_str,
+            "message": message_str,
+            "actionable": True,
+        },
     }
 
 
@@ -4144,6 +4185,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="health_check",
             description="Check server health status",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="get_tool_count",
+            description="Return the number of registered MCP tools",
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -6738,8 +6784,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_health_check()
             return [TextContent(type="text", text=json.dumps(result))]
 
-        # -- System (1) ---------------------------------------------------
-        if name == "diagnose_system":
+        # -- System (2) ---------------------------------------------------
+        if name == "get_tool_count":
+            result = _handle_get_tool_count()
+        elif name == "diagnose_system":
             result = _handle_diagnose_system()
 
         # -- Discovery (7) ------------------------------------------------
@@ -6960,25 +7008,25 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # -- Metrics (2) --------------------------------------------------
         elif name == "get_metrics":
-            return _handle_get_metrics(name, arguments)
+            result = _handle_get_metrics(name, arguments)
         elif name == "get_prometheus_metrics":
-            return _handle_get_prometheus_metrics(name, arguments)
+            result = _handle_get_prometheus_metrics(name, arguments)
 
         # -- Trace (1) ----------------------------------------------------
         elif name == "trace_item":
-            return _handle_trace_item(name, arguments)
+            result = _handle_trace_item(name, arguments)
 
         # -- Soft-delete & GDPR (4) -----------------------------------------
         elif name == "soft_delete_entry":
-            return _handle_soft_delete_entry(name, arguments)
+            result = _handle_soft_delete_entry(name, arguments)
         elif name == "mark_stale":
-            return _handle_mark_stale(name, arguments)
+            result = _handle_mark_stale(name, arguments)
         elif name == "restore_entry":
-            return _handle_restore_entry(name, arguments)
+            result = _handle_restore_entry(name, arguments)
         elif name == "export_user_data":
-            return _handle_export_user_data(name, arguments)
+            result = _handle_export_user_data(name, arguments)
         elif name == "delete_user_data":
-            return _handle_delete_user_data(name, arguments)
+            result = _handle_delete_user_data(name, arguments)
 
         # -- Portal / End-user Self-service (2) ------------------------------
         elif name == "get_enduser_history":
@@ -6988,7 +7036,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # -- Delivery Log (1) ------------------------------------------------
         elif name == "query_delivery_log":
-            return _handle_query_delivery_log(name, arguments)
+            result = _handle_query_delivery_log(name, arguments)
 
         # -- Delivery Monitor (2) ------------------------------------------
         elif name == "list_active_deliveries":
@@ -7008,7 +7056,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # -- KB Freshness (1) ---------------------------------------------
         elif name == "calculate_freshness_score":
-            return _handle_calculate_freshness_score(name, arguments)
+            result = _handle_calculate_freshness_score(name, arguments)
 
         # -- End-User Trial (2) ----------------------------------------------
         elif name == "activate_trial":
@@ -7057,8 +7105,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             ]
 
         # Wrap non-health responses in uniform envelope
-        # Backward-compat: include both flat error_code (legacy) and nested error (new)
-        if isinstance(result, dict) and "error_code" in result:
+        # Backward-compat: detect pre-wrapped dual-format responses
+        if isinstance(result, dict) and "success" in result:
+            # Already in envelope format (dual-format from handlers),
+            # pass through unchanged — no re-wrapping needed.
+            wrapped = result
+        elif isinstance(result, dict) and "error_code" in result:
+            # Legacy flat format: wrap into envelope with both
+            # flat fields and nested error for backward compat.
             wrapped = {
                 "success": False,
                 "error_code": result["error_code"],

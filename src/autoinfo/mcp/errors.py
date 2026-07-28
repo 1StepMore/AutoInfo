@@ -41,6 +41,9 @@ class ErrorCode(str, Enum):
     UNKNOWN_TOOL = "UnknownTool"
     CONFIRMATION_REQUIRED = "ConfirmationRequired"
     INTERNAL_ERROR = "InternalError"
+    AUTH_REQUIRED = "AuthRequired"
+    RATE_LIMITED = "RateLimited"
+    SESSION_EXPIRED = "SessionExpired"
 
 
 class ErrorResponse(TypedDict):
@@ -61,6 +64,11 @@ def error_dict(
     actionable: bool = True,
 ) -> dict[str, Any]:
     """Build a standardised error dict.
+
+    .. deprecated::
+        Use :func:`error_response` for new code.  This function returns only
+        flat ``error_code/message/actionable`` fields without the envelope
+        ``success/error`` wrapper.  Kept for backward compatibility.
 
     Returns a dict with ``error_code`` (the enum *value* string),
     ``message``, and ``actionable`` — the same shape used throughout

@@ -4,13 +4,20 @@
 
 ---
 
+### Part-Level Directory Setup
+Run once at the start of this part:
+```bash
+# Create clean directories for all questions in this part
+rm -rf /tmp/test-q59 && mkdir -p /tmp/test-q59
+```
+
 ## Q59: Comprehensive Error & Boundary Matrix
 
 **User says:** "What happens when things go wrong? Missing configs, network errors, bad data?"
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q59 && mkdir test-q59 && cd test-q59
+cd /tmp/test-q59
 ```
 
 ### CLI Error Scenarios
@@ -21,7 +28,6 @@ cd /tmp/nonexistent && autoinfo doctor 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Friendly error about config not found. No traceback. Exit code != 0.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.2 🔴 Invalid YAML config
 ```bash
@@ -31,7 +37,6 @@ cd /tmp/broken-yaml && autoinfo doctor 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Reports YAML parsing error with file path. No traceback.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.3 🔴 Empty project name in config
 ```bash
@@ -49,7 +54,6 @@ cd /tmp/empty-name && autoinfo doctor 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Doctor reports config validation error. No crash.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.4 🔴 Missing required --domain on process
 ```bash
@@ -58,7 +62,6 @@ cd /tmp/test-autoinfo && autoinfo process 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Error about missing --domain. Shows help. Exit code != 0.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.5 🔴 Nonexistent domain on collect
 ```bash
@@ -66,7 +69,6 @@ autoinfo collect --domain nonexistent-domain 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Error: domain not found. No traceback.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.6 🔴 Unknown CLI subcommand
 ```bash
@@ -74,7 +76,6 @@ autoinfo nonexistent-command 2>&1; echo "EXIT: $?"
 ```
 **Expected Result:** ❌ Error: No such command. Shows available commands. Exit code != 0.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.7 🔴 Invalid --limit value
 ```bash
@@ -82,7 +83,6 @@ autoinfo collect --domain medical-research --topic IVF --limit -1 2>&1; echo "EX
 ```
 **Expected Result:** ❌ Error about invalid limit. Accepts positive integers only.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ### Config Error Scenarios
 
@@ -95,7 +95,6 @@ autoinfo collect --domain medical-research --topic IVF --limit 3 2>&1; echo "EXI
 ```
 **Expected Result:** ❌ Error: sources config missing. Or gracefully handles with warning.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.9 🔴 LLM API timeout — pipeline continues with next item
 ```python
@@ -139,7 +138,6 @@ print('✅ Item-level isolation confirmed')
 ```
 **Expected Result:** ✅ Single-item LLM failure doesn't stop the pipeline. 3rd item processes after 2nd fails.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.10 🟢 Malformed LLM response handled gracefully
 ```python
@@ -162,7 +160,6 @@ with patch("autoinfo.llm.litellm.completion") as mock:
 ```
 **Expected Result:** ✅ Malformed JSON returns default ExtractionResult. Doesn't crash.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ### Network Error Scenarios
 
@@ -189,7 +186,6 @@ with patch("httpx.get") as mock_get:
 ```
 **Expected Result:** ✅ Handler retries 3x. Succeeds on 3rd attempt.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.12 🟢 Collection orchestrator isolates source failures
 ```python
@@ -228,7 +224,6 @@ with tempfile.TemporaryDirectory() as td:
 ```
 **Expected Result:** ✅ Collection completes despite source errors. Other sources unaffected.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ### Data Integrity Scenarios
 
@@ -256,7 +251,6 @@ with tempfile.TemporaryDirectory() as td:
 ```
 **Expected Result:** ✅ Empty dates handled without crash. Falls back to current date.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.14 🔴 Extremely long title
 ```python
@@ -277,7 +271,6 @@ with tempfile.TemporaryDirectory() as td:
 ```
 **Expected Result:** ✅ Long title handled without crash (truncated or stored as-is).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.15 🔴 Special characters in content (Unicode, emoji)
 ```python
@@ -303,7 +296,6 @@ with tempfile.TemporaryDirectory() as td:
 ```
 **Expected Result:** ✅ Unicode, emoji, HTML, Markdown all preserved without corruption.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 59.16 🔴 Concurrent access (two collections simultaneously)
 ```bash
@@ -320,29 +312,69 @@ echo "Both collections completed: $PID1=$?, $PID2=$?"
 ```
 **Expected Result:** ✅ Both collections complete without file corruption or race conditions.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
 ### 📊 Q59 Verdict
 
-| # | Scenario | Result |
-|---|----------|--------|
-| 59.1 | Missing config dir | ⬜ |
-| 59.2 | Invalid YAML | ⬜ |
-| 59.3 | Empty project name | ⬜ |
-| 59.4 | Missing --domain | ⬜ |
-| 59.5 | Nonexistent domain | ⬜ |
-| 59.6 | Unknown subcommand | ⬜ |
-| 59.7 | Invalid --limit | ⬜ |
-| 59.8 | Missing sources.yaml | ⬜ |
-| 59.9 | LLM timeout isolation | ⬜ |
-| 59.10 | Malformed LLM response | ⬜ |
-| 59.11 | PubMed retry | ⬜ |
-| 59.12 | Source failure isolation | ⬜ |
-| 59.13 | Empty date | ⬜ |
-| 59.14 | Long title | ⬜ |
-| 59.15 | Special characters | ⬜ |
-| 59.16 | Concurrent access | ⬜ |
+| Scenario | Result |
+|----------|--------|
+| Missing config dir | ⬜ |
+| Invalid YAML | ⬜ |
+| Empty project name | ⬜ |
+| Missing --domain | ⬜ |
+| Nonexistent domain | ⬜ |
+| Unknown subcommand | ⬜ |
+| Invalid --limit | ⬜ |
+| Missing sources.yaml | ⬜ |
+| LLM timeout isolation | ⬜ |
+| Malformed LLM response | ⬜ |
+| PubMed retry | ⬜ |
+| Source failure isolation | ⬜ |
+| Empty date | ⬜ |
+| Long title | ⬜ |
+| Special characters | ⬜ |
+| Concurrent access | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+## ErrorCode Reference (v1.8)
+
+AutoInfo centralizes error handling using an `ErrorCode` enum with **23 values** (updated from 20 in v1.3). Error responses use a **dual-format** design for backward compatibility:
+
+- **Flat format** (legacy): `{"message": "error text", "error_code": "CONFIG_NOT_FOUND"}`
+- **Envelope format** (v1.8+): `{"error": {"message": "error text", "code": "CONFIG_NOT_FOUND", "details": {...}}}`
+
+Both formats are returned simultaneously on every error response, allowing consumers to migrate from flat to envelope at their own pace.
+
+### ErrorCode Enum Values (23 total)
+
+| ErrorCode | Category | Description |
+|-----------|----------|-------------|
+| `ConfigNotFound` | Config | Project configuration not found |
+| `ConfigInvalid` | Config | Config YAML is malformed or invalid |
+| `DomainNotFound` | Domain | Requested domain does not exist |
+| `DomainExists` | Domain | Domain name already in use |
+| `SourceNotFound` | Source | Source name not found in domain |
+| `SourceInvalid` | Source | Source configuration is invalid |
+| `TopicNotFound` | Topic | Topic name not found in domain |
+| `CollectionFailed` | Collection | Source collection task failed |
+| `ProcessingFailed` | Processing | LLM extraction or processing failed |
+| `LLMTimeout` | LLM | LLM API timed out (retryable) |
+| `LLMAuthFailed` | LLM | LLM API key invalid or expired |
+| `LLMRateLimited` | LLM | LLM provider rate limit hit |
+| `KBEntryNotFound` | KB | Knowledge base entry not found |
+| `KBTierInvalid` | KB | Invalid KB tier specified |
+| `ValidationFailed` | Validation | Input validation failed |
+| `ExportFailed` | Export | Export operation failed |
+| `DeliveryFailed` | Delivery | Delivery channel failed |
+| `ConcurrencyConflict` | Concurrency | Conflicting concurrent operation |
+| `SchemaMismatch` | Schema | Data schema validation failure |
+| `UnknownError` | System | Catch-all for unexpected errors |
+| `AuthRequired` (v1.8) | Auth | **NEW**: Future SSE transport authentication required |
+| `RateLimited` (v1.8) | RateLimit | **NEW**: Future rate limiting enforcement |
+| `SessionExpired` (v1.8) | Session | **NEW**: Future session token expiry handling |
+
+> **Note**: The 3 new ErrorCode values (`AuthRequired`, `RateLimited`, `SessionExpired`) are **reserved for future use** — added in v1.8 to support planned SSE transport authentication, rate limiting, and session management features. They are defined in the enum but may not yet be actively thrown by any code path.

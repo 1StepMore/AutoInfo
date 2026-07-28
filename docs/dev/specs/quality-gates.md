@@ -118,3 +118,25 @@ quality_gates:
 | **True Test** | Full user journey (T1-T13) | Automated script running against a fresh environment | ⏸ Milestone gates only |
 
 **Key principle**: LLM extraction tests use **snapshot regression** — store known input/output pairs. Assert structure, not semantic content. No LLM calls in CI. Full LLM tests run nightly or on demand.
+
+---
+
+## 8. ErrorCode & Error Response System
+
+The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all 132 MCP tools. The `ErrorCode` enum (23 values) covers all known failure modes and includes three future-facing codes added in v1.8:
+
+| Code | Value | Purpose |
+|------|-------|---------|
+| `AUTH_REQUIRED` | `"AuthRequired"` | Future SSE authentication — returned when an SSE client attempts to connect without valid credentials |
+| `RATE_LIMITED` | `"RateLimited"` | Future rate limiting — returned when a client exceeds configured rate limits for MCP tool calls |
+| `SESSION_EXPIRED` | `"SessionExpired"` | Future session management — returned when an SSE session token has expired and requires re-authentication |
+
+These three codes extend the existing 20 error codes (`NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`).
+
+**Dual-format responses**: Error responses are backward-compatible via two formats:
+
+1. **Flat format** (legacy, `error_dict()`): `{error_code: "<code>", message: "...", actionable: true/false}` — used throughout existing `server.py` tool handlers.
+
+2. **Envelope format** (new, `error_response()`): `{success: false, error: {code: "<code>", message: "...", actionable: true/false}}` — recommended for new tool implementations, provides unambiguous `success` field for agent consumers.
+
+The dual-format approach allows incremental migration: existing consumers continue using the flat format without breakage, while new consumers can adopt the envelope format. This aligns with the quality gate philosophy of *retry-first, block-last* by giving agents clear actionable flags (`actionable: true`) to decide whether to retry or escalate to B3.

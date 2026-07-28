@@ -229,4 +229,4 @@ grep -r "/metrics" src/autoinfo/api/server.py  # ✅ Found
 - [`founder-expectations.md`](./founder-expectations.md) — Full 57-expectation specification
 - [`kb-pipeline-reference.md`](./kb-pipeline-reference.md) — KB pipeline architecture
 - [`director-user-guide.md`](./director-user-guide.md) — Human-agent interaction lifecycle
-- [`autoinfo-validation-master-plan-v2/`](../autoinfo-validation-master-plan-v2/) — 71-question validation plan
+- [`autoinfo-validation-master-plan/`](../autoinfo-validation-master-plan/) — 96-question validation plan

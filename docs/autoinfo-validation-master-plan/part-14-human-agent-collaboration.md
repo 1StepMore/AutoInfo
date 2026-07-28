@@ -8,6 +8,16 @@
 
 ---
 
+### Part-Level Directory Setup
+Run once at the start of this part:
+```bash
+# Create clean directories for all questions in this part
+rm -rf /tmp/test-q66 && mkdir -p /tmp/test-q66
+rm -rf /tmp/test-q67 && mkdir -p /tmp/test-q67
+rm -rf /tmp/test-q68 && mkdir -p /tmp/test-q68
+rm -rf /tmp/test-q69 && mkdir -p /tmp/test-q69
+```
+
 ## Q66: Ambiguous Intent Clarification
 
 **User says:** "I want to track some medical research this week but I'm not sure what specific topic to focus on."
@@ -15,7 +25,7 @@
 ### Prerequisites
 
 ```bash
-cd /tmp && rm -rf test-q66 && mkdir test-q66 && cd test-q66
+cd /tmp/test-q66
 autoinfo init --demo medical-research
 ```
 
@@ -32,6 +42,8 @@ autoinfo init --demo medical-research
 **Turn 4 - Human:** "IVF breakthroughs please"
 
 **Turn 5 - Agent:** (proceeds with clarified scope)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -54,7 +66,6 @@ print(f"✅ Collected {data.get('items_collected', 0)} items on IVF breakthrough
 - ✅ Collection succeeded with items under the clarified topic
 - ✅ Items have source metadata: source_url, source_type, source_platform
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 66.2 🟢 Multiple domains - agent asks which one
 
@@ -67,6 +78,8 @@ print(f"✅ Collected {data.get('items_collected', 0)} items on IVF breakthrough
 **Turn 4 - Human:** "AI commercial for now"
 
 **Turn 5 - Agent:** (runs pre-flight check, then collects for ai-commercial only)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -97,7 +110,6 @@ print(f"✅ Medical-research not collected (0 new): {stats.get('items_new', 0) =
 - ✅ Agent collected only the specified domain (ai-commercial)
 - ✅ No items were collected for medical-research
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 66.3 🔴 Completely ambiguous intent - agent cannot proceed
 
@@ -117,6 +129,8 @@ print(f"✅ Medical-research not collected (0 new): {stats.get('items_new', 0) =
 
 **Turn 5 - Agent:** (intent clarified - run diagnostics)
 
+**Execute:**
+
 ```python
 from autoinfo.mcp.server import app
 import json
@@ -134,7 +148,6 @@ assert status in ("healthy", "degraded"), "Diagnostics should return a valid sta
 - ✅ Agent offered structured options to narrow intent
 - ✅ Agent executed the correct action only after clarification
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -157,7 +170,7 @@ assert status in ("healthy", "degraded"), "Diagnostics should return a valid sta
 ### Prerequisites
 
 ```bash
-cd /tmp && rm -rf test-q67 && mkdir test-q67 && cd test-q67
+cd /tmp/test-q67
 autoinfo init --demo medical-research
 ```
 
@@ -166,6 +179,8 @@ autoinfo init --demo medical-research
 #### 67.1 🟢 Source error detected - agent reports - human decides - agent executes
 
 **Turn 1 - Agent:** (performs pre-collection health check autonomously)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -184,6 +199,8 @@ print(f"Source pubmed: status={status}, error_count={error_count}")
 **Turn 3 - Human:** "Investigate - test the source and report back"
 
 **Turn 4 - Agent:** (tests the failing source)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -205,6 +222,8 @@ print(f"Test: reachable={test_data.get('reachable')}, "
 **Turn 6 - Human:** "Yes, pause it."
 
 **Turn 7 - Agent:** (pauses the source and proceeds with remaining sources)
+
+**Execute:**
 
 ```python
 import os
@@ -241,13 +260,14 @@ print("✅ Source status confirmed as paused")
 - ✅ Collection continued on remaining healthy sources
 - ✅ Source status confirmed as paused
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 67.2 🟢 LLM error - agent diagnoses - human picks fallback
 
 **Turn 1 - Human:** "Process this week's collection"
 
 **Turn 2 - Agent:** (starts processing, LLM call fails)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -271,6 +291,8 @@ if llm_error:
 
 **Turn 5 - Agent:** (checks config and applies fallback)
 
+**Execute:**
+
 ```python
 from autoinfo.mcp.server import app
 import json
@@ -291,7 +313,6 @@ print("✅ Fallback model identified and ready for retry")
 - ✅ Agent respected human's choice of fallback model
 - ✅ Agent documented the fallback action
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 67.3 🔴 Hard failure after human decision - agent re-escalates
 
@@ -300,6 +321,8 @@ print("✅ Fallback model identified and ready for retry")
 **Turn 2 - Human:** "Try one more time with a longer timeout"
 
 **Turn 3 - Agent:** (retries per human instruction - still fails)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -314,6 +337,8 @@ print("⚠️ Retry with 60s timeout: FAILED (connection timeout)")
 **Turn 5 - Human:** "Yes, remove it."
 
 **Turn 6 - Agent:** (removes the source)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -342,7 +367,6 @@ print(f"✅ Remaining sources: {names}")
 - ✅ Agent executed human's removal decision
 - ❌ Agent never removed source without human approval (ref: F20, F53 - human-only operations)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -365,7 +389,7 @@ print(f"✅ Remaining sources: {names}")
 ### Prerequisites
 
 ```bash
-cd /tmp && rm -rf test-q68 && mkdir test-q68 && cd test-q68
+cd /tmp/test-q68
 autoinfo init --demo medical-research
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 ```
@@ -377,6 +401,8 @@ export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 **Turn 1 - Human:** "Give me this week's medical research digest"
 
 **Turn 2 - Agent:** (generates initial digest)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -397,6 +423,8 @@ print(f"✅ Initial digest generated ({len(digest_text)} chars)")
 **Turn 4 - Human:** "It's too broad. Focus specifically on clinical trials for IVF. Also shorten it to key findings only, no fluff."
 
 **Turn 5 - Agent:** (regenerates with custom_instructions)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -425,6 +453,8 @@ print(f"✅ Contains clinical trial references: {has_trial}")
 
 **Turn 8 - Agent:** (confirms readiness for delivery)
 
+**Execute:**
+
 ```python
 print("✅ Digest approved by human. Ready for delivery.")
 ```
@@ -436,13 +466,14 @@ print("✅ Digest approved by human. Ready for delivery.")
 - ✅ Revised digest reflects the feedback (IVF-focused, shorter format)
 - ✅ Agent confirmed human approval before finalizing delivery
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 68.2 🟢 Draft review cycle - agent creates Draft -> human reviews -> agent revises -> human promotes
 
 **Turn 1 - Human:** "I've reviewed this week's summaries. The one about endometrial receptivity is important - turn it into a knowledge base entry."
 
 **Turn 2 - Agent:** (creates a Draft from the Raw entry)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -474,6 +505,8 @@ if entries:
 **Turn 4 - Human:** "Good start. But add references to the two related papers on implantation windows that were collected last week. And reorder the key points by clinical significance."
 
 **Turn 5 - Agent:** (revises the Draft by linking related papers)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -527,7 +560,6 @@ ls knowledge/medical-research/03-Wiki/endometrial-receptivity/ 2>/dev/null && ec
 - ✅ Human promoted Draft -> Wiki (human-only operation per F20)
 - ✅ Agent verified promotion success
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 68.3 🔴 Multiple revision rounds - agent iterates without losing context
 
@@ -552,6 +584,8 @@ ls knowledge/medical-research/03-Wiki/endometrial-receptivity/ 2>/dev/null && ec
 **Human:** "Perfect. Export as PDF."
 
 **Turn 9 - Agent:** (exports as PDF)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -605,7 +639,6 @@ print("✅ Total iterations: 5 (initial + 3 revisions + PDF export)")
 - ✅ Agent never rejected feedback as "too many changes"
 - ✅ Final output exported in the requested format (PDF)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -628,7 +661,7 @@ print("✅ Total iterations: 5 (initial + 3 revisions + PDF export)")
 ### Prerequisites
 
 ```bash
-cd /tmp && rm -rf test-q69 && mkdir test-q69 && cd test-q69
+cd /tmp/test-q69
 autoinfo init --demo medical-research
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 ```
@@ -640,6 +673,8 @@ export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
 **Turn 1 - Human:** "Generate a weekly medical research digest, but focus exclusively on clinical trials. Ignore basic science and preclinical studies."
 
 **Turn 2 - Agent:** (generates digest with custom_instructions parameter)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -674,7 +709,6 @@ print(override_note)
 - ✅ Digest content reflects the override (clinical trial focus, no basic science)
 - ✅ Agent documented the override in its response to the human
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 69.2 🟢 Force full collection - override default limit
 
@@ -683,6 +717,8 @@ print(override_note)
 **Turn 2 - Human:** "Collect all 15. I want the complete picture this week."
 
 **Turn 3 - Agent:** (overrides the default limit)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -710,7 +746,6 @@ print(override_log)
 - ✅ Collection ran without artificial limit
 - ✅ Agent documented the override
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 69.3 🟢 Skip dedup on human request
 
@@ -719,6 +754,8 @@ print(override_log)
 **Turn 2 - Human:** "No, collect them anyway. I want to see if the content has been updated."
 
 **Turn 3 - Agent:** (collects with dedup skipped)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -755,13 +792,14 @@ print(override_log)
 - ✅ Items collected even if they matched existing entries
 - ✅ Agent documented the override
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 69.4 🔴 Agent documents all overrides - audit trail
 
 **Turn 1 - Human:** "From now on, whenever you override a default behavior because I told you to, log it so I can review what changed."
 
 **Turn 2 - Agent:** (acknowledges and demonstrates override documentation)
+
+**Execute:**
 
 ```python
 from autoinfo.mcp.server import app
@@ -806,7 +844,6 @@ Override Documentation:
 - ✅ The audit trail is structured and queryable
 - ❌ Agent never silently overrides defaults without human instruction
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 

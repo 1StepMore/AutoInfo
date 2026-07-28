@@ -28,7 +28,7 @@ products (digests, reports, alerts, feeds) to End Users.
 ## Tool Discovery
 
 Not sure what tools exist? Use MCP protocol discovery.
-Full catalog (114 tools across **32 categories**):
+Full catalog (132 tools across **32 categories**):
 
 | Category | Key Tools |
 |----------|-----------|

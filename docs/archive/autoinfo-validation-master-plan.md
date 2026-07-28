@@ -1,11 +1,11 @@
 # AutoInfo Master Validation Plan [DEPRECATED — Superseded by v2]
 
-> **This plan is superseded by `docs/autoinfo-validation-master-plan-v2/` (v2).**
+> **This plan is superseded by `docs/autoinfo-validation-master-plan/` (v2).**
 >
 > v2 covers 100% of AutoInfo's feature surface (71 questions, 15 parts) vs. v1's ~40% coverage.
 > v1 is retained for reference only — do not use for new validation runs.
 >
-> See `docs/autoinfo-validation-master-plan-v2/README.md` for the current validation plan.
+> See `docs/autoinfo-validation-master-plan/README.md` for the current validation plan.
 
 ## Result-Oriented · User-Centric · All Scenarios & Boundaries
 

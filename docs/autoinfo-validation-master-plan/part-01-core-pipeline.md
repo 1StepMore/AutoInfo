@@ -5,13 +5,25 @@
 
 ---
 
+### Part-Level Directory Setup
+Run once at the start of this part:
+```bash
+# Create clean directories for all questions in this part
+rm -rf /tmp/test-q1 && mkdir -p /tmp/test-q1
+rm -rf /tmp/test-q2 && mkdir -p /tmp/test-q2
+rm -rf /tmp/test-q3 && mkdir -p /tmp/test-q3
+rm -rf /tmp/test-q4 && mkdir -p /tmp/test-q4
+rm -rf /tmp/test-q5 && mkdir -p /tmp/test-q5
+rm -rf /tmp/test-q6 && mkdir -p /tmp/test-q6
+```
+
 ## Q1: Can I initialize a project and configure sources?
 
 **User says:** "I want to start tracking medical research. Give me a working project."
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q1 && mkdir test-q1 && cd test-q1
+cd /tmp/test-q1
 ```
 
 ### Scenarios
@@ -27,7 +39,6 @@ autoinfo init --demo medical-research
 - ✅ `knowledge/`, `collections/`, `outputs/` directories created
 - ✅ Success message printed with next steps
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.2 🟢 Config is valid and parseable
 ```bash
@@ -48,7 +59,6 @@ for d in cfg.domains:
 - ✅ `cfg.llm.model` matches default ("deepseek/deepseek-chat")
 - ✅ At least one domain active with sources and topics
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.3 🟢 Init is idempotent
 ```bash
@@ -56,7 +66,6 @@ autoinfo init --demo medical-research
 ```
 **Expected Result:** ✅ Exit code 0. Prints "SKIP" for existing files. No overwrite.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.4 🟢 Init without --demo lists available domains
 ```bash
@@ -64,7 +73,6 @@ autoinfo init
 ```
 **Expected Result:** ✅ Prints available demo domains (medical-research, ai-commercial, language-learning). Exit code 0.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.5 🟢 Init with multiple demo domains
 ```bash
@@ -73,7 +81,6 @@ autoinfo init --demo medical-research --demo ai-commercial
 ```
 **Expected Result:** ✅ Both domains active. Config shows 2 domains with sources and topics.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.6 🔴 Init with unknown domain
 ```bash
@@ -81,7 +88,6 @@ autoinfo init --demo nonexistent-domain
 ```
 **Expected Result:** ❌ Exit code != 0. Error message mentions unknown domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 1.7 🔴 Init with --name (named project)
 ```bash
@@ -90,7 +96,6 @@ autoinfo init --name "My Custom Project" --demo medical-research
 ```
 **Expected Result:** ✅ Config has `project.name = "My Custom Project"`. Overrides default name.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -116,7 +121,7 @@ autoinfo init --name "My Custom Project" --demo medical-research
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q2 && mkdir test-q2 && cd test-q2
+cd /tmp/test-q2
 autoinfo init --demo medical-research
 ```
 
@@ -133,7 +138,6 @@ autoinfo collect --domain medical-research --topic "IVF" --limit 3
 - ✅ Items cached to `collections/medical-research/pubmed/<date>/<id>.json`
 - ✅ Cached JSON has `source_url`, `title`, `content`, `source_type`, `source_platform`, `collected_at`
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.2 🟢 Dry-run returns estimates without storing
 ```bash
@@ -144,7 +148,6 @@ autoinfo collect --domain medical-research --topic "IVF" --limit 3 --dry-run
 - ✅ Output shows estimated item counts
 - ✅ No files created in `collections/` directory
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.3 🟢 Collection with source filter
 ```bash
@@ -152,7 +155,6 @@ autoinfo collect --domain medical-research --topic "IVF" --source pubmed --limit
 ```
 **Expected Result:** ✅ Only PubMed handler runs. Items collected successfully.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.4 🟢 Empty results handled gracefully
 ```bash
@@ -160,7 +162,6 @@ autoinfo collect --domain medical-research --topic "zzzzzznonexistent" --limit 3
 ```
 **Expected Result:** ✅ Exit code 0. Message: "No new items" or similar. Not an error.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.5 🟢 RSS feed collection (ai-commercial domain)
 ```bash
@@ -170,7 +171,6 @@ autoinfo collect --domain ai-commercial --source techcrunch --limit 5
 ```
 **Expected Result:** ✅ RSS items collected with title, link, summary, published date. `source_type: "rss"`.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.6 🟢 Collection with JSON output
 ```bash
@@ -178,7 +178,6 @@ autoinfo collect --domain medical-research --topic "IVF" --limit 3 --json
 ```
 **Expected Result:** ✅ Valid JSON output with collection results.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 2.7 🔴 Collection with missing config
 ```bash
@@ -186,7 +185,6 @@ cd /tmp/empty-dir && autoinfo collect --domain medical-research
 ```
 **Expected Result:** ❌ Exit code != 0. "Run 'autoinfo init' first" error message.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -212,7 +210,7 @@ cd /tmp/empty-dir && autoinfo collect --domain medical-research
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q3 && mkdir test-q3 && cd test-q3
+cd /tmp/test-q3
 autoinfo init --demo medical-research
 autoinfo collect --domain medical-research --topic "IVF" --limit 3
 ```
@@ -229,7 +227,6 @@ autoinfo process --domain medical-research
 - ✅ Summary: "N items → N passed gates → N KB entries created"
 - ✅ Markdown files created in `knowledge/medical-research/01-Raw/ivf/`
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 3.2 🟢 KB entries have correct YAML frontmatter
 ```bash
@@ -239,7 +236,6 @@ head -20 knowledge/medical-research/01-Raw/ivf/*.md
 - ✅ YAML frontmatter with: title, domain, tier: 01-Raw, source_url, source_type, source_platform, collected_at, quality_tier, relevance_score
 - ✅ Body contains original content + extracted TL;DR + key points
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 3.3 🟢 Collect + process in one step (--auto-process)
 ```bash
@@ -252,7 +248,6 @@ autoinfo collect --domain medical-research --topic "IVF" --limit 3 --auto-proces
 - ✅ Combined summary printed
 - ✅ KB entries created (files in `knowledge/.../01-Raw/`)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 3.4 🟢 Processing with empty cache
 ```bash
@@ -262,7 +257,6 @@ autoinfo process --domain medical-research
 ```
 **Expected Result:** ✅ Exit code 0. Message: no cached items found.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 3.5 🟢 Process with specific model override [REQUIRES LLM KEY]
 ```bash
@@ -270,7 +264,6 @@ autoinfo process --domain medical-research --model "openrouter/deepseek/deepseek
 ```
 **Expected Result:** ✅ Process uses specified model. KB entries created.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -294,7 +287,7 @@ autoinfo process --domain medical-research --model "openrouter/deepseek/deepseek
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q4 && mkdir test-q4 && cd test-q4
+cd /tmp/test-q4
 autoinfo init --demo medical-research
 autoinfo collect --domain medical-research --topic "IVF" --limit 3
 autoinfo process --domain medical-research 2>/dev/null || echo "(LLM may fail, testing CLI surface only)"
@@ -311,7 +304,6 @@ autoinfo summaries list --domain medical-research
 - ✅ Shows entries with title, TL;DR (summary), relevance score, date
 - ✅ --limit and --offset pagination works
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.2 🟢 Summaries list with JSON output
 ```bash
@@ -319,7 +311,6 @@ autoinfo summaries list --domain medical-research --json
 ```
 **Expected Result:** ✅ Valid JSON with items array. Each item has entry_id, title, summary, relevance_score, collected_at, tier.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.3 🟢 Show single summary
 ```bash
@@ -331,7 +322,6 @@ fi
 ```
 **Expected Result:** ✅ Shows full entry details: title, content, TL;DR, key points, source metadata.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.4 🟢 Flag entry for KB
 ```bash
@@ -342,7 +332,6 @@ fi
 ```
 **Expected Result:** ✅ Entry flagged. Tags stored in metadata.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.5 🟢 Status shows collection stats
 ```bash
@@ -353,7 +342,6 @@ autoinfo status
 - ✅ Shows total KB entries per domain
 - ✅ Shows source health per source
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.6 🟢 Status with --json
 ```bash
@@ -361,7 +349,6 @@ autoinfo status --json
 ```
 **Expected Result:** ✅ Valid JSON with summary stats.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.7 🟢 Doctor checks all systems
 ```bash
@@ -374,7 +361,6 @@ autoinfo doctor
 - ✅ Reports source count and health
 - ✅ No crashes, friendly output
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 4.8 🟢 Doctor with JSON output
 ```bash
@@ -382,7 +368,6 @@ autoinfo doctor --json
 ```
 **Expected Result:** ✅ Valid JSON with python/config/llm/sources sections.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -409,7 +394,7 @@ autoinfo doctor --json
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q5 && mkdir test-q5 && cd test-q5
+cd /tmp/test-q5
 autoinfo init --demo medical-research
 ```
 
@@ -421,7 +406,6 @@ autoinfo sources list
 ```
 **Expected Result:** ✅ Shows all configured sources with name, type, url, domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.2 🟢 Sources list with --domain filter
 ```bash
@@ -429,7 +413,6 @@ autoinfo sources list --domain medical-research
 ```
 **Expected Result:** ✅ Filters to sources belonging to specified domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.3 🟢 Test source reachability
 ```bash
@@ -437,7 +420,6 @@ autoinfo sources test --url https://eutils.ncbi.nlm.nih.gov/entrez/eutils/ --typ
 ```
 **Expected Result:** ✅ Shows reachability result (ok/timeout/error) with latency. (Note: uses `--url` + `--type`, not `--name`.)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.4 🟢 Add new source
 ```bash
@@ -445,7 +427,6 @@ autoinfo sources add --name my-rss --type rss --url https://example.com/feed --d
 ```
 **Expected Result:** ✅ Source added. Shows confirmation. Listed in `sources list`.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.5 🟢 Remove source
 ```bash
@@ -453,7 +434,6 @@ autoinfo sources remove --source-id "medical-research:my-rss"
 ```
 **Expected Result:** ✅ Source removed. Confirmation shown. No longer in `sources list`.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.6 🔴 Test nonexistent source
 ```bash
@@ -461,7 +441,6 @@ autoinfo sources test --name nonexistent-source
 ```
 **Expected Result:** ❌ Error message: source not found. Exit code != 0.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 5.7 🔴 Add source with invalid type
 ```bash
@@ -469,7 +448,6 @@ autoinfo sources add --name bad-source --type invalid-type --url https://example
 ```
 **Expected Result:** ❌ Error: invalid source type. Shows available types.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -495,7 +473,7 @@ autoinfo sources add --name bad-source --type invalid-type --url https://example
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q6 && mkdir test-q6 && cd test-q6
+cd /tmp/test-q6
 autoinfo init --demo medical-research
 ```
 
@@ -507,7 +485,6 @@ autoinfo topics list
 ```
 **Expected Result:** ✅ Shows all topics with name, keywords, domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 6.2 🟢 Add new topic
 ```bash
@@ -515,7 +492,6 @@ autoinfo topics add --name "Gene Therapy" --keywords "CRISPR,gene editing,AAV" -
 ```
 **Expected Result:** ✅ Topic added. Listed in `topics list`.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 6.3 🟢 Remove topic
 ```bash
@@ -523,7 +499,6 @@ autoinfo topics remove --topic-id "Gene Therapy" --domain medical-research
 ```
 **Expected Result:** ✅ Topic removed. Confirmation shown.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 6.4 🔴 Remove nonexistent topic
 ```bash
@@ -531,7 +506,6 @@ autoinfo topics remove --name "Nonexistent Topic" --domain medical-research
 ```
 **Expected Result:** ❌ Error: topic not found.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 

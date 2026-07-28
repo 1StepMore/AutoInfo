@@ -40,7 +40,24 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 115 MCP tools across 32 categories. Agent operates, human directs.
+- **Agent-native** — 132 MCP tools across 32 categories. Agent operates, human directs.
+- **Self-discovering tool count** — `get_tool_count` MCP tool returns dynamic tool count, no more hardcoded numbers
+- **Agent-oriented error responses** — Unified dual-format error responses (flat + envelope) for backward-compatible consumer migration
+- **Cross-domain search** — `search_knowledge_base()` searches all active domains when domain is omitted
+- **Domain-less collection** — `collect_sources()` collects from all active domains when no domain specified
+- **Agent-native tutorial/presentation/export** — Tutorial, presentation, and KB export support `format="agent"` for JSON-LD output
+- **Persistent job state** — Collection/processing job state survives server restarts via SQLite-backed storage
+- **Persistent agent callbacks** — Agent callback registration persists across restarts via SQLite
+- **Batch CEFR classification** — `cefr_batch` MCP tool for classifying multiple texts at once
+- **Audit log MCP tool** — `query_audit_log` MCP tool for programmatic audit log access
+- **Knowledge graph export** — `knowledge_graph_export` MCP tool for graph-structured KB export
+- **Cost dashboards & allocation MCP tools** — `cost_dashboard` and `cost_allocation` MCP tools for cost governance
+- **RSS feed MCP tool** — `get_feeds` MCP tool for RSS feed retrieval with RSS XML output
+- **Hard-delete purge** — `soft_delete_entry(entry_id, purge=True)` for permanent entry removal
+- **Fine-grained process control** — `process_collection()` exposes `check_factual` and `check_translation` flags
+- **Topic grouping** — `topic_group_add`/`topic_group_remove` MCP tools for organizing topics into groups
+- **Email config MCP tool** — `email_config` MCP tool for email configuration management
+- **Cache cleanup MCP tool** — `clean_cache` MCP tool for temporary artifact cleanup
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
 - **Domain-agnostic** — 5 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning). Any field with paying customers.
 - **Subscription-ready** — Stripe integration with webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, and usage metering
@@ -73,7 +90,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 115 tools across 32 categories |
+| MCP server | ✅ 132 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -111,8 +128,23 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 11 delivery channels |
 | Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
+| Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |
+| Agent callback persistence | ✅ SQLite-backed agent callback registration survives restarts |
+| Cross-domain search | ✅ search_knowledge_base searches all active domains when domain omitted |
+| Domain-less collection | ✅ collect_sources collects from all domains when domain omitted |
+| Hard-delete purge | ✅ soft_delete_entry purge flag for permanent removal |
+| Fine-grained process control | ✅ process_collection check_factual/check_translation flags |
+| Batch CEFR | ✅ cefr_batch MCP tool for multi-text classification |
+| Audit log MCP | ✅ query_audit_log MCP tool for programmatic audit access |
+| Knowledge graph export | ✅ knowledge_graph_export MCP tool |
+| RSS feed MCP | ✅ get_feeds MCP tool with RSS XML format |
+| Cache cleanup | ✅ clean_cache MCP tool |
+| Topic grouping | ✅ topic_group_add/topic_group_remove MCP tools |
+| Email config MCP | ✅ email_config MCP tool |
+| Cost dashboard MCP | ✅ cost_dashboard MCP tool |
+| Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 1549 tests (1 collection error pre-existing) |
+| Test suite | ✅ 1612 tests (1 collection error pre-existing) |
 
 ## Quick Start
 
@@ -163,7 +195,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (115 tools)
+         └── MCP server (132 tools)
 ```
 
 ## CLI Commands (23 groups)
@@ -195,26 +227,27 @@ autoinfo portal preferences|history # End-user self-service portal
 autoinfo trace <trace_id>           # Per-item pipeline trace
 ```
 
-## MCP Tools (115)
+## MCP Tools (132)
 
 | Category | Tools |
 |----------|-------|
-| **System** | health_check, diagnose_system, get_config, list_available_models |
+| **System** | health_check, diagnose_system, get_config, list_available_models, get_tool_count |
 | **Discovery** | list_domains, list_available_platforms, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Domain** | add_domain, remove_domain |
-| **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health |
-| **Topic** | add_topic, remove_topic, list_topics, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
-| **Collection** | collect_sources (with dry_run), get_collection_progress, get_collection_status, process_collection (with batch), get_processing_progress, batch_run |
-| **KB** | search_knowledge_base (hybrid: FTS5+vector, paginated), get_kb_entry, list_summaries, get_summary, create_kb_draft (from Raw only), reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
+| **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
+| **Topic** | add_topic, remove_topic, list_topics, topic_group_add, topic_group_remove, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
+| **Collection** | collect_sources (with dry_run, domain-less), get_collection_progress, get_collection_status, process_collection (with batch, check_factual, check_translation), get_processing_progress, batch_run, clean_cache |
+| **KB** | search_knowledge_base (hybrid, cross-domain), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
 | **KB Relations** | link_items, get_item_relations |
 | **KB Versioning** | get_entry_history, restore_entry_version |
 | **KB Monitor** | get_collection_stats, get_collection_diff |
-| **KB Graph** | query_knowledge_graph |
-| **Output** | list_output_templates, generate_digest, generate_report (Markdown/JSON/PDF/HTML), generate_tutorial, generate_presentation, localize_content |
+| **KB Graph** | query_knowledge_graph, knowledge_graph_export |
+| **Output** | list_output_templates, generate_digest (md/html/json/agent), generate_report (md/json/pdf/html/audio/agent), generate_tutorial (md/agent), generate_presentation (md/agent), localize_content, export_kb (md/json/sqlite/pdf/csv/graphml/agent) |
 | **Export/Import** | export_kb, import_kb |
-| **CEFR** | classify_cefr (EN/ZH/JA LLM-based classification) |
+| **CEFR** | classify_cefr (EN/ZH/JA), cefr_batch |
 | **Keywords** | approve_keyword, reject_keyword, suggest_keywords |
-| **Email** | send_email_digest |
+| **Email** | send_email_digest, email_config |
+| **Audit** | query_audit_log |
 | **Q&A** | query_collected (FTS5 + LLM synthesis with source citations) |
 | **Custom Extraction** | extract_fields, get_extraction |
 | **Cron** | list_schedules, add_schedule, remove_schedule, run_schedules, get_schedule_status |
@@ -226,8 +259,8 @@ autoinfo trace <trace_id>           # Per-item pipeline trace
 | **Product** | list_products, get_product |
 | **Alert Rules** | add_alert_rule, get_alert_rules, remove_alert_rule |
 | **End User** | send_to_enduser, get_enduser_history, get_enduser_products, query_delivery_log, get_delivery_log, activate_trial, check_trial_expiry, update_preferences, get_preferences, get_subscription_status |
-| **Cost** | get_billing_summary, get_budget_thresholds, set_budget_thresholds, create_checkout_session, get_enduser_usage, get_enduser_invoice |
-| **Data Privacy** | soft_delete_entry, restore_entry, export_user_data, delete_user_data |
+| **Cost** | get_billing_summary, get_budget_thresholds, set_budget_thresholds, create_checkout_session, get_enduser_usage, get_enduser_invoice, cost_dashboard, cost_allocation |
+| **Data Privacy** | soft_delete_entry (with purge flag), restore_entry, export_user_data, delete_user_data |
 | **Knowledge Lifecycle** | compare_versions, find_similar_items, merge_items, get_domain_decay, mark_stale, calculate_freshness_score |
 | **Observability** | trace_item, get_metrics, get_prometheus_metrics, diagnose_system |
 | **Agent Callbacks** | set_agent_callback, list_agent_callbacks, remove_agent_callback |
@@ -252,7 +285,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.7 adds **subscription tier gating** (Free/Premium/Enterprise with per-tier channels, domains, products), **access control** (`check_access` fast path, G15 freemium gating), **consumption tracking** (`ConsumptionEvent` auto-record on delivery), **automated notifications** (trial-ending + content-ready), **channel health monitoring** (`get_channel_health` MCP tool for all 11 channels), **cron health monitoring** (heartbeat tracking + missed-schedule detection), and **SQLite backup/restore** (`make backup` + scripts). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo v1.8 adds **agent-oriented enhancements**: 17 new MCP tools (132 total), dynamic tool count via self-discovery, unified dual-format error responses, cross-domain search, domain-less collection, agent-native format for tutorial/presentation/export, persistent job state and agent callbacks (SQLite-backed), hard-delete purge flag, fine-grained process control flags, batch CEFR, audit log MCP, knowledge graph export, RSS feed MCP, cache cleanup, topic grouping, email config MCP, cost dashboard/allocation MCP tools, CLI help text fixes, and `<!-- agent: ... -->` metadata blocks on all spec docs. v1.7 added **subscription tier gating** (Free/Premium/Enterprise...). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

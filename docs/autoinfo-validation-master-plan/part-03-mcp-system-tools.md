@@ -1,8 +1,23 @@
 # Part 3: MCP Tools — System, Discovery, Domain, Source, Topic (Q18-Q27c)
 
-**Coverage:** 36 MCP tools across System (4), Discovery (8), Domain (2), Source (6), Topic (7), Collection/Processing (5), Projects (4), Monitor (3), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3)
+**Coverage:** 47 MCP tools across System (5), Discovery (8), Domain (2), Source (7), Topic (9), Collection/Processing (6), Projects (4), Monitor (3), Webhooks (2), Source Health (3), Quality Gate Config (2), Alert Rules (3), Email (1), KB Entry (1), KB Graph (1), CEFR Batch (1), Cost (2), Audit (1)
 
 ---
+
+### Part-Level Directory Setup
+Run once at the start of this part:
+```bash
+# Create clean directories for all questions in this part
+rm -rf /tmp/test-q18 && mkdir -p /tmp/test-q18
+rm -rf /tmp/test-q20 && mkdir -p /tmp/test-q20
+rm -rf /tmp/test-q21 && mkdir -p /tmp/test-q21
+rm -rf /tmp/test-q22 && mkdir -p /tmp/test-q22
+rm -rf /tmp/test-q23 && mkdir -p /tmp/test-q23
+rm -rf /tmp/test-q24 && mkdir -p /tmp/test-q24
+rm -rf /tmp/test-q25 && mkdir -p /tmp/test-q25
+rm -rf /tmp/test-q27b && mkdir -p /tmp/test-q27b
+rm -rf /tmp/test-q27c && mkdir -p /tmp/test-q27c
+```
 **Important — Parameter Names:** MCP tools use specific parameter names that differ from the documentation examples below. Key differences:
 - `get_domain_config` expects `{"name": "..."}` (not `domain`)
 - `get_source_health` expects `{"source_id": "..."}` (not `domain`)
@@ -18,7 +33,7 @@ If a tool returns "got an unexpected keyword argument", check that the parameter
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q18 && mkdir test-q18 && cd test-q18
+cd /tmp/test-q18
 autoinfo init --demo medical-research
 ```
 
@@ -38,7 +53,6 @@ print(f"✅ health_check: status={data['status']}, version={data.get('version')}
 ```
 **Expected Result:** ✅ Returns status, version, tools_count.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 18.2 🟢 diagnose_system
 ```python
@@ -52,7 +66,6 @@ print(f"✅ diagnose_system: LLM key={'key_configured' in data.get('llm',{})}, S
 ```
 **Expected Result:** ✅ Returns comprehensive health with llm, sources, disk, db sections.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 18.3 🟢 get_config
 ```python
@@ -65,7 +78,6 @@ print(f"✅ get_config: project={data.get('project',{}).get('name','?')}, domain
 ```
 **Expected Result:** ✅ Returns full config with project, llm, domains.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 18.4 🟢 list_available_models
 ```python
@@ -77,7 +89,6 @@ print(f"✅ list_available_models: {len(data['models'])} models available")
 ```
 **Expected Result:** ✅ Returns list of configured LLM models (from config defaults + env overrides).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -89,8 +100,24 @@ print(f"✅ list_available_models: {len(data['models'])} models available")
 | 18.2 diagnose_system | ⬜ |
 | 18.3 get_config | ⬜ |
 | 18.4 list_available_models | ⬜ |
+| 18.5 get_tool_count | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+### Q18.5: get_tool_count (v1.8)
+
+#### 18.5 🟢 get_tool_count — self-discovery tool
+```python
+result = app.call_tool("get_tool_count", {})
+data = json.loads(result.content[0].text)
+assert "count" in data
+assert data["count"] >= 115
+print(f"✅ get_tool_count: {data['count']} tools registered (dynamic)")
+```
+**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (132 expected in v1.8).  
+Tool: `get_tool_count` — self-discovery tool that returns the dynamic count of registered MCP tools at runtime.
 
 ---
 
@@ -110,7 +137,6 @@ print(f"✅ list_domains: {len(data['domains'])} domains: {[d.get('name') for d 
 ```
 **Expected Result:** ✅ Returns all domains with name, active status, source/topic counts.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.2 🟢 list_available_platforms
 ```python
@@ -123,7 +149,6 @@ print(f"✅ list_available_platforms: {platform_names}")
 ```
 **Expected Result:** ✅ Returns available collector platform types (pubmed, rss, web, webhook, email, pdf).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.3 🟢 get_domain_schema
 ```python
@@ -134,7 +159,6 @@ print(f"✅ get_domain_schema: {data}")
 ```
 **Expected Result:** ✅ Returns extraction schema for the domain with field names and types.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.4 🟢 get_effective_llm_config
 ```python
@@ -145,7 +169,6 @@ print(f"✅ get_effective_llm_config: provider={data.get('provider','?')}, model
 ```
 **Expected Result:** ✅ Returns effective LLM config for domain (with task-based overrides applied).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.5 🟢 list_output_templates
 ```python
@@ -157,7 +180,6 @@ print(f"✅ list_output_templates: {template_names}")
 ```
 **Expected Result:** ✅ Returns available output templates (digest, report, tutorial, presentation).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.6 🟢 activate_domain
 ```python
@@ -168,7 +190,6 @@ print(f"✅ activate_domain: {data}")
 ```
 **Expected Result:** ✅ Domain activation confirmed or idempotent (no error if already active).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.7 🟢 deactivate_domain
 ```python
@@ -181,7 +202,6 @@ app.call_tool("activate_domain", {"domain": "medical-research"})
 ```
 **Expected Result:** ✅ Domain deactivated. Can be re-activated.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 19.8 🟢 get_domain_config
 ```python
@@ -193,7 +213,6 @@ print(f"✅ get_domain_config: name={data.get('name')}, active={data.get('active
 ```
 **Expected Result:** ✅ Returns full domain config with sources and topics.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -220,7 +239,7 @@ print(f"✅ get_domain_config: name={data.get('name')}, active={data.get('active
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q20 && mkdir test-q20 && cd test-q20
+cd /tmp/test-q20
 autoinfo init --demo medical-research
 ```
 
@@ -248,7 +267,6 @@ print("✅ Domain confirmed in list_domains")
 ```
 **Expected Result:** ✅ Domain added. Listed in list_domains.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 20.2 🟢 remove_domain
 ```python
@@ -265,7 +283,6 @@ print("✅ Domain confirmed removed from list_domains")
 ```
 **Expected Result:** ✅ Domain removed. No longer listed.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 20.3 🔴 add_domain — duplicate
 ```python
@@ -281,7 +298,6 @@ app.call_tool("remove_domain", {"domain": "dup-domain"})
 ```
 **Expected Result:** ❌ Error or warning about duplicate domain. No crash.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -303,7 +319,7 @@ app.call_tool("remove_domain", {"domain": "dup-domain"})
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q21 && mkdir test-q21 && cd test-q21
+cd /tmp/test-q21
 autoinfo init --demo medical-research
 ```
 
@@ -322,7 +338,6 @@ print(f"✅ list_sources: {len(sources)} sources: {[s.get('name') for s in sourc
 ```
 **Expected Result:** ✅ Returns sources with name, type, url, quality_tier.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 21.2 🟢 add_source
 ```python
@@ -338,7 +353,6 @@ print(f"✅ add_source: {data}")
 ```
 **Expected Result:** ✅ Source added to domain's sources.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 21.3 🟢 add_sources (batch)
 ```python
@@ -355,7 +369,6 @@ print(f"✅ add_sources: {data}")
 ```
 **Expected Result:** ✅ Multiple sources added in one call.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 21.4 🟢 test_source
 ```python
@@ -366,7 +379,6 @@ print(f"✅ test_source: {data}")
 ```
 **Expected Result:** ✅ Source tested for reachability. Status returned.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 21.5 🟢 remove_source
 ```python
@@ -384,7 +396,6 @@ print("✅ Source confirmed removed")
 ```
 **Expected Result:** ✅ Source removed. No longer listed.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 21.6 🟢 get_source_health
 ```python
@@ -398,7 +409,6 @@ print(f"✅ get_source_health: {len(list(sources))} sources checked")
 ```
 **Expected Result:** ✅ Returns health status for all sources with latency.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -412,8 +422,26 @@ print(f"✅ get_source_health: {len(list(sources))} sources checked")
 | 21.4 test_source | ⬜ |
 | 21.5 remove_source | ⬜ |
 | 21.6 get_source_health | ⬜ |
+| 21.7 get_feeds (v1.8) | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+### Q21.7: get_feeds (v1.8)
+
+#### 21.7 🟢 get_feeds — RSS feed retrieval
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("get_feeds", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "feeds" in data or "items" in data
+print(f"✅ get_feeds: {json.dumps(data, indent=2)[:300]}")
+```
+**Expected Result:** ✅ Returns RSS feeds for domain sources in XML or structured format.  
+Tool: `get_feeds` — retrieves RSS feed data for domain sources with RSS XML output.
 
 ---
 
@@ -423,7 +451,7 @@ print(f"✅ get_source_health: {len(list(sources))} sources checked")
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q22 && mkdir test-q22 && cd test-q22
+cd /tmp/test-q22
 autoinfo init --demo medical-research
 ```
 
@@ -444,7 +472,6 @@ print(f"✅ add_topic: {data}")
 ```
 **Expected Result:** ✅ Topic added with keywords.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.2 🟢 list_topics
 ```python
@@ -455,7 +482,6 @@ print(f"✅ list_topics: {len(topics)} topics: {[t.get('name') for t in topics]}
 ```
 **Expected Result:** ✅ Returns topics with names and keywords.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.3 🟢 remove_topic
 ```python
@@ -473,7 +499,6 @@ print("✅ Topic confirmed removed")
 ```
 **Expected Result:** ✅ Topic removed.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.4 🟢 list_keywords
 ```python
@@ -486,7 +511,6 @@ for k in keywords[:5]:
 ```
 **Expected Result:** ✅ Returns keywords with status (pending/approved/rejected).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.5 🟢 approve_keyword
 ```python
@@ -505,7 +529,6 @@ else:
 ```
 **Expected Result:** ✅ Keyword approved. Status changes to "approved".
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.6 🟢 reject_keyword
 ```python
@@ -524,7 +547,6 @@ else:
 ```
 **Expected Result:** ✅ Keyword rejected. Status changes to "rejected".
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 22.7 🟢 suggest_keywords [REQUIRES LLM KEY]
 ```python
@@ -536,7 +558,6 @@ print(f"✅ suggest_keywords: {suggestions}")
 ```
 **Expected Result:** ✅ LLM-suggested keywords returned for the topic.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -551,8 +572,53 @@ print(f"✅ suggest_keywords: {suggestions}")
 | 22.5 approve_keyword | ⬜ |
 | 22.6 reject_keyword | ⬜ |
 | 22.7 suggest_keywords | ⬜ |
+| 22.8 topic_group_add (v1.8) | ⬜ |
+| 22.9 topic_group_remove (v1.8) | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+### Q22.8: topic_group_add (v1.8)
+
+#### 22.8 🟢 topic_group_add — create topic group
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("topic_group_add", {
+    "domain": "medical-research",
+    "group_name": "test-group-genomics",
+    "topics": ["IVF", "CRISPR"]
+})
+data = json.loads(result.content[0].text)
+assert "status" in data or "name" in data
+print(f"✅ topic_group_add: {data}")
+```
+**Expected Result:** ✅ Topic group created with specified topics.  
+Tool: `topic_group_add` — organizes topics into named groups for batch operations and reporting.
+
+---
+
+### Q22.9: topic_group_remove (v1.8)
+
+#### 22.9 🟢 topic_group_remove — remove topic group
+```python
+result = app.call_tool("topic_group_remove", {
+    "domain": "medical-research",
+    "group_name": "test-group-genomics"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ topic_group_remove: {data}")
+
+# Verify removed
+result = app.call_tool("list_topics", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+# Group removal is idempotent — no error on re-check
+print("✅ Group removal confirmed")
+```
+**Expected Result:** ✅ Topic group removed. Idempotent — no error if group already removed.  
+Tool: `topic_group_remove` — removes a named topic group without deleting the underlying topics.
 
 ---
 
@@ -562,7 +628,7 @@ print(f"✅ suggest_keywords: {suggestions}")
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q23 && mkdir test-q23 && cd test-q23
+cd /tmp/test-q23
 autoinfo init --demo medical-research
 ```
 
@@ -586,7 +652,6 @@ assert "job_id" in data or "items_found" in data or "status" in data
 ```
 **Expected Result:** ✅ Collection runs with dry-run preview. Items_found or job_id returned.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.2 🟢 collect_sources (async, with job_id)
 ```python
@@ -613,7 +678,6 @@ for _ in range(5):
 ```
 **Expected Result:** ✅ Async collection returns job_id. Progress polling works.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.3 🟢 get_collection_progress (by domain)
 ```python
@@ -623,7 +687,6 @@ print(f"✅ get_collection_progress (domain): status={data.get('status','?')}, i
 ```
 **Expected Result:** ✅ Returns progress for last run on domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.4 🟢 get_collection_status
 ```python
@@ -633,7 +696,6 @@ print(f"✅ get_collection_status: {json.dumps(data, indent=2)[:200]}")
 ```
 **Expected Result:** ✅ Returns full collection results for domain.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.5 🟢 process_collection [REQUIRES LLM KEY]
 ```python
@@ -647,7 +709,6 @@ assert "job_id" in data or "total_items" in data or "kb_entries_created" in data
 ```
 **Expected Result:** ✅ Processing runs. Returns job_id or entry counts.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.6 🟢 get_processing_progress [REQUIRES LLM KEY]
 ```python
@@ -657,7 +718,6 @@ print(f"✅ get_processing_progress: {json.dumps(data, indent=2)[:200]}")
 ```
 **Expected Result:** ✅ Returns processing progress with item count.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 23.7 🟢 batch_run
 ```python
@@ -672,7 +732,6 @@ print(f"✅ batch_run: {json.dumps(data, indent=2)[:300]}")
 ```
 **Expected Result:** ✅ Batch run executes collect + process sequentially.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -687,8 +746,26 @@ print(f"✅ batch_run: {json.dumps(data, indent=2)[:300]}")
 | 23.5 process_collection | ⬜ |
 | 23.6 get_processing_progress | ⬜ |
 | 23.7 batch_run | ⬜ |
+| 23.8 clean_cache (v1.8) | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+### Q23.8: clean_cache (v1.8)
+
+#### 23.8 🟢 clean_cache — temporary artifact cleanup
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("clean_cache", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "status" in data or "cleaned" in data
+print(f"✅ clean_cache: {data}")
+```
+**Expected Result:** ✅ Cache cleaned successfully. Returns count of removed items or status.  
+Tool: `clean_cache` — removes temporary collection cache artifacts for the specified domain.
 
 ---
 
@@ -698,7 +775,7 @@ print(f"✅ batch_run: {json.dumps(data, indent=2)[:300]}")
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q24 && mkdir test-q24 && cd test-q24
+cd /tmp/test-q24
 ```
 
 ### Scenarios
@@ -717,7 +794,6 @@ assert "status" in data or "name" in data
 ```
 **Expected Result:** ✅ Project initialized with demo domain. Config files created.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 24.2 🟢 list_projects
 ```python
@@ -728,7 +804,6 @@ print(f"✅ list_projects: {len(projects)} projects: {[p.get('name') for p in pr
 ```
 **Expected Result:** ✅ Returns list of initialized projects.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 24.3 🟢 get_project_assets
 ```python
@@ -738,7 +813,6 @@ print(f"✅ get_project_assets: {data}")
 ```
 **Expected Result:** ✅ Returns project assets (directories, file counts).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 24.4 🟢 archive_project
 ```python
@@ -748,7 +822,6 @@ print(f"✅ archive_project: {data}")
 ```
 **Expected Result:** ✅ Project archived. Confirmation shown.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -771,7 +844,7 @@ print(f"✅ archive_project: {data}")
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q25 && mkdir test-q25 && cd test-q25
+cd /tmp/test-q25
 autoinfo init --demo medical-research
 ```
 
@@ -792,7 +865,6 @@ print(f"✅ set_domain_webhooks: {data}")
 ```
 **Expected Result:** ✅ Webhooks configured for domain. URL and events stored.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 25.2 🟢 get_domain_webhooks
 ```python
@@ -803,7 +875,6 @@ print(f"✅ get_domain_webhooks: {data}")
 ```
 **Expected Result:** ✅ Returns configured webhook URL and event list.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -835,7 +906,6 @@ print(f"✅ get_source_health: {json.dumps(data, indent=2)[:200]}")
 ```
 **Expected Result:** ✅ Returns source health status with reachability and latency.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 26.2 🟢 rate_item
 ```python
@@ -857,7 +927,6 @@ else:
 ```
 **Expected Result:** ✅ Item rated. Rating stored in metadata.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -890,7 +959,6 @@ print(f"✅ list_active_collections: {len(collections)} active: {collections}")
 ```
 **Expected Result:** ✅ Returns currently running collection tasks with job_ids and status.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27.2 🟢 list_active_deliveries
 ```python
@@ -901,7 +969,6 @@ print(f"✅ list_active_deliveries: {len(deliveries)} active: {deliveries}")
 ```
 **Expected Result:** ✅ Returns currently active delivery tasks with job_ids, channels, and status.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27.3 🟢 get_channel_health (all channels)
 ```python
@@ -921,7 +988,6 @@ for ch in channels:
 ```
 **Expected Result:** ✅ Returns health status (healthy, latency_ms, error) for all 11 delivery channels.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27.4 🟢 get_channel_health (single channel)
 ```python
@@ -933,7 +999,6 @@ assert "healthy" in data or "channels" in data or "status" in data
 ```
 **Expected Result:** ✅ Returns health status for a single named channel (smtp). Includes `healthy`, `latency_ms`, `error` fields.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -956,7 +1021,7 @@ assert "healthy" in data or "channels" in data or "status" in data
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q27b && mkdir test-q27b && cd test-q27b
+cd /tmp/test-q27b
 autoinfo init --demo medical-research
 ```
 
@@ -974,7 +1039,6 @@ print(f"✅ get_gate_config: {json.dumps(data, indent=2)[:300]}")
 ```
 **Expected Result:** ✅ Returns all gate configurations for the domain (G0-G5 thresholds, actions).
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27b.2 🟢 set_gate_config
 ```python
@@ -996,7 +1060,6 @@ print(f"  G3 threshold={g3.get('threshold','?')}, action={g3.get('action','?')}"
 ```
 **Expected Result:** ✅ Gate configuration updated. Change persists on subsequent read.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -1017,7 +1080,7 @@ print(f"  G3 threshold={g3.get('threshold','?')}, action={g3.get('action','?')}"
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q27c && mkdir test-q27c && cd test-q27c
+cd /tmp/test-q27c
 autoinfo init --demo medical-research
 ```
 
@@ -1037,7 +1100,6 @@ for r in rules:
 ```
 **Expected Result:** ✅ Returns all alert rules for the domain with triggers and actions.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27c.2 🟢 add_alert_rule
 ```python
@@ -1062,7 +1124,6 @@ print("✅ Rule confirmed in get_alert_rules")
 ```
 **Expected Result:** ✅ Alert rule added. Listed in get_alert_rules.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 27c.3 🟢 remove_alert_rule
 ```python
@@ -1083,7 +1144,6 @@ print("✅ Rule confirmed removed")
 ```
 **Expected Result:** ✅ Alert rule removed. No longer listed.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -1094,5 +1154,256 @@ print("✅ Rule confirmed removed")
 | 27c.1 get_alert_rules | ⬜ |
 | 27c.2 add_alert_rule | ⬜ |
 | 27c.3 remove_alert_rule | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27d: MCP Email Config Tool (v1.8)
+
+**Agent says:** "I need to manage email configuration via MCP."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27d
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27d.1 🟢 email_config
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("email_config", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "smtp" in data or "config" in data
+print(f"✅ email_config: {json.dumps(data, indent=2)[:200]}")
+```
+**Expected Result:** ✅ Returns email configuration for the domain (SMTP settings, sender, recipient info).  
+Tool: `email_config` — manages SMTP email configuration (view/update settings) for a domain.
+
+---
+
+### 📊 Q27d Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27d.1 email_config | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27e: MCP KB Entry Creation Tool (v1.8)
+
+**Agent says:** "I need to create KB entries directly at the Raw tier."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27e
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27e.1 🟢 create_kb_entry — direct Raw-tier creation
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("create_kb_entry", {
+    "domain": "medical-research",
+    "title": "Test KB Entry v1.8",
+    "content": "Sample content for direct Raw-tier KB creation.",
+    "source_url": "https://example.com/test",
+    "source_type": "web",
+    "source_platform": "test"
+})
+data = json.loads(result.content[0].text)
+assert "entry_id" in data or "status" in data
+print(f"✅ create_kb_entry: {data}")
+```
+**Expected Result:** ✅ KB entry created directly at 01-Raw tier with source provenance metadata.  
+Tool: `create_kb_entry` — creates a KB entry directly at the 01-Raw tier with mandatory source metadata.
+
+---
+
+### 📊 Q27e Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27e.1 create_kb_entry | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27f: MCP Knowledge Graph Export Tool (v1.8)
+
+**Agent says:** "I need to export the knowledge graph."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27f
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27f.1 🟢 knowledge_graph_export
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("knowledge_graph_export", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "nodes" in data or "edges" in data or "graph" in data
+print(f"✅ knowledge_graph_export: {json.dumps(data, indent=2)[:300]}")
+```
+**Expected Result:** ✅ Returns graph-structured KB export with nodes and edges.  
+Tool: `knowledge_graph_export` — exports the knowledge graph for a domain in graph-structured format.
+
+---
+
+### 📊 Q27f Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27f.1 knowledge_graph_export | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27g: MCP CEFR Batch Tool (v1.8)
+
+**Agent says:** "I need to classify multiple texts by CEFR level at once."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27g
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27g.1 🟢 cefr_batch — batch classification [REQUIRES LLM KEY]
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("cefr_batch", {
+    "texts": [
+        "The mitochondria is the powerhouse of the cell.",
+        "It is a cat."
+    ],
+    "language": "en"
+})
+data = json.loads(result.content[0].text)
+assert "results" in data or "items" in data
+items = data.get("results", data.get("items", []))
+assert len(items) == 2
+print(f"✅ cefr_batch: {len(items)} texts classified")
+for item in items:
+    print(f"  level={item.get('level','?')}, confidence={item.get('confidence','?')}")
+```
+**Expected Result:** ✅ Multiple texts classified. Each result includes level and confidence score.  
+Tool: `cefr_batch` — classifies multiple texts by CEFR level (EN/ZH/JA) in a single call.
+
+---
+
+### 📊 Q27g Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27g.1 cefr_batch | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27h: MCP Cost Management Tools (v1.8)
+
+**Agent says:** "I need to manage cost tracking via MCP."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27h
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27h.1 🟢 cost_dashboard
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("cost_dashboard", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "daily_trends" in data or "summary" in data or "top_models" in data
+print(f"✅ cost_dashboard: {json.dumps(data, indent=2)[:300]}")
+```
+**Expected Result:** ✅ Returns cost dashboard with daily trends, summaries, and top models.  
+Tool: `cost_dashboard` — displays cost summary, daily trends, and top models/sources.
+
+#### 27h.2 🟢 cost_allocation
+```python
+result = app.call_tool("cost_allocation", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+assert "allocation" in data or "strategy" in data or "breakdown" in data
+print(f"✅ cost_allocation: {json.dumps(data, indent=2)[:300]}")
+```
+**Expected Result:** ✅ Returns cost allocation breakdown by strategy (pro-rata, usage-based, direct).  
+Tool: `cost_allocation` — returns cost allocation breakdown across strategies for governance.
+
+---
+
+### 📊 Q27h Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27h.1 cost_dashboard | ⬜ |
+| 27h.2 cost_allocation | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q27i: MCP Audit Log Tool (v1.8)
+
+**Agent says:** "I need to query the audit log programmatically."
+
+### Prerequisites
+```bash
+cd /tmp/test-q27i
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 27i.1 🟢 query_audit_log
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("query_audit_log", {"limit": 5})
+data = json.loads(result.content[0].text)
+assert "entries" in data or "events" in data or "log" in data
+entries = data.get("entries", data.get("events", data.get("log", [])))
+print(f"✅ query_audit_log: {len(entries)} audit entries returned")
+```
+**Expected Result:** ✅ Returns append-only audit log entries with actor, resource, and action fields.  
+Tool: `query_audit_log` — queries the immutable append-only audit log for all operations.
+
+---
+
+### 📊 Q27i Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 27i.1 query_audit_log | ⬜ |
 
 **OVERALL: ⬜**

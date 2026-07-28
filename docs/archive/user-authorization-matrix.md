@@ -209,4 +209,4 @@ Reference: `../dev/specs/expectations.md` F47, F53, `../dev/director-user-guide.
 - `../skills/autoinfo-skill/SKILL.md` — Agent operation skill with auth boundaries
 - `../dev/agent-alerting.md` — Agent proactive alerting escalation
 - `../dev/specs/operations.md` — Data privacy, cost governance rules
-- `../autoinfo-validation-master-plan-v2/part-14-human-agent-collaboration.md` — Validation scenarios for escalation paths
+- `../autoinfo-validation-master-plan/part-14-human-agent-collaboration.md` — Validation scenarios for escalation paths

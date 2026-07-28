@@ -2,6 +2,50 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.8.0 (2026-07-28)
+
+### Added
+- **Agent-oriented remediation — 17 new MCP tools** — MCP tool inventory expanded from 115 to **132 tools across 32 categories**. New tools: `get_tool_count` (self-discovery in System category), `create_kb_entry` (direct Raw-tier KB entry), `topic_group_add`/`topic_group_remove` (topic grouping), `query_audit_log` (MCP audit log query), `cefr_batch` (batch CEFR classification), `email_config` (email configuration), `knowledge_graph_export` (KG export), `clean_cache` (cache cleanup), `cost_dashboard`/`cost_allocation` (cost management), `get_feeds` (RSS feed retrieval). See README for full listings.
+- **Agent-native format extended** — `generate_tutorial(format="agent")`, `generate_presentation(format="agent")`, and `export_kb(format="agent")` now return JSON-LD structured for LLM re-consumption (matching existing `generate_digest(format="agent")`).
+- **Cross-domain search** — `search_knowledge_base()` domain parameter now optional. When omitted, searches all active domains.
+- **Hard-delete purge flag** — `soft_delete_entry(entry_id, purge=True)` permanently removes entries (default False preserves soft-delete behavior).
+- **Domain-less collection** — `collect_sources()` now collects from all active domains when `domain` parameter is omitted.
+- **Process collection flags** — `process_collection()` exposes `check_factual` and `check_translation` boolean flags in its MCP schema for fine-grained gate control.
+- **Job state persistence** — Async job state (`job_state` table in SQLite) persists collection/processing job metadata across restarts. Unknown `job_id` returns `is_complete: false, status: "not_found"` instead of error.
+- **Agent callback persistence** — `set_agent_callback`/`list_agent_callbacks`/`remove_agent_callback` now backed by SQLite (`agent_callbacks` table) instead of in-memory dict, surviving server restarts.
+
+### Changed
+- **MCP tool inventory**: Expanded from 115 tools across 32 categories to **132 tools across 32 categories**. 17 new tools added across 12 categories. See README for full listing.
+- **Error response unification**: All MCP error responses now use a single `_error_dict()` helper returning dual-format (flat `{error_code, message}` + backward-compatible envelope `{isError, content}`). No breaking changes to existing consumers.
+- **ErrorCode enum extended** — 3 new values added to `errors.py`: `AuthRequired`, `RateLimited`, `SessionExpired` (preparing for future SSE transport authentication).
+- **`generate_tutorial` schema fixed** — Format parameter restricted to `["markdown"]` only (was incorrectly listing html/json/etc. that aren't implemented).
+- **CLI help text updated** — `autoinfo output digest --help` and `autoinfo output report --help` now list `agent` format alongside markdown/json/html/pdf/audio.
+- **README.md**: MCP tool count 115→132, test count 1549→1612. Features list updated with 17 new tools, error unification, cross-domain search, domain-less collection, persistence. MCP tools table updated across all categories. Status table tool count updated. Known Limitations version reference updated to v1.8.
+- **AGENTS.md**: MCP tool count 115→132. Tool Discovery table updated with 17 new tools. Status table MCP count updated. Project structure MCP directory count updated.
+- **Test suite**: Expanded from 1549 to 1612 tests (+63 new tests across Waves 1-3).
+- **Spec docs updated**: pipeline.md, delivery.md, ops-runbook.md, multi-tenancy-auth.md, market-positioning.md, data-models.md received `<!-- agent: ... -->` metadata blocks, Agent Quick Reference sections, and MCP tool aliases alongside CLI commands.
+- Version bumped from `1.6.2` to `1.8.0`
+
+### Infrastructure
+- `src/autoinfo/mcp/server.py`: 17 new handler functions — `_handle_get_tool_count`, `_handle_create_kb_entry`, `_handle_topic_group_add`, `_handle_topic_group_remove`, `_handle_query_audit_log`, `_handle_cefr_batch`, `_handle_email_config`, `_handle_knowledge_graph_export`, `_handle_clean_cache`, `_handle_cost_dashboard`, `_handle_cost_allocation`, `_handle_get_feeds`. Dynamic `tools_count` computed at runtime (no longer hardcoded). Optional domain param on `_handle_search_knowledge_base`. Purge flag on `_handle_soft_delete_entry`. Dual-format error responses via `_error_dict()`.
+- `src/autoinfo/mcp/errors.py`: 3 new ErrorCode values — `AuthRequired`, `RateLimited`, `SessionExpired`. `error_dict()` helper now returns dual-format (flat + envelope).
+- `src/autoinfo/agent_callback.py`: Full rewrite — SQLite-backed `agent_callbacks` table replacing in-memory dict.
+- `src/autoinfo/output.py`: `generate_tutorial()`, `generate_presentation()`, `export_kb()` now support `format="agent"` (JSON-LD output).
+- `src/autoinfo/api/routes.py`: `get_feeds()` supports `format="rss"` (RSS XML output).
+- `src/autoinfo/cli/output.py`: CLI help text updated for `agent` format in digest/report.
+- Job state persisted via SQLite `job_state` table collection/processing job metadata.
+- `docs/dev/specs/`: 6 spec files updated with agent metadata blocks and agent Quick Reference sections.
+
+### Docs
+- **README.md**: Fully updated for v1.8 — MCP tool count 115→132, test count 1549→1612, features list expanded, MCP table rewritten with all 132 tools, status table updated.
+- **AGENTS.md**: Fully updated for v1.8 — tool discovery table, status table, project structure.
+- **docs/dev/specs/mcp-tools.md**: Tool inventory updated 115→132.
+- **docs/dev/founder-expectations.md**: Version/status updated for v1.8.
+- **docs/dev/specs/expectations.md**: Status markers checked.
+- **docs/dev/specs/quality-gates.md**: 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) documented.
+- **.opencode/skills/doc-manager-skill/SKILL.md**: Inventory, dependency map, quantitative references updated.
+- **docs/autoinfo-validation-master-plan/**: Part 03, Part 10, Part 11 updated for new MCP tools, ErrorCodes, and test count.
+
 ## v1.7.0 (2026-07-28)
 
 ### Added
@@ -44,7 +88,7 @@ All notable changes to the AutoInfo project will be documented in this file.
 
 ### Docs
 - **README.md**: Updated for v1.7 (features, status table, MCP tools, CLI commands, known limitations).
-- **docs/autoinfo-validation-master-plan-v2/**: Part 03 (get_channel_health scenarios), Part 04 (consumption tracking, notifications, cron health scenarios), Part 11 (backup verification) updated.
+- **docs/autoinfo-validation-master-plan/**: Part 03 (get_channel_health scenarios), Part 04 (consumption tracking, notifications, cron health scenarios), Part 11 (backup verification) updated.
 - **.opencode/skills/doc-manager-skill/SKILL.md**: Inventory, dependency map, and quantitative references updated for v1.7.
 
 ## v1.6.3 (2026-07-27)

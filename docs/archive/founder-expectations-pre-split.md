@@ -2109,4 +2109,4 @@ The following minor gaps in otherwise-implemented expectations remain from the v
 - `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (114 tools, 32 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/director-user-guide.md` — Human-Agent interaction lifecycle, communication patterns, escalation protocol
-- `docs/autoinfo-validation-master-plan-v2/README.md` — Comprehensive validation plan: 71 questions across 15 parts covering all 3 user dimensions
+- `docs/autoinfo-validation-master-plan/README.md` — Comprehensive validation plan: 96 questions across 15 parts covering all 3 user dimensions

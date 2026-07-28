@@ -6,13 +6,22 @@
 
 ---
 
+### Part-Level Directory Setup
+Run once at the start of this part:
+```bash
+# Create clean directories for all questions in this part
+rm -rf /tmp/test-q49 && mkdir -p /tmp/test-q49
+rm -rf /tmp/test-q50 && mkdir -p /tmp/test-q50
+rm -rf /tmp/test-q51 && mkdir -p /tmp/test-q51
+```
+
 ## Q49: Real PubMed API Collection (no API key)
 
 **Agent says:** "I want to configure real PubMed API and collect real medical papers."
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q49 && mkdir test-q49 && cd test-q49
+cd /tmp/test-q49
 autoinfo init --demo medical-research
 ```
 
@@ -29,7 +38,6 @@ autoinfo collect --domain medical-research --topic "IVF breakthroughs" --source 
 - ✅ Cached JSON files have: `source_url`, `title`, `content` (or `abstract`), `source_type: "api"`, `source_platform: "pubmed"`, `collected_at`
 - ✅ Real PubMed data present (PMID, authors, journal, publication date)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 49.2 🟢 Verify PubMed item structure
 ```bash
@@ -50,7 +58,6 @@ for f in sorted(glob.glob('collections/medical-research/pubmed/*/*.json'))[:1]:
 ```
 **Expected Result:** ✅ Items contain real PubMed metadata: PMID, DOI, authors, publication date.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -73,7 +80,7 @@ for f in sorted(glob.glob('collections/medical-research/pubmed/*/*.json'))[:1]:
 
 #### 50.1 🟢 RSS feed collection (ai-commercial domain)
 ```bash
-cd /tmp && rm -rf test-q50 && mkdir test-q50 && cd test-q50
+cd /tmp/test-q50
 autoinfo init --demo ai-commercial
 autoinfo collect --domain ai-commercial --source techcrunch --limit 5
 ```
@@ -84,7 +91,6 @@ autoinfo collect --domain ai-commercial --source techcrunch --limit 5
 - ✅ Each item has `source_type: "rss"`, `source_platform: "techcrunch"`
 - ✅ Content is real article summaries (not empty)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 50.2 🟢 Web scraping (trafilatura + Playwright fallback)
 ```bash
@@ -110,7 +116,6 @@ autoinfo collect --domain medical-research --source who-health --limit 3
 - ✅ Item has `source_type: "web"`, `source_platform: "who-health"`
 - ✅ Content is readable text (not raw HTML)
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 50.3 🔴 Invalid source URL — graceful error
 ```bash
@@ -122,7 +127,6 @@ autoinfo collect --domain medical-research --source broken-source --limit 3 2>&1
 - ❌ No crash — error is logged
 - ❌ Other sources continue if run together
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -144,7 +148,7 @@ autoinfo collect --domain medical-research --source broken-source --limit 3 2>&1
 
 ### Prerequisites
 ```bash
-cd /tmp && rm -rf test-q51 && mkdir test-q51 && cd test-q51
+cd /tmp/test-q51
 autoinfo init --demo medical-research
 autoinfo collect --domain medical-research --topic "IVF breakthroughs" --source pubmed --limit 3
 ```
@@ -167,7 +171,6 @@ print('✅ Doctor detects configured LLM')
 ```
 **Expected Result:** ✅ `doctor --json` shows `llm.key_configured: true`.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 51.2 🟢 Process with real LLM — verify KB entries
 ```bash
@@ -187,7 +190,6 @@ head -40 knowledge/medical-research/01-Raw/ivf-breakthroughs/*.md | head -60
 - ✅ Body includes LLM-extracted: `## TL;DR` section, `## Key Points` list
 - ✅ Extracted TL;DR is meaningful (not "No summary available")
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 51.3 🟢 Provider/model override
 ```bash
@@ -214,7 +216,6 @@ ls knowledge/medical-research/01-Raw/gene-therapy-crispr/ 2>/dev/null && echo '�
 ```
 **Expected Result:** ✅ Process uses overridden model. KB entries created.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 51.4 🟢 Fallback chain — primary fails, fallback succeeds
 ```bash
@@ -237,7 +238,6 @@ ls knowledge/medical-research/01-Raw/ivf-breakthroughs/*.md 2>/dev/null && echo 
 ```
 **Expected Result:** ✅ Processing shows fallback activation in logs. KB entries still created via fallback.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 51.5 🔴 Missing/invalid LLM key — graceful failure
 ```bash
@@ -246,7 +246,6 @@ autoinfo process --domain medical-research 2>&1; echo 'EXIT:' $?
 ```
 **Expected Result:** ❌ Exit code != 0. Error message about missing API key. No traceback. No crash/hang.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -327,7 +326,6 @@ echo '=== E2E COMPLETE ==='
 - ✅ Phase 7: JSON export valid
 - ✅ Every phase exit code 0
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 52.2 🟢 Multi-domain pipeline (medical + ai-commercial)
 ```bash
@@ -356,7 +354,6 @@ autoinfo summaries list --domain ai-commercial --json | python3 -c "import sys,j
 - ✅ AI-commercial: entries with RSS metadata
 - ✅ Both searchable independently
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 
@@ -396,7 +393,6 @@ else:
 ```
 **Expected Result:** ✅ Doctor runs without crash. Agent can parse JSON to identify missing key.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 53.2 🟢 Agent diagnoses unreachable source URL
 ```bash
@@ -426,7 +422,6 @@ for s in sources:
 ```
 **Expected Result:** ✅ Doctor checks all sources. Broken source reports error/not ok. Working sources report ok.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 53.3 🟢 Agent self-heals (diagnose → fix → verify)
 ```bash
@@ -466,7 +461,6 @@ print('✅ Self-heal successful')
 ```
 **Expected Result:** ✅ Agent follows diagnose → fix → verify cycle. After fixing, doctor confirms resolution.
 
-**Actual Result:** _________ **PASS / FAIL:** _________
 
 ---
 

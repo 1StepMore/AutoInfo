@@ -58,6 +58,7 @@ Expectations are grouped by journey phase.
 | **Agent: MCP server connection** | Agent connects to MCP server via stdio or SSE. Calls `health_check` tool to verify connectivity. Tool manifest is auto-discovered via MCP protocol. |
 | **Output format — human** | Plain text help. `--json` flag available globally for machine-readable output. |
 | **Output format — agent** | JSON-RPC over stdio. All tools return structured dicts. Tool descriptions are self-documenting via MCP protocol. |
+| **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (23 values) covers NotFound, DomainNotFound, ValidationError, InternalError, and future-facing codes: `AuthRequired` (future SSE auth), `RateLimited` (future rate limiting), `SessionExpired` (future session management). Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
 | **Key info visible** | Human: commands, config location, version. Agent: tool list, resource list, server instructions. |
 
 #### F03 — Configuration Initialization ✅
@@ -1181,6 +1182,6 @@ Associated spec files:
 - [`quality-gates.md`](./quality-gates.md) — G0-G5 quality gates, D1-D3 delivery gates: catalog, philosophy, retry strategies, configuration
 - [`delivery.md`](./delivery.md) — Output generation, delivery channels, error recovery & resilience, end user lifecycle
 - [`operations.md`](./operations.md) — Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability
-- [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (114 tools across 32 categories)
+- [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (132 tools across 32 categories)
 - [`data-models.md`](./data-models.md) — Consolidated data model schemas (Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth)
 - [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) — B1/B2/B3 user types with complete lifecycles (root spec for F65-F72)

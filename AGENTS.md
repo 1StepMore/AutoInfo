@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (115 tools across 32 categories)
+2. **All capabilities** are exposed as MCP tools (132 tools across 32 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -66,7 +66,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 115 MCP tools across 32 categories
+│   │   │   ├── mcp-tools.md        # 132 MCP tools across 32 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -83,7 +83,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (115 tools)
+│       ├── mcp/                     # MCP server (132 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
@@ -176,26 +176,26 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-115 MCP tools across 32 categories:
+132 MCP tools across 32 categories:
 
 | Category | Key Tools |
 |----------|-----------|
-| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models` |
+| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models`, `get_tool_count` |
 | **Discovery** | `list_domains`, `list_available_platforms`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
 | **Domain** | `add_domain`, `remove_domain` |
-| **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health` |
-| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
-| **Collection** | `collect_sources` (with dry_run), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch), `get_processing_progress`, `batch_run` |
-| **KB** | `search_knowledge_base` (hybrid/mode=vector/mode=faceted), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
+| **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health`, `get_feeds` |
+| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords`, `topic_group_add`, `topic_group_remove` |
+| **Collection** | `collect_sources` (with dry_run, domain-less), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch, check_factual, check_translation), `get_processing_progress`, `batch_run`, `clean_cache` |
+| **KB** | `search_knowledge_base` (hybrid, cross-domain), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_entry`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
 | **KB Relations** | `link_items`, `get_item_relations` |
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
-| **KB Graph** | `query_knowledge_graph` |
-| **Output** | `list_output_templates`, `generate_digest` (format=md/html/json), `generate_report` (format=md/json), `generate_tutorial` (format=md), `generate_presentation` (format=md), `localize_content` |
-| **Export/Import** | `export_kb`, `import_kb` |
-| **CEFR** | `classify_cefr` |
+| **KB Graph** | `query_knowledge_graph`, `knowledge_graph_export` |
+| **Output** | `list_output_templates`, `generate_digest` (format=md/html/json/agent), `generate_report` (format=md/json/pdf/html/audio/agent), `generate_tutorial` (format=md/agent), `generate_presentation` (format=md/agent), `localize_content` |
+| **Export/Import** | `export_kb` (format=md/json/sqlite/pdf/csv/graphml/agent), `import_kb` |
+| **CEFR** | `classify_cefr`, `cefr_batch` |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
-| **Email** | `send_email_digest` |
+| **Email** | `send_email_digest`, `email_config` |
 | **Q&A** | `query_collected` |
 | **Custom Extraction** | `extract_fields`, `get_extraction` |
 | **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `get_schedule_status` |
@@ -207,11 +207,12 @@ freshness at output time.
 | **Product** | `list_products`, `get_product` |
 | **Alert Rules** | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
 | **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
-| **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice` |
-| **Data Privacy** | `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` |
+| **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice`, `cost_dashboard`, `cost_allocation` |
+| **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
 | **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
+| **Audit** | `query_audit_log` |
 
 **Discovery flow**:
 1. Call `health_check()` first to verify server is alive and get version info
@@ -408,7 +409,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 115 tools across 32 categories |
+| MCP server | ✅ 132 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -446,8 +447,23 @@ Collection and processing now return a `job_id` for progress polling:
 | Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 11 delivery channels |
 | Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
+| Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |
+| Agent callback persistence | ✅ SQLite-backed agent callback registration survives restarts |
+| Cross-domain search | ✅ search_knowledge_base searches all domains when domain omitted |
+| Domain-less collection | ✅ collect_sources collects from all domains when domain omitted |
+| Hard-delete purge | ✅ soft_delete_entry purge flag for permanent removal |
+| Fine-grained process control | ✅ process_collection check_factual/check_translation flags |
+| Batch CEFR | ✅ cefr_batch MCP tool for multi-text classification |
+| Audit log MCP | ✅ query_audit_log MCP tool for programmatic audit access |
+| Knowledge graph export | ✅ knowledge_graph_export MCP tool |
+| RSS feed MCP | ✅ get_feeds MCP tool with RSS XML format |
+| Cache cleanup | ✅ clean_cache MCP tool |
+| Topic grouping | ✅ topic_group_add/topic_group_remove MCP tools |
+| Email config MCP | ✅ email_config MCP tool |
+| Cost dashboard MCP | ✅ cost_dashboard MCP tool |
+| Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 1549 tests (1 collection error pre-existing) |
+| Test suite | ✅ 1612 tests (1 collection error pre-existing) |
 
 ## References
 

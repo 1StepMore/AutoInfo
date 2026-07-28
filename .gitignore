@@ -43,3 +43,8 @@ autoinfo.db
 
 # Exports
 exports/
+
+# Runtime artifacts
+backups/
+logs/
+reports/

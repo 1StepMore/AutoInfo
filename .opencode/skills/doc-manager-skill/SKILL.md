@@ -62,7 +62,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
 | `docs/dev/specs/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (115 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (132 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
@@ -72,19 +72,19 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
 | `docs/autoinfo-validation-master-plan.md` | Original validation plan (~40% feature coverage) | 🟠 P2 — legacy | Rarely (superseded by v2) |
-| `docs/autoinfo-validation-master-plan-v2/README.md` | Validation plan v2 index: 100% coverage, 74 questions, 15 part files + verdict | 🟡 P1 — validation | When feature surface changes |
-| `docs/autoinfo-validation-master-plan-v2/part-01-core-pipeline.md` | Core pipeline: init, collect, process, browse, status, doctor | 🟡 P1 | When core pipeline changes |
-| `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md` | All 17 CLI commands with subcommand testing | 🟡 P1 | When CLI changes |
-| `docs/autoinfo-validation-master-plan-v2/part-03-mcp-system-tools.md` | MCP system/discovery/domain/source/topic tools | 🟡 P1 | When MCP tools change |
-| `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | MCP KB/search/output/cron/email/CEFR tools | 🟡 P1 | When MCP tools change |
-| `docs/autoinfo-validation-master-plan-v2/part-05-quality-gates.md` | G1-G5 quality gates | 🟡 P1 | When quality gates change |
-| `docs/autoinfo-validation-master-plan-v2/part-06-kb-pipeline.md` | KB 4-tier pipeline, import/export, versioning, graph | 🟡 P1 | When KB pipeline changes |
-| `docs/autoinfo-validation-master-plan-v2/part-07-rest-api-webui.md` | REST API CRUD, Web UI dashboard | 🟡 P1 | When API/UI changes |
-| `docs/autoinfo-validation-master-plan-v2/part-08-agent-e2e.md` | Real API E2E (PubMed/RSS/Web + LLM) | 🟡 P1 | When E2E flow changes |
-| `docs/autoinfo-validation-master-plan-v2/part-09-async-cron-email.md` | Async jobs, cron, email, webhooks, alerting | 🟡 P1 | When async/cron/email changes |
-| `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Error/boundary matrix across all layers | 🟡 P1 | When error handling changes |
-| `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Doctor diagnostics, MCP stdio, stress test, test suite | 🟡 P1 | When diagnostics/test changes |
-| `docs/autoinfo-validation-master-plan-v2/part-12-final-verdict.md` | Summary verdict, production gap checklist | 🟡 P1 | When validation completes |
+| `docs/autoinfo-validation-master-plan/README.md` | Validation plan v2 index: 100% coverage, 74 questions, 15 part files + verdict | 🟡 P1 — validation | When feature surface changes |
+| `docs/autoinfo-validation-master-plan/part-01-core-pipeline.md` | Core pipeline: init, collect, process, browse, status, doctor | 🟡 P1 | When core pipeline changes |
+| `docs/autoinfo-validation-master-plan/part-02-cli-full.md` | All 17 CLI commands with subcommand testing | 🟡 P1 | When CLI changes |
+| `docs/autoinfo-validation-master-plan/part-03-mcp-system-tools.md` | MCP system/discovery/domain/source/topic tools | 🟡 P1 | When MCP tools change |
+| `docs/autoinfo-validation-master-plan/part-04-mcp-kb-output.md` | MCP KB/search/output/cron/email/CEFR tools | 🟡 P1 | When MCP tools change |
+| `docs/autoinfo-validation-master-plan/part-05-quality-gates.md` | G1-G5 quality gates | 🟡 P1 | When quality gates change |
+| `docs/autoinfo-validation-master-plan/part-06-kb-pipeline.md` | KB 4-tier pipeline, import/export, versioning, graph | 🟡 P1 | When KB pipeline changes |
+| `docs/autoinfo-validation-master-plan/part-07-rest-api-webui.md` | REST API CRUD, Web UI dashboard | 🟡 P1 | When API/UI changes |
+| `docs/autoinfo-validation-master-plan/part-08-agent-e2e.md` | Real API E2E (PubMed/RSS/Web + LLM) | 🟡 P1 | When E2E flow changes |
+| `docs/autoinfo-validation-master-plan/part-09-async-cron-email.md` | Async jobs, cron, email, webhooks, alerting | 🟡 P1 | When async/cron/email changes |
+| `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Error/boundary matrix across all layers | 🟡 P1 | When error handling changes |
+| `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Doctor diagnostics, MCP stdio, stress test, test suite | 🟡 P1 | When diagnostics/test changes |
+| `docs/autoinfo-validation-master-plan/part-12-final-verdict.md` | Summary verdict, production gap checklist | 🟡 P1 | When validation completes |
 
 ### 1.5 Configuration Docs (MCP connection configs)
 
@@ -107,21 +107,26 @@ When you modify each code module below, the listed documentation files **must** 
 | Any CLI file | `README.md` | CLI command table (verify 23 groups, add new groups, update descriptions) |
 | Any CLI file | `AGENTS.md` | CLI command references in patterns, operating model |
 | Any CLI file | `CHANGELOG.md` | Add entry under current version |
-| New CLI group | `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md` | Add scenarios for new command group |
+| New CLI group | `docs/autoinfo-validation-master-plan/part-02-cli-full.md` | Add scenarios for new command group |
 | CLI flag changes | `README.md` | Update flag examples |
 
 ### 2.2 MCP Server (`src/autoinfo/mcp/`)
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
- | `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 115) |
- | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
- | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
- | `server.py` — new tool | `CHANGELOG.md` | Add entry |
- | `server.py` — new tool | `docs/dev/specs/mcp-tools.md` | Add tool to inventory table |
- | `server.py` — new param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
- | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan-v2/part-10-error-boundary.md` | Add error code to boundary matrix |
- | Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "115 tools" / "32 categories" references |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 132) |
+| `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
+| `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
+| `server.py` — new tool | `CHANGELOG.md` | Add entry |
+| `server.py` — new tool | `docs/dev/specs/mcp-tools.md` | Add tool to inventory table |
+| `server.py` — new param change | `AGENTS.md`, `README.md`, affected skills | Update parameter descriptions |
+| `server.py` — cross-domain/domain-less | `AGENTS.md`, `README.md` | Cross-domain search + domain-less collection feature descriptions |
+| `server.py` — hard-delete purge flag | `AGENTS.md`, `README.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Hard-delete purge flag description |
+| `server.py` — process_collection flags | `AGENTS.md`, `README.md` | check_factual/check_translation flag descriptions |
+| `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error code to boundary matrix |
+| `errors.py` — 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) | `docs/dev/specs/quality-gates.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error codes to error response spec and boundary matrix |
+| `agent_callback.py` — SQLite persistence | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Persistent agent callbacks feature description |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "132 tools" / "32 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -141,7 +146,7 @@ When you modify each code module below, the listed documentation files **must** 
 | New endpoint | `README.md` | REST API section, API documentation |
 | New endpoint | `AGENTS.md` | Common patterns (REST API usage) |
 | New endpoint | `CHANGELOG.md` | Add entry |
-| Endpoint behavior change | `docs/autoinfo-validation-master-plan-v2/part-07-rest-api-webui.md` | Update scenarios |
+| Endpoint behavior change | `docs/autoinfo-validation-master-plan/part-07-rest-api-webui.md` | Update scenarios |
 | API route handler | `README.md` | Verify port 8741, endpoint list |
 | Dashboard UI | `README.md`, `AGENTS.md` | Web UI Dashboard description |
 
@@ -151,7 +156,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | New collector type | `README.md` | Feature list (multi-source collection), demo domains table |
 | New collector type | `CHANGELOG.md` | Add entry |
-| New collector type | `docs/autoinfo-validation-master-plan-v2/part-01-core-pipeline.md` | Add collection scenarios |
+| New collector type | `docs/autoinfo-validation-master-plan/part-01-core-pipeline.md` | Add collection scenarios |
 | Collector config change | `docs/dev/specs/pipeline.md` | Collection pipeline specification |
 | Demo source change | `README.md` | Demo Domains table (sources per domain) |
 
@@ -171,7 +176,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | New output format | `README.md` | Feature list, Output/MCP tool tables |
 | New output format | `CHANGELOG.md` | Add entry |
-| Output template change | `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | Update output scenarios |
+| Output template change | `docs/autoinfo-validation-master-plan/part-04-mcp-kb-output.md` | Update output scenarios |
 | Tool parameter change | `autoinfo-SKILL.md` | Update workflow examples if workflow changes |
 
 ### 2.8 Quality Gates (`src/autoinfo/quality.py`)
@@ -180,7 +185,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | Gate logic change | `AGENTS.md` | Quality Gates table (advisory, not blocking) |
 | Gate logic change | `README.md` | Quality gates feature description |
-| Gate logic change | `docs/autoinfo-validation-master-plan-v2/part-05-quality-gates.md` | Update scenarios |
+| Gate logic change | `docs/autoinfo-validation-master-plan/part-05-quality-gates.md` | Update scenarios |
 | New gate | `docs/dev/specs/quality-gates.md` | Quality gate specification |
 | New gate | `CHANGELOG.md` | Add entry |
 
@@ -214,7 +219,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | Sending logic | `README.md` | Feature list, CLI table (email command group) |
 | Config change | `docs/dev/agent-alerting.md` | Email digest delivery pattern |
-| Config change | `docs/autoinfo-validation-master-plan-v2/part-09-async-cron-email.md` | Update scenarios |
+| Config change | `docs/autoinfo-validation-master-plan/part-09-async-cron-email.md` | Update scenarios |
 
 ### 2.13 Config (`src/autoinfo/config.py`)
 
@@ -223,7 +228,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Config schema | `README.md` | Quick Start, LLM Configuration |
 | Config schema | `AGENTS.md` | LLM Configuration section, architecture rules (DO NOT modify directly) |
 | Config schema | `docs/dev/founder-expectations.md` | Config system expectations |
-| New config field | `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Update diagnostic scenarios |
+| New config field | `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Update diagnostic scenarios |
 
 ### 2.14 Domain Management (`src/autoinfo/cli/domain.py`, MCP tools)
 
@@ -248,7 +253,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | Import logic | `README.md` | Feature list (KB import) |
 | Import logic | `CHANGELOG.md` | Add entry |
-| New format | `docs/autoinfo-validation-master-plan-v2/part-06-kb-pipeline.md` | Update import scenarios |
+| New format | `docs/autoinfo-validation-master-plan/part-06-kb-pipeline.md` | Update import scenarios |
 
 ### 2.17 Version Bumps / Release
 
@@ -279,7 +284,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Channel health check method | `README.md` | Feature list (channel health monitoring), MCP tools table (Monitor category — `get_channel_health`) |
 | Channel health check method | `AGENTS.md` | Status table (channel health monitoring row), Tool Discovery table |
 | Channel health check method | `CHANGELOG.md` | Add entry |
-| Channel health check method | `docs/autoinfo-validation-master-plan-v2/part-03-mcp-system-tools.md` | Add `get_channel_health` scenarios |
+| Channel health check method | `docs/autoinfo-validation-master-plan/part-03-mcp-system-tools.md` | Add `get_channel_health` scenarios |
 
 ### 2.20 Consumption Tracking (`src/autoinfo/consumption.py`)
 
@@ -288,7 +293,7 @@ When you modify each code module below, the listed documentation files **must** 
 | ConsumptionEvent logic | `README.md` | Feature list (consumption tracking), Status table (consumption tracking row) |
 | ConsumptionEvent logic | `AGENTS.md` | Status table (consumption tracking row) |
 | ConsumptionEvent logic | `CHANGELOG.md` | Add entry |
-| Auto-record on delivery | `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | Add consumption tracking scenarios (Q36d) |
+| Auto-record on delivery | `docs/autoinfo-validation-master-plan/part-04-mcp-kb-output.md` | Add consumption tracking scenarios (Q36d) |
 | New store schema | `docs/dev/specs/data-models.md` | ConsumptionEvent schema (if spec updates allowed) |
 
 ### 2.21 Notifications (`src/autoinfo/notifications.py`)
@@ -298,7 +303,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Notification logic | `README.md` | Feature list (automated notifications), Status table (automated notifications row) |
 | Notification logic | `AGENTS.md` | Status table (automated notifications row) |
 | Notification logic | `CHANGELOG.md` | Add entry |
-| Trial-ending / content-ready | `docs/autoinfo-validation-master-plan-v2/part-04-mcp-kb-output.md` | Add notification scenarios (Q36d) |
+| Trial-ending / content-ready | `docs/autoinfo-validation-master-plan/part-04-mcp-kb-output.md` | Add notification scenarios (Q36d) |
 
 ### 2.22 Backup & Restore Scripts (`scripts/backup-db.sh`, `scripts/restore-db.sh`)
 
@@ -308,7 +313,7 @@ When you modify each code module below, the listed documentation files **must** 
 | Backup logic | `AGENTS.md` | Status table (SQLite backup row) |
 | Backup logic | `CHANGELOG.md` | Add entry |
 | Backup target | `Makefile` | `backup` target |
-| Backup verification | `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Add backup verification scenarios (60.16, 60.17) |
+| Backup verification | `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Add backup verification scenarios (60.16, 60.17) |
 
 ### 2.23 Subscription Tier Gating (`src/autoinfo/billing.py` — `check_access`, `src/autoinfo/models.py` — Subscription fields)
 
@@ -319,7 +324,7 @@ When you modify each code module below, the listed documentation files **must** 
 | `check_access` fast path | `CHANGELOG.md` | Add entry |
 | Subscription tier/channels/domains/products fields | `README.md` | Feature list (subscription tiers), Status table (subscription tiers row) |
 | Subscription tier/channels/domains/products fields | `AGENTS.md` | Status table (subscription tiers row) |
-| Access control verification | `docs/autoinfo-validation-master-plan-v2/part-11-production-validation.md` | Add `check_access` scenario (60.18) |
+| Access control verification | `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Add `check_access` scenario (60.18) |
 
 ---
 
@@ -343,7 +348,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 23 groups, update descriptions
-- MCP Tools table → verify tool count (currently 115), update categories/tools
+- MCP Tools table → verify tool count (currently 132), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -402,10 +407,10 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 115 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 132 |
 | MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 32 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
-| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1549 |
+| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1612 |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 5 |
 | Delivery channels (health-checked) | `README.md`, `AGENTS.md` | 11 (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) |
@@ -485,7 +490,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 115), category count if new category
+**Quantities to bump**: MCP tool count (currently 132), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -501,7 +506,7 @@ CHANGELOG.md → "Added: MCP tool 'xxx'"
 
 **When**: You add a new CLI module in `src/autoinfo/cli/` and register it in the CLI entry point.
 
-**Docs to update**: `README.md` (CLI table, feature list), `AGENTS.md` (CLI references), `CHANGELOG.md`, `docs/autoinfo-validation-master-plan-v2/part-02-cli-full.md`
+**Docs to update**: `README.md` (CLI table, feature list), `AGENTS.md` (CLI references), `CHANGELOG.md`, `docs/autoinfo-validation-master-plan/part-02-cli-full.md`
 
 **Quantities to bump**: CLI command group count (currently 23)
 

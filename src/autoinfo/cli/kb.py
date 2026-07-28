@@ -35,8 +35,8 @@ def search(
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
 
-@app.command()
-def list(
+@app.command(name="list")
+def list_entries(
     domain: str = typer.Option(..., "--domain", help="Domain to list entries for"),
     tier: str = typer.Option(
         "01-Raw", "--tier", help="KB tier (01-Raw, 02-Draft, 03-Wiki)"
@@ -44,7 +44,7 @@ def list(
     limit: int = typer.Option(20, "--limit", min=1, help="Max entries"),
     offset: int = typer.Option(0, "--offset", help="Pagination offset"),
 ) -> None:
-    """List KB entries by domain and tier."""
+    """List KB entries in a given tier."""
     store = KBStore()
     entries = store.list_kb_tier(
         domain=domain, tier=tier, limit=limit, offset=offset

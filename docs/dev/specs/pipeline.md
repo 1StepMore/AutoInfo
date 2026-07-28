@@ -1,3 +1,4 @@
+<!-- agent: pipeline-internals -->
 # Collection & Processing Pipeline
 
 > Extracted from `founder-expectations.md §§12.2-12.8, 12.12, 12.18`. References: F5-F9 (Collection), F10-F14 (Processing/Extraction), F15 (LLM Config).
@@ -46,18 +47,20 @@ class Item:
 ### 1.3 Two-Phase Flow
 
 ```
-Phase 1 — Fetch:     autoinfo collect --domain X
+Phase 1 — Fetch:     autoinfo collect --domain X   (MCP: collect_sources(domain=X))
   → Source handlers fetch items in parallel
   → Raw JSON cached to collections/
   → Dedup (URL → PMID/DOI → fuzzy title)
   → Collection log written (per-item trace_id, timestamps, source)
 
-Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]
+Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MCP: process_collection(domain=X))
   → Reads cached raw items (from collection cache, not KB)
   → LLM extraction (configurable model per task)
   → Quality gates (G0-G5)
   → Creates 01-Raw KB entries (one per validated item)
 ```
+
+> **Agent reference**: All pipeline operations are available as MCP tools. See [mcp-tools.md](./mcp-tools.md) for the full catalog.
 
 ### 1.4 Source Handler Implementations
 

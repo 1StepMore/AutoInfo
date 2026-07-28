@@ -1,4 +1,28 @@
+<!-- agent: ops-runbook -->
 # Operations Runbook: Backup, Disaster Recovery, Monitoring & Scaling
+
+## Agent Quick Reference
+
+This runbook targets human operators running bash procedures. Agents should use the MCP tools below instead of executing scripts directly. Where no MCP tool exists, escalate to a human.
+
+- **Health check:** Agent calls `diagnose_system()` MCP tool. Returns structured health data covering LLM key, sources, disk, and DB. Do not run `autoinfo doctor` CLI.
+- **Backup status:** Agent calls `health_check()` MCP tool and inspects the `last_backup` field to verify the most recent backup timestamp. No MCP tool triggers a new backup; the existing `make backup` target and `scripts/backup-db.sh` are human-operated.
+- **Recovery (restore from backup):** No DR MCP tools exist yet. Agent must escalate to a human operator, who runs `scripts/restore-db.sh` manually. Do not attempt restore via shell commands.
+- **Monitoring:** Agent calls `get_metrics()` or `get_prometheus_metrics()` for runtime metrics, and `get_channel_health()` for delivery channel status. Prometheus endpoint at `http://localhost:8741/metrics` is human-facing.
+- **Cron health:** Agent calls `get_schedule_status()` to inspect schedule state. The `autoinfo cron health` CLI (heartbeat + missed-schedule detection) is human-facing.
+
+### Operations that require human intervention
+
+The following operations have no MCP tool equivalent and must be escalated to a human operator:
+
+- **Restore from backup** — `scripts/restore-db.sh` (no DR MCP tools yet)
+- **Trigger a manual backup** — `make backup` or `scripts/backup-db.sh` (no backup MCP tool)
+- **Off-site backup replication** — rsync/S3 sync of `/var/backups/autoinfo/` (infrastructure-level)
+- **Cron job installation** — `autoinfo cron install` writes system crontab entries (host-level)
+- **Disk space remediation** — clearing `/var/backups/autoinfo/` retention or expanding storage
+- **Process restart / scaling** — restarting the FastAPI server, MCP server, or scaling horizontally (no scaling MCP tools)
+- **Secret rotation** — LLM API keys, SMTP credentials, webhook secrets (env vars / config file, not agent-managed)
+- **Disaster recovery plan execution** — full DR failover procedure (spec, not implemented)
 
 > **Date:** 2026-07-27
 > **Status:** 🔴 Spec — not implemented. All procedures are designed for future implementation.

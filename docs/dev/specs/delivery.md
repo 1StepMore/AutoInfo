@@ -1,3 +1,4 @@
+<!-- agent: delivery-reference -->
 # Delivery, Products & End User Lifecycle
 
 > Extracted from `founder-expectations.md §§12.9-12.10, 12.14-12.15`. References: F20 (Output Generation), F21-F24 (Delivery), F32 (End User Lifecycle), F55 (Error Recovery), F56 (User Portal).
@@ -9,18 +10,21 @@
 
 ### 1.1 Product Types
 
-| Product | Description | Template Engine | Output Formats | Delivery Gates |
-|---------|-------------|----------------|----------------|---------------|
-| **Digest** | Curated summary of recent items per topic | Jinja2 | Markdown, HTML, Plain Text, **Audio (TTS MP3)** | D1, D3 |
-| **Report** | Structured deep-dive on a topic with analysis | Jinja2 + LLM | Markdown, JSON, PDF, HTML, **Audio (TTS MP3)** | D1, D2, D3 |
-| **Tutorial** | Step-by-step learning content built from KB | Jinja2 + LLM | Markdown, HTML | D1, D2 |
-| **Presentation** | Slide deck generated from KB entries | Jinja2 + Reveal.js CDN | HTML | D1, D2 |
-| **Agent-Native JSON** | Structured JSON-LD optimized for LLM re-consumption | LLM renderer | JSON-LD (`@type: "KnowledgeDigest"`) | D1, D2 |
+| Product | MCP Tool | Description | Template Engine | Output Formats | Delivery Gates |
+|---------|----------|-------------|----------------|----------------|---------------|
+| **Digest** | `generate_digest()` | Curated summary of recent items per topic | Jinja2 | Markdown, HTML, Plain Text, **Audio (TTS MP3)** | D1, D3 |
+| **Report** | `generate_report()` | Structured deep-dive on a topic with analysis | Jinja2 + LLM | Markdown, JSON, PDF, HTML, **Audio (TTS MP3)** | D1, D2, D3 |
+| **Tutorial** | `generate_tutorial()` | Step-by-step learning content built from KB | Jinja2 + LLM | Markdown, HTML | D1, D2 |
+| **Presentation** | `generate_presentation()` | Slide deck generated from KB entries | Jinja2 + Reveal.js CDN | HTML | D1, D2 |
+| **Agent-Native JSON** | `generate_digest(format="agent")` | Structured JSON-LD optimized for LLM re-consumption | LLM renderer | JSON-LD (`@type: "KnowledgeDigest"`) | D1, D2 |
+| **KB Export** | `export_kb()` | Bulk export of KB entries | Export renderer | Markdown, JSON, SQLite, PDF, CSV, GraphML | D1, D2 |
 
 ### 1.2 Generation Pipeline
 
+> **Agent reference**: All `generate_*` functions are available as MCP tools. See `mcp-tools.md` for full signatures.
+
 ```
-1. User calls generate_<product>(domain, topic, period, template, output_format)
+1. Agent calls the generate_digest() MCP tool (or generate_report, generate_tutorial, etc.)
 2. Fetch relevant 02-Draft entries (by topic + date range)
 3. Load Jinja2 template (built-in or custom)
 4. Build template context:

@@ -130,7 +130,9 @@ def _handle_health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
-            "tools_count": 112,
+        "tools_count": len(
+            [name for name in globals() if name.startswith("_handle_")]
+        ),
     }
 
 
@@ -5301,9 +5303,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format (markdown, html, json)",
+                        "description": "Output format (markdown)",
                         "default": "markdown",
-                        "enum": ["markdown", "html", "json"],
+                        "enum": ["markdown"],
                     },
                     "custom_instructions": {
                         "type": "string",

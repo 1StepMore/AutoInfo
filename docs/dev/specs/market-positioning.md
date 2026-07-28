@@ -1,4 +1,21 @@
+<!-- agent: business-context -->
+<!-- doc-type: market-positioning -->
+<!-- scope: business, competitive-intelligence, pricing, personas -->
+<!-- operational: false -->
+<!-- source: founder-expectations.md §§6-7 -->
+<!-- related: docs/dev/cross-dimensional-catalog.md (keystone matrix derived from here) -->
+
 # Market Positioning & Priority Matrix
+
+## Agent Summary
+
+- **This document is business and market context, not operational.** It defines AutoInfo's priority matrix, competitive landscape, pricing tiers, and target personas. Do not treat it as a pipeline or tooling spec.
+- **Agents may consult this doc for competitive intelligence questions** — e.g., "who are AutoInfo's competitors?", "what's the differentiator vs. Feedly?", "what's the pricing strategy?". Use it to answer user-facing positioning questions, not to drive tool calls.
+- **Key competitors by category:** RSS readers (Feedly, Inoreader), enterprise intelligence (AlphaSense, CB Insights), AI research tools (EnkiAI, TrendIntel), web extraction APIs (Diffbot, KnowledgeSDK), knowledge platforms (Notion, Obsidian).
+- **Core differentiators:** domain-agnostic KB building (not just feed reading), agent-native MCP interface, BYOK cost control, user-defined extraction schemas, full data ownership via files (no SaaS lock-in), affordability for individuals vs. enterprise tools.
+- **Two product lines:** RAW (API feeds, webhook streams, bulk export) and PROCESSED (scheduled digests, thematic reports, alert streams). Pricing spans Free → Premium → Enterprise tiers.
+
+---
 
 > Extracted from `founder-expectations.md §§6-7`. References: F30 (Billing), F42 (External Billing), F28 (RAW Products), F29 (PROCESSED Products).
 > **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — the priority fix matrix (§4) and implementation roadmap (§5) in the CD catalog derive from the market priorities defined here.

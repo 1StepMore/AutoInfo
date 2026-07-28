@@ -1,3 +1,10 @@
+<!-- agent: data-models-reference -->
+<!-- owner: docs/dev/specs -->
+<!-- source-truth: src/autoinfo/ -->
+<!-- schema-count: 35+ -->
+<!-- mcp-mapping: see Agent Quick Reference below -->
+<!-- keystone: docs/dev/cross-dimensional-catalog.md -->
+
 # Data Models Reference
 
 > Consolidated data model schemas referenced across all spec files. Source truth for these schemas lives in `src/autoinfo/`.
@@ -5,8 +12,57 @@
 
 ---
 
+## Agent Quick Reference
+
+Entity-to-MCP-tool mapping. Use this table to find which tool produces or
+consumes each entity. "spec only" marks models not yet implemented in code.
+
+| Entity | MCP Tool | Key Fields |
+|--------|----------|------------|
+| `Item` | `collect_sources`, `process_collection`, `get_collection_status` | `source_url`, `source_type`, `content_hash`, `topics`, `relevance_score` |
+| `ExtractionResult` | `extract_fields`, `get_extraction`, `process_collection` | `tl_dr`, `key_points`, `entities`, `custom_fields`, `quality_score` |
+| KB Entry (YAML frontmatter) | `search_knowledge_base`, `get_kb_entry`, `create_kb_draft`, `flag_for_knowledge_base`, `list_kb_tier` | `id`, `source_url`, `tier`, `status`, `trace_id`, `version` |
+| `DeliveryResult` | `send_to_enduser`, `send_email_digest` | `success`, `channel`, `recipient`, `delivered_at` |
+| `DeliveryLog` | `query_delivery_log`, `get_delivery_log`, `get_enduser_history` | `id`, `subscription_id`, `channel`, `success`, `trace_id` |
+| `RetryConfig` | `send_to_enduser` (retry chain) | `max_retries`, `backoff_base`, `retryable_statuses` |
+| `UserProfile` | `send_to_enduser`, `get_enduser_history`, `update_preferences`, `get_preferences` | `id`, `name`, `email`, `status`, `identity_anchor` |
+| `DeliveryPreferences` | `update_preferences`, `get_preferences` | `channels`, `quiet_hours`, `max_daily_digests`, `preferred_format` |
+| `Subscription` | `get_subscription_status`, `activate_trial`, `check_trial_expiry` | `id`, `user_id`, `domain`, `topics`, `status`, `access_level` |
+| `ProductState` / `ProductInstance` | `list_products`, `get_product` | `id`, `template_id`, `state`, `version` |
+| `ConsumptionEvent` | `get_enduser_usage` | `id`, `product_id`, `event_type`, `channel` |
+| `EngagementMetrics` | `get_enduser_usage` (spec only) | `product_id`, `open_count`, `read_count`, `completion_rate` |
+| `ReadReceipt` | `query_delivery_log` (spec only) | `id`, `product_id`, `channel`, `delivered_at`, `opened_at` |
+| `NotificationTemplate` | (notification framework, spec only) | `id`, `type`, `channel`, `locale` |
+| `UserNotification` | (notification framework, spec only) | `id`, `user_id`, `type`, `status` |
+| `NotificationPreferences` | `update_preferences` (spec only) | `per_type_channel_preference`, `digest_frequency` |
+| `CostLog` | `get_billing_summary`, `get_enduser_invoice`, `get_budget_thresholds` | `id`, `category`, `domain`, `amount`, `trace_id` |
+| `AuditLog` | `audit query` (CLI + MCP) | `id`, `action`, `entity_type`, `operator`, `timestamp` |
+| `SysConfig` | `get_config`, `get_gate_config`, `set_gate_config` | `llm`, `storage`, `logging`, `metrics` |
+| `DecayMetrics` | `get_domain_decay`, `calculate_freshness_score`, `mark_stale` | `domain`, `staleness_ratio`, `decay_grade` |
+| `SystemHealth` | `diagnose_system`, `health_check`, `get_metrics` | `status`, `llm_key_configured`, `overall_health_score` |
+| `Tenant` | (multi-tenancy, spec only) | `id`, `name`, `slug`, `settings` |
+| `ApiKey` | (auth, spec only) | `id`, `tenant_id`, `key_hash`, `permissions` |
+| `UserSession` | (auth, spec only) | `id`, `user_id`, `tenant_id`, `token_hash` |
+| `RateLimit` | (abuse prevention, spec only) | `tenant_id`, `endpoint`, `limit`, `window_seconds` |
+| `SubscriptionConfig` | `update_preferences`, `get_preferences` (spec only) | `tier`, `domains`, `channels`, `frequency` |
+| `ChannelBinding` | `update_preferences` (spec only) | `channel_type`, `config`, `enabled` |
+| `ConfigChange` | (NL→Config pipeline, spec only) | `field`, `old_value`, `new_value`, `change_type` |
+| `ReferralRecord` | (B1 referral, spec only) | `id`, `referring_user_id`, `referral_code`, `status` |
+| `ProductCatalogEntry` | `list_output_templates` (spec only) | `id`, `name`, `domain`, `product_type`, `cadence` |
+| `OnboardingRecord` | (B1.3 onboarding, spec only) | `id`, `subscription_id`, `current_step`, `status` |
+| `ConfigSnapshot` | (B1.7 reactivation, spec only) | `id`, `subscription_id`, `config`, `captured_at` |
+| `ReactivationRecord` | (B1.7 reactivation, spec only) | `id`, `original_subscription_id`, `data_restored` |
+| `NLConfigAuditEntry` | (NL→Config audit, spec only) | `id`, `nl_intent`, `parsed_config`, `confidence_score` |
+
+> Schema anchors of the form `<!-- schema: EntityName -->` precede each schema
+> block below. Use them to jump to a definition or to cross-reference from
+> other docs.
+
+---
+
 ## 1. Collection & Pipeline Models
 
+<!-- schema: Item -->
 ```python
 @dataclass
 class Item:
@@ -26,6 +82,7 @@ class Item:
     quality_flags: list[str] = field(default_factory=list)
 ```
 
+<!-- schema: ExtractionResult -->
 ```python
 @dataclass
 class ExtractionResult:
@@ -43,6 +100,7 @@ class ExtractionResult:
 
 ## 2. KB Entry Schema
 
+<!-- schema: KBEntry -->
 Stored as Markdown with YAML frontmatter:
 
 ```yaml
@@ -66,6 +124,9 @@ tier: "01-raw"         # "01-raw" | "02-draft" | "03-wiki"
 
 ## 3. Delivery Models
 
+<!-- schema: DeliveryResult -->
+<!-- schema: RetryConfig -->
+<!-- schema: DeliveryLog -->
 ```python
 @dataclass
 class DeliveryResult:
@@ -105,6 +166,13 @@ class DeliveryLog:
 > **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §2.3 (B1 Subscription Config Model), §2.4 (Config Change & Billing Interaction)
 > The B1 lifecycle data models in §4.9-4.13 supplement the core delivery models above.
 
+<!-- schema: UserStatus -->
+<!-- schema: SubscriptionStatus -->
+<!-- schema: UserProfile -->
+<!-- schema: DeliveryPreferences -->
+<!-- schema: ChannelConfig -->
+<!-- schema: QuietHours -->
+<!-- schema: Subscription -->
 ```python
 class UserStatus(Enum):
     TRIAL = "trial"
@@ -178,6 +246,9 @@ class Subscription:
 > Cross-ref: CD-017 (Product Lifecycle MCP Tools) — spec'd in delivery.md, 0% implemented.
 > No `ProductState` enum, no `ProductInstance`, no lifecycle state machine in current code.
 
+<!-- schema: ProductState -->
+<!-- schema: ProductInstance -->
+<!-- schema: ProductLifecycle -->
 ```python
 class ProductState(Enum):
     """Lifecycle states for a product instance. State machine: 
@@ -240,6 +311,9 @@ class ProductLifecycle:
 > Entirely spec only — zero consumption tracking code exists,
 > no `ConsumptionEvent` model, no read receipt infrastructure.
 
+<!-- schema: ConsumptionEvent -->
+<!-- schema: EngagementMetrics -->
+<!-- schema: ReadReceipt -->
 ```python
 @dataclass
 class ConsumptionEvent:
@@ -288,6 +362,9 @@ class ReadReceipt:
 > as separate subsystems with no shared notification bus, templates, or preferences.
 > These models define the target unified architecture.
 
+<!-- schema: NotificationTemplate -->
+<!-- schema: UserNotification -->
+<!-- schema: NotificationPreferences -->
 ```python
 @dataclass
 class NotificationTemplate:
@@ -340,6 +417,11 @@ class NotificationPreferences:
 
 ## 5. Operations Models
 
+<!-- schema: CostLog -->
+<!-- schema: AuditLog -->
+<!-- schema: SysConfig -->
+<!-- schema: DecayMetrics -->
+<!-- schema: SystemHealth -->
 ```python
 @dataclass
 class CostLog:
@@ -403,6 +485,10 @@ class SystemHealth:
 > `user_id` fields exist on entries but there is no authentication, session management,
 > or tenant isolation anywhere in the system.
 
+<!-- schema: Tenant -->
+<!-- schema: ApiKey -->
+<!-- schema: UserSession -->
+<!-- schema: RateLimit -->
 ```python
 @dataclass
 class Tenant:
@@ -491,6 +577,9 @@ class RateLimit:
 > This is the structured config that results from the NL→Config pipeline (B1 NL → Agent + LLM → structured config).
 > The config is stored as part of the Subscription record and drives pipeline execution.
 
+<!-- schema: SubscriptionConfig -->
+<!-- schema: ChannelBinding -->
+<!-- schema: ConfigChange -->
 ```python
 @dataclass
 class SubscriptionConfig:
@@ -528,6 +617,8 @@ class ConfigChange:
 
 ### 4.10 Discovery & Referral Models
 
+<!-- schema: ReferralRecord -->
+<!-- schema: ProductCatalogEntry -->
 ```python
 @dataclass
 class ReferralRecord:
@@ -559,6 +650,8 @@ class ProductCatalogEntry:
 
 ### 4.11 Onboarding Model
 
+<!-- schema: OnboardingStep -->
+<!-- schema: OnboardingRecord -->
 ```python
 class OnboardingStep(str, Enum):
     FIRST_DELIVERY = "first_delivery"
@@ -586,6 +679,8 @@ class OnboardingRecord:
 
 ### 4.12 Reactivation Model
 
+<!-- schema: ConfigSnapshot -->
+<!-- schema: ReactivationRecord -->
 ```python
 @dataclass
 class ConfigSnapshot:
@@ -611,6 +706,7 @@ class ReactivationRecord:
 
 ### 4.13 NL→Config Audit Model
 
+<!-- schema: NLConfigAuditEntry -->
 ```python
 @dataclass
 class NLConfigAuditEntry:

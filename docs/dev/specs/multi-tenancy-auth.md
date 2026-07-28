@@ -1,4 +1,10 @@
+<!-- agent: multi-tenancy-auth-spec -->
 # Multi-Tenancy, Authentication, Rate Limiting & Admin Dashboard
+
+> **Deferral note:** Current MCP server is stdio-only — auth deferred until SSE transport.
+> The spec below is architectural design only. No code paths enforce tenant isolation,
+> API key validation, or rate limiting while the server runs over stdio (assumed trusted process).
+> Implementation work is gated on the SSE transport milestone.
 
 > **Date:** 2026-07-27
 > **Version:** v1.0-draft (Never Designed — spec only, zero implementation)
@@ -24,6 +30,7 @@
 
 1. [§1: Multi-Tenancy Model](#1-multi-tenancy-model)
 2. [§2: End-User Authentication](#2-end-user-authentication)
+   - [§2.6: Agent Identity](#26-agent-identity)
 3. [§3: Rate Limiting & Abuse Prevention](#3-rate-limiting--abuse-prevention)
 4. [§4: Admin Dashboard](#4-admin-dashboard)
 5. [§5: Implementation Roadmap](#5-implementation-roadmap)
@@ -349,6 +356,54 @@ The identity anchor is the source-of-truth for user uniqueness. Every `UserProfi
 - Email uniqueness is enforced at `UserProfile` creation when anchor type is `email`.
 - A user with `native` anchor can later add `email` anchor if email is verified. This creates an identity link, not a merge.
 - `source_platform + source_user_id` pattern (from delivery.md §1.1) provides cross-channel identity resolution when end users interact via multiple delivery channels.
+
+### 2.6 Agent Identity
+
+> Cross-ref: [CD-021 (Identity Anchor)](../cross-dimensional-catalog.md#cd-021-identity-anchor),
+> [§2.4 MCP Tool Auth Flow](#24-mcp-tool-auth-flow).
+
+The identity anchor in §2.5 covers end users. Agents (the AI clients driving MCP tool
+calls) need a parallel identity model. This subsection specifies how agent identity is
+derived and enforced once authentication is enabled. **No implementation exists today** —
+the stdio transport assumes a single trusted caller.
+
+**Derivation rule:** Agent identity derives from the API key presented on the MCP connection.
+A single API key resolves to exactly one `(tenant_id, agent_id)` pair. The key is the only
+credential an agent presents; no separate agent login or token exchange is required.
+
+```
+API Key (apk_xxxx)
+   │
+   ├── tenant_id   →  scopes all data access (§1)
+   ├── agent_id    →  derived from key metadata at creation time
+   ├── permissions →  scopes allowed MCP tools (§2.4)
+   └── rate_limit  →  per-agent quota (§3)
+```
+
+**Agent identity vs end-user identity:**
+
+| Aspect | End User (§2.5) | Agent (§2.6) |
+|--------|-----------------|--------------|
+| Identity anchor | `native` / `email` / `oauth` / `source_platform` | API key fingerprint (`apikey:{key_id}`) |
+| Set by | Operator or self-service | Operator at API key creation |
+| Mutability | Immutable after creation | Rotated by operator (new key = new agent_id, or same agent_id if key metadata links them) |
+| Scope of access | Own profile, subscriptions, deliveries | Tenant-wide MCP operations per permissions |
+| Rate limit subject | Per-user delivery quotas | Per-agent request quotas |
+
+**Design invariants:**
+
+- One API key maps to one agent identity. No key sharing across agents. If an operator
+  provisions a second agent, a second key is issued.
+- `agent_id` is recorded in the audit log alongside `tenant_id` for every MCP call, so
+  traceability (per-item `trace_id`) extends to "which agent did this".
+- Rate limiting (§3) is enforced per-agent, not per-tenant. A tenant with three agents
+  gets three quotas, not one shared pool. This prevents a single chatty agent from
+  starving the tenant's other agents.
+- Agent identity is invisible to end users. End users see products and deliveries, never
+  the agent that triggered generation.
+- When the SSE transport lands and auth is enabled, existing stdio callers must migrate
+  to an API key. The stdio path remains available for local single-tenant use without auth,
+  preserving the current developer experience.
 
 ---
 

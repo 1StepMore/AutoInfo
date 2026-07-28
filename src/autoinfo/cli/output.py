@@ -58,7 +58,7 @@ def digest(
         "weekly", "--period", help="Digest period (daily, weekly, monthly)"
     ),
     format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown, html, json)"
+        "markdown", "--format", help="Output format (markdown, html, json, agent)"
     ),
 ) -> None:
     """Generate a digest of KB entries for a domain over a given period.
@@ -86,7 +86,7 @@ def report(
         None, "--collection-id", help="Optional collection ID to scope the report",
     ),
     format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown or json)"
+        "markdown", "--format", help="Output format (markdown, json, agent)"
     ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.

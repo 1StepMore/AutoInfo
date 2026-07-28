@@ -41,6 +41,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "v1_2: marks tests covering v1.2 features (vector, API, CEFR, email, etc.)",
     )
+    config.addinivalue_line(
+        "markers",
+        "real_api: marks tests that call real external APIs (PubMed, RSS, LLM); "
+        "skipped by default in CI",
+    )
 
 
 # ---------------------------------------------------------------------------

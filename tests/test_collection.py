@@ -551,13 +551,13 @@ class TestRunCollection:
 
     @patch("autoinfo.collect.get_config_path")
     @patch("autoinfo.collect.load_config")
-    def test_unsupported_api_source_is_skipped(
+    def test_api_source_is_handled(
         self,
         mock_load_config,
         mock_get_config_path,
         with_config,
     ):
-        """An API source that is not PubMed is skipped with a warning."""
+        """Non-pubmed API sources are now handled by HttpApiHandler (previously skipped)."""
         from autoinfo.collect import run_collection
         from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
 
@@ -592,11 +592,12 @@ class TestRunCollection:
             # Both sources should appear in per_source
             assert len(result["per_source"]) == 2
 
-            # arxiv should be skipped
+            # Both sources should be attempted (not skipped)
+            # arxiv is now handled by HttpApiHandler
             arxiv_result = result["per_source"][0]
-            assert arxiv_result["status"] == "skipped"
+            assert arxiv_result["status"] == "success"
 
-            # pubmed should be attempted
+            # pubmed should also be attempted
             pubmed_result = result["per_source"][1]
             assert pubmed_result["status"] == "success"
 

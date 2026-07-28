@@ -417,14 +417,13 @@ def _build_handler(source_config: SourceConfig) -> Any:
         return PDFHandler(source_name=source_config.name)
 
     if stype == "api":
-        raise ValueError(
-            f"Unsupported API source '{source_config.name}'. "
-            f"Only 'pubmed' API sources are supported currently."
-        )
+        from autoinfo.collectors.http_api import HttpApiHandler
+
+        return HttpApiHandler(source_config)
 
     raise ValueError(
         f"Unknown source type '{source_config.type}' for source "
-        f"'{source_config.name}'. Supported types: api (pubmed), rss, web, email_imap, pdf."
+        f"'{source_config.name}'. Supported types: api (pubmed + generic), rss, web, email_imap, pdf."
     )
 
 
@@ -474,6 +473,20 @@ def _fetch_items(
             return []
         articles = handler.fetch(pmids)
         return [handler.to_item(a) for a in articles]
+
+    # -- HttpApiHandler path (generic HTTP JSON API) -----------------------
+    if getattr(handler, "_handler_type", "") == "HttpApiHandler":
+        url = source_config.url
+        if not url:
+            plog.warning(
+                "API source has no URL configured",
+                source_type=source_config.type,
+                extra={"source_name": source_config.name},
+            )
+            return []
+        query = topic if topic else ""
+        items = handler.fetch(url, query=query, limit=limit)
+        return items[:limit]
 
     # -- RSS / Web handler path --------------------------------------------
     if hasattr(handler, "fetch"):

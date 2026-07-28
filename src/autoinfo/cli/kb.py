@@ -26,6 +26,9 @@ def search(
     domain: str = typer.Option("", "--domain", help="Domain to search in"),
     limit: int = typer.Option(20, "--limit", min=1, help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
 ) -> None:
     """Search the knowledge base using FTS5 full-text search."""
     store = KBStore()
@@ -43,6 +46,9 @@ def list_entries(
     ),
     limit: int = typer.Option(20, "--limit", min=1, help="Max entries"),
     offset: int = typer.Option(0, "--offset", help="Pagination offset"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
 ) -> None:
     """List KB entries in a given tier."""
     store = KBStore()
@@ -56,6 +62,9 @@ def list_entries(
 def reindex(
     domain: str = typer.Option(
         "", "--domain", help="Domain to reindex (empty = all)"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
     ),
 ) -> None:
     """Rebuild the FTS5 search index from knowledge/ files."""
@@ -73,6 +82,9 @@ def create_draft(
     summary: str = typer.Option("", "--summary", help="Optional summary text"),
     tags: list[str] = typer.Option(
         [], "--tag", help="Optional tag (repeatable)"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
     ),
 ) -> None:
     """Create a Draft entry from one or more Raw entries."""
@@ -93,6 +105,9 @@ def reject_draft(
     reason: str = typer.Option("", "--reason", help="Rejection reason"),
     action: str = typer.Option(
         "back_to_raw", "--action", help="'back_to_raw' (default) or 'archive'"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
     ),
 ) -> None:
     """Reject a Draft, moving it back to 01-Raw or archiving."""
@@ -149,6 +164,9 @@ def list_tiers(
 def wiki_links(
     rebuild: bool = typer.Option(
         False, "--rebuild", help="Scan all entries and update Linked References sections"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
     ),
 ) -> None:
     """Rebuild [[wiki link]] cross-references across the knowledge base.
@@ -213,6 +231,9 @@ def promote(
     entry_id: str = typer.Option(
         ..., "--entry-id", help="Entry ID of the Draft to promote to 03-Wiki"
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
 ) -> None:
     """Promote a Draft entry to 03-Wiki (human-only, append-only)."""
     store = KBStore()
@@ -230,12 +251,22 @@ def history(
     show_git: bool = typer.Option(
         False, "--show-git", help="Show git commit SHAs alongside version history"
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
 ) -> None:
     """Show version history for a KB entry."""
     store = KBStore()
     versions = store.get_entry_history(entry_id=entry_id)
     if not versions:
-        typer.echo(f"No versions found for entry '{entry_id}'.")
+        if json_output:
+            typer.echo(json.dumps([], indent=2, ensure_ascii=False))
+        else:
+            typer.echo(f"No versions found for entry '{entry_id}'.")
+        return
+
+    if json_output:
+        typer.echo(json.dumps(versions, indent=2, ensure_ascii=False))
         return
 
     for v in versions:

@@ -1291,3 +1291,600 @@ Director User          Agent (Direct User)          AutoInfo Server          Age
 ```
 
 **Key Pattern:** Agent registers once → AutoInfo pushes on events → Agent never polls. When no longer needed, Agent removes the callback. This is the preferred pattern for low-latency agent integration versus polling-based approaches. *(requires AutoInfo ≥ v1.7)*
+
+---
+
+## Q72: Module-Level Validation — Embeddings, Importer, Terminology, Translation QA
+
+> **Context:** Validate four standalone modules (`embeddings.py`, `importer.py`, `terminology.py`, `translation_qa.py`) that underpin KB search, content ingestion, translation guardrails, and translation quality scoring. These modules are exercised indirectly throughout the pipeline but deserve direct unit-level scenarios to lock their contracts.
+
+### Prerequisites
+
+```bash
+cd /tmp && rm -rf test-q72 && mkdir test-q72 && cd test-q72
+
+# AutoInfo must be importable
+python3 -c "import autoinfo; print(f'AutoInfo {autoinfo.__version__ if hasattr(autoinfo, \"__version__\") else \"installed\"}')"
+
+# LLM key is optional for most scenarios — embedding/translation fallbacks return
+# zero-vectors or initial translations when the API is unreachable.
+export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
+```
+
+**Expected Result:** ✅ AutoInfo importable. Test workspace ready.
+
+---
+
+### Scenarios
+
+#### 72.1 🟢 Embeddings — generate_embedding returns 1536-dim float vector
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.embeddings import generate_embedding
+
+vec = generate_embedding('CRISPR therapy shows promise')
+
+# Type contract
+assert isinstance(vec, list), f'Expected list, got {type(vec).__name__}'
+assert len(vec) == 1536, f'Expected 1536 dims, got {len(vec)}'
+assert all(isinstance(x, float) for x in vec), 'All elements must be floats'
+
+print(f'Type: {type(vec).__name__}')
+print(f'Dimensions: {len(vec)}')
+print(f'All floats: {all(isinstance(x, float) for x in vec)}')
+print(f'PASS: generate_embedding returns list[float] of length 1536')
+"
+```
+
+**Expected Result:**
+- ✅ `generate_embedding` returns a `list` (not a tuple or numpy array)
+- ✅ Vector dimension is exactly 1536
+- ✅ Every element is a Python `float`
+- ✅ Without a real embedding API key, the function gracefully returns a zero-vector (all 0.0) rather than raising
+
+**PASS / FAIL:** _________
+
+#### 72.2 🟢 Embeddings — cosine_similarity boundary values
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.embeddings import cosine_similarity
+
+# Identical vectors → 1.0
+identical = cosine_similarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])
+print(f'Identical: {identical}')
+assert abs(identical - 1.0) < 1e-9, f'Identical vectors should give 1.0, got {identical}'
+
+# Opposite vectors → -1.0
+opposite = cosine_similarity([1.0, 2.0, 3.0], [-1.0, -2.0, -3.0])
+print(f'Opposite: {opposite}')
+assert abs(opposite - (-1.0)) < 1e-9, f'Opposite vectors should give -1.0, got {opposite}'
+
+# Orthogonal vectors → 0.0
+orthogonal = cosine_similarity([1.0, 0.0], [0.0, 1.0])
+print(f'Orthogonal: {orthogonal}')
+assert abs(orthogonal - 0.0) < 1e-9, f'Orthogonal vectors should give 0.0, got {orthogonal}'
+
+# Degenerate inputs → 0.0 (no crash)
+empty = cosine_similarity([], [1.0, 2.0])
+print(f'Empty input: {empty}')
+assert empty == 0.0, f'Empty input should give 0.0, got {empty}'
+
+mismatched = cosine_similarity([1.0, 2.0], [1.0, 2.0, 3.0])
+print(f'Mismatched length: {mismatched}')
+assert mismatched == 0.0, f'Mismatched length should give 0.0, got {mismatched}'
+
+print('PASS: cosine_similarity boundary values correct')
+"
+```
+
+**Expected Result:**
+- ✅ Identical vectors return `1.0`
+- ✅ Opposite vectors return `-1.0`
+- ✅ Orthogonal vectors return `0.0`
+- ✅ Empty or mismatched-length inputs return `0.0` (no exception)
+- ✅ Return value is always a float in `[-1.0, 1.0]`
+
+**PASS / FAIL:** _________
+
+#### 72.3 🔴 Embeddings — empty text returns zero-vector (graceful fallback)
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.embeddings import generate_embedding
+
+# Empty string
+vec_empty = generate_embedding('')
+assert isinstance(vec_empty, list), f'Expected list, got {type(vec_empty).__name__}'
+assert len(vec_empty) == 1536, f'Expected 1536 dims, got {len(vec_empty)}'
+assert all(x == 0.0 for x in vec_empty), 'Empty text should yield zero-vector'
+print(f'Empty string: len={len(vec_empty)}, all_zero={all(x == 0.0 for x in vec_empty)}')
+
+# Whitespace-only string
+vec_ws = generate_embedding('   \n\t  ')
+assert len(vec_ws) == 1536
+assert all(x == 0.0 for x in vec_ws), 'Whitespace-only text should yield zero-vector'
+print(f'Whitespace: len={len(vec_ws)}, all_zero={all(x == 0.0 for x in vec_ws)}')
+
+print('PASS: empty/whitespace text returns 1536-dim zero-vector without raising')
+"
+```
+
+**Expected Result:**
+- ✅ `generate_embedding("")` does NOT raise an exception
+- ✅ Returns a list of 1536 floats, all `0.0`
+- ✅ Whitespace-only text (`"   \n\t  "`) also returns a zero-vector
+- ✅ Graceful degradation: the function logs a warning but never crashes on empty input
+
+**PASS / FAIL:** _________
+
+#### 72.4 🟢 Importer — import_kb with Markdown frontmatter lands in 01-Raw
+
+**Agent executes:**
+
+```bash
+python3 -c "
+import os, tempfile
+from pathlib import Path
+from autoinfo.importer import import_kb
+
+with tempfile.TemporaryDirectory() as td:
+    os.chdir(td)
+    Path('.autoinfo').mkdir()
+    Path('.autoinfo/config.yaml').write_text('llm:\n  provider: openai\n  model: gpt-4o-mini\n')
+
+    md = '''---
+title: Test Article
+source_url: https://example.com/article
+source_type: web
+source_platform: manual
+---
+# Test Article
+This is the body content for the imported markdown entry.
+'''
+
+    result = import_kb('test-domain', 'markdown', md)
+    print(f'Result: {result}')
+
+    assert result.get('entries_imported') == 1, f'Expected 1 imported, got {result.get(\"entries_imported\")}'
+    assert result.get('entries_failed') == 0, f'Expected 0 failed, got {result.get(\"entries_failed\")}'
+    assert 'entry_id' in result, 'Result must include entry_id'
+
+    # Verify the entry landed in 01-Raw tier
+    raw_files = list(Path('knowledge/test-domain/01-Raw').rglob('*.md'))
+    print(f'01-Raw files: {len(raw_files)}')
+    assert len(raw_files) >= 1, 'Entry must be stored in 01-Raw tier'
+    print(f'PASS: Markdown imported to 01-Raw, entry_id={result[\"entry_id\"]}')
+"
+```
+
+**Expected Result:**
+- ✅ `import_kb` with `format="markdown"` returns a dict with `entries_imported: 1`
+- ✅ `entries_failed: 0` and `errors: []`
+- ✅ Result includes an `entry_id` for the created entry
+- ✅ The entry file exists under `knowledge/test-domain/01-Raw/`
+- ✅ Imported entry lands in 01-Raw tier (the sole entry point per KB pipeline rules)
+
+**PASS / FAIL:** _________
+
+#### 72.5 🟢 Importer — import_kb with JSON array imports 2 entries
+
+**Agent executes:**
+
+```bash
+python3 -c "
+import os, json, tempfile
+from pathlib import Path
+from autoinfo.importer import import_kb
+
+with tempfile.TemporaryDirectory() as td:
+    os.chdir(td)
+    Path('.autoinfo').mkdir()
+    Path('.autoinfo/config.yaml').write_text('llm:\n  provider: openai\n  model: gpt-4o-mini\n')
+
+    data = json.dumps([
+        {'title': 'Item 1', 'source_url': 'https://example.com/1', 'content': 'Body 1'},
+        {'title': 'Item 2', 'source_url': 'https://example.com/2', 'content': 'Body 2'},
+    ])
+
+    result = import_kb('test-domain', 'json', data)
+    print(f'Result: {result}')
+
+    assert result.get('entries_imported') == 2, f'Expected 2 imported, got {result.get(\"entries_imported\")}'
+    assert result.get('entries_failed') == 0, f'Expected 0 failed, got {result.get(\"entries_failed\")}'
+    assert result.get('errors') == [], f'Expected no errors, got {result.get(\"errors\")}'
+
+    raw_files = list(Path('knowledge/test-domain/01-Raw').rglob('*.md'))
+    print(f'01-Raw files: {len(raw_files)}')
+    assert len(raw_files) >= 2, 'Both entries must be stored in 01-Raw'
+    print('PASS: JSON array imported 2 entries to 01-Raw')
+"
+```
+
+**Expected Result:**
+- ✅ `import_kb` with `format="json"` and a 2-element array returns `entries_imported: 2`
+- ✅ `entries_failed: 0` and `errors: []`
+- ✅ Both entries are stored as Markdown files under `knowledge/test-domain/01-Raw/`
+- ✅ Each JSON entry requires mandatory fields: `title`, `source_url`, `content`
+
+**PASS / FAIL:** _________
+
+#### 72.6 🟢 Importer — import_kb with CSV imports entries
+
+**Agent executes:**
+
+```bash
+python3 -c "
+import os, tempfile
+from pathlib import Path
+from autoinfo.importer import import_kb
+
+with tempfile.TemporaryDirectory() as td:
+    os.chdir(td)
+    Path('.autoinfo').mkdir()
+    Path('.autoinfo/config.yaml').write_text('llm:\n  provider: openai\n  model: gpt-4o-mini\n')
+
+    csv_data = 'title,source_url,source_type,source_platform,content\n'
+    csv_data += 'Alpha,https://e.com/a,web,manual,Body Alpha\n'
+    csv_data += 'Beta,https://e.com/b,web,manual,Body Beta\n'
+
+    result = import_kb('test-domain', 'csv', csv_data)
+    print(f'Result: {result}')
+
+    assert result.get('entries_imported') == 2, f'Expected 2 imported, got {result.get(\"entries_imported\")}'
+    assert result.get('entries_failed') == 0, f'Expected 0 failed, got {result.get(\"entries_failed\")}'
+    assert result.get('errors') == [], f'Expected no errors, got {result.get(\"errors\")}'
+
+    raw_files = list(Path('knowledge/test-domain/01-Raw').rglob('*.md'))
+    print(f'01-Raw files: {len(raw_files)}')
+    assert len(raw_files) >= 2, 'CSV entries must be stored in 01-Raw'
+    print('PASS: CSV imported 2 entries to 01-Raw')
+"
+```
+
+**Expected Result:**
+- ✅ `import_kb` with `format="csv"` parses the CSV header and rows
+- ✅ Returns `entries_imported: 2`, `entries_failed: 0`, `errors: []`
+- ✅ CSV columns `title,source_url,source_type,source_platform,content` are mapped to entry fields
+- ✅ Both entries stored under `knowledge/test-domain/01-Raw/`
+
+**PASS / FAIL:** _________
+
+#### 72.7 🔴 Importer — unsupported format raises ValueError
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.importer import import_kb
+
+try:
+    result = import_kb('test-domain', 'unsupported_format', 'some data')
+    print(f'FAIL: No exception raised, got {result}')
+except ValueError as e:
+    print(f'ValueError: {e}')
+    assert 'unsupported_format' in str(e), f'Error message should mention the bad format'
+    assert 'csv' in str(e) and 'json' in str(e) and 'markdown' in str(e) and 'opml' in str(e), \\
+        'Error message should list supported formats'
+    print('PASS: Unsupported format raises ValueError with helpful message')
+except Exception as e:
+    print(f'FAIL: Wrong exception type {type(e).__name__}: {e}')
+"
+```
+
+**Expected Result:**
+- ✅ `import_kb` with an unsupported format raises `ValueError` (not a generic `Exception`)
+- ✅ Error message includes the offending format name (`"unsupported_format"`)
+- ✅ Error message lists the supported formats: `csv`, `json`, `markdown`, `opml`
+- ✅ No partial side effects (no files written, no KB entries created)
+
+**PASS / FAIL:** _________
+
+#### 72.8 🟢 Terminology — load_terminology on nonexistent domain returns empty Terminology
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.terminology import load_terminology, Terminology
+
+# Domain that has no _terminology.yaml
+term = load_terminology('nonexistent-domain-xyz')
+
+# Must return a Terminology instance, not None, not a crash
+assert isinstance(term, Terminology), f'Expected Terminology, got {type(term).__name__}'
+assert len(term.terms) == 0, f'Expected empty terms dict, got {len(term.terms)} entries'
+
+# Default score_weights must still be present
+expected_weights = {'faithfulness', 'terminology', 'style', 'readability'}
+assert set(term.score_weights.keys()) == expected_weights, \\
+    f'Expected default weight keys {expected_weights}, got {set(term.score_weights.keys())}'
+
+print(f'Type: {type(term).__name__}')
+print(f'Terms: {len(term.terms)} (empty)')
+print(f'Score weights: {term.score_weights}')
+print('PASS: Missing terminology file returns empty Terminology with default weights')
+"
+```
+
+**Expected Result:**
+- ✅ `load_terminology` returns a `Terminology` dataclass instance (not `None`, no exception)
+- ✅ `terms` dict is empty (`{}`)
+- ✅ `score_weights` retains default values: `faithfulness=40, terminology=30, style=20, readability=10`
+- ✅ Missing file is handled gracefully (no crash, logged as a warning)
+
+**PASS / FAIL:** _________
+
+#### 72.9 🟢 Terminology — load_terminology reads _terminology.yaml and parses terms
+
+**Agent executes:**
+
+```bash
+python3 -c "
+import os, tempfile, yaml
+from pathlib import Path
+from autoinfo.terminology import load_terminology, TermEntry
+
+with tempfile.TemporaryDirectory() as td:
+    os.chdir(td)
+    kdir = Path('knowledge/mydomain')
+    kdir.mkdir(parents=True)
+
+    data = {
+        'score_weights': {'faithfulness': 50, 'terminology': 20, 'style': 20, 'readability': 10},
+        'terms': {
+            'CRISPR': {'type': 'do_not_translate', 'note': 'Gene editing tool'},
+            'in vitro fertilization': {
+                'preferred': '体外受精',
+                'variants': ['IVF'],
+                'confidence': 0.95,
+            },
+        },
+    }
+    (kdir / '_terminology.yaml').write_text(yaml.safe_dump(data))
+
+    term = load_terminology('mydomain')
+
+    # Terms parsed correctly
+    assert len(term.terms) == 2, f'Expected 2 terms, got {len(term.terms)}'
+
+    crispr = term.terms['CRISPR']
+    assert isinstance(crispr, TermEntry), f'CRISPR must be TermEntry, got {type(crispr).__name__}'
+    assert crispr.type == 'do_not_translate', f'CRISPR type wrong: {crispr.type}'
+    assert crispr.note == 'Gene editing tool', f'CRISPR note wrong: {crispr.note}'
+
+    ivf = term.terms['in vitro fertilization']
+    assert ivf.preferred == '体外受精', f'IVF preferred wrong: {ivf.preferred}'
+    assert ivf.variants == ['IVF'], f'IVF variants wrong: {ivf.variants}'
+    assert abs(ivf.confidence - 0.95) < 1e-9, f'IVF confidence wrong: {ivf.confidence}'
+
+    # Custom score_weights loaded
+    assert term.score_weights['faithfulness'] == 50, f'Custom weight wrong: {term.score_weights}'
+    assert term.score_weights['terminology'] == 20
+
+    print(f'Terms loaded: {len(term.terms)}')
+    print(f'CRISPR: type={crispr.type}, note={crispr.note}')
+    print(f'IVF: preferred={ivf.preferred}, variants={ivf.variants}, confidence={ivf.confidence}')
+    print(f'Weights: {term.score_weights}')
+    print('PASS: _terminology.yaml parsed correctly with terms and custom weights')
+"
+```
+
+**Expected Result:**
+- ✅ `load_terminology` finds and reads `knowledge/mydomain/_terminology.yaml`
+- ✅ Both terms parsed: `CRISPR` (do_not_translate) and `in vitro fertilization` (preferred)
+- ✅ `TermEntry` fields populated: `type`, `preferred`, `variants`, `confidence`, `note`
+- ✅ Custom `score_weights` from the YAML override the defaults
+- ✅ Unicode preferred translation (`体外受精`) preserved correctly
+
+**PASS / FAIL:** _________
+
+#### 72.10 🟢 Translation QA — calculate_quality_score with partial scores
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.translation_qa import calculate_quality_score, DEFAULT_WEIGHTS
+
+# Provide only faithfulness and terminology; style and readability default to 0
+result = calculate_quality_score(faithfulness=85, terminology=70)
+
+print(f'Result: {result}')
+
+# Default weights: F=40, T=30, S=20, R=10 (sum=100)
+# composite = 85*0.40 + 70*0.30 + 0*0.20 + 0*0.10 = 34 + 21 = 55.0
+expected_composite = 85 * (40/100) + 70 * (30/100) + 0 * (20/100) + 0 * (10/100)
+print(f'Expected composite: {expected_composite}')
+
+assert abs(result['composite'] - 55.0) < 0.01, f'Expected 55.0, got {result[\"composite\"]}'
+assert result['faithfulness'] == 85.0
+assert result['terminology'] == 70.0
+assert result['style'] == 0.0
+assert result['readability'] == 0.0
+
+# weights_used must reflect normalised defaults
+assert result['weights_used']['faithfulness'] == 40.0
+assert result['weights_used']['terminology'] == 30.0
+
+print('PASS: composite=55.0 with F=85, T=70, S=0, R=0 and default weights')
+
+# Also verify with all four scores
+result2 = calculate_quality_score(faithfulness=85, terminology=70, style=80, readability=90)
+# composite = 85*0.4 + 70*0.3 + 80*0.2 + 90*0.1 = 34 + 21 + 16 + 9 = 80.0
+print(f'All four scores: composite={result2[\"composite\"]}')
+assert abs(result2['composite'] - 80.0) < 0.01, f'Expected 80.0, got {result2[\"composite\"]}'
+print('PASS: composite=80.0 with all four scores provided')
+"
+```
+
+**Expected Result:**
+- ✅ `calculate_quality_score(faithfulness=85, terminology=70)` returns `composite: 55.0`
+- ✅ Missing sub-scores (`style`, `readability`) default to `0.0`
+- ✅ Default weights applied: `F=40, T=30, S=20, R=10` (sum normalised to 100)
+- ✅ `weights_used` in the result reflects the normalised weight percentages
+- ✅ With all four scores (85, 70, 80, 90), composite is `80.0`
+- ✅ Composite is rounded to 1 decimal place
+
+**PASS / FAIL:** _________
+
+#### 72.11 🔴 Translation QA — out-of-range scores are clamped to [0, 100]
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.translation_qa import calculate_quality_score
+
+# Scores above 100 and below 0
+result = calculate_quality_score(faithfulness=150, terminology=-20, style=200, readability=-50)
+
+print(f'Result: {result}')
+
+# Clamped: F=100, T=0, S=100, R=0
+# composite = 100*0.4 + 0*0.3 + 100*0.2 + 0*0.1 = 40 + 0 + 20 + 0 = 60.0
+assert result['faithfulness'] == 100.0, f'F should clamp to 100, got {result[\"faithfulness\"]}'
+assert result['terminology'] == 0.0, f'T should clamp to 0, got {result[\"terminology\"]}'
+assert result['style'] == 100.0, f'S should clamp to 100, got {result[\"style\"]}'
+assert result['readability'] == 0.0, f'R should clamp to 0, got {result[\"readability\"]}'
+
+expected = 100*0.4 + 0*0.3 + 100*0.2 + 0*0.1
+assert abs(result['composite'] - 60.0) < 0.01, f'Expected 60.0, got {result[\"composite\"]}'
+
+# Composite itself is also clamped to [0, 100]
+result2 = calculate_quality_score(faithfulness=100, terminology=100, style=100, readability=100)
+assert result2['composite'] == 100.0, f'Max composite should be 100, got {result2[\"composite\"]}'
+
+result3 = calculate_quality_score(faithfulness=0, terminology=0, style=0, readability=0)
+assert result3['composite'] == 0.0, f'Min composite should be 0, got {result3[\"composite\"]}'
+
+print(f'Clamped scores: F={result[\"faithfulness\"]}, T={result[\"terminology\"]}, S={result[\"style\"]}, R={result[\"readability\"]}')
+print(f'Clamped composite: {result[\"composite\"]}')
+print('PASS: Out-of-range scores clamped to [0, 100], composite stays in [0, 100]')
+"
+```
+
+**Expected Result:**
+- ✅ `faithfulness=150` clamped to `100.0`
+- ✅ `terminology=-20` clamped to `0.0`
+- ✅ `style=200` clamped to `100.0`
+- ✅ `readability=-50` clamped to `0.0`
+- ✅ Composite computed from clamped scores: `60.0`
+- ✅ Composite itself is bounded to `[0, 100]` (max=100, min=0)
+- ✅ No exception raised for out-of-range inputs
+
+**PASS / FAIL:** _________
+
+#### 72.12 🟢 Translation QA — run_back_translation_pipeline disabled returns None
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.translation_qa import run_back_translation_pipeline
+
+# When back-translation is explicitly disabled, the pipeline should short-circuit
+result = run_back_translation_pipeline(
+    source_text='The mitochondria is the powerhouse of the cell.',
+    translated_text='线粒体是细胞的能量工厂。',
+    source_lang='en',
+    target_lang='zh',
+    model_pool=None,
+    enable_back_translation=False,
+)
+
+print(f'Result: {result}')
+assert result is None, f'Expected None when back-translation disabled, got {result}'
+print('PASS: run_back_translation_pipeline returns None when enable_back_translation=False')
+"
+```
+
+**Expected Result:**
+- ✅ `run_back_translation_pipeline` with `enable_back_translation=False` returns `None`
+- ✅ No LLM call is made (no network request, no API key required)
+- ✅ No exception raised — the function cleanly short-circuits
+- ✅ Callers can use this to skip back-translation verification when not needed
+
+**PASS / FAIL:** _________
+
+#### 72.13 🔴 Translation QA — refine_translation with failing LLM falls back to initial translation
+
+**Agent executes:**
+
+```bash
+python3 -c "
+from autoinfo.translation_qa import refine_translation
+
+# Use an invalid model name that will cause LiteLLM to raise an error
+result = refine_translation(
+    source_text='The mitochondria is the powerhouse of the cell.',
+    initial_translation='线粒体是细胞的能量工厂。',
+    source_lang='en',
+    target_lang='zh',
+    judge_feedback=[{'issue': 'none', 'suggestion': 'keep as is'}],
+    model='invalid/nonexistent-model-xyz',
+)
+
+print(f'Result: {result}')
+
+# Must return a dict with translation and model_used
+assert isinstance(result, dict), f'Expected dict, got {type(result).__name__}'
+assert 'translation' in result, 'Result must contain translation key'
+assert 'model_used' in result, 'Result must contain model_used key'
+
+# On LLM failure, translation must fall back to the initial_translation
+assert result['translation'] == '线粒体是细胞的能量工厂。', \\
+    f'Expected fallback to initial translation, got {result[\"translation\"]}'
+
+print(f'translation: {result[\"translation\"]}')
+print(f'model_used: {result[\"model_used\"]}')
+print('PASS: refine_translation falls back to initial_translation when LLM call fails')
+"
+```
+
+**Expected Result:**
+- ✅ `refine_translation` with an invalid/failing model does NOT raise an exception
+- ✅ Returns a dict with `translation` and `model_used` keys
+- ✅ `translation` equals the `initial_translation` argument (graceful fallback)
+- ✅ `model_used` records the model name that was attempted
+- ✅ The failure is logged (warning) but the caller receives a usable result
+- ✅ Translation pipeline never silently drops content — it degrades to the input
+
+**PASS / FAIL:** _________
+
+---
+
+### 📊 Q72 Verdict
+
+| # | Scenario | Module Verified | Result |
+|---|----------|----------------|--------|
+| 72.1 | generate_embedding returns 1536-dim float vector | embeddings.py | ⬜ |
+| 72.2 | cosine_similarity boundary values (1.0, -1.0, 0.0) | embeddings.py | ⬜ |
+| 72.3 | Empty text returns zero-vector (graceful fallback) | embeddings.py | ⬜ |
+| 72.4 | import_kb Markdown with frontmatter → 01-Raw | importer.py | ⬜ |
+| 72.5 | import_kb JSON array → 2 entries imported | importer.py | ⬜ |
+| 72.6 | import_kb CSV → entries imported | importer.py | ⬜ |
+| 72.7 | Unsupported format raises ValueError | importer.py | ⬜ |
+| 72.8 | load_terminology on nonexistent domain → empty Terminology | terminology.py | ⬜ |
+| 72.9 | load_terminology reads _terminology.yaml correctly | terminology.py | ⬜ |
+| 72.10 | calculate_quality_score with partial scores → composite 55.0 | translation_qa.py | ⬜ |
+| 72.11 | Out-of-range scores clamped to [0, 100] | translation_qa.py | ⬜ |
+| 72.12 | run_back_translation_pipeline disabled → None | translation_qa.py | ⬜ |
+| 72.13 | refine_translation with failing LLM → fallback to initial | translation_qa.py | ⬜ |
+
+**OVERALL: ⬜**
+
+**Modules verified:**
+- `embeddings.py` — vector generation (1536-dim), cosine similarity math, graceful empty-text fallback
+- `importer.py` — unified dispatch (`import_kb`), Markdown/JSON/CSV formats, unsupported format rejection, all entries land in 01-Raw
+- `terminology.py` — `_terminology.yaml` loader, missing-file graceful default, TermEntry parsing with Unicode
+- `translation_qa.py` — composite scoring with clamping, back-translation pipeline toggle, LLM failure fallback
+
+**F expectations touched:** F15 (LLM extraction uses embeddings for vector search), F20 (KB pipeline — importer is an alternate 01-Raw entry path), F21 (KB search — embeddings power vector/hybrid mode), F25 (translation QA pipeline — quality scoring, back-translation, refinement)

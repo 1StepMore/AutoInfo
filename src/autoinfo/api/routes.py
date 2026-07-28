@@ -324,11 +324,13 @@ async def list_feeds(
     since: str | None = Query(None, description="ISO date filter (collected_at >=)"),
     limit: int = Query(50, ge=1, le=200, description="Max items to return"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
-) -> dict[str, Any]:
+    format: str = Query("json", pattern=r"^(json|rss)$", description="Output format: json or rss"),
+) -> Any:
     """Return a RAW product feed of KB entries for *domain*.
 
     Supports optional filtering by topic tag, source type, and collected-at
-    date.  Returns paginated results with ``{items, pagination}`` envelope.
+    date.  Returns paginated results with ``{items, pagination}`` envelope
+    for ``format=json``, or an RSS 2.0 XML feed for ``format=rss``.
     """
     if not domain.strip():
         raise HTTPException(status_code=400, detail="domain is required")
@@ -381,6 +383,33 @@ async def list_feeds(
             "summary": entry.get("summary", ""),
             "relevance_score": entry.get("relevance_score", 0.0),
         })
+
+    if format == "rss":
+        import xml.etree.ElementTree as ET  # noqa: PLC0415 — deferred import
+
+        rss = ET.Element("rss", {"version": "2.0"})
+        channel = ET.SubElement(rss, "channel")
+        ET.SubElement(channel, "title").text = f"AutoInfo Feed — {domain}"
+        ET.SubElement(channel, "description").text = f"Knowledge base feed for domain: {domain}"
+        ET.SubElement(channel, "link").text = "https://autoinfo.local"
+        ET.SubElement(channel, "lastBuildDate").text = (
+            items[0]["collected_at"] if items else ""
+        )
+
+        for item in items:
+            xml_item = ET.SubElement(channel, "item")
+            ET.SubElement(xml_item, "guid", {"isPermaLink": "false"}).text = item["id"]
+            ET.SubElement(xml_item, "title").text = item["title"] or "(untitled)"
+            ET.SubElement(xml_item, "link").text = item["url"] or ""
+            ET.SubElement(xml_item, "description").text = item["summary"] or ""
+            if item["collected_at"]:
+                ET.SubElement(xml_item, "pubDate").text = item["collected_at"]
+            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = item["source_type"] or ""
+
+        from fastapi.responses import Response
+        ET.indent(rss, space="  ")
+        rss_content = ET.tostring(rss, encoding="unicode", xml_declaration=True)
+        return Response(content=rss_content, media_type="application/rss+xml")
 
     return {
         "items": items,

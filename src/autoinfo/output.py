@@ -262,10 +262,10 @@ def export_kb(
     ValueError
         If *format* is not one of the supported values.
     """
-    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml"):
+    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml", "agent"):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
-            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml"
+            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, agent"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -381,6 +381,8 @@ def export_kb(
             timestamp=timestamp,
             domain_label=domain_label,
         )
+    elif format == "agent":
+        result = _export_agent_json(entries, domain, domain_label)
     else:
         raise ValueError(f"Unsupported export format: '{format}'")
 
@@ -921,6 +923,51 @@ def _export_graphml(
         "domain": domain_label,
         "success": True,
     }
+
+
+def _export_agent_json(
+    entries: list[dict[str, Any]],
+    domain: str | None,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export KB entries as agent-native JSON-LD (``@type: KnowledgeBaseExport``)."""
+    agent_entries: list[dict[str, Any]] = []
+    for e in entries[:200]:
+        agent_entries.append({
+            "entry_id": e.get("entry_id", ""),
+            "title": e.get("title", ""),
+            "summary": e.get("summary", ""),
+            "source_url": e.get("source_url", ""),
+            "source_platform": e.get("source_platform", ""),
+            "tier": e.get("tier", ""),
+            "tags": e.get("tags", []),
+            "relevance_score": e.get("relevance_score"),
+            "collected_at": e.get("collected_at", ""),
+        })
+
+    output: dict[str, Any] = {
+        "@context": "https://autoinfo.ai/schemas/knowledge-base-export-v1",
+        "@type": "KnowledgeBaseExport",
+        "uuid": str(uuid.uuid4()),
+        "domain": domain_label,
+        "entries": agent_entries,
+        "schema_summary": {
+            "fields": [
+                "entry_id", "title", "summary", "source_url",
+                "source_platform", "tier", "tags", "relevance_score",
+                "collected_at",
+            ],
+            "entry_schema_version": "1.0",
+        },
+        "stats": {
+            "total_entries": len(entries),
+            "exported_entries": len(agent_entries),
+            "domain": domain or "*",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "success": True,
+    }
+    return output
 
 
 # DDL for the entries table — used as fallback when no source DB exists
@@ -3076,8 +3123,11 @@ def generate_tutorial(
     ValueError
         If *format* or *target_audience* is unsupported.
     """
-    if format != "markdown":
-        raise ValueError(f"Unsupported output format: {format!r}")
+    if format not in ("markdown", "agent"):
+        raise ValueError(
+            f"Unsupported output format: {format!r}. "
+            f"Supported: markdown, agent"
+        )
 
     if target_audience not in _VALID_AUDIENCES:
         raise ValueError(
@@ -3153,8 +3203,77 @@ def generate_tutorial(
         "generated_at": generated_at,
     }
 
+    # -- Agent-native JSON-LD format ----------------------------------------
+    if format == "agent":
+        return _render_tutorial_agent_json(llm_result, domain, target_audience, generated_at, entries)
+
     # -- Render via Jinja2 template ---------------------------------------
     return _render_tutorial_template(context)
+
+
+def _render_tutorial_agent_json(
+    llm_result: dict[str, Any],
+    domain: str,
+    target_audience: str,
+    generated_at: str,
+    entries: list[dict[str, Any]],
+) -> str:
+    """Render tutorial data as agent-native JSON-LD (``@type: KnowledgeTutorial``)."""
+    # Derive source entries from KB
+    source_entries: list[dict[str, Any]] = []
+    for e in entries[:50]:
+        source_entries.append({
+            "entry_id": e.get("entry_id", ""),
+            "title": e.get("title", ""),
+            "source_url": e.get("source_url", ""),
+            "source_platform": e.get("source_platform", ""),
+        })
+
+    # Build steps from content sections
+    steps: list[dict[str, Any]] = []
+    for i, section in enumerate(llm_result.get("content", []), 1):
+        steps.append({
+            "step": i,
+            "heading": section.get("heading", ""),
+            "body": section.get("body", ""),
+            "code_example": section.get("code_example"),
+            "code_language": section.get("code_language"),
+            "key_takeaway": section.get("key_takeaway"),
+        })
+
+    # Build exercises
+    exercises: list[dict[str, Any]] = []
+    for ex in llm_result.get("exercises", []):
+        exercises.append({
+            "title": ex.get("title", ""),
+            "description": ex.get("description", ""),
+            "hint": ex.get("hint"),
+            "solution": ex.get("solution"),
+        })
+
+    output: dict[str, Any] = {
+        "@context": "https://autoinfo.ai/schemas/knowledge-tutorial-v1",
+        "@type": "KnowledgeTutorial",
+        "uuid": str(uuid.uuid4()),
+        "title": llm_result.get("title", f"{domain} — Tutorial"),
+        "domain": domain,
+        "target_audience": target_audience,
+        "duration": llm_result.get("duration", "TBD"),
+        "prerequisites": llm_result.get("prerequisites", ""),
+        "objectives": llm_result.get("objectives", []),
+        "steps": steps,
+        "exercises": exercises,
+        "summary": llm_result.get("summary", ""),
+        "further_reading": llm_result.get("further_reading", []),
+        "source_entries": source_entries,
+        "generated_at": generated_at,
+        "metadata": {
+            "entry_count": len(entries),
+            "step_count": len(steps),
+            "exercise_count": len(exercises),
+        },
+    }
+    return json.dumps(output, indent=2, ensure_ascii=False, default=str)
 
 
 def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
@@ -3267,10 +3386,10 @@ def generate_presentation(
     ValueError
         If *format*, *target_audience*, or *slide_count* is invalid.
     """
-    if format not in ("markdown", "html", "mkslides"):
+    if format not in ("markdown", "html", "mkslides", "agent"):
         raise ValueError(
             f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, html, mkslides"
+            f"Supported: markdown, html, mkslides, agent"
         )
 
     if target_audience not in _VALID_AUDIENCES:
@@ -3344,8 +3463,59 @@ def generate_presentation(
         "generated_at": generated_at,
     }
 
+    # -- Agent-native JSON-LD format ----------------------------------------
+    if format == "agent":
+        return _render_presentation_agent_json(llm_result, domain, topic, target_audience, generated_at, topic_entries)
+
     # -- Render via Jinja2 template ---------------------------------------
     return _render_presentation_template(context, format=format)
+
+
+def _render_presentation_agent_json(
+    llm_result: dict[str, Any],
+    domain: str,
+    topic: str,
+    target_audience: str,
+    generated_at: str,
+    topic_entries: list[dict[str, Any]],
+) -> str:
+    """Render presentation data as agent-native JSON-LD (``@type: KnowledgePresentation``)."""
+    slides: list[dict[str, Any]] = []
+    for s in llm_result.get("slides", []):
+        slides.append({
+            "title": s.get("title", ""),
+            "content": s.get("content", ""),
+            "bullets": s.get("bullets", []),
+            "notes": s.get("notes"),
+        })
+
+    sources: list[dict[str, Any]] = []
+    for e in topic_entries[:50]:
+        sources.append({
+            "entry_id": e.get("entry_id", ""),
+            "title": e.get("title", ""),
+            "source_url": e.get("source_url", ""),
+        })
+
+    output: dict[str, Any] = {
+        "@context": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
+        "@type": "KnowledgePresentation",
+        "uuid": str(uuid.uuid4()),
+        "title": llm_result.get("title", f"{topic} — Presentation"),
+        "topic": topic,
+        "domain": domain,
+        "target_audience": target_audience,
+        "description": llm_result.get("description", ""),
+        "theme": "default",
+        "slides": slides,
+        "sources": sources,
+        "generated_at": generated_at,
+        "metadata": {
+            "slide_count": len(slides),
+            "source_count": len(sources),
+        },
+    }
+    return json.dumps(output, indent=2, ensure_ascii=False, default=str)
 
 
 def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:

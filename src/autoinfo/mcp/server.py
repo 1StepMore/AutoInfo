@@ -16,8 +16,9 @@ are planned; v0.1 exposes 30 tools across 7 categories:
 **Source Management** (5):
     add_source, add_sources, remove_source, test_source, list_sources
 
-**Topic Management** (3):
-    add_topic, remove_topic, list_keywords
+**Topic Management** (6):
+    add_topic, remove_topic, list_topics, list_keywords,
+    topic_group_add, topic_group_remove
 
 **Collection / Processing** (5):
     collect_sources, get_collection_progress, get_collection_status,
@@ -776,16 +777,37 @@ def _handle_get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
 # Source management tools
 # ---------------------------------------------------------------------------
 
-_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web"})
+_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf"})
 
 
-def _validate_url(url: str) -> str | None:
-    """Return an error message if *url* is invalid, or ``None``."""
+def _validate_url(
+    url: str,
+    source_type: str | None = None,
+) -> str | None:
+    """Return an error message if *url* is invalid, or ``None``.
+
+    Accepts different URL schemes depending on *source_type*:
+    - email: imap://, imaps://
+    - pdf: file://, http://, https://
+    - other types: http://, https://
+    """
     if not url or not isinstance(url, str):
         return "URL is required"
     url = url.strip()
-    if not url.startswith(("http://", "https://")):
-        return "URL must start with http:// or https://"
+    if not url:
+        return "URL is required"
+
+    _valid_schemes: tuple[str, ...]
+    if source_type == "email":
+        _valid_schemes = ("imap://", "imaps://")
+    elif source_type == "pdf":
+        _valid_schemes = ("file://", "http://", "https://")
+    else:
+        _valid_schemes = ("http://", "https://")
+
+    if not url.startswith(_valid_schemes):
+        schemes_str = ", ".join(s.rstrip("/") + "://" for s in _valid_schemes)
+        return f"URL must start with {schemes_str} for source type '{source_type or 'default'}'"
     parts = url.split("://", 1)
     if len(parts) != 2 or not parts[1]:
         return "URL must have a valid host"
@@ -809,16 +831,47 @@ def _handle_add_source(
     url: str,
     type: str = "api",
     domain: str = "",
+    settings: dict[str, Any] | None = None,
+    imap_server: str | None = None,
+    imap_port: int | None = None,
+    imap_username: str | None = None,
+    imap_password: str | None = None,
+    imap_mailbox: str | None = None,
+    webhook_secret: str | None = None,
 ) -> dict[str, Any]:
-    """Add a source (idempotent — dedup by url + type + domain)."""
-    # --- Validation -----------------------------------------------------------
-    url_error = _validate_url(url)
-    if url_error:
-        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
+    """Add a source (idempotent — dedup by url + type + domain).
 
+    Type-specific parameters:
+    - *email*: ``imap_server``, ``imap_port``, ``imap_username``,
+      ``imap_password``, ``imap_mailbox``
+    - *webhook*: ``webhook_secret`` (HMAC shared secret)
+    - All types: ``settings`` dict for arbitrary configuration
+    """
+    # --- Validation -----------------------------------------------------------
     type_error = _validate_source_type(type)
     if type_error:
         return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": type_error, "actionable": True}
+
+    url_error = _validate_url(url, source_type=type)
+    if url_error:
+        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
+
+    # --- Merge convenience params into settings dict ---------------------------
+    merged_settings: dict[str, Any] = dict(settings or {})
+    if type == "email":
+        if imap_server:
+            merged_settings["host"] = imap_server
+        if imap_port is not None:
+            merged_settings["port"] = imap_port
+        if imap_username:
+            merged_settings["username"] = imap_username
+        if imap_password:
+            merged_settings["password"] = imap_password
+        if imap_mailbox:
+            merged_settings["mailbox"] = imap_mailbox
+    elif type == "webhook":
+        if webhook_secret:
+            merged_settings["secret"] = webhook_secret
 
     try:
         config = _load_config()
@@ -859,7 +912,14 @@ def _handle_add_source(
 
     from autoinfo.config import SourceConfig
 
-    new_source = SourceConfig(name=name, type=type, url=url, quality_tier=quality_tier, tos_classification=tos_classification)
+    new_source = SourceConfig(
+        name=name,
+        type=type,
+        url=url,
+        quality_tier=quality_tier,
+        tos_classification=tos_classification,
+        settings=merged_settings,
+    )
     domain_cfg.sources.append(new_source)
     _save_config(config)
 
@@ -875,6 +935,10 @@ def _handle_add_source(
         "created": True,
         "source_id": f"{domain}:{name}",
     }
+
+    # Include settings in result if non-empty
+    if merged_settings:
+        result["source"]["settings"] = merged_settings
 
     # Advisory warning for tier 3+ sources
     if quality_tier >= 3:
@@ -985,12 +1049,12 @@ def _suggest_extract_fields(source_type: str) -> list[str]:
 
 def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     """Test whether a source URL is reachable."""
-    url_error = _validate_url(url)
-    if url_error:
-        return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
     type_error = _validate_source_type(type)
     if type_error:
         return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": type_error, "actionable": True}
+    url_error = _validate_url(url, source_type=type)
+    if url_error:
+        return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
     try:
         if type == "api":
             resp = httpx.get(url, timeout=10.0, follow_redirects=True)
@@ -1257,6 +1321,96 @@ def _handle_list_keywords(
 
 
 # ---------------------------------------------------------------------------
+# Topic group management tools
+# ---------------------------------------------------------------------------
+
+
+def _handle_topic_group_add(
+    domain: str,
+    group_name: str,
+    topic_names: list[str],
+) -> dict[str, Any]:
+    """Assign a group to one or more topics.
+
+    For each topic name in *topic_names*, find the matching topic in the
+    domain config and set its ``group`` field to *group_name*.  Topics that
+    do not exist in the domain are reported in the ``not_found`` list.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    assigned: list[str] = []
+    not_found: list[str] = []
+
+    for name in topic_names:
+        found = False
+        for t in domain_cfg.topics:
+            if t.name == name:
+                t.group = group_name
+                assigned.append(name)
+                found = True
+                break
+        if not found:
+            not_found.append(name)
+
+    if assigned:
+        _save_config(config)
+
+    return {
+        "domain": domain,
+        "group": group_name,
+        "assigned": assigned,
+        "not_found": not_found,
+    }
+
+
+def _handle_topic_group_remove(domain: str, group_name: str) -> dict[str, Any]:
+    """Remove a group assignment from all topics in that group.
+
+    Clears the ``group`` field (sets to ``""``) on every topic whose
+    current group matches *group_name*.
+    """
+    try:
+        config = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    domain_cfg = _find_domain(config, domain)
+    if domain_cfg is None:
+        return {
+            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
+            "message": f"Domain '{domain}' is not configured",
+            "actionable": True,
+        }
+
+    cleared: list[str] = []
+    for t in domain_cfg.topics:
+        if t.group == group_name:
+            t.group = ""
+            cleared.append(t.name)
+
+    if cleared:
+        _save_config(config)
+
+    return {
+        "domain": domain,
+        "group": group_name,
+        "cleared": cleared,
+        "removed": len(cleared) > 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Keywords management tools (approve / reject / suggest)
 # ---------------------------------------------------------------------------
 
@@ -1481,7 +1635,7 @@ def _handle_get_extraction(content_id: str) -> dict[str, Any]:
 
 def _handle_search_knowledge_base(
     query: str,
-    domain: str = "",
+    domain: str | None = None,
     limit: int = 20,
     offset: int = 0,
     mode: str = "fts5",
@@ -1499,6 +1653,10 @@ def _handle_search_knowledge_base(
 
     Parameters
     ----------
+    domain:
+        Optional domain filter. When ``None`` (default), searches across
+        all domains. When an empty string or a specific domain name is
+        passed, results are filtered to that domain.
     mode:
         Search mode: ``"fts5"`` (default), ``"hybrid"`` (FTS5 + vector),
         or ``"vector"``.  Falls back to FTS5 when vector search is
@@ -1512,7 +1670,7 @@ def _handle_search_knowledge_base(
     store = KBStore()
     return store.search_knowledge_base(
         query=query,
-        domain=domain,
+        domain=domain or "",
         limit=limit,
         offset=offset,
         mode=mode,
@@ -1893,6 +2051,9 @@ def _handle_generate_tutorial(
 
     try:
         result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions)
+        if format == "agent":
+            import json as _json
+            return {"success": True, "format": format, "domain": domain, "topic": topic, "content": _json.loads(result)}
         return {"success": True, "format": format, "domain": domain, "topic": topic, "content": result}
     except ValueError as exc:
         return {
@@ -1921,6 +2082,9 @@ def _handle_generate_presentation(
     try:
         topic_str = topic or ""
         result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions)
+        if format == "agent":
+            import json as _json
+            return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": _json.loads(result)}
         return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": result}
     except ValueError as exc:
         return {
@@ -2759,6 +2923,156 @@ def _handle_batch_run(
     }
 
 
+def _handle_get_feeds(
+    domain: str,
+    topic: str | None = None,
+    source_type: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    format: str = "json",
+) -> dict[str, Any]:
+    """Return a paginated feed of KB entries for *domain*.
+
+    Parameters
+    ----------
+    domain:
+        Domain to query (required).
+    topic:
+        Optional filter by topic tag.
+    source_type:
+        Optional filter by source type (e.g. rss, api).
+    since:
+        Optional ISO date filter (collected_at >=).
+    limit:
+        Max items to return (default 50, max 200).
+    offset:
+        Number of items to skip for pagination (default 0).
+    format:
+        Output format: ``"json"`` (default) or ``"rss"``.
+        ``"json"`` returns a paginated JSON envelope with ``{items, pagination}``.
+        ``"rss"`` returns an RSS 2.0 XML feed.
+
+    Returns
+    -------
+    dict
+        For ``format="json"``: ``{domain, format, items, pagination}``.
+        For ``format="rss"``: ``{domain, format, content}`` with the RSS XML string.
+    """
+    from autoinfo.kb import KBStore
+
+    limit = max(1, min(limit, 200))
+    store = KBStore()
+
+    # Fetch all entries for the domain with since filter at the DB level
+    all_raw = store.list_all_entries(
+        domain=domain,
+        date_from=since,
+        limit=10000,
+        offset=0,
+    )
+
+    # Apply topic filter (tags are a JSON string in the DB)
+    if topic:
+        topic_lower = topic.strip().lower()
+        filtered: list[dict[str, Any]] = []
+        for entry in all_raw:
+            tags = _parse_tags(entry)
+            if any(t.lower() == topic_lower for t in tags):
+                filtered.append(entry)
+        all_raw = filtered
+
+    # Apply source_type filter
+    if source_type:
+        st = source_type.strip().lower()
+        all_raw = [e for e in all_raw if e.get("source_type", "").lower() == st]
+
+    # Sort by collected_at DESC (newest first)
+    all_raw.sort(key=lambda e: e.get("collected_at", "") or "", reverse=True)
+
+    total = len(all_raw)
+
+    # Slice for pagination
+    page = all_raw[offset: offset + limit]
+
+    # Determine next offset
+    next_offset: int | None = offset + limit if offset + limit < total else None
+
+    items = []
+    for entry in page:
+        items.append({
+            "id": entry.get("entry_id", ""),
+            "title": entry.get("title", ""),
+            "url": entry.get("source_url", ""),
+            "source_type": entry.get("source_type", ""),
+            "source_platform": entry.get("source_platform", ""),
+            "collected_at": entry.get("collected_at", ""),
+            "summary": entry.get("summary", ""),
+            "relevance_score": entry.get("relevance_score", 0.0),
+        })
+
+    if format == "rss":
+        import xml.etree.ElementTree as ET  # noqa: PLC0415 — deferred import
+
+        rss = ET.Element("rss", {"version": "2.0"})
+        channel = ET.SubElement(rss, "channel")
+        ET.SubElement(channel, "title").text = f"AutoInfo Feed — {domain}"
+        ET.SubElement(channel, "description").text = f"Knowledge base feed for domain: {domain}"
+        ET.SubElement(channel, "link").text = "https://autoinfo.local"
+        ET.SubElement(channel, "lastBuildDate").text = (
+            items[0]["collected_at"] if items else ""
+        )
+
+        for item in items:
+            xml_item = ET.SubElement(channel, "item")
+            ET.SubElement(xml_item, "guid", {"isPermaLink": "false"}).text = item["id"]
+            ET.SubElement(xml_item, "title").text = item["title"] or "(untitled)"
+            ET.SubElement(xml_item, "link").text = item["url"] or ""
+            ET.SubElement(xml_item, "description").text = item["summary"] or ""
+            if item["collected_at"]:
+                ET.SubElement(xml_item, "pubDate").text = item["collected_at"]
+            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = item["source_type"] or ""
+
+        ET.indent(rss, space="  ")
+        rss_content = ET.tostring(rss, encoding="unicode", xml_declaration=True)
+        return {
+            "domain": domain,
+            "format": "rss",
+            "content": rss_content,
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "next": next_offset,
+            },
+        }
+
+    return {
+        "domain": domain,
+        "format": "json",
+        "items": items,
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "next": next_offset,
+        },
+    }
+
+
+def _parse_tags(raw: dict[str, Any]) -> list[str]:
+    """Deserialise the ``tags`` column from a raw entry dict."""
+    import json as _json
+
+    tags_raw = raw.get("tags") or []
+    if isinstance(tags_raw, str):
+        try:
+            return list(_json.loads(tags_raw))
+        except (_json.JSONDecodeError, TypeError):
+            return [tags_raw] if tags_raw else []
+    return list(tags_raw) if tags_raw else []
+
+
 def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
     """List active / in-progress collection runs."""
     from autoinfo.collect import list_active_collections as _list_active
@@ -3483,6 +3797,9 @@ def _handle_get_prometheus_metrics(name: str, arguments: dict) -> dict[str, Any]
 def _handle_soft_delete_entry(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import KBStore
     store = KBStore()
+    purge = arguments.get("purge", False)
+    if purge:
+        return store.delete_entry(arguments["entry_id"])
     return store.soft_delete_entry(arguments["entry_id"])
 
 
@@ -4057,6 +4374,134 @@ def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# End-User CRUD handlers (5)
+# ---------------------------------------------------------------------------
+
+
+def _handle_enduser_create(
+    user_id: str,
+    name: str,
+    email: str = "",
+    delivery_prefs: dict[str, Any] | None = None,
+    status: str = "trial",
+    tier: str = "free",
+) -> dict[str, Any]:
+    """Create a new end-user profile (mirrors ``autoinfo enduser create``)."""
+    from dataclasses import asdict as _asdict
+
+    from autoinfo.user_store import create_profile
+
+    try:
+        profile = create_profile(
+            user_id=user_id,
+            name=name,
+            email=email,
+            delivery_prefs=delivery_prefs or {},
+            status=status,
+            tier=tier,
+        )
+    except Exception as exc:
+        logger.exception("enduser_create failed for '%s'", user_id)
+        return _error_dict(exc)
+
+    return success_response(_asdict(profile))
+
+
+def _handle_enduser_get(user_id: str) -> dict[str, Any]:
+    """Get an end-user profile by user ID (mirrors ``autoinfo enduser get``)."""
+    from dataclasses import asdict as _asdict
+
+    from autoinfo.user_store import get_profile
+
+    try:
+        profile = get_profile(user_id)
+    except Exception as exc:
+        logger.exception("enduser_get failed for '%s'", user_id)
+        return _error_dict(exc)
+
+    if profile is None:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"End-user '{user_id}' not found",
+            "actionable": True,
+        }
+
+    return success_response(_asdict(profile))
+
+
+def _handle_enduser_update(
+    user_id: str,
+    name: str | None = None,
+    email: str | None = None,
+    delivery_prefs: dict[str, Any] | None = None,
+    status: str | None = None,
+    tier: str | None = None,
+) -> dict[str, Any]:
+    """Update an end-user profile (partial update, mirrors ``autoinfo enduser update``)."""
+    from dataclasses import asdict as _asdict
+
+    from autoinfo.user_store import update_profile
+
+    try:
+        profile = update_profile(
+            user_id=user_id,
+            name=name,
+            email=email,
+            delivery_prefs=delivery_prefs,
+            status=status,
+            tier=tier,
+        )
+    except Exception as exc:
+        logger.exception("enduser_update failed for '%s'", user_id)
+        return _error_dict(exc)
+
+    if profile is None:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"End-user '{user_id}' not found",
+            "actionable": True,
+        }
+
+    return success_response(_asdict(profile))
+
+
+def _handle_enduser_delete(user_id: str) -> dict[str, Any]:
+    """Delete an end-user profile and associated subscriptions (mirrors ``autoinfo enduser delete``)."""
+    from autoinfo.user_store import delete_profile
+
+    try:
+        ok = delete_profile(user_id)
+    except Exception as exc:
+        logger.exception("enduser_delete failed for '%s'", user_id)
+        return _error_dict(exc)
+
+    if not ok:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": f"End-user '{user_id}' not found",
+            "actionable": True,
+        }
+
+    return success_response({"user_id": user_id, "deleted": True})
+
+
+def _handle_enduser_list() -> dict[str, Any]:
+    """List all end-user profiles (mirrors ``autoinfo enduser list``)."""
+    from dataclasses import asdict as _asdict
+
+    from autoinfo.user_store import list_profiles
+
+    try:
+        profiles = list_profiles()
+    except Exception as exc:
+        logger.exception("enduser_list failed")
+        return _error_dict(exc)
+
+    items = [_asdict(p) for p in profiles]
+    return success_response({"items": items, "count": len(items)})
+
+
+# ---------------------------------------------------------------------------
 # Agent Callback handlers (3)
 # ---------------------------------------------------------------------------
 
@@ -4125,6 +4570,605 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
             "message": str(exc),
             "actionable": True,
         }
+
+
+# ---------------------------------------------------------------------------
+# KB: Create entry from scratch (1)
+# ---------------------------------------------------------------------------
+
+
+def _handle_create_kb_entry(
+    domain: str,
+    title: str,
+    content: str,
+    source_url: str,
+    source_type: str,
+    topics: list[str] | None = None,
+    author: str = "",
+) -> dict[str, Any]:
+    """Create a KB entry from scratch in the 01-Raw tier.
+
+    Architecture rule: 01-Raw is the sole entry point for all
+    collected and manually-created content.  This tool writes to
+    01-Raw only — 02-Draft and 03-Wiki are reached through separate
+    promotion steps.
+
+    Parameters
+    ----------
+    domain:
+        Target domain name (e.g. medical-research).
+    title:
+        Entry title.
+    content:
+        Full text / Markdown content of the entry.
+    source_url:
+        Source URL (mandatory provenance).
+    source_type:
+        Source type (e.g. web, api, manual).
+    topics:
+        Optional list of topic tags.
+    author:
+        Optional author name (stored in KBEntry frontmatter).
+
+    Returns
+    -------
+    dict
+        ``{entry_id, tier, source_url, created_at, title, domain}``
+        wrapped in ``success_response()`` envelope.
+    """
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from autoinfo.kb import KBStore
+    from autoinfo.models import Item
+
+    try:
+        if not domain or not title or not content or not source_url:
+            return {
+                "error_code": ErrorCode.VALIDATION_ERROR.value,
+                "message": (
+                    "domain, title, content, and source_url are required"
+                ),
+                "actionable": True,
+            }
+
+        topic_tags = topics or []
+
+        item = Item(
+            id=str(uuid4()),
+            source_name=source_type,
+            source_type=source_type,
+            source_url=source_url,
+            source_platform=source_type,
+            title=title,
+            content=content,
+            domain=domain,
+            topic_tags=topic_tags,
+            collected_at=datetime.now(timezone.utc).isoformat(),
+            content_type="text",
+            quality_tier=1,
+        )
+
+        store = KBStore()
+        entry = store.store_entry(item=item, tier="01-Raw")
+
+        return success_response({
+            "entry_id": entry.entry_id,
+            "tier": entry.tier,
+            "source_url": entry.source_url,
+            "created_at": entry.collected_at,
+            "title": entry.title,
+            "domain": entry.domain,
+        })
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("create_kb_entry failed")
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# T15: Audit Log Query
+# ---------------------------------------------------------------------------
+
+
+def _handle_query_audit_log(
+    actor: str | None = None,
+    action: str | None = None,
+    resource_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Query the immutable audit log with optional filters.
+
+    Parameters
+    ----------
+    actor:
+        Filter by actor name.
+    action:
+        Filter by action name.
+    resource_type:
+        Filter by resource type.
+    date_from:
+        ISO-8601 lower bound on timestamp.
+    date_to:
+        ISO-8601 upper bound on timestamp.
+    limit:
+        Max entries to return (default 100).
+    offset:
+        Pagination offset (default 0).
+
+    Returns
+    -------
+    dict
+        ``{entries, count}``.
+    """
+    try:
+        from autoinfo.audit import query_audit_log
+
+        entries = query_audit_log(
+            actor=actor,
+            action=action,
+            resource_type=resource_type,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "entries": [asdict(e) for e in entries],
+            "count": len(entries),
+        }
+    except Exception as exc:
+        logger.exception("Audit log query failed")
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# T16: CEFR Batch Classification
+# ---------------------------------------------------------------------------
+
+
+def _handle_cefr_batch(
+    texts: list[str],
+    lang: str = "en",
+) -> dict[str, Any]:
+    """Batch classify multiple texts into CEFR levels (A1-C2).
+
+    Parameters
+    ----------
+    texts:
+        List of texts to classify.
+    lang:
+        Language code: ``"en"``, ``"zh"``, or ``"ja"`` (default ``"en"``).
+
+    Returns
+    -------
+    dict
+        ``{results, total, errors}`` where each result is
+        ``{text, cefr_level, confidence}`` or ``{text, error}``.
+    """
+    try:
+        config = _load_config()
+        model_config: dict[str, Any] = {}
+        if hasattr(config, "cefr") and config.cefr.model:
+            model_config["model"] = config.cefr.model
+        elif config.llm.provider and config.llm.model:
+            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+        if config.llm.api_key:
+            model_config["api_key"] = config.llm.api_key
+        if config.llm.base_url:
+            model_config["base_url"] = config.llm.base_url
+    except Exception:
+        model_config = {}
+
+    from autoinfo.cefr import classify_text
+
+    if not texts:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": "texts must be a non-empty list",
+            "actionable": True,
+        }
+
+    results: list[dict[str, Any]] = []
+    errors = 0
+    for t in texts:
+        try:
+            result = classify_text(text=t, lang=lang, model_config=model_config)
+            results.append({
+                "text": t,
+                "cefr_level": result["cefr_level"],
+                "confidence": result["confidence"],
+            })
+        except Exception as exc:
+            results.append({"text": t, "error": str(exc)})
+            errors += 1
+
+    return {
+        "results": results,
+        "total": len(texts),
+        "errors": errors,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T17: Email SMTP Config
+# ---------------------------------------------------------------------------
+
+
+def _handle_email_config(
+    smtp_server: str = "",
+    smtp_port: int = 0,
+    username: str = "",
+    password: str = "",
+    enable: bool = False,
+    disable: bool = False,
+    test: bool = False,
+) -> dict[str, Any]:
+    """View or update email SMTP configuration.
+
+    Parameters
+    ----------
+    smtp_server:
+        SMTP server hostname.
+    smtp_port:
+        SMTP server port.
+    username:
+        SMTP username.
+    password:
+        SMTP password.
+    enable:
+        Enable email sending.
+    disable:
+        Disable email sending.
+    test:
+        Send a test email using current config.
+
+    Returns
+    -------
+    dict
+        ``{config: {smtp_host, smtp_port, enabled, ...}, updated, test_result}``.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+
+    try:
+        cfg = _load_config()
+    except Exception as exc:
+        return _error_dict(exc)
+
+    email_cfg = cfg.email
+
+    if enable and disable:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": "Cannot use both enable and disable.",
+            "actionable": True,
+        }
+
+    changed = False
+    if smtp_server:
+        email_cfg.smtp_host = smtp_server
+        changed = True
+    if smtp_port > 0:
+        email_cfg.smtp_port = smtp_port
+        changed = True
+    if username:
+        email_cfg.smtp_user = username
+        changed = True
+    if password:
+        email_cfg.smtp_pass = password
+        changed = True
+    if enable:
+        email_cfg.enabled = True
+        changed = True
+    if disable:
+        email_cfg.enabled = False
+        changed = True
+
+    if changed:
+        _save_config(cfg)
+
+    config_summary: dict[str, Any] = {
+        "smtp_host": email_cfg.smtp_host or "(not set)",
+        "smtp_port": email_cfg.smtp_port,
+        "smtp_user": email_cfg.smtp_user or "(not set)",
+        "smtp_pass": "****" if email_cfg.smtp_pass else "(not set)",
+        "from_addr": email_cfg.from_addr or "(not set)",
+        "to_addrs": email_cfg.to_addrs or [],
+        "enabled": email_cfg.enabled,
+    }
+
+    response: dict[str, Any] = {
+        "config": config_summary,
+        "updated": changed,
+        "test_result": None,
+    }
+
+    if test:
+        if not email_cfg.smtp_host:
+            response["test_result"] = "skipped: SMTP server not configured"
+        elif not email_cfg.from_addr and not email_cfg.smtp_user:
+            response["test_result"] = "skipped: no from address configured"
+        elif not email_cfg.to_addrs:
+            response["test_result"] = "skipped: no recipients configured"
+        else:
+            from_addr = email_cfg.from_addr or email_cfg.smtp_user
+            to_addrs = email_cfg.to_addrs
+
+            msg = MIMEText(
+                "This is a test email from AutoInfo.\n\n"
+                "If you received this, SMTP configuration is working correctly."
+            )
+            msg["Subject"] = "[AutoInfo] Test Email"
+            msg["From"] = from_addr
+            msg["To"] = ", ".join(to_addrs)
+
+            server = None
+            try:
+                server = smtplib.SMTP(
+                    email_cfg.smtp_host, email_cfg.smtp_port, timeout=30
+                )
+                server.ehlo()
+                if server.has_extn("STARTTLS"):
+                    server.starttls()
+                    server.ehlo()
+                if email_cfg.smtp_user and email_cfg.smtp_pass:
+                    server.login(email_cfg.smtp_user, email_cfg.smtp_pass)
+                server.sendmail(from_addr, to_addrs, msg.as_string())
+                response["test_result"] = f"success: sent to {', '.join(to_addrs)}"
+            except (smtplib.SMTPException, OSError) as exc:
+                response["test_result"] = f"failed: {exc}"
+            finally:
+                if server is not None:
+                    try:
+                        server.quit()
+                    except Exception:
+                        pass
+
+    return response
+
+
+# ---------------------------------------------------------------------------
+# T18: Knowledge Graph Export
+# ---------------------------------------------------------------------------
+
+
+def _handle_knowledge_graph_export(
+    domain: str,
+    format: str = "json",
+    output: str = "",
+) -> dict[str, Any]:
+    """Export the knowledge graph for a domain.
+
+    Parameters
+    ----------
+    domain:
+        Domain name (e.g. medical-research).
+    format:
+        Export format: ``"json"``, ``"graphml"``, or ``"csv"``.
+    output:
+        Optional output file path (auto-generated if omitted).
+
+    Returns
+    -------
+    dict
+        ``{domain, format, output_path, entity_count, relation_count}``.
+    """
+    valid_formats = {"json", "graphml", "csv"}
+    if format not in valid_formats:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": f"Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
+            "actionable": True,
+        }
+
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+
+    try:
+        data = store.export_knowledge_graph(domain=domain)
+    except Exception as exc:
+        logger.exception("Knowledge graph export failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+    out_path = (Path(output) if output
+                else Path(f"knowledge_graph_export.{format}"))
+
+    try:
+        if format == "json":
+            content = json.dumps(data, ensure_ascii=False, indent=2)
+            out_path.write_text(content, encoding="utf-8")
+        elif format == "graphml":
+            from autoinfo.cli.knowledge import _build_graphml
+            xml_content = _build_graphml(data)
+            out_path.write_text(xml_content, encoding="utf-8")
+        elif format == "csv":
+            from autoinfo.cli.knowledge import _write_csv
+            stem = str(out_path.with_suffix(""))
+            _write_csv(data, stem)
+    except OSError as exc:
+        logger.exception("Error writing knowledge graph export file")
+        return _error_dict(exc)
+
+    return {
+        "domain": domain,
+        "format": format,
+        "output_path": str(out_path),
+        "entity_count": len(data.get("entities", [])),
+        "relation_count": len(data.get("relations", [])),
+    }
+
+
+# ---------------------------------------------------------------------------
+# T19: Clean Cache
+# ---------------------------------------------------------------------------
+
+
+def _handle_clean_cache(
+    collections: bool = False,
+    outputs: bool = False,
+    everything: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Remove cached artifacts and temporary files.
+
+    Parameters
+    ----------
+    collections:
+        Remove cached collections/ contents.
+    outputs:
+        Remove outputs/ contents.
+    everything:
+        Remove ALL cached data (collections + outputs + knowledge + DB).
+    dry_run:
+        Show what would be deleted without deleting (default False).
+
+    Returns
+    -------
+    dict
+        ``{items_removed, dry_run, targets}``.
+    """
+    import shutil
+
+    targets: list[str] = []
+    total = 0
+
+    if collections or everything:
+        path = Path("collections")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"collections ({cnt} items)")
+    if outputs or everything:
+        path = Path("outputs")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"outputs ({cnt} items)")
+    if everything:
+        path = Path("knowledge")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"knowledge ({cnt} items)")
+
+        db_path = Path("autoinfo.db")
+        if db_path.is_file():
+            if not dry_run:
+                db_path.unlink()
+            total += 1
+            targets.append("autoinfo.db")
+
+    return {
+        "items_removed": total,
+        "dry_run": dry_run,
+        "targets": targets,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T20: Cost Dashboard
+# ---------------------------------------------------------------------------
+
+
+def _handle_cost_dashboard(
+    period: str = "week",
+) -> dict[str, Any]:
+    """Show cost dashboard — totals by domain, daily trend, top models/sources, budget status.
+
+    Parameters
+    ----------
+    period:
+        Time period: ``"today"``, ``"week"``, ``"month"``, ``"all"`` (default ``"week"``).
+
+    Returns
+    -------
+    dict
+        Cost dashboard data with ``total_cost``, ``by_domain``, ``daily_trend``,
+        ``top_models``, ``top_sources``, ``budget_status``.
+    """
+    try:
+        from autoinfo.cost import CostMeter
+
+        meter = CostMeter()
+        return meter.get_cost_dashboard(period=period)
+    except Exception as exc:
+        logger.exception("Cost dashboard failed")
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# T21: Cost Allocation
+# ---------------------------------------------------------------------------
+
+
+def _handle_cost_allocation(
+    domain: str = "",
+    user_id: str = "",
+    period: str = "all",
+) -> dict[str, Any]:
+    """Show cost allocation broken down by domain and user.
+
+    Parameters
+    ----------
+    domain:
+        Optional domain filter (empty = all).
+    user_id:
+        Optional user ID filter (empty = all).
+    period:
+        Time period: ``"all"``, ``"today"``, ``"week"``, ``"month"`` (default ``"all"``).
+
+    Returns
+    -------
+    dict
+        ``{period, domain_filter, user_id_filter, total_cost, log_count, by_domain, by_user}``.
+    """
+    try:
+        from autoinfo.cost import CostMeter
+
+        meter = CostMeter()
+        return meter.get_cost_allocation(
+            domain=domain, user_id=user_id, period=period
+        )
+    except Exception as exc:
+        logger.exception("Cost allocation failed")
+        return _error_dict(exc)
 
 
 def _error_dict(exc: Exception) -> dict[str, Any]:
@@ -4326,7 +5370,12 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="add_source",
             description=(
-                "Add a data source (idempotent — dedup by url + type + domain)"
+                "Add a data source (idempotent — dedup by url + type + domain). "
+                "Supports 6 source types: api, rss, web, webhook, email, pdf. "
+                "For email sources, pass imap_server/imap_port/imap_username/"
+                "imap_password/imap_mailbox convenience params. "
+                "For webhook sources, pass webhook_secret for HMAC verification. "
+                "All types accept an optional settings dict for arbitrary configuration."
             ),
             inputSchema={
                 "type": "object",
@@ -4337,17 +5386,45 @@ async def list_tools() -> list[Tool]:
                     },
                     "url": {
                         "type": "string",
-                        "description": "Source URL",
+                        "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
                     },
                     "type": {
                         "type": "string",
-                        "description": "Source type (api, rss, web)",
+                        "description": "Source type (api, rss, web, webhook, email, pdf)",
                         "default": "api",
-                        "enum": ["api", "rss", "web"],
+                        "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
                     },
                     "domain": {
                         "type": "string",
                         "description": "Domain to add this source to",
+                    },
+                    "settings": {
+                        "type": "object",
+                        "description": "Optional key-value configuration (stored in SourceConfig.settings)",
+                    },
+                    "imap_server": {
+                        "type": "string",
+                        "description": "Email type only: IMAP server hostname (e.g. imap.gmail.com)",
+                    },
+                    "imap_port": {
+                        "type": "integer",
+                        "description": "Email type only: IMAP port (default 993)",
+                    },
+                    "imap_username": {
+                        "type": "string",
+                        "description": "Email type only: IMAP username",
+                    },
+                    "imap_password": {
+                        "type": "string",
+                        "description": "Email type only: IMAP password (or set AUTOINFO_EMAIL_PASSWORD env var)",
+                    },
+                    "imap_mailbox": {
+                        "type": "string",
+                        "description": "Email type only: IMAP mailbox name (default INBOX)",
+                    },
+                    "webhook_secret": {
+                        "type": "string",
+                        "description": "Webhook type only: HMAC shared secret for payload verification",
                     },
                 },
                 "required": ["name", "url", "domain"],
@@ -4355,7 +5432,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="add_sources",
-            description="Batch-add sources with per-source error isolation",
+            description="Batch-add sources with per-source error isolation. Each source object supports the same parameters as add_source.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -4370,17 +5447,45 @@ async def list_tools() -> list[Tool]:
                                 },
                                 "url": {
                                     "type": "string",
-                                    "description": "Source URL",
+                                    "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
                                 },
                                 "type": {
                                     "type": "string",
                                     "default": "api",
-                                    "description": "Source type (api, rss, web)",
-                                    "enum": ["api", "rss", "web"],
+                                    "description": "Source type (api, rss, web, webhook, email, pdf)",
+                                    "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
                                 },
                                 "domain": {
                                     "type": "string",
                                     "description": "Domain to add this source to",
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "description": "Optional key-value configuration (stored in SourceConfig.settings)",
+                                },
+                                "imap_server": {
+                                    "type": "string",
+                                    "description": "Email type only: IMAP server hostname",
+                                },
+                                "imap_port": {
+                                    "type": "integer",
+                                    "description": "Email type only: IMAP port (default 993)",
+                                },
+                                "imap_username": {
+                                    "type": "string",
+                                    "description": "Email type only: IMAP username",
+                                },
+                                "imap_password": {
+                                    "type": "string",
+                                    "description": "Email type only: IMAP password",
+                                },
+                                "imap_mailbox": {
+                                    "type": "string",
+                                    "description": "Email type only: IMAP mailbox name (default INBOX)",
+                                },
+                                "webhook_secret": {
+                                    "type": "string",
+                                    "description": "Webhook type only: HMAC shared secret",
                                 },
                             },
                             "required": ["name", "url", "domain"],
@@ -4422,9 +5527,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "type": {
                         "type": "string",
-                        "description": "Source type (api, rss, web)",
+                        "description": "Source type (api, rss, web, webhook, email, pdf)",
                         "default": "api",
-                        "enum": ["api", "rss", "web"],
+                        "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
                     },
                 },
                 "required": ["url"],
@@ -4444,7 +5549,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
-        # -- Topic Management (4) -----------------------------------------
+        # -- Topic Management (6) -----------------------------------------
         Tool(
             name="add_topic",
             description="Add a topic to a domain (idempotent by name+domain)",
@@ -4522,6 +5627,47 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="topic_group_add",
+            description="Assign a group to one or more topics within a domain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "group_name": {
+                        "type": "string",
+                        "description": "Name of the group to assign topics to",
+                    },
+                    "topic_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of topic names to assign to this group",
+                    },
+                },
+                "required": ["domain", "group_name", "topic_names"],
+            },
+        ),
+        Tool(
+            name="topic_group_remove",
+            description="Remove a group assignment from all topics in that group",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "group_name": {
+                        "type": "string",
+                        "description": "Name of the group whose assignment should be removed from all topics",
+                    },
+                },
+                "required": ["domain", "group_name"],
             },
         ),
         # -- Keywords Management (3) ---------------------------------------
@@ -4764,7 +5910,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Optional domain filter",
+                        "description": "Optional domain filter. When omitted or None, searches across all domains.",
                     },
                     "limit": {
                         "type": "integer",
@@ -4854,6 +6000,36 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["entity"],
+            },
+        ),
+        # -- Knowledge Graph Export (1) -------------------------------------
+        Tool(
+            name="knowledge_graph_export",
+            description=(
+                "Export the knowledge graph for a domain. "
+                "Supports json, graphml, and csv formats. "
+                "Returns entity and relation counts."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Export format: json, graphml, csv",
+                        "default": "json",
+                        "enum": ["json", "graphml", "csv"],
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "Optional output file path (auto-generated if omitted)",
+                        "default": "",
+                    },
+                },
+                "required": ["domain"],
             },
         ),
         Tool(
@@ -5199,6 +6375,56 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
+        Tool(
+            name="create_kb_entry",
+            description=(
+                "Create a KB entry from scratch in 01-Raw tier. "
+                "Architecture: 01-Raw is the sole entry point — "
+                "all content enters the KB pipeline here. "
+                "No quality gates are applied (matching REST behavior)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Target domain name (e.g. medical-research)",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Entry title",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full text / Markdown content of the entry",
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "description": "Source URL (mandatory provenance)",
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "description": "Source type (e.g. web, api, manual)",
+                    },
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of topic tags",
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Optional author name",
+                    },
+                },
+                "required": [
+                    "domain",
+                    "title",
+                    "content",
+                    "source_url",
+                    "source_type",
+                ],
+            },
+        ),
         # -- Output (5) ---------------------------------------------------
         Tool(
             name="list_output_templates",
@@ -5334,6 +6560,7 @@ async def list_tools() -> list[Tool]:
             name="generate_tutorial",
             description=(
                 "Generate a structured tutorial for a domain. "
+                "Returns markdown by default; also supports agent (JSON-LD). "
                 "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
@@ -5349,9 +6576,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format (markdown)",
+                        "description": "Output format: 'markdown' (default), 'agent' (JSON-LD for LLM re-consumption)",
                         "default": "markdown",
-                        "enum": ["markdown"],
+                        "enum": ["markdown", "agent"],
                     },
                     "custom_instructions": {
                         "type": "string",
@@ -5366,6 +6593,7 @@ async def list_tools() -> list[Tool]:
             name="generate_presentation",
             description=(
                 "Generate a slide-based presentation for a topic within a domain. "
+                "Returns markdown by default; also supports html, mkslides, agent (JSON-LD). "
                 "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
@@ -5389,10 +6617,11 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Output format: 'markdown' (default, Reveal.js-flavoured "
                             "Markdown), 'html' (standalone Reveal.js HTML5 via CDN), "
-                            "or 'mkslides' (mkslides build with HTML fallback)."
+                            "'mkslides' (mkslides build with HTML fallback), "
+                            "or 'agent' (JSON-LD for LLM re-consumption)."
                         ),
                         "default": "markdown",
-                        "enum": ["markdown", "html", "mkslides"],
+                        "enum": ["markdown", "html", "mkslides", "agent"],
                     },
                     "custom_instructions": {
                         "type": "string",
@@ -5464,7 +6693,7 @@ async def list_tools() -> list[Tool]:
             name="export_kb",
             description=(
                 "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml, rss formats."
+                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent formats."
             ),
             inputSchema={
                 "type": "object",
@@ -5475,9 +6704,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss",
+                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, agent (JSON-LD for LLM re-consumption)",
                         "default": "markdown",
-                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss"],
+                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent"],
                     },
                     "scope": {
                         "type": "string",
@@ -5557,6 +6786,56 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["domain"],
+            },
+        ),
+        # -- Email Config (1) --------------------------------------------------
+        Tool(
+            name="email_config",
+            description=(
+                "View or update email SMTP configuration. "
+                "Get current settings, set SMTP host/port/credentials, "
+                "enable/disable email, or send a test email."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "smtp_server": {
+                        "type": "string",
+                        "description": "SMTP server hostname",
+                        "default": "",
+                    },
+                    "smtp_port": {
+                        "type": "integer",
+                        "description": "SMTP server port",
+                        "default": 0,
+                    },
+                    "username": {
+                        "type": "string",
+                        "description": "SMTP username",
+                        "default": "",
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "SMTP password",
+                        "default": "",
+                    },
+                    "enable": {
+                        "type": "boolean",
+                        "description": "Enable email sending",
+                        "default": False,
+                    },
+                    "disable": {
+                        "type": "boolean",
+                        "description": "Disable email sending",
+                        "default": False,
+                    },
+                    "test": {
+                        "type": "boolean",
+                        "description": "Send a test email using current config",
+                        "default": False,
+                    },
+                },
+                "required": [],
             },
         ),
         # -- Custom Extraction (2) -----------------------------------------
@@ -5785,6 +7064,51 @@ async def list_tools() -> list[Tool]:
                 "required": ["item_id", "rating"],
             },
         ),
+        # -- Audit (1) -------------------------------------------------------
+        Tool(
+            name="query_audit_log",
+            description=(
+                "Query the immutable audit log with optional filters. "
+                "All filters are optional and combined with AND logic. "
+                "Results returned newest-first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "actor": {
+                        "type": "string",
+                        "description": "Filter by actor name",
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Filter by action name",
+                    },
+                    "resource_type": {
+                        "type": "string",
+                        "description": "Filter by resource type",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "ISO-8601 lower bound on timestamp",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "ISO-8601 upper bound on timestamp",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return (default 100)",
+                        "default": 100,
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Pagination offset (default 0)",
+                        "default": 0,
+                    },
+                },
+                "required": [],
+            },
+        ),
         # -- CEFR Classification (1) ----------------------------------------
         Tool(
             name="classify_cefr",
@@ -5808,6 +7132,32 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["text"],
+            },
+        ),
+        # -- CEFR Batch (1) ---------------------------------------------------
+        Tool(
+            name="cefr_batch",
+            description=(
+                "Batch classify multiple texts into CEFR levels (A1-C2). "
+                "Each text is classified independently. Per-text errors are "
+                "included with an error key in the results array."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "texts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Texts to classify (non-empty)",
+                    },
+                    "lang": {
+                        "type": "string",
+                        "description": "Language code: en, zh, or ja",
+                        "default": "en",
+                        "enum": ["en", "zh", "ja"],
+                    },
+                },
+                "required": ["texts"],
             },
         ),
         # -- Project / Batch / Config (6) ------------------------------------
@@ -5897,6 +7247,52 @@ async def list_tools() -> list[Tool]:
                     "model": {
                         "type": "string",
                         "description": "Optional LLM model override for processing",
+                    },
+                },
+                "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="get_feeds",
+            description=(
+                "Return a paginated feed of KB entries for a domain. "
+                "Supports optional filters by topic tag, source type, "
+                "and collected-at date.  Output format: JSON (default) or RSS 2.0 XML."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain to query (required)",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Optional filter by topic tag",
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "description": "Optional filter by source type (e.g. rss, api)",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional ISO date filter (collected_at >=)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max items to return (1-200)",
+                        "default": 50,
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of items to skip for pagination",
+                        "default": 0,
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: 'json' (paginated JSON envelope) or 'rss' (RSS 2.0 XML feed)",
+                        "default": "json",
+                        "enum": ["json", "rss"],
                     },
                 },
                 "required": ["domain"],
@@ -6219,6 +7615,55 @@ async def list_tools() -> list[Tool]:
                 "required": ["thresholds"],
             },
         ),
+        # -- Cost Dashboard & Allocation (2) ----------------------------------
+        Tool(
+            name="cost_dashboard",
+            description=(
+                "Show cost dashboard — totals by domain, daily trend, "
+                "top models/sources, and budget status."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: today, week, month, all",
+                        "default": "week",
+                        "enum": ["today", "week", "month", "all"],
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="cost_allocation",
+            description=(
+                "Show cost allocation broken down by domain and user. "
+                "Supports filtering by domain, user_id, and time period."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain filter (empty = all)",
+                        "default": "",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID filter (empty = all)",
+                        "default": "",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: all, today, week, month",
+                        "default": "all",
+                        "enum": ["all", "today", "week", "month"],
+                    },
+                },
+                "required": [],
+            },
+        ),
         # -- Init (1) --------------------------------------------------------
         Tool(
             name="init_project",
@@ -6291,11 +7736,16 @@ async def list_tools() -> list[Tool]:
         # -- Soft-delete & GDPR (4) -------------------------------------------
         Tool(
             name="soft_delete_entry",
-            description="Mark an entry as deleted without permanent removal",
+            description="Mark an entry as deleted (soft-delete) or permanently remove it (hard-delete). Set purge=True for permanent deletion.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "entry_id": {"type": "string"},
+                    "purge": {
+                        "type": "boolean",
+                        "description": "If False (default), performs soft-delete (mark as deleted). If True, permanently deletes the entry from index, FTS5, and disk.",
+                        "default": False,
+                    },
                 },
                 "required": ["entry_id"],
             },
@@ -6590,6 +8040,113 @@ async def list_tools() -> list[Tool]:
                 "required": ["end_user_id"],
             },
         ),
+        # -- End-User CRUD (5) -------------------------------------------------
+        Tool(
+            name="enduser_create",
+            description="Create a new end-user profile. Requires user_id and name. Optional: email, delivery_prefs (JSON dict), status (trial/active/suspended/cancelled), tier (free/pro/enterprise).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "Unique user identifier (e.g. alice)",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "User display name",
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Email address",
+                        "default": "",
+                    },
+                    "delivery_prefs": {
+                        "type": "object",
+                        "description": "Delivery preferences as a JSON object (e.g. {channel: email})",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Account status (trial/active/suspended/cancelled)",
+                        "default": "trial",
+                        "enum": ["trial", "active", "suspended", "cancelled"],
+                    },
+                    "tier": {
+                        "type": "string",
+                        "description": "Account tier (free/pro/enterprise)",
+                        "default": "free",
+                        "enum": ["free", "pro", "enterprise"],
+                    },
+                },
+                "required": ["user_id", "name"],
+            },
+        ),
+        Tool(
+            name="enduser_get",
+            description="Get an end-user profile by user ID. Returns the full profile dict or an error if not found.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "User identifier to look up (e.g. alice)",
+                    },
+                },
+                "required": ["user_id"],
+            },
+        ),
+        Tool(
+            name="enduser_update",
+            description="Update an end-user profile (partial update). Only provided fields are changed. Returns the updated profile.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "User identifier to update (e.g. alice)",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "New display name (optional)",
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "New email address (optional)",
+                    },
+                    "delivery_prefs": {
+                        "type": "object",
+                        "description": "New delivery preferences JSON object (optional)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "New account status (optional)",
+                    },
+                    "tier": {
+                        "type": "string",
+                        "description": "New account tier (optional)",
+                    },
+                },
+                "required": ["user_id"],
+            },
+        ),
+        Tool(
+            name="enduser_delete",
+            description="Delete an end-user profile and associated subscriptions. Returns success or not-found error.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "User identifier to delete (e.g. alice)",
+                    },
+                },
+                "required": ["user_id"],
+            },
+        ),
+        Tool(
+            name="enduser_list",
+            description="List all end-user profiles. Returns items array and count.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
         # -- Stripe Billing (2) ------------------------------------------------
         Tool(
             name="create_checkout_session",
@@ -6699,6 +8256,42 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["end_user_id"],
+            },
+        ),
+        # -- Clean Cache (1) --------------------------------------------------
+        Tool(
+            name="clean_cache",
+            description=(
+                "Remove cached artifacts and temporary files. "
+                "Supports selective cleanup (collections, outputs) or "
+                "--everything mode. dry_run shows what would be deleted "
+                "without actually deleting."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "collections": {
+                        "type": "boolean",
+                        "description": "Remove cached collections/ contents",
+                        "default": False,
+                    },
+                    "outputs": {
+                        "type": "boolean",
+                        "description": "Remove outputs/ contents",
+                        "default": False,
+                    },
+                    "everything": {
+                        "type": "boolean",
+                        "description": "Remove ALL cached data (collections + outputs + knowledge + DB)",
+                        "default": False,
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Show what would be deleted without deleting",
+                        "default": False,
+                    },
+                },
+                "required": [],
             },
         ),
         # -- Channel Health (1) -------------------------------------------
@@ -6824,7 +8417,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "list_sources":
             result = _handle_list_sources(**arguments)
 
-        # -- Topic Management (4) -----------------------------------------
+        # -- Topic Management (6) -----------------------------------------
         elif name == "add_topic":
             result = _handle_add_topic(**arguments)
         elif name == "remove_topic":
@@ -6833,6 +8426,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_topics(**arguments)
         elif name == "list_keywords":
             result = _handle_list_keywords(**arguments)
+        elif name == "topic_group_add":
+            result = _handle_topic_group_add(**arguments)
+        elif name == "topic_group_remove":
+            result = _handle_topic_group_remove(**arguments)
 
         # -- Keywords Management (3) --------------------------------------
         elif name == "approve_keyword":
@@ -6863,6 +8460,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_search_knowledge_base(**arguments)
         elif name == "query_knowledge_graph":
             result = _handle_query_knowledge_graph(**arguments)
+        elif name == "knowledge_graph_export":
+            result = _handle_knowledge_graph_export(**arguments)
         elif name == "flag_for_knowledge_base":
             result = _handle_flag_for_knowledge_base(**arguments)
         elif name == "get_summary":
@@ -6897,10 +8496,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_kb_tier(**arguments)
         elif name == "reindex_kb":
             result = _handle_reindex_kb(**arguments)
+        elif name == "create_kb_entry":
+            result = _handle_create_kb_entry(**arguments)
+
+        # -- Audit (1) -------------------------------------------------------
+        elif name == "query_audit_log":
+            result = _handle_query_audit_log(**arguments)
 
         # -- CEFR Classification (1) ----------------------------------------
         elif name == "classify_cefr":
             result = _handle_classify_cefr(**arguments)
+        elif name == "cefr_batch":
+            result = _handle_cefr_batch(**arguments)
 
         # -- Output (5) ---------------------------------------------------
         elif name == "list_output_templates":
@@ -6925,6 +8532,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # -- Email (1) --------------------------------------------------------
         elif name == "send_email_digest":
             result = _handle_send_email_digest(**arguments)
+        elif name == "email_config":
+            result = _handle_email_config(**arguments)
 
         # -- Custom Extraction (2) ----------------------------------------
         elif name == "extract_fields":
@@ -6971,6 +8580,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_archive_project(**arguments)
         elif name == "batch_run":
             result = _handle_batch_run(**arguments)
+        elif name == "get_feeds":
+            result = _handle_get_feeds(**arguments)
         elif name == "list_active_collections":
             result = _handle_list_active_collections()
         elif name == "get_config":
@@ -7005,6 +8616,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_get_budget_thresholds()
         elif name == "set_budget_thresholds":
             result = _handle_set_budget_thresholds(**arguments)
+        elif name == "cost_dashboard":
+            result = _handle_cost_dashboard(**arguments)
+        elif name == "cost_allocation":
+            result = _handle_cost_allocation(**arguments)
 
         # -- Metrics (2) --------------------------------------------------
         elif name == "get_metrics":
@@ -7044,6 +8659,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "get_delivery_log":
             result = _handle_get_delivery_log(**arguments)
 
+        # -- Clean Cache (1) -------------------------------------------------
+        elif name == "clean_cache":
+            result = _handle_clean_cache(**arguments)
+
         # -- Channel Health (1) ------------------------------------------
         elif name == "get_channel_health":
             result = _handle_get_channel_health(**arguments)
@@ -7069,6 +8688,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_update_preferences(**arguments)
         elif name == "get_preferences":
             result = _handle_get_preferences(**arguments)
+
+        # -- End-User CRUD (5) --------------------------------------------------
+        elif name == "enduser_create":
+            result = _handle_enduser_create(**arguments)
+        elif name == "enduser_get":
+            result = _handle_enduser_get(**arguments)
+        elif name == "enduser_update":
+            result = _handle_enduser_update(**arguments)
+        elif name == "enduser_delete":
+            result = _handle_enduser_delete(**arguments)
+        elif name == "enduser_list":
+            result = _handle_enduser_list()
 
         # -- Stripe Billing (3) ------------------------------------------------
         elif name == "create_checkout_session":

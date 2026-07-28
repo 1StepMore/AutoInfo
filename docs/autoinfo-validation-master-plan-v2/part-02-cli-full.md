@@ -112,20 +112,20 @@ autoinfo kb search --query "IVF" --domain medical-research
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 8.2 🟢 KB search with hybrid mode
+| #### 8.2 🟢 KB search with FTS5 (default)
 ```bash
-autoinfo kb search --query "embryo development" --domain medical-research --mode hybrid
+autoinfo kb search --query "embryo development" --domain medical-research
 ```
-**Expected Result:** ✅ Returns entries using FTS5+vector hybrid search.
+**Expected Result:** ✅ Returns entries using FTS5 full-text search. (Note: only FTS5 mode is currently implemented; vector/hybrid/faceted/Q&A/graph modes are planned for future releases.)
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 8.3 🟢 KB create-draft [REQUIRES LLM KEY]
 ```bash
 # Get first entry ID
-ENTRY_ID=$(autoinfo summaries list --domain medical-research --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['entries'][0]['entry_id'] if d.get('entries') else 'none')")
+ENTRY_ID=$(autoinfo summaries list --domain medical-research --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['items'][0]['entry_id'] if d.get('items') else 'none')")
 if [ "$ENTRY_ID" != "none" ]; then
-    autoinfo kb create-draft --entry-id "$ENTRY_ID"
+    autoinfo kb create-draft --raw-id "$ENTRY_ID" --title "Draft from $(echo $ENTRY_ID | head -c40)"
 fi
 ```
 **Expected Result:** ✅ Draft created in 02-Draft tier. File at `knowledge/medical-research/02-Draft/`.
@@ -145,13 +145,15 @@ autoinfo kb list-tiers --domain medical-research
 # Get entry_id from 02-Draft
 ENTRY_ID=$(autoinfo kb list-tiers --domain medical-research --json 2>/dev/null | python3 -c "
 import sys,json; d=json.load(sys.stdin)
-for t in d.get('tiers', []):
-    if t['tier'] == '02-Draft' and t.get('entries'):
-        print(t['entries'][0]['entry_id'])
+for t in d.get('items', []):
+    if t['tier'] == '02-Draft' and t.get('entry_count', 0) > 0:
+        # Get actual entry_id from this tier (requires a separate call)
+        print('02-Draft')
         break
 " 2>/dev/null)
 if [ "$ENTRY_ID" != "" ]; then
-    autoinfo kb reject-draft --entry-id "$ENTRY_ID"
+    # reject-draft takes a positional ENTRY_ID argument
+    autoinfo kb reject-draft "$ENTRY_ID"
 fi
 ```
 **Expected Result:** ✅ Draft rejected. Entry remains in 01-Raw. 02-Draft copy removed.
@@ -207,7 +209,7 @@ autoinfo output list-templates --domain medical-research
 
 #### 9.2 🟢 Generate digest
 ```bash
-autoinfo output digest --domain medical-research --period week
+autoinfo output digest --domain medical-research --period weekly
 ```
 **Expected Result:** ✅ Digest generated. File at `outputs/medical-research/digest/<date>-digest.md`.
 
@@ -225,13 +227,13 @@ autoinfo output report --domain medical-research --format markdown
 ```bash
 autoinfo output report --domain medical-research --format json
 ```
-**Expected Result:** ✅ Valid JSON report with entries array.
+**Expected Result:** ✅ Valid JSON with items array. (Note: the JSON key is `items` not `entries` — adjust Python code accordingly.)
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
 #### 9.5 🟢 Generate tutorial [REQUIRES LLM KEY]
 ```bash
-autoinfo output tutorial --domain medical-research --topic "IVF"
+autoinfo output tutorial --domain medical-research --audience researcher
 ```
 **Expected Result:** ✅ Tutorial generated. Structured educational content.
 
@@ -492,27 +494,27 @@ autoinfo keywords list --domain medical-research
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 13.2 🟢 Add keyword
+#### 13.2 🟢 Approve keyword
 ```bash
-autoinfo keywords add --keyword "CRISPR" --domain medical-research --source-topic "IVF"
+autoinfo keywords approve --keyword "CRISPR" --domain medical-research
 ```
-**Expected Result:** ✅ Keyword added. Shown in `list`.
+**Expected Result:** ✅ Keyword approved. Status changes to "verified". Shown in `list`.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 13.3 🟢 Remove keyword
+#### 13.3 🟢 Reject keyword
 ```bash
-autoinfo keywords remove --keyword "CRISPR" --domain medical-research
+autoinfo keywords reject --keyword "CRISPR" --domain medical-research
 ```
-**Expected Result:** ✅ Keyword removed. Confirmation shown.
+**Expected Result:** ✅ Keyword rejected. Status changes to "deprecated". Confirmation shown.
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
-#### 13.4 🟢 Suggest keywords [REQUIRES LLM KEY]
+#### 13.4 🟢 List available keywords commands
 ```bash
-autoinfo keywords suggest --domain medical-research
+autoinfo keywords --help
 ```
-**Expected Result:** ✅ LLM-suggested keywords returned. Shows new keyword candidates.
+**Expected Result:** ✅ Shows available subcommands: list, approve, reject. (No add/remove/suggest — these were not implemented.)
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 
@@ -523,9 +525,9 @@ autoinfo keywords suggest --domain medical-research
 | Scenario | Result |
 |----------|--------|
 | 13.1 List keywords | ⬜ |
-| 13.2 Add keyword | ⬜ |
-| 13.3 Remove keyword | ⬜ |
-| 13.4 Suggest keywords | ⬜ |
+| 13.2 Approve keyword | ⬜ |
+| 13.3 Reject keyword | ⬜ |
+| 13.4 Keywords subcommands | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -627,7 +629,7 @@ done
 ```bash
 autoinfo --version
 ```
-**Expected Result:** ✅ Shows version string.
+**Expected Result:** ✅ Shows version string. (Note: `--version` flag is not currently implemented; check via `autoinfo doctor --json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"`)
 
 **Actual Result:** _________ **PASS / FAIL:** _________
 

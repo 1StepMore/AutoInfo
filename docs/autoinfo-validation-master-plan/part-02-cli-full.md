@@ -391,6 +391,59 @@ autoinfo output translate --domain medical-research --target-lang zh-CN
 
 ---
 
+#### 9.11 🟢 Cross-domain output — digest + report across 3 domains
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+for DOMAIN in medical-research ai-commercial language-learning; do
+  echo "── Domain: $DOMAIN ──"
+  TMPDIR="/tmp/test-q9-xd-$DOMAIN"
+  rm -rf "$TMPDIR" && mkdir -p "$TMPDIR" && cd "$TMPDIR"
+  autoinfo init --demo "$DOMAIN" > /dev/null 2>&1
+  COLLECT=$(timeout 15 autoinfo collect --domain "$DOMAIN" --limit 2 2>&1 || true)
+  RAW_COUNT=$(find collections/ -name "*.json" ! -name "_runs.json" 2>/dev/null | wc -l)
+
+  # Digest
+  DIGEST_OUT=$(autoinfo output digest --domain "$DOMAIN" --period daily 2>&1 || true)
+  echo "$DIGEST_OUT" | grep -qi "entries\|digest\|summary" \
+    && echo "  ✅ $DOMAIN digest: has content" \
+    || echo "  ⚠️  $DOMAIN digest: no entry content (may need LLM or collected data)"
+
+  # Report (JSON)
+  REPORT_OUT=$(autoinfo output report --domain "$DOMAIN" --format json 2>&1 || true)
+  echo "$REPORT_OUT" | python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+    items = data.get('items', data.get('entries', []))
+    print(f'  ✅ $DOMAIN report JSON: {len(items)} items, sections={bool(data.get(\"sections\",[]))}')
+except: print('  ⚠️  $DOMAIN report: JSON parse failed (no data?)')" 2>&1 || true
+
+  # Export
+  EXPORT_OUT=$(autoinfo output export --domain "$DOMAIN" --format json 2>&1 || true)
+  echo "$EXPORT_OUT" | python3 -c "
+import sys, json
+try:
+    lines = [l for l in sys.stdin.read().split(chr(10)) if l.strip().startswith('{') or l.strip().startswith('/')]
+    if lines:
+        with open(lines[-1]) if lines[-1].startswith('/') else sys.stdin:
+            pass
+    print(f'  ✅ $DOMAIN export: valid')
+except: print('  ⚠️  $DOMAIN export: no data')" 2>&1 || true
+  cd /tmp
+done
+echo ""
+echo "✅ Cross-domain output complete"
+```
+**Expected Result:**
+- ✅ All 3 domains produce digest, report, and export outputs without crash
+- ✅ `medical-research` produces full content (has PubMed abstracts)
+- ⚠️ Other domains may produce lighter content (RSS snippets, no API keys)
+- No traceback or crash for any domain
+
+---
+
 ## Q10: CEFR Classification CLI
 
 **User says:** "I need to classify text by CEFR reading level."

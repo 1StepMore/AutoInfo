@@ -34,6 +34,7 @@ class LLMConfig:
     model: str = ""
     api_key: str = ""
     base_url: str = ""
+    json_mode: bool = True
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
@@ -59,6 +60,7 @@ class SourceConfig:
     url: str = ""
     quality_tier: int = 1
     tos_classification: str = "open"
+    fetch_depth: str = "abstract"
     settings: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -379,7 +381,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     domains = []
     for d in domains_raw:
         sources_raw: list[dict[str, Any]] = d.get("sources", []) or []
-        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification"})
+        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth"})
         _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
         sources = []
         for s in sources_raw:
@@ -387,6 +389,11 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             tos = s.get("tos_classification")
             if not tos:
                 tos = _TIER_TOS_MAP.get(tier, "open")
+            raw_settings = {k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS}
+            # Flatten YAML's nested 'settings' key into the top level
+            inner = raw_settings.pop("settings", None)
+            if isinstance(inner, dict):
+                raw_settings.update(inner)
             sources.append(
                 SourceConfig(
                     name=s.get("name", ""),
@@ -394,7 +401,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                     url=s.get("url", ""),
                     quality_tier=tier,
                     tos_classification=tos,
-                    settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
+                    fetch_depth=s.get("fetch_depth", "abstract"),
+                    settings=raw_settings,
                 )
             )
         topics_raw: list[dict[str, Any]] = d.get("topics", []) or []
@@ -859,6 +867,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "url": s.url,
                     "quality_tier": s.quality_tier,
                     "tos_classification": s.tos_classification,
+                    **({"fetch_depth": s.fetch_depth} if s.fetch_depth != "abstract" else {}),
                     **s.settings,
                 }
                 for s in domain.sources

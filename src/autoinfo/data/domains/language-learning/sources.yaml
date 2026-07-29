@@ -4,9 +4,9 @@ name: language-learning
 description: "Language learning — children's English, vocabulary, reading comprehension"
 
 sources:
-  - name: bbc-learning-english
+  - name: voa-learning-english
     type: rss
-    url: https://feeds.bbci.co.uk/learningenglish/features/6minuteenglish/rss.xml
+    url: https://learningenglish.voanews.com/api/zprqo$iuupk$
     quality_tier: 1
     frequency: weekly
     access: free
@@ -14,7 +14,7 @@ sources:
 
   - name: project-gutenberg
     type: rss
-    url: https://www.gutenberg.org/cache/epub/feeds/today.epub.xml
+    url: https://www.gutenberg.org/cache/epub/feeds/today.rss
     quality_tier: 1
     frequency: daily
     access: free

@@ -6,12 +6,21 @@ description: "Tech, AI, and developer intelligence — trending repos, developer
 sources:
   - name: GitHub Trending
     type: api
-    url: https://api.github.com/repos
+    url: https://api.github.com/search/repositories
     quality_tier: 1
     frequency: daily
-    access: api_key
-    requires_key: true
-    rate_limit: 60  # requests per hour (unauthenticated: 60)
+    access: free
+    rate_limit: 10  # requests per minute (unauthenticated: 10)
+    query_param: q
+    params:
+      sort: stars
+      order: desc
+    json_path: items
+    field_mapping:
+      id: id
+      title: full_name
+      content: description
+      source_url: html_url
 
   - name: HackerNews API
     type: api
@@ -30,11 +39,13 @@ sources:
 
   - name: Stack Exchange
     type: api
-    url: https://api.stackexchange.com/2.3
+    url: https://api.stackexchange.com/2.3/questions?order=desc&sort=activity&site=stackoverflow&pagesize=10
     quality_tier: 2
     frequency: hourly
     access: free
     rate_limit: 300  # requests per day
+    json_path: items
+    field_mapping: {id: question_id, title: title, content: title, source_url: link}
 
   - name: ProductHunt
     type: api

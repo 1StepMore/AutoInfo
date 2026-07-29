@@ -15,7 +15,7 @@ sources:
 
   - name: HackerNews API
     type: api
-    url: https://hacker-news.firebaseio.com/v0
+    url: https://hacker-news.firebasedatabase.app/v0
     quality_tier: 2
     frequency: hourly
     access: free

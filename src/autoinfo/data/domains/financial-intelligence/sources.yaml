@@ -15,7 +15,7 @@ sources:
 
   - name: FRED
     type: api
-    url: https://api.stlouisfed.org/fred
+    url: https://api.stlouisfed.org/fred/
     quality_tier: 1
     frequency: daily
     access: free

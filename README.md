@@ -272,9 +272,9 @@ autoinfo trace <trace_id>           # Per-item pipeline trace
 |--------|---------|----------|--------|
 | **Medical Research** | PubMed (REST API), arXiv, CrossRef | 🔴 P0 | ✅ Implemented (3 curated sources) |
 | **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API, Crunchbase, LMSYS | 🟡 P1 | ✅ Implemented (4 curated sources) |
-| **Financial/Business Intelligence** | Alpha Vantage, FRED, SEC EDGAR, Yahoo Finance, OpenAlex (financial category) | 🟡 P1 | ✅ Implemented (4 curated sources) |
-| **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech), Stack Exchange, ProductHunt | 🟡 P1 | ✅ Implemented (4 curated sources) |
-| **Language Learning** | Project Gutenberg, BBC Learning English, news-in-levels, commonlit | 🟢 P2 | ✅ Implemented (4 curated sources) |
+| **Financial/Business Intelligence** | Alpha Vantage, FRED, SEC EDGAR, Twelve Data, World Bank Data | 🟡 P1 | ✅ Implemented (5 curated sources) |
+| **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech), Stack Exchange, ProductHunt | 🟡 P1 | ✅ Implemented (5 curated sources) |
+| **Language Learning** | Project Gutenberg, VOA Learning English, news-in-levels, commonlit | 🟢 P2 | ✅ Implemented (4 curated sources) |
 
 ## Development
 

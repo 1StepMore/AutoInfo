@@ -17,6 +17,9 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **PR #59 — Unpaywall removal + empty keywords validation**: Removed Unpaywall from medical-research demo config, added CrossRef API settings (query param, JSON path, field mapping). Added validation for empty keyword lists in topic configuration.
 - **PR #61 — CLI invocation mismatches**: Fixed 12 CLI flag mismatches across validation plan v2 docs (e.g. `--language`→`--lang`, `email send`→`email send-digest`, `--period week`→`--period weekly`).
 - **Doc staleness (Unpaywall)**: Removed stale Unpaywall references from README.md demo domains table, `docs/dev/specs/expectations.md` (2 locations), and `docs/dev/director-user-guide.md` (example dialogue).
+- **8 broken demo domain sources** — Fixed sources across financial-intelligence, tech-ai-developer, and language-learning domains. Stack Exchange URL/field_mapping/json_path fixed. FRED added `auth_mode: query` for BYOK. SEC EDGAR migrated from broken REST API to working Atom RSS feed. GitHub Trending URL changed to working Search API endpoint. Project Gutenberg RSS URL corrected. BBC Learning English renamed to VOA Learning English (working feed). Yahoo Finance replaced with Twelve Data (free market data API). World Bank Data added as new financial source.
+- **`_traverse_json` integer index support** — `http_api.py` now handles integer indices in JSON paths (e.g. `"1"` for the second element in a response array), required by World Bank Data source.
+- **RSS User-Agent agent param** — `rss.py` passes `agent` param through to HTTP request headers, required by SEC EDGAR Atom feed.
 
 ### Changed
 - **MCP tool inventory**: 132 → 133 tools (added `configure_llm` to System category). All doc references updated (README, AGENTS, mcp-tools.md, doc-manager-skill).

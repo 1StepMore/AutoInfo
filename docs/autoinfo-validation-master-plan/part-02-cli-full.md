@@ -316,7 +316,7 @@ ALL_PASS=true
 OUTPUT=$(autoinfo output presentation --domain medical-research --topic "IVF" 2>&1)
 EXIT_CODE=$?
 
-echo "$OUTPUT" | grep -qi "slide\|<section\|<div class="slide"\|# "   && echo "  ✅ PASS: presentation has slide structure"   || { echo "  ❌ FAIL: presentation missing slide structure"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -qi 'slide\|<section\|<div class="slide"\|#'   && echo "  ✅ PASS: presentation has slide structure"   || { echo "  ❌ FAIL: presentation missing slide structure"; ALL_PASS=false; }
 
 echo "$OUTPUT" | grep -qi "IVF\|fertilit\|embryo\|treatment"   && echo "  ✅ PASS: presentation content matches requested topic"   || { echo "  ❌ FAIL: presentation content unrelated to topic"; ALL_PASS=false; }
 

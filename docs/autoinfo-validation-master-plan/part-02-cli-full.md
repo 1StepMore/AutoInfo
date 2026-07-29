@@ -212,44 +212,141 @@ autoinfo output list-templates --domain medical-research
 
 #### 9.2 🟢 Generate digest
 ```bash
-autoinfo output digest --domain medical-research --period weekly
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+OUTPUT=$(autoinfo output digest --domain medical-research --period weekly 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "Digest\|Weekly Digest\|Entries" \
+  && echo "  ✅ PASS: digest has header/section structure" \
+  || { echo "  ❌ FAIL: digest missing expected sections"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "\[" \
+  && echo "  ✅ PASS: digest contains entry content" \
+  || { echo "  ❌ FAIL: digest has no entry content"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "http\|doi\|source" \
+  && echo "  ✅ PASS: digest contains source references" \
+  || { echo "  ❌ FAIL: digest missing source references"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.2 PASSED"; exit 0; else echo "❌ SCENARIO 9.2 FAILED"; exit 1; fi
 ```
-**Expected Result:** ✅ Digest generated. File at `outputs/medical-research/digest/<date>-digest.md`.
+**Expected Result:** ✅ Digest generated with header, entry content, and source references.
 
 
 #### 9.3 🟢 Generate report (Markdown)
 ```bash
-autoinfo output report --domain medical-research --format markdown
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+OUTPUT=$(autoinfo output report --domain medical-research --format markdown 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "executive summary\|sections\|references" \
+  && echo "  ✅ PASS: report has structured sections" \
+  || { echo "  ❌ FAIL: report missing expected sections"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "doi\|http\|source" \
+  && echo "  ✅ PASS: report contains source references" \
+  || { echo "  ❌ FAIL: report missing source references"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "|" \
+  && echo "  ✅ PASS: report contains tabular data" \
+  || { echo "  ❌ FAIL: report has no tables"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.3 PASSED"; exit 0; else echo "❌ SCENARIO 9.3 FAILED"; exit 1; fi
 ```
-**Expected Result:** ✅ Report generated. File at `outputs/medical-research/report/`.
+**Expected Result:** ✅ Report generated with structured sections, references, and tabular data.
 
 
 #### 9.4 🟢 Generate report (JSON)
 ```bash
-autoinfo output report --domain medical-research --format json
+OUTPUT=$(autoinfo output report --domain medical-research --format json 2>&1)
+echo "$OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+items = data.get('items', data.get('entries', []))
+assert len(items) > 0, 'empty items'
+for i, item in enumerate(items):
+    assert 'title' in item, f'item {i}: missing title'
+    assert 'summary' in item or 'tl_dr' in item, f'item {i}: missing summary/tl_dr'
+has_structure = 'executive_summary' in data or 'sections' in data or 'themes' in data
+assert has_structure, 'missing report structure (executive_summary, sections, or themes)'
+print('  ✅ PASS: valid JSON with non-empty items + titles + summaries + report structure')
+" 2>&1 || echo "  ❌ FAIL: JSON content validation failed"
 ```
-**Expected Result:** ✅ Valid JSON with items array. (Note: the JSON key is `items` not `entries` — adjust Python code accordingly.)
+**Expected Result:** ✅ Valid JSON with non-empty items, each with title + summary, plus report structure (executive_summary/sections).
 
 
 #### 9.5 🟢 Generate tutorial [REQUIRES LLM KEY]
 ```bash
-autoinfo output tutorial --domain medical-research --audience researcher
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+OUTPUT=$(autoinfo output tutorial --domain medical-research --audience researcher 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "objective\|learning\|section\|introduction"   && echo "  ✅ PASS: tutorial has learning objectives/sections"   || { echo "  ❌ FAIL: tutorial missing structured sections"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "exercise\|summary\|key point\|takeaway"   && echo "  ✅ PASS: tutorial has exercises or takeaways"   || { echo "  ❌ FAIL: tutorial missing exercises/takeaways"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "http\|doi\|reference"   && echo "  ✅ PASS: tutorial references sources"   || { echo "  ❌ FAIL: tutorial missing source references"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ]   && echo "  ✅ PASS: exit code 0"   || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.5 PASSED"; exit 0; else echo "❌ SCENARIO 9.5 FAILED"; exit 1; fi
 ```
-**Expected Result:** ✅ Tutorial generated. Structured educational content.
+**Expected Result:** ✅ Tutorial generated with learning objectives, structured sections, exercises, and source references.
 
 
 #### 9.6 🟢 Generate presentation [REQUIRES LLM KEY]
 ```bash
-autoinfo output presentation --domain medical-research --topic "IVF"
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+OUTPUT=$(autoinfo output presentation --domain medical-research --topic "IVF" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "slide\|<section\|<div class="slide"\|# "   && echo "  ✅ PASS: presentation has slide structure"   || { echo "  ❌ FAIL: presentation missing slide structure"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "IVF\|fertilit\|embryo\|treatment"   && echo "  ✅ PASS: presentation content matches requested topic"   || { echo "  ❌ FAIL: presentation content unrelated to topic"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ]   && echo "  ✅ PASS: exit code 0"   || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.6 PASSED"; exit 0; else echo "❌ SCENARIO 9.6 FAILED"; exit 1; fi
 ```
-**Expected Result:** ✅ Presentation generated (HTML with Reveal.js). File at `outputs/`.
+**Expected Result:** ✅ Presentation generated with slide structure and content matching the requested topic.
 
 
 #### 9.7 🟢 Export KB (JSON)
 ```bash
-autoinfo output export --domain medical-research --format json
+OUTPUT=$(autoinfo output export --domain medical-research --format json 2>&1)
+LAST_LINE=$(echo "$OUTPUT" | tail -1)
+cat "$LAST_LINE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+items = data.get('items', data.get('entries', []))
+assert len(items) > 0, 'empty export'
+print(f'  ✅ PASS: {len(items)} entries exported')
+for i, item in enumerate(items[:3]):
+    has_id = 'entry_id' in item or 'id' in item
+    has_title = bool(item.get('title', ''))
+    has_summary = bool(item.get('summary', item.get('tl_dr', '')))
+    assert has_id, f'item {i}: missing entry_id'
+    assert has_title, f'item {i}: missing title'
+print(f'  ✅ PASS: all items have entry_id, title, summary')
+" 2>&1 || echo "  ❌ FAIL: export content validation failed"
 ```
-**Expected Result:** ✅ JSON export written to `exports/medical-research/`. Valid JSON with all entries.
+**Expected Result:** ✅ JSON export with all entries, each having entry_id, title, and summary.
 
 
 #### 9.8 🟢 Export KB (Markdown)

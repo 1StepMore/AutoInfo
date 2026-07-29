@@ -43,9 +43,9 @@ DOMAINS: list[str] = [
 EXPECTED_PASS: dict[str, list[str]] = {
     "medical-research": ["pubmed", "arXiv", "CrossRef"],
     "ai-commercial": ["techcrunch", "producthunt", "Crunchbase", "LMSYS"],
-    "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Yahoo Finance"],
+    "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Twelve Data", "World Bank Data"],
     "tech-ai-developer": ["Substack RSS (tech) — Pragmatic Engineer", "GitHub Trending", "HackerNews API", "Stack Exchange", "ProductHunt"],
-    "language-learning": ["bbc-learning-english", "project-gutenberg", "news-in-levels", "commonlit"],
+    "language-learning": ["voa-learning-english", "project-gutenberg", "news-in-levels", "commonlit"],
 }
 
 EXPECTED_FAIL: dict[str, list[str]] = {
@@ -153,7 +153,7 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-    # 3. Grand totals: 20 pass, 0 fail
-    assert len(all_pass) == 20, f"Expected 20 PASS, got {len(all_pass)}"
-    assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-    assert total == 20, f"Expected 20 total sources, got {total}"
+        # 3. Grand totals: 21 pass, 0 fail
+        assert len(all_pass) == 21, f"Expected 21 PASS, got {len(all_pass)}"
+        assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
+        assert total == 21, f"Expected 21 total sources, got {total}"

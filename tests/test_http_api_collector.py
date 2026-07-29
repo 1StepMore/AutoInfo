@@ -533,7 +533,7 @@ class TestHttpApiDispatch:
         assert isinstance(handler, HttpApiHandler)
 
     def test_all_financial_api_sources_dispatch(self) -> None:
-        for name in ["Alpha Vantage", "FRED", "SEC EDGAR", "Yahoo Finance"]:
+        for name in ["Alpha Vantage", "FRED", "Twelve Data", "World Bank Data"]:
             config = SourceConfig(name=name, type="api", url=f"https://api.example.com/{name}")
             handler = _build_handler(config)
             assert isinstance(handler, HttpApiHandler), f"{name} should dispatch to HttpApiHandler"

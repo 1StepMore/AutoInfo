@@ -1,6 +1,6 @@
 """Tests for demo domain source YAML config files.
 
-Verifies that all 3 demo domains have their expected sources defined
+Verifies that all 5 demo domains have their expected sources defined
 with valid structure.
 """
 
@@ -23,8 +23,16 @@ EXPECTED = {
         "new": ["Crunchbase", "LMSYS"],
     },
     "language-learning": {
-        "old": ["bbc-learning-english", "project-gutenberg"],
+        "old": ["voa-learning-english", "project-gutenberg"],
         "new": ["news-in-levels", "commonlit"],
+    },
+    "financial-intelligence": {
+        "old": ["Alpha Vantage", "FRED"],
+        "new": ["SEC EDGAR", "Twelve Data", "World Bank Data"],
+    },
+    "tech-ai-developer": {
+        "old": ["GitHub Trending", "HackerNews API"],
+        "new": ["Stack Exchange", "ProductHunt", "Substack RSS (tech) — Pragmatic Engineer"],
     },
 }
 
@@ -39,7 +47,9 @@ def _load_sources(domain: str) -> list[dict]:
 @pytest.mark.parametrize("domain, old, new", [
     ("medical-research", ["pubmed"], ["arXiv", "CrossRef"]),
     ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "LMSYS"]),
-    ("language-learning", ["bbc-learning-english", "project-gutenberg"], ["news-in-levels", "commonlit"]),
+    ("language-learning", ["voa-learning-english", "project-gutenberg"], ["news-in-levels", "commonlit"]),
+    ("financial-intelligence", ["Alpha Vantage", "FRED"], ["SEC EDGAR", "Twelve Data", "World Bank Data"]),
+    ("tech-ai-developer", ["GitHub Trending", "HackerNews API"], ["Stack Exchange", "ProductHunt", "Substack RSS (tech) — Pragmatic Engineer"]),
 ])
 class TestDemoSources:
     def test_old_sources_preserved(self, domain: str, old: list[str], new: list[str]) -> None:

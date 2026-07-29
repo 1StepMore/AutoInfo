@@ -281,6 +281,10 @@ def _collect_from_source(
 
     items_found = len(items)
 
+    # Ensure every item carries the correct domain
+    for item in items:
+        item.domain = domain
+
     # Log API call cost (non-blocking — failures are swallowed)
     try:
         CostMeter().log_api_call(

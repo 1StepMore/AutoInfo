@@ -519,6 +519,51 @@ autoinfo topics remove --topic-id "Nonexistent Topic" --domain medical-research
 **Expected Result:** ❌ Error: topic not found.
 
 
+
+
+## Q6b: Cross-Domain Collect — All 5 Demo Domains
+
+**User says:** "I want to collect data from all available domains to see which sources actually work."
+
+### Prerequisites
+```bash
+rm -rf /tmp/test-q6b && mkdir -p /tmp/test-q6b && cd /tmp/test-q6b
+```
+
+### Scenarios
+
+#### 6b.1 🟢 Init + collect all 5 domains — verify each produces raw data
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+DOMAINS="medical-research ai-commercial financial-intelligence language-learning tech-ai-developer"
+for DOMAIN in $DOMAINS; do
+  echo "── Domain: $DOMAIN ──"
+  rm -rf "$DOMAIN" && mkdir "$DOMAIN" && cd "$DOMAIN"
+  OUTPUT=$(autoinfo init --demo "$DOMAIN" 2>&1)
+  COLLECT_OUT=$(timeout 15 autoinfo collect --domain "$DOMAIN" --limit 2 2>&1 || true)
+  echo "$COLLECT_OUT" | tail -3
+  # Check raw data files exist
+  RAW_COUNT=$(find collections/ -name "*.json" ! -name "_runs.json" 2>/dev/null | wc -l)
+  if [ "$RAW_COUNT" -gt 0 ]; then
+    echo "  ✅ PASS: $DOMAIN — $RAW_COUNT raw JSON files created"
+  else
+    echo "  ⚠️  $DOMAIN — 0 raw files (source may need API key or feed may be empty)"
+  fi
+  cd ..
+done
+echo ""
+echo "✅ Cross-domain collection complete. See per-domain results above."
+```
+**Expected Result:**
+- ✅ Each domain produces at least `init` output (config created)
+- ✅ `medical-research` produces raw JSON files from PubMed
+- ✅ `ai-commercial` produces raw JSON files from RSS feeds
+- ⚠️ Other domains may return 0 items if sources need API keys or feeds are empty
+- No scenario crashes or produces traceback for any domain
+
+
 ---
 
 ### 📊 Q6 Verdict

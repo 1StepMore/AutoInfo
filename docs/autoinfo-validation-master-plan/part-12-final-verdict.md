@@ -214,6 +214,36 @@
 
 ---
 
+## Domain Coverage Checklist
+
+Before signing off, confirm that the following minimum domain matrix was tested:
+
+| Domain | Init & Collect | KB Process | Digest/Report | Export |
+|--------|---------------|------------|---------------|--------|
+| medical-research | ✅ (Q2) | ✅ (Q3) | ✅ (Q9) | ✅ (Q9) |
+| ai-commercial | ⬜ (Q6b) | ⬜ | ⬜ (Q9.11) | ⬜ (Q9.11) |
+| language-learning | ⬜ (Q6b) | ⬜ | ⬜ (Q9.11) | ⬜ (Q9.11) |
+| financial-intelligence | ⬜ (Q6b) | ⬜ | ⬜ | ⬜ |
+| tech-ai-developer | ⬜ (Q6b) | ⬜ | ⬜ | ⬜ |
+
+- [ ] At least 3 domains produce non-empty raw data
+- [ ] At least 2 domains produce digest/report/export output without crash
+- [ ] Any domain with 0 items has documented reason (API key required, feed empty, etc.)
+
+## Data Format Completeness
+
+| Format Stage | medical-research | ai-commercial | language-learning |
+|-------------|-----------------|---------------|-------------------|
+| Raw cache JSON | ✅ | ⬜ | ⬜ |
+| KB 01-Raw markdown | ✅ | ⬜ | ⬜ |
+| KB 02-Draft | ✅ | ⬜ | ⬜ |
+| KB 03-Wiki | ✅ | ⬜ | ⬜ |
+| Digest output | ✅ | ⬜ | ⬜ |
+| Report output | ✅ | ⬜ | ⬜ |
+| Export output | ✅ | ⬜ | ⬜ |
+
+---
+
 ## Production Gap Checklist
 
 | Criteria | Status | Source |

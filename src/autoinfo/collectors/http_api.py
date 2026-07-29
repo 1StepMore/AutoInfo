@@ -351,6 +351,11 @@ def _traverse_json(data: dict[str, Any], dot_path: str) -> Any:
             current = current.get(key)
             if current is None:
                 return None
+        elif isinstance(current, list) and key.isdigit():
+            idx = int(key)
+            current = current[idx] if 0 <= idx < len(current) else None
+            if current is None:
+                return None
         else:
             return None
     return current

@@ -1074,7 +1074,7 @@ def run_processing(
     # -- Auto-verify: compare expected entries vs KB store count ----------
     if result.kb_entries_created > 0:
         try:
-            actual_count = kb_store.count_entries(domain)
+            actual_count = kb_store.count_entries()  # total across all domains
             if actual_count < result.kb_entries_created:
                 logger.warning(
                     "KB count mismatch: expected %d entries, SQLite returned %d. "

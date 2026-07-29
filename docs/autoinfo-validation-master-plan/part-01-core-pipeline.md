@@ -71,7 +71,7 @@ autoinfo init --demo medical-research
 ```bash
 autoinfo init --list-domains
 ```
-**Expected Result:** ✅ Prints available demo domains (medical-research, ai-commercial, language-learning). Exit code 0.
+**Expected Result:** ✅ Prints available demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning). Exit code 0.
 
 Note: `autoinfo init` without `--demo` launches an interactive wizard (requires TTY). Use `--list-domains` to list domains non-interactively.
 
@@ -514,7 +514,7 @@ autoinfo topics remove --topic-id "Gene Therapy" --domain medical-research
 
 #### 6.4 🔴 Remove nonexistent topic
 ```bash
-autoinfo topics remove --name "Nonexistent Topic" --domain medical-research
+autoinfo topics remove --topic-id "Nonexistent Topic" --domain medical-research
 ```
 **Expected Result:** ❌ Error: topic not found.
 

@@ -60,6 +60,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from autoinfo import __version__
+from autoinfo.cli.init import _list_demo_domains
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -2902,6 +2903,103 @@ def _handle_init_project(
                 "message": str(exc),
                 "actionable": True,
             },
+        }
+
+
+def _handle_configure_llm(
+    provider: str = "",
+    model: str = "",
+    api_key: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
+    """Update LLM configuration in .autoinfo/config.yaml.
+
+    Parameters
+    ----------
+    provider:
+        LLM provider name (e.g. \"openai\", \"openrouter\").
+    model:
+        LLM model name (e.g. \"gpt-4\", \"deepseek/deepseek-chat\").
+    api_key:
+        API key reference — stored as ``${AUTOINFO_LLM_API_KEY}``
+        (env var reference), never the raw key.
+        The caller should set the ``AUTOINFO_LLM_API_KEY`` env var.
+    base_url:
+        LLM base URL (e.g. \"http://localhost:11434/v1\").
+    """
+    config_path = _config_path()
+
+    # No-op when nothing is supplied
+    if not any([provider, model, api_key, base_url]):
+        return {
+            "status": "noop",
+            "message": (
+                "No parameters supplied. Nothing to configure."
+            ),
+        }
+
+    # Check config exists
+    if not config_path.exists():
+        return {
+            "error_code": "CONFIG_NOT_FOUND",
+            "message": (
+                "Configuration not found. "
+                "Run init_project first to create .autoinfo/config.yaml"
+            ),
+            "actionable": True,
+            "success": False,
+        }
+
+    try:
+        import yaml
+
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f)
+        if cfg is None:
+            cfg = {}
+
+        # Incremental updates — only write fields explicitly provided
+        if provider:
+            cfg.setdefault("llm", {})["provider"] = provider
+        if model:
+            cfg.setdefault("llm", {})["model"] = model
+        if base_url:
+            cfg.setdefault("llm", {})["base_url"] = base_url
+        if api_key:
+            # Store env var reference, NEVER the raw key
+            cfg.setdefault("llm", {})["api_key"] = "${AUTOINFO_LLM_API_KEY}"
+
+        with open(config_path, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+        updated = {
+            "provider": provider or "(unchanged)",
+            "model": model or "(unchanged)",
+            "base_url": base_url or "(unchanged)",
+            "api_key": (
+                "${AUTOINFO_LLM_API_KEY} (env var reference written)"
+                if api_key
+                else "(unchanged)"
+            ),
+        }
+
+        return {
+            "status": "success",
+            "message": (
+                "LLM configured. "
+                "Also set AUTOINFO_LLM_API_KEY env var for the API key."
+            ),
+            "updated": updated,
+            "config_path": str(config_path),
+        }
+
+    except Exception as exc:
+        logger.exception("configure_llm failed")
+        return {
+            "error_code": "INTERNAL_ERROR",
+            "message": str(exc),
+            "actionable": True,
+            "success": False,
         }
 
 
@@ -7917,7 +8015,7 @@ async def list_tools() -> list[Tool]:
                     "domain": {
                         "type": "string",
                         "description": "Demo domain name (e.g. medical-research)",
-                        "enum": ["medical-research", "ai-commercial", "language-learning"],
+                        "enum": _list_demo_domains(),
                     },
                     "project_name": {
                         "type": "string",
@@ -7946,6 +8044,41 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="configure_llm",
+            description=(
+                "Update LLM configuration in .autoinfo/config.yaml. "
+                "Incremental: only updates fields explicitly provided. "
+                "api_key is stored as env var reference (${AUTOINFO_LLM_API_KEY}), "
+                "never the raw key. No-op when no parameters are supplied."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "description": "LLM provider name (e.g. \"openai\", \"openrouter\")",
+                        "default": "",
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "LLM model name (e.g. \"gpt-4\", \"deepseek/deepseek-chat\")",
+                        "default": "",
+                    },
+                    "api_key": {
+                        "type": "string",
+                        "description": "API key — stored as env var reference (${AUTOINFO_LLM_API_KEY}), not raw key. Set AUTOINFO_LLM_API_KEY env var separately.",
+                        "default": "",
+                    },
+                    "base_url": {
+                        "type": "string",
+                        "description": "LLM base URL (e.g. \"http://localhost:11434/v1\")",
+                        "default": "",
+                    },
+                },
+                "required": [],
             },
         ),
         # -- Metrics (2) --------------------------------------------------
@@ -8808,9 +8941,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "get_domain_webhooks":
             result = _handle_get_domain_webhooks(**arguments)
 
-        # -- Init / Project / Batch / Config (7) --------------------------
+        # -- Init / Project / Batch / Config (8) --------------------------
         elif name == "init_project":
             result = _handle_init_project(**arguments)
+        elif name == "configure_llm":
+            result = _handle_configure_llm(**arguments)
         elif name == "list_projects":
             result = _handle_list_projects()
         elif name == "get_project_assets":

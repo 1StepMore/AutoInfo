@@ -2,6 +2,33 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.8.1 (2026-07-29)
+
+### Added
+- **`configure_llm` MCP tool** — New System category tool for agent-oriented BYOK LLM setup. Accepts `provider`, `model`, `api_key`, `base_url`. Stores api_key as `\${AUTOINFO_LLM_API_KEY}` env var reference (never the raw key). Incremental updates (only writes fields explicitly provided). MCP tool inventory expanded to **133 tools across 32 categories**.
+- **`domain import --from-demo <name>` CLI command** — Reads bundled demo YAML from `src/autoinfo/data/domains/<name>/sources.yaml` and idempotently imports sources and topics into project config. Proper error for nonexistent demo names. Supports all 5 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning).
+- **`autoinfo doctor` LLK key suggestion** — Enhanced LLM key message now includes actionable `configure_llm()` call with provider/model/base_url params and reference to `docs/dev/founder-expectations.md §LLM-config`.
+- **Bootstrapped 4 missing demo domains** — ai-commercial, financial-intelligence, tech-ai-developer, language-learning now active in config.yaml. All 5 demo domains now have sources+topics configured.
+- **`init_project` MCP enum fix** — `demo` parameter enum changed from hardcoded 3/5 domains to dynamic via `_list_demo_domains()`, supporting all 5 demo domains.
+
+### Fixed
+- **PR #57 — Python 3.11 compatibility**: Replaced PEP 695 generic function syntax (`def fn[T]`) with `TypeVar` for Python 3.11 support. Fixed in `server.py` (+5/-2).
+- **PR #58 — KB count mismatch**: Collected items now propagate `domain` field. KB entry count comparison fixed to use actual domain filter.
+- **PR #59 — Unpaywall removal + empty keywords validation**: Removed Unpaywall from medical-research demo config, added CrossRef API settings (query param, JSON path, field mapping). Added validation for empty keyword lists in topic configuration.
+- **PR #61 — CLI invocation mismatches**: Fixed 12 CLI flag mismatches across validation plan v2 docs (e.g. `--language`→`--lang`, `email send`→`email send-digest`, `--period week`→`--period weekly`).
+- **Doc staleness (Unpaywall)**: Removed stale Unpaywall references from README.md demo domains table, `docs/dev/specs/expectations.md` (2 locations), and `docs/dev/director-user-guide.md` (example dialogue).
+
+### Changed
+- **MCP tool inventory**: 132 → 133 tools (added `configure_llm` to System category). All doc references updated (README, AGENTS, mcp-tools.md, doc-manager-skill).
+- **Demo domains count**: Medical Research reduced from 4 to 3 curated sources (Unpaywall removed). Remaining sources: PubMed API, arXiv RSS, CrossRef API.
+- Version bumped from `1.8.0` to `1.8.1`
+
+### Infrastructure
+- `src/autoinfo/mcp/server.py`: New `_handle_configure_llm` handler (+97 lines). `init_project` enum migrated to `_list_demo_domains()` dynamic resolution (+2/-1).
+- `src/autoinfo/cli/domain.py`: New `import_cmd()` with `--from-demo` option (+67 lines). Reads demo YAML from `data/domains/<name>/sources.yaml`.
+- `src/autoinfo/cli/doctor.py`: Enhanced LLM suggestion with `configure_llm()` call example (+7 lines).
+- `tests/test_task12_features.py`: 27 new tests covering `configure_llm`, `domain import --from-demo`, `init_project` MCP enum fix.
+
 ## v1.8.0 (2026-07-28)
 
 ### Added

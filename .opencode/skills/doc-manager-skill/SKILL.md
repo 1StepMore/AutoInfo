@@ -62,7 +62,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
 | `docs/dev/specs/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (132 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (133 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
@@ -114,7 +114,7 @@ When you modify each code module below, the listed documentation files **must** 
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 132) |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 133) |
 | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
 | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
 | `server.py` — new tool | `CHANGELOG.md` | Add entry |
@@ -126,7 +126,7 @@ When you modify each code module below, the listed documentation files **must** 
 | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error code to boundary matrix |
 | `errors.py` — 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) | `docs/dev/specs/quality-gates.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error codes to error response spec and boundary matrix |
 | `agent_callback.py` — SQLite persistence | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Persistent agent callbacks feature description |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "132 tools" / "32 categories" references |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "133 tools" / "32 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -348,7 +348,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 23 groups, update descriptions
-- MCP Tools table → verify tool count (currently 132), update categories/tools
+- MCP Tools table → verify tool count (currently 133), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -407,7 +407,7 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 132 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 133 |
 | MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 32 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
 | Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1612 |
@@ -490,7 +490,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 132), category count if new category
+**Quantities to bump**: MCP tool count (currently 133), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 

@@ -40,8 +40,9 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 132 MCP tools across 32 categories. Agent operates, human directs.
+- **Agent-native** — 133 MCP tools across 32 categories. Agent operates, human directs.
 - **Self-discovering tool count** — `get_tool_count` MCP tool returns dynamic tool count, no more hardcoded numbers
+- **LLM configuration tool** — `configure_llm` MCP tool for agent-oriented BYOK setup (provider, model, api_key, base_url)
 - **Agent-oriented error responses** — Unified dual-format error responses (flat + envelope) for backward-compatible consumer migration
 - **Cross-domain search** — `search_knowledge_base()` searches all active domains when domain is omitted
 - **Domain-less collection** — `collect_sources()` collects from all active domains when no domain specified
@@ -90,7 +91,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 132 tools across 32 categories |
+| MCP server | ✅ 133 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -195,7 +196,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (132 tools)
+         └── MCP server (133 tools)
 ```
 
 ## CLI Commands (23 groups)
@@ -210,7 +211,7 @@ autoinfo status                      # Collection stats
 autoinfo summaries list|flag|show   # Browse summaries
 autoinfo sources add|list|remove|test  # Source management
 autoinfo topics add|list|remove     # Topic management
-autoinfo domain add|list|show|remove|activate|deactivate  # Domain management
+autoinfo domain add|list|show|remove|activate|deactivate|import  # Domain management (import --from-demo supports all 5 demo domains)
 autoinfo audit query                # Query immutable audit log
 autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates
@@ -227,11 +228,11 @@ autoinfo portal preferences|history # End-user self-service portal
 autoinfo trace <trace_id>           # Per-item pipeline trace
 ```
 
-## MCP Tools (132)
+## MCP Tools (133)
 
 | Category | Tools |
 |----------|-------|
-| **System** | health_check, diagnose_system, get_config, list_available_models, get_tool_count |
+| **System** | health_check, diagnose_system, get_config, list_available_models, get_tool_count, configure_llm |
 | **Discovery** | list_domains, list_available_platforms, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Domain** | add_domain, remove_domain |
 | **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
@@ -269,7 +270,7 @@ autoinfo trace <trace_id>           # Per-item pipeline trace
 
 | Domain | Sources | Priority | Status |
 |--------|---------|----------|--------|
-| **Medical Research** | PubMed (REST API), arXiv, CrossRef, Unpaywall | 🔴 P0 | ✅ Implemented (4 curated sources) |
+| **Medical Research** | PubMed (REST API), arXiv, CrossRef | 🔴 P0 | ✅ Implemented (3 curated sources) |
 | **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt API, Crunchbase, LMSYS | 🟡 P1 | ✅ Implemented (4 curated sources) |
 | **Financial/Business Intelligence** | Alpha Vantage, FRED, SEC EDGAR, Yahoo Finance, OpenAlex (financial category) | 🟡 P1 | ✅ Implemented (4 curated sources) |
 | **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech), Stack Exchange, ProductHunt | 🟡 P1 | ✅ Implemented (4 curated sources) |
@@ -285,7 +286,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.8 adds **agent-oriented enhancements**: 17 new MCP tools (132 total), dynamic tool count via self-discovery, unified dual-format error responses, cross-domain search, domain-less collection, agent-native format for tutorial/presentation/export, persistent job state and agent callbacks (SQLite-backed), hard-delete purge flag, fine-grained process control flags, batch CEFR, audit log MCP, knowledge graph export, RSS feed MCP, cache cleanup, topic grouping, email config MCP, cost dashboard/allocation MCP tools, CLI help text fixes, and `<!-- agent: ... -->` metadata blocks on all spec docs. v1.7 added **subscription tier gating** (Free/Premium/Enterprise...). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo v1.8 adds **agent-oriented enhancements**: 17 new MCP tools (133 total), dynamic tool count via self-discovery, unified dual-format error responses, cross-domain search, domain-less collection, agent-native format for tutorial/presentation/export, persistent job state and agent callbacks (SQLite-backed), hard-delete purge flag, fine-grained process control flags, batch CEFR, audit log MCP, knowledge graph export, RSS feed MCP, cache cleanup, topic grouping, email config MCP, cost dashboard/allocation MCP tools, CLI help text fixes, and `<!-- agent: ... -->` metadata blocks on all spec docs. v1.7 added **subscription tier gating** (Free/Premium/Enterprise...). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery via 6 adapters, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

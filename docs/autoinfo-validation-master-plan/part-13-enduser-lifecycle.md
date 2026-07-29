@@ -43,7 +43,7 @@ autoinfo enduser create \
   --user-id alice \
   --name "Alice Smith" \
   --email alice@example.com \
-  --trial --tier pro
+  --tier pro
 ```
 
 **Expected Result:**
@@ -809,7 +809,7 @@ cd /tmp/test-q62
 autoinfo init --demo medical-research
 
 # Create a test end user
-autoinfo enduser create --user-id carol --name "Carol Test" --email carol@example.com --trial --tier pro
+autoinfo enduser create --user-id carol --name "Carol Test" --email carol@example.com --tier pro
 ```
 
 ### Scenarios
@@ -1029,7 +1029,7 @@ cd /tmp/test-q63
 autoinfo init --demo medical-research
 
 # Create end user
-autoinfo enduser create --user-id dave --name "Dave SLA" --email dave@example.com --trial --tier pro
+autoinfo enduser create --user-id dave --name "Dave SLA" --email dave@example.com --tier pro
 
 # Set up delivery preferences
 autoinfo portal preferences update \
@@ -2057,7 +2057,7 @@ cd /tmp/test-q64
 autoinfo init --demo medical-research
 
 # Create an end user with history
-autoinfo enduser create --user-id eve --name "Eve Portal" --email eve@example.com --trial --tier enterprise
+autoinfo enduser create --user-id eve --name "Eve Portal" --email eve@example.com --tier enterprise
 
 # Add delivery preferences
 autoinfo portal preferences update \
@@ -2202,7 +2202,7 @@ autoinfo portal preferences show --user-id nonexistent
 
 ```bash
 # Create a user with no delivery history
-autoinfo enduser create --user-id newuser --name "New User" --email new@example.com --trial --tier free
+autoinfo enduser create --user-id newuser --name "New User" --email new@example.com --tier free
 autoinfo portal history --user newuser
 ```
 
@@ -2259,7 +2259,7 @@ cd /tmp/test-q65
 autoinfo init --demo medical-research
 
 # Create end user with subscription
-autoinfo enduser create --user-id frank --name "Frank GDPR" --email frank@example.com --trial --tier pro
+autoinfo enduser create --user-id frank --name "Frank GDPR" --email frank@example.com --tier pro
 python3 -c "
 from autoinfo.user_store import create_subscription
 sub = create_subscription(user_id='frank', product_id='daily-digest', status='active')
@@ -2667,7 +2667,7 @@ cd /tmp/test-q65b
 autoinfo init --demo medical-research
 
 # Create end user via CLI
-autoinfo enduser create --user-id grace --name "Grace MCP" --email grace@example.com --trial --tier pro
+autoinfo enduser create --user-id grace --name "Grace MCP" --email grace@example.com --tier pro
 
 # Set initial preferences
 autoinfo portal preferences update \
@@ -2898,7 +2898,7 @@ cd /tmp/test-q65c
 autoinfo init --demo medical-research
 
 # Create an active paying end user
-autoinfo enduser create --user-id henry --name "Henry Billing" --email henry@example.com --trial --tier pro
+autoinfo enduser create --user-id henry --name "Henry Billing" --email henry@example.com --tier pro
 
 # Transition to active (simulate payment)
 python3 -c "
@@ -3568,7 +3568,7 @@ cd /tmp/test-q65d
 autoinfo init --demo medical-research
 
 # Create end user with history
-autoinfo enduser create --user-id iris --name "Iris GDPR" --email iris@example.com --trial --tier pro
+autoinfo enduser create --user-id iris --name "Iris GDPR" --email iris@example.com --tier pro
 
 # Add subscription and delivery history
 python3 -c "
@@ -3713,7 +3713,7 @@ autoinfo enduser create \
   --user-id webhookuser \
   --name "Webhook Lifecycle User" \
   --email webhook@example.com \
-  --trial --tier pro
+  --tier pro
 
 # Create a stripe customer ID mapping for the test user
 python3 -c "
@@ -3976,7 +3976,7 @@ autoinfo enduser create \
   --user-id consumertest \
   --name "Consumer Test User" \
   --email consumer@example.com \
-  --trial --tier pro
+  --tier pro
 ```
 
 ### Scenarios

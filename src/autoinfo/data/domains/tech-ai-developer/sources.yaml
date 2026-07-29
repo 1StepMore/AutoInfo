@@ -21,9 +21,9 @@ sources:
     access: free
     rate_limit: 100
 
-  - name: Substack RSS (tech)
+  - name: Substack RSS (tech) — Pragmatic Engineer
     type: rss
-    url: https://example.com/tech-substack-feed
+    url: https://newsletter.pragmaticengineer.com/feed
     quality_tier: 2
     enabled: true
     rate_limit: 10

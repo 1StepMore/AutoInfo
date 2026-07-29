@@ -25,8 +25,7 @@ autoinfo init --demo medical-research
 autoinfo enduser create \
   --user-id testuser47 \
   --name "Test User 47" \
-  --email "testuser47@example.com" \
-  --trial-days 30
+  --email "testuser47@example.com"
 
 # Collect some items so feeds endpoint has data to return
 autoinfo collect --domain medical-research --topic "IVF breakthroughs" --limit 3 2>/dev/null || true

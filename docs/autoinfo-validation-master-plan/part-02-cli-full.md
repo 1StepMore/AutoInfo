@@ -319,14 +319,14 @@ Note: `text` is a positional argument. Use `--lang` not `--language`.
 ```bash
 echo "Hello, how are you?" > /tmp/cefr-input.txt
 echo "The ecological implications of deforestation are manifold." >> /tmp/cefr-input.txt
-autoinfo cefr batch --input /tmp/cefr-input.txt --language en
+autoinfo cefr batch --input /tmp/cefr-input.txt --lang en
 ```
 **Expected Result:** ✅ Returns CEFR classification for each text.
 
 
 #### 10.3 🟢 CEFR classify Chinese [REQUIRES LLM KEY]
 ```bash
-autoinfo cefr classify --text "今天天气很好，我们去公园散步。" --language zh
+autoinfo cefr classify "今天天气很好，我们去公园散步。" --lang zh
 ```
 **Expected Result:** ✅ Returns CEFR level for Chinese text.
 
@@ -366,7 +366,7 @@ autoinfo email config
 
 #### 11.2 🟢 Send email digest [REQUIRES SMTP CONFIG]
 ```bash
-autoinfo email send --to user@example.com --subject "Weekly Digest" --domain medical-research --period week
+autoinfo email send-digest --domain medical-research --period weekly
 ```
 **Expected Result:** ✅ Email sent. Confirmation message. (Skip if SMTP not configured.)
 

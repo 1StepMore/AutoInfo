@@ -92,7 +92,7 @@ Expectations are grouped by journey phase.
 |-----------|---------------|
 | **Domain as config** | A domain = a named configuration with: source list, extraction schema (optional), topic list, output templates. Everything in YAML. No code changes needed to add a domain. |
 | **Minimum required fields** | At least one domain with at least one active source. |
-| **Demo domain: Medical Research** | Default sources: PubMed API (primary), arXiv (q-bio, cs.AI categories), CrossRef (DOI → metadata), Unpaywall (OA full-text lookup). User can add more (journal RSS feeds, preprint servers, custom APIs). |
+| **Demo domain: Medical Research** | Default sources: PubMed API (primary), arXiv (q-bio, cs.AI categories), CrossRef (DOI → metadata). User can add more (journal RSS feeds, preprint servers, custom APIs). |
 | **Demo domain: AI Commercial Intelligence** | Default sources: ProductHunt API, Crunchbase (basic), TechCrunch RSS, benchmark leaderboards (LMSYS, Artificial Analysis), thought leader blogs, AI case study repositories. Supports cases, rankings, product launches, funding data as parallel extraction tracks. |
 | **Demo domain: Language Learning** | Default sources: Project Gutenberg, BBC Learning English, leveled reader repositories, news-in-levels, public domain children's literature. |
 | **Demo domain: Financial/Business Intelligence** | Default sources: Alpha Vantage (stock/crypto/forex, free tier 25 req/day), FRED (US macroeconomics, free), Reuters Connect (enterprise news wire, requires subscription), Yahoo Finance RSS (public feeds), SEC EDGAR RSS (regulatory filings, free), CoinDesk/CoinTelegraph RSS (crypto, free). Supports multi-source pricing intelligence, regulatory filing monitoring, market news aggregation, and institutional-grade data feed production. **Note**: Bloomberg, Wind, Refinitiv, and FT require paid institutional subscriptions and are not included as default sources — they are available as user-configured premium sources under F08. |
@@ -126,7 +126,7 @@ Expectations are grouped by journey phase.
 
 | UX Detail | Specification |
 |-----------|---------------|
-| **Medical Research sources** | PubMed API (primary), arXiv (q-bio, cs.AI categories), CrossRef (DOI → metadata), Unpaywall (OA full-text). Each with quality rating, update frequency, access method. |
+| **Medical Research sources** | PubMed API (primary), arXiv (q-bio, cs.AI categories), CrossRef (DOI → metadata). Each with quality rating, update frequency, access method. |
 | **AI Commercial sources** | ProductHunt API (products), Crunchbase basic API (companies/funding), TechCrunch RSS (news), LMSYS/Artificial Analysis (benchmarks), curated case study indices. |
 | **Language Learning sources** | Project Gutenberg (classics, public domain), BBC Learning English (leveled news), news-in-levels, commonlit.org (free leveled reading), public domain children's literature. |
 | **Source metadata** | Each default source includes: name, URL/API endpoint, domain, content type, update frequency, quality tier (1-4), language, access restrictions. |

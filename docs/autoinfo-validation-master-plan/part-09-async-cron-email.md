@@ -195,15 +195,15 @@ cd /tmp && rm -rf test-cron-cli && mkdir test-cron-cli && cd test-cron-cli
 autoinfo init --demo medical-research
 
 # Add schedule via CLI
-autoinfo cron add-schedule --domain medical-research --topic "IVF" --cron "0 8 * * 1"
+autoinfo cron add-schedule --name "IVF-schedule" --expression "0 8 * * 1" --domain medical-research
 
 # List via CLI
 autoinfo cron list-schedules
 
 # Run via CLI
-autoinfo cron run-schedules
+autoinfo cron run
 ```
-**Expected Result:** ✅ Add, list, and run-schedules all work via CLI.
+**Expected Result:** ✅ Add, list, and run all work via CLI.
 
 
 #### 55.6 🟢 Cron heartbeat JSON persists after schedule runs
@@ -580,7 +580,7 @@ print(f"✅ send_email_digest: {data}")
 
 #### 56.3 🟢 Send email digest via CLI [REQUIRES SMTP CONFIG]
 ```bash
-autoinfo email send --to user@example.com --subject "Weekly Digest" --domain medical-research --period week
+autoinfo email send-digest --domain medical-research --period weekly
 ```
 **Expected Result:** ✅ Email sent confirmation via CLI.
 

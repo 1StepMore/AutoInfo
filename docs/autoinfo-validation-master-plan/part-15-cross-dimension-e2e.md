@@ -1223,7 +1223,7 @@ except:
 # ── Step 2: Check delivery history for the end user ─────────────────
 echo ""
 echo "── Step 2: Check delivery history ──"
-HISTORY_OUTPUT=$(autoinfo portal history --user-id "$USER_ID" --json 2>&1 || echo '[]')
+HISTORY_OUTPUT=$(autoinfo portal history --user "$USER_ID" --json 2>&1 || echo '[]')
 echo "$HISTORY_OUTPUT" | python3 -c "
 import sys, json
 try:
@@ -1667,8 +1667,7 @@ autoinfo enduser create \
 autoinfo sources add --name fragile-source \
   --type web \
   --url https://this-will-timeout-after-30s.example.com/api \
-  --domain ai-commercial \
-  --quality-tier 3
+  --domain ai-commercial
 
 # Verify setup
 autoinfo doctor --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'OK: config_valid={d.get(\"config\",{}).get(\"valid\")}')"
@@ -1708,7 +1707,7 @@ print('Topic added:', result.stdout[:200] if result.stdout else result.stderr[:2
 result2 = subprocess.run(
     ['autoinfo', 'sources', 'add', '--name', 'techcrunch',
      '--type', 'rss', '--url', 'https://techcrunch.com/feed/',
-     '--domain', 'ai-commercial', '--quality-tier', '2'],
+     '--domain', 'ai-commercial'],
     capture_output=True, text=True, timeout=15
 )
 print('TechCrunch source:', result2.stdout[:200] if result2.stdout else result2.stderr[:200])

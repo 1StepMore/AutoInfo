@@ -119,7 +119,7 @@ autoinfo collect --domain medical-research --source who-health --limit 3
 
 #### 50.3 🔴 Invalid source URL — graceful error
 ```bash
-autoinfo sources add --name broken-source --type web --url https://this-domain-does-not-exist-12345.com --domain medical-research --quality-tier 3
+autoinfo sources add --name broken-source --type web --url https://this-domain-does-not-exist-12345.com --domain medical-research
 autoinfo collect --domain medical-research --source broken-source --limit 3 2>&1
 ```
 **Expected Result:**
@@ -306,7 +306,7 @@ for e in entries[:3]:
 
 # Phase 6: Generate digest
 echo '=== PHASE 6: DIGEST ==='
-autoinfo output digest --domain medical-research --period week
+autoinfo output digest --domain medical-research --period weekly
 ls outputs/medical-research/digest/
 
 # Phase 7: Export
@@ -330,7 +330,7 @@ echo '=== E2E COMPLETE ==='
 #### 52.2 🟢 Multi-domain pipeline (medical + ai-commercial)
 ```bash
 cd /tmp && rm -rf test-multi-e2e && mkdir test-multi-e2e && cd test-multi-e2e
-autoinfo init --demo medical-research --demo ai-commercial
+autoinfo init --demo medical-research && autoinfo init --demo ai-commercial
 
 # Collect from both domains
 echo '=== COLLECT BOTH ==='

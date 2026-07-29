@@ -209,8 +209,7 @@ with tempfile.TemporaryDirectory() as td:
             "--name", "broken-source",
             "--type", "web",
             "--url", "https://this-domain-does-not-exist-99999.com",
-            "--domain", "medical-research",
-            "--quality-tier", "3"
+            "--domain", "medical-research"
         ], capture_output=True, timeout=30)
         
         # Run collection — should not crash despite broken source

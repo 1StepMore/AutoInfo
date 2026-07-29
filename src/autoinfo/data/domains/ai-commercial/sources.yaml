@@ -13,22 +13,16 @@ sources:
     rate_limit: 10
 
   - name: producthunt
-    type: api
-    url: https://api.producthunt.com/v2/api/graphql
+    type: rss
+    url: https://www.producthunt.com/feed
     quality_tier: 2
     frequency: daily
-    access: api_key
+    access: free
     rate_limit: 10
 
   - name: Crunchbase
     type: rss
     url: https://news.crunchbase.com/feed/
-    quality_tier: 2
-    enabled: true
-
-  - name: LMSYS
-    type: rss
-    url: https://lmarena.ai/feed/
     quality_tier: 2
     enabled: true
 

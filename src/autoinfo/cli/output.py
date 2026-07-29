@@ -88,6 +88,9 @@ def report(
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, json, agent)"
     ),
+    audience: str = typer.Option(
+        "", "--audience", help="Target audience: researcher, clinician, executive, student, investor",
+    ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.
 
@@ -101,6 +104,7 @@ def report(
             domain=domain,
             collection_id=collection_id,
             format=format,
+            target_audience=audience,
         )
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:

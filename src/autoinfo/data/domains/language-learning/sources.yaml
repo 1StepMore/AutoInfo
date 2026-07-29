@@ -4,14 +4,6 @@ name: language-learning
 description: "Language learning — children's English, vocabulary, reading comprehension"
 
 sources:
-  - name: voa-learning-english
-    type: rss
-    url: https://learningenglish.voanews.com/api/zprqo$iuupk$
-    quality_tier: 1
-    frequency: weekly
-    access: free
-    rate_limit: 10
-
   - name: project-gutenberg
     type: rss
     url: https://www.gutenberg.org/cache/epub/feeds/today.rss

@@ -281,6 +281,10 @@ def _collect_from_source(
 
     items_found = len(items)
 
+    # Ensure every item carries the correct domain
+    for item in items:
+        item.domain = domain
+
     # Log API call cost (non-blocking — failures are swallowed)
     try:
         CostMeter().log_api_call(
@@ -516,7 +520,8 @@ def _cache_items(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     for item in items:
-        file_path = base_dir / f"{item.id}.json"
+        safe_id = item.id.replace("/", "|")
+        file_path = base_dir / f"{safe_id}.json"
         # Avoid overwriting existing cached files (idempotent)
         if file_path.exists():
             continue

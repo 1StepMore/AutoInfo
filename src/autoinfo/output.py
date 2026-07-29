@@ -3323,9 +3323,8 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
             api_base=config.llm.base_url or None,
         )
     except Exception as exc:
-        logger.error("LLM tutorial synthesis failed: %s", exc)
+        logger.error("Tutorial generation failed: %s", exc)
         return {}
-
     content: str = response.choices[0].message.content  # type: ignore[union-attr]
     return _parse_json_response(content)
 
@@ -3566,7 +3565,6 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     except Exception as exc:
         logger.error("LLM presentation synthesis failed: %s", exc)
         return {}
-
     content: str = response.choices[0].message.content  # type: ignore[union-attr]
     return _parse_json_response(content)
 

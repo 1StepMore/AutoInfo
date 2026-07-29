@@ -389,6 +389,11 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             tos = s.get("tos_classification")
             if not tos:
                 tos = _TIER_TOS_MAP.get(tier, "open")
+            raw_settings = {k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS}
+            # Flatten YAML's nested 'settings' key into the top level
+            inner = raw_settings.pop("settings", None)
+            if isinstance(inner, dict):
+                raw_settings.update(inner)
             sources.append(
                 SourceConfig(
                     name=s.get("name", ""),
@@ -397,7 +402,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                     quality_tier=tier,
                     tos_classification=tos,
                     fetch_depth=s.get("fetch_depth", "abstract"),
-                    settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
+                    settings=raw_settings,
                 )
             )
         topics_raw: list[dict[str, Any]] = d.get("topics", []) or []

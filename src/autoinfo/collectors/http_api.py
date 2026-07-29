@@ -116,7 +116,10 @@ class HttpApiHandler(BaseHandler):
         """Initialise the handler from a :class:`SourceConfig`.
 
         All per-source configuration is read from
-        ``source_config.settings``.
+        ``source_config.settings``.  ``source_config.fetch_depth`` is
+        available for handlers that need to control content depth
+        (e.g. ``"abstract"`` vs ``"fulltext"``), though most HTTP API
+        sources already return full content by default.
         """
         self.source_config = source_config
         self.source_name = source_config.name

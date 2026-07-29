@@ -1679,14 +1679,17 @@ def _handle_suggest_keywords(
             model = config.llm.model or "deepseek/deepseek-chat"
             api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = config.llm.base_url or None
+            json_mode = config.llm.json_mode
         else:
             model = "deepseek/deepseek-chat"
             api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = None
+            json_mode = True
     except Exception:
         model = "deepseek/deepseek-chat"
         api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
         base_url = None
+        json_mode = True
 
     system_prompt = (
         "You are a keyword extraction assistant. Given a text, suggest "
@@ -1705,7 +1708,7 @@ def _handle_suggest_keywords(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
+            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
             max_tokens=500,
             temperature=0.3,
             api_base=base_url,

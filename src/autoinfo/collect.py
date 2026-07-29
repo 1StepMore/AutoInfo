@@ -398,7 +398,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
     if stype == "api" and "pubmed" in name:
         from autoinfo.collectors.pubmed import PubMedHandler
 
-        return PubMedHandler()
+        return PubMedHandler(source_config=source_config)
 
     if stype == "rss":
         from autoinfo.collectors.rss import RSSHandler

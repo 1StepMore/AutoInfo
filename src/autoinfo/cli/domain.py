@@ -213,7 +213,7 @@ def import_cmd(
     ),
 ) -> None:
     """Import a demo domain into the current project configuration (idempotent)."""
-    _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification"})
+    _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth"})
     _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
 
     demo_yaml = _DEMO_DOMAINS_DIR / from_demo / "sources.yaml"
@@ -246,6 +246,7 @@ def import_cmd(
                 url=s.get("url", ""),
                 quality_tier=tier,
                 tos_classification=tos,
+                fetch_depth=s.get("fetch_depth", "abstract"),
                 settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
             )
         )

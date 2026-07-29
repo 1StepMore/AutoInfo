@@ -94,6 +94,7 @@ class LLMExtractor:
                 config = Config()
 
         self._config = config
+        self._json_mode = config.llm.json_mode
 
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL
@@ -314,7 +315,7 @@ class LLMExtractor:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_prompt},
                     ],
-                    response_format={"type": "json_object"},
+                    **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
                     max_tokens=2000,
                     temperature=0.1,
                     api_base=base_url or None,

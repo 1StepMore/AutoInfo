@@ -6,6 +6,7 @@ Searches and fetches articles via the NCBI PubMed API using
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -17,6 +18,8 @@ import httpx
 
 from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -46,15 +49,18 @@ class PubMedHandler(BaseHandler):
         items = [handler.to_item(a) for a in articles]
     """
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, source_config=None) -> None:
         """Initialise handler.
 
         Args:
             api_key: Optional NCBI API key for higher rate limits
                 (10 req/s instead of 3). Falls back to the
                 ``AUTOINFO_PUBMED_API_KEY`` environment variable.
+            source_config: Optional :class:`SourceConfig` for fetch_depth
+                and other per-source settings.
         """
         self.api_key = api_key or os.environ.get("AUTOINFO_PUBMED_API_KEY", "")
+        self.source_config = source_config
         self.max_rps = RATE_LIMIT_WITH_KEY if self.api_key else RATE_LIMIT_DEFAULT
         self._last_request_time = 0.0
 
@@ -158,11 +164,67 @@ class PubMedHandler(BaseHandler):
         for elem in root.findall("PubmedArticle"):
             articles.append(self._parse_article(elem))
 
+        # -- Optionally enrich with PMC full text ---------------------------
+        if self.source_config is not None and self.source_config.fetch_depth in ("fulltext", "auto"):
+            self._enrich_fulltext(articles)
+
         return articles
 
-    # ------------------------------------------------------------------
-    # XML parsing
-    # ------------------------------------------------------------------
+    def _enrich_fulltext(self, articles: list[dict[str, Any]]) -> None:
+        """Replace abstract with PMC full text for articles that have a PMC ID.
+
+        Called from :meth:`fetch` when ``fetch_depth`` is ``"fulltext"`` or
+        ``"auto"``.  On failure in ``"auto"`` mode the original abstract is
+        kept; in ``"fulltext"`` mode a warning is logged.
+        """
+        for article in articles:
+            pmc_id = article.get("pmc_id", "")
+            if not pmc_id:
+                if self.source_config and self.source_config.fetch_depth == "fulltext":
+                    logger.warning(
+                        "fetch_depth=fulltext but no PMC ID for PMID %s",
+                        article.get("pmid", "unknown"),
+                    )
+                continue
+            full_text = self._fetch_pmc_fulltext(pmc_id)
+            if full_text:
+                article["abstract"] = full_text
+            elif self.source_config and self.source_config.fetch_depth == "fulltext":
+                logger.warning(
+                    "fetch_depth=fulltext but PMC full text unavailable for PMC %s (PMID %s)",
+                    pmc_id, article.get("pmid", "unknown"),
+                )
+
+    def _fetch_pmc_fulltext(self, pmc_id: str) -> str | None:
+        """Fetch full text from PMC for a given PMC ID.
+
+        Uses the NCBI E-utilities efetch endpoint with ``db=pmc`` to
+        retrieve the article XML and extracts all paragraph text from
+        ``<body>`` sections.
+
+        Returns ``None`` on any error (network, XML parsing, or no body
+        content).
+        """
+        try:
+            url = (
+                f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+                f"efetch.fcgi?db=pmc&id={pmc_id}&retmode=xml"
+            )
+            if self.api_key:
+                url += f"&api_key={self.api_key}"
+            resp = self._request(url)
+            root = ET.fromstring(resp.text)
+            paragraphs: list[str] = []
+            for p_elem in root.iter("p"):
+                text = "".join(p_elem.itertext()).strip()
+                if text:
+                    paragraphs.append(text)
+            return "\n\n".join(paragraphs) if paragraphs else None
+        except Exception:
+            logger.warning(
+                "Failed to fetch PMC full text for %s", pmc_id, exc_info=True,
+            )
+            return None
 
     @staticmethod
     def _parse_article(elem: ET.Element) -> dict[str, Any]:
@@ -249,6 +311,17 @@ class PubMedHandler(BaseHandler):
                     if kw.text:
                         keywords.append(kw.text)
 
+        # -- pmc_id --
+        pmc_id = ""
+        pubmed_data = elem.find("PubmedData")
+        if pubmed_data is not None:
+            id_list = pubmed_data.find("ArticleIdList")
+            if id_list is not None:
+                for aid in id_list.findall("ArticleId"):
+                    if aid.get("IdType") == "pmc":
+                        pmc_id = aid.text or ""
+                        break
+
         return {
             "pmid": pmid,
             "title": title,
@@ -259,6 +332,7 @@ class PubMedHandler(BaseHandler):
             "abstract": "\n".join(abstract_parts),
             "mesh_terms": mesh_terms,
             "keywords": keywords,
+            "pmc_id": pmc_id,
         }
 
     # ------------------------------------------------------------------
@@ -293,6 +367,7 @@ class PubMedHandler(BaseHandler):
             topic_tags=list(article.get("keywords", [])),
             raw_data={
                 "pmid": pmid,
+                "pmc_id": article.get("pmc_id", ""),
                 "authors": article.get("authors", []),
                 "journal": article.get("journal", ""),
                 "pub_date": article.get("pub_date", ""),

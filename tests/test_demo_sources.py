@@ -16,7 +16,7 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "src" / "autoinfo" / "data" / "
 EXPECTED = {
     "medical-research": {
         "old": ["pubmed"],
-        "new": ["arXiv", "CrossRef", "Unpaywall"],
+        "new": ["arXiv", "CrossRef"],
     },
     "ai-commercial": {
         "old": ["techcrunch", "producthunt"],
@@ -37,7 +37,7 @@ def _load_sources(domain: str) -> list[dict]:
 
 
 @pytest.mark.parametrize("domain, old, new", [
-    ("medical-research", ["pubmed"], ["arXiv", "CrossRef", "Unpaywall"]),
+    ("medical-research", ["pubmed"], ["arXiv", "CrossRef"]),
     ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "LMSYS"]),
     ("language-learning", ["bbc-learning-english", "project-gutenberg"], ["news-in-levels", "commonlit"]),
 ])

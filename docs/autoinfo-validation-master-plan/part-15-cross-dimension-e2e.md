@@ -740,6 +740,21 @@ if [ "$DIGEST_COUNT" -gt 0 ]; then
   [ "$DIGEST_SIZE" -gt 100 ] \
     && echo "  ✅ PASS: digest file has content ($DIGEST_SIZE bytes)" \
     || { echo "  ❌ FAIL: digest file too small ($DIGEST_SIZE bytes)"; ALL_PASS=false; }
+
+  # Content quality: digest references KB entries
+  grep -qi "doi\|http\|source\|reference" "$LATEST_DIGEST" \
+    && echo "  ✅ PASS: digest contains source references" \
+    || { echo "  ❌ FAIL: digest missing source references"; ALL_PASS=false; }
+
+  # Content quality: digest has structured sections
+  grep -qi "section\|entries\|summary\|overview" "$LATEST_DIGEST" \
+    && echo "  ✅ PASS: digest has structured sections" \
+    || { echo "  ❌ FAIL: digest missing section structure"; ALL_PASS=false; }
+
+  # Content quality: digest content matches the domain
+  grep -qi "IVF\|fertilit\|embryo\|medical" "$LATEST_DIGEST" \
+    && echo "  ✅ PASS: digest content matches domain topic" \
+    || { echo "  ❌ FAIL: digest content unrelated to domain"; ALL_PASS=false; }
 else
   echo "  ⚠️  No digest files found (may need LLM key)"
 fi

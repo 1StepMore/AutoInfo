@@ -423,14 +423,23 @@ except: print('  ⚠️  $DOMAIN report: JSON parse failed (no data?)')" 2>&1 ||
   # Export
   EXPORT_OUT=$(autoinfo output export --domain "$DOMAIN" --format json 2>&1 || true)
   echo "$EXPORT_OUT" | python3 -c "
-import sys, json
+import sys, json, os
 try:
-    lines = [l for l in sys.stdin.read().split(chr(10)) if l.strip().startswith('{') or l.strip().startswith('/')]
-    if lines:
-        with open(lines[-1]) if lines[-1].startswith('/') else sys.stdin:
-            pass
-    print(f'  ✅ $DOMAIN export: valid')
-except: print('  ⚠️  $DOMAIN export: no data')" 2>&1 || true
+    lines = sys.stdin.read().strip().split(chr(10))
+    filepath = ''
+    for line in lines:
+        line = line.strip()
+        if line.endswith('.json') and ('/' in line or line.startswith('/')):
+            filepath = line
+    if filepath and os.path.isfile(filepath):
+        with open(filepath) as f:
+            data = json.load(f)
+        items = data.get('items', data.get('entries', []))
+        print(f'  ✅ $DOMAIN export: {len(items)} entries in {os.path.basename(filepath)}')
+    else:
+        print(f'  ⚠️  $DOMAIN export: file path not found in output')
+except Exception as e:
+    print(f'  ⚠️  $DOMAIN export: parse error ({e})')" 2>&1 || true
   cd /tmp
 done
 echo ""

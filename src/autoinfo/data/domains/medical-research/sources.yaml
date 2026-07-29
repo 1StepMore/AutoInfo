@@ -26,14 +26,13 @@ sources:
     enabled: true
     rate_limit: 50
     api_key_optional: true
-
-  - name: Unpaywall
-    type: api
-    url: https://api.unpaywall.org/v2
-    quality_tier: 2
-    enabled: true
-    rate_limit: 100
-    api_key_optional: true
+    settings:
+      query_param: query
+      json_path: message.items
+      field_mapping:
+        id: DOI
+        title: "title[0]"
+        source_url: URL
 
 topics:
   - name: "IVF breakthroughs"

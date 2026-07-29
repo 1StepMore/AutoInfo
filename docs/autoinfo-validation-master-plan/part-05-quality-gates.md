@@ -103,8 +103,8 @@ cd "$TEST_DIR"
 
 # Init project, add test domain, add source
 autoinfo init --demo medical-research 2>&1 | tail -1
-autoinfo domain add --name "$DOMAIN" --active 2>&1
-autoinfo sources add --domain "$DOMAIN" --name "$SOURCE" --type rss --url "https://example.com/feed" --quality-tier 1 2>&1 | tail -1
+autoinfo domain add --name "$DOMAIN" 2>&1
+autoinfo sources add --domain "$DOMAIN" --name "$SOURCE" --type rss --url "https://example.com/feed" 2>&1 | tail -1
 
 # Create collections cache directory
 CACHE_DIR="collections/$DOMAIN/$SOURCE/$DATE"
@@ -2017,8 +2017,8 @@ cd "$TEST_DIR"
 
 # Init project, add test domain, add source
 autoinfo init --demo medical-research 2>&1 | tail -1
-autoinfo domain add --name "$DOMAIN" --active 2>&1
-autoinfo sources add --domain "$DOMAIN" --name "$SOURCE" --type rss --url "https://example.com/feed" --quality-tier 1 2>&1 | tail -1
+autoinfo domain add --name "$DOMAIN" 2>&1
+autoinfo sources add --domain "$DOMAIN" --name "$SOURCE" --type rss --url "https://example.com/feed" 2>&1 | tail -1
 
 # Add a topic with keywords for G3 relevance testing
 autoinfo topics add --domain "$DOMAIN" --name "$TOPIC" --keywords medical,research,clinical,study 2>&1 | tail -1
@@ -2528,7 +2528,7 @@ cat > "$CACHE_DIR/$ID_IRREL.json" << 'JSONEOF'
 JSONEOF
 
 # ── Execute: process with threshold=80 ────────────────────────
-OUTPUT_HIGH=$(autoinfo process --domain "$DOMAIN" --topic "test-topic" 2>&1)
+OUTPUT_HIGH=$(autoinfo process --domain "$DOMAIN" 2>&1)
 EXIT_CODE_HIGH=$?
 
 echo "$OUTPUT_HIGH" | grep -qi "g3_score\|relevance\|flagged\|hidden" \
@@ -2554,7 +2554,7 @@ PYEOF
 
 # ── Execute: process with lower threshold ─────────────────────
 rm -rf "knowledge/$DOMAIN"
-OUTPUT_LOW=$(autoinfo process --domain "$DOMAIN" --topic "test-topic" 2>&1)
+OUTPUT_LOW=$(autoinfo process --domain "$DOMAIN" 2>&1)
 EXIT_CODE_LOW=$?
 
 # ── Assertions ────────────────────────────────────────────────

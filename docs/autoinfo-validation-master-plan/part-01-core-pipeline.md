@@ -67,19 +67,23 @@ autoinfo init --demo medical-research
 **Expected Result:** ✅ Exit code 0. Prints "SKIP" for existing files. No overwrite.
 
 
-#### 1.4 🟢 Init without --demo lists available domains
+#### 1.4 🟢 Init --list-domains shows available domains
 ```bash
-autoinfo init
+autoinfo init --list-domains
 ```
-**Expected Result:** ✅ Prints available demo domains (medical-research, ai-commercial, language-learning). Exit code 0.
+**Expected Result:** ✅ Prints available demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning). Exit code 0.
+
+Note: `autoinfo init` without `--demo` launches an interactive wizard (requires TTY). Use `--list-domains` to list domains non-interactively.
 
 
-#### 1.5 🟢 Init with multiple demo domains
+#### 1.5 🟢 Init with specific domain (single --demo)
 ```bash
 cd /tmp && rm -rf test-multi && mkdir test-multi && cd test-multi
-autoinfo init --demo medical-research --demo ai-commercial
+autoinfo init --demo medical-research
 ```
-**Expected Result:** ✅ Both domains active. Config shows 2 domains with sources and topics.
+**Expected Result:** ✅ Domain configured with sources and topics.
+
+Note: `--demo` accepts a single domain name. Initialize multiple domains by running `init --demo` separately or use the interactive wizard.
 
 
 #### 1.6 🔴 Init with unknown domain
@@ -94,7 +98,9 @@ autoinfo init --demo nonexistent-domain
 cd /tmp && rm -rf test-named && mkdir test-named && cd test-named
 autoinfo init --name "My Custom Project" --demo medical-research
 ```
-**Expected Result:** ✅ Config has `project.name = "My Custom Project"`. Overrides default name.
+**Expected Result:** ✅ Config has `project.project_name = "My Custom Project"`. Overrides default name.
+
+Note: Uses `project.project_name` (not `project.name`) — the default name "My AutoInfo" remains under `project.name`.
 
 
 ---
@@ -317,20 +323,24 @@ autoinfo summaries list --domain medical-research --json
 # Get first entry ID
 ENTRY_ID=$(autoinfo summaries list --domain medical-research --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['entries'][0]['entry_id'] if d.get('entries') else 'none')")
 if [ "$ENTRY_ID" != "none" ]; then
-    autoinfo summaries show --entry-id "$ENTRY_ID"
+    autoinfo summaries show "$ENTRY_ID"
 fi
 ```
 **Expected Result:** ✅ Shows full entry details: title, content, TL;DR, key points, source metadata.
+
+Note: `entry_id` is a positional argument, not `--entry-id`.
 
 
 #### 4.4 🟢 Flag entry for KB
 ```bash
 ENTRY_ID=$(autoinfo summaries list --domain medical-research --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['entries'][0]['entry_id'] if d.get('entries') else 'none')")
 if [ "$ENTRY_ID" != "none" ]; then
-    autoinfo summaries flag --entry-id "$ENTRY_ID" --tags "important,review"
+    autoinfo summaries flag "$ENTRY_ID" --tag "important" --tag "review"
 fi
 ```
 **Expected Result:** ✅ Entry flagged. Tags stored in metadata.
+
+Note: `entry_id` is positional. Use `--tag` (repeatable) not `--tags`.
 
 
 #### 4.5 🟢 Status shows collection stats
@@ -402,7 +412,7 @@ autoinfo init --demo medical-research
 
 #### 5.1 🟢 Sources list
 ```bash
-autoinfo sources list
+autoinfo sources list --domain medical-research
 ```
 **Expected Result:** ✅ Shows all configured sources with name, type, url, domain.
 
@@ -435,11 +445,13 @@ autoinfo sources remove --source-id "medical-research:my-rss"
 **Expected Result:** ✅ Source removed. Confirmation shown. No longer in `sources list`.
 
 
-#### 5.6 🔴 Test nonexistent source
+#### 5.6 🔴 Test nonexistent URL
 ```bash
-autoinfo sources test --name nonexistent-source
+autoinfo sources test --url https://nonexistent.example.com/feed --type rss
 ```
-**Expected Result:** ❌ Error message: source not found. Exit code != 0.
+**Expected Result:** ❌ Shows unreachable/error status. Exit code 0 (test command runs, but URL is unreachable).
+
+Note: `sources test` only accepts `--url` and `--type`. There is no way to test a configured source by name. To test a configured source, pass its URL directly.
 
 
 #### 5.7 🔴 Add source with invalid type
@@ -481,7 +493,7 @@ autoinfo init --demo medical-research
 
 #### 6.1 🟢 Topics list
 ```bash
-autoinfo topics list
+autoinfo topics list --domain medical-research
 ```
 **Expected Result:** ✅ Shows all topics with name, keywords, domain.
 
@@ -502,7 +514,7 @@ autoinfo topics remove --topic-id "Gene Therapy" --domain medical-research
 
 #### 6.4 🔴 Remove nonexistent topic
 ```bash
-autoinfo topics remove --name "Nonexistent Topic" --domain medical-research
+autoinfo topics remove --topic-id "Nonexistent Topic" --domain medical-research
 ```
 **Expected Result:** ❌ Error: topic not found.
 

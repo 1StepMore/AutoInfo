@@ -516,7 +516,7 @@ Something went wrong during execution.
 > - PubMed: failed (503) -- last success was 3 days ago
 > - arXiv: 5 new items collected
 > - CrossRef: 2 new items collected
-> - Unpaywall: 1 new item collected
+> - CrossRef: 1 new item collected
 >
 > Options:
 > 1. Retry PubMed now

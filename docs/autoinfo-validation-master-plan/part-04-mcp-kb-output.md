@@ -1485,7 +1485,7 @@ print(f"✅ notify_content_ready: {result}")
 ```bash
 cd /tmp/test-q36d
 # Add a schedule
-autoinfo cron add-schedule --domain medical-research --topic "IVF" --cron "0 8 * * 1"
+autoinfo cron add-schedule --name "IVF-schedule" --expression "0 8 * * 1" --domain medical-research
 # Check cron health — reports per-schedule health (ok/missed/error/unknown)
 autoinfo cron health
 echo "Exit: $?"

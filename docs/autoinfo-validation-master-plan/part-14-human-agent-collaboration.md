@@ -543,7 +543,7 @@ print("✅ Draft updated and ready for human promotion")
 ```bash
 # HUMAN-ONLY OPERATION: promote Draft to Wiki
 # The agent cannot perform this action (F20: 03-Wiki is append-only, human-only)
-autoinfo kb promote --domain medical-research --topic endometrial-receptivity --id <draft_id>
+autoinfo kb promote --entry-id <draft_id>
 ```
 
 **Turn 8 - Agent:** (verifies promotion succeeded)

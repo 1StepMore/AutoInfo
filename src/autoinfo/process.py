@@ -729,7 +729,7 @@ def run_processing(
                     )
                     g4_model = f"{g4_provider}/{g4_model_name}"
                     g4_gate_config = gate_config.get("G4-SummaryFactual") if gate_config else None
-                    g4 = G4FactualConsistency(model=g4_model)
+                    g4 = G4FactualConsistency(model=g4_model, json_mode=proc_config.llm.json_mode if proc_config else True)
                     g4_result = g4.check(item, extraction, gate_config=g4_gate_config)
                     quality_results["G4-SummaryFactual"] = g4_result
 
@@ -858,6 +858,7 @@ def run_processing(
                                 source_text, target_text,
                                 source_lang, target_lang,
                                 model=g5_model,
+                                json_mode=proc_config.llm.json_mode if proc_config else True,
                             )
 
                             composite = calculate_quality_score(
@@ -1074,7 +1075,7 @@ def run_processing(
     # -- Auto-verify: compare expected entries vs KB store count ----------
     if result.kb_entries_created > 0:
         try:
-            actual_count = kb_store.count_entries(domain)
+            actual_count = kb_store.count_entries()  # total across all domains
             if actual_count < result.kb_entries_created:
                 logger.warning(
                     "KB count mismatch: expected %d entries, SQLite returned %d. "

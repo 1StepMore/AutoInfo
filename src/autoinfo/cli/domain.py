@@ -17,14 +17,21 @@ import json
 from pathlib import Path
 
 import typer
+import yaml
 
 from autoinfo.config import (
     Config,
     DomainConfig,
+    SourceConfig,
+    TopicConfig,
     get_config_path,
     load_config,
     save_config,
 )
+
+# Directory containing bundled demo domain definitions
+_HERE = Path(__file__).resolve().parent
+_DEMO_DOMAINS_DIR = _HERE.parent / "data" / "domains"
 
 app = typer.Typer(help="Manage domain configurations")
 
@@ -197,3 +204,71 @@ def deactivate(
     domain_cfg.active = False
     save_config(config, cfg_path)
     typer.echo(f"Domain '{name}' deactivated.")
+
+
+@app.command(name="import")
+def import_cmd(
+    from_demo: str = typer.Option(
+        ..., "--from-demo", help="Name of the demo domain to import"
+    ),
+) -> None:
+    """Import a demo domain into the current project configuration (idempotent)."""
+    _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth"})
+    _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+
+    demo_yaml = _DEMO_DOMAINS_DIR / from_demo / "sources.yaml"
+    if not demo_yaml.is_file():
+        typer.echo(
+            f"Unknown demo domain '{from_demo}'. "
+            f"Available: {', '.join(sorted(d.name for d in _DEMO_DOMAINS_DIR.iterdir() if d.is_dir() and (d / 'sources.yaml').is_file()))}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    cfg_path, config = _load()
+    if _find_domain(config, from_demo) is not None:
+        typer.echo(f"Domain '{from_demo}' already exists")
+        return
+
+    with open(demo_yaml) as f:
+        domain_data = yaml.safe_load(f)
+
+    sources = []
+    for s in domain_data.get("sources", []):
+        tier = s.get("quality_tier", 1)
+        tos = s.get("tos_classification")
+        if not tos:
+            tos = _TIER_TOS_MAP.get(tier, "open")
+        sources.append(
+            SourceConfig(
+                name=s.get("name", ""),
+                type=s.get("type", "api"),
+                url=s.get("url", ""),
+                quality_tier=tier,
+                tos_classification=tos,
+                fetch_depth=s.get("fetch_depth", "abstract"),
+                settings={k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS},
+            )
+        )
+
+    topics = [
+        TopicConfig(
+            name=t.get("name", ""),
+            keywords=t.get("keywords", []),
+            group=t.get("group", ""),
+            relevance_threshold=int(t.get("relevance_threshold", 30)),
+        )
+        for t in domain_data.get("topics", [])
+    ]
+
+    new_domain = DomainConfig(
+        name=from_demo,
+        description=domain_data.get("description", ""),
+        active=True,
+        sources=sources,
+        topics=topics,
+        extract_fields=domain_data.get("extract_fields", []),
+    )
+    config.domains.append(new_domain)
+    save_config(config, cfg_path)
+    typer.echo(f"Domain '{from_demo}' imported.")

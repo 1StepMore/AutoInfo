@@ -281,6 +281,10 @@ def _collect_from_source(
 
     items_found = len(items)
 
+    # Ensure every item carries the correct domain
+    for item in items:
+        item.domain = domain
+
     # Log API call cost (non-blocking — failures are swallowed)
     try:
         CostMeter().log_api_call(
@@ -394,7 +398,7 @@ def _build_handler(source_config: SourceConfig) -> Any:
     if stype == "api" and "pubmed" in name:
         from autoinfo.collectors.pubmed import PubMedHandler
 
-        return PubMedHandler()
+        return PubMedHandler(source_config=source_config)
 
     if stype == "rss":
         from autoinfo.collectors.rss import RSSHandler
@@ -516,7 +520,8 @@ def _cache_items(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     for item in items:
-        file_path = base_dir / f"{item.id}.json"
+        safe_id = item.id.replace("/", "_") if item.id else item.id
+        file_path = base_dir / f"{safe_id}.json"
         # Avoid overwriting existing cached files (idempotent)
         if file_path.exists():
             continue

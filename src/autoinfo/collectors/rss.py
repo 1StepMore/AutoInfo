@@ -58,7 +58,7 @@ class RSSHandler(BaseHandler):
             failure, malformed XML, etc.) — this method **never** raises.
         """
         try:
-            parsed = feedparser.parse(url)
+            parsed = feedparser.parse(url, agent="AutoInfo/1.8 (autoinfo@example.com)")
         except Exception as exc:
             logger.error("RSS fetch failed for %s: %s", url, exc)
             return []

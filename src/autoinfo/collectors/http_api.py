@@ -116,7 +116,10 @@ class HttpApiHandler(BaseHandler):
         """Initialise the handler from a :class:`SourceConfig`.
 
         All per-source configuration is read from
-        ``source_config.settings``.
+        ``source_config.settings``.  ``source_config.fetch_depth`` is
+        available for handlers that need to control content depth
+        (e.g. ``"abstract"`` vs ``"fulltext"``), though most HTTP API
+        sources already return full content by default.
         """
         self.source_config = source_config
         self.source_name = source_config.name
@@ -346,6 +349,11 @@ def _traverse_json(data: dict[str, Any], dot_path: str) -> Any:
     for key in dot_path.split("."):
         if isinstance(current, dict):
             current = current.get(key)
+            if current is None:
+                return None
+        elif isinstance(current, list) and key.isdigit():
+            idx = int(key)
+            current = current[idx] if 0 <= idx < len(current) else None
             if current is None:
                 return None
         else:

@@ -228,6 +228,7 @@ def llm_judge_translation(
     back_translated_text: str,
     source_lang: str,
     model: str | None = None,
+    json_mode: bool = True,
 ) -> dict[str, Any]:
     """Compare original source with back-translated text and score faithfulness.
 
@@ -285,7 +286,7 @@ def llm_judge_translation(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
+            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
             max_tokens=1000,
             temperature=0.1,
         )

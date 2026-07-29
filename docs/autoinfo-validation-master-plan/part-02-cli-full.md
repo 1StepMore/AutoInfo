@@ -308,23 +308,25 @@ autoinfo init --demo language-learning
 
 #### 10.1 🟢 CEFR classify single text [REQUIRES LLM KEY]
 ```bash
-autoinfo cefr classify --text "The mitochondria is the powerhouse of the cell." --language en
+autoinfo cefr classify "The mitochondria is the powerhouse of the cell." --lang en
 ```
 **Expected Result:** ✅ Returns CEFR level (A1-C2), confidence score, features list.
+
+Note: `text` is a positional argument. Use `--lang` not `--language`.
 
 
 #### 10.2 🟢 CEFR classify batch from file [REQUIRES LLM KEY]
 ```bash
 echo "Hello, how are you?" > /tmp/cefr-input.txt
 echo "The ecological implications of deforestation are manifold." >> /tmp/cefr-input.txt
-autoinfo cefr batch --input /tmp/cefr-input.txt --language en
+autoinfo cefr batch --input /tmp/cefr-input.txt --lang en
 ```
 **Expected Result:** ✅ Returns CEFR classification for each text.
 
 
 #### 10.3 🟢 CEFR classify Chinese [REQUIRES LLM KEY]
 ```bash
-autoinfo cefr classify --text "今天天气很好，我们去公园散步。" --language zh
+autoinfo cefr classify "今天天气很好，我们去公园散步。" --lang zh
 ```
 **Expected Result:** ✅ Returns CEFR level for Chinese text.
 
@@ -364,7 +366,7 @@ autoinfo email config
 
 #### 11.2 🟢 Send email digest [REQUIRES SMTP CONFIG]
 ```bash
-autoinfo email send --to user@example.com --subject "Weekly Digest" --domain medical-research --period week
+autoinfo email send-digest --domain medical-research --period weekly
 ```
 **Expected Result:** ✅ Email sent. Confirmation message. (Skip if SMTP not configured.)
 
@@ -403,27 +405,33 @@ autoinfo cron list-schedules
 
 #### 12.2 🟢 Add schedule
 ```bash
-autoinfo cron add-schedule --domain medical-research --topic "IVF" --cron "0 8 * * 1"
+autoinfo cron add-schedule --name "weekly-ivf" --expression "0 8 * * 1" --domain medical-research
 ```
 **Expected Result:** ✅ Schedule added. Listed in `list-schedules`.
+
+Note: Uses `--name` + `--expression` (cron syntax), not `--topic` + `--cron`.
 
 
 #### 12.3 🟢 Remove schedule
 ```bash
-# Get schedule ID from list
-SCHED_ID=$(autoinfo cron list-schedules --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); s=d.get('schedules',[]); print(s[0]['id'] if s else '')" 2>/dev/null)
-if [ "$SCHED_ID" != "" ]; then
-    autoinfo cron remove-schedule --schedule-id "$SCHED_ID"
+# Get schedule name from list
+SCHED_NAME=$(autoinfo cron list-schedules --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); s=d.get('schedules',[]); print(s[0]['name'] if s else '').strip()" 2>/dev/null)
+if [ "$SCHED_NAME" != "" ]; then
+    autoinfo cron remove-schedule --name "$SCHED_NAME"
 fi
 ```
 **Expected Result:** ✅ Schedule removed. Confirmation shown.
 
+Note: Uses `--name` not `--schedule-id`.
+
 
 #### 12.4 🟢 Run schedules (manual trigger)
 ```bash
-autoinfo cron run-schedules
+autoinfo cron run
 ```
 **Expected Result:** ✅ Schedules executed. Collection started for each active schedule.
+
+Note: Subcommand is `run` not `run-schedules`.
 
 
 #### 12.5 🟢 Install crontab
@@ -478,14 +486,16 @@ autoinfo keywords list --domain medical-research
 
 #### 13.2 🟢 Approve keyword
 ```bash
-autoinfo keywords approve --keyword "CRISPR" --domain medical-research
+autoinfo keywords approve medical-research CRISPR
 ```
 **Expected Result:** ✅ Keyword approved. Status changes to "verified". Shown in `list`.
+
+Note: Takes positional `{domain} {keyword}`, not `--keyword --domain` flags.
 
 
 #### 13.3 🟢 Reject keyword
 ```bash
-autoinfo keywords reject --keyword "CRISPR" --domain medical-research
+autoinfo keywords reject medical-research CRISPR
 ```
 **Expected Result:** ✅ Keyword rejected. Status changes to "deprecated". Confirmation shown.
 
@@ -525,11 +535,13 @@ autoinfo collect --domain medical-research --topic "IVF" --limit 3
 
 ### Scenarios
 
-#### 14.1 🟢 Knowledge graph export (GraphML)
+#### 14.1 🟢 Knowledge graph export (JSON)
 ```bash
-autoinfo knowledge graph --domain medical-research
+autoinfo knowledge graph export --domain medical-research
 ```
-**Expected Result:** ✅ GraphML file exported. Contains entities and relations.
+**Expected Result:** ✅ JSON file exported (knowledge_graph_export.json). Contains entities and relations.
+
+Note: Output is JSON, not GraphML. Use `knowledge graph export` (not `knowledge graph --domain`).
 
 
 ---

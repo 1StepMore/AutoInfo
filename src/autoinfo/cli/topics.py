@@ -54,6 +54,9 @@ def add(
             return
 
     kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+    if not kw_list:
+        typer.echo("Error: At least one keyword is required.", err=True)
+        raise typer.Exit(code=1)
     new_topic = TopicConfig(name=name, keywords=kw_list)
     domain_cfg.topics.append(new_topic)
     save_config(config, config_path)

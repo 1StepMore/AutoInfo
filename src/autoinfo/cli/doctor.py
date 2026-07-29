@@ -76,6 +76,13 @@ def _print_human(result: dict[str, Any]) -> None:
             "  ❌ LLM: no API key configured "
             "(set AUTOINFO_LLM_API_KEY or configure llm.api_key)"
         )
+        typer.echo(
+            "       Agent: call configure_llm("
+            "api_key='...', provider='...', model='...') to set up the LLM"
+        )
+        typer.echo(
+            "       See docs/dev/founder-expectations.md §LLM-config for details"
+        )
 
     # --- Sources ---
     sources = result.get("sources", [])

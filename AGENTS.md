@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (132 tools across 32 categories)
+2. **All capabilities** are exposed as MCP tools (133 tools across 32 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -66,7 +66,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 132 MCP tools across 32 categories
+│   │   │   ├── mcp-tools.md        # 133 MCP tools across 32 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -83,7 +83,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (132 tools)
+│       ├── mcp/                     # MCP server (133 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
@@ -166,7 +166,7 @@ freshness at output time.
 | Action | Reason |
 |--------|--------|
 | **Run `init_project` MCP tool** | Use `init_project` MCP tool for agent workflows instead of CLI `init`. CLI `init` remains available for humans. |
-| **Do not manage API keys** | Keys are configured in env vars or config. You don't store, generate, or transmit keys. |
+| **Do not manage raw API keys** | Use `configure_llm()` MCP tool for BYOK setup — stores env var reference (`\${AUTOINFO_LLM_API_KEY}`), never the raw key. Never store, generate, or transmit keys. |
 | **Do not write to 03-Wiki** | Only human can promote Draft→Wiki. |
 | **Do not create Draft from outside** | Draft must come from 01-Raw. |
 | **Do not demote Wiki entries** | Wiki is append-only. Tag `deprecated` only upon human command. |
@@ -176,11 +176,11 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-132 MCP tools across 32 categories:
+133 MCP tools across 32 categories:
 
 | Category | Key Tools |
 |----------|-----------|
-| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models`, `get_tool_count` |
+| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models`, `get_tool_count`, `configure_llm` |
 | **Discovery** | `list_domains`, `list_available_platforms`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
 | **Domain** | `add_domain`, `remove_domain` |
 | **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health`, `get_feeds` |
@@ -346,6 +346,14 @@ freshness at output time.
 ```
 → Full KB CRUD over HTTP, no auth required (localhost security).
 
+### "Configure the LLM"
+```
+1. `configure_llm(api_key="sk-...", provider="openai", model="gpt-4")` → stores env var reference in config *(requires AutoInfo ≥ v1.8.1)*
+2. api_key is stored as `${AUTOINFO_LLM_API_KEY}` env var reference — never the raw key
+3. Set the actual key as an environment variable: `export AUTOINFO_LLM_API_KEY="sk-..."`
+```
+→ LLM configured for extraction and processing.
+
 ## LLM Configuration
 
 AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
@@ -409,7 +417,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 132 tools across 32 categories |
+| MCP server | ✅ 133 tools across 32 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |

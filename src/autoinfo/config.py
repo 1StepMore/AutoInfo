@@ -361,6 +361,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             model=str(f.get("model", "")),
             api_key=str(f.get("api_key", "")),
             base_url=str(f.get("base_url", "")),
+            json_mode=bool(f.get("json_mode", True)),
         )
         for f in fallback_raw
     ]
@@ -532,6 +533,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             model=str(llm_raw.get("model", "")),
             api_key=str(llm_raw.get("api_key", "")),
             base_url=str(llm_raw.get("base_url", "")),
+            json_mode=bool(llm_raw.get("json_mode", True)),
             fallback=fallback,
             tasks=tasks,
         ),
@@ -741,6 +743,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             "provider": config.llm.provider,
             "model": config.llm.model,
             "api_key": config.llm.api_key,
+            "json_mode": config.llm.json_mode,
         },
         "domains": [],
     }
@@ -750,7 +753,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
     # Serialize llm.fallback
     if config.llm.fallback:
         raw["llm"]["fallback"] = [
-            {"provider": fb.provider, "model": fb.model} for fb in config.llm.fallback
+            {"provider": fb.provider, "model": fb.model, "json_mode": fb.json_mode}
+            for fb in config.llm.fallback
         ]
     # Serialize llm.tasks
     if config.llm.tasks:
@@ -953,6 +957,7 @@ def _resolve_task_llm_config(config: Config, task_name: str = "") -> LLMConfig:
         provider=task_cfg.provider if task_cfg.provider else base.provider,
         model=task_cfg.model if task_cfg.model else base.model,
         api_key=base.api_key,
+        json_mode=base.json_mode,
         fallback=base.fallback,
         tasks=base.tasks,
     )

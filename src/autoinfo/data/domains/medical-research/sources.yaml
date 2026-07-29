@@ -11,6 +11,7 @@ sources:
     frequency: daily
     access: free
     rate_limit: 3  # requests per second without API key
+    fetch_depth: fulltext  # PMC full-text via idconv+efetch when available
 
   - name: arXiv
     type: rss

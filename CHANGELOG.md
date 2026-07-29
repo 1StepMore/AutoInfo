@@ -20,6 +20,8 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **8 broken demo domain sources** — Fixed sources across financial-intelligence, tech-ai-developer, and language-learning domains. Stack Exchange URL/field_mapping/json_path fixed. FRED added `auth_mode: query` for BYOK. SEC EDGAR migrated from broken REST API to working Atom RSS feed. GitHub Trending URL changed to working Search API endpoint. Project Gutenberg RSS URL corrected. BBC Learning English renamed to VOA Learning English (working feed). Yahoo Finance replaced with Twelve Data (free market data API). World Bank Data added as new financial source.
 - **`_traverse_json` integer index support** — `http_api.py` now handles integer indices in JSON paths (e.g. `"1"` for the second element in a response array), required by World Bank Data source.
 - **RSS User-Agent agent param** — `rss.py` passes `agent` param through to HTTP request headers, required by SEC EDGAR Atom feed.
+- **#62: PubMed full-text fetch enabled** — Added `fetch_depth: fulltext` to PubMed demo source in medical-research domain. PMC full-text via idconv+efetch now used when available (was defaulting to abstract-only).
+- **#68: `response_format` hardened** — All 10 `response_format={"type": "json_object"}` call sites now conditionally applied based on `json_mode` flag. `json_mode` wired through YAML config parsing (config.yaml `llm.json_mode`), fallback entries, `_resolve_task_llm_config`, and `config_to_dict` serialization. Default remains `True` (backward-compatible).
 
 ### Changed
 - **MCP tool inventory**: 132 → 133 tools (added `configure_llm` to System category). All doc references updated (README, AGENTS, mcp-tools.md, doc-manager-skill).

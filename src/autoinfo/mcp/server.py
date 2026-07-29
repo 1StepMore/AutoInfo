@@ -52,7 +52,7 @@ import sqlite3
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, TypeVar
 
 import httpx
 from mcp.server import Server
@@ -109,7 +109,10 @@ def _job_db_path() -> Path:
     return Path.cwd() / "autoinfo.db"
 
 
-def _with_job_db[T](fn: Callable[[sqlite3.Connection], T]) -> T:
+T = TypeVar('T')
+
+
+def _with_job_db(fn: Callable[[sqlite3.Connection], T]) -> T:
     """Open a connection, call *fn*, then close.
 
     Uses the same PRAGMA settings as :class:`~autoinfo.kb.SQLiteIndex`.

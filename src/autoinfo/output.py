@@ -1481,8 +1481,10 @@ def _call_llm_for_digest(
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            max_tokens=2000,
+            max_tokens=4000,
             temperature=0.1,
+            api_key=config.llm.api_key or None,
+            api_base=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM digest synthesis failed: %s", exc)
@@ -2848,6 +2850,8 @@ def _call_llm_for_translation(
             response_format={"type": "json_object"},
             max_tokens=4000,
             temperature=0.1,
+            api_key=config.llm.api_key or None,
+            api_base=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM translation failed: %s", exc)
@@ -3314,12 +3318,13 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
             ],
             response_format={"type": "json_object"},
             max_tokens=4000,
-            temperature=0.3,
+            temperature=0.1,
+            api_key=config.llm.api_key or None,
+            api_base=config.llm.base_url or None,
         )
     except Exception as exc:
-        logger.error("LLM tutorial synthesis failed: %s", exc)
+        logger.error("Tutorial generation failed: %s", exc)
         return {}
-
     content: str = response.choices[0].message.content  # type: ignore[union-attr]
     return _parse_json_response(content)
 
@@ -3553,12 +3558,13 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
             ],
             response_format={"type": "json_object"},
             max_tokens=4000,
-            temperature=0.3,
+            temperature=0.1,
+            api_key=config.llm.api_key or None,
+            api_base=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM presentation synthesis failed: %s", exc)
         return {}
-
     content: str = response.choices[0].message.content  # type: ignore[union-attr]
     return _parse_json_response(content)
 

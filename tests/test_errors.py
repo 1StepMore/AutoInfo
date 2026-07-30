@@ -51,27 +51,25 @@ class TestErrorCodeEnumValues:
         assert member.value == expected
 
     def test_total_members(self) -> None:
-        """Ensure exactly 23 members exist (20 original + 3 added for error format unification)."""
-        assert len(ErrorCode) == 23
+        """Ensure exactly 27 members exist (23 original + 4 new for UX enhancement)."""
+        assert len(ErrorCode) == 27
 
 
 class TestErrorResponseTypedDict:
     """Type-check the TypedDict shape (runtime structural checks)."""
 
     def test_fields_present(self) -> None:
-        """ErrorResponse should define error_code, message, actionable."""
+        """ErrorResponse should define success and error fields (canonical envelope)."""
         # TypedDict introspection
         annotations = ErrorResponse.__annotations__
-        assert "error_code" in annotations
-        assert "message" in annotations
-        assert "actionable" in annotations
+        assert "success" in annotations
+        assert "error" in annotations
 
     def test_field_types(self) -> None:
         annotations = ErrorResponse.__annotations__
         # With ``from __future__ import annotations`` these are ForwardRefs
-        assert "error_code" in annotations
-        assert "message" in annotations
-        assert "actionable" in annotations
+        assert "success" in annotations
+        assert "error" in annotations
 
 
 class TestErrorDict:

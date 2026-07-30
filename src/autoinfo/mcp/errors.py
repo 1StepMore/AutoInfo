@@ -44,18 +44,30 @@ class ErrorCode(str, Enum):
     AUTH_REQUIRED = "AuthRequired"
     RATE_LIMITED = "RateLimited"
     SESSION_EXPIRED = "SessionExpired"
+    LLM_NOT_CONFIGURED = "LLMNotConfigured"
+    NO_CACHED_ITEMS = "NoCachedItems"
+    EMPTY_RESULT = "EmptyResult"
+    CONFIG_NOT_FOUND = "ConfigNotFound"
+
+
+class ErrorDetail(TypedDict):
+    """Shape of the ``error`` field inside the canonical error envelope."""
+
+    code: str
+    message: str
+    actionable: bool
 
 
 class ErrorResponse(TypedDict):
-    """Shape of a standardised error response dict.
+    """Canonical error envelope shape ``{success: False, error: {code, message, actionable}}``.
 
-    Fields mirror the dict returned by :func:`error_dict` and match
-    the existing pattern in ``server.py``.
+    Returned by :func:`error_response`.  The legacy flat shape
+    (``error_code`` / ``message`` / ``actionable``) from :func:`error_dict`
+    is deprecated.
     """
 
-    error_code: ErrorCode
-    message: str
-    actionable: bool
+    success: bool
+    error: ErrorDetail
 
 
 def error_dict(
@@ -66,9 +78,15 @@ def error_dict(
     """Build a standardised error dict.
 
     .. deprecated::
-        Use :func:`error_response` for new code.  This function returns only
-        flat ``error_code/message/actionable`` fields without the envelope
-        ``success/error`` wrapper.  Kept for backward compatibility.
+        **Deprecated** — use :func:`error_response` for new code.
+        This function returns only the flat fields (``error_code`` /
+        ``message`` / ``actionable``) *without* the ``success/error``
+        envelope.  Kept for backward compatibility; new callers MUST
+        use :func:`error_response`.
+
+        .. warning::
+            ``DeprecationWarning`` — This function will be removed in
+            a future release.
 
     Returns a dict with ``error_code`` (the enum *value* string),
     ``message``, and ``actionable`` — the same shape used throughout
@@ -87,6 +105,8 @@ def success_response(
     """Return a success envelope ``{success: True, data: ...}``.
 
     This is the standard success response for all non-health MCP tools.
+    Pairs with :func:`error_response` which returns the error counterpart
+    ``{success: False, error: {code, message, actionable}}``.
     """
     return {"success": True, "data": data}
 

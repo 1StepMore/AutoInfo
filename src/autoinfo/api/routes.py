@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from autoinfo.kb import KBStore
@@ -31,6 +32,39 @@ def _get_store() -> KBStore:
     if _store is None:
         _store = KBStore()
     return _store
+
+
+# ---------------------------------------------------------------------------
+# Domain validation
+# ---------------------------------------------------------------------------
+
+
+def _known_domains() -> set[str]:
+    """Return the set of known domain names (config + filesystem fallback)."""
+    domains: set[str] = set()
+
+    # From config
+    try:
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if config_path and config_path.is_file():
+            config = load_config(config_path)
+            for d in config.domains:
+                domains.add(d.name)
+    except Exception:
+        pass
+
+    # From filesystem (fallback)
+    from pathlib import Path as _Path
+
+    kb_dir = _Path("knowledge")
+    if kb_dir.is_dir():
+        for entry in kb_dir.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                domains.add(entry.name)
+
+    return domains
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +244,22 @@ async def get_entry(entry_id: str) -> dict[str, Any]:
 @router.post("/entries", response_model=EntryResponse, status_code=201)
 async def create_entry(body: EntryCreate) -> dict[str, Any]:
     """Create a new KB entry from the provided fields."""
+    # Validate that the domain exists (skip validation for "default")
+    if body.domain and body.domain != "default":
+        known = _known_domains()
+        if body.domain not in known:
+            return JSONResponse(  # pyright: ignore[reportReturnType]
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": {
+                        "code": ErrorCode.DOMAIN_NOT_FOUND,
+                        "message": f"Domain '{body.domain}' not found. Use add_domain(name='{body.domain}') to create it.",
+                        "actionable": True,
+                    },
+                },
+            )
+
     store = _get_store()
 
     # Build an Item from the request body

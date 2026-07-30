@@ -103,6 +103,73 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
+# Domain validation helper — shared between middleware and routes
+# ---------------------------------------------------------------------------
+
+
+def _known_domains() -> set[str]:
+    """Return the set of known domain names.
+
+    Checks configured domains in ``.autoinfo/config.yaml`` first,
+    then falls back to scanning the ``knowledge/`` directory for
+    directories that represent domain namespaces.
+    """
+    domains: set[str] = set()
+
+    # -- From config -----------------------------------------------------------
+    try:
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if config_path and config_path.is_file():
+            config = load_config(config_path)
+            for d in config.domains:
+                domains.add(d.name)
+    except Exception:
+        logger.debug("Could not load domains from config", exc_info=True)
+
+    # -- From filesystem (fallback) -------------------------------------------
+    kb_dir = Path("knowledge")
+    if kb_dir.is_dir():
+        for entry in kb_dir.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                domains.add(entry.name)
+
+    return domains
+
+
+# ---------------------------------------------------------------------------
+# HTTP middleware — domain precondition check for domain-specific routes
+# ---------------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def domain_validation_middleware(request: Request, call_next):
+    """Validate that the ``domain`` query parameter refers to an existing domain.
+
+    Only applies to ``/api/v1/*`` GET and DELETE routes that accept a
+    ``domain`` query parameter.  Returns ``404 DOMAIN_NOT_FOUND`` when
+    a domain value is provided but not recognised.
+
+    POST routes handle domain validation inline (the middleware cannot
+    safely read the request body).
+    """
+    path = request.url.path
+    if request.method in ("GET", "DELETE") and path.startswith("/api/v1/"):
+        domain = request.query_params.get("domain", "").strip()
+        if domain:
+            known = _known_domains()
+            if domain not in known:
+                return _error_envelope(
+                    status_code=404,
+                    error_code=ErrorCode.DOMAIN_NOT_FOUND,
+                    message=f"Domain '{domain}' not found. Use add_domain(name='{domain}') to create it.",
+                )
+
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
 # Exception handlers — canonical {success, error: {code, message}} envelope
 # ---------------------------------------------------------------------------
 

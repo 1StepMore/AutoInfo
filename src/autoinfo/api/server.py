@@ -20,7 +20,7 @@ from typing import Any
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
@@ -29,6 +29,7 @@ from autoinfo.api.portal import router as portal_router
 from autoinfo.api.routes import router as api_v1_router
 from autoinfo.api.storefront import router as storefront_router
 from autoinfo.config import RestAPIConfig
+from autoinfo.mcp.errors import ErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,111 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Exception handlers — canonical {success, error: {code, message}} envelope
+# ---------------------------------------------------------------------------
+
+
+def _error_envelope(
+    status_code: int,
+    error_code: str | ErrorCode,
+    message: str,
+    actionable: bool = True,
+) -> JSONResponse:
+    """Build a JSONResponse with the canonical error envelope."""
+    code_str = error_code.value if isinstance(error_code, ErrorCode) else error_code
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": code_str,
+                "message": message,
+                "actionable": actionable,
+            },
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(
+    request: Request, exc: HTTPException
+) -> JSONResponse:
+    """Map FastAPI HTTPException → same status with canonical envelope."""
+    code = (
+        ErrorCode.VALIDATION_ERROR
+        if 400 <= exc.status_code < 500
+        else ErrorCode.INTERNAL_ERROR
+    )
+    logger.warning(
+        "HTTPException in %s %s (%d): %s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+    )
+    return _error_envelope(
+        status_code=exc.status_code,
+        error_code=code,
+        message=str(exc.detail),
+        actionable=exc.status_code < 500,
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(
+    request: Request, exc: ValueError
+) -> JSONResponse:
+    """Map ValueError → 400 Bad Request."""
+    logger.warning(
+        "ValueError in %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return _error_envelope(
+        status_code=400,
+        error_code=ErrorCode.VALIDATION_ERROR,
+        message=str(exc),
+    )
+
+
+@app.exception_handler(KeyError)
+async def key_error_handler(
+    request: Request, exc: KeyError
+) -> JSONResponse:
+    """Map KeyError → 400 Bad Request."""
+    logger.warning(
+        "KeyError in %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return _error_envelope(
+        status_code=400,
+        error_code=ErrorCode.VALIDATION_ERROR,
+        message=str(exc),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler for all unhandled exceptions → 500."""
+    logger.error(
+        "Unhandled exception in %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
+    return _error_envelope(
+        status_code=500,
+        error_code=ErrorCode.INTERNAL_ERROR,
+        message=str(exc) if str(exc) else "An unhandled server error occurred.",
+        actionable=False,
+    )
 
 
 # ---------------------------------------------------------------------------

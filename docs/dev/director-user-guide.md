@@ -352,6 +352,8 @@ The CLI `autoinfo init` is a human-only operation. The agent uses the `init_proj
 
 API keys are configured via environment variables (`AUTOINFO_LLM_API_KEY`) or `.autoinfo/config.yaml`. The agent never stores, generates, or transmits keys. If keys need to change, you do it directly.
 
+See `docs/dev/required-api-keys.md` for the full catalog of required API keys and environment variables across all collectors and integrations.
+
 ### 5.6 Direct Config Editing
 
 The agent does not modify `.autoinfo/config.yaml` directly. It uses MCP tools (`add_source`, `add_topic`, `set_gate_config`) for configuration changes. You can edit the config file directly if you prefer, but the agent will not.

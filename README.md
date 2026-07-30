@@ -164,6 +164,7 @@ autoinfo init --demo medical-research
 
 # Configure LLM key
 export AUTOINFO_LLM_API_KEY="sk-..."
+# See docs/dev/required-api-keys.md for the full list of API keys and environment variables
 
 # Collect, process, and search
 autoinfo collect --domain medical-research --topic "IVF breakthroughs" --limit 5

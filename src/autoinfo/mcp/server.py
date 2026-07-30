@@ -306,6 +306,37 @@ def _detect_phase(
     return "operational"
 
 
+def _detect_kb_status() -> str:
+    """Detect knowledge base initialisation status.
+
+    Returns:
+        ``"uninitialized"`` — ``knowledge/`` directory does not exist.
+        ``"empty"`` — ``knowledge/`` directory exists but has no content
+            (no tier subdirectories with files inside).
+        ``"operational"`` — ``knowledge/`` directory exists and has
+            content in at least one tier subdirectory.
+    """
+    knowledge_dir = Path("knowledge")
+
+    if not knowledge_dir.is_dir():
+        return "uninitialized"
+
+    # Check if any tier subdirectory (01-Raw, 02-Draft, 03-Wiki) has files
+    has_content = False
+    try:
+        for entry in knowledge_dir.iterdir():
+            if entry.is_dir() and any(entry.iterdir()):
+                has_content = True
+                break
+    except OSError:
+        pass
+
+    if not has_content:
+        return "empty"
+
+    return "operational"
+
+
 def _handle_diagnose_system() -> dict[str, Any]:
     """Comprehensive system diagnostics — llm, sources, disk, db."""
     result: dict[str, Any] = {
@@ -684,6 +715,21 @@ def _handle_list_summaries(**kwargs: Any) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     domain = kwargs.pop("domain")
+
+    kb_status = _detect_kb_status()
+    if kb_status == "uninitialized":
+        return error_response(
+            ErrorCode.EMPTY_RESULT,
+            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
+        )
+    if kb_status == "empty":
+        return {
+            "domain": domain,
+            "entries": [],
+            "count": 0,
+            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
+        }
+
     store = KBStore()
     entries = store.list_entries(domain, **kwargs)
     return {"domain": domain, "entries": entries, "count": len(entries)}
@@ -1970,6 +2016,19 @@ def _handle_search_knowledge_base(
     """
     from autoinfo.kb import KBStore
 
+    kb_status = _detect_kb_status()
+    if kb_status == "uninitialized":
+        return error_response(
+            ErrorCode.EMPTY_RESULT,
+            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
+        )
+    if kb_status == "empty":
+        return {
+            "entries": [],
+            "count": 0,
+            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
+        }
+
     store = KBStore()
     return store.search_knowledge_base(
         query=query,
@@ -2184,6 +2243,21 @@ def _handle_list_kb_tier(
         are returned. When ``None``, no user filter is applied.
     """
     from autoinfo.kb import KBStore
+
+    kb_status = _detect_kb_status()
+    if kb_status == "uninitialized":
+        return error_response(
+            ErrorCode.EMPTY_RESULT,
+            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
+        )
+    if kb_status == "empty":
+        return {
+            "domain": domain,
+            "tier": tier,
+            "entries": [],
+            "count": 0,
+            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
+        }
 
     store = KBStore()
     entries = store.list_kb_tier(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)

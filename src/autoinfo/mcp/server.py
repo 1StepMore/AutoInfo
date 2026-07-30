@@ -547,12 +547,12 @@ def _handle_collect_sources(
         else:
             result = {"job_id": job_id, "result": result}
         return result
-    except Exception:
+    except Exception as exc:
         _save_job_state(job_id, "collection", domain, "error", 0.0, {
             "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
         })
-        raise
+        return error_response(ErrorCode.COLLECTION_FAILED, str(exc), actionable=True)
 
 
 def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:

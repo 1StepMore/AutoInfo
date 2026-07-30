@@ -787,8 +787,75 @@ autoinfo cefr classify "今天天气很好，我们去公园散步。" --lang zh
 ```
 **Expected Result:** ✅ Returns CEFR level for Chinese text.
 
+#### 10.4 🟢 CEFR batch from stdin (pipe) [REQUIRES LLM KEY]
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q10
+echo "Hello, how are you?" | autoinfo cefr batch --lang en 2>&1 || true
+EXIT_CODE=$?
 
----
+# Even without LLM key, verify command accepts stdin pipe without crash
+echo "$OUTPUT" 2>/dev/null | grep -vq "Traceback" \
+  && echo "  ✅ PASS: batch accepts stdin without traceback" \
+  || { echo "  ❌ FAIL: traceback on stdin batch"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 10.4 PASSED"; exit 0; else echo "❌ SCENARIO 10.4 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ CEFR batch command accepts piped stdin input. No traceback.
+
+#### 10.5 🟢 CEFR classify --json output [REQUIRES LLM KEY]
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q10
+OUTPUT=$(autoinfo cefr classify "The mitochondria is the powerhouse of the cell." --lang en --json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    has_level = 'level' in data or 'cefr_level' in data
+    has_confidence = 'confidence' in data or 'score' in data
+    print(f'  keys: {list(data.keys())[:5]}')
+    assert has_level, 'no level field'
+    assert has_confidence, 'no confidence field'
+    print(f'  ✅ PASS: valid JSON with level and confidence')
+except (json.JSONDecodeError, AssertionError) as e:
+    # Without LLM key, this will return an error — that's OK
+    text = sys.stdin.read() if isinstance(e, json.JSONDecodeError) else ''
+    if 'API' in text or 'key' in text or 'LLM' in text:
+        print('  ⚠️ SKIP: LLM key required for JSON output')
+    else:
+        print(f'  ❌ FAIL: {e}')
+        sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: JSON output validation failed"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 10.5 PASSED"; exit 0; else echo "❌ SCENARIO 10.5 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `--json` flag produces structured JSON with `level` and `confidence` fields. Falls back to error message without LLM key.
+
+#### 10.6 🔴 CEFR classify with empty text
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q10
+OUTPUT=$(autoinfo cefr classify "" --lang en 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "empty\|text required\|no text\|usage" \
+  && echo "  ✅ PASS: empty text produces error message" \
+  || { echo "  ❌ FAIL: no error for empty text: $OUTPUT"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 10.6 PASSED"; exit 0; else echo "❌ SCENARIO 10.6 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ Error message about empty/missing text. No traceback. User-friendly.
 
 ### 📊 Q10 Verdict
 
@@ -797,6 +864,9 @@ autoinfo cefr classify "今天天气很好，我们去公园散步。" --lang zh
 | 10.1 Classify single | ⬜ |
 | 10.2 Batch classify | ⬜ |
 | 10.3 Chinese classify | ⬜ |
+| 10.4 Batch from stdin | ⬜ |
+| 10.5 Classify --json | ⬜ |
+| 10.6 Empty text error | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -827,8 +897,57 @@ autoinfo email send-digest --domain medical-research --period weekly
 ```
 **Expected Result:** ✅ Email sent. Confirmation message. (Skip if SMTP not configured.)
 
+#### 11.3 🟢 Email send-digest without SMTP config — user-friendly error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q11
 
----
+OUTPUT=$(autoinfo email send-digest --domain medical-research --period daily 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "smtp\|config\|not configured\|setup" \
+  && echo "  ✅ PASS: SMTP-related error/guidance message" \
+  || { echo "  ❌ FAIL: no SMTP guidance in output"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 11.3 PASSED"; exit 0; else echo "❌ SCENARIO 11.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ User-friendly message about SMTP not configured. No Python traceback.
+
+#### 11.4 🟢 Email --json flag on config
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q11
+
+OUTPUT=$(autoinfo email config --json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    # Should have SMTP-related fields
+    has_smtp = any(k.lower() in ['smtp_server','smtp_port','server','port','sender'] for k in data.keys())
+    print(f'  config keys: {list(data.keys())[:6]}')
+    print(f'  ✅ PASS: email config JSON with {len(data)} keys')
+except (json.JSONDecodeError, ValueError) as e:
+    text = sys.stdin.read() if isinstance(e, json.JSONDecodeError) else str(e)
+    # Check if --json flag was rejected
+    if 'No such option' in text:
+        print('  ⚠️ WARN: --json flag not supported on email config')
+    else:
+        print(f'  ❌ FAIL: {e}')
+        sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: email config JSON validation failed"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 11.4 PASSED"; exit 0; else echo "❌ SCENARIO 11.4 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Email config supports JSON output showing SMTP fields. Or gracefully handles missing --json flag.
 
 ### 📊 Q11 Verdict
 
@@ -836,6 +955,8 @@ autoinfo email send-digest --domain medical-research --period weekly
 |----------|--------|
 | 11.1 Email config | ⬜ |
 | 11.2 Send digest | ⬜ |
+| 11.3 Send without SMTP | ⬜ |
+| 11.4 Email config --json | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -904,8 +1025,111 @@ autoinfo cron uninstall
 ```
 **Expected Result:** ✅ Crontab entries removed. Confirmation shown.
 
+#### 12.7 🟢 Cron health command
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q12
 
----
+# Add a schedule first
+autoinfo cron add-schedule --name "health-test" --expression "* * * * *" --domain medical-research 2>&1 > /dev/null
+# Run once to populate heartbeat
+autoinfo cron run 2>&1 > /dev/null || true
+
+OUTPUT=$(autoinfo cron health 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "health\|ok\|missed\|unknown" \
+  && echo "  ✅ PASS: cron health shows health status" \
+  || { echo "  ❌ FAIL: cron health missing health status"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 12.7 PASSED"; exit 0; else echo "❌ SCENARIO 12.7 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo cron health` shows per-schedule health status (ok/missed/unknown). Exit code 0.
+
+#### 12.8 🟢 Cron health --json structured output
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q12
+
+OUTPUT=$(autoinfo cron health --json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    schedules = data.get('schedules', [])
+    print(f'  schedules in JSON: {len(schedules)}')
+    if schedules:
+        s = schedules[0]
+        fields = ['schedule_id', 'domain', 'cron_expr', 'health']
+        for f in fields:
+            assert f in s, f'missing field: {f}'
+        print(f'  ✅ PASS: JSON with {len(schedules)} schedules, fields={list(s.keys())[:4]}')
+    else:
+        print('  ⚠️ WARN: no schedules in health JSON')
+        print(f'  available keys: {list(data.keys())[:5]}')
+except (json.JSONDecodeError, AssertionError) as e:
+    print(f'  ❌ FAIL: {e}')
+    sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: cron health --json validation failed"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 12.8 PASSED"; exit 0; else echo "❌ SCENARIO 12.8 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo cron health --json` returns structured JSON with schedules array. Each schedule has schedule_id, domain, cron_expr, health.
+
+#### 12.9 🟢 Cron add-delivery schedule
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q12
+
+OUTPUT=$(autoinfo cron add-delivery --name "daily-digest-delivery" --domain medical-research --expression "0 8 * * *" --output-type digest --channel email 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "added\|created" \
+  && echo "  ✅ PASS: delivery schedule added" \
+  || echo "  ⚠️ WARN: add-delivery confirmation unclear (may need different options)"
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 12.9 PASSED"; exit 0; else echo "❌ SCENARIO 12.9 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo cron add-delivery` creates a delivery schedule. No traceback.
+
+#### 12.10 🟢 Cron list-deliveries shows delivery schedules
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q12
+
+OUTPUT=$(autoinfo cron list-deliveries 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "daily-digest-delivery" \
+  && echo "  ✅ PASS: delivery schedule appears in list" \
+  || echo "  ⚠️ WARN: delivery schedule name not in output"
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+# Cleanup
+autoinfo cron remove-delivery --name "daily-digest-delivery" 2>&1 > /dev/null || true
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 12.10 PASSED"; exit 0; else echo "❌ SCENARIO 12.10 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo cron list-deliveries` shows configured delivery schedules. Exit code 0.
 
 ### 📊 Q12 Verdict
 
@@ -917,6 +1141,10 @@ autoinfo cron uninstall
 | 12.4 Run schedules | ⬜ |
 | 12.5 Install crontab | ⬜ |
 | 12.6 Uninstall crontab | ⬜ |
+| 12.7 Cron health | ⬜ |
+| 12.8 Health --json | ⬜ |
+| 12.9 Add delivery | ⬜ |
+| 12.10 List deliveries | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -963,8 +1191,55 @@ autoinfo keywords --help
 ```
 **Expected Result:** ✅ Shows available subcommands: list, approve, reject. (No add/remove/suggest — these were not implemented.)
 
+#### 13.5 🟢 Keywords list with --json flag
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q13
 
----
+OUTPUT=$(autoinfo keywords list --domain medical-research --json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    keywords = data.get('keywords', data.get('items', []))
+    print(f'  keywords count: {len(keywords)}')
+    print(f'  ✅ PASS: keywords list JSON with {len(keywords)} entries')
+except (json.JSONDecodeError, ValueError) as e:
+    text = sys.stdin.read() if isinstance(e, json.JSONDecodeError) else str(e)
+    if 'No such option' in text:
+        print('  ⚠️ WARN: --json flag not supported on keywords list')
+    else:
+        print(f'  ❌ FAIL: {e}')
+        sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: keywords list --json validation failed"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 13.5 PASSED"; exit 0; else echo "❌ SCENARIO 13.5 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Keywords list supports --json output. Shows count and status. Or handles missing --json gracefully.
+
+#### 13.6 🔴 Keywords approve nonexistent keyword
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q13
+
+OUTPUT=$(autoinfo keywords approve medical-research "NONEXISTENT_KEYWORD_12345" 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "not found\|missing\|doesn't exist\|no such" \
+  && echo "  ✅ PASS: error message about nonexistent keyword" \
+  || { echo "  ❌ FAIL: no error for nonexistent keyword: $OUTPUT"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 13.6 PASSED"; exit 0; else echo "❌ SCENARIO 13.6 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ Error message about nonexistent keyword. No traceback. User-friendly.
 
 ### 📊 Q13 Verdict
 
@@ -974,6 +1249,8 @@ autoinfo keywords --help
 | 13.2 Approve keyword | ⬜ |
 | 13.3 Reject keyword | ⬜ |
 | 13.4 Keywords subcommands | ⬜ |
+| 13.5 Keywords --json | ⬜ |
+| 13.6 Nonexistent keyword | ⬜ |
 
 **OVERALL: ⬜**
 

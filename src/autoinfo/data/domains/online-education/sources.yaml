@@ -1,0 +1,118 @@
+# AutoInfo demo domain: Online Education / Knowledge Payment
+# Tracks online learning platforms, EdTech trends, MOOCs, skill development, and certifications
+name: online-education
+description: "Online education and knowledge payment — EdTech, MOOCs, skill development, certifications"
+
+sources:
+  - name: coursera-blog
+    type: rss
+    url: https://blog.coursera.org/feed/
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+    fetch_depth: abstract
+    tos_classification: open
+
+  - name: edsurge
+    type: rss
+    url: https://www.edsurge.com/feed
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+    fetch_depth: abstract
+    tos_classification: open
+
+  - name: class-central
+    type: rss
+    url: https://www.classcentral.com/report/feed/
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+    fetch_depth: abstract
+    tos_classification: open
+
+  - name: khan-academy
+    type: rss
+    url: https://www.khanacademy.org/about/blog/feed
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+    fetch_depth: abstract
+    tos_classification: open
+
+  - name: open-culture
+    type: rss
+    url: https://www.openculture.com/feed
+    quality_tier: 2
+    enabled: true
+    rate_limit: 10
+    fetch_depth: abstract
+    tos_classification: open
+
+topics:
+  - name: "Online Learning"
+    keywords:
+      - online learning
+      - e-learning
+      - distance education
+      - virtual classroom
+      - remote learning
+      - digital learning
+  - name: "EdTech"
+    keywords:
+      - edtech
+      - education technology
+      - learning platform
+      - adaptive learning
+      - personalized learning
+      - learning management system
+  - name: "MOOC"
+    keywords:
+      - MOOC
+      - massive open online course
+      - Coursera
+      - edX
+      - Udacity
+      - open courseware
+  - name: "Skill Development"
+    keywords:
+      - skill development
+      - upskilling
+      - reskilling
+      - professional development
+      - lifelong learning
+      - vocational training
+  - name: "Certification"
+    keywords:
+      - certification
+      - credential
+      - micro-credential
+      - digital badge
+      - professional certificate
+      - nanodegree
+
+extract_fields:
+  - name: course_title
+    type: string
+    description: "Title of the course or program mentioned"
+    required: true
+  - name: provider
+    type: string
+    description: "Platform or institution providing the course (e.g. Coursera, edX, Khan Academy)"
+    required: true
+  - name: difficulty
+    type: string
+    description: "Difficulty level: beginner, intermediate, advanced, or all-levels"
+    required: false
+  - name: duration
+    type: string
+    description: "Estimated duration to complete (e.g. 4 weeks, 3 months, self-paced)"
+    required: false
+  - name: topics
+    type: array
+    description: "List of subject areas covered by the course"
+    required: false
+  - name: rating
+    type: string
+    description: "User or community rating if available (e.g. 4.5/5)"
+    required: false

@@ -1,0 +1,158 @@
+# AutoInfo demo domain: Financial News
+# Tracks global financial markets, earnings, regulation, M&A, and economy news
+name: financial-news
+description: "Financial news intelligence — markets, earnings, regulation, M&A, economy analysis"
+
+sources:
+  - name: reuters-business
+    type: rss
+    url: https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best&best-sectors=business
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: cnbc
+    type: rss
+    url: https://www.cnbc.com/id/100003114/device/rss/rss.html
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: ft-alphaville
+    type: rss
+    url: https://ftalphaville.ft.com/feed
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: yahoo-finance
+    type: rss
+    url: https://finance.yahoo.com/news/rssindex
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: seeking-alpha
+    type: rss
+    url: https://seekingalpha.com/feed.xml
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+topics:
+  - name: "Markets"
+    keywords:
+      - stock market
+      - equity
+      - bond market
+      - commodities
+      - forex
+      - market rally
+      - market sell-off
+      - index
+      - S&P 500
+      - Dow Jones
+      - NASDAQ
+      - volatility
+      - trading
+
+  - name: "Earnings"
+    keywords:
+      - earnings
+      - quarterly results
+      - revenue
+      - EPS
+      - profit
+      - guidance
+      - earnings beat
+      - earnings miss
+      - fiscal year
+      - financial results
+      - annual report
+      - 10-K
+      - 10-Q
+
+  - name: "Regulation"
+    keywords:
+      - regulation
+      - SEC
+      - regulatory
+      - compliance
+      - Dodd-Frank
+      - Basel
+      - antitrust
+      - financial oversight
+      - monetary policy
+      - central bank
+      - Federal Reserve
+      - ECB
+      - regulatory reform
+
+  - name: "M&A"
+    keywords:
+      - merger
+      - acquisition
+      - takeover
+      - buyout
+      - merger of equals
+      - consolidation
+      - divestiture
+      - spin-off
+      - tender offer
+      - hostile takeover
+      - LBO
+      - private equity
+      - deal
+
+  - name: "Economy"
+    keywords:
+      - GDP
+      - inflation
+      - unemployment
+      - economic growth
+      - recession
+      - consumer spending
+      - manufacturing
+      - trade deficit
+      - fiscal policy
+      - stimulus
+      - economic indicator
+      - jobs report
+      - CPI
+      - PPI
+
+extract_fields:
+  - name: title
+    type: string
+    description: "Article or news headline"
+    required: true
+
+  - name: ticker_symbols
+    type: array
+    description: "Stock ticker symbols mentioned in the article (e.g., AAPL, MSFT, TSLA)"
+    required: false
+
+  - name: sentiment
+    type: string
+    description: "Overall market or article sentiment — positive, negative, or neutral"
+    required: false
+
+  - name: source
+    type: string
+    description: "Publishing financial news outlet or wire service"
+    required: true
+
+  - name: publish_date
+    type: string
+    description: "Original publication date and time"
+    required: false

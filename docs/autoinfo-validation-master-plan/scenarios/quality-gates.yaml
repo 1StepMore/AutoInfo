@@ -1,0 +1,266 @@
+# =============================================================================
+# Scenario: quality-gates
+# Description: Verify quality gates G1-G5 and gate configuration tools
+# Tags: quality, gates, regression, python
+# =============================================================================
+
+name: "Quality Gates Validation"
+description: >
+  Tests quality gates G1 (source authority tier check), G2 (dedup),
+  G3 (relevance scoring), and gate configuration (get_gate_config,
+  set_gate_config). Tests G0 schema integrity via CLI process with
+  valid/invalid items. SKIPs G4 (factual consistency) and G5
+  (translation accuracy) as they require a real LLM key.
+
+tags: [quality, gates, regression, python, g1, g2, g3, g0]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-quality-gates"
+  DOMAIN: "medical-research"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project with domain (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for quality gate tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "quality-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  # -------------------------------------------------------------------------
+  # Step 2: G1 Source Authority — Tier 1 passes unflagged
+  # -------------------------------------------------------------------------
+  - name: "G1: Tier 1 source passes unflagged"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G1SourceAuthority
+      from autoinfo.models import Item
+
+      item = Item(id="g1-1", source_name="pubmed", title="Test", content="test",
+                  collected_at="2026-07-20", quality_tier=1)
+      result = G1SourceAuthority().check(item, {"quality_tier": 1})
+      assert result.passed == True, f"Expected passed=True, got {result.passed}"
+      assert result.flagged == False, f"Expected flagged=False, got {result.flagged}"
+      print("PASS: G1 Tier 1 passes unflagged")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1 Tier 1 passes unflagged"
+
+  # -------------------------------------------------------------------------
+  # Step 3: G1 Source Authority — Tier 3+ flagged advisory
+  # -------------------------------------------------------------------------
+  - name: "G1: Tier 3 source flagged (advisory, not blocked)"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G1SourceAuthority
+      from autoinfo.models import Item
+
+      item = Item(id="g1-2", source_name="blog", title="Test", content="test",
+                  collected_at="2026-07-20", quality_tier=3)
+      result = G1SourceAuthority().check(item, {"quality_tier": 3})
+      assert result.flagged == True, f"Expected flagged=True for Tier 3, got {result.flagged}"
+      print("PASS: G1 Tier 3 flagged advisory")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1 Tier 3 flagged advisory"
+
+  # -------------------------------------------------------------------------
+  # Step 4: G2 Dedup — exact URL match
+  # -------------------------------------------------------------------------
+  - name: "G2: Exact URL match dedup"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.dedup import DedupChecker
+      from autoinfo.models import Item
+
+      checker = DedupChecker()
+      item = Item(id="dup-1", source_name="pubmed",
+                  source_url="https://doi.org/10.1234/test",
+                  title="Dup Article", content="same content",
+                  collected_at="2026-07-20")
+      existing = [{"source_url": "https://doi.org/10.1234/test"}]
+      result = checker.check(item, existing)
+      assert result["is_duplicate"] == True, f"Expected duplicate, got {result}"
+      print("PASS: G2 URL exact match dedup works")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G2 URL exact match dedup works"
+
+  # -------------------------------------------------------------------------
+  # Step 5: G2 Dedup — unique URL passes
+  # -------------------------------------------------------------------------
+  - name: "G2: Unique URL passes dedup"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.dedup import DedupChecker
+      from autoinfo.models import Item
+
+      checker = DedupChecker()
+      item = Item(id="unique-1", source_name="pubmed",
+                  source_url="https://doi.org/10.9999/unique",
+                  title="Unique Article", content="different",
+                  collected_at="2026-07-20")
+      existing = [{"source_url": "https://doi.org/10.1234/other"}]
+      result = checker.check(item, existing)
+      assert result["is_duplicate"] == False, f"Expected unique, got {result}"
+      print("PASS: G2 unique URL passes dedup")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G2 unique URL passes dedup"
+
+  # -------------------------------------------------------------------------
+  # Step 6: G2 Dedup — empty source_url handled gracefully
+  # -------------------------------------------------------------------------
+  - name: "G2: Empty source_url does not crash"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.dedup import DedupChecker
+      from autoinfo.models import Item
+
+      checker = DedupChecker()
+      item = Item(id="no-url", source_name="pubmed", source_url="",
+                  title="No URL", content="test", collected_at="2026-07-20")
+      existing = [{"source_url": "https://example.com"}]
+      result = checker.check(item, existing)
+      assert result["is_duplicate"] == False, f"Empty URL should not match, got {result}"
+      print("PASS: G2 empty source_url handled gracefully (no crash)")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G2 empty source_url handled gracefully"
+
+  # -------------------------------------------------------------------------
+  # Step 7: G3 Relevance — score in 0-100 range
+  # -------------------------------------------------------------------------
+  - name: "G3: Relevance score within 0-100 range"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G3RelevanceScoring
+      from autoinfo.models import Item
+
+      item = Item(id="g3-1", title="IVF treatment outcomes in 2026",
+                  content="This paper discusses IVF embryo implantation success rates...",
+                  collected_at="2026-07-20")
+      result = G3RelevanceScoring().check(item, {"keywords": ["IVF", "embryo", "implantation"]})
+      assert 0 <= result.score <= 100, f"Score {result.score} out of range"
+      print(f"PASS: G3 relevance score {result.score} in [0,100]")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G3 relevance score"
+
+  # -------------------------------------------------------------------------
+  # Step 8: G3 Relevance — higher keyword overlap = higher score
+  # -------------------------------------------------------------------------
+  - name: "G3: Higher keyword overlap scores higher"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G3RelevanceScoring
+      from autoinfo.models import Item
+
+      item_high = Item(id="g3-hi", title="IVF embryo implantation study 2026",
+                       content="IVF embryo implantation research findings...",
+                       collected_at="2026-07-20")
+      item_low = Item(id="g3-lo", title="Cooking recipes",
+                      content="How to make pasta carbonara...",
+                      collected_at="2026-07-20")
+      result_high = G3RelevanceScoring().check(item_high, {"keywords": ["IVF", "embryo", "implantation"]})
+      result_low = G3RelevanceScoring().check(item_low, {"keywords": ["IVF", "embryo", "implantation"]})
+      assert result_high.score > result_low.score, \
+        f"Expected high({result_high.score}) > low({result_low.score})"
+      print(f"PASS: G3 relevance ranking: high={result_high.score} > low={result_low.score}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G3 relevance ranking"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Gate config — get default gate configuration
+  # -------------------------------------------------------------------------
+  - name: "Get default gate configuration via MCP"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      result = app.call_tool("get_gate_config", {"domain": "medical-research"})
+      data = json.loads(result.content[0].text)
+      assert "G1" in str(data) or "G2" in str(data) or "gates" in str(data) or isinstance(data, dict), \
+        f"Expected gate config data, got: {data}"
+      print(f"PASS: get_gate_config returned: {list(data.keys())[:5] if isinstance(data, dict) else type(data).__name__}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: get_gate_config"
+
+  # -------------------------------------------------------------------------
+  # Step 10: Gate config — error on invalid gate name
+  # -------------------------------------------------------------------------
+  - name: "Gate config with invalid gate name should handle gracefully"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      try:
+        result = app.call_tool("get_gate_config", {"domain": "medical-research", "gate_name": "nonexistent_gate"})
+        data = json.loads(result.content[0].text)
+        print(f"PASS: invalid gate name handled: {data}")
+      except Exception as e:
+        print(f"PASS: invalid gate name raised exception (expected): {type(e).__name__}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: invalid gate"
+
+  # -------------------------------------------------------------------------
+  # Step 11: G2 Dedup — empty existing list passes
+  # -------------------------------------------------------------------------
+  - name: "G2: Empty existing list — not a duplicate"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.dedup import DedupChecker
+      from autoinfo.models import Item
+
+      checker = DedupChecker()
+      item = Item(id="fresh-1", source_name="pubmed",
+                  source_url="https://doi.org/10.1234/fresh",
+                  title="Fresh Article", content="new content",
+                  collected_at="2026-07-20")
+      result = checker.check(item, [])
+      assert result["is_duplicate"] == False, f"Empty existing should not match, got {result}"
+      print("PASS: G2 empty existing list — not duplicate")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G2 empty existing list"

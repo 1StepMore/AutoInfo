@@ -1,0 +1,279 @@
+# =============================================================================
+# Scenario: cli-full
+# Description: Verify full CLI surface: domain, source, topic, output, KB, cron commands
+# Tags: domain, source, topic, output, kb, cron, cli, regression
+# =============================================================================
+
+name: "Full CLI Surface Validation"
+description: >
+  Tests the major CLI command groups: domain add/list/show/remove, source add/list,
+  topic add/list/remove, output digest/report/export generation, KB search, and
+  cron schedule management. Verifies happy paths, idempotency, error handling,
+  and JSON output modes.
+
+tags: [domain, source, topic, output, kb, cron, cli, regression]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-cli-full"
+  DOMAIN: "medical-research"
+  CUSTOM_DOMAIN: "test-cli-custom"
+  TOPIC_NAME: "Gene Therapy CLI"
+  TOPIC_KEYWORDS: "CRISPR,gene editing,AAV"
+  SOURCE_NAME: "my-cli-rss"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for CLI tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "cli-full-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/config.yaml"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Domain list — verify configured domains
+  # -------------------------------------------------------------------------
+  - name: "List configured domains"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo domain list 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${DOMAIN}"
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Domain add — create custom domain
+  # -------------------------------------------------------------------------
+  - name: "Add a custom domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo domain add --name "${CUSTOM_DOMAIN}" --description "CLI test domain" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "added"
+        - "${CUSTOM_DOMAIN}"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Domain show — inspect domain details
+  # -------------------------------------------------------------------------
+  - name: "Show domain details"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo domain show --name "${CUSTOM_DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${CUSTOM_DOMAIN}"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Source add — add an RSS source to custom domain
+  # -------------------------------------------------------------------------
+  - name: "Add an RSS source to custom domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo sources add --name "${SOURCE_NAME}" --type rss --url "https://example.com/feed" --domain "${CUSTOM_DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "added"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Source list — verify sources
+  # -------------------------------------------------------------------------
+  - name: "List sources for domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo sources list --domain "${CUSTOM_DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${SOURCE_NAME}"
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7: Topic add — add a topic with keywords
+  # -------------------------------------------------------------------------
+  - name: "Add a topic with keywords"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo topics add --name "${TOPIC_NAME}" --keywords "${TOPIC_KEYWORDS}" --domain "${DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "added"
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 8: Topic list — verify topics
+  # -------------------------------------------------------------------------
+  - name: "List topics for domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo topics list --domain "${DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${TOPIC_NAME}"
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Topic remove — clean up test topic
+  # -------------------------------------------------------------------------
+  - name: "Remove test topic"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo topics remove --topic-id "${TOPIC_NAME}" --domain "${DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "removed"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 10: KB search — basic keyword search
+  # -------------------------------------------------------------------------
+  - name: "Search knowledge base with keyword"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "medical" --domain "${DOMAIN}" --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+        - "Failed"
+
+  # -------------------------------------------------------------------------
+  # Step 11: KB search with JSON output
+  # -------------------------------------------------------------------------
+  - name: "Search knowledge base with JSON output"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "cancer" --domain "${DOMAIN}" --limit 3 --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 12: Output digest — generate markdown digest
+  # -------------------------------------------------------------------------
+  - name: "Generate digest in markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output digest --domain "${DOMAIN}" --period week --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 13: Output report — generate markdown report
+  # -------------------------------------------------------------------------
+  - name: "Generate report in markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain "${DOMAIN}" --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 14: Output export — export KB as JSON
+  # -------------------------------------------------------------------------
+  - name: "Export knowledge base as JSON"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain "${DOMAIN}" --format json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 15: Cron list-schedules
+  # -------------------------------------------------------------------------
+  - name: "List cron schedules (none yet)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo cron list-schedules 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 16: Cron add-schedule
+  # -------------------------------------------------------------------------
+  - name: "Add a cron schedule"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo cron add-schedule --name "weekly-medical" --expression "0 8 * * 1" --domain "${DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "added"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 17: Cron list-schedules after adding
+  # -------------------------------------------------------------------------
+  - name: "List cron schedules after adding"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo cron list-schedules --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "weekly-medical"
+      stdout_not_contains:
+        - "Error"
+
+  # -------------------------------------------------------------------------
+  # Step 18: Domain remove — clean up custom domain
+  # -------------------------------------------------------------------------
+  - name: "Remove custom domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo domain remove --name "${CUSTOM_DOMAIN}" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "removed"
+      stdout_not_contains:
+        - "Error"

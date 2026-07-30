@@ -1,0 +1,250 @@
+# =============================================================================
+# Scenario: mcp-kb-output
+# Description: Verify MCP KB search, tier ops, output generation, CEFR,
+#              knowledge lifecycle, and product tools
+# Tags: mcp, kb, search, output, regression
+# =============================================================================
+
+name: "MCP KB Search and Output Tools"
+description: >
+  Tests KB search modes (FTS5 via CLI, hybrid/faceted via MCP), KB tier
+  operations (list_kb_tier, create_kb_draft, reject_kb_draft), output
+  generation (digest, report with --type, report with --domains, tutorial,
+  presentation, export with formats including bundle), CEFR classification,
+  knowledge lifecycle tools (find_similar_items, get_domain_decay,
+  mark_stale, calculate_freshness_score), product tools, and list_output_templates.
+  SKIPs LLM-dependent steps (no real LLM key or SMTP required).
+
+tags: [mcp, kb, search, output, regression, knowledge-lifecycle, cefr]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-mcp-kb-output"
+  DOMAIN: "medical-research"
+  DOMAIN2: "ai-commercial"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project with domain (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for MCP KB/output tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "mcp-kb-output-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  # -------------------------------------------------------------------------
+  # Step 2: KB FTS5 search via CLI
+  # -------------------------------------------------------------------------
+  - name: "KB FTS5 keyword search via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "cancer" --domain ${DOMAIN} --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 3: KB search with --json output
+  # -------------------------------------------------------------------------
+  - name: "KB search with JSON output mode"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "medical" --domain ${DOMAIN} --limit 3 --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 4: KB tier listing (01-Raw, 02-Draft, 03-Wiki)
+  # -------------------------------------------------------------------------
+  - name: "List KB entries by tier (01-Raw)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb list --domain ${DOMAIN} --tier "01-Raw" --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 5: KB reindex
+  # -------------------------------------------------------------------------
+  - name: "Reindex knowledge base"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb reindex --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Output digest — markdown format
+  # -------------------------------------------------------------------------
+  - name: "Generate digest in markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --period week --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7: Output report with --type flag
+  # -------------------------------------------------------------------------
+  - name: "Generate report with --type (industry, trend, competitive)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type industry 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 8: Output report with --domains (cross-domain)
+  # -------------------------------------------------------------------------
+  - name: "Generate cross-domain report (init second domain first)"
+    tool: bash
+    setup: |
+      cd ${TEST_DIR} && autoinfo domain import --from-demo ${DOMAIN2} 2>/dev/null || true
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --domains ${DOMAIN},${DOMAIN2} --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Output tutorial generation
+  # -------------------------------------------------------------------------
+  - name: "Generate tutorial in markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output tutorial --domain ${DOMAIN} --topic "IVF" --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 10: Output presentation generation
+  # -------------------------------------------------------------------------
+  - name: "Generate presentation in markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output presentation --domain ${DOMAIN} --topic "IVF" --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 11: Export KB in JSON format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to JSON format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 12: Export KB in markdown format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 13: CEFR classify (no LLM key — verify command exists)
+  # -------------------------------------------------------------------------
+  - name: "CEFR classify command help (no LLM key)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo cefr classify --help 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "cefr"
+        - "classify"
+
+  # -------------------------------------------------------------------------
+  # Step 14: List output templates
+  # -------------------------------------------------------------------------
+  - name: "List available output templates"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output list-templates --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 15: Knowledge graph export via CLI
+  # -------------------------------------------------------------------------
+  - name: "Export knowledge graph via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo knowledge graph --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 16: Cross-domain KB search (no domain specified)
+  # -------------------------------------------------------------------------
+  - name: "Cross-domain KB search (all active domains)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "research" --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 17: Invalid format error handling
+  # -------------------------------------------------------------------------
+  - name: "Export with invalid format should error"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format nonexistent 2>&1
+    expected:
+      exit_code: 2
+      stdout_contains:
+        - "invalid"
+        - "nonexistent"

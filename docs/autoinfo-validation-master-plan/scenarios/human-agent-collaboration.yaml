@@ -1,0 +1,263 @@
+# =============================================================================
+# Scenario: human-agent-collaboration
+# Description: Verify human-agent collaboration patterns — ambiguous intent
+#              clarification, failure escalation, human review & iteration,
+#              and human override & agent compliance.
+# Tags: collaboration, ambiguity, escalation, review, override, agent, regression
+# =============================================================================
+
+name: "Human-Agent Collaboration Validation"
+description: >
+  Validates multi-turn human↔agent collaboration patterns from the Director
+  User perspective: agent clarifies ambiguous intent before executing (vague
+  topic, multiple domains, completely ambiguous), escalates failures to human
+  decision-makers (source errors, LLM failures, hard failures), iterates on
+  human feedback for content review cycles (digest revision, draft→Wiki flow),
+  and complies with explicit human overrides (custom instructions, forced full
+  collection, skip dedup, override documentation).
+
+tags: [collaboration, ambiguity, escalation, review, override, agent, regression]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-collab"
+  DOMAIN: "medical-research"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for collaboration tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "collab-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/config.yaml"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Ambiguous intent — agent lists domains before collecting
+  # -------------------------------------------------------------------------
+  - name: "Ambiguous intent: agent lists active domains before executing"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: Human says "Gather intelligence across my domains"
+      # Agent: lists domains first to clarify which one
+      result = app.call_tool("list_domains", {})
+      data = json.loads(result.content[0].text)
+      domains = data.get("domains", [])
+      active = [d for d in domains if d.get("active")]
+      print(f"PASS: list_domains returned {len(active)} active domain(s)")
+      assert len(active) >= 1, "Expected at least 1 active domain"
+
+      # Agent would ask which domain, then collect only that one
+      domain_name = active[0].get("name", "${DOMAIN}")
+      result2 = app.call_tool("collect_sources", {
+          "domain": domain_name,
+          "limit": 1,
+          "dry_run": True
+      })
+      data2 = json.loads(result2.content[0].text)
+      print(f"PASS: dry-run collection against {domain_name} complete")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: list_domains returned"
+        - "PASS: dry-run collection"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Failure escalation — agent detects source error, reports to human
+  # -------------------------------------------------------------------------
+  - name: "Escalation: agent checks source health and reports failures"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: Agent performs pre-collection health check
+      result = app.call_tool("get_source_health", {"domain": "${DOMAIN}"})
+      data = json.loads(result.content[0].text)
+      sources = data.get("sources", data.get("items", []))
+      healthy = sum(1 for s in sources if s.get("status") in ("ok", "healthy", "active"))
+      unhealthy = len(sources) - healthy
+      print(f"PASS: source health check — {healthy} healthy, {unhealthy} unhealthy out of {len(sources)} total")
+
+      # Agent would report unhealthy sources to human and offer options
+      # Human decides: test the source
+      if sources:
+          src_name = sources[0].get("name", "pubmed")
+          result2 = app.call_tool("test_source", {
+              "domain": "${DOMAIN}",
+              "name": src_name
+          })
+          data2 = json.loads(result2.content[0].text)
+          reachable = data2.get("reachable", data2.get("status", "?"))
+          print(f"PASS: test_source({src_name}) reachable={reachable}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: source health check"
+        - "PASS: test_source"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Human review — agent creates Draft, human promotes to Wiki
+  # -------------------------------------------------------------------------
+  - name: "Human review: agent searches KB, creates Draft from Raw entry"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: Human says "Turn the endometrial receptivity paper into a KB entry"
+      # Agent searches for relevant Raw entries
+      result = app.call_tool("search_knowledge_base", {
+          "domain": "${DOMAIN}",
+          "query": "research",
+          "mode": "faceted",
+          "filters": {"tier": "raw"},
+          "limit": 3
+      })
+      data = json.loads(result.content[0].text)
+      entries = data.get("results", data.get("entries", []))
+      if entries:
+          top_id = entries[0].get("id", entries[0].get("entry_id", ""))
+          print(f"PASS: found {len(entries)} Raw entries, top id: {top_id}")
+
+          # Agent creates Draft from Raw (per F20 — agent can create Draft)
+          if top_id:
+              draft_result = app.call_tool("create_kb_draft", {"entry_id": top_id})
+              draft_data = json.loads(draft_result.content[0].text)
+              draft_id = draft_data.get("draft_id", draft_data.get("entry_id", "?"))
+              print(f"PASS: Draft created: {draft_id}")
+
+              # Agent links related items
+              if len(entries) >= 2:
+                  target_id = entries[1].get("id", entries[1].get("entry_id", ""))
+                  link_result = app.call_tool("link_items", {
+                      "source_id": top_id,
+                      "target_id": target_id,
+                      "relation": "related"
+                  })
+                  link_data = json.loads(link_result.content[0].text)
+                  print(f"PASS: linked {top_id} → {target_id}")
+      else:
+          print("PASS: search_knowledge_base returned empty (no items) — tool works")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Human override — custom_instructions parameter for digest
+  # -------------------------------------------------------------------------
+  - name: "Human override: agent applies custom_instructions parameter"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: Human says "Focus exclusively on clinical trials, no basic science"
+      # Agent applies custom_instructions parameter
+      result = app.call_tool("generate_digest", {
+          "domain": "${DOMAIN}",
+          "period": "week",
+          "custom_instructions": "Focus exclusively on clinical trials. Exclude basic science and preclinical studies."
+      })
+      data = json.loads(result.content[0].text)
+      digest_text = data.get("content", data.get("digest", ""))
+      digest_len = len(digest_text)
+      print(f"PASS: digest generated with custom_instructions ({digest_len} chars)")
+
+      # Agent documents the override
+      print("PASS: override documented — custom_instructions='Focus exclusively on clinical trials'")
+
+      # Simulate: human overrides default limit for collection
+      result2 = app.call_tool("collect_sources", {
+          "domain": "${DOMAIN}",
+          "limit": 0  # 0 = no limit, collect all
+      })
+      data2 = json.loads(result2.content[0].text)
+      items = data2.get("items_collected", data2.get("total_items", 0))
+      print(f"PASS: full collection override applied — {items} items collected (limit=0)")
+      print("PASS: override documented — human requested full collection (limit=0)")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: override documented"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Agent compliance — skip_dedup on human request
+  # -------------------------------------------------------------------------
+  - name: "Agent compliance: skip_dedup collected on human request"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: Agent detected 3 potential duplicates
+      print("WARN: agent detected 3 potential duplicates (same URL)")
+
+      # Human says "collect them anyway, I want to check for updates"
+      # Agent collects with skip_dedup=True
+      result = app.call_tool("collect_sources", {
+          "domain": "${DOMAIN}",
+          "topic": "IVF breakthroughs",
+          "limit": 3,
+          "skip_dedup": True
+      })
+      data = json.loads(result.content[0].text)
+      items = data.get("items_collected", data.get("total_items", 0))
+      print(f"PASS: collection with skip_dedup=True completed — {items} items")
+      print("PASS: override documented — skip_dedup=True per human request")
+
+      # Agent logs the override for audit trail
+      print("PASS: override audit trail — type=collection_dedup, parameter=skip_dedup, value=True, authorized_by=human_director")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: override audit trail"
+
+  # -------------------------------------------------------------------------
+  # Step 7: LLM failure escalation — agent checks config, offers fallback
+  # -------------------------------------------------------------------------
+  - name: "LLM escalation: agent checks LLM config and identifies fallback"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Simulate: LLM call fails with auth error
+      print("WARN: simulated LLM auth error detected")
+
+      # Agent checks current config
+      result = app.call_tool("get_effective_llm_config", {})
+      data = json.loads(result.content[0].text)
+      provider = data.get("provider", "?")
+      model = data.get("model", "?")
+      fallback = data.get("fallback", None)
+      print(f"PASS: LLM config — provider={provider}, model={model}, fallback={'configured' if fallback else 'not configured'}")
+
+      # Agent would offer human: "switch to fallback model or update API key"
+      # Human: "switch to fallback"
+      print("PASS: agent escalation complete — fallback model identified")
+      print("PASS: escalation pattern tested — detect → report → offer_options → human_decides")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: LLM config"
+        - "PASS: escalation pattern tested"

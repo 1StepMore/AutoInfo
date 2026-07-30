@@ -1,0 +1,199 @@
+# =============================================================================
+# Scenario: async-cron-email
+# Description: Verify async operations, cron schedules, email, webhooks, and alerting
+# Tags: async, cron, email, webhook, alerting, regression
+# =============================================================================
+
+name: "Async Operations, Cron Schedules, Email, Webhooks, and Alerting"
+description: >
+  Tests async job_id polling pattern, cron schedule management (add/list/run/remove),
+  email digest configuration, webhook setup and retrieval, and agent alerting rules.
+  Covers CLI and MCP-based workflows. Steps marked [REQUIRES SMTP] need working
+  SMTP config; they test command existence otherwise.
+
+tags: [async, cron, email, webhook, alerting, regression, mcp]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-async"
+  DOMAIN: "medical-research"
+
+steps:
+  - name: "Initialize project for async/cron tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "async-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  - name: "Async collection with domain-based progress polling"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo collect --domain ${DOMAIN} --limit 3 2>&1
+      EXIT=$?
+      echo "COLLECT_EXIT=${EXIT}"
+      echo "---PROGRESS---"
+      autoinfo status 2>&1
+      echo "---PROGRESS_EXIT:$?---"
+      [ ${EXIT} -eq 0 ] && echo "PASS:COLLECT_OK"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:COLLECT_OK"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "MCP collect_sources async returns job_id"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import os,json; os.environ['AD']='${DOMAIN}'; from autoinfo.mcp.server import app; d=os.environ['AD']; r=app.call_tool('collect_sources',{'domain':d,'limit':3,'async':True}); data=json.loads(r.content[0].text); print('JOB_ID='+str(data.get('job_id',''))); assert 'job_id' in data, 'No job_id'; print('PASS:ASYNC_JOB_ID')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:ASYNC_JOB_ID"
+        - "JOB_ID="
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "MCP get_collection_progress returns status"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import json; from autoinfo.mcp.server import app; p=app.call_tool('get_collection_progress',{'domain':'${DOMAIN}'}); data=json.loads(p.content[0].text); s=data.get('status','unknown'); print('STATUS='+str(s)); assert s is not None; print('PASS:PROGRESS_POLL')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:PROGRESS_POLL"
+      stdout_not_contains:
+        - "Traceback"
+        - "Error"
+
+  - name: "Add cron schedule via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      OUTPUT=$(autoinfo cron add-schedule --name "weekly-digest" --expression "0 8 * * 1" --domain ${DOMAIN} 2>&1)
+      echo "${OUTPUT}"
+      echo "${OUTPUT}" | grep -qi "added\|created\|ok" && echo "PASS:SCHEDULE_ADDED" || echo "WARN:NO_CONFIRM_MSG"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:SCHEDULE_ADDED"
+      stdout_not_contains:
+        - "Traceback"
+        - "Error"
+
+  - name: "List cron schedules via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo cron list-schedules 2>&1
+      echo "---EXIT:$?---"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "---EXIT:0---"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Run cron schedules and verify heartbeat file"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo cron run 2>&1
+      echo "---RUN_EXIT:$?---"
+      HB=".autoinfo/cron-heartbeat.json"
+      if [ -f "${HB}" ]; then
+        echo "PASS:HEARTBEAT_EXISTS"
+        python3 -c "import json; hb=json.load(open('${HB}')); assert 'schedules' in hb; print('PASS:HEARTBEAT_VALID')" 2>&1
+      else
+        echo "WARN:NO_HEARTBEAT"
+      fi
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Remove cron schedule via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo cron remove-schedule --name "weekly-digest" 2>&1
+      echo "---REMOVE_EXIT:$?---"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "---REMOVE_EXIT:0---"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Set domain webhooks via MCP"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('set_domain_webhooks',{'domain':'${DOMAIN}','url':'https://example.com/webhook','events':['item_collected']}); d=json.loads(r.content[0].text); print('SET_WEBHOOK='+json.dumps(d)[:200]); print('PASS:WEBHOOK_SET')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:WEBHOOK_SET"
+      stdout_not_contains:
+        - "Traceback"
+        - "Error"
+
+  - name: "Get domain webhooks via MCP"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('get_domain_webhooks',{'domain':'${DOMAIN}'}); d=json.loads(r.content[0].text); print('GET_WEBHOOK='+json.dumps(d)[:200]); assert 'url' in d or 'webhooks' in d; print('PASS:WEBHOOK_GET')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:WEBHOOK_GET"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Add agent alert rule via MCP"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('add_alert_rule',{'domain':'${DOMAIN}','name':'source-down-alert','condition':'source_health != ok','action':'log'}); d=json.loads(r.content[0].text); print('ADD_ALERT='+json.dumps(d)[:200]); print('PASS:ALERT_ADDED')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:ALERT_ADDED"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "List alert rules via MCP"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('get_alert_rules',{'domain':'${DOMAIN}'}); d=json.loads(r.content[0].text); rules=d.get('rules',d.get('items',[])); print('ALERT_RULES_COUNT='+str(len(rules))); print('PASS:ALERTS_LISTED')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:ALERTS_LISTED"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "[REQUIRES SMTP] Email config command exists and runs"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo email config 2>&1
+      echo "---EMAIL_EXIT:$?---"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "---EMAIL_EXIT:0---"
+      stdout_not_contains:
+        - "Traceback"

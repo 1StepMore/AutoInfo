@@ -1,0 +1,196 @@
+# =============================================================================
+# Scenario: core-pipeline
+# Description: Verify the core pipeline: init → collect → process → browse → status → doctor
+# Tags: init, collect, process, summaries, status, doctor, pipeline, regression
+# =============================================================================
+
+name: "Core Pipeline Validation"
+description: >
+  Tests the full core pipeline journey: project initialization with demo domain,
+  idempotent re-init, collection with --limit and --dry-run, processing (command
+  surface verification), summaries browsing, status reporting, and doctor diagnostics.
+  Covers happy path, error handling, and idempotency.
+
+tags: [init, collect, process, summaries, status, doctor, pipeline, regression, cli]
+depends_on: []
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-core-pipeline"
+  DOMAIN: "medical-research"
+  TOPIC: "IVF breakthroughs"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project with demo domain
+  # -------------------------------------------------------------------------
+  - name: "Initialize project with demo domain (medical-research)"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+        - "medical-research"
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/config.yaml"
+      - "${TEST_DIR}/.autoinfo/sources.yaml"
+      - "${TEST_DIR}/knowledge"
+      - "${TEST_DIR}/collections"
+      - "${TEST_DIR}/outputs"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Idempotent re-init (should skip existing files)
+  # -------------------------------------------------------------------------
+  - name: "Idempotent re-init (should skip existing files)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "SKIP"
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+        - "overwritten"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Collect sources with --limit (dry-run first)
+  # -------------------------------------------------------------------------
+  - name: "Dry-run collection with limit"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo collect --domain ${DOMAIN} --dry-run --limit 3 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+        - "Failed"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Actual collection with --limit
+  # -------------------------------------------------------------------------
+  - name: "Actual collection from domain sources with limit"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo collect --domain ${DOMAIN} --limit 2 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+    post_checks:
+      - description: "Collection cache has JSON files"
+        command: |
+          RAW_COUNT=$(find ${TEST_DIR}/collections/ -name "*.json" ! -name "_runs.json" 2>/dev/null | wc -l)
+          echo "RAW_FILES=$RAW_COUNT"
+        expected_stdout:
+          - "RAW_FILES="
+
+  # -------------------------------------------------------------------------
+  # Step 5: Process — verify command exists (no LLM key required)
+  # -------------------------------------------------------------------------
+  - name: "Process command surface verification (no LLM key)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo process --domain ${DOMAIN} --help 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "process"
+        - "--domain"
+      stdout_not_contains:
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Browse summaries list
+  # -------------------------------------------------------------------------
+  - name: "List summaries for domain"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo summaries list --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7: Status report
+  # -------------------------------------------------------------------------
+  - name: "Show collection and KB status"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo status 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 8: Status with JSON output
+  # -------------------------------------------------------------------------
+  - name: "Status report in JSON format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo status --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Doctor system health check
+  # -------------------------------------------------------------------------
+  - name: "Doctor diagnostics"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo doctor 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "Python"
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+        - "crash"
+
+  # -------------------------------------------------------------------------
+  # Step 10: Doctor with --verbose JSON output
+  # -------------------------------------------------------------------------
+  - name: "Doctor diagnostics with JSON verbose output"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo doctor --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+    post_checks:
+      - description: "Doctor JSON output contains expected sections"
+        command: |
+          cd ${TEST_DIR} && autoinfo doctor --json 2>/dev/null | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          has_python = 'python' in data or 'version' in data
+          has_config = 'config' in data
+          has_llm = 'llm' in data
+          has_sources = 'sources' in data
+          print('python=' + str(has_python) + ' config=' + str(has_config) + ' llm=' + str(has_llm) + ' sources=' + str(has_sources))
+          assert has_config, 'missing config section'
+          assert has_llm, 'missing llm section'
+          print('DOCTOR_JSON_VALID')
+          " 2>&1
+        expected_stdout:
+          - "DOCTOR_JSON_VALID"

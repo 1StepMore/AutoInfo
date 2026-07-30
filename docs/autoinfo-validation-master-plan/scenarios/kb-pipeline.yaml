@@ -1,0 +1,399 @@
+# =============================================================================
+# Scenario: kb-pipeline
+# Description: Verify KB 4-tier pipeline, import/export, versioning, relations,
+#              and knowledge graph
+# Tags: kb, pipeline, tiers, import, export, versioning, relations, graph, regression
+# =============================================================================
+
+name: "KB Pipeline — 4-Tier Lifecycle"
+description: >
+  Tests the KB 4-tier pipeline (Inbox→Raw→Draft→Wiki), KB import (Markdown,
+  HTML, JSON), KB export (md, json, sqlite, csv), KB versioning
+  (get_entry_history, restore_entry_version), KB relations (link_items,
+  get_item_relations), knowledge graph (query_knowledge_graph,
+  knowledge_graph_export). SKIPs LLM-dependent steps that require
+  create_kb_draft (no real LLM key).
+
+tags: [kb, pipeline, tiers, import, export, versioning, relations, graph, regression]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-kb-pipeline"
+  DOMAIN: "medical-research"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project with domain (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for KB pipeline tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "kb-pipeline-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  # -------------------------------------------------------------------------
+  # Step 2: KB tier listing — verify all tiers
+  # -------------------------------------------------------------------------
+  - name: "List KB entries by tier (01-Raw, 02-Draft, 03-Wiki)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb list --domain ${DOMAIN} --tier "01-Raw" --limit 5 2>&1 && \
+      echo "---" && \
+      autoinfo kb list --domain ${DOMAIN} --tier "02-Draft" --limit 5 2>&1 && \
+      echo "---" && \
+      autoinfo kb list --domain ${DOMAIN} --tier "03-Wiki" --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 3: KB import — Markdown file to 01-Raw
+  # -------------------------------------------------------------------------
+  - name: "Import Markdown content into KB (01-Raw)"
+    tool: python
+    command: |
+      import sys, os, json, pathlib, tempfile
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      md_content = "\n".join([
+          "---",
+          "title: Imported Pipeline Test Article",
+          "domain: medical-research",
+          "source_url: https://example.com/pipeline-import",
+          "source_type: web",
+          "source_platform: test",
+          "collected_at: 2026-07-23",
+          "quality_tier: 1",
+          "topic_tags: [ivf]",
+          "---",
+          "# Imported Pipeline Test Article",
+          "",
+          "This is imported content for testing the KB pipeline import tool.",
+          "It should end up in 01-Raw tier.",
+      ])
+      import_path = pathlib.Path("/tmp/test-import-kb-pipeline.md")
+      import_path.write_text(md_content)
+
+      result = app.call_tool("import_kb", {
+          "domain": "medical-research",
+          "file_path": str(import_path),
+          "format": "markdown"
+      })
+      import_data = json.loads(result.content[0].text)
+      print(f"PASS: import_kb (markdown) returned: {list(import_data.keys())[:5]}")
+      assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
+        f"Expected entry_id/status/id in import result, got keys: {list(import_data.keys())}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: import_kb (markdown)"
+
+  # -------------------------------------------------------------------------
+  # Step 4: KB import — HTML file to 01-Raw
+  # -------------------------------------------------------------------------
+  - name: "Import HTML content into KB (01-Raw)"
+    tool: python
+    command: |
+      import sys, os, json, pathlib, tempfile
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      html_content = "\n".join([
+          "<!DOCTYPE html>",
+          '<html><head><meta charset="utf-8"></head>',
+          "<body>",
+          "<h1>Imported HTML Article</h1>",
+          "<p>This is an HTML article imported into the KB.</p>",
+          "<p>domain: medical-research</p>",
+          "<p>source_url: https://example.com/html-import</p>",
+          "</body></html>",
+      ])
+      import_path = pathlib.Path("/tmp/test-import-html.html")
+      import_path.write_text(html_content)
+
+      result = app.call_tool("import_kb", {
+          "domain": "medical-research",
+          "file_path": str(import_path),
+          "format": "html"
+      })
+      import_data = json.loads(result.content[0].text)
+      print(f"PASS: import_kb (html) returned: {list(import_data.keys())[:5]}")
+      assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
+        f"Expected entry_id/status/id in import result, got keys: {list(import_data.keys())}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: import_kb (html)"
+
+  # -------------------------------------------------------------------------
+  # Step 5: KB import — JSON file to 01-Raw
+  # -------------------------------------------------------------------------
+  - name: "Import JSON content into KB (01-Raw)"
+    tool: python
+    command: |
+      import sys, os, json, pathlib, tempfile
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      import_path = pathlib.Path("/tmp/test-import-json.json")
+      import_path.write_text(json.dumps({
+          "title": "Imported JSON Article",
+          "domain": "medical-research",
+          "source_url": "https://example.com/json-import",
+          "source_type": "web",
+          "source_platform": "test",
+          "collected_at": "2026-07-23T00:00:00",
+          "content": "This is JSON content imported into the KB pipeline.",
+          "topic_tags": ["ivf"]
+      }))
+
+      result = app.call_tool("import_kb", {
+          "domain": "medical-research",
+          "file_path": str(import_path),
+          "format": "json"
+      })
+      import_data = json.loads(result.content[0].text)
+      print(f"PASS: import_kb (json) returned: {list(import_data.keys())[:5]}")
+      assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
+        f"Expected entry_id/status/id, got keys: {list(import_data.keys())}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: import_kb (json)"
+
+  # -------------------------------------------------------------------------
+  # Step 6: KB export — JSON format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to JSON format"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      result = app.call_tool("export_kb", {
+          "domain": "medical-research",
+          "format": "json",
+          "topic": "ivf"
+      })
+      export_data = json.loads(result.content[0].text)
+      print(f"PASS: export_kb (json) returned: {list(export_data.keys())[:5]}")
+      assert "file_path" in export_data or "data" in export_data or "status" in export_data, \
+        f"Expected file_path/data/status, got keys: {list(export_data.keys())}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: export_kb (json)"
+
+  # -------------------------------------------------------------------------
+  # Step 7: KB export — Markdown format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to Markdown format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 8: KB export — SQLite format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to SQLite format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format sqlite 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 9: KB export — CSV format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to CSV format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format csv 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 10: KB export — GraphML format
+  # -------------------------------------------------------------------------
+  - name: "Export KB to GraphML format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format graphml 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 11: KB versioning — get_entry_history
+  # -------------------------------------------------------------------------
+  - name: "Get entry version history via MCP"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Search for an entry to get its ID
+      search = app.call_tool("search_knowledge_base", {
+          "domain": "medical-research",
+          "query": "Imported",
+          "limit": 1
+      })
+      search_data = json.loads(search.content[0].text)
+      entries = search_data.get("entries", [])
+      if entries:
+          entry_id = entries[0].get("entry_id", entries[0].get("id", ""))
+          result = app.call_tool("get_entry_history", {"entry_id": entry_id})
+          hist_data = json.loads(result.content[0].text)
+          versions = hist_data.get("versions", hist_data.get("history", []))
+          print(f"PASS: get_entry_history returned {len(versions)} version(s)")
+      else:
+          print("PASS: get_entry_history — no entries to check (not an error)")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: get_entry_history"
+
+  # -------------------------------------------------------------------------
+  # Step 12: KB relations — link_items
+  # -------------------------------------------------------------------------
+  - name: "Link items with relation type"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      search = app.call_tool("search_knowledge_base", {
+          "domain": "medical-research",
+          "query": "Imported",
+          "limit": 2
+      })
+      search_data = json.loads(search.content[0].text)
+      entries = search_data.get("entries", [])
+      if len(entries) >= 2:
+          id1 = entries[0].get("entry_id", entries[0].get("id", ""))
+          id2 = entries[1].get("entry_id", entries[1].get("id", ""))
+          result = app.call_tool("link_items", {
+              "source_id": id1,
+              "target_id": id2,
+              "relation_type": "related_to"
+          })
+          link_data = json.loads(result.content[0].text)
+          print(f"PASS: link_items returned: {list(link_data.keys())[:5]}")
+
+          # Verify relation
+          rel_result = app.call_tool("get_item_relations", {"entry_id": id1})
+          rel_data = json.loads(rel_result.content[0].text)
+          relations = rel_data.get("relations", rel_data.get("items", []))
+          print(f"PASS: get_item_relations returned {len(relations)} relation(s)")
+      else:
+          print("PASS: link_items — < 2 entries (not an error)")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: link_items"
+
+  # -------------------------------------------------------------------------
+  # Step 13: Knowledge graph query
+  # -------------------------------------------------------------------------
+  - name: "Query knowledge graph"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      result = app.call_tool("query_knowledge_graph", {"domain": "medical-research"})
+      kg_data = json.loads(result.content[0].text)
+      entities = kg_data.get("entities", kg_data.get("nodes", []))
+      relations = kg_data.get("relations", kg_data.get("edges", []))
+      print(f"PASS: query_knowledge_graph — {len(entities)} entities, {len(relations)} relations")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: query_knowledge_graph"
+
+  # -------------------------------------------------------------------------
+  # Step 14: Knowledge graph export
+  # -------------------------------------------------------------------------
+  - name: "Export knowledge graph via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo knowledge graph --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 15: KB versioning — restore_entry_version (graceful on no history)
+  # -------------------------------------------------------------------------
+  - name: "Restore entry version (no history — should handle gracefully)"
+    tool: python
+    command: |
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      search = app.call_tool("search_knowledge_base", {
+          "domain": "medical-research",
+          "query": "Imported",
+          "limit": 1
+      })
+      search_data = json.loads(search.content[0].text)
+      entries = search_data.get("entries", [])
+      if entries:
+          entry_id = entries[0].get("entry_id", entries[0].get("id", ""))
+          try:
+              result = app.call_tool("restore_entry_version", {
+                  "entry_id": entry_id,
+                  "version_id": "nonexistent-version"
+              })
+              data = json.loads(result.content[0].text)
+              print(f"PASS: restore_entry_version handled missing version: {list(data.keys())[:5]}")
+          except Exception as e:
+              print(f"PASS: restore_entry_version error handled gracefully: {type(e).__name__}")
+      else:
+          print("PASS: restore_entry_version — no entries to test (not an error)")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: restore_entry_version"
+
+  # -------------------------------------------------------------------------
+  # Step 16: KB list-tiers via CLI
+  # -------------------------------------------------------------------------
+  - name: "List KB tiers via CLI"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb list-tiers --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"

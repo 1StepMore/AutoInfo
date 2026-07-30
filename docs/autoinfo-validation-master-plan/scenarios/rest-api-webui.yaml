@@ -1,0 +1,153 @@
+# =============================================================================
+# Scenario: rest-api-webui
+# Description: Verify REST API endpoints and Web UI dashboard
+# Tags: api, rest, webui, dashboard, regression
+# =============================================================================
+
+name: "REST API and Web UI Validation"
+description: >
+  Tests REST API endpoints (health, CRUD, search) and Web UI dashboard
+  against a running uvicorn server on port 8741. Covers health check,
+  entries listing, search (FTS5/vector/faceted), dashboard HTML,
+  CORS headers, 404 handling, and 422 validation errors.
+
+tags: [api, rest, webui, dashboard, regression, curl]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-api"
+  DOMAIN: "medical-research"
+  API_PORT: "8741"
+  API_HOST: "127.0.0.1"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project and start API server
+  # -------------------------------------------------------------------------
+  - name: "Initialize project and start API server"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "api-test" 2>&1
+      echo "---"
+      # Collect a few items so there is data for the API
+      autoinfo collect --domain ${DOMAIN} --limit 3 2>/dev/null || true
+      echo "---"
+      # Start API server in background
+      uvicorn autoinfo.api.server:app --port ${API_PORT} --host ${API_HOST} &
+      API_PID=$!
+      sleep 2
+      echo "SERVER_PID=${API_PID}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+        - "SERVER_PID="
+
+  # -------------------------------------------------------------------------
+  # Step 2: Health check endpoint
+  # -------------------------------------------------------------------------
+  - name: "Health check endpoint returns JSON status"
+    tool: bash
+    command: |
+      curl -s http://${API_HOST}:${API_PORT}/health 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - '"status"'
+        - '"ok"'
+
+  # -------------------------------------------------------------------------
+  # Step 3: List entries with pagination
+  # -------------------------------------------------------------------------
+  - name: "List entries with domain filter and pagination"
+    tool: bash
+    command: |
+      curl -s "http://${API_HOST}:${API_PORT}/api/v1/entries?domain=${DOMAIN}&limit=5&offset=0" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - '"entries"'
+        - '"total"'
+
+  # -------------------------------------------------------------------------
+  # Step 4: Search via POST (FTS5 / hybrid)
+  # -------------------------------------------------------------------------
+  - name: "POST search endpoint returns matching entries"
+    tool: bash
+    command: |
+      curl -s -X POST "http://${API_HOST}:${API_PORT}/api/v1/search" \
+        -H "Content-Type: application/json" \
+        -d '{"query": "research", "domain": "'${DOMAIN}'", "mode": "hybrid", "limit": 5}' 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - '"results"'
+
+  # -------------------------------------------------------------------------
+  # Step 5: Dashboard HTML page loads
+  # -------------------------------------------------------------------------
+  - name: "Dashboard returns HTML with Bootstrap"
+    tool: bash
+    command: |
+      curl -s http://${API_HOST}:${API_PORT}/dashboard 2>&1 | head -20
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "<html"
+        - "bootstrap"
+
+  # -------------------------------------------------------------------------
+  # Step 6: CORS headers present
+  # -------------------------------------------------------------------------
+  - name: "CORS headers present on OPTIONS request"
+    tool: bash
+    command: |
+      curl -s -I -X OPTIONS http://${API_HOST}:${API_PORT}/health 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "access-control-allow-origin"
+
+  # -------------------------------------------------------------------------
+  # Step 7: 404 for nonexistent endpoint
+  # -------------------------------------------------------------------------
+  - name: "Nonexistent endpoint returns 404"
+    tool: bash
+    command: |
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${API_HOST}:${API_PORT}/api/v1/nonexistent)
+      echo "HTTP_CODE=${HTTP_CODE}"
+      [ "${HTTP_CODE}" = "404" ] && echo "PASS:HTTP_404" || echo "FAIL:HTTP_${HTTP_CODE}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:HTTP_404"
+
+  # -------------------------------------------------------------------------
+  # Step 8: 422 for invalid parameters
+  # -------------------------------------------------------------------------
+  - name: "Invalid parameters return 422 validation error"
+    tool: bash
+    command: |
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${API_HOST}:${API_PORT}/api/v1/entries?limit=-1")
+      echo "HTTP_CODE=${HTTP_CODE}"
+      [ "${HTTP_CODE}" = "422" ] && echo "PASS:HTTP_422" || echo "FAIL:HTTP_${HTTP_CODE}"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:HTTP_422"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Kill API server (cleanup)
+  # -------------------------------------------------------------------------
+  - name: "Stop API server"
+    tool: bash
+    command: |
+      pkill -f "uvicorn autoinfo.api.server:app" 2>/dev/null || true
+      echo "CLEANUP_DONE"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "CLEANUP_DONE"

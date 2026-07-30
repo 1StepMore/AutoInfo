@@ -1,0 +1,271 @@
+# =============================================================================
+# Scenario: final-verdict
+# Description: Aggregate summary verdict checks across all validation parts.
+#              Verifies scenario coverage, production gap checklist, and
+#              sign-off criteria readiness.
+# Tags: verdict, summary, checklist, sign-off, regression
+# =============================================================================
+
+name: "Final Verdict Validation"
+description: >
+  Aggregates validation results across all 15 parts: counts scenario files
+  covering each question, verifies the production gap checklist items,
+  checks overall project status, and evaluates sign-off criteria.
+  This scenario is the last to run — it depends on all other scenarios
+  reporting their individual results.
+
+tags: [verdict, summary, checklist, sign-off, production, regression]
+depends_on:
+  - init-project
+  - core-pipeline
+  - cli-full
+  - mcp-system-tools
+  - mcp-kb-output
+  - quality-gates
+  - kb-pipeline
+  - rest-api-webui
+  - agent-e2e
+  - async-cron-email
+  - error-boundary
+  - production-validation
+  - enduser-lifecycle
+  - human-agent-collaboration
+  - cross-dimension-e2e
+
+variables:
+  SCENARIOS_DIR: "/mnt/d/贯维/AutoInfo/docs/autoinfo-validation-master-plan/scenarios"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Verify all scenario YAML files exist
+  # -------------------------------------------------------------------------
+  - name: "All 16 scenario YAML files exist"
+    tool: bash
+    command: |
+      DIR="${SCENARIOS_DIR}"
+      EXPECTED_FILES="init-project core-pipeline cli-full mcp-system-tools mcp-kb-output quality-gates kb-pipeline rest-api-webui agent-e2e async-cron-email error-boundary production-validation final-verdict enduser-lifecycle human-agent-collaboration cross-dimension-e2e"
+      COUNT=0
+      for f in $EXPECTED_FILES; do
+        if [ -f "$DIR/$f.yaml" ]; then
+          echo "  ✅ $f.yaml exists"
+          COUNT=$((COUNT + 1))
+        else
+          echo "  ❌ MISSING: $f.yaml"
+        fi
+      done
+      echo "SCENARIO_FILES=$COUNT"
+      [ "$COUNT" -ge 16 ] && echo "PASS: All 16 scenario files present" || echo "FAIL: Missing scenario files"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: All 16 scenario files present"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Count total steps across all scenarios
+  # -------------------------------------------------------------------------
+  - name: "Aggregate total step count across all scenario files"
+    tool: bash
+    command: |
+      DIR="${SCENARIOS_DIR}"
+      TOTAL_STEPS=0
+      for f in "$DIR"/*.yaml; do
+        SCOUNT=$(grep -c '^  - name:' "$f" 2>/dev/null || echo 0)
+        echo "  $(basename "$f"): $SCOUNT steps"
+        TOTAL_STEPS=$((TOTAL_STEPS + SCOUNT))
+      done
+      echo "TOTAL_STEPS=$TOTAL_STEPS"
+      [ "$TOTAL_STEPS" -ge 50 ] && echo "PASS: Total steps >= 50" || echo "FAIL: Total steps < 50"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: Total steps"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Verify production gap checklist — key infrastructure present
+  # -------------------------------------------------------------------------
+  - name: "Production gap checklist — key infrastructure verified"
+    tool: bash
+    command: |
+      PROJECT_ROOT="/mnt/d/贯维/AutoInfo"
+      ALL_OK=true
+
+      # Check: MCP server module exists
+      if python3 -c "import autoinfo.mcp.server" 2>/dev/null; then
+        echo "  ✅ MCP server module importable"
+      else
+        echo "  ❌ MCP server module not importable"
+        ALL_OK=false
+      fi
+
+      # Check: KB module exists
+      if python3 -c "from autoinfo.kb import KBStore" 2>/dev/null; then
+        echo "  ✅ KBStore importable"
+      else
+        echo "  ❌ KBStore not importable"
+        ALL_OK=false
+      fi
+
+      # Check: Output module exists
+      if python3 -c "from autoinfo.output import generate_digest" 2>/dev/null; then
+        echo "  ✅ Output/generate_digest importable"
+      else
+        echo "  ❌ Output/generate_digest not importable"
+        ALL_OK=false
+      fi
+
+      # Check: Quality module exists
+      if python3 -c "from autoinfo.quality import QualityGate" 2>/dev/null; then
+        echo "  ✅ QualityGate importable"
+      else
+        echo "  ❌ QualityGate not importable"
+        ALL_OK=false
+      fi
+
+      # Check: Delivery module exists
+      if python3 -c "from autoinfo.delivery import SMTPDeliveryChannel" 2>/dev/null; then
+        echo "  ✅ SMTPDeliveryChannel importable"
+      else
+        echo "  ❌ SMTPDeliveryChannel not importable"
+        ALL_OK=false
+      fi
+
+      # Check: User store exists
+      if python3 -c "from autoinfo.user_store import get_profile" 2>/dev/null; then
+        echo "  ✅ user_store get_profile importable"
+      else
+        echo "  ❌ user_store not importable"
+        ALL_OK=false
+      fi
+
+      # Check: Billing module exists
+      if python3 -c "from autoinfo.billing import check_access" 2>/dev/null; then
+        echo "  ✅ billing check_access importable"
+      else
+        echo "  ❌ billing not importable"
+        ALL_OK=false
+      fi
+
+      # Check: Audit module exists
+      if python3 -c "from autoinfo.audit import query_audit_log" 2>/dev/null; then
+        echo "  ✅ audit query_audit_log importable"
+      else
+        echo "  ❌ audit not importable"
+        ALL_OK=false
+      fi
+
+      # Check: test suite exists
+      if [ -d "${PROJECT_ROOT}/tests" ]; then
+        TEST_COUNT=$(python3 -m pytest --collect-only -q 2>/dev/null | tail -1 | grep -oP '\d+(?= tests)')
+        echo "  ✅ Test suite exists: ~${TEST_COUNT:-?} tests"
+      else
+        echo "  ❌ Test suite missing"
+        ALL_OK=false
+      fi
+
+      # Check: docs exist
+      if [ -f "${PROJECT_ROOT}/docs/autoinfo-validation-master-plan/README.md" ]; then
+        echo "  ✅ Validation plan README exists"
+      else
+        echo "  ❌ Validation plan README missing"
+        ALL_OK=false
+      fi
+
+      if [ "$ALL_OK" = true ]; then
+        echo "PASS: Production gap checklist — all key modules present"
+      else
+        echo "FAIL: One or more production gaps found"
+      fi
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: Production gap checklist"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Verify deployment scripts and Makefile targets
+  # -------------------------------------------------------------------------
+  - name: "Deployment infrastructure — Makefile and backup scripts"
+    tool: bash
+    command: |
+      PROJECT_ROOT="/mnt/d/贯维/AutoInfo"
+      ALL_OK=true
+
+      # Makefile exists and has key targets
+      if [ -f "${PROJECT_ROOT}/Makefile" ]; then
+        echo "  ✅ Makefile exists"
+        grep -q "test:" "${PROJECT_ROOT}/Makefile" && echo "  ✅ Makefile has test target" || { echo "  ❌ Makefile missing test target"; ALL_OK=false; }
+        grep -q "backup:" "${PROJECT_ROOT}/Makefile" && echo "  ✅ Makefile has backup target" || { echo "  ❌ Makefile missing backup target"; ALL_OK=false; }
+        grep -q "lint:" "${PROJECT_ROOT}/Makefile" && echo "  ✅ Makefile has lint target" || echo "  ⚠️ Makefile missing lint target"
+      else
+        echo "  ❌ Makefile missing"
+        ALL_OK=false
+      fi
+
+      # Backup script exists
+      if [ -f "${PROJECT_ROOT}/scripts/backup-db.sh" ]; then
+        echo "  ✅ scripts/backup-db.sh exists"
+      else
+        echo "  ❌ scripts/backup-db.sh missing"
+        ALL_OK=false
+      fi
+
+      # Restore script exists
+      if [ -f "${PROJECT_ROOT}/scripts/restore-db.sh" ]; then
+        echo "  ✅ scripts/restore-db.sh exists"
+      else
+        echo "  ❌ scripts/restore-db.sh missing"
+        ALL_OK=false
+      fi
+
+      # pyproject.toml exists
+      if [ -f "${PROJECT_ROOT}/pyproject.toml" ]; then
+        echo "  ✅ pyproject.toml exists"
+      else
+        echo "  ❌ pyproject.toml missing"
+        ALL_OK=false
+      fi
+
+      if [ "$ALL_OK" = true ]; then
+        echo "PASS: Deployment infrastructure verified"
+      else
+        echo "FAIL: Deployment infrastructure incomplete"
+      fi
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: Deployment infrastructure verified"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Overall sign-off criteria evaluation
+  # -------------------------------------------------------------------------
+  - name: "Sign-off criteria — CI Gate evaluation"
+    tool: bash
+    command: |
+      ALL_OK=true
+
+      # 2183+ tests collectable
+      TEST_COLLECT_OUT=$(cd /mnt/d/贯维/AutoInfo && python3 -m pytest --collect-only -q 2>&1 | tail -1)
+      echo "  Test collection: $TEST_COLLECT_OUT"
+      echo "$TEST_COLLECT_OUT" | grep -qP '\d+ tests' && echo "  ✅ Tests collectable" || { echo "  ❌ Test collection failed"; ALL_OK=false; }
+
+      # Requirements installed
+      python3 -c "import autoinfo" 2>/dev/null && echo "  ✅ AutoInfo importable" || { echo "  ❌ AutoInfo not importable"; ALL_OK=false; }
+
+      # Scenario files present (at least 8)
+      SCN_COUNT=$(ls /mnt/d/贯维/AutoInfo/docs/autoinfo-validation-master-plan/scenarios/*.yaml 2>/dev/null | wc -l)
+      echo "  Scenario files: $SCN_COUNT"
+      [ "$SCN_COUNT" -ge 8 ] && echo "  ✅ At least 8 scenario files" || { echo "  ❌ Less than 8 scenario files"; ALL_OK=false; }
+
+      # Project init works
+      cd /tmp && rm -rf /tmp/sign-off-test && mkdir /tmp/sign-off-test && cd /tmp/sign-off-test
+      autoinfo init --demo medical-research 2>&1 > /dev/null
+      [ $? -eq 0 ] && echo "  ✅ Init works" || { echo "  ❌ Init failed"; ALL_OK=false; }
+
+      if [ "$ALL_OK" = true ]; then
+        echo "PASS: CI Gate sign-off criteria met"
+      else
+        echo "FAIL: CI Gate sign-off criteria not met"
+      fi
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: CI Gate sign-off criteria met"

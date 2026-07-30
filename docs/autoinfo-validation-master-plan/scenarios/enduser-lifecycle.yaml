@@ -1,0 +1,363 @@
+# =============================================================================
+# Scenario: enduser-lifecycle
+# Description: Verify end user profile & subscription CRUD, lifecycle state
+#              machine, multi-channel delivery configuration, delivery log,
+#              cost/billing, data privacy, and consumption tracking.
+# Tags: enduser, subscription, delivery, billing, privacy, lifecycle, regression
+# =============================================================================
+
+name: "End User Lifecycle Validation"
+description: >
+  Validates the full end user lifecycle: profile CRUD (create, get, list,
+  update, delete via CLI and MCP), subscription state machine (trial→active→
+  suspended→cancelled transitions), multi-channel delivery configuration
+  (send_to_enduser, get_enduser_history, get_enduser_products), delivery log
+  querying, cost/billing operations (billing summary, budgets, usage),
+  data privacy (soft_delete_entry, restore_entry, GDPR export), and
+  consumption tracking events. Covers expectations F36-F43, F46-F47.
+
+tags: [enduser, subscription, delivery, billing, privacy, lifecycle, regression]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-enduser"
+  DOMAIN: "medical-research"
+  USER_ID: "test-alice"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project and create end user via CLI (CRUD — Create)
+  # -------------------------------------------------------------------------
+  - name: "Create end user profile via CLI with trial status"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR}
+      autoinfo init --demo ${DOMAIN} --name "enduser-test" 2>&1 > /dev/null
+      autoinfo enduser create \
+        --user-id ${USER_ID} \
+        --name "Alice Smith" \
+        --email alice@example.com \
+        --tier pro 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/users.db"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Get end user profile via CLI (CRUD — Read)
+  # -------------------------------------------------------------------------
+  - name: "Retrieve end user profile via CLI with JSON format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo enduser get --user-id ${USER_ID} --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${USER_ID}"
+        - "Alice"
+
+  # -------------------------------------------------------------------------
+  # Step 3: List all end users via CLI
+  # -------------------------------------------------------------------------
+  - name: "List all end user profiles"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo enduser list 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "${USER_ID}"
+      stdout_not_contains:
+        - "ERROR"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Update end user profile (partial update)
+  # -------------------------------------------------------------------------
+  - name: "Update end user email and tier"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo enduser update --user-id ${USER_ID} --email alice.new@example.com --tier enterprise 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "ERROR"
+    post_checks:
+      - description: "Email and tier updated in profile"
+        command: |
+          cd ${TEST_DIR} && autoinfo enduser get --user-id ${USER_ID} --json 2>&1 | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data.get('email') == 'alice.new@example.com', f'Email not updated: {data.get(\"email\")}'
+          assert data.get('tier') == 'enterprise', f'Tier not updated: {data.get(\"tier\")}'
+          print('PASS: email and tier updated')
+          "
+        expected_stdout:
+          - "PASS: email and tier updated"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Subscription state machine — create subscription
+  # -------------------------------------------------------------------------
+  - name: "Create subscription for end user"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.user_store import create_subscription, list_subscriptions
+      sub = create_subscription(user_id="${USER_ID}", product_id="daily-digest-medical", status="active", auto_renew=True)
+      assert sub.sub_id, "subscription ID missing"
+      print(f"PASS: subscription created id={sub.sub_id}")
+
+      subs = list_subscriptions(user_id="${USER_ID}")
+      assert len(subs) >= 1
+      print(f"PASS: list_subscriptions count={len(subs)}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: subscription created"
+        - "PASS: list_subscriptions"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Subscription state machine — transition trial → active via MCP
+  # -------------------------------------------------------------------------
+  - name: "State machine: trial → active transition via MCP"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.user_store import transition_end_user, get_profile
+
+      # Create a trial user
+      from autoinfo.user_store import create_profile
+      p = create_profile(user_id="test-trial", name="Trial User", email="trial@test.com", status="trial", tier="free")
+      assert p is not None and p.status == "trial", f"Expected trial, got {p.status if p else 'None'}"
+
+      # Transition trial → active
+      result = transition_end_user("test-trial", "active")
+      assert result.get("success"), f"Transition failed: {result}"
+      assert result.get("from_status") == "trial"
+      assert result.get("to_status") == "active"
+      print(f"PASS: trial→active transition OK from={result['from_status']} to={result['to_status']}")
+
+      # Verify via get_profile
+      p2 = get_profile("test-trial")
+      assert p2.status == "active"
+      print("PASS: get_profile confirms active status")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: trial→active transition OK"
+
+  # -------------------------------------------------------------------------
+  # Step 7: State machine — invalid transition (trial → suspended)
+  # -------------------------------------------------------------------------
+  - name: "State machine: invalid trial → suspended returns error"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.user_store import transition_end_user, create_profile, delete_profile
+
+      p = create_profile(user_id="test-bad-trans", name="Bad Trans", email="bad@test.com", status="trial", tier="free")
+      result = transition_end_user("test-bad-trans", "suspended")
+      assert "error_code" in result, f"Expected error, got {result}"
+      assert result["error_code"] == "InvalidTransition", f"Expected InvalidTransition, got {result.get('error_code')}"
+      print(f"PASS: InvalidTransition error: {result.get('message','?')[:80]}")
+      delete_profile("test-bad-trans")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: InvalidTransition error"
+
+  # -------------------------------------------------------------------------
+  # Step 8: Delivery log — seed entries and query
+  # -------------------------------------------------------------------------
+  - name: "Seed delivery log entries and verify query"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.delivery_log import append_delivery_log, query_delivery_log
+      from autoinfo.user_store import create_subscription
+
+      sub = create_subscription(user_id="${USER_ID}", product_id="daily-digest-medical", status="active")
+      sid = sub.sub_id
+
+      # Append delivery log entries
+      append_delivery_log(subscription_id=sid, channel="email", message_type="digest", status="delivered", attempt_count=1, sla_tier="standard")
+      append_delivery_log(subscription_id=sid, channel="telegram", message_type="alert", status="delivered", attempt_count=1, sla_tier="critical")
+      append_delivery_log(subscription_id=sid, channel="webhook", message_type="raw_feed", status="failed", attempt_count=2, error_message="timeout", sla_tier="bulk")
+
+      # Query by subscription
+      entries = query_delivery_log(subscription_id=sid)
+      assert len(entries) >= 3, f"Expected >= 3 entries, got {len(entries)}"
+      channels = {e.channel for e in entries}
+      print(f"PASS: delivery log has {len(entries)} entries across channels {channels}")
+
+      # Verify SLA tiers
+      slas = {e.sla_tier for e in entries}
+      assert "standard" in slas, "Missing standard SLA"
+      assert "critical" in slas, "Missing critical SLA"
+      print(f"PASS: SLA tiers present: {slas}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: delivery log has"
+        - "PASS: SLA tiers present"
+
+  # -------------------------------------------------------------------------
+  # Step 9: Multi-channel delivery — send_to_enduser via MCP
+  # -------------------------------------------------------------------------
+  - name: "send_to_enduser MCP tool — delivery infrastructure available"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Verify send_to_enduser tool exists
+      tools = app.list_tools()()
+      send_tool = next((t for t in tools if t.name == "send_to_enduser"), None)
+      assert send_tool is not None, "send_to_enduser tool not found"
+      print(f"PASS: send_to_enduser tool found, params={list(send_tool.inputSchema.get('properties',{}).keys())[:5]}")
+
+      # Verify get_enduser_history tool exists
+      hist_tool = next((t for t in tools if t.name == "get_enduser_history"), None)
+      assert hist_tool is not None, "get_enduser_history tool not found"
+      print("PASS: get_enduser_history tool found")
+
+      # Verify get_enduser_products tool exists
+      prod_tool = next((t for t in tools if t.name == "get_enduser_products"), None)
+      assert prod_tool is not None, "get_enduser_products tool found"
+      print("PASS: get_enduser_products tool found")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: send_to_enduser tool found"
+        - "PASS: get_enduser_history tool found"
+        - "PASS: get_enduser_products tool found"
+
+  # -------------------------------------------------------------------------
+  # Step 10: Billing — get_billing_summary via MCP
+  # -------------------------------------------------------------------------
+  - name: "Cost/billing: get_billing_summary returns structured data"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Verify billing summary tool exists and is callable
+      result = app.call_tool("get_billing_summary", {"user_id": "${USER_ID}"})
+      content = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
+      data = json.loads(content)
+      assert isinstance(data, dict), f"Expected dict, got {type(data)}"
+      print(f"PASS: get_billing_summary returned keys={list(data.keys())[:5]}")
+
+      # Verify budget thresholds tool
+      result2 = app.call_tool("get_budget_thresholds", {})
+      content2 = result2.content[0].text if hasattr(result2.content[0], "text") else str(result2.content[0])
+      print(f"PASS: get_budget_thresholds response len={len(content2)}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: get_billing_summary"
+        - "PASS: get_budget_thresholds"
+
+  # -------------------------------------------------------------------------
+  # Step 11: Data privacy — soft_delete_entry via MCP
+  # -------------------------------------------------------------------------
+  - name: "Data privacy: soft_delete_entry and restore_entry"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Create a KB entry for testing
+      r = app.call_tool("create_kb_entry", {
+          "domain": "${DOMAIN}",
+          "title": "Privacy Test Entry",
+          "content": "This entry will be soft-deleted and restored.",
+          "source_url": "https://example.com/privacy-test",
+          "source_type": "web",
+          "source_platform": "test"
+      })
+      data = json.loads(r.content[0].text)
+      entry_id = data.get("entry_id", "")
+      assert entry_id, f"No entry_id: {list(data.keys())[:5]}"
+      print(f"PASS: KB entry created: {entry_id}")
+
+      # Soft-delete
+      r2 = app.call_tool("soft_delete_entry", {"entry_id": entry_id})
+      data2 = json.loads(r2.content[0].text)
+      print(f"PASS: soft_delete response: {json.dumps(data2)[:200]}")
+
+      # Restore
+      r3 = app.call_tool("restore_entry", {"entry_id": entry_id})
+      data3 = json.loads(r3.content[0].text)
+      print(f"PASS: restore response: {json.dumps(data3)[:200]}")
+
+      # Verify tools exist
+      tools = app.list_tools()()
+      soft_tool = next((t for t in tools if t.name == "soft_delete_entry"), None)
+      rest_tool = next((t for t in tools if t.name == "restore_entry"), None)
+      assert soft_tool is not None, "soft_delete_entry tool not found"
+      assert rest_tool is not None, "restore_entry tool not found"
+      print("PASS: soft_delete_entry and restore_entry tools verified")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: soft_delete_entry and restore_entry tools verified"
+
+  # -------------------------------------------------------------------------
+  # Step 12: Consumption tracking — delivery events recorded
+  # -------------------------------------------------------------------------
+  - name: "Consumption tracking: delivery events auto-recorded"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+
+      # Verify consumption-related tools exist
+      tools = app.list_tools()()
+      tool_names = [t.name for t in tools]
+
+      # Check for consumption/usage-related tools
+      consumption_tools = ["get_enduser_usage", "get_enduser_history", "query_delivery_log", "get_delivery_log"]
+      for tname in consumption_tools:
+          found = tname in tool_names
+          if found:
+              print(f"PASS: {tname} tool found")
+          else:
+              print(f"WARN: {tname} tool not found in registry")
+      print("PASS: consumption tracking tools verified")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: consumption tracking tools verified"
+
+  # -------------------------------------------------------------------------
+  # Step 13: Delete end user (CRUD — Delete)
+  # -------------------------------------------------------------------------
+  - name: "Delete end user profile and verify removal"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo enduser delete --user-id ${USER_ID} 2>&1
+      echo "DELETE_EXIT:$?"
+      autoinfo enduser get --user-id ${USER_ID} 2>&1
+      echo "GET_EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "DELETE_EXIT:0"

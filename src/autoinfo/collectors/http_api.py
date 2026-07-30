@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import trafilatura
 
 from autoinfo.collectors.base import BaseHandler
 from autoinfo.config import SourceConfig
@@ -300,13 +301,32 @@ class HttpApiHandler(BaseHandler):
 
         for i, raw in enumerate(raw_items):
             try:
+                content = _get_field(raw, field_mapping.get("content", "")) or ""
+
+                # CrossRef-specific fallback: if the content field (abstract) is empty
+                # AND the source is CrossRef, try to scrape the DOI landing page.
+                if (
+                    not content
+                    and self.source_config.name.lower() == "crossref"
+                    and self.source_config.fetch_depth in (None, "abstract", "fulltext")
+                ):
+                    doi_url = _get_field(raw, field_mapping.get("source_url", ""))
+                    if doi_url:
+                        try:
+                            scraped = _scrape_doi_page(doi_url, timeout=10)
+                            if scraped:
+                                content = scraped
+                                content_type = "text"
+                        except Exception as scrape_exc:
+                            logger.debug("CrossRef scrape fallback failed for %s: %s", doi_url, scrape_exc)
+
                 item = Item(
                     id=_get_field(raw, field_mapping.get("id", "")) or _make_stable_id(raw, i),
                     source_name=self.source_name,
                     source_type="api",
                     source_url=_get_field(raw, field_mapping.get("source_url", "")) or self.source_config.url,
                     title=_get_field(raw, field_mapping.get("title", "")) or "",
-                    content=_get_field(raw, field_mapping.get("content", "")) or "",
+                    content=content,
                     content_type=_get_field(raw, field_mapping.get("content_type", "")) or "text",
                     source_platform=self.source_config.name,
                     collected_at=collected_at,
@@ -427,3 +447,48 @@ def _make_stable_id(raw: dict[str, Any], index: int) -> str:
     except Exception:
         return f"api-item-{index}"
     return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()[:16]
+
+
+def _scrape_doi_page(doi_url: str, timeout: int = 10) -> str:
+    """Fetch and extract readable text from a DOI landing page.
+
+    Used as a fallback when the CrossRef API returns an empty abstract.
+    Uses ``httpx`` for the HTTP request and ``trafilatura`` for text
+    extraction from the HTML response.
+
+    Parameters
+    ----------
+    doi_url : str
+        The DOI URL (e.g. ``https://doi.org/10.xxxx/xxxxx``).
+    timeout : int
+        HTTP request timeout in seconds (default 10).
+
+    Returns
+    -------
+    str
+        Extracted text content, or empty string on failure.
+    """
+    try:
+        resp = httpx.get(
+            doi_url,
+            follow_redirects=True,
+            timeout=timeout,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (compatible; AutoInfo/1.8; "
+                    "+https://github.com/1StepMore/AutoInfo)"
+                ),
+            },
+        )
+        resp.raise_for_status()
+        text = trafilatura.extract(
+            resp.text,
+            output_format="text",
+            include_links=False,
+            include_images=False,
+            no_fallback=False,
+        )
+        return (text or "").strip()
+    except Exception as exc:
+        logger.debug("DOI page scrape failed for %s: %s", doi_url, exc)
+        return ""

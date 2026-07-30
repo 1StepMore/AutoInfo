@@ -2941,7 +2941,46 @@ def _group_by_theme(
             groups_raw = None
 
     if not groups_raw:
-        # Fallback: single group with all entries
+        # Smart fallback: split by domain rather than lumping everything under "General".
+        # This handles the case where the LLM fails or collapses all entries.
+        from collections import defaultdict
+        domain_groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+        for e in entries:
+            d = (e.get("domain") or "").strip() or "Unknown"
+            domain_groups[d].append(e)
+
+        if len(domain_groups) >= 2:
+            groups = []
+            for domain_name in sorted(domain_groups):
+                theme_name = domain_name.replace("-", " ").title() if domain_name != "Unknown" else "Other Sources"
+                groups.append({
+                    "theme": theme_name,
+                    "description": (
+                        f"{len(domain_groups[domain_name])} entries from "
+                        f"{domain_name or 'other sources'}."
+                    ),
+                    "entries": domain_groups[domain_name],
+                })
+            return groups
+
+        # Single domain (or all unknown): split by source_type instead
+        source_groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+        for e in entries:
+            st = (e.get("source_type") or "").strip() or "unknown"
+            source_groups[st].append(e)
+
+        if len(source_groups) >= 2:
+            groups = []
+            for st in sorted(source_groups):
+                theme_name = st.upper()
+                groups.append({
+                    "theme": theme_name,
+                    "description": f"{len(source_groups[st])} entries from {st} sources.",
+                    "entries": source_groups[st],
+                })
+            return groups
+
+        # Last resort — single group with all entries
         return [
             {
                 "theme": "General",

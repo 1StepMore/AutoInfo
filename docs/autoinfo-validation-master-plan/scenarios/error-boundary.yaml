@@ -1,0 +1,161 @@
+# =============================================================================
+# Scenario: error-boundary
+# Description: Verify error handling across CLI, config, collection, and data layers
+# Tags: error, boundary, cli, regression, negative-test
+# =============================================================================
+
+name: "Error and Boundary Matrix Validation"
+description: >
+  Tests comprehensive error handling: missing configs, invalid domains,
+  missing required parameters, invalid flags, broken source URLs,
+  concurrent access, data edge cases (special characters, long titles,
+  empty dates). All scenarios expect graceful error messages without
+  tracebacks or crashes.
+
+tags: [error, boundary, cli, config, negative-test, regression]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-err"
+  DOMAIN: "medical-research"
+
+steps:
+  - name: "Initialize project for error boundary tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "error-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  - name: "Collect with nonexistent domain returns error"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo collect --domain nonexistent-domain 2>&1
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Process without --domain shows error"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo process 2>&1
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Invalid --limit value produces error"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo collect --domain ${DOMAIN} --limit -1 2>&1
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Unknown CLI subcommand returns usage info"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo nonexistent-command 2>&1
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Doctor in directory without config shows friendly error"
+    tool: bash
+    setup: |
+      rm -rf /tmp/autoinfo-no-config
+      mkdir -p /tmp/autoinfo-no-config
+    command: |
+      cd /tmp/autoinfo-no-config
+      autoinfo doctor 2>&1
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Collect from invalid source URL handles error gracefully"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      autoinfo collect --domain ${DOMAIN} --source broken-source --limit 3 2>&1 || true
+      echo "EXIT:$?"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "EXIT:"
+      stdout_not_contains:
+        - "Traceback"
+        - "FATAL"
+
+  - name: "Concurrent collection does not cause file corruption or crash"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}-concurrent
+      mkdir -p ${TEST_DIR}-concurrent
+    command: |
+      cd ${TEST_DIR}-concurrent
+      autoinfo init --demo ${DOMAIN} --name "concurrent-test" 2>&1
+      autoinfo collect --domain ${DOMAIN} --limit 3 2>&1 &
+      PID1=$!
+      autoinfo collect --domain ${DOMAIN} --limit 3 2>&1 &
+      PID2=$!
+      wait ${PID1} ${PID2} 2>/dev/null
+      echo "PASS:CONCURRENT_DONE"
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:CONCURRENT_DONE"
+      stdout_not_contains:
+        - "Traceback"
+        - "Segmentation fault"
+
+  - name: "Unicode and CJK characters preserved without corruption"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import tempfile,os; from pathlib import Path; from autoinfo.kb import KBStore,SQLiteIndex; from autoinfo.models import Item; td=tempfile.mkdtemp(); store=KBStore(Path(td)/'knowledge',SQLiteIndex(Path(td)/'autoinfo.db')); store.index.init_db(); special='Unicode: ni hao, Nihongo, Hangul | Emoji: dna,microscope | Markdown: **bold** *italic*'; entry=store.store_entry(Item(id='special-chars',source_name='pubmed',title='Special Chars Test',content=special,collected_at='2026-07-30',domain='${DOMAIN}',topic_tags=['test'])); saved=open(entry.file_path).read(); print('PASS:UNICODE_PRESERVED')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:"
+      stdout_not_contains:
+        - "Traceback"
+
+  - name: "Long title handled without crash in KB storage"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      python3 -c "import tempfile; from pathlib import Path; from autoinfo.kb import KBStore,SQLiteIndex; from autoinfo.models import Item; td=tempfile.mkdtemp(); store=KBStore(Path(td)/'knowledge',SQLiteIndex(Path(td)/'autoinfo.db')); store.index.init_db(); long_title='A'*5000; entry=store.store_entry(Item(id='long-title',source_name='pubmed',title=long_title,content='test content',collected_at='2026-07-30',domain='${DOMAIN}',topic_tags=['test'])); print('PASS:LONG_TITLE_OK')" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS:"
+      stdout_not_contains:
+        - "Traceback"

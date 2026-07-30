@@ -21,7 +21,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (133 tools across 32 categories)
+2. **All capabilities** are exposed as MCP tools (137 tools across 34 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -66,7 +66,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 133 MCP tools across 32 categories
+│   │   │   ├── mcp-tools.md        # 137 MCP tools across 34 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -83,7 +83,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (133 tools)
+│       ├── mcp/                     # MCP server (137 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
@@ -94,6 +94,8 @@ AutoInfo/
 │       ├── keywords.py              # Keyword management
 │       ├── quality.py               # Quality gates G0-G5, D1-D3 delivery gates
 │       ├── delivery.py              # Delivery channel abstraction (SMTP, webhook, REST, export)
+│       ├── delivery/
+│       │   └── scheduler.py          # Delivery schedule management (add/list/remove schedules, cron integration)
 │       ├── alerts.py                # Alert rule CRUD, YAML persistence, check & dispatch
 │       ├── qa.py                    # Q&A with LLM synthesis
 │       └── ...
@@ -176,7 +178,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-133 MCP tools across 32 categories:
+137 MCP tools across 34 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -191,7 +193,8 @@ freshness at output time.
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
 | **KB Graph** | `query_knowledge_graph`, `knowledge_graph_export` |
-| **Output** | `list_output_templates`, `generate_digest` (format=md/html/json/agent), `generate_report` (format=md/json/pdf/html/audio/agent), `generate_tutorial` (format=md/agent), `generate_presentation` (format=md/agent), `localize_content` |
+| **Output** | `list_output_templates`, `generate_digest` (format=md/html/json/agent), `generate_report` (format=md/json/pdf/html/audio/agent), `generate_cross_domain_report`, `generate_tutorial` (format=md/agent), `generate_presentation` (format=md/agent), `localize_content` |
+| **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
 | **Export/Import** | `export_kb` (format=md/json/sqlite/pdf/csv/graphml/agent), `import_kb` |
 | **CEFR** | `classify_cefr`, `cefr_batch` |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
@@ -354,6 +357,33 @@ freshness at output time.
 ```
 → LLM configured for extraction and processing.
 
+### "Generate cross-domain report"
+```
+1. generate_report(domain="medical-research", domains=["medical-research", "ai-commercial"], format="markdown", report_type="industry") → combined analysis
+2. Or via CLI: autoinfo output report --domains medical --domains ai-commercial --type trend
+```
+→ Cross-domain analysis combining insights from multiple domains.
+
+### "Set up a delivery schedule"
+```
+1. add_delivery_schedule(domain="medical-research", cron_expression="0 8 * * 1", output_type="digest", channel="email") → schedule created
+2. list_delivery_schedules() → view all schedules
+3. Schedules execute automatically via autoinfo cron run
+```
+→ Automated scheduled delivery of digests and reports.
+
+### "Export knowledge base as bundle"
+```
+1. export_kb(domain="medical-research", format="bundle") → creates ZIP with JSON+MD+YAML+PDF
+```
+→ Comprehensive export bundle with all formats in a single ZIP archive.
+
+### "Generate a specialized report"
+```
+1. generate_report(domain="medical-research", format="markdown", report_type="competitive", target_audience="researcher") → competitive analysis report
+```
+→ Specialized report types (competitive, trend, industry, summary) with audience targeting.
+
 ## LLM Configuration
 
 AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
@@ -417,7 +447,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 133 tools across 32 categories |
+| MCP server | ✅ 137 tools across 34 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -471,7 +501,8 @@ Collection and processing now return a `job_id` for progress polling:
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 1612 tests (1 collection error pre-existing) |
+| Test suite | ✅ 2183 tests (includes new collector tests; 1 collection error pre-existing) |
+| Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 
 ## References
 

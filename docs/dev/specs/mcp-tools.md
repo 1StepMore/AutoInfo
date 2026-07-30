@@ -3,7 +3,7 @@
 > Extracted from `founder-expectations.md §12.11`. References: all F-numbers — every feature has a corresponding MCP tool surface.
 > **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — MCP tools are the B2 (Direct Agent) interface to every A1-A7 pipeline capability. The CD catalog's B2 row shows which stages have full tool coverage and which have gaps.
 
-**v1.8.1: 133 tools across 32 categories**. Adds `configure_llm` to the System category for agent-oriented BYOK setup. v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
+**v1.8.2: 137 tools across 34 categories**. Phase 4 adds 1 new category (Delivery Schedule) and 4 new tools: `generate_cross_domain_report`, `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. v1.8.1 added `configure_llm` to the System category for agent-oriented BYOK setup. v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
 
 ---
 
@@ -20,7 +20,7 @@
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
 | **KB Graph** | `query_knowledge_graph`, `knowledge_graph_export` |
-| **Output** | `list_output_templates`, `generate_digest`, `generate_report` (Markdown/JSON/PDF/HTML), `generate_tutorial`, `generate_presentation`, `localize_content` |
+| **Output** | `list_output_templates`, `generate_digest`, `generate_report` (Markdown/JSON/PDF/HTML), `generate_cross_domain_report`, `generate_tutorial`, `generate_presentation`, `localize_content` |
 | **Export/Import** | `export_kb`, `import_kb` |
 | **CEFR** | `classify_cefr` (EN/ZH/JA LLM-based classification), `cefr_batch` (batch classification) |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
@@ -42,5 +42,6 @@
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Audit** | `query_audit_log` (immutable audit log query) |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
+| **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.

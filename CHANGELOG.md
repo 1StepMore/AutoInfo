@@ -2,6 +2,54 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.8.2 (2026-07-30)
+
+### Added
+- **`--audience` flag for `autoinfo output report`** — New `--audience` CLI option on report command, matching the existing `target_audience` parameter in output generation (PR #75).
+- **"12 new collector handlers"** — DBLP, NYT, OpenAlex, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, Semantic Scholar, USPTO, plus AP API and Reuters MCP handlers. 22 total collector handlers registered in `collectors/__init__.py` and wired into `_build_handler()` / `_fetch_items()` in `collect.py`.
+- **"Bundle export format"** — `export_kb(format='bundle')` generates a ZIP archive containing `data.json`, `summary.md`, `metadata.yaml`, and `report.pdf` (weasyprint). Graceful fallback if PDF generation unavailable.
+- **"Cross-domain report MCP tool"** — `generate_cross_domain_report` accepts 2+ domains, aggregates entries with domain labels, and runs cross-domain LLM synthesis.
+- **"Cross-domain digest"** — `generate_digest()` now accepts `domains` parameter with per-domain entry limits and combined source attribution.
+- **"Report type parameter"** — `report_type` on `generate_report()`: `standard`, `industry`, `competitive`, `trend`, `daily-briefing`. Each type customizes section structure and LLM prompts.
+- **"Audience-aware prompts"** — `_normalize_report_audience()` and `_REPORT_AUDIENCE_PROMPTS` mapping for researcher/clinician/executive/investor/student/general audiences.
+- **"Delivery schedule MCP tools"** — `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. Cron-based periodic output generation + delivery via `autoinfo cron run`.
+- **"Apple Podcasts source platform"** — New platform type added to `PLATFORMS` list.
+- **"MCP tool inventory"**: 133 → 137 tools (3 delivery schedule tools + 1 cross-domain report tool).
+
+### Fixed
+- **PR #75 — Dead/hanging demo sources removed**: Removed VOA Learning English from language-learning demo (broken feed). Switched ProductHunt from API to RSS in ai-commercial (API was down/dead). Removed LMSYS Chatbot Arena from ai-commercial (unreliable RSS, no stable API). All 4 demo domains now have fully functional source configurations.
+- **#81 — `--name` writes `project.name` (backward compat)** : `autoinfo init --name` now writes `project.name` as the primary key (was writing only `project.project_name`). Both `name` and `project_name` are written for backward compatibility with existing config readers.
+- **#79 — CrossRef `content: abstract` field_mapping**: Added `content: abstract` to CrossRef source's `field_mapping` in medical-research demo, enabling full abstract extraction from CrossRef API responses.
+- **#78 — `--demo` flag now additive (multi-domain init)**: Changed `--demo` from `Optional[str]` to `Optional[List[str]]`, supporting multiple values: `autoinfo init --demo medical-research --demo ai-commercial`. Single `--demo` usage remains unchanged.
+- **#80 — Non-TTY init shows helpful error**: `autoinfo init` in non-interactive terminals now shows a helpful message listing `--demo <domain>` and `--list-domains` options instead of crashing with "Aborted". Uses `sys.stdin.isatty()` for pre-prompt detection.
+- **#76 — LLM theme grouping prompt with anti-collapse guard**: Enhanced `_group_by_theme()` with domain-specific theme guidance, anti-collapse instruction ("Do NOT group all entries under a single catch-all theme"), and retry logic for single-theme results. Function signature updated to accept `domain` parameter.
+- **#68 — Safe json_mode defaults for reasoning models**: Changed `json_mode` default from `True` to `False` in LLM config. Added `reasoning_model: bool = False` config flag — when `True`, `response_format=json_object` is always skipped for compatibility with reasoning models (deepseek-v4, etc.). All 13+ LLM call sites conditionally apply `response_format` based on `json_mode`.
+
+### Changed
+- **`autoinfo output report`** — New `--type` (report_type) and `--domains` (cross-domain) CLI flags; `--domain` now optional when `--domains` is used.
+- **`autoinfo output export`** — New `bundle` format option.
+- **`autoinfo cron run`** — Delivery schedules run alongside collection schedules; delivery results displayed with `[delivery]` type suffix.
+- **`json_mode` default** — Changed from `True` to `False`. New `reasoning_model` flag (default `False`) — when `True`, `response_format=json_object` is always skipped for reasoning-model compatibility.
+
+### Infrastructure
+- `src/autoinfo/cli/init.py`: `--name` writes both `project.name` + `project.project_name` (+4 lines); `--demo` converted to `List[str]` multi-value (+3/-2); non-TTY detection with helpful error message (+10 lines).
+- `src/autoinfo/cli/output.py`: `--audience` flag added to report CLI command (+3 lines).
+- `src/autoinfo/data/domains/*/sources.yaml`: VOA removed from language-learning; ProductHunt switched to RSS in ai-commercial; LMSYS removed from ai-commercial; CrossRef `content: abstract` field_mapping added in medical-research.
+- `src/autoinfo/output.py`: `_group_by_theme()` enhanced with domain parameter, anti-collapse guard, retry logic (+25 lines).
+- `src/autoinfo/config.py`: `json_mode` default `False`, `reasoning_model` flag added to `LLMConfig` dataclass and serialization (+8 lines).
+- `src/autoinfo/llm.py`: `json_mode`/`reasoning_model` wired through config resolution and LLM call dispatch (+5 lines).
+- `src/autoinfo/mcp/server.py`: +387 lines — 4 new tool handlers, Apple Podcasts platform, export_kb `bundle` format, json_mode default False
+- `src/autoinfo/output.py`: +930 lines — bundle export, cross-domain digest/report, report_type, audience prompts, json_mode/reasoning_model hardening
+- `src/autoinfo/cli/output.py`: --domains, --type flags on report; --format bundle on export
+- `src/autoinfo/cli/cron.py`: delivery schedule execution in run + run_due_schedules, add-delivery CLI command
+- `src/autoinfo/collect.py`: 12 new handler registrations
+- `src/autoinfo/collectors/__init__.py`: 12 new handler exports
+- `src/autoinfo/collectors/`: 12 new collector .py files
+- `src/autoinfo/config.py`: json_mode default False, reasoning_model flag
+- `src/autoinfo/llm.py`: conditional response_format based on json_mode+reasoning_model
+- `src/autoinfo/process.py`, `src/autoinfo/quality.py`, `src/autoinfo/translation_qa.py`: minor compatibility fixes
+- `src/autoinfo/data/domains/*/sources.yaml`: source configuration updates
+
 ## v1.8.1 (2026-07-29)
 
 ### Added

@@ -33,6 +33,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `CHANGELOG.md` (project root) | Version history — all additions, changes, fixes per version | 🔴 P0 — release notes | Every version/feature/fix |
 | `pyproject.toml` | Python packaging metadata (version, deps, entry points) | 🔴 P0 — build system | Version bumps, dependency changes |
 | `Makefile` | Build automation targets (install/test/lint/clean) | 🟡 P1 — dev convenience | When build workflow changes |
+| `docs/known-limitations/blocked-sources.md` | Catalog of high-value sources blocked by cost/policy/technical limits, with alternative recommendations | 🟡 P1 — limitations reference | When new sources are evaluated or blocked |
 
 ### 1.2 Agent-Facing Docs (for AI agents connecting to AutoInfo — operator skills)
 
@@ -50,24 +51,31 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 
 ### 1.4 Developer Docs (architecture and specification)
 
-> All spec content was extracted from `docs/dev/founder-expectations.md` (2108 lines pre-split) into standalone spec files under `docs/dev/specs/` on 2026-07-26. See `founder-expectations-pre-split.md` for the exact pre-split backup. The current `founder-expectations.md` is a **446-line simplified index** with stubs + cross-references. The dedicated spec files below are the source truth for each topic.
+> All spec content was extracted from `docs/dev/founder-expectations.md` (2108 lines pre-split) into standalone spec files under `docs/dev/specs/` on 2026-07-26. See `docs/archive/founder-expectations-pre-split.md` for the exact pre-split backup. The current `founder-expectations.md` is a **446-line simplified index** with stubs + cross-references. The dedicated spec files below are the source truth for each topic.
 
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
-| `docs/dev/founder-expectations.md` | **Index document** (446 lines) — §1-2 kept, §10-14 kept, all other sections → stubs → spec files. Full backup: `founder-expectations-pre-split.md` (2108 lines). | 🔴 P0 — spec anchor | When high-level scope/status changes |
+| `docs/dev/founder-expectations.md` | **Index document** (446 lines) — §1-2 kept, §10-14 kept, all other sections → stubs → spec files. Full backup: `docs/archive/founder-expectations-pre-split.md` (2108 lines). | 🔴 P0 — spec anchor | When high-level scope/status changes |
 | `docs/dev/specs/expectations.md` | **Expectation Catalog — F01 to F57** (873 lines). All 57 expectations across 12 phases with UX Detail tables and status markers. | 🔴 P0 — extracted spec | When expectations/status change |
 | `docs/dev/specs/quality-gates.md` | G0-G5 quality gates, D1-D3 delivery gates: gate catalog, philosophy, retry strategies, configuration model, testing strategy | 🔴 P0 — extracted spec | When quality gate logic changes |
 | `docs/dev/specs/pipeline.md` | Collection pipeline, KB pipeline (4-tier), LLM config, processing & LLM extraction, import pipeline, CEFR, cross-collection dedup & merge, performance targets | 🔴 P0 — extracted spec | When pipeline logic changes |
 | `docs/dev/specs/delivery.md` | Output generation, delivery channels (10-channel matrix), error recovery & resilience, end user lifecycle (UserProfile/Subscription/DeliveryLog) | 🔴 P0 — extracted spec | When delivery/end-user logic changes |
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
-| `docs/dev/specs/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (133 tools across 32 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/archive/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec (archived) | When reality/gap status changes |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (137 tools across 34 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
-| `docs/dev/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference | When KB pipeline changes |
+| `docs/archive/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference (archived) | Rarely — only when archived doc reference changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
+| `docs/dev/director-user-guide.md` | Human-Agent interaction lifecycle: role definitions, communication patterns, operation model for the Director User (756 lines) | 🔴 P0 — human interface | When agent interaction model changes |
+| `docs/dev/cross-dimensional-catalog.md` | **Keystone product matrix** (A1-A7 Pipeline × B1/B2/B3 Users, 42 cells, 5 gap types, 780 lines). Cross-references all gaps to spec files. | 🔴 P0 — product keystone | When product scope or gap status changes |
+| `docs/dev/specs/user-lifecycle-definition.md` | Foundational spec defining three user types (B1 End User, B2 Direct User, B3 Director User) and their complete lifecycles (453 lines) | 🔴 P0 — foundational spec | When user model changes |
+| `docs/dev/specs/ops-runbook.md` | Operations runbook: backup, disaster recovery, monitoring, scaling, agent quick reference with MCP tool mappings (1027 lines) | 🟡 P1 — operations guide | When operations procedures change |
+| `docs/dev/specs/multi-tenancy-auth.md` | Multi-tenancy, authentication, rate limiting, admin dashboard — architectural design (deferred until SSE transport, 769 lines) | 🟠 P2 — deferred spec | When auth/multi-tenancy is implemented |
 
-### 1.4 Validation Docs (testing and verification plans)
+> **Note on `docs/dev/specs/reality-assessment.md`**: This file was moved to `docs/archive/reality-assessment.md` during the 2026-07-26 restructuring. Update path references accordingly.
+
+### 1.5 Validation Docs (testing and verification plans)
 
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
@@ -85,14 +93,39 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Error/boundary matrix across all layers | 🟡 P1 | When error handling changes |
 | `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Doctor diagnostics, MCP stdio, stress test, test suite | 🟡 P1 | When diagnostics/test changes |
 | `docs/autoinfo-validation-master-plan/part-12-final-verdict.md` | Summary verdict, production gap checklist | 🟡 P1 | When validation completes |
+| `docs/autoinfo-validation-master-plan/part-13-enduser-lifecycle.md` | End user lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product SLA, data privacy (4743 lines) | 🟡 P1 | When end user lifecycle changes |
+| `docs/autoinfo-validation-master-plan/part-14-human-agent-collaboration.md` | Human-Agent collaboration: ambiguous intent clarification, failure escalation, human review & iteration, overrides (886 lines) | 🟡 P1 | When agent interaction model changes |
+| `docs/autoinfo-validation-master-plan/part-15-cross-dimension-e2e.md` | Full E2E journey spanning all three user dimensions: Director User → Direct User → End User, agent callbacks (3097 lines) | 🟡 P1 | When cross-dimension flows change |
 
-### 1.5 Configuration Docs (MCP connection configs)
+### 1.6 Configuration Docs (MCP connection configs)
 
 | File | Purpose | Criticality |
 |------|---------|-------------|
 | `.cursor/mcp.json` | Cursor MCP connection config | 🟡 P1 |
 | `.claude/claude_desktop_config.json` | Claude Desktop MCP connection config | 🟡 P1 |
 | `.opencode/mcp.json` | OpenCode MCP connection config | 🟡 P1 |
+
+### 1.7 Archive Docs (superseded or historical)
+
+> Archive docs under `docs/archive/` are historical records. They are retained for reference but are NOT authoritative — the active spec files in `docs/dev/specs/` supersede them. Update only when archiving new docs or when referenced paths change.
+
+| File | Purpose | Criticality | Notes |
+|------|---------|-------------|-------|
+| `docs/archive/founder-expectations-pre-split.md` | Pre-split backup of original founder-expectations.md (2108 lines before 2026-07-26 restructure) | 🟠 P2 — historical | Superseded by `docs/dev/specs/` |
+| `docs/archive/reality-assessment.md` | Core value propositions assessment, v1.6 reality status, gap table | 🟠 P2 — historical | Moved from `docs/dev/specs/` during restructure |
+| `docs/archive/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟠 P2 — historical | Superseded by `docs/dev/specs/pipeline.md` |
+| `docs/archive/autoinfo-validation-master-plan.md` | Original validation plan (~40% coverage) | 🟠 P2 — historical | Superseded by v2 validation plan parts |
+| `docs/archive/comprehensive-gap-audit.md` | Comprehensive gap audit (pre-keystone) | 🟠 P2 — historical | Superseded by `docs/dev/cross-dimensional-catalog.md` |
+| `docs/archive/consumer-output-gaps.md` | Consumer-facing output gap analysis | 🟠 P2 — historical | Superseded by cross-dimensional-catalog.md |
+| `docs/archive/implementation-gaps.md` | Feature-level implementation gap audit | 🟠 P2 — historical | Superseded by cross-dimensional-catalog.md |
+| `docs/archive/agent-oriented-gap-analysis-2026-07-28.md` | Agent-oriented gap analysis | 🟠 P2 — historical | One-time analysis, not ongoing |
+| `docs/archive/gap-analysis-v1.6.md` | v1.6 gap analysis | 🟠 P2 — historical | One-time analysis, not ongoing |
+| `docs/archive/user-authorization-matrix.md` | User authorization matrix design | 🟠 P2 — historical | Superseded by multi-tenancy-auth.md |
+| `docs/archive/end-user-sla.md` | End-user SLA design | 🟠 P2 — historical | Superseded by `docs/dev/specs/delivery.md` |
+| `docs/archive/end-user-onboarding.md` | End-user onboarding design | 🟠 P2 — historical | Superseded by `docs/dev/specs/delivery.md` |
+| `docs/archive/reports/` | Historical report drafts | 🟠 P2 — historical | Non-documentation artifacts |
+
+> **Agent note**: Do NOT update archive docs during normal code changes. Only update when: (1) archiving a new doc (move from active → archive), (2) correcting an archival path reference, or (3) the user explicitly asks you to modify archive content.
 
 ---
 
@@ -114,7 +147,7 @@ When you modify each code module below, the listed documentation files **must** 
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 133) |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 137) |
 | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
 | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
 | `server.py` — new tool | `CHANGELOG.md` | Add entry |
@@ -126,14 +159,14 @@ When you modify each code module below, the listed documentation files **must** 
 | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error code to boundary matrix |
 | `errors.py` — 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) | `docs/dev/specs/quality-gates.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error codes to error response spec and boundary matrix |
 | `agent_callback.py` — SQLite persistence | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Persistent agent callbacks feature description |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "133 tools" / "32 categories" references |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "137 tools" / "34 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
 | KB tier logic | `AGENTS.md` | Architecture Rules (KB Pipeline) |
-| KB tier logic | `docs/dev/kb-pipeline-reference.md` | Pipeline design details |
+| KB tier logic | `docs/archive/kb-pipeline-reference.md` | Pipeline design details (archived) |
 | KB tier logic | `docs/dev/specs/pipeline.md` | KB pipeline section |
 | KB tier logic | `README.md` | Status table (KB pipeline row) |
 | KB entry schema | `docs/dev/specs/data-models.md` | KB entry schema |
@@ -159,6 +192,8 @@ When you modify each code module below, the listed documentation files **must** 
 | New collector type | `docs/autoinfo-validation-master-plan/part-01-core-pipeline.md` | Add collection scenarios |
 | Collector config change | `docs/dev/specs/pipeline.md` | Collection pipeline specification |
 | Demo source change | `README.md` | Demo Domains table (sources per domain) |
+| New collector handler file | `README.md` | Feature list (multi-source collection), Status table (Collection row — handler count), demo domains table |
+| New collector handler file | `CHANGELOG.md` | Add entry |
 
 ### 2.6 LLM Extraction (`src/autoinfo/llm.py`)
 
@@ -261,7 +296,7 @@ When you modify each code module below, the listed documentation files **must** 
 |--------|---------------|----------------|
 | Version bump in `pyproject.toml` | `README.md` | Version references in Known Limitations |
 | Version bump in `pyproject.toml` | `CHANGELOG.md` | Add version header and notes |
-| Version bump in `pyproject.toml` | `docs/dev/specs/expectations.md` (status markers), `docs/dev/specs/reality-assessment.md` (gantt chart/metrics), `docs/dev/founder-expectations.md` (top-level index status table) | Version references, gantt chart, status tables |
+| Version bump in `pyproject.toml` | `docs/dev/specs/expectations.md` (status markers), `docs/archive/reality-assessment.md` (gantt chart/metrics), `docs/dev/founder-expectations.md` (top-level index status table) | Version references, gantt chart, status tables |
 | Any release prep | All P0 docs | Comprehensive review of all docs for accuracy |
 
 ### 2.18 Alerts (`src/autoinfo/alerts.py`)
@@ -326,6 +361,44 @@ When you modify each code module below, the listed documentation files **must** 
 | Subscription tier/channels/domains/products fields | `AGENTS.md` | Status table (subscription tiers row) |
 | Access control verification | `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Add `check_access` scenario (60.18) |
 
+### 2.24 Delivery Schedule (`src/autoinfo/delivery/scheduler.py`)
+
+| Change | Docs to Update | What to Update |
+|--------|---------------|----------------|
+| Delivery schedule CRUD | `README.md` | Feature list (delivery schedule automation), MCP tools table (Delivery Schedule category), Status table (delivery schedules row) |
+| Delivery schedule CRUD | `AGENTS.md` | Tool Discovery table (Delivery Schedule category), Status table (delivery schedules row), Common Patterns (delivery schedule setup) |
+| Delivery schedule CRUD | `CHANGELOG.md` | Add entry |
+| Cron integration | `docs/autoinfo-validation-master-plan/part-09-async-cron-email.md` | Add delivery schedule scenarios |
+| Add/remove/list schedules | `docs/dev/specs/delivery.md` | Delivery schedule specification |
+
+### 2.25 Output Generation — Phase 4 Features (`src/autoinfo/output.py`)
+
+| Submodule | Docs to Update | What to Update |
+|-----------|---------------|----------------|
+| Bundle export (`export_kb format="bundle"`) | `README.md` | Feature list (bundle export), MCP tools table (export_kb bundle format), Status table |
+| Bundle export (`export_kb format="bundle"`) | `AGENTS.md` | Tool Discovery table (Output/Export category), Common Patterns (export examples) |
+| Bundle export (`export_kb format="bundle"`) | `CHANGELOG.md` | Add entry |
+| Cross-domain report/digest (`generate_report`, `generate_digest`, `generate_cross_domain_report` with `domains` parameter) | `README.md` | Feature list (cross-domain reports & digests), MCP tools table (Output category — `generate_cross_domain_report`) |
+| Cross-domain report/digest | `AGENTS.md` | Tool Discovery table (Output category), Common Patterns (cross-domain report generation) |
+| Cross-domain report/digest | `CHANGELOG.md` | Add entry |
+| Report type/audience (`report_type`: industry, competitive, trend, daily-briefing; `target_audience`) | `README.md` | Feature list (specialized report types), MCP tools table (report_type parameter) |
+| Report type/audience | `AGENTS.md` | Common Patterns (specialized report generation) |
+| Report type/audience | `CHANGELOG.md` | Add entry |
+| New output features | `docs/dev/specs/delivery.md` | Output generation specification |
+
+### 2.26 Cross-Document Interface Docs (global references)
+
+These documentation files span multiple code modules and must be checked whenever their related areas change.
+
+| Doc | Related Code Modules | What to Update |
+|-----|---------------------|----------------|
+| `docs/dev/director-user-guide.md` | `AGENTS.md`, agent interaction model, MCP tool workflows, any CLI change | Role definitions (B1/B2/B3 tables), communication patterns, workflow examples, agent constraints |
+| `docs/dev/cross-dimensional-catalog.md` | **Any feature addition or scope change** — catalog maps A1-A7 pipeline × B1/B2/B3 users | Cell status (🟢/🟡/🔴/🟠) per feature, gap-to-spec mapping, execution roadmap, priority matrix |
+| `docs/dev/specs/user-lifecycle-definition.md` | End user lifecycle (`delivery.py`, `consumption.py`, `notifications.py`, `billing.py`), user-facing MCP tools | User type definitions, lifecycle stages, cross-user interaction model |
+| `docs/dev/specs/ops-runbook.md` | Backup scripts (`scripts/backup-db.sh`, `scripts/restore-db.sh`), monitoring (`diagnose_system`, `get_metrics`), cron health, channel health | Agent quick reference table, MCP tool mappings, human-intervention procedures |
+| `docs/dev/specs/multi-tenancy-auth.md` | Auth/MCP server (`server.py` when SSE transport added), `errors.py`, `quality.py` | Auth model specification, rate limiting config, admin dashboard requirements |
+| `docs/known-limitations/blocked-sources.md` | Collector evaluation, new source types (`collectors/`), demo domain configuration | Source table with block reason, alternative recommendations, workaround status |
+
 ---
 
 ## 3. Doc Update Workflow
@@ -348,7 +421,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 23 groups, update descriptions
-- MCP Tools table → verify tool count (currently 133), update categories/tools
+- MCP Tools table → verify tool count (currently 137), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -407,14 +480,19 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 133 |
-| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 32 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 137 |
+| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 34 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
-| Test count | `README.md`, `AGENTS.md`, `autoinfo-validation-master-plan-v2/README.md` | 1612 |
+| Test count | `README.md`, `AGENTS.md`, `docs/autoinfo-validation-master-plan/README.md` | 2183 |
+| Validation plan part files | `docs/autoinfo-validation-master-plan/README.md`, `docs/dev/cross-dimensional-catalog.md` | 15 (parts 01-15) |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 5 |
+| Demo domain names | `README.md` | medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
 | Delivery channels (health-checked) | `README.md`, `AGENTS.md` | 11 (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) |
 | Subscription tiers | `README.md`, `AGENTS.md` | 3 (free, premium, enterprise) |
+| Director-user guide line count | `docs/dev/director-user-guide.md` | 756 |
+| Cross-dimensional catalog line count | `docs/dev/cross-dimensional-catalog.md` | 780 |
+| Ops runbook line count | `docs/dev/specs/ops-runbook.md` | 1027 |
 
 After any change that affects these numbers, update EVERY location they appear.
 
@@ -490,7 +568,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 133), category count if new category
+**Quantities to bump**: MCP tool count (currently 137), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -522,14 +600,14 @@ Validation plan part-02 → new scenarios cover new command group
 
 **When**: You modify `src/autoinfo/kb.py`, changing how the 4-tier pipeline works.
 
-**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/dev/kb-pipeline-reference.md`, `docs/dev/specs/pipeline.md`, `README.md` (Status table), `CHANGELOG.md`
+**Docs to update**: `AGENTS.md` (Architecture Rules — KB Pipeline), `docs/archive/kb-pipeline-reference.md`, `docs/dev/specs/pipeline.md`, `README.md` (Status table), `CHANGELOG.md`
 
 **Critical**: The KB pipeline rules (01-Raw is sole entry point, agent cannot write to 03-Wiki, 03-Wiki is append-only) are **hard architecture constraints**. If these rules change, the update is a breaking change and must be clearly communicated in ALL docs.
 
 **Verify**:
 ```
 AGENTS.md Architecture Rules → KB Pipeline table matches new behavior
-kb-pipeline-reference.md → pipeline diagram and rules updated
+docs/archive/kb-pipeline-reference.md → pipeline diagram and rules updated (archived doc — update only if referenced path changes)
 pipeline.md spec → pipeline behavior reflects new design
 ```
 
@@ -544,7 +622,7 @@ pipeline.md spec → pipeline behavior reflects new design
 - [ ] `CHANGELOG.md` — new version header with all changes documented
 - [ ] `README.md` — Known Limitations version references, feature list updated
 - [ ] `AGENTS.md` — Status table, tool counts, CLI counts verified
-- [ ] `docs/dev/founder-expectations.md` (index §11), `docs/dev/specs/expectations.md` (status markers), `docs/dev/specs/reality-assessment.md` (gantt chart, metrics) — version references, gantt chart, status tables
+- [ ] `docs/dev/founder-expectations.md` (index §11), `docs/dev/specs/expectations.md` (status markers), `docs/archive/reality-assessment.md` (gantt chart, metrics) — version references, gantt chart, status tables
 - [ ] Cross-doc consistency verified
 - [ ] All MCP/CLI tool counts match actual code inventory
 
@@ -560,6 +638,102 @@ pipeline.md spec → pipeline behavior reflects new design
 
 **Critical**: When adding a new module, **also update this doc-manager-skill** to include the new module in Section 2. This keeps the dependency map complete.
 
+### Scenario F: Adding a new feature or changing product scope
+
+**When**: You add a user-facing feature, change scope, or implement a previously-deferred capability.
+
+**Docs to update**: `docs/dev/cross-dimensional-catalog.md` (keystone product matrix — mandatory), all P0 docs affected by the change, `CHANGELOG.md`
+
+**Critical**: The cross-dimensional catalog (`docs/dev/cross-dimensional-catalog.md`) is the **keystone product matrix** mapping A1-A7 pipeline stages × B1/B2/B3 user types. Every feature addition or scope change MUST update:
+- Cell status (🟢/🟡/🔴/🟠) for affected cells
+- Gap-to-spec mapping (§3) if gap status changes
+- Priority fix matrix (§4) if priorities shift
+- Implementation roadmap (§5) if timeline changes
+
+**Verify**:
+```
+docs/dev/cross-dimensional-catalog.md → affected cells updated with correct status
+README.md → feature list matches new scope
+AGENTS.md → status table, tool counts match
+CHANGELOG.md → entry added
+All P0 docs reviewed for scope references
+```
+
+### Scenario G: Updating the Director User Guide
+
+**When**: You change the agent interaction model, add/remove agent constraints, modify the operating model, or change user role definitions.
+
+**Docs to update**: `docs/dev/director-user-guide.md`, `AGENTS.md` (must stay in sync)
+
+**What to update**:
+- Role definition tables (B1/B2/B3) if user model changes
+- Communication patterns and workflow examples
+- Agent constraints (MUST NOT / MUST rules)
+- Operating model descriptions
+
+**Verify**:
+```
+docs/dev/director-user-guide.md → role tables match AGENTS.md
+AGENTS.md → agent constraints match director-user-guide.md
+agent interaction model → consistent across both docs
+```
+
+### Scenario H: Updating operations procedures
+
+**When**: You change backup scripts, monitoring tools, diagnostics, channel health checks, or cron health.
+
+**Docs to update**: `docs/dev/specs/ops-runbook.md`, `README.md` (feature list), `CHANGELOG.md`, `docs/autoinfo-validation-master-plan/part-11-production-validation.md`
+
+**What to update**:
+- Agent quick reference table (MCP tool mappings)
+- Human-intervention procedures
+- Monitoring and health check descriptions
+
+**Verify**:
+```
+docs/dev/specs/ops-runbook.md → MCP tool references match actual tools
+README.md → feature list and status table updated
+```
+
+### Scenario I: Adding delivery schedule tools
+
+**When**: You add `add_delivery_schedule`, `list_delivery_schedules`, or `remove_delivery_schedule` MCP tools in `src/autoinfo/delivery/scheduler.py`.
+
+**Docs to update**: `README.md` (MCP tools table — Delivery Schedule category, feature list), `AGENTS.md` (Tool Discovery table, Common Patterns — delivery schedule setup), `CHANGELOG.md`, `docs/dev/specs/delivery.md` (delivery schedule specification)
+
+**Quantities to bump**: MCP tool count (currently 137), category count if new category
+
+**Checklist**:
+- [ ] `README.md` — MCP tools table: Delivery Schedule category with tool names
+- [ ] `README.md` — Feature list: delivery schedule automation entry
+- [ ] `README.md` — Status table: delivery schedules row
+- [ ] `AGENTS.md` — Tool Discovery table: Delivery Schedule category
+- [ ] `AGENTS.md` — Common Patterns: delivery schedule setup workflow example
+- [ ] `AGENTS.md` — Status table: delivery schedules row
+- [ ] `CHANGELOG.md` — entry under "Added" for delivery schedule tools
+- [ ] `docs/dev/specs/delivery.md` — delivery schedule specification updated
+- [ ] Validation plan part-09 — add delivery schedule scenarios
+- [ ] Cross-doc consistency: README.md and AGENTS.md tool counts match
+
+### Scenario J: Adding cross-domain features
+
+**When**: You add cross-domain report/digest generation (e.g., `generate_cross_domain_report`, multi-domain parameters on `generate_report` or `generate_digest`).
+
+**Docs to update**: `README.md` (feature list, MCP tools table — Output category), `AGENTS.md` (Tool Discovery table, Common Patterns — cross-domain report), `CHANGELOG.md`, `docs/dev/specs/delivery.md` (output generation specification)
+
+**Quantities to bump**: MCP tool count if new tool added (currently 137)
+
+**Checklist**:
+- [ ] `README.md` — Feature list: cross-domain reports & digests entry
+- [ ] `README.md` — MCP tools table: `generate_cross_domain_report` in Output category
+- [ ] `README.md` — Status table: verify output generation row reflects cross-domain capability
+- [ ] `AGENTS.md` — Tool Discovery table: `generate_cross_domain_report` added
+- [ ] `AGENTS.md` — Common Patterns: cross-domain report generation example
+- [ ] `CHANGELOG.md` — entry under "Added" for cross-domain report features
+- [ ] `docs/dev/specs/delivery.md` — output generation specification updated for cross-domain
+- [ ] `docs/dev/cross-dimensional-catalog.md` — cross-domain cells updated if gap status changes
+- [ ] Cross-doc consistency: cross-domain feature described consistently across all P0 docs
+
 ---
 
 ## 6. Project Glossary
@@ -568,7 +742,7 @@ Terms that appear across docs and must be used consistently:
 
 | Term | Definition | Used In |
 |------|-----------|---------|
-| KB pipeline (4-tier) | 4-tier KB pipeline: 01-Raw → 02-Draft → 03-Wiki (00-Inbox deprecated) | AGENTS.md, kb-pipeline-reference.md, docs/dev/specs/pipeline.md |
+| KB pipeline (4-tier) | 4-tier KB pipeline: 01-Raw → 02-Draft → 03-Wiki (00-Inbox deprecated) | AGENTS.md, docs/archive/kb-pipeline-reference.md, docs/dev/specs/pipeline.md |
 | G1-G5 | Quality gates: Source authority, Dedup, Relevance, Factual, Translation | AGENTS.md, README.md, quality.md |
 | P0/P1/P2 | Priority levels used in status tables | README.md, AGENTS.md |
 | 01-Raw | Sole entry point for all collected content | All KB-related docs |
@@ -585,6 +759,12 @@ Terms that appear across docs and must be used consistently:
 | Channel health | Per-channel health check (healthy, latency_ms, error) for all 11 delivery channels | README.md, AGENTS.md |
 | Cron heartbeat | Per-schedule heartbeat JSON for missed-schedule detection | README.md, cli/cron.py |
 | Subscription tiers | Free, Premium, Enterprise — per-tier channels, domains, products, platform limits | README.md, AGENTS.md, models.py |
+| Cross-dimensional catalog (CD-NNN) | Keystone product matrix (A1-A7 Pipeline × B1/B2/B3 Users). CD-NNN = Cross-Dimensional sequential gap ID (e.g., CD-001). | docs/dev/cross-dimensional-catalog.md, docs/dev/specs/ |
+| Director User (B3) | Human commander who gives high-level intent in NL; agent executes via MCP tools | AGENTS.md, docs/dev/director-user-guide.md, docs/dev/specs/user-lifecycle-definition.md |
+| Direct User (B2) | AI agent that translates NL into MCP tool calls; operates AutoInfo on behalf of Director User | AGENTS.md, docs/dev/director-user-guide.md, docs/dev/specs/user-lifecycle-definition.md |
+| End User (B1) | Paying customer who consumes knowledge products (digests, reports, data feeds) | docs/dev/director-user-guide.md, docs/dev/specs/user-lifecycle-definition.md, docs/dev/specs/delivery.md |
+| Keystone document | The single source of truth for product definition across all dimensions; all other docs derive from it | docs/dev/cross-dimensional-catalog.md |
+| Four-tier KB pipeline | 01-Raw (sole entry) → 02-Draft (agent processes) → 03-Wiki (human promotes, append-only) | AGENTS.md, docs/archive/kb-pipeline-reference.md, docs/dev/specs/pipeline.md |
 
 ---
 

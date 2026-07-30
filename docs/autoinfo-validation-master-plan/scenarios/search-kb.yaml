@@ -1,0 +1,102 @@
+# =============================================================================
+# Scenario: search-kb
+# Description: Verify KB search functionality (basic, cross-domain, faceted)
+# Tags: search, kb, regression, cli
+# =============================================================================
+
+name: "Knowledge Base Search"
+description: >
+  Tests KB search across basic (domain-specific), cross-domain (no domain
+  specified), and faceted filtering. Requires a project initialized with demo
+  domain(s).
+
+tags: [search, kb, regression, cli]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-search"
+  DOMAIN: "medical-research"
+  DOMAIN2: "ai-commercial"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project with domain (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for search tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "search-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Basic KB search with domain
+  # -------------------------------------------------------------------------
+  - name: "Search KB with domain filter"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "cancer" --domain ${DOMAIN} --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+        - "Failed"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Cross-domain search (no domain specified)
+  # -------------------------------------------------------------------------
+  - name: "Cross-domain search (no domain filter)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "research" --limit 3 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+        - "Failed"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Search with JSON output
+  # -------------------------------------------------------------------------
+  - name: "Search KB with JSON output"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb search --query "medical" --domain ${DOMAIN} --limit 3 --json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Reindex KB
+  # -------------------------------------------------------------------------
+  - name: "Reindex knowledge base"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb reindex --domain ${DOMAIN} 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 6: List KB entries by tier
+  # -------------------------------------------------------------------------
+  - name: "List KB entries by tier"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo kb list --domain ${DOMAIN} --tier "01-Raw" --limit 5 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"

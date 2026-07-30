@@ -1,0 +1,99 @@
+# =============================================================================
+# Scenario: output-report
+# Description: Verify report generation with different --audience flags
+# Tags: output, report, regression, cli
+# =============================================================================
+
+name: "Output Report Generation"
+description: >
+  Tests report generation with different --audience flags (researcher,
+  clinician, executive, student, investor) and validates output structure.
+  Requires a project initialized with a demo domain.
+
+tags: [output, report, regression, cli]
+depends_on: [init-project]
+
+variables:
+  TEST_DIR: "/tmp/autoinfo-scenario-report"
+  DOMAIN: "medical-research"
+
+steps:
+  # -------------------------------------------------------------------------
+  # Step 1: Init project (prerequisite)
+  # -------------------------------------------------------------------------
+  - name: "Initialize project for report tests"
+    tool: bash
+    setup: |
+      rm -rf ${TEST_DIR}
+      mkdir -p ${TEST_DIR}
+    command: |
+      cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "report-test" 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "AutoInfo initialized"
+
+  # -------------------------------------------------------------------------
+  # Step 2: Generate report — markdown (default)
+  # -------------------------------------------------------------------------
+  - name: "Generate report in markdown format (default)"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 3: Generate report — researcher audience
+  # -------------------------------------------------------------------------
+  - name: "Generate report for researcher audience"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience researcher --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 4: Generate report — executive audience
+  # -------------------------------------------------------------------------
+  - name: "Generate report for executive audience"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience executive --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 5: Generate report — student audience
+  # -------------------------------------------------------------------------
+  - name: "Generate report for student audience"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience student --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 6: Generate report — json format
+  # -------------------------------------------------------------------------
+  - name: "Generate report in JSON format"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format json 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"

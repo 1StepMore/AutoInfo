@@ -9208,6 +9208,48 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
+# -- LLM-required tools (13) ------------------------------------------------
+# Tools in this set require LLM configuration to function.  When the LLM
+# is not configured (no api_key), call_tool will block them with a clear
+# error response before dispatching to the handler.
+_LLM_REQUIRED_TOOLS: frozenset[str] = frozenset({
+    "suggest_keywords",
+    "classify_cefr",
+    "cefr_batch",
+    "extract_fields",
+    "generate_digest",
+    "generate_report",
+    "generate_cross_domain_report",
+    "generate_tutorial",
+    "generate_presentation",
+    "localize_content",
+    "query_collected",
+    "process_collection",
+    "recommend_content",
+})
+
+
+def _is_llm_configured() -> bool:
+    """Return ``True`` if an LLM API key has been configured.
+
+    Mirrors the logic in ``_handle_diagnose_system`` — reads the config
+    and checks both the config field and the ``AUTOINFO_LLM_API_KEY``
+    environment variable.  Fails closed (``False``) on error.
+    """
+    try:
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+            return bool(
+                config.llm.api_key
+                or os.environ.get("AUTOINFO_LLM_API_KEY")
+            )
+    except Exception:
+        pass
+    return False
+
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -9217,6 +9259,19 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         if name == "health_check":
             result = _handle_health_check()
             return [TextContent(type="text", text=json.dumps(result))]
+
+        # -- LLM guard: block LLM-required tools when not configured ------
+        if name in _LLM_REQUIRED_TOOLS and not _is_llm_configured():
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(error_response(
+                        code=ErrorCode.LLM_NOT_CONFIGURED,
+                        message="LLM is not configured. Use configure_llm() to set up your API key.",
+                        actionable=True,
+                    )),
+                )
+            ]
 
         # -- System (2) ---------------------------------------------------
         if name == "get_tool_count":

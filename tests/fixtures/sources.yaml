@@ -8,6 +8,49 @@ sources:
     frequency: daily
     access: free
     rate_limit: 3
+  - name: nyt
+    type: nyt
+    url: https://api.nytimes.com/svc/search/v2/articlesearch.json
+    quality_tier: 2
+    frequency: daily
+    access: free
+    rate_limit: 10
+    settings:
+      query: ""
+      api_key: "${AUTOINFO_NYT_API_KEY}"
+  - name: ap_api
+    type: ap_api
+    url: https://api.ap.org/media/v/content/search
+    quality_tier: 2
+    frequency: hourly
+    access: paid
+    requires_key: true
+    rate_limit: 30
+    settings:
+      query: ""
+      api_key: "${AUTOINFO_AP_API_KEY}"
+  - name: reuters_mcp
+    type: reuters_mcp
+    url: https://api.reuters.com/content/v1/search
+    quality_tier: 2
+    frequency: hourly
+    access: paid
+    requires_key: true
+    rate_limit: 30
+    settings:
+      endpoint_url: "https://api.reuters.com/content/v1/search"
+      query: ""
+      api_key: "${AUTOINFO_REUTERS_API_KEY}"
+      field_mapping:
+        id: "id"
+        title: "headline"
+        content: "body"
+        author: "byline"
+        published_date: "published"
+        section: "section"
+        language: "language"
+        source: "source"
+        source_url: "url"
 topics:
   - name: "IVF breakthroughs"
     keywords: ["IVF", "embryo", "implantation", "in vitro fertilization"]

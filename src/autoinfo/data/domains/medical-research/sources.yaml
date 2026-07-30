@@ -13,6 +13,16 @@ sources:
     rate_limit: 3  # requests per second without API key
     fetch_depth: fulltext  # PMC full-text via idconv+efetch when available
 
+  - name: semantic-scholar
+    type: api
+    url: https://api.semanticscholar.org/graph/v1
+    quality_tier: 1
+    frequency: daily
+    access: free
+    rate_limit: 1  # requests per second without API key (100 req/s with key)
+    api_key_optional: true
+    enabled: true
+
   - name: arXiv
     type: rss
     url: https://rss.arxiv.org/rss/bio
@@ -34,6 +44,44 @@ sources:
         id: DOI
         title: "title[0]"
         source_url: URL
+        content: abstract
+
+  - name: dblp
+    type: dblp
+    url: https://dblp.org/search/publ/api
+    enabled: true
+    quality_tier: 1
+    rate_limit: 1
+    settings:
+      query: ""
+
+  - name: openalex
+    type: openalex
+    url: https://api.openalex.org/works
+    enabled: true
+    quality_tier: 1
+    rate_limit: 10
+    settings:
+      query: ""
+      rate_limit_per_second: 10
+    field_mapping:
+      id: id
+      title: title
+      content: abstract
+      authors: authors
+      published_date: publication_date
+    topics: []
+
+  - name: uspto
+    type: api
+    url: https://api.patentsview.org/patents/query
+    quality_tier: 1
+    frequency: daily
+    access: free
+    rate_limit: 5  # requests per second without API key (45 req/s with key)
+    api_key_optional: true
+    enabled: true
+    fallback_rss: https://www.uspto.gov/feeds/patent_application.xml
 
 topics:
   - name: "IVF breakthroughs"

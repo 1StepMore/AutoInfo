@@ -20,7 +20,7 @@ EXPECTED = {
     },
     "ai-commercial": {
         "old": ["techcrunch", "producthunt"],
-        "new": ["Crunchbase", "LMSYS"],
+        "new": ["Crunchbase", "36kr"],
     },
     "language-learning": {
         "old": ["voa-learning-english", "project-gutenberg"],
@@ -46,7 +46,7 @@ def _load_sources(domain: str) -> list[dict]:
 
 @pytest.mark.parametrize("domain, old, new", [
     ("medical-research", ["pubmed"], ["arXiv", "CrossRef"]),
-    ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "LMSYS"]),
+    ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "36kr"]),
     ("language-learning", ["voa-learning-english", "project-gutenberg"], ["news-in-levels", "commonlit"]),
     ("financial-intelligence", ["Alpha Vantage", "FRED"], ["SEC EDGAR", "Twelve Data", "World Bank Data"]),
     ("tech-ai-developer", ["GitHub Trending", "HackerNews API"], ["Stack Exchange", "ProductHunt", "Substack RSS (tech) — Pragmatic Engineer"]),

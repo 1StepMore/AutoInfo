@@ -26,6 +26,24 @@ sources:
     quality_tier: 2
     enabled: true
 
+  - name: 36kr
+    type: rss
+    enabled: true
+    url: "https://www.36kr.com/feed"
+    quality_tier: 2
+    settings:
+      feed_url: "https://www.36kr.com/feed"
+      rate_limit_per_second: 1
+    field_mapping:
+      id: id
+      title: title
+      content: content
+      source_url: link
+      published_date: updated
+    topics:
+      - Chinese tech
+      - startup
+
 topics:
   - name: "AI Startup Funding"
     keywords:

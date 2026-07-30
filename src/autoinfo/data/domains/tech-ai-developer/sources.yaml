@@ -56,6 +56,47 @@ sources:
     requires_key: true
     rate_limit: 10
 
+  - name: Reddit
+    type: reddit
+    url: https://oauth.reddit.com
+    quality_tier: 2
+    frequency: hourly
+    access: api_key
+    requires_key: true
+    rate_limit: 100
+    enabled: true
+    settings:
+      subreddits:
+        - MachineLearning
+        - artificial
+        - programming
+        - datascience
+
+  - name: Spotify AI Podcasts
+    type: spotify
+    url: https://api.spotify.com/v1
+    quality_tier: 3
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 3
+    enabled: false
+    settings:
+      show_id: ""
+      market: US
+
+  - name: Bilibili (B站)
+    type: bilibili
+    url: https://api.bilibili.com/x/web-interface/search/all/v2
+    quality_tier: 3
+    frequency: daily
+    access: free
+    requires_app_review: true
+    rate_limit: 5
+    enabled: true
+    settings:
+      query: "AI 大模型"
+
 topics:
   - name: "AI/ML Development"
     keywords:

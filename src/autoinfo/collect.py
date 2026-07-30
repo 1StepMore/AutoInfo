@@ -400,6 +400,56 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return PubMedHandler(source_config=source_config)
 
+    if stype == "dblp":
+        from autoinfo.collectors.dblp import DBLPHandler
+
+        return DBLPHandler(source_config=source_config)
+
+    if stype == "nyt":
+        from autoinfo.collectors.nyt import NYTHandler
+
+        return NYTHandler(config=source_config.settings or {})
+
+    if stype == "openalex":
+        from autoinfo.collectors.openalex import OpenAlexHandler
+
+        return OpenAlexHandler(config=source_config.settings or {})
+
+    if stype == "ap_api":
+        from autoinfo.collectors.ap_api import APAPIHandler
+
+        return APAPIHandler(source_config=source_config)
+
+    if stype == "reuters_mcp":
+        from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
+
+        return ReutersMCPHandler(source_config=source_config)
+
+    if stype == "reddit":
+        from autoinfo.collectors.reddit import RedditHandler
+
+        return RedditHandler(config=source_config.settings or {})
+
+    if stype == "spotify":
+        from autoinfo.collectors.spotify import SpotifyHandler
+
+        return SpotifyHandler(config=source_config.settings or {})
+
+    if stype == "youtube":
+        from autoinfo.collectors.youtube import YouTubeHandler
+
+        return YouTubeHandler(config=source_config.settings or {})
+
+    if stype == "bilibili":
+        from autoinfo.collectors.bilibili import BilibiliHandler
+
+        return BilibiliHandler(config=source_config.settings or {})
+
+    if stype == "apple_podcasts":
+        from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
+
+        return ApplePodcastsHandler(config=source_config.settings or {})
+
     if stype == "rss":
         from autoinfo.collectors.rss import RSSHandler
 
@@ -491,6 +541,68 @@ def _fetch_items(
         query = topic if topic else ""
         items = handler.fetch(url, query=query, limit=limit)
         return items[:limit]
+
+    # -- NYT handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "nyt":
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- OpenAlex handler path --------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "openalex":
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- AP API handler path (paid/enterprise) ----------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "ap_api":
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Reuters MCP handler path (paid/enterprise) -------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "reuters_mcp":
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- DBLP handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "dblp":
+        query = topic if topic else ""
+        items = handler.fetch(query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Reddit handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "reddit":
+        query = topic if topic else ""
+        items = handler.fetch(query=query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Spotify handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "spotify":
+        query = topic if topic else ""
+        items = handler.fetch(limit=limit, query=query)
+        return [handler.to_item(item) for item in items]
+
+    # -- YouTube handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "youtube":
+        # Set topic as query on the handler if not already configured
+        if topic and not handler.config.get("query"):
+            handler.query = topic
+            handler.config["query"] = topic
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Bilibili handler path -----------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "bilibili":
+        # Set topic as query on the handler if not already configured
+        if topic and not handler.config.get("query"):
+            handler.query = topic
+            handler.config["query"] = topic
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Apple Podcasts handler path ----------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "apple_podcasts":
+        term = topic if topic else ""
+        items = handler.fetch(term=term, limit=limit)
+        return [handler.to_item(item) for item in items]
 
     # -- RSS / Web handler path --------------------------------------------
     if hasattr(handler, "fetch"):

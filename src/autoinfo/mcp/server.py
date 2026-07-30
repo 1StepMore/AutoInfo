@@ -1779,6 +1779,13 @@ def _handle_suggest_keywords(
         base_url = None
         json_mode = True
 
+    if not api_key:
+        return error_response(
+            code=ErrorCode.LLM_NOT_CONFIGURED,
+            message="LLM is not configured. Use configure_llm() to set up your API key.",
+            actionable=True,
+        )
+
     system_prompt = (
         "You are a keyword extraction assistant. Given a text, suggest "
         f"up to {limit} relevant keywords or short phrases (2-5 words) "

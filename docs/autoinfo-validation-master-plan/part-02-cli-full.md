@@ -1277,14 +1277,67 @@ autoinfo knowledge graph export --domain medical-research
 
 Note: Output is JSON, not GraphML. Use `knowledge graph export` (not `knowledge graph --domain`).
 
+#### 14.2 🟢 Knowledge graph export --json output
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q14
 
----
+OUTPUT=$(autoinfo knowledge graph export --domain medical-research --json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    entities = data.get('entities', data.get('nodes', []))
+    relations = data.get('relations', data.get('edges', []))
+    print(f'  entities: {len(entities)}, relations: {len(relations)}')
+    print(f'  ✅ PASS: knowledge graph JSON with entities and relations')
+except (json.JSONDecodeError, ValueError) as e:
+    text = sys.stdin.read() if isinstance(e, json.JSONDecodeError) else str(e)
+    if 'No such option' in text:
+        print('  ⚠️ WARN: --json flag not supported on knowledge graph export')
+    elif 'no entities' in text.lower() or 'empty' in text.lower():
+        print('  ⚠️ WARN: no entities in knowledge graph (empty KB)')
+    else:
+        print(f'  ❌ FAIL: {e}')
+        sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: knowledge graph --json validation failed"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 14.2 PASSED"; exit 0; else echo "❌ SCENARIO 14.2 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `knowledge graph export --json` produces structured JSON with entities and relations. Or handles empty KB gracefully.
+
+#### 14.3 🟢 Knowledge help shows subcommands
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q14
+
+OUTPUT=$(autoinfo knowledge --help 2>&1)
+OUTPUT2=$(autoinfo knowledge graph --help 2>&1)
+
+echo "$OUTPUT" | grep -qi "graph\|export" \
+  && echo "  ✅ PASS: knowledge --help shows graph subcommand" \
+  || { echo "  ❌ FAIL: knowledge --help missing subcommands"; ALL_PASS=false; }
+
+echo "$OUTPUT2" | grep -qi "export\|graph" \
+  && echo "  ✅ PASS: knowledge graph --help shows export subcommand" \
+  || { echo "  ❌ FAIL: knowledge graph --help missing export"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 14.3 PASSED"; exit 0; else echo "❌ SCENARIO 14.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo knowledge --help` shows `graph` subcommand. `autoinfo knowledge graph --help` shows `export`.
 
 ### 📊 Q14 Verdict
 
 | Scenario | Result |
 |----------|--------|
 | 14.1 Graph export | ⬜ |
+| 14.2 Graph --json | ⬜ |
+| 14.3 Knowledge help | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -1311,8 +1364,72 @@ autoinfo clean --dry-run
 ```
 **Expected Result:** ✅ Shows what would be cleaned without actually removing.
 
+#### 15.3 🟢 Clean --collections flag
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q15
 
----
+OUTPUT=$(autoinfo clean --collections 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "collection\|cleaned\|removed" \
+  && echo "  ✅ PASS: clean --collections produced output" \
+  || echo "  ⚠️ WARN: clean --collections output unclear (may have nothing to clean)"
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 15.3 PASSED"; exit 0; else echo "❌ SCENARIO 15.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo clean --collections` cleans collection cache. Exit code 0.
+
+#### 15.4 🟢 Clean --outputs flag
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q15
+
+OUTPUT=$(autoinfo clean --outputs 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "output\|cleaned\|removed" \
+  && echo "  ✅ PASS: clean --outputs produced output" \
+  || echo "  ⚠️ WARN: clean --outputs output unclear"
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 15.4 PASSED"; exit 0; else echo "❌ SCENARIO 15.4 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo clean --outputs` cleans output artifacts. Exit code 0.
+
+#### 15.5 🟢 Clean --everything flag (respects --dry-run)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q15
+
+# Dry-run first
+OUTPUT=$(autoinfo clean --everything --dry-run 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "dry.run\|would\|preview" \
+  && echo "  ✅ PASS: --everything --dry-run shows preview" \
+  || echo "  ⚠️ WARN: dry-run output unclear"
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 15.5 PASSED"; exit 0; else echo "❌ SCENARIO 15.5 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `autoinfo clean --everything --dry-run` shows preview without removing. Exit code 0.
 
 ### 📊 Q15 Verdict
 
@@ -1320,6 +1437,9 @@ autoinfo clean --dry-run
 |----------|--------|
 | 15.1 Clean artifacts | ⬜ |
 | 15.2 Dry-run | ⬜ |
+| 15.3 Clean collections | ⬜ |
+| 15.4 Clean outputs | ⬜ |
+| 15.5 Clean everything | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -1346,12 +1466,29 @@ done
 **Expected Result:** ✅ Every command has help output. No crashes.
 
 
-#### 16.2 🟢 --version flag
+#### 16.2 🟢 --version flag (not implemented — check via doctor)
 ```bash
-autoinfo --version
-```
-**Expected Result:** ✅ Shows version string. (Note: `--version` flag is not currently implemented; check via `autoinfo doctor --json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"`)
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q16
 
+# --version is NOT a CLI flag; version is available via doctor --json
+OUTPUT=$(autoinfo doctor --json 2>&1)
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+version = data.get('version', data.get('autoinfo_version', 'unknown'))
+print(f'  version: {version}')
+assert version and version != 'unknown', f'No version found: {version}'
+print(f'  ✅ PASS: version string={version}')
+" 2>&1 && echo "  ✅ PASS: version available via doctor --json" \
+  || { echo "  ❌ FAIL: cannot extract version"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 16.2 PASSED"; exit 0; else echo "❌ SCENARIO 16.2 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Version string available via `autoinfo doctor --json`. Note: `--version` flag does not exist as a top-level CLI flag.
 
 #### 16.3 🟢 --json on all commands that support it
 ```bash

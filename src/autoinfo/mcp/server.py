@@ -3274,15 +3274,14 @@ def _handle_configure_llm(
 
     # Check config exists
     if not config_path.exists():
-        return {
-            "error_code": "CONFIG_NOT_FOUND",
-            "message": (
+        return error_response(
+            ErrorCode.CONFIG_NOT_FOUND,
+            (
                 "Configuration not found. "
                 "Run init_project first to create .autoinfo/config.yaml"
             ),
-            "actionable": True,
-            "success": False,
-        }
+            actionable=True,
+        )
 
     try:
         import yaml
@@ -3317,7 +3316,7 @@ def _handle_configure_llm(
             ),
         }
 
-        return {
+        return success_response({
             "status": "success",
             "message": (
                 "LLM configured. "
@@ -3325,16 +3324,15 @@ def _handle_configure_llm(
             ),
             "updated": updated,
             "config_path": str(config_path),
-        }
+        })
 
     except Exception as exc:
         logger.exception("configure_llm failed")
-        return {
-            "error_code": "INTERNAL_ERROR",
-            "message": str(exc),
-            "actionable": True,
-            "success": False,
-        }
+        return error_response(
+            ErrorCode.INTERNAL_ERROR,
+            str(exc),
+            actionable=True,
+        )
 
 
 def _handle_list_projects(status: str = "") -> dict[str, Any]:

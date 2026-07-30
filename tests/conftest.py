@@ -1,14 +1,17 @@
 """Shared test fixtures for AutoInfo.
 
 Provides reusable fixtures used across all test modules:
-temporary project directories, sample data objects, CLI runner, and
-PubMed response cache.
+temporary project directories, sample data objects, CLI runner,
+PubMed response cache, LLM mock helpers, and API-key skip guards.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -17,6 +20,32 @@ from autoinfo.models import ExtractionResult, Item, KBEntry
 
 if TYPE_CHECKING:
     from typer.testing import CliRunner
+
+# ---------------------------------------------------------------------------
+# LLM API key guard
+# ---------------------------------------------------------------------------
+
+HAVE_LLM_KEY: bool = bool(os.environ.get("AUTOINFO_LLM_API_KEY"))
+"""``True`` when ``AUTOINFO_LLM_API_KEY`` is set — real LLM tests can run."""
+
+requires_llm_key = pytest.mark.skipif(
+    not HAVE_LLM_KEY,
+    reason="AUTOINFO_LLM_API_KEY not set — requires real LLM API key",
+)
+"""Decorator / skip condition for tests that need a real LLM API key.
+
+Usage::
+
+    @requires_llm_key
+    def test_something_that_needs_real_llm():
+        ...
+
+Or on a class::
+
+    @requires_llm_key
+    class TestRealLLM:
+        ...
+"""
 
 # ---------------------------------------------------------------------------
 # Pytest hooks
@@ -291,3 +320,30 @@ def sample_extraction_output() -> ExtractionResult:
 def fixtures_dir() -> Path:
     """Return the path to the ``tests/fixtures/`` directory."""
     return Path(__file__).resolve().parent / "fixtures"
+
+
+# ---------------------------------------------------------------------------
+# LLM test helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_litellm_response() -> MagicMock:
+    """Return a ``MagicMock`` that simulates a successful ``litellm.completion`` call.
+
+    The mock response contains a single choice with ``{"tl_dr": "test", ...}``
+    as its JSON content — suitable for :class:`LLMExtractor` tests.
+
+    Test files should ``patch.object(ClassName, "_get_litellm")`` or
+    ``patch("litellm.completion")`` with this fixture's return value.
+    """
+    m = MagicMock()
+    m.completion.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=json.dumps({
+            "tl_dr": "Mocked TL;DR for testing",
+            "key_points": ["Point one", "Point two"],
+            "entities": [],
+            "relevance_score": 85,
+        })))],
+    )
+    return m

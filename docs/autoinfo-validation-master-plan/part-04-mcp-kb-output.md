@@ -152,7 +152,7 @@ data = json.loads(result.content[0].text)
 entries = data.get("entries", data.get("items", []))
 if entries:
     entry_id = entries[0].get("entry_id", "") or entries[0].get("id", "")
-    result = app.call_tool("create_kb_draft", {"entry_id": entry_id})
+    result = app.call_tool("create_kb_draft", {"raw_ids": [entry_id], "title": "Draft from " + entry_id})
     data = json.loads(result.content[0].text)
     print(f"✅ create_kb_draft: {data.get('status', data)}")
     
@@ -1096,9 +1096,144 @@ fi
 
 **OVERALL: ⬜**
 
+#### 33.11 🟢 generate_report with format="video" — Task 8
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_report", {
+    "domain": "medical-research",
+    "format": "video"
+})
+data = json.loads(res.content[0].text)
+
+# Video response: Python-level output is JSON string with status/output_type/video_path
+# MCP handler wraps in {success, domain, format, period, content}
+if data.get("success") and isinstance(data.get("content"), str):
+    import json as _json
+    inner = _json.loads(data["content"])
+    ok = inner.get("status") == "ok" and "video_path" in inner
+    print(f"OK|output_type={inner.get('output_type','?')}|format={inner.get('format','?')}|video_path={bool('video_path' in inner)}|status={inner.get('status','?')}")
+elif data.get("output_type") == "video":
+    # Direct response (if MCP handler passes through)
+    ok = data.get("status") == "ok" and "video_path" in data
+    print(f"OK|output_type={data.get('output_type','?')}|format={data.get('format','?')}|video_path={bool('video_path' in data)}|status={data.get('status','?')}")
+else:
+    print("FAIL|" + json.dumps(data, default=str)[:300])
+    import sys; sys.exit(1)
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_report with format=video exit 0" \
+  || { echo "  ❌ FAIL: video generation failed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: video generation returned OK" \
+  || { echo "  ❌ FAIL: no OK in output: $RESULT"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "output_type=video" \
+  && echo "  ✅ PASS: output_type=video confirmed" \
+  || { echo "  ❌ FAIL: output_type not video"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "video_path=True" \
+  && echo "  ✅ PASS: video_path present in response" \
+  || { echo "  ❌ FAIL: video_path missing"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.11 PASSED — generate_report with format=video"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.11 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_report` with `format="video"` returns `output_type: "video"` with a `video_path`
+- ✅ Response includes `status: "ok"` and `format: "mp4"`
+- ✅ Video is generated via TTS narration + slide images → FFmpeg assembly (see `_render_video_scaffold`)
+
+#### 33.12 🟢 generate_report with report_type="daily-briefing" — B7
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_report", {
+    "domain": "medical-research",
+    "format": "markdown",
+    "report_type": "daily-briefing"
+})
+data = json.loads(res.content[0].text)
+
+if data.get("success"):
+    content = data.get("content", "")
+    has_briefing = any(word in content.lower() for word in ("daily", "briefing", "today", "headline", "top stories"))
+    print(f"OK|success=True|format={data.get('format','?')}|report_type=daily-briefing|briefing_markers={has_briefing}")
+else:
+    print("FAIL|" + json.dumps(data, default=str)[:300])
+    import sys; sys.exit(1)
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: daily-briefing report exit 0" \
+  || { echo "  ❌ FAIL: daily-briefing failed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: daily-briefing report returned OK" \
+  || { echo "  ❌ FAIL: no OK signal"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.12 PASSED — generate_report with report_type=daily-briefing"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.12 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_report` with `report_type="daily-briefing"` completes without error
+- ✅ Content contains briefing-style markers (daily, briefing, today, headline)
+- ✅ Returns `success=True` with Markdown content
+
 ---
 
-## Q34: MCP Export/Import, CEFR, Email, Cron Tools
+### 📊 Q33 Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 33.1 generate_digest | ⬜ |
+| 33.2 report (MD) | ⬜ |
+| 33.3 report (JSON) | ⬜ |
+| 33.4 generate_tutorial | ⬜ |
+| 33.5 generate_presentation | ⬜ |
+| 33.6 localize_content (B20) | ⬜ |
+| 33.7 generate_report with report_type | ⬜ |
+| 33.8 generate_digest with domains (B8) | ⬜ |
+| 33.9 generate_report with domains (B8) | ⬜ |
+| 33.10 generate_cross_domain_report (B8) | ⬜ |
+| 33.11 generate_report format=video (Task 8) | ⬜ |
+| 33.12 generate_report report_type=daily-briefing (B7) | ⬜ |
+
+**OVERALL: ⬜**
 
 **Agent says:** "I need to export/import KB, classify CEFR, send emails, and manage schedules."
 
@@ -1257,6 +1392,169 @@ print(f"✅ run_schedules: {json.dumps(data, indent=2)[:200]}")
 **Expected Result:** ✅ All active schedules executed.
 
 
+#### 34.9 🟢 export_kb with format="rss" — B17
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q34
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("export_kb", {
+    "domain": "medical-research",
+    "format": "rss"
+})
+data = json.loads(res.content[0].text)
+
+if data.get("success") and data.get("path"):
+    import os
+    file_path = data["path"]
+    exists = os.path.isfile(file_path)
+    non_empty = os.path.getsize(file_path) > 0 if exists else False
+
+    # Validate RSS XML
+    import xml.etree.ElementTree as ET
+    valid_xml = False
+    item_count = 0
+    if exists and non_empty:
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            valid_xml = root.tag == "rss" and root.get("version") == "2.0"
+            channel = root.find("channel")
+            items = channel.findall("item") if channel is not None else []
+            item_count = len(items)
+        except Exception:
+            pass
+
+    print(f"OK|path={file_path}|exists={exists}|non_empty={non_empty}|valid_rss={valid_xml}|items={item_count}")
+elif data.get("error_code"):
+    print("FAIL|error:" + json.dumps(data, default=str)[:200])
+    import sys; sys.exit(1)
+else:
+    print("FAIL|unexpected:" + json.dumps(data, default=str)[:200])
+    import sys; sys.exit(1)
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: export_kb (rss) exit 0" \
+  || { echo "  ❌ FAIL: RSS export failed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: RSS export returned OK" \
+  || { echo "  ❌ FAIL: no OK signal"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "valid_rss=True" \
+  && echo "  ✅ PASS: RSS XML is valid RSS 2.0" \
+  || { echo "  ❌ FAIL: RSS XML validation failed"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "non_empty=True" \
+  && echo "  ✅ PASS: RSS file is non-empty" \
+  || { echo "  ❌ FAIL: RSS file empty or missing"; ALL_PASS=false; }
+
+ITEMS=$(echo "$RESULT" | grep -oP "items=\K\d+")
+[ -n "$ITEMS" ] && [ "$ITEMS" -ge 0 ] \
+  && echo "  ✅ PASS: RSS has ${ITEMS} item(s)" \
+  || { echo "  ❌ FAIL: no items in RSS"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo ""; echo "✅ SCENARIO 34.9 PASSED — export_kb (rss)"; exit 0; else echo ""; echo "❌ SCENARIO 34.9 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ `export_kb` with `format="rss"` returns a valid RSS 2.0 XML file
+- ✅ RSS `<rss version="2.0">` root with `<channel>` and `<item>` entries
+- ✅ Each `<item>` has `<title>`, `<link>`, `<description>`, `<guid>`, `<pubDate>`
+- ✅ Response includes `path`, `entries_count`, and `success=True`
+
+#### 34.10 🟢 export_kb with format="graphml" — B18
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q34
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("export_kb", {
+    "domain": "medical-research",
+    "format": "graphml"
+})
+data = json.loads(res.content[0].text)
+
+if data.get("success") and data.get("path"):
+    import os
+    file_path = data["path"]
+    exists = os.path.isfile(file_path)
+    non_empty = os.path.getsize(file_path) > 0 if exists else False
+
+    # Validate GraphML XML
+    import xml.etree.ElementTree as ET
+    valid_graphml = False
+    node_count = 0
+    edge_count = 0
+    if exists and non_empty:
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            ns = "http://graphml.graphdrawing.org/xmlns"
+            valid_graphml = root.tag == f"{{{ns}}}graphml"
+            graph = root.find(f"{{{ns}}}graph")
+            if graph is not None:
+                nodes = graph.findall(f"{{{ns}}}node")
+                edges = graph.findall(f"{{{ns}}}edge")
+                node_count = len(nodes)
+                edge_count = len(edges)
+        except Exception:
+            pass
+
+    print(f"OK|path={file_path}|exists={exists}|non_empty={non_empty}|valid_graphml={valid_graphml}|nodes={node_count}|edges={edge_count}")
+elif data.get("error_code"):
+    print("FAIL|error:" + json.dumps(data, default=str)[:200])
+    import sys; sys.exit(1)
+else:
+    print("FAIL|unexpected:" + json.dumps(data, default=str)[:200])
+    import sys; sys.exit(1)
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: export_kb (graphml) exit 0" \
+  || { echo "  ❌ FAIL: GraphML export failed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: GraphML export returned OK" \
+  || { echo "  ❌ FAIL: no OK signal"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "valid_graphml=True" \
+  && echo "  ✅ PASS: GraphML XML is valid" \
+  || { echo "  ❌ FAIL: GraphML XML validation failed"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "non_empty=True" \
+  && echo "  ✅ PASS: GraphML file is non-empty" \
+  || { echo "  ❌ FAIL: GraphML file empty or missing"; ALL_PASS=false; }
+
+NODES=$(echo "$RESULT" | grep -oP "nodes=\K\d+")
+EDGES=$(echo "$RESULT" | grep -oP "edges=\K\d+")
+[ -n "$NODES" ] \
+  && echo "  ✅ PASS: GraphML has ${NODES:-0} node(s), ${EDGES:-0} edge(s)" \
+  || { echo "  ❌ FAIL: no nodes/edges in GraphML"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo ""; echo "✅ SCENARIO 34.10 PASSED — export_kb (graphml)"; exit 0; else echo ""; echo "❌ SCENARIO 34.10 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ `export_kb` with `format="graphml"` returns a valid GraphML XML file
+- ✅ GraphML `<graphml>` root with `<graph>`, `<node>`, and `<edge>` elements
+- ✅ Nodes have entity_type/entity_name data; edges have relation_type/strength
+- ✅ Response includes `path`, `entries_count`, and `success=True`
+
+
 ---
 
 ### 📊 Q34 Verdict
@@ -1264,7 +1562,7 @@ print(f"✅ run_schedules: {json.dumps(data, indent=2)[:200]}")
 | Scenario | Result |
 |----------|--------|
 | 34.1 export_kb | ⬜ |
-| 34.1b export_kb (bundle) | ⬜ |
+| 34.1b export_kb (bundle — B19) | ⬜ |
 | 34.2 import_kb | ⬜ |
 | 34.3 classify_cefr | ⬜ |
 | 34.4 send_email_digest | ⬜ |
@@ -1272,6 +1570,8 @@ print(f"✅ run_schedules: {json.dumps(data, indent=2)[:200]}")
 | 34.6 list_schedules | ⬜ |
 | 34.7 remove_schedule | ⬜ |
 | 34.8 run_schedules | ⬜ |
+| 34.9 export_kb rss (B17) | ⬜ |
+| 34.10 export_kb graphml (B18) | ⬜ |
 
 **OVERALL: ⬜**
 

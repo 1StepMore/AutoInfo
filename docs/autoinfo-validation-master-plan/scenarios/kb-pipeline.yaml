@@ -80,12 +80,10 @@ steps:
           "This is imported content for testing the KB pipeline import tool.",
           "It should end up in 01-Raw tier.",
       ])
-      import_path = pathlib.Path("/tmp/test-import-kb-pipeline.md")
-      import_path.write_text(md_content)
 
       result = app.call_tool("import_kb", {
           "domain": "medical-research",
-          "file_path": str(import_path),
+          "data": md_content,
           "format": "markdown"
       })
       import_data = json.loads(result.content[0].text)
@@ -117,12 +115,10 @@ steps:
           "<p>source_url: https://example.com/html-import</p>",
           "</body></html>",
       ])
-      import_path = pathlib.Path("/tmp/test-import-html.html")
-      import_path.write_text(html_content)
 
       result = app.call_tool("import_kb", {
           "domain": "medical-research",
-          "file_path": str(import_path),
+          "data": html_content,
           "format": "html"
       })
       import_data = json.loads(result.content[0].text)
@@ -144,8 +140,7 @@ steps:
       os.chdir("${TEST_DIR}")
       from autoinfo.mcp.server import app
 
-      import_path = pathlib.Path("/tmp/test-import-json.json")
-      import_path.write_text(json.dumps({
+      json_content = json.dumps({
           "title": "Imported JSON Article",
           "domain": "medical-research",
           "source_url": "https://example.com/json-import",
@@ -154,11 +149,11 @@ steps:
           "collected_at": "2026-07-23T00:00:00",
           "content": "This is JSON content imported into the KB pipeline.",
           "topic_tags": ["ivf"]
-      }))
+      })
 
       result = app.call_tool("import_kb", {
           "domain": "medical-research",
-          "file_path": str(import_path),
+          "data": json_content,
           "format": "json"
       })
       import_data = json.loads(result.content[0].text)

@@ -19,6 +19,8 @@ rm -rf /tmp/test-q7 && mkdir -p /tmp/test-q7
 rm -rf /tmp/test-q8 && mkdir -p /tmp/test-q8
 rm -rf /tmp/test-q18 && mkdir -p /tmp/test-q18
 rm -rf /tmp/test-q9 && mkdir -p /tmp/test-q9
+rm -rf /tmp/test-q19 && mkdir -p /tmp/test-q19
+rm -rf /tmp/test-q20 && mkdir -p /tmp/test-q20
 ```
 
 ## Q7: Domain Management CLI
@@ -444,6 +446,220 @@ if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.14 PASSED"; exit 0; else ec
 ```
 **Expected Result:** ✅ Bundle export produces ZIP archive. Exit code 0.
 
+#### 9.15 🟢 RSS export (--format rss) — B17
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+OUTPUT=$(autoinfo output export --domain medical-research --format rss 2>&1)
+EXIT_CODE=$?
+
+# Find the RSS export file
+RSS_FILE=$(echo "$OUTPUT" | grep -oP '(?:written to|path:\s*|^)\K(?:.*autoinfo-rss.*\.xml)' | head -1)
+if [ -z "$RSS_FILE" ]; then
+    RSS_FILE=$(ls -t exports/medical-research/autoinfo-rss-*.xml 2>/dev/null | head -1)
+fi
+
+[ -n "$RSS_FILE" ] \
+  && echo "  ✅ PASS: RSS file identified: $RSS_FILE" \
+  || { echo "  ❌ FAIL: no RSS export file found"; ALL_PASS=false; }
+
+[ -f "$RSS_FILE" ] && [ -s "$RSS_FILE" ] \
+  && echo "  ✅ PASS: RSS file is non-empty" \
+  || { echo "  ❌ FAIL: RSS file empty or missing"; ALL_PASS=false; }
+
+# Validate XML: must be valid XML with <rss> and <channel> root
+python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$RSS_FILE')
+root = tree.getroot()
+assert root.tag == 'rss', f'Expected <rss> root, got <{root.tag}>'
+assert root.get('version') == '2.0', f'Expected version=2.0, got {root.get(\"version\")}'
+channel = root.find('channel')
+assert channel is not None, 'Missing <channel> element'
+items = channel.findall('item')
+print(f'  ✅ PASS: valid RSS 2.0 XML with {len(items)} <item> entries')
+" 2>&1 || { echo "  ❌ FAIL: RSS XML validation failed"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.15 PASSED — RSS export"; exit 0; else echo "❌ SCENARIO 9.15 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ RSS XML file written to `exports/medical-research/autoinfo-rss-*.xml`
+- ✅ Valid RSS 2.0 XML schema: `<rss version="2.0">` root with `<channel>` and `<item>` entries
+- ✅ Each `<item>` has `<title>`, `<link>`, `<description>`, `<guid>`, and `<pubDate>`
+- ✅ Exit code 0
+
+#### 9.16 🟢 GraphML export (--format graphml) — B18
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+OUTPUT=$(autoinfo output export --domain medical-research --format graphml 2>&1)
+EXIT_CODE=$?
+
+# Find the GraphML export file
+GRAPHML_FILE=$(echo "$OUTPUT" | grep -oP '(?:written to|path:\s*|^)\K(?:.*autoinfo-graphml.*\.graphml)' | head -1)
+if [ -z "$GRAPHML_FILE" ]; then
+    GRAPHML_FILE=$(ls -t exports/medical-research/autoinfo-graphml-*.graphml 2>/dev/null | head -1)
+fi
+
+[ -n "$GRAPHML_FILE" ] \
+  && echo "  ✅ PASS: GraphML file identified: $GRAPHML_FILE" \
+  || { echo "  ❌ FAIL: no GraphML export file found"; ALL_PASS=false; }
+
+[ -f "$GRAPHML_FILE" ] && [ -s "$GRAPHML_FILE" ] \
+  && echo "  ✅ PASS: GraphML file is non-empty" \
+  || { echo "  ❌ FAIL: GraphML file empty or missing"; ALL_PASS=false; }
+
+# Validate GraphML XML schema
+python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$GRAPHML_FILE')
+root = tree.getroot()
+assert root.tag == '{http://graphml.graphdrawing.org/xmlns}graphml', f'Expected graphml root, got {root.tag}'
+graph = root.find('{http://graphml.graphdrawing.org/xmlns}graph')
+assert graph is not None, 'Missing <graph> element'
+nodes = graph.findall('{http://graphml.graphdrawing.org/xmlns}node')
+edges = graph.findall('{http://graphml.graphdrawing.org/xmlns}edge')
+print(f'  ✅ PASS: valid GraphML with {len(nodes)} nodes, {len(edges)} edges')
+" 2>&1 || { echo "  ❌ FAIL: GraphML validation failed"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.16 PASSED — GraphML export"; exit 0; else echo "❌ SCENARIO 9.16 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ GraphML XML file written to `exports/medical-research/autoinfo-graphml-*.graphml`
+- ✅ Valid GraphML schema: `<graphml>` root with `<graph>`, `<node>`, and `<edge>` elements
+- ✅ Nodes have `entity_type` and `entity_name` data; edges have `relation_type` and `strength`
+- ✅ Exit code 0
+
+#### 9.17 🟢 Report with --type daily-briefing — B7
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+OUTPUT=$(autoinfo output report --domain medical-research --format markdown --type daily-briefing 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "daily\|briefing\|today\|summary\|headline" \
+  && echo "  ✅ PASS: daily-briefing type produced briefing-style output" \
+  || { echo "  ❌ FAIL: daily-briefing missing expected briefing markers"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.17 PASSED — daily-briefing report"; exit 0; else echo "❌ SCENARIO 9.17 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ `--type daily-briefing` produces briefing-style output with daily summary structure. Exit code 0.
+
+#### 9.18 🟢 Video output (--format video) — Task 8
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+OUTPUT=$(autoinfo output report --domain medical-research --format video 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+    assert data.get('output_type') == 'video', f'Expected output_type=video, got {data.get(\"output_type\")}'
+    assert data.get('status') == 'ok', f'Status not ok: {data.get(\"status\")}'
+    assert 'video_path' in data, 'Missing video_path'
+    assert data.get('format') == 'mp4', f'Expected format=mp4, got {data.get(\"format\")}'
+    print(f'  ✅ PASS: video generated — {data[\"video_path\"]}')
+except json.JSONDecodeError:
+    # Non-JSON output: check for video path pattern in plain text
+    text = sys.stdin.read()
+    if 'video_path' in text or 'output_type' in text or '.mp4' in text:
+        print('  ✅ PASS: video output detected in plain-text response')
+    else:
+        print('  ❌ FAIL: unrecognized video output format')
+        sys.exit(1)
+" 2>&1 || { echo "  ❌ FAIL: video output validation failed"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.18 PASSED — video report"; exit 0; else echo "❌ SCENARIO 9.18 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ `autoinfo output report --format video` generates a video (MP4) from TTS narration + slide images via FFmpeg
+- ✅ Output includes `output_type: "video"`, `status: "ok"`, and a `video_path`
+- ✅ Exit code 0
+
+#### 9.19 🟢 SEO sitemap — Task 10
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q19
+autoinfo init --demo medical-research 2>/dev/null
+
+OUTPUT=$(autoinfo output sitemap --domain medical-research --base-url "https://example.com" 2>&1)
+EXIT_CODE=$?
+
+# Find the sitemap file
+SITEMAP_FILE=$(echo "$OUTPUT" | grep -oP 'Sitemap written to \K.*\.xml' | head -1)
+if [ -z "$SITEMAP_FILE" ]; then
+    SITEMAP_FILE=$(ls -t outputs/medical-research/seo/sitemap.xml 2>/dev/null | head -1)
+fi
+
+[ -n "$SITEMAP_FILE" ] \
+  && echo "  ✅ PASS: sitemap file identified: $SITEMAP_FILE" \
+  || { echo "  ❌ FAIL: no sitemap file found"; ALL_PASS=false; }
+
+[ -f "$SITEMAP_FILE" ] && [ -s "$SITEMAP_FILE" ] \
+  && echo "  ✅ PASS: sitemap file is non-empty" \
+  || { echo "  ❌ FAIL: sitemap file empty or missing"; ALL_PASS=false; }
+
+# Validate sitemap XML: must have <urlset> root with <url> entries
+python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$SITEMAP_FILE')
+root = tree.getroot()
+ns = 'https://www.sitemaps.org/schemas/sitemap/0.9'
+assert root.tag == '{' + ns + '}urlset', f'Expected urlset root, got {root.tag}'
+urls = root.findall('{' + ns + '}url')
+assert len(urls) >= 1, 'Expected at least 1 <url> entry'
+for url in urls:
+    loc = url.find('{' + ns + '}loc')
+    assert loc is not None, '<url> missing <loc>'
+    assert loc.text.startswith('http'), f'<loc> not a URL: {loc.text}'
+print(f'  ✅ PASS: valid sitemap XML with {len(urls)} <url> entries, xmlns={ns}')
+" 2>&1 || { echo "  ❌ FAIL: sitemap XML validation failed"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.19 PASSED — SEO sitemap"; exit 0; else echo "❌ SCENARIO 9.19 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ Sitemap XML file written to `outputs/medical-research/seo/sitemap.xml`
+- ✅ Valid sitemaps.org XML schema: `<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">` with `<url><loc>` entries
+- ✅ Each `<url>` has a valid `<loc>` URL (starts with `http`)
+- ✅ Base URL from `--base-url` flag appears in entries
+- ✅ Exit code 0
+
 ---
 
 ### 📊 Q9 Verdict
@@ -462,7 +678,12 @@ if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.14 PASSED"; exit 0; else ec
 | 9.10 Localize | ⬜ |
 | 9.12 Cross-domain report | ⬜ |
 | 9.13 Report with --type | ⬜ |
-| 9.14 Bundle export | ⬜ |
+| 9.14 Bundle export (B19) | ⬜ |
+| 9.15 RSS export (B17) | ⬜ |
+| 9.16 GraphML export (B18) | ⬜ |
+| 9.17 Daily-briefing report (B7) | ⬜ |
+| 9.18 Video report (Task 8) | ⬜ |
+| 9.19 SEO sitemap (Task 10) | ⬜ |
 
 **OVERALL: ⬜**
 

@@ -18,6 +18,7 @@ import os
 import pytest
 
 from autoinfo.models import Item
+from conftest import HAVE_LLM_KEY, requires_llm_key
 
 # ---------------------------------------------------------------------------
 # All tests in this module skip by default.
@@ -95,10 +96,8 @@ class TestRealRSS:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not os.environ.get("AUTOINFO_LLM_API_KEY"),
-    reason="AUTOINFO_LLM_API_KEY not set — real LLM test skipped",
-)
+@pytest.mark.llm
+@requires_llm_key
 class TestRealLLM:
     """Real API test against the configured LLM provider.
 

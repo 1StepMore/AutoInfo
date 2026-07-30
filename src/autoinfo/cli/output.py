@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 
 import typer
 
@@ -301,3 +302,25 @@ def presentation(
     except Exception as exc:
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@app.command()
+def sitemap(
+    domain: str = typer.Option("", "--domain", "-d", help="Domain to generate sitemap for"),
+    base_url: str = typer.Option("https://example.com", "--base-url", "-u", help="Base URL for sitemap"),
+    output_dir: str = typer.Option("", "--output", "-o", help="Output directory"),
+) -> None:
+    """Generate XML sitemap for KB entries."""
+    from autoinfo.output.seo import generate_sitemap
+
+    xml = generate_sitemap(domain=domain, base_url=base_url)
+
+    if domain:
+        out_path = os.path.join(output_dir or f"outputs/{domain}/seo/sitemap.xml")
+    else:
+        out_path = os.path.join(output_dir or "outputs/seo/sitemap.xml")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+    typer.echo(f"Sitemap written to {out_path}")

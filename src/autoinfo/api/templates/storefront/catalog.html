@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Product Catalog — AutoInfo Storefront{% endblock %}
+{% block nav_catalog %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-0">
+      <i class="bi bi-grid-3x3-gap text-primary me-2"></i>Product Catalog
+    </h1>
+    <p class="text-muted small mb-0">Browse available information products and subscribe</p>
+  </div>
+  <span class="badge text-bg-secondary">{{ product_count }} product{{ '' if product_count == 1 else 's' }}</span>
+</div>
+
+{% if products %}
+<div class="row g-3">
+  {% for product in products %}
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card price-card h-100">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <span class="product-icon">
+            {% if product.type == "raw" %}
+              <i class="bi bi-file-earmark-raw text-secondary"></i>
+            {% elif product.type == "processed" %}
+              <i class="bi bi-file-earmark-text text-info"></i>
+            {% else %}
+              <i class="bi bi-box-seam text-primary"></i>
+            {% endif %}
+          </span>
+          <span class="badge {{ tier_badge_class(product.tier) }}">
+            {{ product.tier }}
+          </span>
+        </div>
+        <h5 class="card-title mb-1">{{ product.name or product.id }}</h5>
+        <p class="text-muted small mb-2">
+          <i class="bi bi-diagram-3 me-1"></i>{{ product.domain }}
+          {% if product.type == "raw" %}
+            <span class="badge text-bg-light border ms-1">RAW</span>
+          {% elif product.type == "processed" %}
+            <span class="badge text-bg-light border ms-1">PROCESSED</span>
+          {% endif %}
+        </p>
+        <div class="mb-3">
+          <span class="price-amount">
+            {% if product.price_monthly == 0 %}
+              Free
+            {% else %}
+              {{ product.currency }}&nbsp;{{ "%.0f"|format(product.price_monthly) }}
+            {% endif %}
+          </span>
+          {% if product.price_monthly > 0 %}
+          <span class="price-period">/ month</span>
+          {% endif %}
+        </div>
+        <div class="mt-auto">
+          <a href="/storefront/products/{{ product.id }}" class="btn btn-primary w-100">
+            <i class="bi bi-eye me-1"></i>View Details
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <div class="empty-state">
+      <i class="bi bi-box-seam fs-1 d-block mb-2 opacity-50"></i>
+      <p class="mb-0">No products available.</p>
+      <p class="text-muted small">Products are derived from configured domains. Run <code>autoinfo init --demo medical-research</code> to get started.</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

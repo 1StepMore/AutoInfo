@@ -450,6 +450,16 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return ApplePodcastsHandler(config=source_config.settings or {})
 
+    if stype == "yahoo_finance":
+        from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
+
+        return YahooFinanceHandler(source_name=source_config.name)
+
+    if stype == "quandl":
+        from autoinfo.collectors.quandl import QuandlHandler
+
+        return QuandlHandler(source_config=source_config)
+
     if stype == "rss":
         from autoinfo.collectors.rss import RSSHandler
 
@@ -534,6 +544,20 @@ def _fetch_items(
         if not url:
             plog.warning(
                 "API source has no URL configured",
+                source_type=source_config.type,
+                extra={"source_name": source_config.name},
+            )
+            return []
+        query = topic if topic else ""
+        items = handler.fetch(url, query=query, limit=limit)
+        return items[:limit]
+
+    # -- QuandlHandler path -------------------------------------------------
+    if getattr(handler, "_handler_type", "") == "QuandlHandler":
+        url = source_config.url
+        if not url:
+            plog.warning(
+                "Quandl source has no URL configured",
                 source_type=source_config.type,
                 extra={"source_name": source_config.name},
             )

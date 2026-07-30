@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name or product.id }} — AutoInfo Storefront{% endblock %}
+{% block nav_catalog %}active{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="/storefront/products">Catalog</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ product.id }}</li>
+  </ol>
+</nav>
+
+<div class="row g-3">
+  <!-- Product detail card -->
+  <div class="col-12 col-lg-8">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <i class="bi bi-file-earmark-text me-2"></i>
+          <span class="fw-semibold">{{ product.name or product.id }}</span>
+        </div>
+        <span class="badge {{ tier_badge_class(product.tier) }}">{{ product.tier }}</span>
+      </div>
+      <div class="card-body">
+        <dl class="meta-grid row mb-0">
+          <dt class="col-sm-4 text-muted">Product ID</dt>
+          <dd class="col-sm-8"><code>{{ product.id }}</code></dd>
+
+          <dt class="col-sm-4 text-muted">Domain</dt>
+          <dd class="col-sm-8"><span class="badge text-bg-light border">{{ product.domain }}</span></dd>
+
+          <dt class="col-sm-4 text-muted">Type</dt>
+          <dd class="col-sm-8">
+            {% if product.type == "raw" %}
+              <span class="badge text-bg-secondary"><i class="bi bi-file-earmark-raw"></i> raw</span>
+            {% elif product.type == "processed" %}
+              <span class="badge text-bg-info"><i class="bi bi-file-earmark-text"></i> processed</span>
+            {% else %}
+              <span class="badge text-bg-light border">{{ product.type }}</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-sm-4 text-muted">Access Level</dt>
+          <dd class="col-sm-8">
+            <span class="badge {{ tier_badge_class(product.access_level) }}">{{ product.access_level }}</span>
+          </dd>
+
+          <dt class="col-sm-4 text-muted">Pricing</dt>
+          <dd class="col-sm-8">
+            {% if product.price_monthly == 0 %}
+              <span class="fw-bold">Free</span>
+            {% else %}
+              <span class="fw-bold">{{ product.currency }} {{ "%.2f"|format(product.price_monthly) }}</span>
+              <span class="text-muted small">/ month</span>
+            {% endif %}
+          </dd>
+
+          {% if product.source_count is defined %}
+          <dt class="col-sm-4 text-muted">Sources</dt>
+          <dd class="col-sm-8">{{ product.source_count }}</dd>
+          {% endif %}
+
+          {% if product.extract_fields %}
+          <dt class="col-sm-4 text-muted">Extract Fields</dt>
+          <dd class="col-sm-8">
+            {% for f in product.extract_fields %}
+            <span class="badge text-bg-light border me-1">{{ f }}</span>
+            {% endfor %}
+          </dd>
+          {% endif %}
+
+          {% if product.quality_gate_count is defined %}
+          <dt class="col-sm-4 text-muted">Quality Gates</dt>
+          <dd class="col-sm-8">{{ product.quality_gate_count }}</dd>
+          {% endif %}
+
+          {% if product.templates %}
+          <dt class="col-sm-4 text-muted">Templates</dt>
+          <dd class="col-sm-8">
+            {% for t in product.templates %}
+            <span class="badge text-bg-light border me-1">{{ t }}</span>
+            {% endfor %}
+          </dd>
+          {% endif %}
+
+          {% if product.delivery_channels %}
+          <dt class="col-sm-4 text-muted">Delivery Channels</dt>
+          <dd class="col-sm-8">
+            {% for ch in product.delivery_channels %}
+            <span class="badge text-bg-light border me-1">{{ ch }}</span>
+            {% endfor %}
+          </dd>
+          {% endif %}
+
+          {% if product.quality_gates %}
+          <dt class="col-sm-4 text-muted">Quality Gates</dt>
+          <dd class="col-sm-8">
+            {% for g in product.quality_gates %}
+            <span class="badge text-bg-light border me-1">{{ g }}</span>
+            {% endfor %}
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- Subscribe / access panel -->
+  <div class="col-12 col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <i class="bi bi-credit-card-2-front me-2"></i>
+        <span class="fw-semibold">Subscribe</span>
+      </div>
+      <div class="card-body">
+        <div class="text-center mb-3">
+          <div class="display-6">
+            {% if product.price_monthly == 0 %}
+              <i class="bi bi-gift-fill text-success"></i>
+            {% else %}
+              <i class="bi bi-stars text-warning"></i>
+            {% endif %}
+          </div>
+          <div class="h2 mb-0">
+            {% if product.price_monthly == 0 %}
+              Free
+            {% else %}
+              {{ product.currency }} {{ "%.0f"|format(product.price_monthly) }}
+            {% endif %}
+          </div>
+          {% if product.price_monthly > 0 %}
+          <div class="text-muted small">per month</div>
+          {% endif %}
+        </div>
+
+        {% if access and access.allowed %}
+          <div class="alert alert-success mb-3">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <span class="small">{{ access.reason or "Access granted." }}</span>
+          </div>
+        {% elif access and not access.allowed %}
+          <div class="alert alert-warning mb-3">
+            <i class="bi bi-lock-fill me-2"></i>
+            <span class="small">{{ access.reason or "Upgrade required." }}</span>
+          </div>
+          {% if access.upgrade_prompt %}
+          <p class="text-muted small mb-3">{{ access.upgrade_prompt }}</p>
+          {% endif %}
+        {% endif %}
+
+        <form id="subscribeForm" class="vstack gap-2">
+          <input type="hidden" name="product_id" value="{{ product.id }}">
+          <label class="form-label small text-muted mb-1" for="subUserId">End-user ID</label>
+          <input type="text" class="form-control form-control-sm" id="subUserId" name="user_id"
+                 placeholder="user-001" value="{{ user_id or '' }}" required>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-bag-check me-1"></i>Subscribe
+          </button>
+        </form>
+        <div id="subResult" class="mt-2" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  const form = document.getElementById("subscribeForm");
+  const result = document.getElementById("subResult");
+  if (!form) return;
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = {
+      user_id: (fd.get("user_id") || "").toString().trim(),
+      product_id: (fd.get("product_id") || "").toString().trim(),
+    };
+    if (!payload.user_id) {
+      result.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>User ID is required.</div>';
+      return;
+    }
+    result.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Creating subscription…</div>';
+    try {
+      const resp = await fetch("/storefront/subscriptions", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        result.innerHTML =
+          '<div class="alert alert-success py-2 mb-0">' +
+          '<i class="bi bi-check-circle-fill me-1"></i>Subscribed! ID: <code>' +
+          (data.subscription_id || "") + '</code></div>';
+      } else {
+        result.innerHTML =
+          '<div class="alert alert-danger py-2 mb-0">' +
+          '<i class="bi bi-exclamation-triangle me-1"></i>' +
+          (data.message || "Subscription failed.") + '</div>';
+      }
+    } catch (err) {
+      result.innerHTML =
+        '<div class="alert alert-danger py-2 mb-0">' +
+        '<i class="bi bi-exclamation-triangle me-1"></i>Network error: ' +
+        err + '</div>';
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -14,6 +14,8 @@ from autoinfo.collectors.webhook import WebhookHandler
 from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
 from autoinfo.collectors.uspto import USPTOHandler
 from autoinfo.collectors.youtube import YouTubeHandler
+from autoinfo.collectors.quandl import QuandlHandler
+from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
 
 __all__ = [
     "APAPIHandler",
@@ -23,11 +25,13 @@ __all__ = [
     "EmailHandler",
     "NYTHandler",
     "PDFHandler",
+    "QuandlHandler",
     "RedditHandler",
     "ReutersMCPHandler",
     "SpotifyHandler",
     "WebhookHandler",
     "SemanticScholarHandler",
     "USPTOHandler",
+    "YahooFinanceHandler",
     "YouTubeHandler",
 ]

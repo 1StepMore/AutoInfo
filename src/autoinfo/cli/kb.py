@@ -278,3 +278,61 @@ def history(
             sha = v.get("git_sha", "") or ""
             line += f"  git:{sha[:12] if sha else '—'}"
         typer.echo(line)
+
+
+@app.command()
+def recommend(
+    query: str = typer.Option("", "--query", help="Recommendation query"),
+    domain: str = typer.Option("", "--domain", help="Domain to recommend from"),
+    limit: int = typer.Option(10, "--limit", min=1, help="Max recommendations"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
+) -> None:
+    """Recommend KB content using FTS5 + vector scoring.
+
+    When no query is given, returns recent items.
+    Short queries (<3 chars) fall back to recent items.
+    """
+    from autoinfo.recommend import ContentBasedEngine
+
+    engine = ContentBasedEngine()
+    items = engine.recommend(
+        user_id="cli",
+        query=query,
+        domain=domain or None,
+        limit=limit,
+    )
+
+    if json_output:
+        result = {
+            "query": query,
+            "domain": domain,
+            "items": [
+                {
+                    "entry_id": item.entry_id,
+                    "title": item.title,
+                    "score": item.score,
+                    "reason": item.reason,
+                    "source_url": item.source_url,
+                    "domain": item.domain,
+                }
+                for item in items
+            ],
+            "count": len(items),
+        }
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+
+    if not items:
+        typer.echo("No recommendations found.")
+        return
+
+    typer.echo(f"Recommendations (query='{query}', domain='{domain}'):")
+    typer.echo("")
+    for i, item in enumerate(items, 1):
+        typer.echo(f"  {i:2d}. [{item.score:5.1f}] {item.title}")
+        typer.echo(f"      {item.reason}")
+        if item.source_url:
+            typer.echo(f"      {item.source_url}")
+        typer.echo("")

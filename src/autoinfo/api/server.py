@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from autoinfo import __version__
 from autoinfo.api.portal import router as portal_router
 from autoinfo.api.routes import router as api_v1_router
+from autoinfo.api.storefront import router as storefront_router
 from autoinfo.config import RestAPIConfig
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,12 @@ app.include_router(api_v1_router, prefix="/api/v1")
 # ---------------------------------------------------------------------------
 
 app.include_router(portal_router)
+
+# ---------------------------------------------------------------------------
+# Storefront router — end-user product catalog & subscription creation
+# ---------------------------------------------------------------------------
+
+app.include_router(storefront_router)
 
 # ---------------------------------------------------------------------------
 # Dashboard (read-only web UI)

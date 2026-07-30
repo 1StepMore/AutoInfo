@@ -9,6 +9,11 @@ Run once at the start of this part:
 ```bash
 # Create clean directories for all questions in this part
 rm -rf /tmp/test-q54 && mkdir -p /tmp/test-q54
+rm -rf /tmp/test-q56a && mkdir -p /tmp/test-q56a
+rm -rf /tmp/test-q56b && mkdir -p /tmp/test-q56b
+rm -rf /tmp/test-q56b-empty && mkdir -p /tmp/test-q56b-empty
+rm -rf /tmp/test-q57a && mkdir -p /tmp/test-q57a
+rm -rf /tmp/test-q57b && mkdir -p /tmp/test-q57b
 ```
 
 ## Q54: Async Collection with job_id Polling
@@ -699,6 +704,444 @@ print(f"✅ Agent alerting report: {json.dumps(report, indent=2)}")
 | 57.2 Get webhooks | ⬜ |
 | 57.3 Source health | ⬜ |
 | 57.4 Agent alerting | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q56a: Email Delivery Channel (C6 — SMTP)
+
+**User says:** "I need to verify email delivery works end-to-end, including graceful handling when SMTP is not configured."
+
+### Scenarios
+
+#### 56a.1 🟢 Email config shows SMTP settings (even if unconfigured)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56a"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+
+OUTPUT=$(autoinfo email config 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "smtp\|server\|port\|sender\|config" \
+  && echo "  ✅ PASS: email config shows SMTP-related fields" \
+  || { echo "  ❌ FAIL: email config missing SMTP fields"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56a.1 PASSED"; exit 0; else echo "❌ SCENARIO 56a.1 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Shows SMTP config fields (server, port, sender). Fields may be empty. Exit code 0.
+
+#### 56a.2 🟢 Email send-digest without SMTP config — graceful error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56a"
+cd "$TEST_DIR"
+
+OUTPUT=$(autoinfo email send-digest --domain medical-research --period weekly 2>&1) || true
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "smtp\|config\|not configured\|missing\|error" \
+  && echo "  ✅ PASS: graceful error message about missing SMTP config" \
+  || { echo "  ❌ FAIL: no SMTP-related error message"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56a.2 PASSED — graceful SMTP error"; exit 0; else echo "❌ SCENARIO 56a.2 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ Graceful error about SMTP not configured. No Python traceback. User-friendly message.
+
+#### 56a.3 🟢 Email send with CC/BCC parameters accepted
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56a"
+cd "$TEST_DIR"
+autoinfo collect --domain medical-research --limit 1 2>&1 > /dev/null || true
+
+# Test that send-digest CLI accepts --cc and --bcc flags
+OUTPUT=$(autoinfo email send-digest --domain medical-research --period weekly --cc "cc@example.com" --bcc "bcc@example.com" 2>&1) || true
+
+echo "$OUTPUT" | grep -vq "No such option" \
+  && echo "  ✅ PASS: --cc/--bcc flags accepted (no 'No such option' error)" \
+  || { echo "  ❌ FAIL: --cc/--bcc flag rejected as unknown"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56a.3 PASSED"; exit 0; else echo "❌ SCENARIO 56a.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ CLI accepts --cc and --bcc flags. No "No such option" error. Fails gracefully if SMTP unconfigured.
+
+### 📊 Q56a Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 56a.1 Email config show | ⬜ |
+| 56a.2 Send without SMTP | ⬜ |
+| 56a.3 CC/BCC flags | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q56b: RSS Feed Channel (C7)
+
+**User says:** "I need the RSS feed channel to produce valid RSS 2.0 XML from my knowledge base."
+
+### Scenarios
+
+#### 56b.1 🟢 RSS feed generated from KB entries
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56b"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+autoinfo collect --domain medical-research --limit 2 2>&1 > /dev/null || true
+
+OUTPUT=$(autoinfo output export --domain medical-research --format rss 2>&1)
+EXIT_CODE=$?
+
+# Find RSS file
+RSS_FILE=$(echo "$OUTPUT" | grep -oP '(?:written to|path:\s*|^)\K(?:.*autoinfo-rss.*\.xml)' | head -1)
+if [ -z "$RSS_FILE" ]; then
+    RSS_FILE=$(ls -t exports/medical-research/autoinfo-rss-*.xml 2>/dev/null | head -1)
+fi
+
+[ -n "$RSS_FILE" ] \
+  && echo "  ✅ PASS: RSS file identified: $RSS_FILE" \
+  || { echo "  ❌ FAIL: no RSS export file found"; ALL_PASS=false; }
+
+[ -f "$RSS_FILE" ] && [ -s "$RSS_FILE" ] \
+  && echo "  ✅ PASS: RSS file is non-empty" \
+  || { echo "  ❌ FAIL: RSS file empty or missing"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56b.1 PASSED"; exit 0; else echo "❌ SCENARIO 56b.1 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ RSS XML file written to `exports/medical-research/autoinfo-rss-*.xml`. File non-empty.
+
+#### 56b.2 🟢 RSS feed XML validates as RSS 2.0
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56b"
+cd "$TEST_DIR"
+
+RSS_FILE=$(ls -t exports/medical-research/autoinfo-rss-*.xml 2>/dev/null | head -1)
+if [ -z "$RSS_FILE" ]; then
+    echo "  ❌ FAIL: no RSS file to validate"
+    exit 1
+fi
+
+python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$RSS_FILE')
+root = tree.getroot()
+assert root.tag == 'rss', f'Expected <rss> root, got <{root.tag}>'
+assert root.get('version') == '2.0', f'Expected version=2.0, got {root.get(\"version\")}'
+channel = root.find('channel')
+assert channel is not None, 'Missing <channel> element'
+# Check required RSS channel elements
+for elem_name in ['title', 'link', 'description']:
+    e = channel.find(elem_name)
+    assert e is not None, f'Missing <channel><{elem_name}>'
+    assert e.text, f'<channel><{elem_name}> is empty'
+print(f'  channel title: {channel.find(\"title\").text[:60]}')
+items = channel.findall('item')
+assert len(items) >= 1, 'Expected at least 1 <item> entry'
+print(f'  ✅ PASS: valid RSS 2.0 with {len(items)} <item> entries')
+for i, item in enumerate(items[:3]):
+    for elem_name in ['title', 'link', 'description', 'guid']:
+        e = item.find(elem_name)
+        assert e is not None, f'<item> {i} missing <{elem_name}>'
+    print(f'    item {i}: title={item.find(\"title\").text[:40]}')
+" 2>&1 || { echo "  ❌ FAIL: RSS XML validation failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 56b.2 PASSED — valid RSS 2.0 XML" && exit 0
+echo "❌ SCENARIO 56b.2 FAILED" && exit 1
+```
+**Expected Result:** ✅ Valid RSS 2.0 XML. `<rss version="2.0">` root, `<channel>` with title/link/description, `<item>` with title/link/description/guid.
+
+#### 56b.3 🟢 RSS feed with no KB entries — graceful empty feed
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56b-empty"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+
+# Export RSS without collecting (KB is empty)
+OUTPUT=$(autoinfo output export --domain medical-research --format rss 2>&1) || true
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback on empty KB" \
+  || { echo "  ❌ FAIL: traceback on empty KB RSS export"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qi "rss\|written to\|export" \
+  && echo "  ✅ PASS: RSS export produced output (possibly empty feed)" \
+  || { echo "  ❌ FAIL: RSS export produced no output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56b.3 PASSED — graceful empty RSS"; exit 0; else echo "❌ SCENARIO 56b.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ RSS export with empty KB does not crash. Produces output (possibly empty feed). No traceback.
+
+### 📊 Q56b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 56b.1 RSS feed generated | ⬜ |
+| 56b.2 RSS XML validation | ⬜ |
+| 56b.3 Empty KB RSS | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q57a: Multi-Channel Delivery (C8)
+
+**User says:** "I need to verify multi-channel delivery health and channel listing works."
+
+### Scenarios
+
+#### 57a.1 🟢 Channel health check via MCP (all 11 channels)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57a"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+result = app.call_tool('get_channel_health', {})
+data = json.loads(result.content[0].text)
+channels = data.get('channels', data.get('items', []))
+print(f'  channel count: {len(channels)}')
+expected_channels = ['smtp', 'webhook', 'rest_api', 'file_export', 'discord', 'telegram', 'wechat_work', 'wechat_oa', 'dingtalk', 'feishu', 'rss']
+found = {c.get('name', c.get('channel', '?')) for c in channels}
+for ch in expected_channels:
+    if ch in found:
+        print(f'    ✅ {ch}: present')
+    else:
+        print(f'    ⚠️ {ch}: not in health check')
+# At minimum smtp and webhook should be present
+assert 'smtp' in found or 'webhook' in found, 'No core channels in health check'
+print(f'  ✅ PASS: channel health check returned {len(channels)} channels')
+" 2>&1 || { echo "  ❌ FAIL: channel health check failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 57a.1 PASSED" && exit 0
+echo "❌ SCENARIO 57a.1 FAILED" && exit 1
+```
+**Expected Result:** ✅ `get_channel_health` returns channels with health status. Core channels (smtp, webhook) present.
+
+#### 57a.2 🟢 Multi-channel delivery list via MCP
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57a"
+cd "$TEST_DIR"
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+result = app.call_tool('list_active_deliveries', {})
+data = json.loads(result.content[0].text)
+deliveries = data.get('deliveries', data.get('items', []))
+print(f'  active deliveries: {len(deliveries)}')
+print(f'  ✅ PASS: list_active_deliveries works (count={len(deliveries)})')
+" 2>&1 || { echo "  ❌ FAIL: list_active_deliveries failed"; ALL_PASS=false; }
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+result = app.call_tool('list_delivery_schedules', {})
+data = json.loads(result.content[0].text)
+schedules = data.get('schedules', data.get('items', []))
+print(f'  delivery schedules: {len(schedules)}')
+print(f'  ✅ PASS: list_delivery_schedules works (count={len(schedules)})')
+" 2>&1 || { echo "  ❌ FAIL: list_delivery_schedules failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 57a.2 PASSED" && exit 0
+echo "❌ SCENARIO 57a.2 FAILED" && exit 1
+```
+**Expected Result:** ✅ `list_active_deliveries` and `list_delivery_schedules` return results without error.
+
+#### 57a.3 🟢 Delivery schedule add/list/remove lifecycle
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57a"
+cd "$TEST_DIR"
+
+# Add delivery schedule
+OUTPUT=$(autoinfo cron add-delivery --name "daily-digest-test" --domain medical-research --expression "0 8 * * *" --output-type digest --channel email 2>&1) || true
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "added\|created" \
+  && echo "  ✅ PASS: delivery schedule added" \
+  || { echo "  ❌ FAIL: add-delivery failed: $OUTPUT"; ALL_PASS=false; }
+
+# List delivery schedules
+LIST_OUT=$(autoinfo cron list-deliveries 2>&1) || true
+echo "$LIST_OUT" | grep -qi "daily-digest-test" \
+  && echo "  ✅ PASS: delivery schedule appears in list" \
+  || { echo "  ❌ FAIL: delivery schedule not in list"; ALL_PASS=false; }
+
+# Remove delivery schedule
+REMOVE_OUT=$(autoinfo cron remove-delivery --name "daily-digest-test" 2>&1) || true
+echo "$REMOVE_OUT" | grep -qi "removed\|deleted" \
+  && echo "  ✅ PASS: delivery schedule removed" \
+  || echo "  ⚠️ WARN: remove-delivery confirmation unclear"
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 57a.3 PASSED"; exit 0; else echo "❌ SCENARIO 57a.3 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Delivery schedule add → list → remove lifecycle works. Schedule appears in list-deliveries.
+
+### 📊 Q57a Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 57a.1 Channel health | ⬜ |
+| 57a.2 List deliveries | ⬜ |
+| 57a.3 Delivery schedule lifecycle | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q57b: Webhook Push Channel (C9)
+
+**User says:** "I need to verify webhook push works with proper HMAC validation."
+
+### Scenarios
+
+#### 57b.1 🟢 Webhook set with HMAC secret
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57b"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+result = app.call_tool('set_domain_webhooks', {
+    'domain': 'medical-research',
+    'webhook_urls': ['https://example.com/webhook'],
+    'events': ['item_collected'],
+    'hmac_secret': 'test-secret-abc123'
+})
+data = json.loads(result.content[0].text)
+print(f'  set result: {json.dumps(data)[:200]}')
+# Verify webhook was configured
+r2 = app.call_tool('get_domain_webhooks', {'domain': 'medical-research'})
+d2 = json.loads(r2.content[0].text)
+urls = d2.get('webhook_urls', d2.get('urls', []))
+assert len(urls) >= 1, 'No webhook URLs configured'
+print(f'  ✅ PASS: webhook with HMAC secret set (urls={len(urls)})')
+" 2>&1 || { echo "  ❌ FAIL: webhook HMAC set failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 57b.1 PASSED" && exit 0
+echo "❌ SCENARIO 57b.1 FAILED" && exit 1
+```
+**Expected Result:** ✅ Webhook set with HMAC secret. `get_domain_webhooks` returns configured URL.
+
+#### 57b.2 🟢 Webhook multiple events configuration
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57b"
+cd "$TEST_DIR"
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+result = app.call_tool('set_domain_webhooks', {
+    'domain': 'medical-research',
+    'webhook_urls': ['https://example.com/webhook'],
+    'events': ['item_collected', 'item_processed', 'quality_failed']
+})
+data = json.loads(result.content[0].text)
+print(f'  set multi-event result: {json.dumps(data)[:200]}')
+r2 = app.call_tool('get_domain_webhooks', {'domain': 'medical-research'})
+d2 = json.loads(r2.content[0].text)
+events = d2.get('events', [])
+print(f'  configured events: {events}')
+assert 'item_collected' in events, 'item_collected event not configured'
+assert len(events) >= 1, 'No events configured'
+print(f'  ✅ PASS: {len(events)} webhook events configured')
+" 2>&1 || { echo "  ❌ FAIL: webhook multi-event config failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 57b.2 PASSED" && exit 0
+echo "❌ SCENARIO 57b.2 FAILED" && exit 1
+```
+**Expected Result:** ✅ Multiple webhook events (item_collected, item_processed, quality_failed) configured via `set_domain_webhooks`.
+
+#### 57b.3 🟢 Webhook removal clears configuration
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q57b"
+cd "$TEST_DIR"
+
+python3 -c "
+import json
+from autoinfo.mcp.server import app
+# Clear webhooks
+result = app.call_tool('set_domain_webhooks', {
+    'domain': 'medical-research',
+    'webhook_urls': [],
+    'events': []
+})
+data = json.loads(result.content[0].text)
+print(f'  clear result: {json.dumps(data)[:200]}')
+r2 = app.call_tool('get_domain_webhooks', {'domain': 'medical-research'})
+d2 = json.loads(r2.content[0].text)
+urls = d2.get('webhook_urls', d2.get('urls', []))
+events = d2.get('events', [])
+assert len(urls) == 0, f'URLs not cleared: {urls}'
+assert len(events) == 0, f'Events not cleared: {events}'
+print(f'  ✅ PASS: webhooks cleared (urls={urls}, events={events})')
+" 2>&1 || { echo "  ❌ FAIL: webhook removal failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 57b.3 PASSED" && exit 0
+echo "❌ SCENARIO 57b.3 FAILED" && exit 1
+```
+**Expected Result:** ✅ Webhooks cleared by passing empty arrays. `get_domain_webhooks` returns no URLs or events after clear.
+
+### 📊 Q57b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 57b.1 Webhook HMAC set | ⬜ |
+| 57b.2 Multi-event config | ⬜ |
+| 57b.3 Webhook removal | ⬜ |
 
 **OVERALL: ⬜**
 

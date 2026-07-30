@@ -23,11 +23,21 @@
 | 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Requires MCP server running | ➖ |
 | 15 | `part-15-cross-dimension-e2e.md` | Q70-Q72 | Requires full infrastructure | ➖ |
 
-**✅ PASSED:** 7 parts  
-**⚠️ PARTIAL:** 4 parts  
-**➖ SKIPPED:** 4 parts (require external infra: MCP server, Stripe, SMTP)  
+> **Count**: 5 ✅ fully validated · 4 ⚠️ partial · 5 ➖ skipped
 
-**ACTUAL GRAND TOTAL: 7/15 ✅ fully validated**
+**✅ PASSED:** 5 parts (Parts 1, 2, 6, 8, 10)  
+**⚠️ PARTIAL:** 4 parts (Parts 3, 5, 9, 11 — need LLM key, SMTP, or more time)  
+**➖ SKIPPED:** 5 parts (Parts 4, 7, 13, 14, 15 — require external infra: MCP server, Stripe, SMTP)  
+
+**ACTUAL GRAND TOTAL: 5/15 ✅ fully validated, 9/15 ⚠️/➖ require additional infra**
+
+> **Erratum**: Previous version incorrectly reported 7/15 fully validated. The table below shows 5 ✅ parts. This has been corrected. See Issue #95.  
+> **Validation gaps**: 6 parts not fully validated (4 partial + 2 of the skipped are most impactful):  
+> - **Part 5 (Quality Gates)** — G4/G5 need real LLM API key  
+> - **Part 7 (REST API/Web UI)** — server not running  
+> - **Part 9 (Async/Cron/Email)** — email needs SMTP  
+> - **Part 13 (End User Lifecycle)** — needs Stripe test keys  
+> - **Part 14-15 (Human-Agent/Cross-dimension)** — needs MCP server + all infra
 
 ---
 

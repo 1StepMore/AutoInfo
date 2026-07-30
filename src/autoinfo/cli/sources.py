@@ -29,7 +29,7 @@ from autoinfo.status import get_source_health
 
 app = typer.Typer(help="Manage collection sources")
 
-_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf"})
+_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf", "yahoo_finance", "quandl"})
 
 
 # ---------------------------------------------------------------------------

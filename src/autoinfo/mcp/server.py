@@ -983,7 +983,7 @@ def _handle_get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
 # Source management tools
 # ---------------------------------------------------------------------------
 
-_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf"})
+_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf", "yahoo_finance", "quandl"})
 
 
 def _validate_url(
@@ -5124,6 +5124,49 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Recommendation (1)
+# ---------------------------------------------------------------------------
+
+
+def _handle_recommend_content(
+    user_id: str,
+    query: str = "",
+    domain: str = "",
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Handle recommend_content MCP tool."""
+    try:
+        from autoinfo.recommend import ContentBasedEngine
+
+        engine = ContentBasedEngine()
+        items = engine.recommend(
+            user_id=user_id,
+            query=query,
+            domain=domain or None,
+            limit=limit,
+        )
+        return {
+            "user_id": user_id,
+            "query": query,
+            "items": [
+                {
+                    "entry_id": item.entry_id,
+                    "title": item.title,
+                    "score": item.score,
+                    "reason": item.reason,
+                    "source_url": item.source_url,
+                    "domain": item.domain,
+                }
+                for item in items
+            ],
+            "count": len(items),
+        }
+    except Exception as exc:
+        logger.error("recommend_content failed: %s", exc)
+        return {"error": str(exc), "items": [], "count": 0}
+
+
+# ---------------------------------------------------------------------------
 # KB: Create entry from scratch (1)
 # ---------------------------------------------------------------------------
 
@@ -9105,6 +9148,33 @@ async def list_tools() -> list[Tool]:
                 "required": ["callback_id"],
             },
         ),
+        # -- Recommendation (1) ---------------------------------------------
+        Tool(
+            name="recommend_content",
+            description="Return content-based recommendations for a user query",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "User identifier",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search/recommendation query",
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain filter (optional)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default 10)",
+                    },
+                },
+                "required": ["user_id"],
+            },
+        ),
     ]
 
 
@@ -9474,6 +9544,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_agent_callbacks()
         elif name == "remove_agent_callback":
             result = _handle_remove_agent_callback(**arguments)
+
+        # -- Recommendation (1) --------------------------------------------
+        elif name == "recommend_content":
+            result = _handle_recommend_content(**arguments)
 
         else:
             return [

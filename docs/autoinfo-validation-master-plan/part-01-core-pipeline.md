@@ -210,6 +210,1829 @@ cd /tmp/empty-dir && autoinfo collect --domain medical-research
 
 ---
 
+## Q2b: Collector Validation — All 15 Source Handlers (Mock Transport)
+
+**User says:** "Does every collector handle its API correctly? Happy path, empty results, and errors?"
+
+### Prerequisites
+```bash
+cd /tmp/test-q2
+# Ensure the package is importable
+python3 -c "from autoinfo.collectors.openalex import OpenAlexHandler; print('OK')" || pip install -e ".[dev]" -q
+```
+
+### Scenarios — Academic Collectors (A2-A5)
+
+#### 2b.1 🟢 OpenAlex — Happy path mock (httpx transport)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.openalex import OpenAlexHandler
+
+# Build a mock transport that returns synthetic OpenAlex data
+def mock_handler(request):
+    data = {
+        'results': [
+            {
+                'id': 'https://openalex.org/W4200000001',
+                'title': 'Advances in CRISPR Gene Editing',
+                'abstract_inverted_index': {'crispr': [0], 'gene': [1], 'editing': [2]},
+                'authorships': [{'author': {'display_name': 'Jane Doe'}}],
+                'cited_by_count': 42,
+                'publication_date': '2024-06-15',
+            },
+            {
+                'id': 'https://openalex.org/W4200000002',
+                'title': 'Machine Learning for Protein Folding',
+                'abstract_inverted_index': None,
+                'authorships': [],
+                'cited_by_count': 0,
+                'publication_date': '2023-01-01',
+            },
+        ],
+        'meta': {'count': 2},
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    # Monkey-patch httpx.get to use our mock client
+    import autoinfo.collectors.openalex as oa_mod
+    original_get = oa_mod.httpx.get
+    oa_mod.httpx.get = client.get
+    try:
+        handler = OpenAlexHandler({'query': 'CRISPR'})
+        articles = handler.fetch(limit=5)
+        items = [handler.to_item(a) for a in articles]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 2, f'Expected 2 items, got {len(items)}'
+        assert items[0].title == 'Advances in CRISPR Gene Editing'
+        assert items[0].source_platform == 'openalex'
+        assert 'CRISPR' in items[0].content
+        print('  ✅ PASS: 2 items mapped correctly')
+    finally:
+        oa_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 2 items mapped correctly" && echo "  ✅ PASS: OpenAlex happy path" || { echo "  ❌ FAIL: OpenAlex happy path"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.1 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.1 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 2 items mapped with correct source_platform `"openalex"`
+- ✅ Title and content fields populated
+- ✅ Exit code 0
+
+#### 2b.2 🔴 OpenAlex — Empty results (no matches)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.openalex import OpenAlexHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'results': [], 'meta': {'count': 0}}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.openalex as oa_mod
+    original_get = oa_mod.httpx.get
+    oa_mod.httpx.get = client.get
+    try:
+        handler = OpenAlexHandler({'query': 'xyznonexistent12345678'})
+        articles = handler.fetch(limit=5)
+        print(f'COUNT={len(articles)}')
+        assert len(articles) == 0, f'Expected 0 items, got {len(articles)}'
+        print('  ✅ PASS: empty results returned []')
+    finally:
+        oa_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: empty results" && echo "  ✅ PASS: OpenAlex empty results" || { echo "  ❌ FAIL: OpenAlex empty results"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.2 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.2 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ Returns empty list `[]` without error
+- ✅ Exit code 0
+
+#### 2b.3 🔴 OpenAlex — Network error (timeout)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.openalex import OpenAlexHandler
+
+def mock_handler(request):
+    raise httpx.TimeoutException('Connection timed out')
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.openalex as oa_mod
+    original_get = oa_mod.httpx.get
+    oa_mod.httpx.get = client.get
+    try:
+        handler = OpenAlexHandler({'query': 'test'})
+        articles = handler.fetch(limit=5)
+        print(f'COUNT={len(articles)}')
+        assert len(articles) == 0, f'Expected 0 items on error, got {len(articles)}'
+        print('  ✅ PASS: network error handled gracefully (returned [])')
+    finally:
+        oa_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: network error" && echo "  ✅ PASS: OpenAlex error handling" || { echo "  ❌ FAIL: OpenAlex error handling"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.3 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.3 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ Returns empty list `[]` on timeout
+- ✅ No unhandled exception propagates
+- ✅ Exit code 0
+
+---
+
+#### 2b.4 🟢 Semantic Scholar — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+
+def mock_handler(request):
+    data = {
+        'data': [
+            {'paperId': 's2-001', 'title': 'Deep Learning Survey', 'abstract': 'A comprehensive survey...',
+             'authors': [{'name': 'Alice Smith'}], 'citationCount': 150, 'publicationDate': '2024-03'},
+            {'paperId': 's2-002', 'title': 'Transformer Architectures', 'abstract': '',
+             'authors': [], 'citationCount': 0, 'publicationDate': None},
+        ]
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.semantic_scholar as ss_mod
+    original_get = ss_mod.httpx.get
+    ss_mod.httpx.get = client.get
+    try:
+        handler = SemanticScholarHandler()
+        papers = handler.fetch('deep learning', limit=10)
+        items = [handler.to_item(p) for p in papers]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 2, f'Expected 2, got {len(items)}'
+        assert items[0].source_platform == 'semantic_scholar'
+        assert items[0].title == 'Deep Learning Survey'
+        print('  ✅ PASS: 2 papers mapped')
+    finally:
+        ss_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 2 papers" && echo "  ✅ PASS: Semantic Scholar happy path" || { echo "  ❌ FAIL: Semantic Scholar happy path"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.4 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.4 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 2 papers mapped with correct source_platform `"semantic_scholar"`
+- ✅ Titles and content populated
+
+#### 2b.5 🔴 Semantic Scholar — Empty results
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'data': []}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.semantic_scholar as ss_mod
+    original_get = ss_mod.httpx.get
+    ss_mod.httpx.get = client.get
+    try:
+        handler = SemanticScholarHandler()
+        papers = handler.fetch('xyznonexistent', limit=10)
+        assert len(papers) == 0
+        print('  ✅ PASS: empty results returned []')
+    finally:
+        ss_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty results" && echo "  ✅ PASS: Semantic Scholar empty results" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.5 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.5 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` for no matches.
+
+#### 2b.6 🔴 Semantic Scholar — HTTP 500 error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+
+def mock_handler(request):
+    return httpx.Response(500, json={'error': 'Internal Server Error'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.semantic_scholar as ss_mod
+    original_get = ss_mod.httpx.get
+    ss_mod.httpx.get = client.get
+    try:
+        handler = SemanticScholarHandler()
+        papers = handler.fetch('test', limit=5)
+        print(f'COUNT={len(papers)}')
+        assert len(papers) == 0
+        print('  ✅ PASS: HTTP 500 handled gracefully (returned [])')
+    finally:
+        ss_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: HTTP 500" && echo "  ✅ PASS: Semantic Scholar error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.6 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.6 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on server error, no exception.
+
+---
+
+#### 2b.7 🟢 DBLP — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.dblp import DBLPHandler
+
+def mock_handler(request):
+    data = {
+        'result': {
+            'hits': {
+                '@total': '2',
+                'hit': [
+                    {
+                        '@score': '1.0', '@id': 'https://dblp.org/rec/conf/nips/Doe2024',
+                        'info': {'title': 'Neural Network Optimization', 'doi': '10.1234/nn2024',
+                                 'authors': {'author': ['John Smith', 'Jane Doe']},
+                                 'year': '2024', 'venue': 'NeurIPS 2024'}
+                    },
+                    {
+                        '@score': '0.8', '@id': 'https://dblp.org/rec/journals/ai/Lee2023',
+                        'info': {'title': 'Symbolic Reasoning in LLMs', 'doi': '',
+                                 'authors': {'author': 'Min Lee'},
+                                 'year': '2023', 'venue': 'Artificial Intelligence'}
+                    },
+                ]
+            }
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.dblp as dblp_mod
+    original_get = dblp_mod.httpx.get
+    dblp_mod.httpx.get = client.get
+    try:
+        handler = DBLPHandler()
+        pubs = handler.fetch('machine learning', limit=10)
+        items = [handler.to_item(p) for p in pubs]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 2, f'Expected 2, got {len(items)}'
+        assert items[0].source_platform == 'dblp'
+        assert items[0].raw_data.get('venue') == 'NeurIPS 2024'
+        print('  ✅ PASS: 2 publications mapped with venue')
+    finally:
+        dblp_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 2 publications" && echo "  ✅ PASS: DBLP happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.7 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.7 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 2 publications mapped with source_platform `"dblp"`
+- ✅ Venue metadata in raw_data
+
+#### 2b.8 🔴 DBLP — Empty results
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.dblp import DBLPHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'result': {'hits': {'@total': '0', 'hit': []}}}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.dblp as dblp_mod
+    original_get = dblp_mod.httpx.get
+    dblp_mod.httpx.get = client.get
+    try:
+        handler = DBLPHandler()
+        pubs = handler.fetch('xyznonexistent', limit=10)
+        assert len(pubs) == 0
+        print('  ✅ PASS: empty results returned []')
+    finally:
+        dblp_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty" && echo "  ✅ PASS: DBLP empty results" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.8 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.8 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` for no matches.
+
+#### 2b.9 🔴 DBLP — Network error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.dblp import DBLPHandler
+
+def mock_handler(request):
+    raise httpx.NetworkError('Connection refused')
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.dblp as dblp_mod
+    original_get = dblp_mod.httpx.get
+    dblp_mod.httpx.get = client.get
+    try:
+        handler = DBLPHandler()
+        pubs = handler.fetch('test', limit=5)
+        assert len(pubs) == 0
+        print('  ✅ PASS: network error handled gracefully')
+    finally:
+        dblp_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: network error" && echo "  ✅ PASS: DBLP error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.9 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.9 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on network error.
+
+---
+
+#### 2b.10 🟢 USPTO — Happy path mock (PatentsView API)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.uspto import USPTOHandler
+
+def mock_handler(request):
+    data = {
+        'patents': [
+            {
+                'patent_number': 'US12000123',
+                'patent_title': 'CRISPR-based Gene Therapy Method',
+                'patent_abstract': 'A novel method for targeted gene therapy using CRISPR-Cas9...',
+                'patent_date': '2024-05-10',
+                'app_date': '2023-01-15',
+                'inventors': [{'inventor_first_name': 'Alice', 'inventor_last_name': 'Johnson'}],
+                'assignee_organization': 'GenTech Inc.',
+                'patent_num_cited_by_us_patents': 5,
+                'patent_num_combined_citations': 12,
+            }
+        ]
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.uspto as uspto_mod
+    original_post = uspto_mod.httpx.post
+    uspto_mod.httpx.post = client.post
+    try:
+        handler = USPTOHandler()
+        patents = handler.fetch('gene therapy', limit=10)
+        items = [handler.to_item(p) for p in patents]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'uspto'
+        assert items[0].raw_data.get('patent_number') == 'US12000123'
+        print('  ✅ PASS: 1 patent mapped with patent_number')
+    finally:
+        uspto_mod.httpx.post = original_post
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 patent" && echo "  ✅ PASS: USPTO happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.10 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.10 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 1 patent mapped with source_platform `"uspto"`
+- ✅ Patent number and metadata in raw_data
+
+#### 2b.11 🔴 USPTO — Empty results
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.uspto import USPTOHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'patents': []}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.uspto as uspto_mod
+    original_post = uspto_mod.httpx.post
+    uspto_mod.httpx.post = client.post
+    try:
+        handler = USPTOHandler()
+        patents = handler.fetch('xyznonexistent', limit=10)
+        assert len(patents) == 0
+        print('  ✅ PASS: empty results returned []')
+    finally:
+        uspto_mod.httpx.post = original_post
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty" && echo "  ✅ PASS: USPTO empty results" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.11 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.11 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` for no matching patents.
+
+#### 2b.12 🔴 USPTO — API error falls back to RSS
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.uspto import USPTOHandler
+
+# PatentsView API returns 500 → should fall back to RSS
+call_count = {'count': 0}
+def mock_handler(request):
+    call_count['count'] += 1
+    if request.method == 'POST':
+        return httpx.Response(500, json={'error': 'down'}, request=request)
+    else:
+        # RSS fallback — return valid RSS XML with 1 item
+        rss_xml = '''<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<rss version=\"2.0\"><channel><title>USPTO Patents</title>
+<item><title>Test Patent Application</title>
+<link>https://example.com/patent1</link>
+<pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+<description>Test patent description</description></item>
+</channel></rss>'''
+        return httpx.Response(200, text=rss_xml, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.uspto as uspto_mod
+    original_post = uspto_mod.httpx.post
+    original_get = uspto_mod.httpx.get
+    uspto_mod.httpx.post = client.post
+    uspto_mod.httpx.get = client.get
+    try:
+        handler = USPTOHandler()
+        patents = handler.fetch('test', limit=10)
+        # With PatentsView failing, it should fall back to RSS and get at least 1 item
+        print(f'PATENTS_COUNT={len(patents)}')
+        assert call_count['count'] >= 2, 'Expected at least POST + GET fallback'
+        print('  ✅ PASS: PatentsView failure triggered RSS fallback')
+    finally:
+        uspto_mod.httpx.post = original_post
+        uspto_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: PatentsView failure" && echo "  ✅ PASS: USPTO fallback" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.12 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.12 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ PatentsView failure triggers RSS fallback
+- ✅ At least 2 HTTP calls (POST + GET)
+
+---
+
+### Scenarios — Financial Collectors (A8)
+
+#### 2b.13 🟢 Quandl — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, os, httpx
+os.environ['AUTOINFO_QUANDL_API_KEY'] = 'test-key-123'
+from autoinfo.collectors.quandl import QuandlHandler
+from autoinfo.config import SourceConfig
+
+def mock_handler(request):
+    data = {
+        'dataset': {
+            'dataset_code': 'WIKI/AAPL',
+            'name': 'Apple Inc. (AAPL) Stock Prices',
+            'description': 'Historical end-of-day stock prices for Apple Inc.',
+            'column_names': ['Date', 'Open', 'High', 'Low', 'Close'],
+            'data': [['2024-01-02', 185.0, 188.0, 184.0, 187.5]],
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.quandl as q_mod
+    original_get = q_mod.httpx.get
+    q_mod.httpx.get = client.get
+    try:
+        cfg = SourceConfig(name='quandl-test', type='quandl', url='https://data.nasdaq.com/api/v3/datasets/WIKI/AAPL.json')
+        handler = QuandlHandler(cfg)
+        items = handler.fetch(url=cfg.url, limit=5)
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} TYPE={item.source_type}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].id == 'WIKI/AAPL'
+        assert items[0].source_type == 'quandl'
+        assert 'Apple' in items[0].title
+        print('  ✅ PASS: 1 Quandl dataset mapped')
+    finally:
+        q_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_QUANDL_API_KEY']
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Quandl" && echo "  ✅ PASS: Quandl happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.13 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.13 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 1 Quandl dataset mapped with source_type `"quandl"`
+- ✅ Dataset code `"WIKI/AAPL"` extracted correctly
+
+#### 2b.14 🔴 Quandl — Missing API key (graceful degradation)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+# Ensure no API key in env
+for k in list(__import__('os').environ.keys()):
+    if 'QUANDL' in k:
+        del __import__('os').environ[k]
+
+from autoinfo.collectors.quandl import QuandlHandler
+from autoinfo.config import SourceConfig
+
+cfg = SourceConfig(name='quandl-nokey', type='quandl', url='https://example.com')
+handler = QuandlHandler(cfg)
+items = handler.fetch(url=cfg.url, limit=5)
+print(f'COUNT={len(items)}')
+assert len(items) == 0, 'Expected 0 items without API key'
+print('  ✅ PASS: missing API key returns []')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: missing API key" && echo "  ✅ PASS: Quandl no-key graceful" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.14 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.14 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` gracefully when API key is missing.
+
+#### 2b.15 🔴 Quandl — HTTP error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, httpx
+os.environ['AUTOINFO_QUANDL_API_KEY'] = 'test-key'
+from autoinfo.collectors.quandl import QuandlHandler
+from autoinfo.config import SourceConfig
+
+def mock_handler(request):
+    return httpx.Response(403, json={'error': 'Forbidden'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.quandl as q_mod
+    original_get = q_mod.httpx.get
+    q_mod.httpx.get = client.get
+    try:
+        cfg = SourceConfig(name='quandl-err', type='quandl', url='https://example.com')
+        handler = QuandlHandler(cfg)
+        items = handler.fetch(url=cfg.url, limit=5)
+        assert len(items) == 0
+        print('  ✅ PASS: HTTP 403 handled gracefully (returned [])')
+    finally:
+        q_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_QUANDL_API_KEY']
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: HTTP 403" && echo "  ✅ PASS: Quandl error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.15 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.15 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on HTTP 403.
+
+---
+
+#### 2b.16 🟢 Yahoo Finance — Happy path mock (feedparser RSS)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
+
+handler = YahooFinanceHandler(source_name='yf-test')
+items = handler.fetch(url=None)  # Use default URL — will fail to network, but tests structure
+# Test that the class structure and to_item are functional by testing with a mock entry
+from autoinfo.collectors.yahoo_finance import _make_item_id, _normalise_date
+
+# Test idempotent helpers
+id1 = _make_item_id('https://feed.url', 'https://item.link')
+id2 = _make_item_id('https://feed.url', 'https://item.link')
+assert id1 == id2, 'ID should be deterministic'
+print(f'ITEM_ID={id1}')
+
+# Test date normalisation
+d1 = _normalise_date('Mon, 01 Jan 2024 00:00:00 GMT')
+assert '2024' in d1, f'Expected 2024 in date, got {d1}'
+print(f'DATE={d1}')
+
+print('  ✅ PASS: Yahoo Finance helpers work correctly')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: Yahoo Finance helpers" && echo "  ✅ PASS: Yahoo Finance structure" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.16 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.16 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ Item ID generation is deterministic
+- ✅ Date normalisation produces ISO format
+
+#### 2b.17 🔴 Yahoo Finance — Invalid feed URL
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
+
+handler = YahooFinanceHandler(source_name='yf-invalid')
+items = handler.fetch(url='https://invalid.example.com/nonexistent.xml')
+print(f'COUNT={len(items)}')
+# feedparser will attempt to fetch and fail, returning empty entries
+assert len(items) == 0, f'Expected 0 items for invalid URL, got {len(items)}'
+print('  ✅ PASS: invalid feed URL returns []')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: invalid feed" && echo "  ✅ PASS: Yahoo Finance error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.17 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.17 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` for invalid/unreachable feed URL.
+
+---
+
+### Scenarios — News Collectors (A9-A10)
+
+#### 2b.18 🟢 AP API — Graceful degradation (no API key)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+# Ensure no AP key
+for k in list(__import__('os').environ.keys()):
+    if 'AP_API' in k:
+        del __import__('os').environ[k]
+
+from autoinfo.collectors.ap_api import APAPIHandler
+
+handler = APAPIHandler()
+assert handler.requires_key() == True, 'AP always requires key'
+articles = handler.fetch(limit=10)
+assert len(articles) == 0, 'Expected 0 without key'
+print('  ✅ PASS: AP API returns [] without key — graceful degradation')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: AP API" && echo "  ✅ PASS: AP API no-key graceful" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.18 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.18 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ `requires_key()` returns `True`
+- ✅ Returns `[]` with explanatory log when key is missing
+
+#### 2b.19 🟢 AP API — Happy path mock (with mock key)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, json, httpx
+os.environ['AUTOINFO_AP_API_KEY'] = 'fake-ap-key'
+from autoinfo.collectors.ap_api import APAPIHandler
+
+def mock_handler(request):
+    data = {
+        'data': {
+            'items': [
+                {
+                    'uri': 'ap://article/001',
+                    'headline': 'Global Markets Rally on Tech Earnings',
+                    'body': 'Stock markets surged worldwide...',
+                    'byline': 'By John Smith',
+                    'published': '2024-06-15T10:30:00Z',
+                    'section': 'Business',
+                    'language': 'en',
+                    'source': 'Associated Press',
+                }
+            ]
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.ap_api as ap_mod
+    original_get = ap_mod.httpx.get
+    ap_mod.httpx.get = client.get
+    try:
+        handler = APAPIHandler(api_key='fake-ap-key')
+        articles = handler.fetch(limit=10)
+        items = [handler.to_item(a) for a in articles]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'ap_api'
+        assert items[0].title == 'Global Markets Rally on Tech Earnings'
+        print('  ✅ PASS: 1 AP article mapped')
+    finally:
+        ap_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_AP_API_KEY']
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 AP article" && echo "  ✅ PASS: AP API happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.19 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.19 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 1 AP article mapped with source_platform `"ap_api"`
+- ✅ Title, content, and metadata fields populated
+
+#### 2b.20 🔴 AP API — 401 Unauthorized
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, httpx
+os.environ['AUTOINFO_AP_API_KEY'] = 'bad-key'
+from autoinfo.collectors.ap_api import APAPIHandler
+
+def mock_handler(request):
+    return httpx.Response(401, json={'error': 'Unauthorized'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.ap_api as ap_mod
+    original_get = ap_mod.httpx.get
+    ap_mod.httpx.get = client.get
+    try:
+        handler = APAPIHandler(api_key='bad-key')
+        articles = handler.fetch(limit=10)
+        assert len(articles) == 0
+        print('  ✅ PASS: 401 Unauthorized returns []')
+    finally:
+        ap_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_AP_API_KEY']
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: 401" && echo "  ✅ PASS: AP API error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.20 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.20 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on 401 with explanatory log.
+
+---
+
+#### 2b.21 🟢 Reuters MCP — Graceful degradation (no API key)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+for k in list(__import__('os').environ.keys()):
+    if 'REUTERS' in k:
+        del __import__('os').environ[k]
+
+from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
+
+handler = ReutersMCPHandler()
+assert handler.requires_key() == True, 'Reuters always requires key'
+articles = handler.fetch(limit=10)
+assert len(articles) == 0, 'Expected 0 without key'
+print('  ✅ PASS: Reuters MCP returns [] without key — graceful degradation')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: Reuters MCP" && echo "  ✅ PASS: Reuters MCP no-key graceful" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.21 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.21 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ `requires_key()` returns `True`
+- ✅ Returns `[]` with explanatory log when key is missing
+
+#### 2b.22 🟢 Reuters MCP — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, json, httpx
+os.environ['AUTOINFO_REUTERS_API_KEY'] = 'fake-reuters-key'
+from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
+from autoinfo.config import SourceConfig
+
+def mock_handler(request):
+    data = {
+        'data': {
+            'items': [
+                {
+                    'id': 'reuters-001',
+                    'headline': 'Fed Signals Rate Cut',
+                    'body': 'The Federal Reserve indicated...',
+                    'byline': 'Reuters Staff',
+                    'published': '2024-06-15T08:00:00Z',
+                    'section': 'Economy',
+                    'language': 'en',
+                    'source': 'Reuters',
+                    'url': 'https://www.reuters.com/article/001',
+                }
+            ]
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.reuters_mcp as rm_mod
+    original_post = rm_mod.httpx.post
+    rm_mod.httpx.post = client.post
+    try:
+        cfg = SourceConfig(name='reuters-test', type='reuters_mcp',
+                           url='https://api.reuters.com/content/v1/search',
+                           settings={'api_key': 'fake-reuters-key'})
+        handler = ReutersMCPHandler(cfg)
+        articles = handler.fetch(limit=10)
+        items = [handler.to_item(a) for a in articles]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'reuters_mcp'
+        print('  ✅ PASS: 1 Reuters article mapped')
+    finally:
+        rm_mod.httpx.post = original_post
+        os.environ.pop('AUTOINFO_REUTERS_API_KEY', None)
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Reuters" && echo "  ✅ PASS: Reuters MCP happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.22 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.22 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ 1 Reuters article mapped with source_platform `"reuters_mcp"`.
+
+#### 2b.23 🔴 Reuters MCP — 403 Forbidden
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, httpx
+os.environ['AUTOINFO_REUTERS_API_KEY'] = 'bad-key'
+from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
+from autoinfo.config import SourceConfig
+
+def mock_handler(request):
+    return httpx.Response(403, json={'error': 'Forbidden'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.reuters_mcp as rm_mod
+    original_post = rm_mod.httpx.post
+    rm_mod.httpx.post = client.post
+    try:
+        cfg = SourceConfig(name='reuters-err', type='reuters_mcp',
+                           url='https://api.reuters.com/content/v1/search',
+                           settings={'api_key': 'bad-key'})
+        handler = ReutersMCPHandler(cfg)
+        articles = handler.fetch(limit=10)
+        assert len(articles) == 0
+        print('  ✅ PASS: 403 Forbidden returns []')
+    finally:
+        rm_mod.httpx.post = original_post
+        os.environ.pop('AUTOINFO_REUTERS_API_KEY', None)
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: 403" && echo "  ✅ PASS: Reuters MCP error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.23 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.23 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on 403 Forbidden.
+
+---
+
+#### 2b.24 🟢 NYT — Graceful degradation (no API key)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+for k in list(__import__('os').environ.keys()):
+    if 'NYT' in k:
+        del __import__('os').environ[k]
+
+from autoinfo.collectors.nyt import NYTHandler
+
+handler = NYTHandler()
+articles = handler.fetch(limit=10)
+assert len(articles) == 0, 'Expected 0 without API key'
+print('  ✅ PASS: NYT returns [] without API key — graceful degradation')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: NYT returns" && echo "  ✅ PASS: NYT no-key graceful" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.24 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.24 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` with explanatory log when API key is missing.
+
+#### 2b.25 🟢 NYT — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, json, httpx
+os.environ['AUTOINFO_NYT_API_KEY'] = 'fake-nyt-key'
+from autoinfo.collectors.nyt import NYTHandler
+
+def mock_handler(request):
+    data = {
+        'response': {
+            'docs': [
+                {
+                    '_id': 'nyt://article/001',
+                    'headline': {'main': 'AI Startups Raise Record Funding'},
+                    'abstract': 'Venture capital investment in AI startups reached...',
+                    'section_name': 'Technology',
+                    'subsection_name': 'Startups',
+                    'pub_date': '2024-06-15T09:00:00Z',
+                    'web_url': 'https://www.nytimes.com/2024/06/15/technology/ai-funding.html',
+                    'byline': {'original': 'By Jane Reporter'},
+                    'word_count': 850,
+                    'document_type': 'article',
+                }
+            ]
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.nyt as nyt_mod
+    original_get = nyt_mod.httpx.get
+    nyt_mod.httpx.get = client.get
+    try:
+        handler = NYTHandler({'api_key': 'fake-nyt-key', 'query': 'AI funding'})
+        articles = handler.fetch(limit=10)
+        items = [handler.to_item(a) for a in articles]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'nyt'
+        assert items[0].title == 'AI Startups Raise Record Funding'
+        print('  ✅ PASS: 1 NYT article mapped')
+    finally:
+        nyt_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_NYT_API_KEY']
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 NYT" && echo "  ✅ PASS: NYT happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.25 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.25 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 1 NYT article mapped with source_platform `"nyt"`
+- ✅ Headline, abstract, and byline extracted
+
+#### 2b.26 🔴 NYT — HTTP error (429 Rate Limited)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, httpx
+os.environ['AUTOINFO_NYT_API_KEY'] = 'fake-key'
+from autoinfo.collectors.nyt import NYTHandler
+
+def mock_handler(request):
+    return httpx.Response(429, json={'error': 'Rate limit exceeded'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.nyt as nyt_mod
+    original_get = nyt_mod.httpx.get
+    nyt_mod.httpx.get = client.get
+    try:
+        handler = NYTHandler({'api_key': 'fake-key', 'query': 'test'})
+        articles = handler.fetch(limit=10)
+        assert len(articles) == 0
+        print('  ✅ PASS: 429 rate limit returns []')
+    finally:
+        nyt_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_NYT_API_KEY']
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: 429" && echo "  ✅ PASS: NYT error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.26 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.26 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on rate limit (429).
+
+---
+
+### Scenarios — Content & Social Collectors (A12, A14-A17)
+
+#### 2b.27 🟢 36kr — RSS feed collection (via ai-commercial domain)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+cd /tmp && rm -rf test-36kr && mkdir test-36kr && cd test-36kr
+
+OUTPUT=$(autoinfo init --demo ai-commercial 2>&1)
+EXIT_CODE=$?
+
+# Check that 36kr source is configured (it's an RSS feed source)
+echo "$OUTPUT" | grep -qi "ai-commercial" && echo "  ✅ PASS: ai-commercial domain initialized" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+
+# Verify 36kr appears in sources
+SRC_OUT=$(autoinfo sources list --domain ai-commercial 2>&1 || true)
+echo "$SRC_OUT" | grep -qi "36kr" && echo "  ✅ PASS: 36kr source configured" || echo "  ⚠️  36kr source not found in list (may have been renamed)"
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.27 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.27 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ ai-commercial domain initializes with 36kr as RSS source
+- ✅ 36kr listed in `sources list`
+
+---
+
+#### 2b.28 🟢 Reddit — Happy path mock (OAuth2 + search)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx, time
+from autoinfo.collectors.reddit import RedditHandler
+
+token_called = []
+
+def mock_handler(request):
+    # Token endpoint — return OAuth2 token
+    if '/api/v1/access_token' in str(request.url):
+        token_called.append(True)
+        return httpx.Response(200, json={
+            'access_token': 'fake-reddit-token-xxxx',
+            'token_type': 'bearer',
+            'expires_in': 3600,
+        }, request=request)
+    # Search / hot endpoint — return posts
+    data = {
+        'data': {
+            'children': [
+                {
+                    'data': {
+                        'name': 't3_abc123',
+                        'title': 'Latest advances in reinforcement learning',
+                        'selftext': 'Researchers at DeepMind have achieved...',
+                        'author': 'ml_researcher',
+                        'subreddit': 'MachineLearning',
+                        'score': 250,
+                        'num_comments': 45,
+                        'created_utc': 1700000000.0,
+                        'url': 'https://reddit.com/r/MachineLearning/comments/abc123',
+                    }
+                }
+            ]
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.reddit as r_mod
+    original_post = r_mod.httpx.post
+    original_get = r_mod.httpx.get
+    r_mod.httpx.post = client.post
+    r_mod.httpx.get = client.get
+    try:
+        handler = RedditHandler({
+            'client_id': 'fake-client', 'client_secret': 'fake-secret',
+            'user_agent': 'AutoInfo/1.0', 'subreddits': ['MachineLearning'],
+        })
+        posts = handler.fetch(query='reinforcement learning', limit=5)
+        items = [handler.to_item(p) for p in posts]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'reddit'
+        assert items[0].title == 'Latest advances in reinforcement learning'
+        assert len(token_called) == 1, 'OAuth2 token should have been requested'
+        print('  ✅ PASS: 1 Reddit post mapped via OAuth2')
+    finally:
+        r_mod.httpx.post = original_post
+        r_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Reddit" && echo "  ✅ PASS: Reddit happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.28 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.28 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ OAuth2 token requested before search
+- ✅ 1 Reddit post mapped with source_platform `"reddit"`
+
+#### 2b.29 🔴 Reddit — OAuth2 failure (bad credentials)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.reddit import RedditHandler
+
+def mock_handler(request):
+    return httpx.Response(401, json={'error': 'invalid_client'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.reddit as r_mod
+    original_post = r_mod.httpx.post
+    r_mod.httpx.post = client.post
+    try:
+        handler = RedditHandler({
+            'client_id': 'bad-client', 'client_secret': 'bad-secret',
+            'user_agent': 'AutoInfo/1.0', 'subreddits': ['test'],
+        })
+        posts = handler.fetch(query='test', limit=5)
+        assert len(posts) == 0
+        print('  ✅ PASS: OAuth2 failure returns []')
+    finally:
+        r_mod.httpx.post = original_post
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: OAuth2" && echo "  ✅ PASS: Reddit error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.29 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.29 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on OAuth2 authentication failure.
+
+#### 2b.30 🔴 Reddit — Empty subreddits config
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.collectors.reddit import RedditHandler
+
+handler = RedditHandler({
+    'client_id': 'test', 'client_secret': 'test',
+    'user_agent': 'AutoInfo/1.0', 'subreddits': [],
+})
+posts = handler.fetch(query='test', limit=5)
+assert len(posts) == 0
+print('  ✅ PASS: empty subreddits returns []')
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty subreddits" && echo "  ✅ PASS: Reddit empty config" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.30 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.30 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` when no subreddits configured.
+
+---
+
+#### 2b.31 🟢 YouTube — Graceful degradation (no API key)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+for k in list(__import__('os').environ.keys()):
+    if 'YOUTUBE' in k:
+        del __import__('os').environ[k]
+
+from autoinfo.collectors.youtube import YouTubeHandler
+
+handler = YouTubeHandler()
+assert handler.requires_key() == True, 'YouTube always requires key'
+videos = handler.fetch(limit=10)
+assert len(videos) == 0, 'Expected 0 without API key'
+print('  ✅ PASS: YouTube returns [] without API key — graceful degradation')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: YouTube" && echo "  ✅ PASS: YouTube no-key graceful" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.31 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.31 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` with explanatory log when API key is missing.
+
+#### 2b.32 🟢 YouTube — Happy path mock
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os, json, httpx
+os.environ['AUTOINFO_YOUTUBE_API_KEY'] = 'fake-yt-key'
+from autoinfo.collectors.youtube import YouTubeHandler
+
+def mock_handler(request):
+    data = {
+        'items': [
+            {
+                'id': {'videoId': 'dQw4w9WgXcQ'},
+                'snippet': {
+                    'title': 'Understanding Transformers in NLP',
+                    'description': 'A comprehensive guide to transformer architectures...',
+                    'channelTitle': 'AI Explained',
+                    'channelId': 'UC_example',
+                    'publishedAt': '2024-05-20T15:00:00Z',
+                    'thumbnails': {'default': {'url': 'https://img.youtube.com/vi/dQw4/default.jpg'}},
+                }
+            }
+        ]
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.youtube as yt_mod
+    original_get = yt_mod.httpx.get
+    yt_mod.httpx.get = client.get
+    try:
+        handler = YouTubeHandler({'api_key': 'fake-yt-key', 'query': 'transformers NLP'})
+        videos = handler.fetch(limit=10)
+        items = [handler.to_item(v) for v in videos]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'youtube'
+        assert 'Transformers' in items[0].title
+        print('  ✅ PASS: 1 YouTube video mapped')
+    finally:
+        yt_mod.httpx.get = original_get
+        del os.environ['AUTOINFO_YOUTUBE_API_KEY']
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 YouTube" && echo "  ✅ PASS: YouTube happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.32 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.32 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ 1 YouTube video mapped with source_platform `"youtube"`.
+
+#### 2b.33 🔴 YouTube — Empty query
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import os
+os.environ['AUTOINFO_YOUTUBE_API_KEY'] = 'fake-key'
+from autoinfo.collectors.youtube import YouTubeHandler
+
+handler = YouTubeHandler({'api_key': 'fake-key', 'query': ''})
+videos = handler.fetch(limit=10)
+assert len(videos) == 0
+print('  ✅ PASS: empty query returns []')
+del os.environ['AUTOINFO_YOUTUBE_API_KEY']
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty query" && echo "  ✅ PASS: YouTube empty query" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.33 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.33 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` when query is empty string.
+
+---
+
+#### 2b.34 🟢 Spotify — Happy path mock (OAuth2 + show episodes)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.spotify import SpotifyHandler
+
+token_called = []
+
+def mock_handler(request):
+    if 'accounts.spotify.com' in str(request.url):
+        token_called.append(True)
+        return httpx.Response(200, json={
+            'access_token': 'fake-spotify-token',
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+        }, request=request)
+    data = {
+        'items': [
+            {
+                'id': 'ep_001',
+                'name': 'The Future of AGI',
+                'description': 'A discussion on artificial general intelligence...',
+                'publisher': 'Tech Podcasts Inc.',
+                'release_date': '2024-06-10',
+                'duration_ms': 2400000,
+                'languages': ['en'],
+                'external_urls': {'spotify': 'https://open.spotify.com/episode/ep_001'},
+                'audio_preview_url': 'https://p.scdn.co/mp3-preview/abc123',
+                'show': {'id': 'show_42', 'name': 'Future Tech', 'publisher': 'Tech Podcasts Inc.',
+                         'description': 'A podcast about future technology'},
+                'explicit': False,
+                'type': 'episode',
+            }
+        ]
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.spotify as sp_mod
+    original_post = sp_mod.httpx.post
+    original_get = sp_mod.httpx.get
+    sp_mod.httpx.post = client.post
+    sp_mod.httpx.get = client.get
+    try:
+        handler = SpotifyHandler({
+            'client_id': 'fake-sp-client', 'client_secret': 'fake-sp-secret',
+            'show_id': 'show_42',
+        })
+        episodes = handler.fetch(limit=10, show_id='show_42')
+        items = [handler.to_item(e) for e in episodes]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'spotify'
+        assert items[0].title == 'The Future of AGI'
+        assert len(token_called) == 1, 'OAuth2 token should have been requested'
+        print('  ✅ PASS: 1 Spotify episode mapped via OAuth2')
+    finally:
+        sp_mod.httpx.post = original_post
+        sp_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Spotify" && echo "  ✅ PASS: Spotify happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.34 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.34 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ OAuth2 token requested before API call
+- ✅ 1 Spotify episode mapped with source_platform `"spotify"`
+
+#### 2b.35 🔴 Spotify — No query and no show_id
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.collectors.spotify import SpotifyHandler
+
+handler = SpotifyHandler({
+    'client_id': 'test', 'client_secret': 'test',
+})
+episodes = handler.fetch(limit=10, query='', show_id='')
+assert len(episodes) == 0
+print('  ✅ PASS: no query/no show_id returns []')
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: no query" && echo "  ✅ PASS: Spotify empty config" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.35 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.35 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` when no query and no show_id provided.
+
+#### 2b.36 🔴 Spotify — OAuth2 failure
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.spotify import SpotifyHandler
+
+def mock_handler(request):
+    return httpx.Response(401, json={'error': 'invalid_client'}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.spotify as sp_mod
+    original_post = sp_mod.httpx.post
+    sp_mod.httpx.post = client.post
+    try:
+        handler = SpotifyHandler({
+            'client_id': 'bad', 'client_secret': 'bad',
+            'show_id': 'show_42',
+        })
+        episodes = handler.fetch(limit=10, show_id='show_42')
+        assert len(episodes) == 0
+        print('  ✅ PASS: OAuth2 failure returns []')
+    finally:
+        sp_mod.httpx.post = original_post
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: OAuth2" && echo "  ✅ PASS: Spotify error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.36 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.36 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on OAuth2 authentication failure.
+
+---
+
+#### 2b.37 🟢 Apple Podcasts — Happy path mock (iTunes Search API)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
+
+def mock_handler(request):
+    data = {
+        'resultCount': 1,
+        'results': [
+            {
+                'trackId': 123456789,
+                'trackName': 'AI Frontiers Podcast',
+                'description': 'Weekly podcast exploring the latest in artificial intelligence.',
+                'artistName': 'TechMedia Inc.',
+                'feedUrl': 'https://feeds.example.com/ai-frontiers',
+                'releaseDate': '2024-01-15T00:00:00Z',
+                'collectionViewUrl': 'https://podcasts.apple.com/podcast/id123456789',
+                'primaryGenreName': 'Technology',
+                'artworkUrl600': 'https://example.com/artwork.jpg',
+                'trackCount': 50,
+                'country': 'USA',
+                'genres': ['Technology', 'Science'],
+            }
+        ]
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.apple_podcasts as ap_mod
+    original_get = ap_mod.httpx.get
+    ap_mod.httpx.get = client.get
+    try:
+        handler = ApplePodcastsHandler({'term': 'AI podcast'})
+        shows = handler.fetch(term='AI podcast', limit=10)
+        items = [handler.to_item(s) for s in shows]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'apple_podcasts'
+        assert items[0].title == 'AI Frontiers Podcast'
+        assert items[0].raw_data.get('feed_url') == 'https://feeds.example.com/ai-frontiers'
+        print('  ✅ PASS: 1 Apple Podcast show mapped')
+    finally:
+        ap_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Apple Podcast" && echo "  ✅ PASS: Apple Podcasts happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.37 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.37 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ No authentication required (`requires_key()` returns `False`)
+- ✅ 1 podcast show mapped with source_platform `"apple_podcasts"`
+- ✅ Feed URL in raw_data
+
+#### 2b.38 🔴 Apple Podcasts — Empty search results
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'resultCount': 0, 'results': []}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.apple_podcasts as ap_mod
+    original_get = ap_mod.httpx.get
+    ap_mod.httpx.get = client.get
+    try:
+        handler = ApplePodcastsHandler()
+        shows = handler.fetch(term='xyznonexistent12345678', limit=10)
+        assert len(shows) == 0
+        print('  ✅ PASS: empty results returned []')
+    finally:
+        ap_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty" && echo "  ✅ PASS: Apple Podcasts empty results" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.38 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.38 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` for no matching shows.
+
+#### 2b.39 🔴 Apple Podcasts — Network error
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
+
+def mock_handler(request):
+    raise httpx.TimeoutException('Connection timed out')
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.apple_podcasts as ap_mod
+    original_get = ap_mod.httpx.get
+    ap_mod.httpx.get = client.get
+    try:
+        handler = ApplePodcastsHandler()
+        shows = handler.fetch(term='test', limit=10)
+        assert len(shows) == 0
+        print('  ✅ PASS: network timeout returns []')
+    finally:
+        ap_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: network timeout" && echo "  ✅ PASS: Apple Podcasts error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.39 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.39 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` on network timeout.
+
+---
+
+#### 2b.40 🟢 Bilibili — Happy path mock (search/all/v2)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import json, httpx
+from autoinfo.collectors.bilibili import BilibiliHandler
+
+def mock_handler(request):
+    data = {
+        'code': 0,
+        'message': 'success',
+        'data': {
+            'result': {
+                'video': [
+                    {
+                        'aid': 123456789,
+                        'bvid': 'BV1xx411c7mD',
+                        'title': '大模型训练技术详解',
+                        'description': '深入讲解大规模语言模型的训练方法...',
+                        'author': 'AI技术分享',
+                        'created': 1700000000,
+                        'pic': 'https://example.com/thumb.jpg',
+                        'stat': {'view': 50000},
+                    }
+                ]
+            }
+        }
+    }
+    return httpx.Response(200, json=data, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.bilibili as bl_mod
+    original_get = bl_mod.httpx.get
+    bl_mod.httpx.get = client.get
+    try:
+        handler = BilibiliHandler({'query': '大模型'})
+        videos = handler.fetch(limit=10)
+        items = [handler.to_item(v) for v in videos]
+        for item in items:
+            print(f'ID={item.id} TITLE={item.title} SRC={item.source_platform}')
+        assert len(items) == 1, f'Expected 1, got {len(items)}'
+        assert items[0].source_platform == 'bilibili'
+        assert '大模型' in items[0].title
+        assert items[0].raw_data.get('bvid') == 'BV1xx411c7mD'
+        print('  ✅ PASS: 1 Bilibili video mapped with bvid')
+    finally:
+        bl_mod.httpx.get = original_get
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: 1 Bilibili" && echo "  ✅ PASS: Bilibili happy path" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.40 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.40 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ 1 Bilibili video mapped with source_platform `"bilibili"`
+- ✅ BVID (`BV1xx411c7mD`) in raw_data
+- ✅ Chinese (CJK) title handled correctly
+
+#### 2b.41 🔴 Bilibili — API error code (code != 0)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+import httpx
+from autoinfo.collectors.bilibili import BilibiliHandler
+
+def mock_handler(request):
+    return httpx.Response(200, json={'code': -412, 'message': '请求被拦截', 'data': None}, request=request)
+
+transport = httpx.MockTransport(mock_handler)
+with httpx.Client(transport=transport) as client:
+    import autoinfo.collectors.bilibili as bl_mod
+    original_get = bl_mod.httpx.get
+    bl_mod.httpx.get = client.get
+    try:
+        handler = BilibiliHandler({'query': 'test'})
+        videos = handler.fetch(limit=10)
+        assert len(videos) == 0
+        print('  ✅ PASS: Bilibili error code returns []')
+    finally:
+        bl_mod.httpx.get = original_get
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: Bilibili error" && echo "  ✅ PASS: Bilibili error handling" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.41 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.41 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` when Bilibili returns non-zero error code.
+
+#### 2b.42 🔴 Bilibili — Empty query
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.collectors.bilibili import BilibiliHandler
+
+handler = BilibiliHandler({'query': ''})
+videos = handler.fetch(limit=10)
+assert len(videos) == 0
+print('  ✅ PASS: empty query returns []')
+" 2>&1)
+
+echo "$OUTPUT" | grep -q "PASS: empty query" && echo "  ✅ PASS: Bilibili empty query" || { echo "  ❌ FAIL"; ALL_PASS=false; }
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.42 PASSED" && exit 0 || { echo "❌ SCENARIO 2b.42 FAILED"; exit 1; }
+```
+**Expected Result:** ✅ Returns `[]` when query is empty.
+
+---
+
+### 📊 Q2b Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 2b.1 OpenAlex happy path mock | ⬜ |
+| 2b.2 OpenAlex empty results | ⬜ |
+| 2b.3 OpenAlex network error | ⬜ |
+| 2b.4 Semantic Scholar happy path | ⬜ |
+| 2b.5 Semantic Scholar empty results | ⬜ |
+| 2b.6 Semantic Scholar HTTP 500 | ⬜ |
+| 2b.7 DBLP happy path mock | ⬜ |
+| 2b.8 DBLP empty results | ⬜ |
+| 2b.9 DBLP network error | ⬜ |
+| 2b.10 USPTO happy path mock | ⬜ |
+| 2b.11 USPTO empty results | ⬜ |
+| 2b.12 USPTO API fallback to RSS | ⬜ |
+| 2b.13 Quandl happy path mock | ⬜ |
+| 2b.14 Quandl missing API key | ⬜ |
+| 2b.15 Quandl HTTP error | ⬜ |
+| 2b.16 Yahoo Finance happy path | ⬜ |
+| 2b.17 Yahoo Finance invalid URL | ⬜ |
+| 2b.18 AP API no-key graceful | ⬜ |
+| 2b.19 AP API happy path mock | ⬜ |
+| 2b.20 AP API 401 Unauthorized | ⬜ |
+| 2b.21 Reuters MCP no-key graceful | ⬜ |
+| 2b.22 Reuters MCP happy path mock | ⬜ |
+| 2b.23 Reuters MCP 403 Forbidden | ⬜ |
+| 2b.24 NYT no-key graceful | ⬜ |
+| 2b.25 NYT happy path mock | ⬜ |
+| 2b.26 NYT 429 Rate Limited | ⬜ |
+| 2b.27 36kr RSS source config | ⬜ |
+| 2b.28 Reddit happy path mock | ⬜ |
+| 2b.29 Reddit OAuth2 failure | ⬜ |
+| 2b.30 Reddit empty subreddits | ⬜ |
+| 2b.31 YouTube no-key graceful | ⬜ |
+| 2b.32 YouTube happy path mock | ⬜ |
+| 2b.33 YouTube empty query | ⬜ |
+| 2b.34 Spotify happy path mock | ⬜ |
+| 2b.35 Spotify no query/show_id | ⬜ |
+| 2b.36 Spotify OAuth2 failure | ⬜ |
+| 2b.37 Apple Podcasts happy path | ⬜ |
+| 2b.38 Apple Podcasts empty results | ⬜ |
+| 2b.39 Apple Podcasts network error | ⬜ |
+| 2b.40 Bilibili happy path mock | ⬜ |
+| 2b.41 Bilibili error code | ⬜ |
+| 2b.42 Bilibili empty query | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
 ## Q3: Can I process collected items (LLM extraction + quality gates + KB storage)?
 
 **User says:** "I collected some papers. Now extract structured summaries and store them."

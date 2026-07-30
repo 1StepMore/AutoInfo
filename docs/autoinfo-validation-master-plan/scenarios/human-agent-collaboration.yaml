@@ -137,7 +137,7 @@ steps:
 
           # Agent creates Draft from Raw (per F20 — agent can create Draft)
           if top_id:
-              draft_result = app.call_tool("create_kb_draft", {"entry_id": top_id})
+              draft_result = app.call_tool("create_kb_draft", {"raw_ids": [top_id], "title": "Agent draft from " + top_id})
               draft_data = json.loads(draft_result.content[0].text)
               draft_id = draft_data.get("draft_id", draft_data.get("entry_id", "?"))
               print(f"PASS: Draft created: {draft_id}")

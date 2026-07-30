@@ -13,8 +13,9 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **"Report type parameter"** — `report_type` on `generate_report()`: `standard`, `industry`, `competitive`, `trend`, `daily-briefing`. Each type customizes section structure and LLM prompts.
 - **"Audience-aware prompts"** — `_normalize_report_audience()` and `_REPORT_AUDIENCE_PROMPTS` mapping for researcher/clinician/executive/investor/student/general audiences.
 - **"Delivery schedule MCP tools"** — `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. Cron-based periodic output generation + delivery via `autoinfo cron run`.
+- **"Recommend content MCP tool"** — `recommend_content` MCP tool for content-based recommendation. Returns ranked list of recommended items based on content similarity.
 - **"Apple Podcasts source platform"** — New platform type added to `PLATFORMS` list.
-- **"MCP tool inventory"**: 133 → 137 tools (3 delivery schedule tools + 1 cross-domain report tool).
+- **"MCP tool inventory"**: 133 → 138 tools (3 delivery schedule tools + 1 cross-domain report tool + 1 recommend_content tool).
 
 ### Fixed
 - **PR #75 — Dead/hanging demo sources removed**: Removed VOA Learning English from language-learning demo (broken feed). Switched ProductHunt from API to RSS in ai-commercial (API was down/dead). Removed LMSYS Chatbot Arena from ai-commercial (unreliable RSS, no stable API). All 4 demo domains now have fully functional source configurations.

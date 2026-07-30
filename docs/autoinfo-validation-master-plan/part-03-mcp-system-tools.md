@@ -116,7 +116,7 @@ assert "count" in data
 assert data["count"] >= 115
 print(f"✅ get_tool_count: {data['count']} tools registered (dynamic)")
 ```
-**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (132 expected in v1.8).  
+**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (137 expected in v1.8.2).  
 Tool: `get_tool_count` — self-discovery tool that returns the dynamic count of registered MCP tools at runtime.
 
 ---
@@ -147,7 +147,7 @@ assert len(data["platforms"]) >= 1
 platform_names = [p.get("name") for p in data["platforms"]]
 print(f"✅ list_available_platforms: {platform_names}")
 ```
-**Expected Result:** ✅ Returns available collector platform types (pubmed, rss, web, webhook, email, pdf).
+**Expected Result:** ✅ Returns available collector platform types. 6 base types (RSS, REST API, web, webhook, email, PDF) with 22+ platform-specific handlers (pubmed, arxiv, crossref, dblp, openalex, semantic_scholar, uspto, nyt, reddit, spotify, youtube, bilibili, apple_podcasts, ap_api, reuters_mcp).
 
 
 #### 19.3 🟢 get_domain_schema

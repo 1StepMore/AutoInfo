@@ -250,10 +250,10 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 
 | Criteria | Status | Source |
 |----------|--------|--------|
-| All 132 MCP tools respond correctly | ⬜ | Q18-Q36e, Q27b-Q27i |
+| All 137 MCP tools respond correctly | ⬜ | Q18-Q36f, Q27b-Q27i |
 | All 23 CLI commands work | ⬜ | Q5-Q18 |
 | `init` creates valid project | ⬜ | Q1 |
-| All 4 collector types work (RSS, API, Web, Webhook) | ⬜ | Q2, Q49-Q50 |
+| All 6 collector types work (RSS, API, Web, Webhook, Email, PDF) — 22+ platform-specific handlers | ⬜ | Q2, Q49-Q50 |
 | All 6 search modes work | ⬜ | Q30 |
 | All 5 quality gates advisory (G0-G5) | ⬜ | Q37-Q41c |
 | KB pipeline (Raw→Draft→Wiki) complete | ⬜ | Q44 |

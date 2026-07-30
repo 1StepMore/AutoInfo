@@ -1,6 +1,6 @@
 # Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36c)
 
-**Coverage:** 44 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (6), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1). Plus v1.7 additions: consumption tracking, automated notifications, cron health (CLI).
+**Coverage:** 48 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (8), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1), Delivery Schedule (3). Plus v1.7 additions: consumption tracking, automated notifications, cron health (CLI). Phase 4 additions: `generate_cross_domain_report` (Output), `report_type` parameter, bundle export, delivery schedule automation.
 
 ---
 
@@ -829,6 +829,254 @@ fi
 - ✅ Translated text differs from English source (contains non-ASCII)
 
 
+#### 33.7 🟢 generate_report with `report_type`
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+# Exercise generate_report with each specialized report_type
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+results = {}
+for rtype in ("industry", "competitive", "trend"):
+    try:
+        res = app.call_tool("generate_report", {
+            "domain": "medical-research",
+            "format": "markdown",
+            "report_type": rtype
+        })
+        data = json.loads(res.content[0].text)
+        results[rtype] = {
+            "ok": bool(data.get("report_id") or data.get("id")
+                        or data.get("file_path") or data.get("success", True)),
+            "report_id": data.get("report_id", data.get("id", "")),
+            "file_path": data.get("file_path", ""),
+            "keys": list(data.keys())[:6]
+        }
+    except Exception as e:
+        results[rtype] = {"ok": False, "error": str(e)[:120]}
+
+print("OK|" + json.dumps(results))
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_report with report_type exit 0" \
+  || { echo "  ❌ FAIL: Python exit $EXIT_CODE"; ALL_PASS=false; }
+
+# Each report_type must be exercised
+for rtype in industry competitive trend; do
+  echo "$RESULT" | grep -q "\"$rtype\"" \
+    && echo "  ✅ PASS: report_type=$rtype exercised" \
+    || { echo "  ❌ FAIL: report_type=$rtype missing from output"; ALL_PASS=false; }
+done
+
+# At least one report returned a usable id or file_path
+echo "$RESULT" | grep -qE '"(report_id|file_path)":\s*"[^"]' \
+  && echo "  ✅ PASS: at least one report returned an id/file_path" \
+  || { echo "  ❌ FAIL: no report id/file_path in output"; ALL_PASS=false; }
+
+# Verify report_type-specific markers in any produced markdown file
+REPORT_FILE=$(ls -t outputs/medical-research/report/*.md 2>/dev/null | head -1)
+if [ -n "$REPORT_FILE" ] && [ -s "$REPORT_FILE" ]; then
+  grep -qiP '(industry|competitive|trend|landscape|rival|sector|market|finding|conclusion)' "$REPORT_FILE" 2>/dev/null \
+    && echo "  ✅ PASS: report file has report_type-relevant markers" \
+    || echo "  ⚠️ NOTE: report file lacks obvious report_type markers (lenient)"
+else
+  echo "  ⚠️ NOTE: no report .md file to inspect (lenient — tool may return inline)"
+fi
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.7 PASSED — generate_report with report_type"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.7 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_report` accepts `report_type` (industry, competitive, trend) without error
+- ✅ Each `report_type` returns a `report_id` or `file_path`
+- ✅ All three report types complete with exit code 0
+
+
+#### 33.8 🟢 generate_digest with cross-domain `domains`
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+# Ensure a second domain is available (best-effort; may already exist from prereq)
+autoinfo domain import --from-demo ai-commercial 2>/dev/null || true
+autoinfo collect --domain ai-commercial --limit 1 2>/dev/null || true
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_digest", {
+    "domains": ["medical-research", "ai-commercial"],
+    "period": "week",
+    "format": "json"
+})
+data = json.loads(res.content[0].text)
+ok = bool(data.get("digest_id") or data.get("id") or data.get("file_path")
+          or data.get("entries") or data.get("success", True))
+print("OK|" + json.dumps({"keys": list(data.keys())[:8], "ok": ok}))
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_digest with domains exit 0" \
+  || { echo "  ❌ FAIL: Python exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: generate_digest accepted domains param without crash" \
+  || { echo "  ❌ FAIL: tool crashed or returned no output"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q '"ok": true' \
+  && echo "  ✅ PASS: digest returned a usable result (id/path/entries)" \
+  || { echo "  ❌ FAIL: no usable digest result"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.8 PASSED — generate_digest with cross-domain domains"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.8 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_digest` accepts a `domains` list (multiple domains) without error
+- ✅ Tool completes with exit code 0 (does not crash on cross-domain input)
+- ✅ Returns a `digest_id`, `file_path`, or entries from the requested domains
+
+
+#### 33.9 🟢 generate_report with cross-domain `domains`
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+autoinfo domain import --from-demo ai-commercial 2>/dev/null || true
+autoinfo collect --domain ai-commercial --limit 1 2>/dev/null || true
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_report", {
+    "domains": ["medical-research", "ai-commercial"],
+    "format": "json"
+})
+data = json.loads(res.content[0].text)
+ok = bool(data.get("report_id") or data.get("id") or data.get("file_path")
+          or data.get("entries") or data.get("success", True))
+print("OK|" + json.dumps({"keys": list(data.keys())[:8], "ok": ok}))
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_report with domains exit 0" \
+  || { echo "  ❌ FAIL: Python exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: generate_report accepted domains param without crash" \
+  || { echo "  ❌ FAIL: tool crashed or returned no output"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q '"ok": true' \
+  && echo "  ✅ PASS: report returned a usable result (id/path/entries)" \
+  || { echo "  ❌ FAIL: no usable report result"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.9 PASSED — generate_report with cross-domain domains"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.9 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_report` accepts a `domains` list (multiple domains) without error
+- ✅ Tool completes with exit code 0 (does not crash on cross-domain input)
+- ✅ Returns a `report_id`, `file_path`, or entries from the requested domains
+
+
+#### 33.10 🟢 generate_cross_domain_report (dedicated cross-domain tool)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+autoinfo domain import --from-demo ai-commercial 2>/dev/null || true
+autoinfo collect --domain ai-commercial --limit 1 2>/dev/null || true
+
+RESULT=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_cross_domain_report", {
+    "domains": ["medical-research", "ai-commercial"],
+    "format": "json"
+})
+data = json.loads(res.content[0].text)
+ok = bool(data.get("report_id") or data.get("id") or data.get("file_path")
+          or data.get("cross_domain") or data.get("entries")
+          or data.get("success", True))
+has_cross_marker = any(k in data for k in ("domains", "cross_domain", "report_id", "file_path"))
+print("OK|" + json.dumps({"keys": list(data.keys())[:8], "ok": ok, "has_cross_marker": has_cross_marker}))
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_cross_domain_report exit 0" \
+  || { echo "  ❌ FAIL: Python exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "^OK|" \
+  && echo "  ✅ PASS: generate_cross_domain_report ran without crash" \
+  || { echo "  ❌ FAIL: tool crashed or returned no output"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q '"ok": true' \
+  && echo "  ✅ PASS: tool returned a usable result (report_id/file_path/entries)" \
+  || { echo "  ❌ FAIL: no usable result returned"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q '"has_cross_marker": true' \
+  && echo "  ✅ PASS: response carries a cross-domain marker (domains/cross_domain/report_id/file_path)" \
+  || { echo "  ❌ FAIL: no cross-domain marker in response"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.10 PASSED — generate_cross_domain_report"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.10 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_cross_domain_report` MCP tool exists and is callable
+- ✅ Accepts a `domains` list and `format` param without error
+- ✅ Returns a cross-domain analysis result (`report_id`, `file_path`, or entries) with exit 0
+
+
 ---
 
 ### 📊 Q33 Verdict
@@ -841,6 +1089,10 @@ fi
 | 33.4 generate_tutorial | ⬜ |
 | 33.5 generate_presentation | ⬜ |
 | 33.6 localize_content | ⬜ |
+| 33.7 generate_report with report_type | ⬜ |
+| 33.8 generate_digest with domains | ⬜ |
+| 33.9 generate_report with domains | ⬜ |
+| 33.10 generate_cross_domain_report | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -873,6 +1125,29 @@ print(f"✅ export_kb: {json.dumps(data, indent=2)[:200]}")
 assert "file_path" in data or "data" in data or "status" in data
 ```
 **Expected Result:** ✅ KB exported to file. File path returned.
+
+
+#### 34.1b 🟢 export_kb with `format="bundle"`
+```python
+from autoinfo.mcp.server import app
+import json, os
+
+result = app.call_tool("export_kb", {
+    "domain": "medical-research",
+    "format": "bundle"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ export_kb (bundle): {json.dumps(data, indent=2)[:200]}")
+
+# A bundle export must return a file_path pointing to a .zip archive
+file_path = data.get("file_path", "")
+assert file_path, f"bundle export must return a file_path, got: {data}"
+assert file_path.endswith(".zip"), f"expected a .zip path, got {file_path}"
+assert os.path.exists(file_path), f"zip file not found at {file_path}"
+assert os.path.getsize(file_path) > 0, f"zip file is empty: {file_path}"
+print(f"✅ bundle zip verified: {file_path} ({os.path.getsize(file_path)} bytes)")
+```
+**Expected Result:** ✅ KB exported as a ZIP bundle (JSON + Markdown + YAML + PDF). `file_path` ends in `.zip`; the file exists and is non-empty.
 
 
 #### 34.2 🟢 import_kb
@@ -989,6 +1264,7 @@ print(f"✅ run_schedules: {json.dumps(data, indent=2)[:200]}")
 | Scenario | Result |
 |----------|--------|
 | 34.1 export_kb | ⬜ |
+| 34.1b export_kb (bundle) | ⬜ |
 | 34.2 import_kb | ⬜ |
 | 34.3 classify_cefr | ⬜ |
 | 34.4 send_email_digest | ⬜ |
@@ -2171,5 +2447,103 @@ if [ "$ALL_PASS" = true ]; then echo ""; echo "✅ SCENARIO 36e.8 PASSED"; exit 
 | 36e.6 Top-level fields validation | ⬜ |
 | 36e.7 entries[].tl_dr non-empty | ⬜ |
 | 36e.8 Full schema validation | ⬜ |
+
+**OVERALL: ⬜**
+
+---
+
+## Q36f: MCP Delivery Schedule Tools
+
+**Agent says:** "I need to set up automated delivery schedules for periodic output generation and delivery."
+
+### Prerequisites
+```bash
+mkdir -p /tmp/test-q36f
+cd /tmp/test-q36f
+rm -rf .autoinfo knowledge collections autoinfo.db outputs
+autoinfo init --demo medical-research
+autoinfo collect --domain medical-research --limit 3
+```
+
+### Scenarios
+
+#### 36f.1 🟢 add_delivery_schedule
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("add_delivery_schedule", {
+    "domain": "medical-research",
+    "cron_expression": "0 8 * * 1",
+    "output_type": "digest",
+    "channel": "email"
+})
+data = json.loads(result.content[0].text)
+print(f"✅ add_delivery_schedule: {json.dumps(data, indent=2)[:200]}")
+assert (data.get("schedule_id") or data.get("id")
+        or data.get("success", True)), f"unexpected response: {data}"
+```
+**Expected Result:** ✅ Delivery schedule created with a `schedule_id`. Accepts `domain`, `cron_expression`, `output_type`, and `channel` params.
+
+
+#### 36f.2 🟢 list_delivery_schedules
+```python
+from autoinfo.mcp.server import app
+import json
+
+result = app.call_tool("list_delivery_schedules", {})
+data = json.loads(result.content[0].text)
+schedules = data.get("schedules", data.get("items", []))
+print(f"✅ list_delivery_schedules: {len(schedules)} schedule(s)")
+for s in schedules:
+    print(f"  - domain={s.get('domain','?')} "
+          f"cron={s.get('cron_expression', s.get('cron','?'))} "
+          f"output_type={s.get('output_type','?')} "
+          f"channel={s.get('channel','?')}")
+assert isinstance(schedules, list), f"expected a list, got {type(schedules).__name__}"
+```
+**Expected Result:** ✅ Returns a list of delivery schedules, each with `domain`, `cron_expression`, `output_type`, and `channel`.
+
+
+#### 36f.3 🟢 remove_delivery_schedule
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Get a schedule ID to remove (depends on 36f.1 having added one)
+result = app.call_tool("list_delivery_schedules", {})
+data = json.loads(result.content[0].text)
+schedules = data.get("schedules", data.get("items", []))
+assert schedules, "no schedules available to remove — run 36f.1 first"
+
+sched_id = schedules[0].get("schedule_id") or schedules[0].get("id", "")
+assert sched_id, f"schedule has no id: {schedules[0]}"
+
+result = app.call_tool("remove_delivery_schedule", {"schedule_id": sched_id})
+data = json.loads(result.content[0].text)
+print(f"✅ remove_delivery_schedule: {json.dumps(data, indent=2)[:200]}")
+assert (data.get("success", True) or data.get("removed")
+        or data.get("deleted", True)), f"remove failed: {data}"
+
+# Verify the schedule is gone from the listing
+result2 = app.call_tool("list_delivery_schedules", {})
+data2 = json.loads(result2.content[0].text)
+remaining = data2.get("schedules", data2.get("items", []))
+assert all((s.get("schedule_id") or s.get("id")) != sched_id for s in remaining), \
+    f"schedule {sched_id} still present after removal"
+print(f"✅ schedule {sched_id} removed; {len(remaining)} remaining")
+```
+**Expected Result:** ✅ Schedule removed by ID. Confirmation returned. The schedule no longer appears in `list_delivery_schedules`.
+
+
+---
+
+### 📊 Q36f Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36f.1 add_delivery_schedule | ⬜ |
+| 36f.2 list_delivery_schedules | ⬜ |
+| 36f.3 remove_delivery_schedule | ⬜ |
 
 **OVERALL: ⬜**

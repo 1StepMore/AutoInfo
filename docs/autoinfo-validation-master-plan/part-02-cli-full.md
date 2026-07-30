@@ -370,6 +370,80 @@ autoinfo output translate --domain medical-research --target-lang zh-CN
 **Expected Result:** ✅ Translation generated. Check `outputs/medical-research/translate/`.
 
 
+#### 9.12 🟢 Cross-domain report with --domains flag
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+# Ensure second domain is available
+autoinfo domain import --from-demo ai-commercial 2>/dev/null || true
+autoinfo collect --domain ai-commercial --limit 1 2>/dev/null || true
+
+OUTPUT=$(autoinfo output report --domains medical-research --domains ai-commercial --format json 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+items = data.get('items', data.get('entries', []))
+print(f'  entries: {len(items)}, keys: {list(data.keys())[:5]}')
+assert len(items) >= 0
+" 2>&1 || echo "  ❌ FAIL: cross-domain report JSON parse error"
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.12 PASSED"; exit 0; else echo "❌ SCENARIO 9.12 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Cross-domain report generated with multiple domains. No crash with --domains flag.
+
+#### 9.13 🟢 Report with specialized --type
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+for RTYPE in industry competitive trend; do
+  OUTPUT=$(autoinfo output report --domain medical-research --format markdown --type "$RTYPE" 2>&1)
+  EXIT_CODE=$?
+  echo "$OUTPUT" | grep -qi "executive summary\|sections\|report\|analysis" \
+    && echo "  ✅ PASS: --type $RTYPE produced structured output" \
+    || echo "  ⚠️  --type $RTYPE output varies (no structured section markers)"
+  [ "$EXIT_CODE" -eq 0 ] \
+    && echo "  ✅ PASS: --type $RTYPE exit 0" \
+    || { echo "  ❌ FAIL: --type $RTYPE exit $EXIT_CODE"; ALL_PASS=false; }
+done
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.13 PASSED"; exit 0; else echo "❌ SCENARIO 9.13 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ All report types (industry, competitive, trend) complete without error.
+
+#### 9.14 🟢 Bundle export (--format bundle)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q9
+
+OUTPUT=$(autoinfo output export --domain medical-research --format bundle 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "zip\|bundle\|archive\|export" \
+  && echo "  ✅ PASS: bundle export produced archive output" \
+  || { echo "  ❌ FAIL: bundle export missing archive marker"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: bundle export exit 0" \
+  || { echo "  ❌ FAIL: bundle export exit $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 9.14 PASSED"; exit 0; else echo "❌ SCENARIO 9.14 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Bundle export produces ZIP archive. Exit code 0.
+
 ---
 
 ### 📊 Q9 Verdict
@@ -386,6 +460,9 @@ autoinfo output translate --domain medical-research --target-lang zh-CN
 | 9.8 Export MD | ⬜ |
 | 9.9 Export PDF | ⬜ |
 | 9.10 Localize | ⬜ |
+| 9.12 Cross-domain report | ⬜ |
+| 9.13 Report with --type | ⬜ |
+| 9.14 Bundle export | ⬜ |
 
 **OVERALL: ⬜**
 

@@ -1828,7 +1828,7 @@ def _handle_suggest_keywords(
     if not api_key:
         return error_response(
             code=ErrorCode.LLM_NOT_CONFIGURED,
-            message="LLM is not configured. Use configure_llm() to set up your API key.",
+            message="LLM is not configured. Use configure_llm() to set up your API key. See docs/dev/required-api-keys.md for the full list of API keys and environment variables.",
             actionable=True,
         )
 
@@ -2474,7 +2474,8 @@ def _handle_generate_cross_domain_report(
             "error_code": ErrorCode.VALIDATION_ERROR.value,
             "message": (
                 "No project configuration found.  Run `init_project` "
-                "first to set up at least one domain."
+                "first to set up at least one domain. "
+                "See docs/dev/director-user-guide.md for setup instructions."
             ),
             "actionable": True,
         }
@@ -3345,6 +3346,7 @@ def _handle_init_project(
                 f"collect_sources(domain='{domain}')",
                 f"process_collection(domain='{domain}')",
             ],
+            "docs": "See docs/dev/director-user-guide.md for the full human-agent interaction workflow.",
         }
     except Exception as exc:
         logger.exception("Init project failed for domain '%s'", domain)
@@ -3399,7 +3401,8 @@ def _handle_configure_llm(
             ErrorCode.CONFIG_NOT_FOUND,
             (
                 "Configuration not found. "
-                "Run init_project first to create .autoinfo/config.yaml"
+                "Run init_project first to create .autoinfo/config.yaml. "
+                "See docs/dev/required-api-keys.md for API key setup."
             ),
             actionable=True,
         )
@@ -3441,7 +3444,9 @@ def _handle_configure_llm(
             "status": "success",
             "message": (
                 "LLM configured. "
-                "Also set AUTOINFO_LLM_API_KEY env var for the API key."
+                "Also set AUTOINFO_LLM_API_KEY env var for the API key. "
+                "See docs/dev/required-api-keys.md for the full list of "
+                "API keys and environment variables."
             ),
             "updated": updated,
             "config_path": str(config_path),
@@ -9473,7 +9478,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     type="text",
                     text=json.dumps(error_response(
                         code=ErrorCode.LLM_NOT_CONFIGURED,
-                        message="LLM is not configured. Use configure_llm() to set up your API key.",
+                        message="LLM is not configured. Use configure_llm() to set up your API key. See docs/dev/required-api-keys.md for the full list of API keys and environment variables.",
                         actionable=True,
                     )),
                 )

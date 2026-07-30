@@ -81,7 +81,7 @@ def _print_human(result: dict[str, Any]) -> None:
             "api_key='...', provider='...', model='...') to set up the LLM"
         )
         typer.echo(
-            "       See docs/dev/founder-expectations.md §LLM-config for details"
+            "       See docs/dev/required-api-keys.md for API key setup"
         )
 
     # --- Sources ---

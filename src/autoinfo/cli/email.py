@@ -34,7 +34,7 @@ def _load() -> tuple[Path, Config]:
     """
     cfg_path = get_config_path()
     if cfg_path is None:
-        typer.echo("Error: No configuration found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(1)
     config = load_config(cfg_path)
     return cfg_path, config

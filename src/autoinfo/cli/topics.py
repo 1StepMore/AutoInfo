@@ -36,7 +36,7 @@ def add(
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
@@ -73,7 +73,7 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
@@ -104,7 +104,7 @@ def remove(
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
@@ -139,7 +139,7 @@ def keywords(
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
@@ -185,7 +185,7 @@ def group_add(
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
@@ -214,7 +214,7 @@ def group_remove(
     ensure_config_exists()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first.", err=True)
+        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)

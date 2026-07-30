@@ -43,7 +43,7 @@ def list_(
         config_path = get_config_path()
         if config_path is None:
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first.",
+                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -90,7 +90,7 @@ def flag(
         config_path = get_config_path()
         if config_path is None:
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first.",
+                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -132,7 +132,7 @@ def show(
         config_path = get_config_path()
         if config_path is None:
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first.",
+                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)

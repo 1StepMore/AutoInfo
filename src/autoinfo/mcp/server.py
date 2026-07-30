@@ -5791,15 +5791,46 @@ def _error_dict(exc: Exception) -> dict[str, Any]:
 def _error_response(exc: Exception) -> list[TextContent]:
     """Build a standardised error response in the envelope format.
 
+    Maps well-known exception types to appropriate ``ErrorCodes``.
+    Falls back to ``INTERNAL_ERROR`` for unrecognised exceptions.
+
     Returns ``list[TextContent]`` with the uniform ``{success, error}`` shape.
     """
+    # -- Determine ErrorCode from exception type ---------------------------
+    if isinstance(exc, FileNotFoundError):
+        code = ErrorCode.NOT_FOUND
+    elif isinstance(exc, (ValueError, KeyError)):
+        code = ErrorCode.VALIDATION_ERROR
+    elif isinstance(exc, ConnectionError):
+        code = ErrorCode.TIMEOUT
+    else:
+        code = ErrorCode.INTERNAL_ERROR
+        # httpx.ConnectError → Timeout (httpx is optional)
+        try:
+            import httpx  # type: ignore[import-untyped]
+
+            if isinstance(exc, httpx.ConnectError):
+                code = ErrorCode.TIMEOUT
+        except ImportError:
+            pass
+
+    # Lazy litellm check — AuthenticationError → LLM_NOT_CONFIGURED
+    if code == ErrorCode.INTERNAL_ERROR:
+        try:
+            import litellm.exceptions  # type: ignore[import-untyped]
+
+            if isinstance(exc, litellm.exceptions.AuthenticationError):
+                code = ErrorCode.LLM_NOT_CONFIGURED
+        except ImportError:
+            pass
+
     return [
         TextContent(
             type="text",
             text=json.dumps({
                 "success": False,
                 "error": {
-                    "code": ErrorCode.INTERNAL_ERROR.value,
+                    "code": code.value,
                     "message": str(exc),
                     "actionable": True,
                 },

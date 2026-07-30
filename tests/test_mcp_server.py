@@ -216,7 +216,8 @@ class TestErrorResponse:
         data = json.loads(content.text)
         # Envelope shape
         assert data["success"] is False
-        assert data["error"]["code"] == "InternalError"
+        # ValueError maps to VALIDATION_ERROR via exception→ErrorCode mapping
+        assert data["error"]["code"] == "ValidationError"
         assert "Invalid domain name" in data["error"]["message"]
         assert data["error"]["actionable"] is True
 

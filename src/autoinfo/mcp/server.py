@@ -3118,6 +3118,11 @@ def _handle_init_project(
                 ".autoinfo/sources.yaml",
             ],
             "message": "Dry run — no files were created",
+            "next_steps": [
+                "configure_llm(api_key='...', provider='...', model='...')",
+                f"collect_sources(domain='{domain}')",
+                f"process_collection(domain='{domain}')",
+            ],
         }
 
     try:
@@ -3148,6 +3153,11 @@ def _handle_init_project(
             "llm_model": llm_model or "(default)",
             "llm_base_url": llm_base_url or "(default)",
             "message": f"AutoInfo initialized for '{domain}'",
+            "next_steps": [
+                "configure_llm(api_key='...', provider='...', model='...')",
+                f"collect_sources(domain='{domain}')",
+                f"process_collection(domain='{domain}')",
+            ],
         }
     except Exception as exc:
         logger.exception("Init project failed for domain '%s'", domain)

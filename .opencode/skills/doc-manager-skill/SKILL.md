@@ -63,7 +63,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
 | `docs/archive/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec (archived) | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (137 tools across 34 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (138 tools across 34 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/archive/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference (archived) | Rarely — only when archived doc reference changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
@@ -147,7 +147,7 @@ When you modify each code module below, the listed documentation files **must** 
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 137) |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 138) |
 | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
 | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
 | `server.py` — new tool | `CHANGELOG.md` | Add entry |
@@ -159,7 +159,7 @@ When you modify each code module below, the listed documentation files **must** 
 | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error code to boundary matrix |
 | `errors.py` — 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) | `docs/dev/specs/quality-gates.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error codes to error response spec and boundary matrix |
 | `agent_callback.py` — SQLite persistence | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Persistent agent callbacks feature description |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "137 tools" / "34 categories" references |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "138 tools" / "34 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -421,7 +421,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 23 groups, update descriptions
-- MCP Tools table → verify tool count (currently 137), update categories/tools
+- MCP Tools table → verify tool count (currently 138), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -480,15 +480,15 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 137 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 138 |
 | MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 34 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
-| Test count | `README.md`, `AGENTS.md`, `docs/autoinfo-validation-master-plan/README.md` | 2183 |
+| Test count | `README.md`, `AGENTS.md`, `docs/autoinfo-validation-master-plan/README.md` | 2452 |
 | Validation plan part files | `docs/autoinfo-validation-master-plan/README.md`, `docs/dev/cross-dimensional-catalog.md` | 15 (parts 01-15) |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
-| Demo domains count | `README.md`, `AGENTS.md` | 5 |
-| Demo domain names | `README.md` | medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Delivery channels (health-checked) | `README.md`, `AGENTS.md` | 11 (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss) |
+| Demo domains count | `README.md`, `AGENTS.md` | 9 |
+| Demo domain names | `README.md` | medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
+| Delivery channels (health-checked) | `README.md`, `AGENTS.md` | 12 (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish) |
 | Subscription tiers | `README.md`, `AGENTS.md` | 3 (free, premium, enterprise) |
 | Director-user guide line count | `docs/dev/director-user-guide.md` | 756 |
 | Cross-dimensional catalog line count | `docs/dev/cross-dimensional-catalog.md` | 780 |
@@ -568,7 +568,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 137), category count if new category
+**Quantities to bump**: MCP tool count (currently 138), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 
@@ -701,7 +701,7 @@ README.md → feature list and status table updated
 
 **Docs to update**: `README.md` (MCP tools table — Delivery Schedule category, feature list), `AGENTS.md` (Tool Discovery table, Common Patterns — delivery schedule setup), `CHANGELOG.md`, `docs/dev/specs/delivery.md` (delivery schedule specification)
 
-**Quantities to bump**: MCP tool count (currently 137), category count if new category
+**Quantities to bump**: MCP tool count (currently 138), category count if new category
 
 **Checklist**:
 - [ ] `README.md` — MCP tools table: Delivery Schedule category with tool names
@@ -721,7 +721,7 @@ README.md → feature list and status table updated
 
 **Docs to update**: `README.md` (feature list, MCP tools table — Output category), `AGENTS.md` (Tool Discovery table, Common Patterns — cross-domain report), `CHANGELOG.md`, `docs/dev/specs/delivery.md` (output generation specification)
 
-**Quantities to bump**: MCP tool count if new tool added (currently 137)
+**Quantities to bump**: MCP tool count if new tool added (currently 138)
 
 **Checklist**:
 - [ ] `README.md` — Feature list: cross-domain reports & digests entry
@@ -756,7 +756,7 @@ Terms that appear across docs and must be used consistently:
 | MCP | Model Context Protocol (stdio transport) | All docs |
 | ConsumptionEvent | Auto-recorded event (view/open/click) on product delivery, SQLite-backed | README.md, consumption.py |
 | check_access | Freemium gating fast path (free/premium/enterprise) — G15 | README.md, billing.py |
-| Channel health | Per-channel health check (healthy, latency_ms, error) for all 11 delivery channels | README.md, AGENTS.md |
+| Channel health | Per-channel health check (healthy, latency_ms, error) for all 12 delivery channels | README.md, AGENTS.md |
 | Cron heartbeat | Per-schedule heartbeat JSON for missed-schedule detection | README.md, cli/cron.py |
 | Subscription tiers | Free, Premium, Enterprise — per-tier channels, domains, products, platform limits | README.md, AGENTS.md, models.py |
 | Cross-dimensional catalog (CD-NNN) | Keystone product matrix (A1-A7 Pipeline × B1/B2/B3 Users). CD-NNN = Cross-Dimensional sequential gap ID (e.g., CD-001). | docs/dev/cross-dimensional-catalog.md, docs/dev/specs/ |

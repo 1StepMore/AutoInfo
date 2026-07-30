@@ -6,8 +6,9 @@ AutoInfo is a **universal information tracking and knowledge base platform**.
 You configure sources and topics; AutoInfo handles collection, LLM-based
 structured extraction, summarization, and builds a queryable knowledge base.
 
-**Key principle**: Domain-agnostic. The five demo domains (medical-research,
-ai-commercial, financial-intelligence, tech-ai-developer, language-learning) are configurations, not hardcoded features.
+**Key principle**: Domain-agnostic. The nine demo domains (medical-research,
+ai-commercial, financial-intelligence, tech-ai-developer, language-learning,
+online-video, financial-news, online-education, legal-compliance) are configurations, not hardcoded features.
 Users define their own domains.
 
 ## Agent Operating Model
@@ -21,7 +22,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (137 tools across 34 categories)
+2. **All capabilities** are exposed as MCP tools (138 tools across 34 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -66,7 +67,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 137 MCP tools across 34 categories
+│   │   │   ├── mcp-tools.md        # 138 MCP tools across 34 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -83,10 +84,10 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (137 tools)
+│       ├── mcp/                     # MCP server (138 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # Source handlers (PubMed, RSS, Web, Email, PDF)
+│       ├── collectors/              # 22 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output.py                # Output generation (digest, report, tutorial, export)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
@@ -178,7 +179,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-137 MCP tools across 34 categories:
+138 MCP tools across 34 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -212,7 +213,7 @@ freshness at output time.
 | **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
 | **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice`, `cost_dashboard`, `cost_allocation` |
 | **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
-| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score` |
+| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Audit** | `query_audit_log` |
@@ -432,7 +433,7 @@ Collection and processing now return a `job_id` for progress polling:
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
 | CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
-| Collection | ✅ PubMed, RSS, Web (trafilatura+Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF), scheduled via crond |
+| Collection | ✅ 22 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
@@ -447,7 +448,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 137 tools across 34 categories |
+| MCP server | ✅ 138 tools across 34 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -455,7 +456,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
-| Multi-channel delivery | ✅ 6 adapters: Telegram, WeChat OA, WeChat Work, DingTalk, FeiShu, Discord |
+| Multi-channel delivery | ✅ 12 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish |
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
 | End user portal | ✅ CLI-based self-service: preferences, history, product archive |
@@ -482,7 +483,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Access control | ✅ `check_access()` fast path — free always allowed, premium/enterprise require active paid subscription (G15) |
 | Consumption tracking | ✅ `ConsumptionEvent` auto-record on digest/report delivery (view/open/click), SQLite-backed store |
 | Automated notifications | ✅ Trial-ending reminders (3-day window) + content-ready notifications to end users |
-| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 11 delivery channels |
+| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 12 delivery channels |
 | Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |
@@ -500,8 +501,8 @@ Collection and processing now return a `job_id` for progress polling:
 | Email config MCP | ✅ email_config MCP tool |
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
-| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning |
-| Test suite | ✅ 2183 tests (includes new collector tests; 1 collection error pre-existing) |
+| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
+| Test suite | ✅ 2452 tests (includes new collector tests; 1 collection error pre-existing) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 
 ## References

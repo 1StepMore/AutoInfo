@@ -632,6 +632,18 @@ def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
 
     try:
         result = run_processing(**kwargs)
+        if result.total_items == 0:
+            _save_job_state(job_id, "processing", domain, "noop", 100.0, {
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "total_items": 0,
+            })
+            return success_response({
+                "status": "noop",
+                "total_items": 0,
+                "message": f"No cached items found for domain '{domain}'. Run collect_sources() first.",
+                "domain": domain,
+            })
         result_dict = asdict(result)
         _save_job_state(job_id, "processing", domain, "completed", 100.0, {
             "started_at": started_at,

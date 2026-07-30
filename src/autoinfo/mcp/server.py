@@ -753,7 +753,7 @@ def _handle_activate_domain(name: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured",
+            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
             "actionable": True,
         }
 
@@ -784,7 +784,7 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured",
+            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
             "actionable": True,
         }
 
@@ -815,7 +815,7 @@ def _handle_remove_domain(name: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured",
+            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
             "actionable": True,
         }
 
@@ -835,7 +835,7 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured",
+            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
             "actionable": True,
         }
 
@@ -900,7 +900,7 @@ def _handle_set_domain_webhooks(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -925,7 +925,7 @@ def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -981,7 +981,7 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1163,7 +1163,7 @@ def _handle_add_source(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1292,7 +1292,7 @@ def _handle_remove_source(source_id: str, confirm: bool = True) -> dict[str, Any
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain_name}' is not configured",
+            "message": f"Domain '{domain_name}' is not configured. Use add_domain(name='{domain_name}') to create it.",
             "actionable": True,
         }
 
@@ -1402,7 +1402,7 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1440,7 +1440,7 @@ def _handle_add_topic(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1486,7 +1486,7 @@ def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True) -> di
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1519,7 +1519,7 @@ def _handle_list_topics(domain: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1552,7 +1552,7 @@ def _handle_list_keywords(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1626,7 +1626,7 @@ def _handle_topic_group_add(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -1670,7 +1670,7 @@ def _handle_topic_group_remove(domain: str, group_name: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -3745,7 +3745,7 @@ def _handle_get_gate_config(domain: str, gate: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -3805,7 +3805,7 @@ def _handle_set_gate_config(
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -3972,7 +3972,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 
@@ -4038,7 +4038,7 @@ def _handle_list_products(domain: str) -> dict[str, Any]:
     if domain_cfg is None:
         return {
             "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured",
+            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             "actionable": True,
         }
 

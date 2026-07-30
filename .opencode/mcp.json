@@ -2,6 +2,9 @@
   "autoinfo": {
     "type": "local",
     "command": ["python", "-m", "autoinfo.mcp.server"],
-    "enabled": true
+    "enabled": true,
+    "env": {
+      "AUTOINFO_LLM_API_KEY": "${AUTOINFO_LLM_API_KEY}"
+    }
   }
 }

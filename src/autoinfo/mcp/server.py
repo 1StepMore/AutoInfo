@@ -658,6 +658,7 @@ PLATFORMS = [
     {"type": "webhook", "name": "Webhook Receiver", "description": "Receive pushed content via HTTP POST webhooks", "output_formats": ["json"]},
     {"type": "email", "name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
     {"type": "pdf", "name": "PDF Document", "description": "Extract text content from PDF documents", "output_formats": ["text", "markdown"]},
+    {"type": "apple_podcasts", "name": "Apple Podcasts (iTunes Search)", "description": "Search Apple Podcasts via free iTunes Search API (shows only, no episodes)", "output_formats": ["json"]},
 ]
 
 
@@ -1684,7 +1685,7 @@ def _handle_suggest_keywords(
             model = "deepseek/deepseek-chat"
             api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = None
-            json_mode = True
+            json_mode = False
     except Exception:
         model = "deepseek/deepseek-chat"
         api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
@@ -2197,6 +2198,7 @@ def _handle_generate_report(
     custom_instructions: str = "",
     target_audience: str = "",
     user_id: str = "",
+    report_type: str = "standard",
 ) -> dict[str, Any]:
     """Generate a structured report for *domain* over the given *period*.
 
@@ -2205,7 +2207,7 @@ def _handle_generate_report(
     from autoinfo.output import generate_report as _generate_report
 
     try:
-        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id)
+        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id, report_type=report_type)
         if format in ("json", "agent"):
             import json as _json
 
@@ -2242,6 +2244,106 @@ def _handle_generate_report(
         }
     except Exception as exc:
         logger.exception("Report generation failed for domain '%s'", domain)
+        return _error_dict(exc)
+
+
+def _handle_generate_cross_domain_report(
+    domains: list[str],
+    format: str = "markdown",
+    period: str = "month",
+    target_audience: str = "",
+    report_type: str = "standard",
+) -> dict[str, Any]:
+    """Generate a synthesis report across multiple domains.
+
+    Delegates to :func:`autoinfo.output.generate_report` with the
+    ``domains`` parameter, using the first domain as primary for
+    backward-compatible metadata.
+    """
+    from autoinfo.output import generate_report as _generate_report
+
+    # Validate at least 2 domains
+    if not isinstance(domains, list) or len(domains) < 2:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": "At least 2 domains are required for cross-domain report generation",
+            "actionable": True,
+        }
+
+    # Validate all domains exist
+    try:
+        config = _load_config()
+    except FileNotFoundError:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": (
+                "No project configuration found.  Run `init_project` "
+                "first to set up at least one domain."
+            ),
+            "actionable": True,
+        }
+    except Exception as exc:
+        return _error_dict(exc)
+    valid_names = {d.name for d in config.domains}
+    invalid = [d for d in domains if d not in valid_names]
+    if invalid:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": f"Unknown domain(s): {', '.join(invalid)}. Valid domains: {', '.join(sorted(valid_names))}",
+            "actionable": True,
+        }
+
+    try:
+        result = _generate_report(
+            domain=domains[0],
+            domains=domains,
+            format=format,
+            period=period,
+            target_audience=target_audience,
+            report_type=report_type,
+        )
+        if format in ("json", "agent"):
+            import json as _json
+
+            parsed = _json.loads(result)
+            return {
+                "success": True,
+                "domain": domains[0],
+                "domains": domains,
+                "format": format,
+                "period": period,
+                "content": parsed,
+            }
+        if format == "audio":
+            return {
+                "success": True,
+                "domain": domains[0],
+                "domains": domains,
+                "format": "audio",
+                "period": period,
+                "content_type": "audio/mp3",
+                "encoding": "base64",
+                "content": result,
+            }
+        return {
+            "success": True,
+            "domain": domains[0],
+            "domains": domains,
+            "format": format,
+            "period": period,
+            "content": result,
+        }
+    except ValueError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception(
+            "Cross-domain report generation failed for domains %s",
+            domains,
+        )
         return _error_dict(exc)
 
 
@@ -2682,6 +2784,150 @@ def _handle_get_schedule_status(
         return {
             "schedules": schedules,
             "count": len(schedules),
+        }
+    except Exception as exc:
+        return _error_dict(exc)
+
+
+# ---------------------------------------------------------------------------
+# Delivery schedule management tools
+# ---------------------------------------------------------------------------
+
+
+def _handle_add_delivery_schedule(
+    domain: str,
+    cron_expression: str,
+    output_type: str = "digest",
+    channel: str = "email",
+    recipients: list[str] | None = None,
+    output_format: str = "html",
+    period: str = "weekly",
+) -> dict[str, Any]:
+    """Add a new delivery schedule for periodic output generation + delivery."""
+    try:
+        from autoinfo.delivery.scheduler import (
+            VALID_CHANNELS,
+            VALID_FORMATS,
+            VALID_OUTPUT_TYPES,
+            DeliverySchedule,
+            DeliveryScheduler,
+        )
+
+        if output_type not in VALID_OUTPUT_TYPES:
+            return {
+                "error_code": ErrorCode.VALIDATION_ERROR.value,
+                "message": (
+                    f"Invalid output_type '{output_type}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}"
+                ),
+                "actionable": True,
+            }
+        if output_format not in VALID_FORMATS:
+            return {
+                "error_code": ErrorCode.VALIDATION_ERROR.value,
+                "message": (
+                    f"Invalid format '{output_format}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_FORMATS))}"
+                ),
+                "actionable": True,
+            }
+        if channel not in VALID_CHANNELS:
+            return {
+                "error_code": ErrorCode.VALIDATION_ERROR.value,
+                "message": (
+                    f"Invalid channel '{channel}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_CHANNELS))}"
+                ),
+                "actionable": True,
+            }
+
+        from croniter import croniter
+
+        if not croniter.is_valid(cron_expression):
+            return {
+                "error_code": ErrorCode.INVALID_CRON_EXPRESSION.value,
+                "message": f"'{cron_expression}' is not a valid cron expression",
+                "actionable": True,
+            }
+
+        new_schedule = DeliverySchedule(
+            cron_expression=cron_expression,
+            domain=domain,
+            output_type=output_type,
+            format=output_format,
+            channel=channel,
+            recipients=recipients or [],
+            period=period,
+        )
+        scheduler = DeliveryScheduler()
+        scheduler.add_schedule(new_schedule)
+
+        return {
+            "created": True,
+            "schedule_id": new_schedule.id,
+            "schedule": {
+                "id": new_schedule.id,
+                "cron_expression": new_schedule.cron_expression,
+                "domain": new_schedule.domain,
+                "output_type": new_schedule.output_type,
+                "format": new_schedule.format,
+                "channel": new_schedule.channel,
+                "recipients": new_schedule.recipients,
+                "period": new_schedule.period,
+                "enabled": new_schedule.enabled,
+                "created_at": new_schedule.created_at,
+            },
+        }
+    except Exception as exc:
+        return _error_dict(exc)
+
+
+def _handle_list_delivery_schedules() -> dict[str, Any]:
+    """List all configured delivery schedules."""
+    try:
+        from dataclasses import asdict
+
+        from autoinfo.delivery.scheduler import DeliveryScheduler
+
+        scheduler = DeliveryScheduler()
+        schedules = scheduler.list_schedules()
+        items = []
+        for s in schedules:
+            d = asdict(s)
+            items.append(d)
+        return {"schedules": items, "count": len(items)}
+    except Exception as exc:
+        return _error_dict(exc)
+
+
+def _handle_remove_delivery_schedule(
+    schedule_id: str,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Remove a delivery schedule by ID."""
+    if not confirm:
+        return {
+            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
+            "message": (
+                "This operation is destructive and requires confirmation. "
+                "Pass confirm=True to proceed."
+            ),
+            "actionable": True,
+        }
+    try:
+        from autoinfo.delivery.scheduler import DeliveryScheduler
+
+        scheduler = DeliveryScheduler()
+        removed = scheduler.remove_schedule(schedule_id)
+        if not removed:
+            return {
+                "error_code": ErrorCode.SCHEDULE_NOT_FOUND.value,
+                "message": f"Delivery schedule '{schedule_id}' not found",
+                "actionable": True,
+            }
+        return {
+            "removed": True,
+            "schedule_id": schedule_id,
         }
     except Exception as exc:
         return _error_dict(exc)
@@ -6892,8 +7138,57 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional end-user ID for freemium access gating (G15). Premium reports are blocked for non-subscribers.",
                         "default": "",
                     },
+                    "report_type": {
+                        "type": "string",
+                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing",
+                        "default": "standard",
+                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing"],
+                    },
                 },
                 "required": ["domain"],
+            },
+        ),
+        Tool(
+            name="generate_cross_domain_report",
+            description=(
+                "Generate a synthesis report across multiple domains, "
+                "connecting findings and identifying cross-domain trends. "
+                "Returns markdown by default; also supports json, html, "
+                "agent (JSON-LD), and audio.  At least 2 domains are required."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of domain names to synthesize across (e.g. [\"medical-research\", \"ai-commercial\"]). At least 2 required.",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: markdown, json, html, agent, audio",
+                        "default": "markdown",
+                        "enum": ["markdown", "json", "html", "agent", "audio"],
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Report period: day, week, month",
+                        "default": "month",
+                        "enum": ["day", "week", "month"],
+                    },
+                    "target_audience": {
+                        "type": "string",
+                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
+                        "default": "",
+                    },
+                    "report_type": {
+                        "type": "string",
+                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing",
+                        "default": "standard",
+                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing"],
+                    },
+                },
+                "required": ["domains"],
             },
         ),
         Tool(
@@ -7033,7 +7328,7 @@ async def list_tools() -> list[Tool]:
             name="export_kb",
             description=(
                 "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent formats."
+                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle formats."
             ),
             inputSchema={
                 "type": "object",
@@ -7044,9 +7339,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, agent (JSON-LD for LLM re-consumption)",
+                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle (ZIP with PDF+JSON+MD+YAML)",
                         "default": "markdown",
-                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent"],
+                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent", "bundle"],
                     },
                     "scope": {
                         "type": "string",
@@ -7328,6 +7623,76 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": [],
+            },
+        ),
+        # -- Delivery Schedule Management (3) ---------------------------------
+        Tool(
+            name="add_delivery_schedule",
+            description="Add a new delivery schedule for periodic output generation + channel delivery",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain to generate output for",
+                    },
+                    "cron_expression": {
+                        "type": "string",
+                        "description": "Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
+                    },
+                    "output_type": {
+                        "type": "string",
+                        "description": "Output type: digest or report",
+                        "default": "digest",
+                        "enum": ["digest", "report"],
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": "Delivery channel: email, webhook, rest, telegram, discord, etc.",
+                        "default": "email",
+                    },
+                    "recipients": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Recipient identifiers (emails, webhook URLs, etc.)",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "description": "Output format: markdown, html, json, agent, audio, pdf",
+                        "default": "html",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Content period: daily, weekly, monthly",
+                        "default": "weekly",
+                        "enum": ["daily", "weekly", "monthly"],
+                    },
+                },
+                "required": ["domain", "cron_expression"],
+            },
+        ),
+        Tool(
+            name="list_delivery_schedules",
+            description="List all configured delivery schedules",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="remove_delivery_schedule",
+            description="Remove a delivery schedule by ID",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "schedule_id": {
+                        "type": "string",
+                        "description": "Schedule ID to remove",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be True to confirm this destructive operation",
+                        "default": False,
+                    },
+                },
+                "required": ["schedule_id"],
             },
         ),
         # -- Q&A (1) -------------------------------------------------------
@@ -8884,13 +9249,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "cefr_batch":
             result = _handle_cefr_batch(**arguments)
 
-        # -- Output (5) ---------------------------------------------------
+        # -- Output (6) ---------------------------------------------------
         elif name == "list_output_templates":
             result = _handle_list_output_templates(**arguments)
         elif name == "generate_digest":
             result = _handle_generate_digest(**arguments)
         elif name == "generate_report":
             result = _handle_generate_report(**arguments)
+        elif name == "generate_cross_domain_report":
+            result = _handle_generate_cross_domain_report(**arguments)
         elif name == "generate_tutorial":
             result = _handle_generate_tutorial(**arguments)
         elif name == "generate_presentation":
@@ -8927,6 +9294,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_run_schedules(**arguments)
         elif name == "get_schedule_status":
             result = _handle_get_schedule_status(**arguments)
+
+        # -- Delivery Schedule Management (3) --------------------------------
+        elif name == "add_delivery_schedule":
+            result = _handle_add_delivery_schedule(**arguments)
+        elif name == "list_delivery_schedules":
+            result = _handle_list_delivery_schedules()
+        elif name == "remove_delivery_schedule":
+            result = _handle_remove_delivery_schedule(**arguments)
 
         # -- Q&A (1) -------------------------------------------------------
         elif name == "query_collected":

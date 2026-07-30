@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import html
+import io
 import json
 import logging
 import os
@@ -27,6 +28,8 @@ import sqlite3
 import tarfile
 import uuid
 import xml.etree.ElementTree as ET
+import yaml
+import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -262,10 +265,10 @@ def export_kb(
     ValueError
         If *format* is not one of the supported values.
     """
-    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml", "agent"):
+    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml", "agent", "bundle"):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
-            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, agent"
+            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, agent, bundle"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -383,6 +386,15 @@ def export_kb(
         )
     elif format == "agent":
         result = _export_agent_json(entries, domain, domain_label)
+    elif format == "bundle":
+        result = _export_bundle(
+            knowledge_dir=knowledge_dir,
+            export_dir=export_dir,
+            domain=domain,
+            entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
     else:
         raise ValueError(f"Unsupported export format: '{format}'")
 
@@ -970,6 +982,308 @@ def _export_agent_json(
     return output
 
 
+# ---------------------------------------------------------------------------
+# Bundle export
+# ---------------------------------------------------------------------------
+
+
+def _export_bundle(
+    knowledge_dir: Path,
+    export_dir: Path,
+    domain: str | None,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export a multi-format ZIP bundle containing PDF + JSON + Markdown + YAML.
+
+    Generates four files inside a ZIP archive:
+
+    - ``report.pdf`` — PDF report (skipped gracefully if weasyprint unavailable)
+    - ``data.json`` — JSON data with full entry details
+    - ``summary.md`` — Markdown summary listing all entries
+    - ``metadata.yaml`` — Export metadata (domain, timestamp, entry count, etc.)
+
+    Returns
+    -------
+    dict
+        Standard export result dict with additional key ``formats`` listing
+        the formats actually included in the bundle.
+    """
+    out_name = f"bundle-{domain_label}-{timestamp}.zip"
+    out_path = export_dir / out_name
+
+    # Buffer for in-memory ZIP
+    buf = io.BytesIO()
+    included_formats: list[str] = []
+    pdf_skipped = False
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+
+        # --- 1. JSON data ----------------------------------------------------
+        json_content = _build_bundle_json(entries)
+        zf.writestr("data.json", json_content)
+        included_formats.append("json")
+
+        # --- 2. Markdown summary ---------------------------------------------
+        md_content = _build_bundle_markdown(entries, domain, domain_label, timestamp)
+        zf.writestr("summary.md", md_content)
+        included_formats.append("md")
+
+        # --- 3. Metadata YAML ------------------------------------------------
+        yaml_content = _build_bundle_metadata(
+            domain_label, timestamp, entries, included_formats
+        )
+        zf.writestr("metadata.yaml", yaml_content)
+        included_formats.append("yaml")
+
+        # --- 4. PDF report (graceful fallback) --------------------------------
+        try:
+            pdf_bytes = _build_bundle_pdf(entries, domain, domain_label, timestamp)
+            zf.writestr("report.pdf", pdf_bytes)
+            included_formats.append("pdf")
+        except Exception as exc:
+            logger.warning(
+                "Bundle PDF generation skipped: %s. "
+                "Bundle will contain JSON, Markdown, and YAML only.",
+                exc,
+            )
+            pdf_skipped = True
+
+    # Write ZIP to disk
+    out_path.write_bytes(buf.getvalue())
+
+    result: dict[str, Any] = {
+        "format": "bundle",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+        "formats": included_formats,
+    }
+    if pdf_skipped:
+        result["warning"] = (
+            "PDF was skipped — weasyprint not available. "
+            "Install with: pip install weasyprint"
+        )
+    return result
+
+
+def _build_bundle_json(entries: list[dict[str, Any]]) -> str:
+    """Build JSON content for the bundle."""
+    export_data: list[dict[str, Any]] = []
+    for e in entries:
+        file_path = e.get("file_path") or ""
+        content = ""
+        if file_path and Path(file_path).is_file():
+            content = Path(file_path).read_text(encoding="utf-8")
+
+        export_data.append({
+            "entry_id": e.get("entry_id"),
+            "title": e.get("title"),
+            "domain": e.get("domain"),
+            "tier": e.get("tier"),
+            "source_url": e.get("source_url"),
+            "source_type": e.get("source_type"),
+            "source_platform": e.get("source_platform"),
+            "attribution": e.get("attribution", ""),
+            "collected_at": e.get("collected_at"),
+            "summary": e.get("summary"),
+            "tags": json.loads(e.get("tags", "[]")) if e.get("tags") else [],
+            "relevance_score": e.get("relevance_score"),
+            "dedup_status": e.get("dedup_status"),
+            "file_path": file_path,
+            "content": content,
+        })
+
+    return json.dumps(export_data, ensure_ascii=False, indent=2)
+
+
+def _build_bundle_markdown(
+    entries: list[dict[str, Any]],
+    domain: str | None,
+    domain_label: str,
+    timestamp: str,
+) -> str:
+    """Build a Markdown summary of all entries for the bundle."""
+    lines: list[str] = []
+    if domain:
+        lines.append(f"# {domain} — Knowledge Base Export")
+    else:
+        lines.append("# AutoInfo Knowledge Base Export")
+
+    lines.append("")
+    lines.append(f"**Exported:** {timestamp}  ")
+    lines.append(f"**Entries:** {len(entries)}  ")
+    lines.append(f"**Domain:** {domain_label}  ")
+    lines.append("")
+
+    for i, e in enumerate(entries, 1):
+        title = e.get("title", "Untitled")
+        summary = e.get("summary", "")
+        source_url = e.get("source_url", "")
+        tier = e.get("tier", "")
+        relevance = e.get("relevance_score")
+
+        lines.append(f"## {i}. {title}")
+        lines.append("")
+
+        if summary:
+            lines.append(summary)
+            lines.append("")
+
+        meta: list[str] = []
+        if source_url:
+            meta.append(f"Source: {source_url}")
+        if tier:
+            meta.append(f"Tier: {tier}")
+        if relevance is not None:
+            meta.append(f"Relevance: {relevance}")
+        if meta:
+            lines.append(" | ".join(meta))
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_bundle_metadata(
+    domain_label: str,
+    timestamp: str,
+    entries: list[dict[str, Any]],
+    included_formats: list[str],
+) -> str:
+    """Build YAML metadata for the bundle."""
+    metadata: dict[str, Any] = {
+        "domain": domain_label,
+        "generated_at": timestamp,
+        "entry_count": len(entries),
+        "export_version": "1.0",
+        "formats_included": included_formats,
+        "generator": "AutoInfo",
+    }
+    return yaml.dump(metadata, default_flow_style=False, allow_unicode=True)
+
+
+def _build_bundle_pdf(
+    entries: list[dict[str, Any]],
+    domain: str | None,
+    domain_label: str,
+    timestamp: str,
+) -> bytes:
+    """Build a PDF report in memory using weasyprint.
+
+    Raises ``ValueError`` if weasyprint or markdown are not installed.
+    Returns the raw PDF bytes.
+    """
+    try:
+        import weasyprint  # noqa: PLC0415
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise ValueError(
+            "weasyprint is not installed. PDF export requires weasyprint."
+        ) from exc
+
+    try:
+        import markdown as md_lib  # noqa: PLC0415
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise ValueError(
+            "markdown library is not installed."
+        ) from exc
+
+    # Build HTML document
+    html_parts: list[str] = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
+        "body{font-family:sans-serif;margin:2em;line-height:1.6;color:#333;}",
+        "h1{color:#222;border-bottom:2px solid #ddd;padding-bottom:0.3em;}",
+        "h2{color:#444;margin-top:1.5em;}",
+        "h3{color:#555;}",
+        ".meta{color:#777;font-size:0.9em;margin-bottom:1em;}",
+        ".entry{page-break-inside:avoid;margin-bottom:2em;}",
+        ".entry-content{margin-top:0.5em;}",
+        "pre{background:#f5f5f5;padding:1em;border-radius:4px;",
+        "overflow-x:auto;border:1px solid #e0e0e0;}",
+        "code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;}",
+        "pre code{background:none;padding:0;}",
+        "table{border-collapse:collapse;width:100%;margin:1em 0;}",
+        "th,td{border:1px solid #ddd;padding:0.5em;text-align:left;}",
+        "th{background:#f5f5f5;}",
+        "blockquote{border-left:4px solid #ddd;margin:1em 0;padding:0.5em 1em;color:#666;}",
+        "img{max-width:100%;height:auto;}",
+        "</style></head><body>",
+    ]
+
+    if domain:
+        html_parts.append(f"<h1>{html.escape(domain)}</h1>")
+    else:
+        html_parts.append("<h1>AutoInfo Knowledge Base Export</h1>")
+
+    html_parts.append(
+        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  "
+        f"Entries: {len(entries)}</p>"
+    )
+
+    for e in entries:
+        title = e.get("title", "Untitled")
+        file_path = e.get("file_path") or ""
+
+        content = ""
+        if file_path and Path(file_path).is_file():
+            raw = Path(file_path).read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end_idx = raw.find("---", 3)
+                if end_idx != -1:
+                    content = raw[end_idx + 3:].strip()
+                else:
+                    content = raw
+            else:
+                content = raw
+
+        html_parts.append("<div class='entry'>")
+        html_parts.append(f"<h2>{html.escape(title)}</h2>")
+
+        meta_bits: list[str] = []
+        if e.get("source_url"):
+            url = html.escape(e["source_url"])
+            meta_bits.append(f'Source: <a href="{url}">{url}</a>')
+        if e.get("source_type"):
+            meta_bits.append(f"Type: {html.escape(e['source_type'])}")
+        if e.get("tier"):
+            meta_bits.append(f"Tier: {html.escape(e['tier'])}")
+        if e.get("relevance_score") is not None:
+            meta_bits.append(f"Relevance: {e['relevance_score']}")
+        if meta_bits:
+            html_parts.append(f"<p class='meta'>{' | '.join(meta_bits)}</p>")
+
+        summary = e.get("summary", "")
+        if summary:
+            html_parts.append(
+                f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>"
+            )
+
+        if content:
+            content_html = md_lib.markdown(
+                content, extensions=["fenced_code", "tables"]
+            )
+            html_parts.append(f"<div class='entry-content'>{content_html}</div>")
+
+        html_parts.append("</div>")
+
+    html_parts.append("</body></html>")
+
+    full_html = "\n".join(html_parts)
+
+    # Render to PDF bytes
+    try:
+        return weasyprint.HTML(string=full_html).write_pdf()
+    except Exception as exc:
+        logger.error("Bundle PDF generation failed: %s", exc)
+        raise ValueError(
+            f"PDF generation failed: {exc}"
+        ) from exc
+
+
 # DDL for the entries table — used as fallback when no source DB exists
 _ENTRIES_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS entries (
@@ -1480,7 +1794,7 @@ def _call_llm_for_digest(
                 {"role": "system", "content": _DIGEST_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode else {}),
+            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
@@ -1652,8 +1966,12 @@ def generate_digest(
     delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
     user_id: str = "",
     max_items: int = 0,
+    domains: list[str] | None = None,
 ) -> str | DeliveryOutput:
     """Generate a digest of KB entries for *domain* over the given *period*.
+
+    When *domains* is provided with 2+ entries, entries are aggregated
+    from all listed domains for a cross-domain digest.
 
     Parameters
     ----------
@@ -1733,6 +2051,15 @@ def generate_digest(
             f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
         )
 
+    # --- Determine cross-domain mode -----------------------------------------
+    is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
+    if is_cross_domain_digest:
+        digest_domains: list[str] = domains  # type: ignore[assignment]
+        digest_title_domain: str = "Cross-Domain"
+    else:
+        digest_domains = [domain]
+        digest_title_domain = domain
+
     # --- Auto-load preferences from user profile (G10) -----------------------
     if user_id:
         try:
@@ -1810,15 +2137,29 @@ def generate_digest(
     period_label = PERIOD_LABELS.get(period, period.capitalize())
 
     # --- Query KB entries ----------------------------------------------------
-    from autoinfo.kb import KBStore  # noqa: PLC0415
-
     store = KBStore()
     query_limit = max_items if max_items > 0 else 200
-    entries = store.list_entries(
-        domain=domain,
-        date_from=date_from,
-        limit=query_limit,
-    )
+
+    if is_cross_domain_digest:
+        entries: list[dict[str, Any]] = []
+        per_domain_limit = max(query_limit // len(digest_domains), 10)
+        for d in digest_domains:
+            domain_entries = store.list_entries(
+                domain=d,
+                date_from=date_from,
+                limit=per_domain_limit,
+            )
+            for e in domain_entries:
+                if "domain" not in e:
+                    e["domain"] = d
+            entries.extend(domain_entries)
+        entries = entries[:query_limit]
+    else:
+        entries = store.list_entries(
+            domain=domain,
+            date_from=date_from,
+            limit=query_limit,
+        )
 
     # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
     for entry in entries:
@@ -1878,8 +2219,10 @@ def generate_digest(
         prompt = _build_digest_llm_prompt(entries)
         if custom_instructions:
             prompt += f"\n\nAdditional instructions: {custom_instructions}"
-        if target_audience:
-            prompt += f"\n\nTarget audience: {target_audience}"
+        audience = _normalize_report_audience(target_audience)
+        audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+        if audience_prompt:
+            prompt += f"\n\n{audience_prompt}"
         llm_synthesis = _call_llm_for_digest(prompt, config=llm_config)
     else:
         llm_synthesis = {}
@@ -1887,8 +2230,8 @@ def generate_digest(
     # --- Build template context ----------------------------------------------
     generated_at = datetime.now(timezone.utc).isoformat()
     context = {
-        "title": f"{period_label} Digest \u2014 {domain}",
-        "domain": domain,
+        "title": f"{period_label} Digest \u2014 {digest_title_domain}",
+        "domain": digest_title_domain,
         "period": period,
         "period_label": period_label,
         "date_from": date_from,
@@ -1917,7 +2260,13 @@ def generate_digest(
         rendered = _render_markdown(context)
 
     # --- Source attribution (F46) ------------------------------------------
-    src_configs = _get_domain_source_configs(domain)
+    if is_cross_domain_digest:
+        all_src_configs_d: list[Any] = []
+        for d in digest_domains:
+            all_src_configs_d.extend(_get_domain_source_configs(d))
+        src_configs = all_src_configs_d
+    else:
+        src_configs = _get_domain_source_configs(domain)
     if src_configs and entries:
         entry_urls = {
             (e.get("source_url") or "").strip().rstrip("/")
@@ -1953,10 +2302,10 @@ def generate_digest(
             ConsumptionStore().record_event(
                 user_id=user_id,
                 product_type="digest",
-                product_id=f"{domain}-{period}",
+                product_id=f"{digest_title_domain}-{period}",
                 event_type="delivered",
                 metadata={
-                    "domain": domain,
+                    "domain": digest_title_domain,
                     "period": period,
                     "format": format,
                     "entries_count": len(entries),
@@ -1985,7 +2334,7 @@ def generate_digest(
             _try_notify_content_ready(
                 user_id=user_id,
                 product_type="digest",
-                title=f"{period_label} Digest \u2014 {domain}",
+                title=f"{period_label} Digest \u2014 {digest_title_domain}",
             )
         return result
 
@@ -1993,7 +2342,7 @@ def generate_digest(
         _try_notify_content_ready(
             user_id=user_id,
             product_type="digest",
-            title=f"{period_label} Digest \u2014 {domain}",
+            title=f"{period_label} Digest \u2014 {digest_title_domain}",
         )
     return rendered
 
@@ -2039,8 +2388,10 @@ def generate_report(
     product_type: str = "PROCESSED",
     delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
     user_id: str = "",
+    report_type: str = "standard",
+    domains: list[str] | None = None,
 ) -> str | DeliveryOutput:
-    """Generate a structured report for the given *domain*.
+    """Generate a structured report for the given *domain* (or *domains*).
 
     Groups KB entries by theme using an LLM, produces an executive
     summary, and renders the result through the Jinja2 report template.
@@ -2049,9 +2400,12 @@ def generate_report(
     ----------
     domain : str
         Domain to generate the report for (e.g. ``"medical-research"``).
+        When *domains* is provided with 2+ entries, *domain* is still used
+        for backward-compatible metadata but entries are aggregated from
+        all listed domains.
     collection_id : str, optional
         Optional collection ID to scope the report to a specific
-        collection run.  When omitted, all KB entries for the domain
+        collection run.  When omitted, all KB entries for the domain(s)
         are included.
     format : str, optional
         Output format (default ``"markdown"``).  Supports ``"markdown"``,
@@ -2064,6 +2418,17 @@ def generate_report(
     custom_instructions : str, optional
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    report_type : str, optional
+        Report type that controls section structure and content focus
+        (default ``"standard"``).  Supported values: ``"standard"``
+        (unchanged existing behavior), ``"industry"`` (domain-specific
+        trends), ``"competitive"`` (entity comparison), ``"trend"``
+        (time-series analysis), ``"daily-briefing"`` (curated top-N).
+        Unknown values raise :class:`ValueError`.
+    target_audience : str, optional
+        Target audience for tone and depth adaptation (e.g. ``"researcher"``,
+        ``"executive"``, ``"investor"``, ``"clinician"``, ``"student"``,
+        ``"general"``).  Ignored when empty/absent.
     product_template:
         Optional :class:`ProductTemplate` instance for template rendering.
         When provided, the report is rendered through the product template
@@ -2080,6 +2445,13 @@ def generate_report(
         type changes to :class:`DeliveryOutput`.  When ``None`` (default),
         no gates are run and a plain ``str`` is returned (backward
         compatible).
+    domains : list[str], optional
+        Optional list of domain names for cross-domain report generation.
+        When provided with 2+ domains, entries are aggregated from all
+        listed domains.  Each entry is labeled with its source domain.
+        A special cross-domain LLM prompt encourages synthesis across
+        domains.  When ``None`` or has fewer than 2 entries, the existing
+        single-domain behavior is used (backward compatible).
 
     Returns
     -------
@@ -2091,7 +2463,7 @@ def generate_report(
     Raises
     ------
     ValueError
-        If *format* is unsupported.
+        If *format* is unsupported, or if *report_type* is unknown.
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
@@ -2100,6 +2472,21 @@ def generate_report(
             f"Unsupported output format: {format!r}. "
             f"Supported: markdown, json, html, audio, agent"
         )
+
+    if report_type not in _VALID_REPORT_TYPES:
+        raise ValueError(
+            f"Unknown report type: {report_type!r}. "
+            f"Supported: {', '.join(_VALID_REPORT_TYPES)}"
+        )
+
+    # --- Determine cross-domain mode -----------------------------------------
+    is_cross_domain: bool = domains is not None and len(domains) >= 2
+    if is_cross_domain:
+        report_domains: list[str] = domains  # type: ignore[assignment]
+        report_title_domain: str = "Cross-Domain"
+    else:
+        report_domains = [domain]
+        report_title_domain = domain
 
     # --- Freemium access gating (G15) ----------------------------------------
     if user_id and product_template is not None:
@@ -2110,7 +2497,7 @@ def generate_report(
             access_result = check_access(user_id, product_access)
             if not access_result["allowed"]:
                 blocked_message = (
-                    f"# {domain} \u2014 Report\n\n"
+                    f"# {report_title_domain} \u2014 Report\n\n"
                     f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
                     f"_Reason_: {access_result['reason']}\n\n"
                     f"_Access level required_: `{product_access}`\n"
@@ -2131,18 +2518,27 @@ def generate_report(
     from autoinfo.llm import LLMExtractor  # noqa: PLC0415
 
     kb_store = KBStore()
-    entries = kb_store.list_entries(domain, limit=5000)
+    if is_cross_domain:
+        entries: list[dict[str, Any]] = []
+        for d in report_domains:
+            domain_entries = kb_store.list_entries(d, limit=5000)
+            for e in domain_entries:
+                if "domain" not in e:
+                    e["domain"] = d
+            entries.extend(domain_entries)
+    else:
+        entries = kb_store.list_entries(domain, limit=5000)
 
     if not entries:
         rendered: str
         if format in ("json", "agent"):
             empty_data: dict[str, Any] = {
-                "title": f"{domain} \u2014 Report",
+                "title": f"{report_title_domain} \u2014 Report",
                 "summary": "",
                 "entries": [],
                 "metadata": {
                     "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-                    "domain": domain,
+                    "domain": report_title_domain,
                     "period": period,
                     "format": format,
                     "entry_count": 0,
@@ -2155,13 +2551,13 @@ def generate_report(
                 empty_data["trends"] = []
             rendered = json.dumps(empty_data, indent=2, ensure_ascii=False, default=str)
         elif format == "html":
-            rendered = _render_empty_report_html(domain)
+            rendered = _render_empty_report_html(report_title_domain)
         elif format == "audio":
-            empty_md = _render_empty_report(domain)
+            empty_md = _render_empty_report(report_title_domain)
             mp3_bytes = _render_audio(empty_md)
             rendered = base64.b64encode(mp3_bytes).decode("ascii")
         else:
-            rendered = _render_empty_report(domain)
+            rendered = _render_empty_report(report_title_domain)
 
         if delivery_gate_configs is not None:
             return _apply_delivery_gates(
@@ -2181,16 +2577,35 @@ def generate_report(
             "source_url": e.get("source_url", ""),
             "source_type": e.get("source_type", ""),
             "source_platform": e.get("source_platform", ""),
+            "domain": e.get("domain", domain),
         }
         for e in entries
     ]
 
     # -- Thematic grouping via LLM ----------------------------------------
     extractor = LLMExtractor()
-    groupings = _group_by_theme(extractor, entries)
+    groupings = _group_by_theme(
+        extractor, entries, domain=domain,
+        domains=report_domains if is_cross_domain else None,
+    )
+
+    # -- Inject report-type prompt into custom instructions ------------------
+    effective_instructions = custom_instructions
+    if report_type != "standard":
+        type_prompt = _REPORT_TYPE_PROMPTS.get(report_type, "")
+        if type_prompt:
+            effective_instructions = (
+                f"{custom_instructions}\n\n{type_prompt}"
+                if custom_instructions
+                else type_prompt
+            )
 
     # -- Generate executive summary via LLM --------------------------------
-    executive_summary = _generate_executive_summary(extractor, entries, groupings, custom_instructions, target_audience=target_audience)
+    executive_summary = _generate_executive_summary(
+        extractor, entries, groupings, effective_instructions,
+        target_audience=target_audience,
+        domains=report_domains if is_cross_domain else None,
+    )
 
     # -- Build report data -------------------------------------------------
     sections = [
@@ -2203,6 +2618,7 @@ def generate_report(
                     "summary": e.get("summary", ""),
                     "source_url": e.get("source_url", ""),
                     "relevance_score": e.get("relevance_score", 0),
+                    "domain": e.get("domain", domain),
                 }
                 for e in g["entries"]
             ],
@@ -2211,9 +2627,9 @@ def generate_report(
     ]
 
     report_data = ReportData(
-        title=f"{domain} \u2014 Report",
+        title=f"{report_title_domain} \u2014 Report",
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        domain=domain,
+        domain=report_title_domain,
         collection_id=collection_id or "",
         executive_summary=executive_summary,
         sections=sections,
@@ -2258,7 +2674,7 @@ def generate_report(
                     "tags": [],
                 })
         agent_context: dict[str, Any] = {
-            "domain": domain,
+            "domain": report_title_domain,
             "period": period,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "llm_synthesis": {
@@ -2277,7 +2693,13 @@ def generate_report(
         rendered = _render_report_template(report_data)
 
     # -- Source attribution (F46) --------------------------------------------
-    src_configs = _get_domain_source_configs(domain)
+    if is_cross_domain:
+        all_src_configs: list[Any] = []
+        for d in report_domains:
+            all_src_configs.extend(_get_domain_source_configs(d))
+        src_configs = all_src_configs
+    else:
+        src_configs = _get_domain_source_configs(domain)
     if src_configs and entries:
         entry_urls = {
             (e.get("source_url") or "").strip().rstrip("/")
@@ -2313,10 +2735,10 @@ def generate_report(
             ConsumptionStore().record_event(
                 user_id=user_id,
                 product_type="report",
-                product_id=f"{domain}-{period}",
+                product_id=f"{report_title_domain}-{period}",
                 event_type="delivered",
                 metadata={
-                    "domain": domain,
+                    "domain": report_title_domain,
                     "format": format,
                     "entries_count": len(entries),
                     "collection_id": collection_id or "",
@@ -2344,7 +2766,7 @@ def generate_report(
             _try_notify_content_ready(
                 user_id=user_id,
                 product_type="report",
-                title=f"{domain} \u2014 Report",
+                title=f"{report_title_domain} \u2014 Report",
             )
         return result
 
@@ -2352,7 +2774,7 @@ def generate_report(
         _try_notify_content_ready(
             user_id=user_id,
             product_type="report",
-            title=f"{domain} \u2014 Report",
+            title=f"{report_title_domain} \u2014 Report",
         )
     return rendered
 
@@ -2361,35 +2783,115 @@ def generate_report(
 # Report internal helpers
 # ---------------------------------------------------------------------------
 
+_DOMAIN_THEME_GUIDANCE: dict[str, str] = {
+    "medical-research": (
+        "clinical applications, treatment outcomes/trials, "
+        "reproductive health, drug development, regulatory & policy"
+    ),
+    "ai-commercial": (
+        "product launches, market strategy, funding & acquisitions, "
+        "regulatory & compliance, industry partnerships"
+    ),
+    "financial-intelligence": (
+        "market trends, economic indicators, corporate strategy, "
+        "regulatory changes, macroeconomic analysis"
+    ),
+    "tech-ai-developer": (
+        "development tools & frameworks, research breakthroughs, "
+        "industry adoption, open source & community, AI/ML advancements"
+    ),
+    "language-learning": (
+        "learning methodology, language resources & tools, "
+        "proficiency assessment, cultural context, pedagogy research"
+    ),
+}
+_DEFAULT_DOMAIN_GUIDANCE = (
+    "technology trends, industry developments, research findings, "
+    "policy & regulation, emerging innovations"
+)
+
 
 def _group_by_theme(
     extractor: LLMExtractor,
     entries: list[dict[str, Any]],
+    domain: str = "",
+    domains: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Group KB entries by theme using the LLM.
 
-    Returns a list of dicts::
+    Parameters
+    ----------
+    extractor : LLMExtractor
+        LLM extractor instance for making API calls.
+    entries : list[dict[str, Any]]
+        List of entry dicts, each with ``entry_id``, ``title``, ``summary``,
+        ``source_url``, ``source_type``, ``source_platform``.
+    domain : str, optional
+        Domain name for domain-specific theme guidance. If provided, the
+        prompt includes themed suggestions relevant to the domain. An empty
+        string (default) uses generic guidance.
+    domains : list[str], optional
+        Optional list of domain names for cross-domain synthesis. When
+        provided, the grouping prompt includes an instruction to connect
+        themes across domains.
 
-        [
-            {
-                "theme": "IVF Treatment Outcomes",
-                "description": "...",
-                "entries": [...],
-            },
-        ]
+    Returns
+    -------
+    list[dict[str, Any]]
+        List of dicts::
 
-    Falls back to a single "General" group when the LLM call fails.
+            [
+                {
+                    "theme": "IVF Treatment Outcomes",
+                    "description": "...",
+                    "entries": [...],
+                },
+            ]
+
+    Falls back to a single ``"General"`` group when the LLM call fails
+    or when the LLM repeatedly collapses entries into one theme.
     """
     # Build a compact representation of entries for the LLM prompt
-    entry_summaries = "\n".join(
-        f"- [{e.get('entry_id', '?')}] {e.get('title', '?')}: "
-        f"{e.get('summary', '(no summary)')}"
-        for e in entries
+    entry_summaries_parts: list[str] = []
+    for e in entries:
+        entry_domain = e.get("domain", domain)
+        entry_summaries_parts.append(
+            f"- [{e.get('entry_id', '?')}] [{entry_domain}] "
+            f"{e.get('title', '?')}: {e.get('summary', '(no summary)')}"
+        )
+    entry_summaries = "\n".join(entry_summaries_parts)
+
+    domain_guidance = _DOMAIN_THEME_GUIDANCE.get(
+        domain, _DEFAULT_DOMAIN_GUIDANCE
     )
 
+    cross_domain_instruction = ""
+    if domains and len(domains) >= 2:
+        cross_domain_instruction = (
+            f"You are synthesizing information from {len(domains)} domains: "
+            f"{', '.join(domains)}. Present a cohesive view that connects "
+            "findings across domains. Each entry is annotated with its "
+            "source domain in [brackets]. Create themes that bridge or "
+            "contrast findings from different domains where applicable.\n\n"
+        )
+
     prompt = (
+        cross_domain_instruction +
         "Group the following knowledge base entries into 3\u20135 coherent "
-        "themes. Each theme must represent a distinct topic area. "
+        "themes. Each theme must represent a distinct topic area.\n\n"
+        "IMPORTANT: Do NOT group all entries under a single catch-all theme "
+        "like \"General\", \"Additional\", or \"Miscellaneous\". If you "
+        "cannot immediately distinguish themes, suggest reasonable "
+        "topic-based splits based on the entries\u2019 content. Each entry "
+        "should ideally go into its most specific thematic group.\n\n"
+        f"Domain context: {domain_guidance}. Consider themes relevant to "
+        "this domain when grouping.\n\n"
+        "Example of good grouping:\n"
+        "  Entries: [\"COVID vaccine efficacy in elderly\", "
+        "\"mRNA platform advances\", \"FDA fast-track approval process\"]\n"
+        "  Good themes: \"Vaccine Clinical Trials\", "
+        "\"mRNA Technology Advances\", \"Drug Regulation\"\n"
+        "  Bad (collapsed): \"General Medical Topics\"\n\n"
         "Return a JSON object with a single key 'groups' whose value is "
         "an array of objects. Each object must have:\n"
         "  - 'theme': short theme name (2\u20135 words)\n"
@@ -2403,6 +2905,40 @@ def _group_by_theme(
     except Exception as exc:
         logger.warning("Thematic grouping via LLM failed: %s", exc)
         groups_raw = None
+
+    # -- Anti-collapse retry ------------------------------------------------
+    # If the LLM returned only 1 group (or none), retry with a stricter
+    # prompt that explicitly demands multiple distinct themes.
+    if groups_raw and len(groups_raw) <= 1:
+        logger.warning(
+            "LLM returned only %d theme group(s), retrying with stricter prompt",
+            len(groups_raw),
+        )
+        retry_prompt = (
+            cross_domain_instruction +
+            "STRICT RETRY: You previously grouped entries into a single "
+            "theme. Re-read the entries below and identify at least "
+            "2\u20133 DISTINCT themes. Do NOT use catch-all themes like "
+            "\"General\", \"Miscellaneous\", or \"Other\". Each entry must "
+            "be assigned to the most specific theme that describes its "
+            "content. "
+            f"Domain context: {domain_guidance}. "
+            "Return a JSON object with a single key 'groups' as before.\n\n"
+            f"Entries:\n{entry_summaries}"
+        )
+        try:
+            groups_raw = _llm_json_extract(extractor, retry_prompt, "groups")
+        except Exception as exc:
+            logger.warning("Strict retry failed: %s", exc)
+            groups_raw = None
+
+        # If retry STILL produced only 1 group, treat as failure → fallback
+        if groups_raw and len(groups_raw) <= 1:
+            logger.warning(
+                "Strict retry returned only %d group(s), falling back to General",
+                len(groups_raw),
+            )
+            groups_raw = None
 
     if not groups_raw:
         # Fallback: single group with all entries
@@ -2458,12 +2994,34 @@ def _group_by_theme(
     return result
 
 
+def _normalize_report_audience(target_audience: str) -> str:
+    """Validate and normalize target_audience for report/digest generation.
+
+    Returns the audience key if valid, otherwise logs a warning and falls
+    back to ``"general"``.  An empty or ``None``-like string is treated as
+    ``"general"`` (no special structure).
+    """
+    if not target_audience:
+        return "general"
+    audience = target_audience.strip().lower()
+    if audience in _VALID_REPORT_AUDIENCES:
+        return audience
+    logger.warning(
+        "Invalid target_audience '%s' for report/digest, falling back to 'general'. "
+        "Valid audiences: %s",
+        target_audience,
+        _VALID_REPORT_AUDIENCES,
+    )
+    return "general"
+
+
 def _generate_executive_summary(
     extractor: LLMExtractor,
     entries: list[dict[str, Any]],
     groupings: list[dict[str, Any]],
     custom_instructions: str = "",
     target_audience: str = "",
+    domains: list[str] | None = None,
 ) -> str:
     """Generate an executive summary via LLM.
 
@@ -2474,7 +3032,16 @@ def _generate_executive_summary(
         for g in groupings
     )
 
+    cross_domain_prefix = ""
+    if domains and len(domains) >= 2:
+        cross_domain_prefix = (
+            f"You are synthesizing information from {len(domains)} domains: "
+            f"{', '.join(domains)}. Present a cohesive view that connects "
+            "findings across domains.\n\n"
+        )
+
     prompt = (
+        cross_domain_prefix +
         "Write a concise executive summary (3\u20135 paragraphs) for a "
         f"report covering {len(entries)} knowledge base entries across "
         f"the following themes:\n\n{themes_summary}\n\n"
@@ -2484,8 +3051,11 @@ def _generate_executive_summary(
     )
     if custom_instructions:
         prompt += f"\n\nAdditional instructions: {custom_instructions}"
-    if target_audience:
-        prompt += f"\n\nTarget audience: {target_audience}"
+    # -- Structured audience adaptation -----------------------------------
+    audience = _normalize_report_audience(target_audience)
+    audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+    if audience_prompt:
+        prompt += f"\n\n{audience_prompt}"
 
     try:
         raw = _llm_json_extract(extractor, prompt, "executive_summary")
@@ -2577,6 +3147,7 @@ def _render_report_json(report_data: ReportData, period: str = "month") -> str:
                 "summary": item.get("summary", ""),
                 "url": url,
                 "date": item.get("collected_at", ""),
+                "domain": item.get("domain", ""),
             })
 
     # Also include any references not already covered
@@ -2591,6 +3162,7 @@ def _render_report_json(report_data: ReportData, period: str = "month") -> str:
             "summary": "",
             "url": url,
             "date": "",
+            "domain": ref.get("domain", ""),
         })
 
     output = {
@@ -2847,7 +3419,7 @@ def _call_llm_for_translation(
                 {"role": "system", "content": _TRANSLATION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode else {}),
+            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
@@ -3076,14 +3648,88 @@ def _write_translated_file(
 # Tutorial generation
 # ---------------------------------------------------------------------------
 
-_VALID_AUDIENCES = frozenset({"researcher", "clinician", "executive", "student"})
+# ---------------------------------------------------------------------------
+# Report / Digest audience adaptation (structured prompt sections)
+# ---------------------------------------------------------------------------
 
-_AUDIENCE_DESCRIPTIONS: dict[str, str] = {
-    "researcher": "technical depth, citations, methodology focus, statistical rigor",
-    "clinician": "practical application, clinical guidelines, patient outcomes, treatment protocols",
-    "executive": "strategic overview, ROI, competitive landscape, high-level implications",
-    "student": "foundational concepts, simplified explanations, step-by-step learning, study aids",
+_REPORT_AUDIENCE_PROMPTS: dict[str, str] = {
+    "researcher": (
+        "Structure the summary with: Methods & Data Sources, Key Results, "
+        "Limitations, Discussion. Use technical terminology and cite "
+        "specific findings where possible."
+    ),
+    "executive": (
+        "Structure the summary with: Key Findings, Strategic Implications, "
+        "Recommended Actions. Keep language concise and actionable."
+    ),
+    "investor": (
+        "Structure the summary with: Market Context, Opportunities & Risks, "
+        "Competitive Position. Focus on growth potential and ROI."
+    ),
+    "clinician": (
+        "Structure the summary with: Practical Applications, Clinical "
+        "Guidelines, Patient Outcomes. Emphasize actionable takeaways."
+    ),
+    "student": (
+        "Structure the summary with: Foundational Concepts, Step-by-Step "
+        "Explanations, Key Definitions, Study Takeaways. Use accessible language."
+    ),
+    "general": "",  # no special structure — existing behavior
 }
+
+_VALID_REPORT_AUDIENCES: list[str] = list(_REPORT_AUDIENCE_PROMPTS.keys())
+
+# ---------------------------------------------------------------------------
+# Report type prompts — specialized section structures per report type
+# ---------------------------------------------------------------------------
+
+_REPORT_TYPE_PROMPTS: dict[str, str] = {
+    "standard": "",
+    "industry": (
+        "Structure this report with sections: Industry Overview, "
+        "Key Developments, Regulatory Landscape, Competitive Dynamics, "
+        "Outlook. Focus on domain-specific trends (e.g. clinical trials "
+        "for medical, earnings for financial, funding rounds for tech)."
+    ),
+    "competitive": (
+        "Structure this report with sections: Market Players, "
+        "Head-to-Head Comparison (organize into comparison tables by "
+        "feature/offering), Strengths & Weaknesses, Strategic Moves, "
+        "Market Share Analysis. Extract entity names and compare them "
+        "explicitly."
+    ),
+    "trend": (
+        "Structure this report with sections: Trend Overview, Timeline "
+        "of Developments (chronological), Change Detection (what changed "
+        "in the last N months), Momentum Indicators, Forward-Looking "
+        "Signals. Focus on time-based patterns and trajectory."
+    ),
+    "daily-briefing": (
+        "Structure this briefing with sections: Top Stories (max 5, "
+        "priority-ordered by relevance score), Need-to-Know Updates, "
+        "Briefing Summary (3 bullet points max). Be concise. Prioritize "
+        "high-relevance items (relevance_score > 50)."
+    ),
+}
+
+_VALID_REPORT_TYPES: list[str] = list(_REPORT_TYPE_PROMPTS.keys())
+
+_REPORT_AUDIENCE_DESCRIPTIONS: dict[str, str] = {
+    "researcher": "technical depth, citations, methodology focus, statistical rigor",
+    "executive": "strategic overview, ROI, competitive landscape, high-level implications",
+    "investor": "market context, opportunities & risks, competitive position, growth potential",
+    "clinician": "practical application, clinical guidelines, patient outcomes, treatment protocols",
+    "student": "foundational concepts, simplified explanations, step-by-step learning, study aids",
+    "general": "balanced overview suitable for any audience — no special structure applied",
+}
+
+# ---------------------------------------------------------------------------
+# Tutorial / Presentation audience adaptation (must match report vocab)
+# ---------------------------------------------------------------------------
+
+_VALID_AUDIENCES = frozenset(_VALID_REPORT_AUDIENCES)
+
+_AUDIENCE_DESCRIPTIONS: dict[str, str] = dict(_REPORT_AUDIENCE_DESCRIPTIONS)
 
 
 def generate_tutorial(
@@ -3316,7 +3962,7 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
                 },
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode else {}),
+            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
@@ -3556,7 +4202,7 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
                 },
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode else {}),
+            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
@@ -3727,6 +4373,9 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
 # Default TTS voice for audio output.
 DEFAULT_TTS_VOICE = "alloy"
 
+# Default local TTS engine voice (edge-tts).
+DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
+
 # Markdown patterns to strip when converting to plain text for TTS.
 _MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
@@ -3776,8 +4425,10 @@ def _render_audio(
     text: str,
     voice: str = DEFAULT_TTS_VOICE,
     timeout: float = 120.0,
+    engine: str | None = None,
+    local_voice: str = DEFAULT_LOCAL_TTS_VOICE,
 ) -> bytes:
-    """Render *text* as MP3 audio using the OpenAI Text-to-Speech API.
+    """Render *text* as MP3 audio using the configured TTS engine.
 
     Parameters
     ----------
@@ -3785,10 +4436,21 @@ def _render_audio(
         Plain text (or Markdown; will be stripped) to convert to speech.
         Maximum 4096 characters per request.
     voice:
-        One of OpenAI's TTS voices: ``"alloy"`` (default), ``"echo"``,
-        ``"fable"``, ``"onyx"``, ``"nova"``, ``"shimmer"``.
+        For ``engine="openai"`` and ``engine="whisper"``: one of
+        OpenAI's TTS voices (``"alloy"``, ``"echo"``, ``"fable"``,
+        ``"onyx"``, ``"nova"``, ``"shimmer"``).  Ignored for
+        ``engine="local"``.
     timeout:
         HTTP request timeout in seconds (default 120).
+    engine:
+        TTS engine: ``"openai"`` (default), ``"local"`` (edge-tts),
+        or ``"whisper"`` (OpenAI Whisper model via TTS API).
+        When *None*, reads from the ``tts.engine`` config key, falling
+        back to ``"openai"``.
+    local_voice:
+        Voice name for the local engine (edge-tts).  Defaults to
+        ``"en-US-JennyNeural"``.  Ignored for ``engine="openai"``
+        and ``engine="whisper"``.
 
     Returns
     -------
@@ -3817,6 +4479,70 @@ def _render_audio(
     if not text:
         raise ValueError("Text is empty after stripping markdown formatting")
 
+    # --- Resolve engine ---
+    resolved_engine = engine
+    if resolved_engine is None:
+        resolved_engine = _get_tts_engine_from_config()
+    if resolved_engine not in ("openai", "local", "whisper"):
+        logger.warning(
+            "Unknown TTS engine '%s' — falling back to 'openai'.",
+            resolved_engine,
+        )
+        resolved_engine = "openai"
+
+    # --- Local engine (edge-tts) ---
+    if resolved_engine == "local":
+        try:
+            return _render_audio_edge_tts(text, voice=local_voice, timeout=timeout)
+        except ImportError:
+            logger.warning(
+                "edge-tts is not installed — falling back to OpenAI TTS. "
+                "Install with: pip install 'autoinfo[tts]'"
+            )
+        except Exception:
+            logger.warning(
+                "Local TTS (edge-tts) failed — falling back to OpenAI TTS.",
+                exc_info=True,
+            )
+
+    # --- Whisper engine (OpenAI Whisper model via TTS API) ---
+    if resolved_engine == "whisper":
+        try:
+            return _render_audio_whisper(text, voice=voice, timeout=timeout)
+        except Exception:
+            logger.warning(
+                "Whisper TTS failed — falling back to OpenAI TTS.",
+                exc_info=True,
+            )
+
+    # --- OpenAI TTS path (explicit or fallback) ---
+    return _render_audio_openai(text, voice=voice, timeout=timeout)
+
+
+def _get_tts_engine_from_config() -> str:
+    """Read the ``tts.engine`` setting from the project config.
+
+    Returns ``"openai"`` when the config is missing or the key is not set.
+    """
+    try:
+        config_path = get_config_path()
+        if config_path and config_path.is_file():
+            cfg = load_config(config_path)
+            engine = getattr(cfg, "tts", None)
+            if engine is not None and engine.engine:
+                return engine.engine
+    except Exception:
+        pass
+    return "openai"
+
+
+def _render_audio_openai(
+    text: str,
+    voice: str = DEFAULT_TTS_VOICE,
+    timeout: float = 120.0,
+    model: str = "tts-1",
+) -> bytes:
+    """Render *text* as MP3 audio using the OpenAI Text-to-Speech API."""
     # --- API key resolution ---
     api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
     if not api_key:
@@ -3835,7 +4561,7 @@ def _render_audio(
         raise RuntimeError(
             "AUTOINFO_LLM_API_KEY is not set.  Set the environment "
             "variable or configure `llm.api_key` in config.yaml to "
-            "use audio output."
+            "use OpenAI TTS."
         )
 
     # --- OpenAI TTS API call ---
@@ -3845,7 +4571,7 @@ def _render_audio(
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "tts-1",
+        "model": model,
         "voice": voice,
         "input": text,
         "response_format": "mp3",
@@ -3858,8 +4584,8 @@ def _render_audio(
         if not mp3_bytes:
             raise RuntimeError("OpenAI TTS API returned empty audio data")
         logger.info(
-            "Generated audio: %d chars text → %d bytes MP3 (voice=%s)",
-            len(text), len(mp3_bytes), voice,
+            "Generated audio: %d chars text → %d bytes MP3 (model=%s, voice=%s)",
+            len(text), len(mp3_bytes), model, voice,
         )
         return mp3_bytes
     except httpx.HTTPStatusError as exc:
@@ -3878,6 +4604,74 @@ def _render_audio(
         raise RuntimeError(
             f"OpenAI TTS network error: {exc}"
         ) from exc
+
+
+def _render_audio_whisper(
+    text: str,
+    voice: str = DEFAULT_TTS_VOICE,
+    timeout: float = 120.0,
+) -> bytes:
+    """Render *text* as MP3 audio using the OpenAI Whisper model via TTS API.
+
+    Uses the same OpenAI TTS API endpoint as :func:`_render_audio_openai`
+    but with ``model="whisper-1"`` instead of ``model="tts-1"``.
+
+    Falls back to :func:`_render_audio_openai` if the Whisper model is
+    unavailable or the API request fails.
+    """
+    try:
+        return _render_audio_openai(
+            text, voice=voice, timeout=timeout, model="whisper-1"
+        )
+    except Exception:
+        logger.warning(
+            "Whisper TTS model unavailable — falling back to OpenAI TTS.",
+            exc_info=True,
+        )
+        return _render_audio_openai(
+            text, voice=voice, timeout=timeout, model="tts-1"
+        )
+
+
+def _render_audio_edge_tts(
+    text: str,
+    voice: str = DEFAULT_LOCAL_TTS_VOICE,
+    timeout: float = 120.0,
+) -> bytes:
+    """Render *text* as MP3 audio using the edge-tts library (local, free).
+
+    Raises
+    ------
+    ImportError
+        If ``edge_tts`` is not installed.
+    RuntimeError
+        If the TTS synthesis fails.
+    """
+    import asyncio  # noqa: PLC0415
+    import edge_tts  # noqa: PLC0415
+
+    async def _synthesize() -> bytes:
+        communicate = edge_tts.Communicate(text, voice)
+        chunks: list[bytes] = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                chunks.append(chunk["data"])
+        if not chunks:
+            raise RuntimeError("edge-tts returned empty audio data")
+        return b"".join(chunks)
+
+    try:
+        mp3_bytes = asyncio.run(asyncio.wait_for(_synthesize(), timeout=timeout))
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"Local TTS (edge-tts) timed out after {timeout:.0f}s"
+        ) from None
+
+    logger.info(
+        "Generated audio (local/edge-tts): %d chars text → %d bytes MP3 (voice=%s)",
+        len(text), len(mp3_bytes), voice,
+    )
+    return mp3_bytes
 
 
 def _render_markdown(context: dict[str, Any]) -> str:

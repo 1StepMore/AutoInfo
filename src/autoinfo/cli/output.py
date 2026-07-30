@@ -81,7 +81,9 @@ def digest(
 
 @app.command()
 def report(
-    domain: str = typer.Option(..., "--domain", help="Domain to generate report for"),
+    domain: str = typer.Option(
+        "", "--domain", help="Domain to generate report for (single-domain mode)"
+    ),
     collection_id: str = typer.Option(
         None, "--collection-id", help="Optional collection ID to scope the report",
     ),
@@ -91,21 +93,42 @@ def report(
     audience: str = typer.Option(
         "", "--audience", help="Target audience: researcher, clinician, executive, student, investor",
     ),
+    report_type: str = typer.Option(
+        "standard", "--type", help="Report type: standard, industry, competitive, trend, daily-briefing",
+    ),
+    domains: list[str] = typer.Option(
+        [],
+        "--domains",
+        help="Domains for cross-domain report (repeatable, e.g. --domains X --domains Y)",
+    ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.
 
     Groups KB entries by theme using LLM, generates per-section content,
     and renders through a Jinja2 template or returns a JSON structure.
+
+    Supports cross-domain reports::
+
+        autoinfo output report --domains medical --domains ai-commercial --format markdown
     """
     from autoinfo.output import generate_report
 
+    if not domain and not domains:
+        typer.echo("Error: Provide --domain or --domains to specify report scope.", err=True)
+        raise typer.Exit(code=1)
+
     try:
-        result = generate_report(
-            domain=domain,
-            collection_id=collection_id,
-            format=format,
-            target_audience=audience,
-        )
+        kwargs: dict[str, Any] = {
+            "domain": domain or (domains[0] if domains else "unknown"),
+            "collection_id": collection_id,
+            "format": format,
+            "target_audience": audience,
+            "report_type": report_type,
+        }
+        if len(domains) >= 2:
+            kwargs["domains"] = domains
+
+        result = generate_report(**kwargs)
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -121,7 +144,7 @@ def export(
         None, "--domain", help="Domain to export (default: all domains)"
     ),
     format: str = typer.Option(
-        "json", "--format", help="Export format (json, markdown, sqlite, pdf)"
+        "json", "--format", help="Export format (json, markdown, sqlite, pdf, bundle)"
     ),
 ) -> None:
     """Export knowledge base data to a file.

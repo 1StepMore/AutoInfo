@@ -411,6 +411,45 @@ def run_due_schedules(
 
         results.append(entry)
 
+    # --- Delivery schedules --------------------------------------------------
+    try:
+        from autoinfo.delivery.scheduler import SCHEDULES_PATH, run_delivery_schedules
+
+        delivery_path = Path.cwd() / SCHEDULES_PATH
+        if delivery_path.is_file():
+            delivery_results = run_delivery_schedules(
+                dry_run=dry_run,
+                json_output=json_output,
+            )
+            for dr in delivery_results:
+                if schedule_filter and dr.get("domain") != schedule_filter:
+                    continue
+                dr_entry: dict[str, Any] = {
+                    "name": f"delivery:{dr['schedule_id'][:12]}",
+                    "domain": dr.get("domain", ""),
+                    "expression": dr.get("cron_expression", ""),
+                    "due": dr.get("due", True),
+                }
+                if dr.get("dry_run"):
+                    dr_entry["ran"] = False
+                    dr_entry["dry_run"] = True
+                elif dr.get("ran"):
+                    dr_entry["ran"] = True
+                    dr_entry["type"] = "delivery"
+                    dr_entry["collection_result"] = {
+                        "output_type": dr.get("output_type", ""),
+                        "channel": dr.get("channel", ""),
+                    }
+                else:
+                    dr_entry["ran"] = False
+                    dr_entry["error"] = dr.get("error", "unknown error")
+                dr_entry["last_run"] = dr.get("last_run", "")
+                results.append(dr_entry)
+    except ImportError:
+        pass
+    except Exception:
+        logger.debug("Delivery schedule execution failed", exc_info=True)
+
     # --- Trial expiry check (cron-based automated notification) -------------
     try:
         from autoinfo.notifications import check_expiring_trials  # noqa: PLC0415
@@ -466,17 +505,25 @@ def run(
         return
 
     for entry in due:
+        entry_type = entry.get("type", "")
         if entry.get("dry_run"):
+            type_suffix = f" [{entry_type}]" if entry_type else ""
             typer.echo(
                 f"  🔄 {entry['name']} ({entry['domain']}) — "
-                f"[{entry['expression']}] — would run"
+                f"[{entry['expression']}] — would run{type_suffix}"
             )
         elif entry.get("ran"):
             cr = entry.get("collection_result", {})
-            typer.echo(
-                f"  ✓ {entry['name']} ({entry['domain']}) — "
-                f"{cr.get('total_new', 0)} new / {cr.get('total_found', 0)} found"
-            )
+            if entry_type == "delivery":
+                typer.echo(
+                    f"  ✓ {entry['name']} ({entry['domain']}) — "
+                    f"{cr.get('output_type', 'output')} via {cr.get('channel', 'channel')}"
+                )
+            else:
+                typer.echo(
+                    f"  ✓ {entry['name']} ({entry['domain']}) — "
+                    f"{cr.get('total_new', 0)} new / {cr.get('total_found', 0)} found"
+                )
         elif "error" in entry:
             typer.echo(
                 f"  ✗ {entry['name']} ({entry['domain']}) — FAILED: {entry['error']}",
@@ -851,3 +898,158 @@ def uninstall() -> None:
     typer.echo(
         f"Removed {removed} autoinfo crontab entr{'y' if removed == 1 else 'ies'}."
     )
+
+
+# ---------------------------------------------------------------------------
+# Delivery schedule commands
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="add-delivery")
+def add_delivery(
+    domain: str = typer.Option(
+        ..., "--domain", help="Domain to generate output for",
+    ),
+    schedule: str = typer.Option(
+        ..., "--schedule", help="Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
+    ),
+    output: str = typer.Option(
+        "digest", "--output", help="Output type: digest or report",
+    ),
+    channel: str = typer.Option(
+        "email", "--channel", help="Delivery channel: email, webhook, rest, telegram, discord, etc.",
+    ),
+    to: str = typer.Option(
+        "", "--to", help="Comma-separated recipients (emails, webhook URLs, etc.)",
+    ),
+    output_format: str = typer.Option(
+        "html", "--format", help="Output format: markdown, html, json, agent, audio, pdf",
+    ),
+    period: str = typer.Option(
+        "weekly", "--period", help="Content period: daily, weekly, monthly",
+    ),
+) -> None:
+    """Add a delivery schedule: periodic output generation + channel delivery."""
+    try:
+        from croniter import croniter
+
+        if not croniter.is_valid(schedule):
+            typer.echo(
+                f"Error: '{schedule}' is not a valid cron expression.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    except ImportError:
+        typer.echo(
+            "Error: croniter is required. Install with: pip install croniter",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    from autoinfo.delivery.scheduler import (
+        VALID_CHANNELS,
+        VALID_FORMATS,
+        VALID_OUTPUT_TYPES,
+        DeliverySchedule,
+        DeliveryScheduler,
+    )
+
+    if output not in VALID_OUTPUT_TYPES:
+        typer.echo(
+            f"Error: Invalid output type '{output}'. "
+            f"Must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if output_format not in VALID_FORMATS:
+        typer.echo(
+            f"Error: Invalid format '{output_format}'. "
+            f"Must be one of: {', '.join(sorted(VALID_FORMATS))}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if channel not in VALID_CHANNELS:
+        typer.echo(
+            f"Error: Invalid channel '{channel}'. "
+            f"Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    recipients_list = [r.strip() for r in to.split(",") if r.strip()] if to else []
+
+    new_schedule = DeliverySchedule(
+        cron_expression=schedule,
+        domain=domain,
+        output_type=output,
+        format=output_format,
+        channel=channel,
+        recipients=recipients_list,
+        period=period,
+    )
+    scheduler = DeliveryScheduler()
+    scheduler.add_schedule(new_schedule)
+
+    typer.echo(
+        f"Delivery schedule '{new_schedule.id}' added: "
+        f"{schedule} → domain '{domain}' "
+        f"({output}, {output_format}, via {channel})"
+    )
+
+
+@app.command(name="list-deliveries")
+def list_deliveries(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """List all configured delivery schedules."""
+    from dataclasses import asdict
+
+    from autoinfo.delivery.scheduler import DeliveryScheduler
+
+    scheduler = DeliveryScheduler()
+    schedules = scheduler.list_schedules()
+
+    if json_output:
+        data = []
+        for s in schedules:
+            d = asdict(s)
+            if d.get("last_error") is None:
+                d["last_error"] = ""
+            data.append(d)
+        typer.echo(json.dumps({"items": data, "count": len(data)}, ensure_ascii=False, indent=2))
+        return
+
+    if not schedules:
+        typer.echo("No delivery schedules configured.")
+        return
+
+    header = f"{'ID':<38} {'Cron':<18} {'Domain':<22} {'Type':<8} {'Channel':<10} {'Enabled':<8}"
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for s in schedules:
+        s_id = s.id[:36] if len(s.id) > 36 else s.id
+        enabled = "yes" if s.enabled else "no"
+        typer.echo(
+            f"{s_id:<38} {s.cron_expression:<18} {s.domain:<22} "
+            f"{s.output_type:<8} {s.channel:<10} {enabled:<8}"
+        )
+    typer.echo(f"\n{schedules.__len__()} delivery schedule(s).")
+
+
+@app.command(name="remove-delivery")
+def remove_delivery(
+    schedule_id: str = typer.Argument(..., help="Schedule ID to remove"),
+) -> None:
+    """Remove a delivery schedule by its ID."""
+    from autoinfo.delivery.scheduler import DeliveryScheduler
+
+    scheduler = DeliveryScheduler()
+    removed = scheduler.remove_schedule(schedule_id)
+
+    if not removed:
+        typer.echo(f"Error: Delivery schedule '{schedule_id}' not found.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Delivery schedule '{schedule_id}' removed.")

@@ -8,6 +8,8 @@ Covers:
 - Fallback executive summary when LLM call fails
 - Unsupported format raises ``ValueError``
 - CLI wiring — ``autoinfo output report --domain X`` invokes ``generate_report``
+- Report types — ``standard``, ``industry``, ``competitive``, ``trend``, ``daily-briefing``
+- Invalid report type raises ``ValueError``
 """
 
 from __future__ import annotations
@@ -384,6 +386,231 @@ class TestGenerateReport:
 
 
 # ===================================================================
+# Test: Report types
+# ===================================================================
+
+
+class TestReportTypes:
+    """``generate_report(report_type=...)`` — specialized report types."""
+
+    def test_standard_type_is_unchanged(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """``report_type="standard"`` produces same output as omitting the parameter."""
+        mock_extract = MagicMock(
+            side_effect=[
+                _make_grouping_result(),
+                _make_summary_result(),
+            ]
+        )
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            report_default = _call_report("medical-research")
+            report_explicit = _call_report(
+                "medical-research", report_type="standard"
+            )
+
+        # Both should have same structure
+        assert "# medical-research — Report" in report_default
+        assert "# medical-research — Report" in report_explicit
+        assert "## Executive Summary" in report_default
+        assert "## Executive Summary" in report_explicit
+        assert "## Sections" in report_default
+        assert "## Sections" in report_explicit
+
+    def test_industry_type_produces_report(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """``report_type="industry"`` produces a valid structured report."""
+        mock_extract = MagicMock(
+            side_effect=[
+                _make_grouping_result(),
+                _make_summary_result(),
+            ]
+        )
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            report = _call_report("medical-research", report_type="industry")
+
+        assert "medical-research" in report
+        assert "## Executive Summary" in report
+        assert "## Sections" in report
+
+    def test_competitive_type_produces_report(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """``report_type="competitive"`` produces a valid structured report."""
+        mock_extract = MagicMock(
+            side_effect=[
+                _make_grouping_result(),
+                _make_summary_result(),
+            ]
+        )
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            report = _call_report("medical-research", report_type="competitive")
+
+        assert "medical-research" in report
+        assert "## Executive Summary" in report
+        assert "## Sections" in report
+
+    def test_trend_type_produces_report(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """``report_type="trend"`` produces a valid structured report."""
+        mock_extract = MagicMock(
+            side_effect=[
+                _make_grouping_result(),
+                _make_summary_result(),
+            ]
+        )
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            report = _call_report("medical-research", report_type="trend")
+
+        assert "medical-research" in report
+        assert "## Executive Summary" in report
+        assert "## Sections" in report
+
+    def test_daily_briefing_type_produces_report(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """``report_type="daily-briefing"`` produces a valid structured report."""
+        mock_extract = MagicMock(
+            side_effect=[
+                _make_grouping_result(),
+                _make_summary_result(),
+            ]
+        )
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            report = _call_report(
+                "medical-research", report_type="daily-briefing"
+            )
+
+        assert "medical-research" in report
+        assert "## Executive Summary" in report
+        assert "## Sections" in report
+
+    def test_invalid_report_type_raises_value_error(self) -> None:
+        """Unknown ``report_type`` raises ``ValueError``."""
+        with patch("autoinfo.output.KBStore") as mock_kb_cls:
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = []
+            mock_kb_cls.return_value = mock_store
+
+            with pytest.raises(ValueError, match="Unknown report type"):
+                _call_report("test-domain", report_type="nonexistent")
+
+    def test_type_prompt_injected_into_executive_summary(
+        self, sample_entries: list[dict]
+    ) -> None:
+        """Type-specific prompt text reaches the executive summary LLM call."""
+        mock_extract = MagicMock(
+            side_effect=[_make_grouping_result()]
+        )
+
+        mock_summary = "Custom industry summary."
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract", mock_extract
+            ),
+            patch(
+                "autoinfo.output._generate_executive_summary",
+                return_value=mock_summary,
+            ) as mock_exec,
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            _call_report("medical-research", report_type="industry")
+
+        mock_exec.assert_called_once()
+        # The custom_instructions arg should contain the industry prompt
+        # (passed as the 4th positional argument)
+        args = mock_exec.call_args.args
+        instructions = args[3] if len(args) > 3 else ""
+        assert "Industry Overview" in instructions
+        assert "Key Developments" in instructions
+
+    def test_standard_type_passes_empty_instructions(self, sample_entries: list[dict]) -> None:
+        """``report_type="standard"`` passes empty/unchanged custom_instructions to executive summary."""
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch.object(
+                _get_llm_extractor_class(), "extract",
+                MagicMock(side_effect=[_make_grouping_result()]),
+            ),
+            patch(
+                "autoinfo.output._generate_executive_summary",
+                return_value="Standard summary.",
+            ) as mock_exec,
+        ):
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = sample_entries
+            mock_kb_cls.return_value = mock_store
+
+            _call_report("medical-research", report_type="standard", custom_instructions="Focus on safety.")
+
+        args = mock_exec.call_args.args
+        instructions = args[3] if len(args) > 3 else ""
+        assert "Focus on safety." in instructions
+        # Standard type should NOT inject any type-specific prompt
+        assert "Industry Overview" not in instructions
+        assert "Market Players" not in instructions
+        assert "Trend Overview" not in instructions
+        assert "Top Stories" not in instructions
+
+
+# ===================================================================
 # Test: CLI wiring
 # ===================================================================
 
@@ -449,11 +676,19 @@ def _call_report(
     domain: str,
     collection_id: str | None = None,
     format: str = "markdown",
+    report_type: str = "standard",
+    custom_instructions: str = "",
 ) -> str:
     """Call ``generate_report`` from ``autoinfo.output``."""
     from autoinfo.output import generate_report
 
-    return generate_report(domain=domain, collection_id=collection_id, format=format)
+    return generate_report(
+        domain=domain,
+        collection_id=collection_id,
+        format=format,
+        report_type=report_type,
+        custom_instructions=custom_instructions,
+    )
 
 
 def _get_llm_extractor_class():

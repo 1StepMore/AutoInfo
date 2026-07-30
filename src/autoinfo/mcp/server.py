@@ -2322,6 +2322,20 @@ def _handle_generate_digest(
     """
     from autoinfo.output import generate_digest as _generate_digest
 
+    from autoinfo.kb import KBStore
+    from datetime import date, timedelta
+
+    _period_days = {"daily": 1, "weekly": 7, "monthly": 30}
+    _days = _period_days.get(period, 7)
+    _date_from = (date.today() - timedelta(days=_days)).isoformat()
+    _store = KBStore()
+    _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
+    if not _preview:
+        return success_response({
+            "status": "noop",
+            "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
+        })
+
     try:
         result = _generate_digest(
             domain=domain,
@@ -2373,6 +2387,20 @@ def _handle_generate_report(
     Dispatches to :func:`autoinfo.output.generate_report`.
     """
     from autoinfo.output import generate_report as _generate_report
+
+    from autoinfo.kb import KBStore
+    from datetime import date, timedelta
+
+    _period_days = {"daily": 1, "weekly": 7, "monthly": 30}
+    _days = _period_days.get(period, 7)
+    _date_from = (date.today() - timedelta(days=_days)).isoformat()
+    _store = KBStore()
+    _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
+    if not _preview:
+        return success_response({
+            "status": "noop",
+            "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
+        })
 
     try:
         result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id, report_type=report_type)

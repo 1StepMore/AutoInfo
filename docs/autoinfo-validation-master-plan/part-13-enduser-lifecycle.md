@@ -4,6 +4,12 @@
 
 **Expectations referenced:** F36 (Profile & Subscription), F37 (Multi-Channel Delivery), F38 (Lifecycle State Machine), F39 (Delivery Reliability & Logging), F40 (Self-Service Portal), F41 (Cost Metering), F42 (External Billing), F43 (End-User Cost Dashboard), F46 (GDPR Data Export/Deletion), F47 (Data Deletion & Retention), CD-018 (Consumption event auto-record on delivery), N/A (Automated notifications — trial reminders & content-ready alerts)
 
+> **🤖 Agent→Human Prompts Summary (Part 13):**
+> - **SMTP**: Q63 scenarios 63.3, 63.12, 63.13, 63.14 require SMTP credentials. Agent prompts human for `AUTOINFO_SMTP_HOST/PORT/USER/PASSWORD` or `autoinfo email config`.
+> - **Stripe**: Q65c.4 (`create_checkout_session`), Q65e.1-Q65e.3 (webhook lifecycle) use Stripe. Agent prompts human for `STRIPE_API_KEY` and `STRIPE_WEBHOOK_SECRET`.
+> - **Telegram/Discord**: Q62.1, Q62.4 require Bot tokens. Agent logs "Channel not configured — exercising fallback path."
+> - **All SMTP/Stripe scenarios gracefully degrade**: without credentials, scenarios exercise the delivery_log retry/fallback path and record attempts.
+
 ---
 
 ### Part-Level Directory Setup
@@ -1021,6 +1027,10 @@ autoinfo portal preferences update --user-id nonexistent --delivery-prefs '{"ema
 ## Q63: Product Delivery Lifecycle
 
 **User says:** "I subscribed to a product. I want to receive my RAW feed and PROCESSED digest, and I want the system to prove delivery happened within SLA."
+
+> **🤖 Agent→Human Prompt (SMTP):** Scenarios 63.3, 63.12, 63.13, 63.14 require SMTP credentials for real email delivery. Agent prompts human: "To test real SMTP delivery, please configure SMTP via `autoinfo email config` or set environment variables `AUTOINFO_SMTP_HOST`, `AUTOINFO_SMTP_PORT`, `AUTOINFO_SMTP_USER`, `AUTOINFO_SMTP_PASSWORD`. Without SMTP, delivery tests will gracefully fail with delivery_log entries recording the attempt."
+
+> **🤖 Agent→Human Prompt (Stripe/Telegram/Discord):** Scenarios requiring Stripe (checkout), Telegram (Bot API), or Discord (Webhook) credentials will skip gracefully in test environment. Agent logs: "Channel `{telegram|discord|stripe}` not configured — scenario will exercise the delivery_log retry/fallback path."
 
 ### Prerequisites
 
@@ -2891,6 +2901,8 @@ for e in entries:
 
 **User says:** "As a paying customer, I want to see my billing summary, check my budget limits, and access my invoices."
 
+> **🤖 Agent→Human Prompt (Stripe):** Scenario 65c.4 (`create_checkout_session`) returns a simulated checkout URL when `STRIPE_API_KEY` is not set. Agent prompts human: "For real Stripe checkout, set `export STRIPE_API_KEY='sk_test_...'`. Without it, dev mode returns a simulated `session_id` and `checkout_url`."
+
 ### Prerequisites
 
 ```bash
@@ -3701,6 +3713,8 @@ except Exception as e:
 **User says:** "Stripe sends webhook events to my endpoint. I want checkout to activate subscriptions, subscription updates to reflect status changes, and bad events to be ignored without crashing."
 
 **Expectations referenced:** F42 (External Billing Model), G14 (Stripe webhook endpoint), G16 (Subscription lifecycle via webhooks)
+
+> **🤖 Agent→Human Prompt (Stripe Webhook):** These scenarios use `handle_webhook()` directly (no live Stripe needed). For full end-to-end verification with real Stripe signatures, agent prompts human: "Set `export STRIPE_WEBHOOK_SECRET='whsec_...'` and use the REST API endpoint `POST /api/v1/webhook/stripe` (tested in Part 7, Q47.14-47.15)."
 
 ### Prerequisites
 

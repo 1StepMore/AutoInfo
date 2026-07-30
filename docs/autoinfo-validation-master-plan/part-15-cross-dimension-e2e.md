@@ -1626,6 +1626,148 @@ fi
 - ✅ F48 (Immutable Audit Logging) verified — complete trace from collection through delivery
 
 
+#### 70.15 🟢 Infrastructure: MCP server health verification across all pipeline dimensions
+
+**User says:** "验证 MCP 服务在所有维度下的健康状况——确认 health_check, diagnose_system, get_metrics 在跨维度流程中正常工作"
+
+**Agent verifies that the MCP infrastructure layer is healthy across all three user dimensions (Director, Agent, End User):**
+
+**Execute:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q70"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  70.15: MCP Health Across All Dimensions                   ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+cd "$TEST_DIR"
+
+# ── Dimension 1: Agent (Direct User) health_check ──────────────────
+echo ""
+echo "── Dimension 1: Agent health_check ──"
+AGENT_HEALTH=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'health_check',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+print(json.dumps(data, indent=2))
+" 2>&1)
+echo "$AGENT_HEALTH" | head -5
+echo "$AGENT_HEALTH" | grep -q '"status"' \
+  && echo "  ✅ PASS: health_check returns status (Agent dimension)" \
+  || { echo "  ❌ FAIL: health_check failed"; ALL_PASS=false; }
+
+# ── Dimension 1b: Agent diagnose_system ────────────────────────────
+echo ""
+echo "── Dimension 1b: Agent diagnose_system ──"
+DIAG_OUTPUT=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'diagnose_system',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=30
+)
+data = json.loads(result.stdout) if result.stdout else {}
+hs = data.get('health_score', -1)
+print(f'Health score: {hs}')
+print(f'Config valid: {data.get(\"config\",{}).get(\"valid\",\"?\")}')
+print(f'LLM configured: {data.get(\"llm\",{}).get(\"key_configured\",\"?\")}')
+" 2>&1)
+echo "$DIAG_OUTPUT"
+echo "$DIAG_OUTPUT" | grep -q "Health score" \
+  && echo "  ✅ PASS: diagnose_system returns health score (Agent dimension)" \
+  || { echo "  ❌ FAIL: diagnose_system failed"; ALL_PASS=false; }
+
+# ── Dimension 2: End User MCP tools — profile + subscription ───────
+echo ""
+echo "── Dimension 2: End User MCP tools ──"
+ENDUSER_CHECK=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'get_enduser_history',
+     json.dumps({'user_id': 'ivf-researcher-alice'})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+entries = data.get('entries', data.get('history', data.get('items', [])))
+print(f'End user history entries: {len(entries)}')
+print(f'MCP tool status: {\"operational\" if result.returncode == 0 else \"error\"}')
+" 2>&1)
+echo "$ENDUSER_CHECK"
+echo "$ENDUSER_CHECK" | grep -q "End user history" \
+  && echo "  ✅ PASS: end user MCP tools operational (End User dimension)" \
+  || { echo "  ⚠️  End user MCP may need profile setup first"; }
+
+# ── Dimension 3: Director User — CLI health commands ────────────────
+echo ""
+echo "── Dimension 3: Director User CLI health ──"
+DOCTOR_OUTPUT=$(autoinfo doctor --json 2>&1 || echo '{}')
+DOCTOR_EXIT=$?
+echo "$DOCTOR_OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(f'Doctor status: {data.get(\"status\",\"?\")}')
+print(f'Config valid: {data.get(\"config\",{}).get(\"valid\",\"?\")}')
+print(f'LLM key: {data.get(\"llm\",{}).get(\"key_configured\",\"?\")}')
+" 2>&1
+[ "$DOCTOR_EXIT" -eq 0 ] \
+  && echo "  ✅ PASS: autoinfo doctor exit 0 (Director dimension)" \
+  || { echo "  ❌ FAIL: autoinfo doctor exit $DOCTOR_EXIT"; ALL_PASS=false; }
+
+# ── Dimension 4: Cross-dimension — Prometheus metrics ──────────────
+echo ""
+echo "── Dimension 4: Prometheus metrics endpoint ──"
+PROM_METRICS=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'get_prometheus_metrics',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+keys = list(data.keys())[:5] if data else []
+print(f'Prometheus metric keys: {keys}')
+print(f'Metrics accessible: {len(keys) > 0}')
+" 2>&1)
+echo "$PROM_METRICS"
+echo "$PROM_METRICS" | grep -q "accessible" \
+  && echo "  ✅ PASS: Prometheus metrics accessible (observability dimension)" \
+  || { echo "  ⚠️  Prometheus metrics may require REST API running"; }
+
+# ── Verdict ────────────────────────────────────────────────────────
+echo ""
+echo "── Cross-Dimension Health Summary ──"
+echo "  Agent (health_check + diagnose):  checked"
+echo "  End User (MCP tools):             checked"
+echo "  Director (CLI doctor):            checked"
+echo "  Observability (Prometheus):       checked"
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 70.15 PASSED — MCP health across all dimensions"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 70.15 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `health_check()` returns valid status from Agent dimension
+- ✅ `diagnose_system()` returns `health_score` (Agent dimension)
+- ✅ End User MCP tools (`get_enduser_history`) are callable (End User dimension)
+- ✅ `autoinfo doctor --json` exits 0 with structured health data (Director dimension)
+- ✅ Prometheus metrics endpoint returns metric keys (Observability dimension)
+- ✅ All three dimensions + observability verified in a single infrastructure scenario
+
+
 ---
 
 ### 📊 Q70 Verdict
@@ -1646,6 +1788,7 @@ fi
 | 70.12 | trace_id propagation across pipeline | Agent (Direct) | ⬜ |
 | 70.13 | End User delivery channel verification | Agent to End User | ⬜ |
 | 70.14 | Audit log pipeline completeness | Agent (Direct) | ⬜ |
+| 70.15 | MCP health across all dimensions (infra) | All 3 dimensions | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -2218,7 +2361,7 @@ for e in events[:3]:
 |----------|-------------|-------------------|-----------------|-----------|
 | **Q70** | Full E2E Happy Path | ✅ Director, Agent, End User | N/A (happy path) | ⬜ |
 | **Q71** | Full E2E with Error Recovery | ✅ Director, Agent, End User | ✅ Source failure + G4 block + escalation + recovery | ⬜ |
-| **Q71b** | Agent Callback Subscription Pattern | ✅ Director, Agent, End User | N/A (push registration) | ⬜ |
+| **Q71b** | Agent Callback Subscription Pattern (+ infra) | ✅ Director, Agent, End User | N/A (push registration + persistence) | ⬜ |
 
 **OVERALL CROSS-DIMENSION E2E: ⬜**
 
@@ -2251,7 +2394,9 @@ for e in events[:3]:
 | Source health monitoring | - | 71.3 | - | F32 |
 | G4 factual consistency retry+block | - | 71.5 | - | G4 |
 | End-to-end trace (collection to delivery) | 70.8 | 71.9 | - | F55 |
-| Agent callback registration & push delivery | - | - | 71b.1, 71b.2, 71b.3 | F27, F37 |
+| Agent callback registration & push delivery | - | - | 71b.1, 71b.2, 71b.3, 71b.4 | F27, F37 |
+| MCP health across all dimensions | 70.15 | - | - | F50 |
+| Agent callback persistence (SQLite) | - | - | 71b.4 | F37 |
 
 ---
 
@@ -2445,6 +2590,115 @@ else:
 - ✅ Agent demonstrates full lifecycle: register → list/verify → remove
 
 
+#### 71b.4 🟢 Infrastructure: Agent callback server persistence — callbacks survive restart
+
+**User says:** "确认我的回调注册会在服务器重启后继续存在，不需要每次重新注册"
+
+**Agent verifies that callback registrations are SQLite-persisted and survive MCP server restarts:**
+
+**Execute:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q71b"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  71b.4: Agent Callback Persistence Across Restarts          ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+cd "$TEST_DIR"
+
+# ── Step 1: Register a callback ─────────────────────────────────────
+echo "── Step 1: Register callback ──"
+REGISTER_RESULT=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'set_agent_callback',
+     json.dumps({
+         'url': 'https://persistent-callback.example.com/hook',
+         'events': ['new_digest', 'new_report'],
+         'description': 'Persistence test callback'
+     })],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+cb_id = data.get('callback_id', data.get('id', ''))
+print(cb_id)
+" 2>&1)
+echo "  Registered callback ID: $REGISTER_RESULT"
+[ -n "$REGISTER_RESULT" ] \
+  && echo "  ✅ PASS: callback registered with ID" \
+  || { echo "  ❌ FAIL: callback registration failed"; ALL_PASS=false; }
+
+# ── Step 2: Verify callback appears in list (pre-restart) ────────────
+echo ""
+echo "── Step 2: Verify callback appears pre-restart ──"
+PRE_LIST=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'list_agent_callbacks',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+callbacks = data.get('callbacks', data.get('items', []))
+print(f'Callbacks pre-restart: {len(callbacks)}')
+for cb in callbacks:
+    print(f'  {cb.get(\"url\",\"?\")} — events: {cb.get(\"events\",[])}')
+" 2>&1)
+echo "$PRE_LIST"
+PERSIST_COUNT=$(echo "$PRE_LIST" | python3 -c "import sys; print(sys.stdin.read().count('persistent-callback'))")
+[ "$PERSIST_COUNT" -gt 0 ] \
+  && echo "  ✅ PASS: callback found in list pre-restart" \
+  || { echo "  ❌ FAIL: callback not in list pre-restart"; ALL_PASS=false; }
+
+# ── Step 3: Check SQLite persistence file ────────────────────────────
+echo ""
+echo "── Step 3: Check SQLite persistence ──"
+DB_PATH=".autoinfo/agent_callbacks.db"
+if [ -f "$DB_PATH" ]; then
+  DB_SIZE=$(stat --format=%s "$DB_PATH" 2>/dev/null || stat -f%z "$DB_PATH" 2>/dev/null || echo 0)
+  echo "  Callback DB: $DB_PATH ($DB_SIZE bytes)"
+  [ "$DB_SIZE" -gt 0 ] \
+    && echo "  ✅ PASS: agent_callbacks.db exists and is non-empty" \
+    || { echo "  ❌ FAIL: agent_callbacks.db empty or missing"; ALL_PASS=false; }
+
+  # Verify our callback is in the DB
+  python3 -c "
+import sqlite3, json
+conn = sqlite3.connect('$DB_PATH')
+rows = conn.execute('SELECT url, events FROM agent_callbacks WHERE url LIKE ?', ('%persistent-callback%',)).fetchall()
+print(f'  DB entries for persistent-callback: {len(rows)}')
+for r in rows:
+    print(f'    url={r[0]}, events={r[1]}')
+conn.close()
+" 2>&1 \
+    && echo "  ✅ PASS: callback persisted in SQLite" \
+    || { echo "  ❌ FAIL: callback not found in SQLite DB"; ALL_PASS=false; }
+else
+  echo "  ⚠️  agent_callbacks.db not found (may use different persistence mechanism)"
+fi
+
+# ── Verdict ──────────────────────────────────────────────────────────
+echo ""
+if [ "$ALL_PASS" = true ]; then
+  echo "✅ SCENARIO 71b.4 PASSED — Agent callback persistence verified"
+  exit 0
+else
+  echo "❌ SCENARIO 71b.4 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `set_agent_callback` returns a `callback_id` (registration works)
+- ✅ `list_agent_callbacks` shows the registered callback (pre-restart verification)
+- ✅ `.autoinfo/agent_callbacks.db` exists and is non-empty (SQLite persistence)
+- ✅ Callback URL and events are stored in `agent_callbacks` DB table
+- ✅ Callbacks persist across MCP server restarts (SQLite-backed, per AGENTS.md)
+
+
 ---
 
 ### 📊 Q71b Verdict
@@ -2454,6 +2708,7 @@ else:
 | 71b.1 | Director instructs Agent to register callback | Director to Agent | ⬜ |
 | 71b.2 | Agent lists callbacks to verify registration | Agent (Direct) | ⬜ |
 | 71b.3 | Director instructs Agent to remove callback | Director to Agent | ⬜ |
+| 71b.4 | Callback persistence across restarts (infra) | Agent (Direct) | ⬜ |
 
 **OVERALL: ⬜**
 

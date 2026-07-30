@@ -24,11 +24,17 @@ when a source has a public API, RSS feed, or permissive scraping policy.
 - **Alternative**: Alpha Vantage (free tier), FRED (free), SEC EDGAR (free), Twelve Data (free tier), World Bank Data (free) — all integrated in AutoInfo's financial-intelligence domain.
 - **Feasibility**: Unlikely. Cost structure is incompatible with AutoInfo's BYOK model. Only viable if Bloomberg launches an affordable developer API tier.
 
-#### Reuters Eikon / LSEG Workspace
+#### Reuters Eikon / LSEG Workspace (Refinitiv)
 - **Type**: Proprietary terminal / API
-- **Blocking Reason**: Cost: ~$1,500/user/month. Enterprise-only licensing.
+- **Blocking Reason**: Cost: ~$1,500/user/month. Enterprise-only licensing. Refinitiv (acquired by LSEG in 2021, now branded LSEG Workspace) provides the same data feed formerly known as Reuters Eikon. No public developer API tier.
 - **Alternative**: Alpha Vantage + World Bank Data (integrated). For news, RSS feeds from financial publishers may partially substitute.
 - **Feasibility**: Unlikely. Same cost barrier as Bloomberg. LSEG Data & Analytics has no publicly documented affordable API tier.
+
+#### Wind (万得)
+- **Type**: Proprietary terminal / API
+- **Blocking Reason**: Cost: ~¥20,000/user/year (enterprise pricing, China-only). Wind is China's dominant financial data terminal (analogous to Bloomberg for Chinese markets). No public API. Closed ecosystem with institutional licensing only. China-based sales and support.
+- **Alternative**: For Chinese market data, free alternatives are limited. Sina Finance RSS and Eastmoney (东方财富) RSS provide basic stock/news data. Alpha Vantage (integrated) covers some Chinese equities. For macro data, FRED (integrated) covers US series; World Bank Data (integrated) covers international indicators.
+- **Feasibility**: Unlikely. Wind's business model mirrors Bloomberg's exclusivity. No developer program. Only viable if Wind launches an affordable API tier for the Chinese developer market.
 
 #### Capital IQ / S&P Global Market Intelligence
 - **Type**: Proprietary platform / API
@@ -69,6 +75,18 @@ when a source has a public API, RSS feed, or permissive scraping policy.
 - **Blocking Reason**: Premium tier paywall (~$30/month). No API for Pro content.
 - **Alternative**: CNBC.com free articles via RSS, Yahoo Finance RSS, MarketWatch RSS.
 - **Feasibility**: Likely — if CNBC opens a Pro API. Currently, free CNBC content is accessible via RSS.
+
+#### 财新 (Caixin Media)
+- **Type**: Web (subscription paywall, Chinese)
+- **Blocking Reason**: Hard paywall. Caixin is one of China's most respected financial news outlets. No public API. Full-text requires paid subscription (~¥498/year). RSS feed exists but delivers headlines/teasers only.
+- **Alternative**: Free Chinese financial news via 36kr (integrated in ai-commercial domain), Sina Finance RSS, Reuters China RSS. For English-language China coverage, Reuters RSS and Bloomberg.com free articles.
+- **Feasibility**: Unlikely. Caixin's business model depends on subscription revenue. No developer API announced. Headlines-only RSS is public but full-text is gated.
+
+#### 新华社 (Xinhua News Agency)
+- **Type**: News agency / Web
+- **Blocking Reason**: Xinhua is China's official state news agency. While xinhuanet.com publishes free articles, there is no public content API for bulk retrieval. The commercial Xinhua News Service (paid wire feed) targets institutional clients and is not sold to individual developers. ToS restricts automated scraping.
+- **Alternative**: Xinhua's free website RSS feeds (limited), Reuters RSS for international wire coverage, Google News RSS for aggregated headlines. For Chinese-language news, People's Daily RSS and China Daily RSS are free.
+- **Feasibility**: Partially likely. Free RSS feeds exist for headlines, but bulk full-text access requires an institutional wire subscription. AutoInfo's RSS collector can ingest the public headline feeds.
 
 ---
 
@@ -114,6 +132,46 @@ when a source has a public API, RSS feed, or permissive scraping policy.
 - **Alternative**: For trend monitoring: Google Trends API (free tier). For creator content: YouTube RSS feeds (public, free) for creators who cross-post.
 - **Feasibility**: Very unlikely. Research API is narrowly scoped and not designed for general knowledge tracking.
 
+#### 微博 (Weibo)
+- **Type**: REST API (OAuth 2.0)
+- **Blocking Reason**: Weibo Open Platform API is restricted. The open search/timeline endpoints were deprecated or heavily rate-limited after 2018 regulatory tightening. Current API access requires enterprise verification (Chinese business license) and approved use cases. Bulk content collection and redistribution are prohibited by ToS.
+- **Alternative**: For Chinese social discussion, Reddit (integrated) has Chinese-language communities. For trending topics, Google Trends API (free tier) covers regional interest. Bilibili (integrated) for video-based discussion.
+- **Feasibility**: Unlikely. Weibo's API strategy is closed to general developers. No path to affordable content search access.
+
+#### 抖音 (Douyin)
+- **Type**: REST API (OAuth 2.0)
+- **Blocking Reason**: Douyin (the Chinese domestic version of TikTok) Open Platform API is restricted to enterprise partners for content creation and e-commerce management. There is no public content search or feed retrieval API. ToS prohibits automated scraping. Distinct from international TikTok API (covered above), which has its own restrictions.
+- **Alternative**: Bilibili (integrated) for Chinese video content and creator discussion. YouTube RSS (free) for creators who cross-post to international platforms.
+- **Feasibility**: Very unlikely. Douyin's API is commerce-focused, not content-consumption-focused. No developer path to general knowledge tracking.
+
+#### 小红书 (Xiaohongshu / RED)
+- **Type**: Web / mobile app
+- **Blocking Reason**: No public API of any kind. Xiaohongshu (RED) is a Chinese lifestyle and product review platform with no developer program. Aggressive anti-scraping measures (device fingerprinting, behavioral detection). ToS prohibits automated collection.
+- **Alternative**: For product/lifestyle trends, Reddit (integrated) has relevant communities. For Chinese consumer sentiment, manual monitoring or third-party analytics services (paid) are the only options.
+- **Feasibility**: Very unlikely. No API, no developer program, active anti-scraping. No viable integration path.
+
+---
+
+### Chinese Knowledge Platforms
+
+#### 知乎 (Zhihu)
+- **Type**: Web / REST API (limited)
+- **Blocking Reason**: Zhihu's public API was deprecated in 2018. Current API access requires enterprise partnership and approved use cases. The platform uses aggressive anti-scraping (device fingerprinting, rate limiting, CAPTCHA). ToS prohibits automated content collection. Anonymous browsing is limited; most content requires login after a small quota.
+- **Alternative**: For Q&A-style knowledge, Stack Exchange (integrated in tech-ai-developer domain) covers technical topics. Reddit (integrated) has r/China and topic-specific communities. For Chinese-language expertise, manual browsing remains the only option.
+- **Feasibility**: Unlikely. Zhihu has no public developer API and actively blocks scraping. No viable automated integration path.
+
+#### 得到 (Dedao)
+- **Type**: Mobile app / Web (subscription paywall)
+- **Blocking Reason**: Dedao is a Chinese knowledge-paying platform (audio courses, e-books, columns). No public API. All content is behind a paid subscription. ToS prohibits scraping and redistribution. Content is DRM-protected audio and text.
+- **Alternative**: For audio knowledge content, Spotify podcasts (integrated) and Apple Podcasts (integrated) offer free alternatives on similar topics. Project Gutenberg (integrated) for free e-books. For Chinese-language learning content, news-in-levels (integrated) covers reading practice.
+- **Feasibility**: Very unlikely. Dedao's entire business model is paid content. No API, no free tier, DRM protection. No integration path.
+
+#### 微信公众号 (WeChat Official Account)
+- **Type**: Platform API (OAuth 2.0)
+- **Blocking Reason**: WeChat OA Platform API is restricted to account management (for OA owners) and customer service. There is no public API to search or retrieve articles across official accounts. Articles are only accessible within the WeChat app or via individual article URLs (no index, no RSS). Sogou WeChat Search provides partial indexing but is rate-limited and ToS-restricted. China-only platform with regional restrictions.
+- **Alternative**: For organizations that also publish to the open web, general RSS feeds and AutoInfo's web collector (trafilatura + Playwright) can capture cross-posted content. For Chinese news, 36kr (integrated) and Sina Finance RSS provide free alternatives.
+- **Feasibility**: Unlikely. WeChat's walled-garden design prevents external indexing. No API for content search. Only individual article URLs (when known) can be fetched via the web collector.
+
 ---
 
 ### Legal & Regulatory
@@ -154,19 +212,27 @@ These sources demonstrate what AutoInfo can achieve when APIs are open and acces
 | Source | Reason | Alternative | Feasibility |
 |--------|--------|-------------|-------------|
 | Bloomberg Terminal | Cost: $2,000/user/mo | Alpha Vantage, FRED, SEC EDGAR (integrated) | Unlikely |
-| Reuters Eikon | Cost: $1,500/user/mo | Alpha Vantage, World Bank Data (integrated) | Unlikely |
+| Reuters Eikon / Refinitiv | Cost: $1,500/user/mo | Alpha Vantage, World Bank Data (integrated) | Unlikely |
+| Wind (万得) | Cost: ~¥20,000/user/yr, China-only | Alpha Vantage, Sina Finance RSS (partial) | Unlikely |
 | Capital IQ / S&P Global | Cost: enterprise | SEC EDGAR, FRED (integrated) | Unlikely |
 | Twitter / X API v2 | Cost: $100–$5,000/mo, policy | RSS from cross-posting accounts, HackerNews | Under review |
+| 微博 (Weibo) | Policy: restricted, enterprise-only | Reddit, Bilibili (integrated) | Unlikely |
+| 抖音 (Douyin) | Policy: commerce-only API, no search | Bilibili, YouTube RSS (integrated) | Very unlikely |
+| 小红书 (Xiaohongshu) | No API, anti-scraping | Reddit (integrated) for trends | Very unlikely |
+| 知乎 (Zhihu) | No public API, anti-scraping | Stack Exchange, Reddit (integrated) | Unlikely |
+| 得到 (Dedao) | Paid content, DRM, no API | Spotify/Apple Podcasts, Gutenberg (integrated) | Very unlikely |
+| 微信公众号 (WeChat OA) | Platform: China-only, walled garden | 36kr, Sina Finance RSS (integrated) | Unlikely |
 | LinkedIn API | Policy: restricted use cases | Crunchbase (integrated), company RSS | Unlikely |
 | Facebook/Instagram Graph API | Policy: no content search | Organization RSS, press pages | Very unlikely |
 | TikTok API | Policy: restricted, region-locked | YouTube RSS for cross-posters | Very unlikely |
-| WeChat Official Account API | Platform: China-only, restricted | General RSS for organizations with blogs | Unlikely |
 | Westlaw | Cost: enterprise | CourtListener, GovInfo.gov (free) | Unlikely |
 | LexisNexis | Cost: enterprise | CourtListener, EUR-Lex (free) | Unlikely |
 | Dow Jones / Factiva | Cost: enterprise | Publisher RSS feeds (free) | Unlikely |
 | CNBC Pro | Cost: ~$30/mo paywall | CNBC free RSS, Yahoo Finance RSS | Likely |
 | Wall Street Journal | Cost: subscription paywall | Yahoo Finance RSS, MarketWatch RSS | Likely |
 | Financial Times | Cost: subscription paywall | Reuters RSS, MarketWatch RSS | Unlikely |
+| 财新 (Caixin) | Cost: subscription paywall (¥498/yr) | 36kr, Reuters China RSS (integrated) | Unlikely |
+| 新华社 (Xinhua) | No public API, wire subscription | Reuters RSS, China Daily RSS (free) | Partially likely (headlines) |
 | The Economist | Cost: subscription paywall | VOA News RSS, World Bank Data | Unlikely |
 | Nature / Science / Cell | Cost: subscription/institutional | PubMed, arXiv (integrated, free) | Partially likely (abstracts) |
 | IEEE / ACM Digital Libraries | Cost: subscription/institutional | arXiv, Semantic Scholar (free) | Partially likely (abstracts) |
@@ -186,4 +252,4 @@ If a source is blocked, document it here with the blocking reason, any alternati
 
 ---
 
-*Last updated: 2026-07-30. This is a living document — sources change their API policies and pricing over time.*
+*Last updated: 2026-07-31. This is a living document — sources change their API policies and pricing over time.*

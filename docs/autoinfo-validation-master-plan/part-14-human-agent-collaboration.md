@@ -149,6 +149,113 @@ assert status in ("healthy", "degraded"), "Diagnostics should return a valid sta
 - ✅ Agent executed the correct action only after clarification
 
 
+#### 66.4 🟢 Infrastructure: Agent connects to MCP server and discovers tools before clarifying
+
+**Turn 1 - Agent:** (on startup, performs infrastructure connectivity and tool discovery autonomously)
+
+**Execute:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  66.4: MCP Server Connectivity & Tool Discovery             ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+cd /tmp/test-q66
+
+# ── Step 1: Verify MCP server is importable ────────────────────────
+python3 -c "import autoinfo.mcp.server; print('MCP server module imported')" 2>&1 \
+  && echo "  ✅ PASS: MCP server module importable" \
+  || { echo "  ❌ FAIL: cannot import autoinfo.mcp.server"; ALL_PASS=false; }
+
+# ── Step 2: Agent calls health_check as first action ───────────────
+HEALTH_OUTPUT=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'health_check',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+print(json.dumps(data, indent=2))
+" 2>&1)
+echo "$HEALTH_OUTPUT"
+echo "$HEALTH_OUTPUT" | grep -q '"status"' \
+  && echo "  ✅ PASS: health_check returns status field" \
+  || { echo "  ❌ FAIL: health_check missing status"; ALL_PASS=false; }
+
+# ── Step 3: Agent discovers available tools ────────────────────────
+TOOL_COUNT=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'get_tool_count',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+count = data.get('tool_count', data.get('count', 0))
+print(count)
+" 2>&1)
+echo "  MCP tools available: $TOOL_COUNT"
+[ "$TOOL_COUNT" -gt 100 ] \
+  && echo "  ✅ PASS: $TOOL_COUNT MCP tools discovered (>100)" \
+  || { echo "  ❌ FAIL: only $TOOL_COUNT tools (expected >100)"; ALL_PASS=false; }
+
+# ── Step 4: Agent lists domains as pre-flight ──────────────────────
+python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'list_domains',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+domains = data if isinstance(data, list) else data.get('domains', [])
+print(f'Active domains: {len(domains)}')
+for d in domains[:5]:
+    name = d.get('name', d) if isinstance(d, dict) else d
+    print(f'  {name}')
+" 2>&1 \
+  && echo "  ✅ PASS: domain listing succeeded (pre-flight check)" \
+  || { echo "  ❌ FAIL: domain listing failed"; ALL_PASS=false; }
+
+# ── Step 5: Agent queries config for LLM readiness ─────────────────
+python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'get_effective_llm_config',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+provider = data.get('provider', 'unknown')
+model = data.get('model', 'unknown')
+print(f'LLM config: provider={provider}, model={model}')
+" 2>&1 \
+  && echo "  ✅ PASS: LLM config retrieved (pre-flight check)" \
+  || { echo "  ❌ FAIL: LLM config query failed"; ALL_PASS=false; }
+
+echo ""
+if [ "$ALL_PASS" = true ]; then
+  echo "✅ SCENARIO 66.4 PASSED — MCP connectivity + tool discovery before clarification"
+  exit 0
+else
+  echo "❌ SCENARIO 66.4 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ Agent verifies MCP server is importable before any user-requested action
+- ✅ `health_check` returns valid status (pre-flight infrastructure check)
+- ✅ `get_tool_count` returns >100 tools (MCP server fully operational)
+- ✅ `list_domains` returns active domains (agent knows available scope)
+- ✅ `get_effective_llm_config` confirms LLM is configured (agent knows processing capability)
+- ✅ Agent completes pre-flight diagnostics BEFORE engaging user for clarification
+
+
 ---
 
 ### 📊 Q66 Verdict
@@ -158,6 +265,7 @@ assert status in ("healthy", "degraded"), "Diagnostics should return a valid sta
 | 66.1 Vague topic - agent clarifies | ⬜ |
 | 66.2 Multiple domains - agent asks | ⬜ |
 | 66.3 Completely ambiguous intent | ⬜ |
+| 66.4 MCP connectivity + tool discovery (infra) | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -368,6 +476,102 @@ print(f"✅ Remaining sources: {names}")
 - ❌ Agent never removed source without human approval (ref: F20, F53 - human-only operations)
 
 
+#### 67.4 🟢 Infrastructure: Agent runs system health check before escalating any failure
+
+**Turn 1 - Agent:** (before reporting any source failure, autonomously runs `diagnose_system` for full infrastructure context)
+
+**Execute:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  67.4: System Health Check Before Failure Escalation        ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+cd /tmp/test-q67
+
+# ── Agent's autonomous pre-escalation health check ─────────────────
+HEALTH_OUTPUT=$(python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'diagnose_system',
+     json.dumps({})],
+    capture_output=True, text=True, timeout=30
+)
+data = json.loads(result.stdout) if result.stdout else {}
+print(json.dumps(data, indent=2)[:2000])
+" 2>&1)
+echo "$HEALTH_OUTPUT"
+
+# ── Verify diagnose_system returns structured health data ──────────
+echo "$HEALTH_OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+# Check required health sections
+sections = ['config', 'llm', 'storage', 'sources']
+for s in sections:
+    if s in data:
+        sect = data[s]
+        if isinstance(sect, dict):
+            print(f'  ✅ PASS: health section \"{s}\" present ({list(sect.keys())[:3]})')
+        else:
+            print(f'  ✅ PASS: health section \"{s}\" present (value: {str(sect)[:60]})')
+    else:
+        print(f'  ⚠️  health section \"{s}\" not found')
+print(f'  Overall status: {data.get(\"status\", \"unknown\")}')
+" 2>&1
+
+# ── Verify health score is a number ────────────────────────────────
+HEALTH_SCORE=$(echo "$HEALTH_OUTPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+score = data.get('health_score', data.get('score', -1))
+print(score)
+" 2>&1)
+echo "  Health score: $HEALTH_SCORE"
+[ "$HEALTH_SCORE" != "-1" ] && [ "$HEALTH_SCORE" != "" ] \
+  && echo "  ✅ PASS: health score is numeric ($HEALTH_SCORE)" \
+  || { echo "  ❌ FAIL: health score missing or invalid"; ALL_PASS=false; }
+
+# ── Verify source health sub-check ─────────────────────────────────
+python3 -c "
+import json, subprocess
+result = subprocess.run(
+    ['python3', '-m', 'autoinfo.mcp.server', '--tool', 'get_source_health',
+     json.dumps({'domain': 'medical-research'})],
+    capture_output=True, text=True, timeout=15
+)
+data = json.loads(result.stdout) if result.stdout else {}
+sources = data.get('sources', data.get('items', []))
+print(f'  Source health entries: {len(sources)}')
+for s in sources[:3]:
+    name = s.get('name', '?')
+    status = s.get('status', '?')
+    print(f'    {name}: {status}')
+" 2>&1 \
+  && echo "  ✅ PASS: source health check completed before escalation" \
+  || { echo "  ❌ FAIL: source health check failed"; ALL_PASS=false; }
+
+echo ""
+if [ "$ALL_PASS" = true ]; then
+  echo "✅ SCENARIO 67.4 PASSED — system health check before failure escalation"
+  exit 0
+else
+  echo "❌ SCENARIO 67.4 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `diagnose_system()` returns structured health data with `config`, `llm`, `storage`, `sources` sections
+- ✅ `health_score` is a numeric value (0-100)
+- ✅ `get_source_health(domain)` returns per-source status (success/error/warning)
+- ✅ Agent has full infrastructure context before escalating to human
+- ✅ Agent never escalates without first running diagnostics to identify root cause
+
+
 ---
 
 ### 📊 Q67 Verdict
@@ -377,6 +581,7 @@ print(f"✅ Remaining sources: {names}")
 | 67.1 Source error -> investigate -> pause | ⬜ |
 | 67.2 LLM error -> fallback switch | ⬜ |
 | 67.3 Hard failure -> re-escalate -> remove | ⬜ |
+| 67.4 System health check before escalation (infra) | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -864,8 +1069,8 @@ Override Documentation:
 
 | Question | Topic | Result |
 |----------|-------|--------|
-| Q66 | Ambiguous Intent Clarification | ⬜ |
-| Q67 | Failure Escalation & Human Decision | ⬜ |
+| Q66 | Ambiguous Intent Clarification (+ infrastructure) | ⬜ |
+| Q67 | Failure Escalation & Human Decision (+ infrastructure) | ⬜ |
 | Q68 | Human Review & Agent Iteration | ⬜ |
 | Q69 | Human Override & Agent Compliance | ⬜ |
 

@@ -379,6 +379,112 @@ curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8741/api/v1/entries?lim
 **Expected Result:** ❌ HTTP 422. Validation error with details.
 
 
+#### 47.18 🟢 Infrastructure: verify uvicorn process is running and responsive
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# ── Check process existence ────────────────────────────────────────
+pgrep -f "uvicorn autoinfo.api.server" > /dev/null 2>&1 \
+  && echo "  ✅ PASS: uvicorn process is running" \
+  || { echo "  ❌ FAIL: no uvicorn process found"; ALL_PASS=false; }
+
+# ── Check port binding ─────────────────────────────────────────────
+ss -tlnp 2>/dev/null | grep -q ":8741" || netstat -tlnp 2>/dev/null | grep -q ":8741" \
+  && echo "  ✅ PASS: port 8741 is bound" \
+  || { echo "  ❌ FAIL: port 8741 not bound"; ALL_PASS=false; }
+
+# ── Check health endpoint responds within 2s ──────────────────────
+HEALTH_OUTPUT=$(curl -s --max-time 2 http://127.0.0.1:8741/health 2>&1)
+HEALTH_EXIT=$?
+[ "$HEALTH_EXIT" -eq 0 ] \
+  && echo "  ✅ PASS: health endpoint responds within 2s" \
+  || { echo "  ❌ FAIL: health endpoint not reachable (exit $HEALTH_EXIT)"; ALL_PASS=false; }
+
+echo "$HEALTH_OUTPUT" | grep -q '"status"' \
+  && echo "  ✅ PASS: health response contains status field" \
+  || { echo "  ❌ FAIL: health response missing status field"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.18 PASSED"; exit 0; else echo "❌ SCENARIO 47.18 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ uvicorn process found, port 8741 bound, health endpoint responds with JSON.
+
+
+#### 47.19 🔴 Infrastructure: port conflict — server refuses to bind occupied port
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# ── Try to start a second instance on already-occupied port 8741 ───
+# Use timeout to prevent hanging
+timeout 5 uvicorn autoinfo.api.server:app --port 8741 --host 127.0.0.1 2>&1 || SECOND_EXIT=$?
+echo "Second instance exit: ${SECOND_EXIT:-0}"
+
+# ── Verify original server is still running ───────────────────────
+curl -s --max-time 2 http://127.0.0.1:8741/health > /dev/null 2>&1 \
+  && echo "  ✅ PASS: original server still running (port conflict handled)" \
+  || { echo "  ❌ FAIL: original server crashed due to port conflict"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.19 PASSED"; exit 0; else echo "❌ SCENARIO 47.19 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ Second instance fails to bind. ✅ Original server remains operational. AutoInfo handles port conflicts gracefully.
+
+
+#### 47.20 🟢 Infrastructure: graceful shutdown — SIGTERM stops server cleanly
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# ── Capture PID ────────────────────────────────────────────────────
+API_PID=$(pgrep -f "uvicorn autoinfo.api.server" | head -1)
+echo "Server PID: ${API_PID:-not found}"
+
+if [ -n "$API_PID" ]; then
+  # ── Send graceful shutdown ──────────────────────────────────────
+  kill -TERM "$API_PID" 2>/dev/null || true
+  sleep 2
+
+  # ── Verify process stopped ──────────────────────────────────────
+  if ! kill -0 "$API_PID" 2>/dev/null; then
+    echo "  ✅ PASS: server stopped cleanly after SIGTERM"
+  else
+    echo "  ⚠️  Server did not stop within 2s (may need SIGKILL)"
+    kill -KILL "$API_PID" 2>/dev/null || true
+    sleep 1
+    if ! kill -0 "$API_PID" 2>/dev/null; then
+      echo "  ✅ PASS: server stopped after SIGKILL fallback"
+    else
+      echo "  ❌ FAIL: server still running after SIGKILL"
+      ALL_PASS=false
+    fi
+  fi
+
+  # ── Verify port is released ──────────────────────────────────────
+  sleep 1
+  ss -tlnp 2>/dev/null | grep -q ":8741" || netstat -tlnp 2>/dev/null | grep -q ":8741" \
+    && { echo "  ⚠️  Port 8741 still in use"; } \
+    || { echo "  ✅ PASS: port 8741 released after shutdown"; }
+else
+  echo "  ⚠️  No uvicorn process to shut down"
+fi
+
+# ── Restart server for remaining scenarios ─────────────────────────
+uvicorn autoinfo.api.server:app --port 8741 --host 127.0.0.1 &
+sleep 2
+curl -s --max-time 2 http://127.0.0.1:8741/health > /dev/null \
+  && echo "  ✅ PASS: server restarted successfully" \
+  || { echo "  ❌ FAIL: server failed to restart"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.20 PASSED"; exit 0; else echo "❌ SCENARIO 47.20 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Server stops on SIGTERM. ✅ Port released. ✅ Server can restart.
+
+> **🤖 Agent→Human Prompt:** The following Stripe webhook scenarios (47.14, 47.15) require `STRIPE_WEBHOOK_SECRET` to test signature verification. If not set, scenarios fall back to dev mode. Agent prompts human: "To test Stripe webhook signature verification, please set `export STRIPE_WEBHOOK_SECRET='whsec_your_key'`. Without this, webhook tests run in dev mode (no signature check)."
+
+
 #### 47.14 🟢 Stripe webhook with valid signature returns 200
 
 ```bash
@@ -527,6 +633,9 @@ kill $API_PID 2>/dev/null || true
 | 47.15 Stripe webhook (no sig) | ⬜ |
 | 47.16 404 handling | ⬜ |
 | 47.17 422 validation | ⬜ |
+| 47.18 uvicorn process check | ⬜ |
+| 47.19 Port conflict handling | ⬜ |
+| 47.20 Graceful shutdown | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -568,6 +677,35 @@ curl -s http://127.0.0.1:8742/dashboard | grep -i "bootstrap\|container\|meta.*v
 **Expected Result:** ✅ Bootstrap container/viewport meta tag present for responsive design.
 
 
+#### 48.4 🟢 Infrastructure: Web UI static assets served correctly
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# ── Check dashboard returns HTML (not JSON error) ─────────────────
+CONTENT_TYPE=$(curl -s -o /dev/null -w "%{content_type}" http://127.0.0.1:8742/dashboard 2>&1)
+echo "$CONTENT_TYPE" | grep -qi "html" \
+  && echo "  ✅ PASS: dashboard returns text/html ($CONTENT_TYPE)" \
+  || { echo "  ❌ FAIL: dashboard content-type is not HTML: $CONTENT_TYPE"; ALL_PASS=false; }
+
+# ── Check dashboard page is non-empty ─────────────────────────────
+BODY_SIZE=$(curl -s http://127.0.0.1:8742/dashboard | wc -c)
+[ "$BODY_SIZE" -gt 500 ] \
+  && echo "  ✅ PASS: dashboard HTML > 500 bytes ($BODY_SIZE)" \
+  || { echo "  ❌ FAIL: dashboard HTML too small ($BODY_SIZE bytes)"; ALL_PASS=false; }
+
+# ── Check /api/v1/entries returns application/json ─────────────────
+API_CT=$(curl -s -o /dev/null -w "%{content_type}" "http://127.0.0.1:8742/api/v1/entries?domain=medical-research&limit=1" 2>&1)
+echo "$API_CT" | grep -qi "json" \
+  && echo "  ✅ PASS: API returns application/json ($API_CT)" \
+  || { echo "  ❌ FAIL: API content-type is not JSON: $API_CT"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 48.4 PASSED"; exit 0; else echo "❌ SCENARIO 48.4 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Dashboard returns `text/html`. ✅ API returns `application/json`. ✅ Dashboard content > 500 bytes.
+
+
 ### Cleanup
 ```bash
 kill $UI_PID 2>/dev/null || true
@@ -582,5 +720,6 @@ kill $UI_PID 2>/dev/null || true
 | 48.1 Dashboard loads | ⬜ |
 | 48.2 Stats visible | ⬜ |
 | 48.3 Responsive design | ⬜ |
+| 48.4 Static assets served correctly | ⬜ |
 
 **OVERALL: ⬜**

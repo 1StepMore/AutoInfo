@@ -85,7 +85,10 @@ pdf = [
     "PyMuPDF>=1.23.0",
     "weasyprint>=62.0",
 ]
-all = ["autoinfo[dev,web,pdf]"]
+tts = [
+    "edge-tts>=6.1",
+]
+all = ["autoinfo[dev,web,pdf,tts]"]
 
 [project.urls]
 Homepage = "https://github.com/your-org/autoinfo"

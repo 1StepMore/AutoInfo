@@ -12,6 +12,8 @@ llm:
   model: deepseek/deepseek-chat
   api_key: ${AUTOINFO_LLM_API_KEY}
   # base_url: "https://api.openai.com/v1"  # optional: custom API endpoint
+  json_mode: false
+  # reasoning_model: false  # set to true for reasoning models that don't support response_format
 
 domains: []
 
@@ -49,3 +51,9 @@ domains: []
 # multi_user:
 #   enabled: false
 #   default_user_id: "default"
+
+# --- v1.9 TTS configuration (uncomment to configure) ---
+
+# tts:
+#   engine: openai  # "openai" (default) or "local" (edge-tts, free, offline)
+#   # local_voice: "en-US-JennyNeural"  # voice for edge-tts

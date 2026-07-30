@@ -34,7 +34,8 @@ class LLMConfig:
     model: str = ""
     api_key: str = ""
     base_url: str = ""
-    json_mode: bool = True
+    json_mode: bool = False
+    reasoning_model: bool = False
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
@@ -272,6 +273,25 @@ class MultiUserConfig:
 
 
 @dataclass
+class TTSConfig:
+    """Text-to-Speech engine settings.
+
+    Attributes
+    ----------
+    engine:
+        TTS engine to use. ``"openai"`` (default) for OpenAI TTS API,
+        ``"local"`` for edge-tts (free, offline-capable),
+        ``"whisper"`` for OpenAI Whisper model via TTS API.
+    local_voice:
+        Voice for the local engine (edge-tts).  See
+        https://github.com/rany2/edge-tts#voices-list
+        for available voices.  Defaults to ``"en-US-JennyNeural"``.
+    """
+    engine: str = "openai"
+    local_voice: str = "en-US-JennyNeural"
+
+
+@dataclass
 class Config:
     project: ProjectConfig = field(default_factory=ProjectConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -287,6 +307,7 @@ class Config:
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
     cost_rates: CostRatesConfig = field(default_factory=CostRatesConfig)
     cost_alerts: CostAlertsConfig = field(default_factory=CostAlertsConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +382,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             model=str(f.get("model", "")),
             api_key=str(f.get("api_key", "")),
             base_url=str(f.get("base_url", "")),
-            json_mode=bool(f.get("json_mode", True)),
+            json_mode=bool(f.get("json_mode", False)),
+            reasoning_model=bool(f.get("reasoning_model", False)),
         )
         for f in fallback_raw
     ]
@@ -521,6 +543,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     vector_search_raw = _dict_or_empty("vector_search")
     cron_raw = _dict_or_empty("cron")
     multi_user_raw = _dict_or_empty("multi_user")
+    tts_raw = _dict_or_empty("tts")
 
     return Config(
         project=ProjectConfig(
@@ -533,7 +556,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             model=str(llm_raw.get("model", "")),
             api_key=str(llm_raw.get("api_key", "")),
             base_url=str(llm_raw.get("base_url", "")),
-            json_mode=bool(llm_raw.get("json_mode", True)),
+            json_mode=bool(llm_raw.get("json_mode", False)),
+            reasoning_model=bool(llm_raw.get("reasoning_model", False)),
             fallback=fallback,
             tasks=tasks,
         ),
@@ -582,6 +606,10 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             storage=storage_rate,
         ),
         cost_alerts=cost_alerts,
+        tts=TTSConfig(
+            engine=str(tts_raw.get("engine", "openai")),
+            local_voice=str(tts_raw.get("local_voice", "en-US-JennyNeural")),
+        ),
     )
 
 
@@ -744,6 +772,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             "model": config.llm.model,
             "api_key": config.llm.api_key,
             "json_mode": config.llm.json_mode,
+            "reasoning_model": config.llm.reasoning_model,
         },
         "domains": [],
     }
@@ -753,7 +782,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
     # Serialize llm.fallback
     if config.llm.fallback:
         raw["llm"]["fallback"] = [
-            {"provider": fb.provider, "model": fb.model, "json_mode": fb.json_mode}
+            {"provider": fb.provider, "model": fb.model, "json_mode": fb.json_mode, "reasoning_model": fb.reasoning_model}
             for fb in config.llm.fallback
         ]
     # Serialize llm.tasks
@@ -957,7 +986,9 @@ def _resolve_task_llm_config(config: Config, task_name: str = "") -> LLMConfig:
         provider=task_cfg.provider if task_cfg.provider else base.provider,
         model=task_cfg.model if task_cfg.model else base.model,
         api_key=base.api_key,
+        base_url=base.base_url,
         json_mode=base.json_mode,
+        reasoning_model=base.reasoning_model,
         fallback=base.fallback,
         tasks=base.tasks,
     )

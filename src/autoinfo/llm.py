@@ -95,6 +95,7 @@ class LLMExtractor:
 
         self._config = config
         self._json_mode = config.llm.json_mode
+        self._reasoning_model = config.llm.reasoning_model
 
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL
@@ -129,6 +130,16 @@ class LLMExtractor:
                 "model": fb_full,
                 "base_url": fb_burl,
             })
+
+    def _should_use_json_mode(self) -> bool:
+        """Return True only when json_mode is enabled AND not a reasoning model.
+
+        Reasoning models (e.g. DeepSeek-R1) do not support
+        ``response_format={"type": "json_object"}``.  When the config flag
+        ``reasoning_model`` is set, json_object is *always* skipped, even if
+        ``json_mode`` is ``True``.
+        """
+        return self._json_mode and not self._reasoning_model
 
     # ------------------------------------------------------------------
     # Public API
@@ -315,7 +326,7 @@ class LLMExtractor:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_prompt},
                     ],
-                    **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
+                    **(dict(response_format={"type": "json_object"}) if self._should_use_json_mode() else {}),
                     max_tokens=2000,
                     temperature=0.1,
                     api_base=base_url or None,

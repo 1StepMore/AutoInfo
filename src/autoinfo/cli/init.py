@@ -9,8 +9,9 @@ optionally populates it with a demo domain definition.
 
 import os
 import shutil
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import typer
 import yaml
@@ -93,14 +94,18 @@ def _copy_template(
 
 
 def _generate_config(
-    domain_name: str,
+    domain_names: list[str],
     dst: Path,
     project_name: str = "",
 ) -> bool:
-    """Generate .autoinfo/config.yaml from default_config.yaml + domain name.
+    """Generate .autoinfo/config.yaml from default_config.yaml + domain names.
 
-    When *project_name* is non-empty it is stored under
-    ``project.project_name`` in the generated YAML.
+    When *project_name* is non-empty it is stored under both
+    ``project.name`` and ``project.project_name`` in the generated YAML
+    (the latter for backward compatibility).
+
+    Can accept one or more *domain_names* to configure multiple demo
+    domains in a single config file.
 
     Returns True if the file was written, False if skipped (already exists).
     """
@@ -115,22 +120,30 @@ def _generate_config(
     with open(_DEFAULT_CONFIG, "r") as f:
         config = yaml.safe_load(f)
 
-    # Load sources.yaml to build proper domain config structure
-    demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
-    if demo_sources_path.is_file():
-        with open(demo_sources_path) as f:
-            domain_data = yaml.safe_load(f)
-        config["domains"] = [{
-            "name": domain_name,
-            "active": True,
-            "sources": domain_data.get("sources", []),
-            "topics": domain_data.get("topics", []),
-        }]
-    else:
-        config["domains"] = [{"name": domain_name, "active": True, "sources": [], "topics": []}]
+    config["domains"] = []
+    for domain_name in domain_names:
+        demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
+        if demo_sources_path.is_file():
+            with open(demo_sources_path) as f:
+                domain_data = yaml.safe_load(f)
+            config["domains"].append({
+                "name": domain_name,
+                "active": True,
+                "sources": domain_data.get("sources", []),
+                "topics": domain_data.get("topics", []),
+            })
+        else:
+            config["domains"].append({
+                "name": domain_name,
+                "active": True,
+                "sources": [],
+                "topics": [],
+            })
 
     if project_name:
-        config.setdefault("project", {})["project_name"] = project_name
+        proj = config.setdefault("project", {})
+        proj["name"] = project_name
+        proj["project_name"] = project_name
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     with open(dst, "w") as f:
@@ -140,14 +153,15 @@ def _generate_config(
     return True
 
 
-def _run_init(domain: str, autoinfo_dir: Path, project_name: str = "") -> None:
+def _run_init(domains: list[str], autoinfo_dir: Path, project_name: str = "") -> None:
     """Core init logic: generate config, copy sources, create subdirs, print next steps."""
     config_dst = autoinfo_dir / "config.yaml"
-    _generate_config(domain, config_dst, project_name=project_name)
+    _generate_config(domains, config_dst, project_name=project_name)
 
-    demo_sources = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
-    sources_dst = autoinfo_dir / "sources.yaml"
-    _copy_template(demo_sources, sources_dst)
+    if domains:
+        demo_sources = _DEMO_DOMAINS_DIR / domains[0] / "sources.yaml"
+        sources_dst = autoinfo_dir / "sources.yaml"
+        _copy_template(demo_sources, sources_dst)
 
     for sub in _REQUIRED_SUBDIRS:
         d = autoinfo_dir / sub
@@ -157,6 +171,8 @@ def _run_init(domain: str, autoinfo_dir: Path, project_name: str = "") -> None:
             typer.echo(f"  SKIP  {d}/  (already exists)")
 
     first_topic = None
+    first_domain = domains[0] if domains else ""
+    demo_sources = _DEMO_DOMAINS_DIR / first_domain / "sources.yaml"
     if demo_sources.is_file():
         with open(demo_sources) as f:
             domain_data = yaml.safe_load(f)
@@ -165,7 +181,10 @@ def _run_init(domain: str, autoinfo_dir: Path, project_name: str = "") -> None:
             first_topic = topics[0].get("name")
 
     typer.echo()
-    typer.echo(f"✅ AutoInfo initialized for '{domain}'.")
+    if len(domains) == 1:
+        typer.echo(f"✅ AutoInfo initialized for '{first_domain}'.")
+    else:
+        typer.echo(f"✅ AutoInfo initialized for {len(domains)} domains: {', '.join(domains)}.")
     typer.echo()
     typer.echo("Next steps:")
     typer.echo("  1. Set your LLM API key:")
@@ -173,28 +192,28 @@ def _run_init(domain: str, autoinfo_dir: Path, project_name: str = "") -> None:
     typer.echo()
     typer.echo("  2. Collect from sources:")
     if first_topic:
-        typer.echo(f"     autoinfo collect --domain {domain} --topic \"{first_topic}\" --limit 5")
+        typer.echo(f"     autoinfo collect --domain {first_domain} --topic \"{first_topic}\" --limit 5")
     else:
-        typer.echo(f"     autoinfo collect --domain {domain} --limit 5")
+        typer.echo(f"     autoinfo collect --domain {first_domain} --limit 5")
     typer.echo()
     typer.echo("  3. Process collected items:")
-    typer.echo(f"     autoinfo process --domain {domain}")
+    typer.echo(f"     autoinfo process --domain {first_domain}")
 
 
 @app.command()
 def init(
-    demo: Optional[str] = typer.Option(
+    demo: Optional[List[str]] = typer.Option(
         None,
         "--demo",
         "-d",
-        help="Demo domain to initialize (omit to enter interactive mode).",
+        help="Demo domain to initialize (omit to enter interactive mode). May be repeated for multiple domains.",
         show_default=False,
     ),
     name: Optional[str] = typer.Option(
         None,
         "--name",
         "-n",
-        help="Optional human-friendly project name stored as project.project_name in config.",
+        help="Optional human-friendly project name stored as project.name (and project.project_name for backward compat) in config.",
         show_default=False,
     ),
     interactive: bool = typer.Option(
@@ -212,62 +231,97 @@ def init(
     """Initialize AutoInfo project skeleton.
 
     Creates the .autoinfo/ directory structure with default configuration
-    and (optionally) a demo domain definition.
+    and (optionally) one or more demo domain definitions.
 
     Without --demo, the interactive wizard guides you through domain
     selection, LLM provider setup, and optional API key configuration.
 
     Use --name to give your project a human-friendly name (stored in config
-    under ``project.project_name``).
+    under ``project.name`` and ``project.project_name``).
     """
     if list_domains:
         _print_demo_domains()
         return
 
     if demo:
-        demo = demo.strip()
-
-        demo_sources = _DEMO_DOMAINS_DIR / demo / "sources.yaml"
-        if not demo_sources.is_file():
-            typer.echo(
-                f"  ERROR  unknown demo domain: '{demo}'. "
-                f"Run `autoinfo init --no-interactive` to see available domains.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-
         autoinfo_dir = Path.cwd() / ".autoinfo"
         _ensure_dir(autoinfo_dir)
 
-        _run_init(demo, autoinfo_dir, project_name=name or "")
+        validated: list[str] = []
+        for d in demo:
+            d = d.strip()
+            demo_sources = _DEMO_DOMAINS_DIR / d / "sources.yaml"
+            if not demo_sources.is_file():
+                typer.echo(
+                    f"  ERROR  unknown demo domain: '{d}'. "
+                    f"Run `autoinfo init --list-domains` to see available domains.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            validated.append(d)
+
+        _run_init(validated, autoinfo_dir, project_name=name or "")
         return
 
     if not interactive:
         _print_demo_domains()
+        typer.echo()
+        typer.echo(
+            "Tip: Use --demo <domain> to initialize non-interactively.\n"
+            "  Examples:\n"
+            "    autoinfo init --demo medical-research\n"
+            "    autoinfo init --demo medical-research --demo ai-commercial --name MyProject\n"
+            "    autoinfo init --list-domains  (to see available domains)"
+        )
         return
+
+    # Interactive mode — ensure a real terminal is available
+    if not sys.stdin.isatty():
+        typer.echo(
+            "No interactive terminal available. Use --demo <domain> to initialize\n"
+            "non-interactively, or --list-domains to see available domains.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     domains = _list_demo_domains()
     if not domains:
         typer.echo("No demo domains found. Cannot initialize interactively.", err=True)
         raise typer.Exit(code=1)
 
-    project_name = typer.prompt("Project name (optional)", default="")
+    try:
+        project_name = typer.prompt("Project name (optional)", default="")
+    except (EOFError, KeyboardInterrupt):
+        typer.echo("")
+        raise typer.Exit(code=0)
 
     typer.echo("Available demo domains:")
     for i, d in enumerate(domains, 1):
         typer.echo(f"  [{i}] {d}")
 
-    choice = typer.prompt("Select a demo domain", type=int)
+    try:
+        choice = typer.prompt("Select a demo domain", type=int)
+    except (EOFError, KeyboardInterrupt):
+        typer.echo("")
+        raise typer.Exit(code=0)
     if choice < 1 or choice > len(domains):
         typer.echo(f"  ERROR  invalid choice: {choice}", err=True)
         raise typer.Exit(code=1)
 
     selected_domain = domains[choice - 1]
 
-    provider = typer.prompt("LLM provider", default="openrouter")
+    try:
+        provider = typer.prompt("LLM provider", default="openrouter")
+    except (EOFError, KeyboardInterrupt):
+        typer.echo("")
+        raise typer.Exit(code=0)
     typer.echo(f"  Using provider: {provider}")
 
-    api_key = typer.prompt("Set AUTOINFO_LLM_API_KEY (optional)", default="")
+    try:
+        api_key = typer.prompt("Set AUTOINFO_LLM_API_KEY (optional)", default="")
+    except (EOFError, KeyboardInterrupt):
+        typer.echo("")
+        raise typer.Exit(code=0)
     if api_key:
         os.environ["AUTOINFO_LLM_API_KEY"] = api_key
         typer.echo("  AUTOINFO_LLM_API_KEY set for this session.")
@@ -277,4 +331,4 @@ def init(
     autoinfo_dir = Path.cwd() / ".autoinfo"
     _ensure_dir(autoinfo_dir)
 
-    _run_init(selected_domain, autoinfo_dir, project_name=project_name)
+    _run_init([selected_domain], autoinfo_dir, project_name=project_name)

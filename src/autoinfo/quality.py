@@ -1027,7 +1027,7 @@ class G4FactualConsistency:
         self,
         model: str = "openrouter/deepseek/deepseek-chat",
         collections_path: str | Path = "collections",
-        json_mode: bool = True,
+        json_mode: bool = False,
     ) -> None:
         self._model = model
         self._collections_path = Path(collections_path)
@@ -1324,7 +1324,7 @@ class G5TranslationAccuracy:
         'Answer ONLY with JSON: {"faithful": bool, "explanation": str, "issues": [str]}'
     )
 
-    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat", json_mode: bool = True) -> None:
+    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat", json_mode: bool = False) -> None:
         self._model = model
         self._json_mode = json_mode
 
@@ -2548,7 +2548,7 @@ def llm_judge(
     source_lang: str,
     target_lang: str,
     model: str | None = None,
-    json_mode: bool = True,
+    json_mode: bool = False,
 ) -> dict[str, Any]:
     """Gate 5: LLM-based quality eval (faithfulness, terminology, style, readability 0-100)."""
     try:

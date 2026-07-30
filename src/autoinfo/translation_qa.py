@@ -228,7 +228,7 @@ def llm_judge_translation(
     back_translated_text: str,
     source_lang: str,
     model: str | None = None,
-    json_mode: bool = True,
+    json_mode: bool = False,
 ) -> dict[str, Any]:
     """Compare original source with back-translated text and score faithfulness.
 

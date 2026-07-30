@@ -48,7 +48,7 @@
 │         configs, executes the full pipeline on behalf of B1:     │
 │         collect → extract → KB → generate → deliver.            │
 │                                                                  │
-│  Interacts via: MCP tools (132 tools across 32 categories)      │
+│  Interacts via: MCP tools (137 tools across 34 categories)      │
 │                                                                  │
 │  Does NOT: Handle money or pricing decisions.                    │
 │            Accept ad-hoc instructions from B1.                   │

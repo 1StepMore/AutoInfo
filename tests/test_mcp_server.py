@@ -387,8 +387,15 @@ class TestCollectSources:
 
     @patch("autoinfo.collect.run_collection")
     def test_dry_run_passed_through(self, mock_run: MagicMock) -> None:
-        _handle_collect_sources(domain="test", dry_run=True)
-        mock_run.assert_called_once_with(domain="test", dry_run=True)
+        _handle_collect_sources(domain="medical-research", dry_run=True)
+        mock_run.assert_called_once_with(domain="medical-research", dry_run=True)
+
+    def test_nonexistent_domain_returns_not_found(self) -> None:
+        result = _handle_collect_sources(domain="nonexistent-domain")
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
+        assert "not configured" in result["error"]["message"]
+        assert result["error"]["actionable"] is True
 
 
 class TestProcessCollection:

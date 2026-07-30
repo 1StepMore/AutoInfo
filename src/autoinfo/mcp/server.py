@@ -410,7 +410,16 @@ def _handle_collect_sources(
             "collected_count": len(domain_results),
         }
 
-    # -- Single-domain collection (existing behavior) -----------------------
+    # -- Single-domain collection ---------------------------------------------
+    cfg = _load_config()
+    if _find_domain(cfg, domain) is None:
+        return error_response(
+            ErrorCode.DOMAIN_NOT_FOUND,
+            f"Domain '{domain}' is not configured. "
+            f"Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
+
     job_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
     _save_job_state(job_id, "collection", domain, "running", 0.0, {

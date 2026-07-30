@@ -60,6 +60,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from autoinfo import __version__
+from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
@@ -268,16 +269,54 @@ def _handle_get_tool_count() -> dict[str, Any]:
     }
 
 
+def _detect_phase(
+    result: dict[str, Any],
+    config_path: Any,
+    collections_dir: Path,
+    knowledge_dir: Path,
+) -> str:
+    """Determine system operational phase from diagnostic results.
+
+    Returns one of: uninitialized, llm_unconfigured, no_sources,
+    ready_to_collect, operational.
+    """
+    if not config_path or "config_error" in result:
+        return "uninitialized"
+    if not result["llm"].get("key_configured", False):
+        return "llm_unconfigured"
+    if result["sources"]["count"] == 0:
+        return "no_sources"
+
+    has_collected = False
+    try:
+        if collections_dir.is_dir():
+            has_collected = any(collections_dir.iterdir())
+    except OSError:
+        pass
+    if not has_collected:
+        try:
+            raw_dir = knowledge_dir / "01-Raw"
+            if raw_dir.is_dir():
+                has_collected = any(raw_dir.iterdir())
+        except OSError:
+            pass
+    if not has_collected:
+        return "ready_to_collect"
+
+    return "operational"
+
+
 def _handle_diagnose_system() -> dict[str, Any]:
     """Comprehensive system diagnostics — llm, sources, disk, db."""
     result: dict[str, Any] = {
         "llm": {"configured": False},
-        "sources": {"count": 0},
+        "sources": {"count": 0, "items": []},
         "disk": {},
         "db": {"exists": False},
     }
 
     # -- Config -----------------------------------------------------------
+    config_path = None
     try:
         from autoinfo.config import get_config_path, load_config
 
@@ -319,6 +358,33 @@ def _handle_diagnose_system() -> dict[str, Any]:
     # -- DB ---------------------------------------------------------------
     db_path = knowledge_dir.parent / "autoinfo.db"
     result["db"] = {"exists": db_path.is_file()}
+
+    # -- Health Score -----------------------------------------------------
+    # Adapt MCP result schema to match doctor.py calculate_health_score contract:
+    #   llm.status (ok/error) from llm.key_configured
+    #   config.status (ok/error) from config_path presence
+    #   sources list from sources.items
+    llm_cfg = result["llm"]
+    llm_status = "ok" if llm_cfg.get("key_configured", False) else "error"
+    config_status = "ok" if config_path and "config_error" not in result else "error"
+    source_items: Any = result["sources"].get("items", [])
+    if not isinstance(source_items, list):
+        source_items = []
+
+
+    health_dict: dict[str, Any] = {
+        "python": {"status": "ok"},
+        "config": {"status": config_status},
+        "llm": {
+            "status": llm_status,
+            "key_configured": llm_cfg.get("key_configured", False),
+        },
+        "sources": [{"status": "ok"} for _ in source_items],
+    }
+    result["health_score"] = calculate_health_score(health_dict)
+
+    # -- Phase Detection --------------------------------------------------
+    result["phase"] = _detect_phase(result, config_path, collections_dir, knowledge_dir)
 
     return result
 
@@ -5884,7 +5950,9 @@ async def list_tools() -> list[Tool]:
             name="diagnose_system",
             description=(
                 "Comprehensive system diagnostics — LLM config, "
-                "sources, disk, and database"
+                "sources, disk, database, health_score (0-100), "
+                "and phase detection (uninitialized/llm_unconfigured/"
+                "no_sources/ready_to_collect/operational)"
             ),
             inputSchema={"type": "object", "properties": {}},
         ),

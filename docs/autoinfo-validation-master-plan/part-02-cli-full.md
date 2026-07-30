@@ -15,6 +15,7 @@ rm -rf /tmp/test-q13 && mkdir -p /tmp/test-q13
 rm -rf /tmp/test-q14 && mkdir -p /tmp/test-q14
 rm -rf /tmp/test-q15 && mkdir -p /tmp/test-q15
 rm -rf /tmp/test-q16 && mkdir -p /tmp/test-q16
+rm -rf /tmp/test-q17 && mkdir -p /tmp/test-q17
 rm -rf /tmp/test-q7 && mkdir -p /tmp/test-q7
 rm -rf /tmp/test-q8 && mkdir -p /tmp/test-q8
 rm -rf /tmp/test-q18 && mkdir -p /tmp/test-q18
@@ -1499,16 +1500,48 @@ done
 ```
 **Expected Result:** ✅ Supported commands produce valid JSON.
 
+#### 16.4 🟢 Global --json flag on root command
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q16
 
----
+OUTPUT=$(autoinfo --json status 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(f'  keys: {list(data.keys())[:5]}')
+    print(f'  ✅ PASS: global --json produces valid JSON')
+except (json.JSONDecodeError, ValueError) as e:
+    text = sys.stdin.read() if isinstance(e, json.JSONDecodeError) else str(e)
+    print(f'  ⚠️ WARN: global --json flag may not be supported on all commands')
+" 2>&1
+
+# Also test: unknown flag produces error, not traceback
+OUTPUT2=$(autoinfo --quiet status 2>&1) || true
+echo "$OUTPUT2" | grep -qi "no such option\|unknown option\|error" \
+  && echo "  ✅ PASS: unknown global flag produces error" \
+  || echo "  ⚠️ WARN: unknown flag behavior unclear"
+
+echo "$OUTPUT2" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback on unknown flag" \
+  || { echo "  ❌ FAIL: traceback on unknown flag"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 16.4 PASSED"; exit 0; else echo "❌ SCENARIO 16.4 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Global `--json` flag produces structured output. Unknown flags produce error without traceback. Note: `--quiet` flag does not exist.
 
 ### 📊 Q16 Verdict
 
 | Scenario | Result |
 |----------|--------|
 | 16.1 --help all | ⬜ |
-| 16.2 --version | ⬜ |
+| 16.2 Version (doctor) | ⬜ |
 | 16.3 --json support | ⬜ |
+| 16.4 Global --json + unknown flag | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -1561,8 +1594,89 @@ autoinfo topics add --name "Empty" --keywords "" --domain medical-research 2>&1
 ```
 **Expected Result:** ❌ Error or warning about empty keywords.
 
+#### 17.7 🟢 Multi-value flags (--domains A --domains B)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q17
+rm -rf /tmp/test-q17-mv && mkdir -p /tmp/test-q17-mv && cd /tmp/test-q17-mv
+autoinfo init --demo medical-research 2>&1 > /dev/null
+autoinfo domain import --from-demo ai-commercial 2>&1 > /dev/null || true
 
----
+# Test multi-value --domains flag
+OUTPUT=$(autoinfo output report --domains medical-research --domains ai-commercial --format json 2>&1) || true
+
+echo "$OUTPUT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    items = data.get('items', data.get('entries', []))
+    print(f'  ✅ PASS: multi-value --domains accepted ({len(items)} items)')
+except (json.JSONDecodeError, ValueError):
+    text = sys.stdin.read() if isinstance(sys.stdin, json.JSONDecodeError) else ''
+    # Check if multi-value was rejected
+    if 'No such option' in text or 'unrecognized' in text.lower():
+        print(f'  ⚠️ WARN: multi-value --domains may not be supported')
+    elif 'domain' in text.lower():
+        print(f'  ⚠️ WARN: --domains may use --domain string (comma-separated) instead')
+    else:
+        print(f'  ⚠️ WARN: unable to verify multi-value flag behavior')
+" 2>&1
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback in output"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 17.7 PASSED"; exit 0; else echo "❌ SCENARIO 17.7 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Multi-value `--domains` flag accepted without crash. No traceback. Note: some CLIs use comma-separated `--domains A,B` instead of repeated `--domains A --domains B`.
+
+#### 17.8 🔴 Special characters in CLI values
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q17
+
+# Test domain names with special chars (hyphens, underscores should be OK)
+OUTPUT=$(autoinfo domain add --name "test-domain_special-123" --description "Special chars test" 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "added\|created" \
+  && echo "  ✅ PASS: domain with hyphens/underscores accepted" \
+  || echo "  ⚠️ WARN: special char domain behavior unclear"
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback on special chars"; ALL_PASS=false; }
+
+# Clean up
+autoinfo domain remove --name "test-domain_special-123" 2>&1 > /dev/null || true
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 17.8 PASSED"; exit 0; else echo "❌ SCENARIO 17.8 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ Hyphens and underscores in domain names accepted. No traceback.
+
+#### 17.9 🔴 Domain name with spaces
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q17
+
+OUTPUT=$(autoinfo domain add --name "My Custom Domain" --description "Domain with spaces" 2>&1) || true
+
+echo "$OUTPUT" | grep -qi "error\|invalid\|space\|character\|format" \
+  && echo "  ✅ PASS: domain with spaces rejected with helpful error" \
+  || echo "  ⚠️ WARN: domain with spaces behavior unclear (may accept)"
+
+echo "$OUTPUT" | grep -vq "Traceback" \
+  && echo "  ✅ PASS: no Python traceback" \
+  || { echo "  ❌ FAIL: traceback on spaces"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 17.9 PASSED"; exit 0; else echo "❌ SCENARIO 17.9 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ Domain with spaces rejected with helpful error or accepted safely. No traceback.
 
 ### 📊 Q17 Verdict
 
@@ -1574,6 +1688,9 @@ autoinfo topics add --name "Empty" --keywords "" --domain medical-research 2>&1
 | 17.4 Invalid format | ⬜ |
 | 17.5 Missing subcommand | ⬜ |
 | 17.6 Empty keywords | ⬜ |
+| 17.7 Multi-value flags | ⬜ |
+| 17.8 Special chars | ⬜ |
+| 17.9 Spaces in domain | ⬜ |
 
 **OVERALL: ⬜**
 

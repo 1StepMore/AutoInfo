@@ -9656,6 +9656,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif isinstance(result, dict) and "error_code" in result:
             # Legacy flat format: wrap into envelope with both
             # flat fields and nested error for backward compat.
+            logger.warning(
+                "Flat error response detected from tool '%s' — auto-wrapping into envelope. "
+                "Migrate handler to return error_response() for consistency.",
+                name,
+            )
             wrapped = {
                 "success": False,
                 "error_code": result["error_code"],
@@ -9671,8 +9676,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             wrapped = success_response(result)
         return [TextContent(type="text", text=json.dumps(wrapped))]
     except NotImplementedError:
-        # Stub tools return a graceful error response
-        return _error_response(NotImplementedError(str(arguments.get("message", "Not implemented in v0.1"))))
+        # Stub tools return a graceful error response using canonical envelope
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(error_response(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message=str(arguments.get("message", "Not implemented in v0.1")),
+                    actionable=True,
+                )),
+            )
+        ]
     except Exception as exc:
         logger.exception("Tool '%s' failed", name)
         return _error_response(exc)

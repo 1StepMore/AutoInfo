@@ -201,6 +201,50 @@ class TestCliAddSchedule:
         assert result.exit_code != 0
         assert "not a valid cron expression" in result.output
 
+    def test_add_schedule_stale_artifact_causes_duplicate(
+        self, tmp_path: Path, cli_runner: CliRunner
+    ) -> None:
+        """Issue #101: a pre-existing schedule in the file causes add_schedule to reject."""
+        with _with_schedules_path(tmp_path):
+            # Simulate a stale leftover artifact like the one that caused #101
+            save_schedules({
+                "test": Schedule(
+                    name="test",
+                    expression="0 8 * * 1",
+                    domain="medical-research",
+                    enabled=True,
+                    last_run=None,
+                    created_at="2026-07-29T04:37:51+00:00",
+                ),
+            })
+            assert "test" in load_schedules()
+            # Adding "test" again must fail — the false duplicate from stale artifact
+            result = cli_runner.invoke(
+                cron_app,
+                ["add-schedule", "--name", "test",
+                 "--expression", "0 10 * * *",
+                 "--domain", "medical-research"],
+            )
+        assert result.exit_code != 0
+        assert "already exists" in result.output
+
+    def test_add_schedule_clean_dir_no_false_duplicate(
+        self, tmp_path: Path, cli_runner: CliRunner
+    ) -> None:
+        """A clean directory must allow adding any schedule name (issue #101 regression)."""
+        with _with_schedules_path(tmp_path):
+            schedules = load_schedules()
+            assert schedules == {}
+            # "test" must succeed even though a stale artifact once used that name
+            result = cli_runner.invoke(
+                cron_app,
+                ["add-schedule", "--name", "test",
+                 "--expression", "0 8 * * 1",
+                 "--domain", "medical-research"],
+            )
+        assert result.exit_code == 0
+        assert "Schedule 'test' added" in result.stdout
+
 
 # ======================================================================
 # CLI: list-schedules

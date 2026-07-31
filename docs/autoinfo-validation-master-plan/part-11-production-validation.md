@@ -38,7 +38,7 @@ echo 'invalid json' | timeout 5 python3 -m autoinfo.mcp.server 2>/dev/null; echo
 **Expected Result:** ❌ Server does NOT crash. Returns JSON-RPC error response. No Python traceback.
 
 
-#### 60.4 🟢 MCP server lists all 137 tools
+#### 60.4 🟢 MCP server lists all 138 tools
 ```python
 from autoinfo.mcp.server import app
 tools = app.list_tools()()
@@ -78,7 +78,7 @@ for cat, cat_tools in categories.items():
     present = [t for t in cat_tools if t in tool_names]
     print(f"  {cat}: {len(present)}/{len(cat_tools)} tools present")
 ```
-**Expected Result:** ✅ 137 tools registered with correct names. All 34 categories have expected tools.
+**Expected Result:** ✅ 138 tools registered with correct names. All 34 categories have expected tools.
 
 
 #### 60.5 🟢 3 consecutive pipeline runs — no crash
@@ -1458,7 +1458,7 @@ fi
 | Doctor all checks | ⬜ |
 | MCP stdio ping | ⬜ |
 | Invalid JSON-RPC | ⬜ |
-| All 137 tools | ⬜ |
+| All 138 tools | ⬜ |
 | 3x stress run | ⬜ |
 | Clean import | ⬜ |
 | Test suite | ⬜ |

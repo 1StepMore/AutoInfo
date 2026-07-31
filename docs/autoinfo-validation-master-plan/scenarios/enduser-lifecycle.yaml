@@ -11,9 +11,10 @@ description: >
   Validates the full end user lifecycle: profile CRUD (create, get, list,
   update, delete via CLI and MCP), subscription state machine (trial→active→
   suspended→cancelled transitions), multi-channel delivery configuration
-  (send_to_enduser, get_enduser_history, get_enduser_products), delivery log
-  querying, cost/billing operations (billing summary, budgets, usage),
-  data privacy (soft_delete_entry, restore_entry, GDPR export), and
+  (12 channels: smtp, webhook, rest_api, file_export, discord, telegram,
+  wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish),
+  delivery log querying, cost/billing operations (billing summary, budgets,
+  usage), data privacy (soft_delete_entry, restore_entry, GDPR export), and
   consumption tracking events. Covers expectations F36-F43, F46-F47.
 
 tags: [enduser, subscription, delivery, billing, privacy, lifecycle, regression]

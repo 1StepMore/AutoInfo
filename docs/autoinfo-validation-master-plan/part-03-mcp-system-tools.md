@@ -116,7 +116,7 @@ assert "count" in data
 assert data["count"] >= 115
 print(f"✅ get_tool_count: {data['count']} tools registered (dynamic)")
 ```
-**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (137 expected in v1.8.2).  
+**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (138 expected in v1.8.2).  
 Tool: `get_tool_count` — self-discovery tool that returns the dynamic count of registered MCP tools at runtime.
 
 ---

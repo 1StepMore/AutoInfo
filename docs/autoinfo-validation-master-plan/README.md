@@ -2,7 +2,7 @@
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-27
-**Baseline:** AutoInfo v1.8 — 2183 tests (includes new collector tests), 23 CLI command groups, 137 MCP tools (34 categories), KB pipeline (4 tiers), 22 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (6 adapters), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
+**Baseline:** AutoInfo v1.8 — 2452 tests (includes new collector tests), 23 CLI command groups, 138 MCP tools (34 categories), KB pipeline (4 tiers), 22 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (12 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
 
 > **Spec references**: See `docs/dev/specs/` for the full specification (11 files). See also `docs/dev/cross-dimensional-catalog.md` (keystone product matrix, supersedes gap audit docs). See `docs/archive/` for superseded/one-time historical docs including `reality-assessment.md` (archived).
 
@@ -88,7 +88,7 @@ After executing all 15 parts, produce a summary verdict table in `part-12-final-
 
 **Improvement over v1**: v2 adds:
 - All 22 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
-- All 137 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
+- All 138 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
 - 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki (was only 01-Raw)
 - Quality gates G1-G5 (was G1-G3 only)
 - All search modes: FTS5, vector, hybrid, faceted, Q&A, knowledge graph
@@ -329,7 +329,7 @@ All CLI commands support these **global flags**:
 | Feature Area | Existing v1 | v2 Target | Status |
 |-------------|-------------|-----------|--------|
 | CLI commands tested | 6/17 (35%) | 23/23 (100%) | 📝 Part 2 |
-| MCP tools tested | 8/72 (11%) | 137/137 (100%) | 📝 Parts 3-4 |
+| MCP tools tested | 8/72 (11%) | 138/138 (100%) | 📝 Parts 3-4 |
 | KB tiers tested | 1/4 (01-Raw only) | 4/4 (Inbox→Raw→Draft→Wiki) | 📝 Part 6 |
 | Quality gates tested | 3/5 (G1-G3) | 5/5 (G1-G5) | 📝 Part 5 |
 | Search modes tested | 1 (summaries list) | FTS5 (currently only FTS5 implemented; vector/hybrid/faceted/Q&A/graph planned) | 📝 Part 6 |

@@ -42,6 +42,7 @@ dependencies = [
     # Collection
     "feedparser>=6.0",
     "trafilatura>=1.8",
+    "lxml>=5.0",
     "beautifulsoup4>=4.12",
 
     # KB

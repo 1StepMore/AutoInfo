@@ -299,3 +299,15 @@ class TestWebHandlerEdgeCases:
         id1 = _make_item_id("https://example.com/article-1")
         id2 = _make_item_id("https://example.com/article-2")
         assert id1 != id2
+
+
+# ---------------------------------------------------------------------------
+# Dependency regression — issue #102
+# ---------------------------------------------------------------------------
+
+
+def test_lxml_importable() -> None:
+    """lxml must be importable (direct dependency for trafilatura, issue #102)."""
+    import lxml
+
+    assert lxml.__version__

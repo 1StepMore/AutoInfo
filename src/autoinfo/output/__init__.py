@@ -1465,7 +1465,7 @@ def _compute_date_range(period: str) -> tuple[str, str]:
 # Template loader
 # ---------------------------------------------------------------------------
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent / "data" / "templates"
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "data" / "templates"
 
 _jinja_env: Environment | None = None
 
@@ -2353,7 +2353,7 @@ def generate_digest(
 # Report generation — structured Jinja2 + LLM reports from KB entries
 # ---------------------------------------------------------------------------
 
-TEMPLATE_PATH = Path(__file__).resolve().parent / "data" / "templates" / "report.md.j2"
+TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "data" / "templates" / "report.md.j2"
 
 
 @dataclass

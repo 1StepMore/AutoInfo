@@ -3303,7 +3303,6 @@ def _handle_init_project(
             ],
             "would_create_files": [
                 ".autoinfo/config.yaml",
-                ".autoinfo/sources.yaml",
             ],
             "message": "Dry run — no files were created",
             "next_steps": [

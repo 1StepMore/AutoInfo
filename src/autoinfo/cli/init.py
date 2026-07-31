@@ -8,7 +8,6 @@ optionally populates it with a demo domain definition.
 
 
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import Optional, List
@@ -65,31 +64,6 @@ def _ensure_dir(path: Path) -> bool:
     if path.exists():
         return False
     path.mkdir(parents=True, exist_ok=True)
-    return True
-
-
-def _copy_template(
-    src: Path,
-    dst: Path,
-    dry_run: bool = False,
-) -> bool:
-    """Copy a template file from src to dst. Returns True if copied.
-
-    Skips if dst already exists.  Handles missing src gracefully.
-    """
-    if dst.exists():
-        typer.echo(f"  SKIP  {dst}  (already exists)")
-        return False
-
-    if not src.is_file():
-        typer.echo(f"  WARN  template not found: {src}", err=True)
-        return False
-
-    if dry_run:
-        return True
-
-    shutil.copy2(src, dst)
-    typer.echo(f"  CREATE  {dst}")
     return True
 
 
@@ -154,14 +128,9 @@ def _generate_config(
 
 
 def _run_init(domains: list[str], autoinfo_dir: Path, project_name: str = "") -> None:
-    """Core init logic: generate config, copy sources, create subdirs, print next steps."""
+    """Core init logic: generate config, create subdirs, print next steps."""
     config_dst = autoinfo_dir / "config.yaml"
     _generate_config(domains, config_dst, project_name=project_name)
-
-    if domains:
-        demo_sources = _DEMO_DOMAINS_DIR / domains[0] / "sources.yaml"
-        sources_dst = autoinfo_dir / "sources.yaml"
-        _copy_template(demo_sources, sources_dst)
 
     for sub in _REQUIRED_SUBDIRS:
         d = autoinfo_dir / sub

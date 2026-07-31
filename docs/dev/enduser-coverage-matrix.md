@@ -211,21 +211,23 @@
 3. **最大验证缺口**：新增的 12 个 collectors（#82-#87）代码有了但几乎未测试
 4. **最大代码缺口**：分发渠道（仅 50%）、自有 Web UI（❌）— 有 12 个 delivery adapter 但无端到端验证
 5. **不可工程化**：20%（8 个源/产品）受外部基础设施或付费墙限制
-6. **新发现 gap**: #99 LLM response_format 空结果无保护, #100 多域 init 未复制全部 sources.yaml, #101 cron 假重复因测试残留, #102 lxml 未申明为直接依赖 — 见下方 G 节
+6. **新发现 gap**: #99 LLM response_format 空结果无保护, #100 多域 init 未复制全部 sources.yaml, #101 cron 假重复因测试残留, #102 lxml 未申明为直接依赖 — 已全部修复（v1.8.3），见下方 G 节
 
 ---
 
-## G. 近期 Issues 对应 Gap 分析（#98-#102）
+## G. 近期 Issues 对应 Gap 分析（#98-#102）— ✅ 全部已修复（v1.8.3, 2026-07-31）
 
-| # | Issue 标题 | 根因 | 影响域 | Gap 类型 | 严重程度 | 建议修复 |
+> **修复状态**：以下全部 gap 已在 v1.8.3 中修复并附带回归测试（见 `CHANGELOG.md` v1.8.3）。
+
+| # | Issue 标题 | 根因 | 影响域 | Gap 类型 | 严重程度 | 修复方式（已落地） |
 |:-:|-----------|------|--------|---------|---------|---------|
-| #98 | `list_output_templates` 找不到模板 | 模板文件存在但路径配置不匹配，测试环境与生产环境差异 | 全部输出生成(B1-B8) | 测试覆盖不足 | 🟡 Medium | 增加测试用例覆盖 `AUTOINFO_HOME` 自定义路径场景；检查模板发现逻辑中的路径回退 |
-| #99 | `generate_report` 空返回 (response_format=json_object) | LLM 不支持 `json_object` 时 `response.choices[0].message.content` 为 None，4 个调用点无 `None` guard | 全部输出生成(B1-B8) | 代码弹性缺失(F1) | 🔴 High | 在 4 个调用点加 `content or ""` guard；`response_format` 失败时降级为无格式请求 |
-| #100 | 多域 init 只复制一个 sources.yaml | `_run_init()` line 162 循环逻辑错误 — 仅复制第一个域的 sources.yaml 就 break | 域管理初始化 | 代码缺陷(ergonomic) | 🟡 Medium | 修复 init 循环：对每个域复制 sources.yaml，不提前 break |
-| #101 | `cron add-schedule` 假重复 | 测试残留 `.autoinfo/schedules.yaml` 被 `_load_schedules()` 读取，旧条目与新条目同名冲突。且 CLI cron (`schedules.yaml`) 与 delivery scheduler (`delivery_schedules.yaml`) 使用不同路径 | 定时调度(F3) | 测试隔离缺失 + 双系统路径耦合 | 🟡 Medium | 测试用临时目录隔离；CLI cron 与 delivery scheduler 统一路径或明确职责分离 |
-| #102 | `lxml` 未申明为直接依赖 | `lxml` 仅通过 `trafilatura` 传递依赖获取，`pyproject.toml` 未列出；pip `--no-deps` 或 slim 镜像中 Web collector 会崩溃 | Web 收集（A21）| 构建弹性缺失(F4) | 🟡 Medium | 将 `lxml` 添加到 `pyproject.toml` 的 `dependencies` 中 |
+| #98 | `list_output_templates` 找不到模板 | 模板文件存在但路径配置不匹配，测试环境与生产环境差异 | 全部输出生成(B1-B8) | 测试覆盖不足 | 🟡 Medium | ✅ `output/__init__.py` 中 `_TEMPLATES_DIR`/`TEMPLATE_PATH` 改为基于模块实际路径解析（不依赖 CWD）；`test_output_templates.py` 回归测试 |
+| #99 | `generate_report` 空返回 (response_format=json_object) | LLM 不支持 `json_object` 时 `response.choices[0].message.content` 为 None，4 个调用点无 `None` guard | 全部输出生成(B1-B8) | 代码弹性缺失(F1) | 🔴 High | ✅ `_parse_json_response` 接受 `content: str \| None`，返回 `{}` + warning；4 个调用点 `content or ""` guard；`test_digest.py` 回归测试 |
+| #100 | 多域 init 只复制一个 sources.yaml | 独立 `sources.yaml` 复制逻辑仅复制第一个域的 sources.yaml | 域管理初始化 | 代码缺陷(ergonomic) | 🟡 Medium | ✅ 彻底移除独立 `sources.yaml`，全部域 sources/topics 直接内嵌 `config.yaml`（单一事实源）；`test_init.py` 回归测试 |
+| #101 | `cron add-schedule` 假重复 | 测试残留 `.autoinfo/schedules.yaml` 被 `_load_schedules()` 读取，旧条目与新条目同名冲突。且 CLI cron (`schedules.yaml`) 与 delivery scheduler (`delivery_schedules.yaml`) 使用不同路径 | 定时调度(F3) | 测试隔离缺失 + 双系统路径耦合 | 🟡 Medium | ✅ 删除残留 `schedules.yaml` 工件；cron 测试改用临时目录隔离；`test_cron.py` 回归测试 |
+| #102 | `lxml` 未申明为直接依赖 | `lxml` 仅通过 `trafilatura` 传递依赖获取，`pyproject.toml` 未列出；pip `--no-deps` 或 slim 镜像中 Web collector 会崩溃 | Web 收集（A21）| 构建弹性缺失(F4) | 🟡 Medium | ✅ `pyproject.toml` 添加 `lxml>=5.0` 直接依赖；`test_web_handler.py::test_lxml_importable` 回归测试 |
 
-### G 维度 gap 影响评分
+### G 维度 gap 影响评分（修复前基线，均已落地修复）
 
 | Gap ID | 对应 Issue | 影响范围 | 用户可见 | 修复成本 | 优先级 |
 |:------:|:---------:|:--------:|:--------:|:--------:|:------:|

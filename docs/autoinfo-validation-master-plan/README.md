@@ -2,7 +2,7 @@
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-27
-**Baseline:** AutoInfo v1.8 — 2452 tests (includes new collector tests), 23 CLI command groups, 138 MCP tools (34 categories), KB pipeline (4 tiers), 22 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (12 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
+**Baseline:** AutoInfo v1.8 — 2537 tests (includes new collector tests), 23 CLI command groups, 138 MCP tools (34 categories), KB pipeline (4 tiers), 22 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (12 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
 
 > **Spec references**: See `docs/dev/specs/` for the full specification (11 files). See also `docs/dev/cross-dimensional-catalog.md` (keystone product matrix, supersedes gap audit docs). See `docs/archive/` for superseded/one-time historical docs including `reality-assessment.md` (archived).
 
@@ -213,9 +213,10 @@ echo "$OUTPUT" | grep -qi "$DOMAIN" \
   && echo "  ✅ PASS: config.yaml created" \
   || { echo "  ❌ FAIL: config.yaml missing"; ALL_PASS=false; }
 
-[ -f "$TEST_DIR/.autoinfo/sources.yaml" ] \
-  && echo "  ✅ PASS: sources.yaml created" \
-  || { echo "  ❌ FAIL: sources.yaml missing"; ALL_PASS=false; }
+[ -s "$TEST_DIR/.autoinfo/config.yaml" ] \
+  && grep -q "medical-research" "$TEST_DIR/.autoinfo/config.yaml" \
+  && echo "  ✅ PASS: domain sources embedded in config.yaml" \
+  || { echo "  ❌ FAIL: domain sources not in config.yaml"; ALL_PASS=false; }
 
 # ── Verdict ───────────────────────────────────────────────────
 if [ "$ALL_PASS" = true ]; then
@@ -355,7 +356,7 @@ All CLI commands support these **global flags**:
 | Resource | Path Pattern |
 |----------|-------------|
 | Config | `.autoinfo/config.yaml` |
-| Sources | `.autoinfo/sources.yaml` |
+| Sources | `.autoinfo/config.yaml` → `domains[].sources` (embedded per domain; no standalone sources.yaml) |
 | Collection cache | `collections/<domain>/<source>/<date>/<id>.json` |
 | KB 01-Raw files | `knowledge/<domain>/01-Raw/<topic>/<date>-<slug>.md` |
 | KB 02-Draft files | `knowledge/<domain>/02-Draft/<topic>/<date>-<slug>.md` |

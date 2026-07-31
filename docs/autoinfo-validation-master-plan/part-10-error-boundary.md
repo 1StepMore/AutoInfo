@@ -86,14 +86,14 @@ autoinfo collect --domain medical-research --topic IVF --limit -1 2>&1; echo "EX
 
 ### Config Error Scenarios
 
-#### 59.8 🔴 Missing sources.yaml
+#### 59.8 🔴 Missing config.yaml
 ```bash
-cd /tmp && rm -rf test-missing-sources && mkdir test-missing-sources && cd test-missing-sources
+cd /tmp && rm -rf test-missing-config && mkdir test-missing-config && cd test-missing-config
 autoinfo init --demo medical-research
-rm -f .autoinfo/sources.yaml
+rm -f .autoinfo/config.yaml
 autoinfo collect --domain medical-research --topic IVF --limit 3 2>&1; echo "EXIT: $?"
 ```
-**Expected Result:** ❌ Error: sources config missing. Or gracefully handles with warning.
+**Expected Result:** ❌ Error: "No configuration found. Run 'autoinfo init' first." (exit code 1).
 
 
 #### 59.9 🔴 LLM API timeout — pipeline continues with next item
@@ -325,7 +325,7 @@ echo "Both collections completed: $PID1=$?, $PID2=$?"
 | Nonexistent domain | ⬜ |
 | Unknown subcommand | ⬜ |
 | Invalid --limit | ⬜ |
-| Missing sources.yaml | ⬜ |
+| Missing config.yaml | ⬜ |
 | LLM timeout isolation | ⬜ |
 | Malformed LLM response | ⬜ |
 | PubMed retry | ⬜ |

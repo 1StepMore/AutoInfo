@@ -40,7 +40,6 @@ steps:
         - "Traceback"
     artifacts:
       - "${TEST_DIR}/.autoinfo/config.yaml"
-      - "${TEST_DIR}/.autoinfo/sources.yaml"
       - "${TEST_DIR}/knowledge"
       - "${TEST_DIR}/collections"
       - "${TEST_DIR}/outputs"

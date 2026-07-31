@@ -396,18 +396,20 @@ else:
 
 #### 53.2 🟢 Agent diagnoses unreachable source URL
 ```bash
-# Add a broken source
+# Add a broken source to the medical-research domain in config.yaml
 python3 -c "
 import yaml
-with open('.autoinfo/sources.yaml') as f:
-    cfg = yaml.safe_load(f) or {'sources': []}
-cfg['sources'].append({
-    'name': 'broken-source',
-    'type': 'web',
-    'url': 'https://this-domain-does-not-exist-99999.com',
-    'quality_tier': 3
-})
-with open('.autoinfo/sources.yaml', 'w') as f:
+with open('.autoinfo/config.yaml') as f:
+    cfg = yaml.safe_load(f)
+for d in cfg['domains']:
+    if d['name'] == 'medical-research':
+        d['sources'].append({
+            'name': 'broken-source',
+            'type': 'web',
+            'url': 'https://this-domain-does-not-exist-99999.com',
+            'quality_tier': 3
+        })
+with open('.autoinfo/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "
 

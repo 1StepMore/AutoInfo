@@ -69,7 +69,7 @@
 ### Part 1: Core Pipeline
 | Q | Title | Result | Evidence |
 |---|-------|--------|----------|
-| Q1 | Init project | ✅ | `autoinfo init --demo medical-research` → config.yaml, sources.yaml, KB dirs created |
+| Q1 | Init project | ✅ | `autoinfo init --demo medical-research` → config.yaml (domains with embedded sources+topics), KB dirs created |
 | Q2 | Collect sources | ✅ | `autoinfo collect --dry-run` + `autoinfo collect` → items fetched (pubmed, openalex success; semantic-scholar/arxiv/uspto API changes produce clean errors) |
 | Q3 | Process items | ✅ | `autoinfo process` → 2 items processed, KB entries created; LLM fails gracefully (no API key) |
 | Q4 | Browse & status | ✅ | `autoinfo status` → domain/items/sources shown; `autoinfo summaries list --domain medical-research` → 2 entries with titles/TL;DR |
@@ -257,7 +257,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 |----------|--------|--------|
 | All 138 MCP tools respond correctly | ⚠️ | 138 handlers registered (count via grep); module loads; stdio transport not tested (needs MCP client connected) |
 | All 23 CLI commands work | ✅ | All 23 groups verified: init, doctor, collect, process, status, sources, topics, domain, audit, billing, kb, output, cefr, clean, email, cron, summaries, keywords, knowledge, cost, enduser, portal, trace |
-| `init` creates valid project | ✅ | Q1: config.yaml + sources.yaml + KB directories created |
+| `init` creates valid project | ✅ | Q1: config.yaml (embedded sources/topics per domain) + KB directories created |
 | All 6 collector types work (RSS, API, Web, Webhook, Email, PDF) — 22+ platform-specific handlers | ⚠️ | RSS + API verified (pubmed, crossref, openalex); Web/webhook/Email/PDF not tested; 15 new collectors in code (DBLP, NYT, OpenAlex, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, Semantic Scholar, USPTO, AP API, Reuters MCP) |
 | All 6 search modes work | ✅ | Q8: FTS5 keyword search returns JSON; hybrid/faceted/vector search handlers registered; `kb reindex` → 2 files indexed |
 | All 5 quality gates advisory (G0-G5) | ⚠️ | G0-G3 ✅ pass (schema/dedup/relevance tested); G4-G5 ⚠️ need LLM key for factual consistency + translation verification |

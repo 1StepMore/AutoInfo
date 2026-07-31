@@ -502,7 +502,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
-| Test suite | ✅ 2452 tests (includes new collector tests; 1 collection error pre-existing) |
+| Test suite | ✅ 2537 tests (includes new collector tests; 1 collection error pre-existing) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 
 ## References

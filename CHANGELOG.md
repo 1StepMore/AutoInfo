@@ -2,6 +2,28 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.8.3 (2026-07-31)
+
+### Fixed
+- **#98 — Output template path resolution**: `_TEMPLATES_DIR` and `TEMPLATE_PATH` in `output/__init__.py` now resolve from the module's actual location instead of the CWD. Templates (`digest.md.j2`, `report.md.j2`, etc.) are now found regardless of working directory.
+- **#96/#99 — None LLM content guard**: `_parse_json_response()` now accepts `content: str | None` and returns `{}` with a warning when the LLM returns `None` content (e.g. `response_format=json_object` rejected by the model). All 4 output call sites use `content or ""` so digest/report generation degrades gracefully instead of crashing.
+- **#100 — `autoinfo init` no longer creates standalone `.autoinfo/sources.yaml`**: Sources and topics are now embedded directly in `.autoinfo/config.yaml` under each domain — config.yaml is the single source of truth. The old `sources.yaml` copy (which only held the first demo domain) was misleading. `init_project` MCP tool dry-run output updated to match.
+- **#101 — Stale `.autoinfo/schedules.yaml` artifact removed**: A leftover schedules file from prior tests could cause false "duplicate schedule" errors in `autoinfo cron add-schedule`. The stale artifact is deleted and regression tests added (temporary-directory isolation for cron tests).
+- **#102 — `lxml` declared as a direct dependency**: `lxml` was only available transitively via `trafilatura`. It is now a direct dependency (`lxml>=5.0`) so Web collector works even with `pip --no-deps` or slim images.
+
+### Added
+- **#95 — End-user deliverable validation scenario**: New `docs/autoinfo-validation-master-plan/scenarios/enduser-deliverable.yaml` (7 steps) validating end-user output delivery end to end.
+- **Regression tests** — `tests/test_init.py`, `tests/test_output_templates.py`, `tests/test_web_handler.py::test_lxml_importable`, `tests/test_cron.py` (stale-schedule isolation), `tests/test_digest.py` (None-content guard).
+
+### Infrastructure
+- `src/autoinfo/output/__init__.py`: `_TEMPLATES_DIR`/`TEMPLATE_PATH` resolution fix; `_parse_json_response` signature `str | None` + 4 call sites `or ""`.
+- `src/autoinfo/cli/init.py`: removed standalone `sources.yaml` copy logic (config.yaml is source of truth).
+- `src/autoinfo/mcp/server.py`: `init_project` dry-run `would_create_files` no longer lists `.autoinfo/sources.yaml`.
+- `pyproject.toml`: added `lxml>=5.0` to dependencies.
+- `tests/test_cron.py`, `tests/test_digest.py`, `tests/test_web_handler.py`: regression tests (+44 lines test_cron, None-guard digest tests, lxml import test).
+- `docs/autoinfo-validation-master-plan/scenarios/enduser-deliverable.yaml`: new scenario file (453 lines, 7 steps).
+- `docs/autoinfo-validation-master-plan/`: YAML param names and tool counts synced across scenario files (#94).
+
 ## v1.8.2 (2026-07-30)
 
 ### Added

@@ -39,11 +39,11 @@ steps:
   # -------------------------------------------------------------------------
   # Step 1: Verify all scenario YAML files exist
   # -------------------------------------------------------------------------
-  - name: "All 16 scenario YAML files exist"
+  - name: "All 22 scenario YAML files exist"
     tool: bash
     command: |
       DIR="${SCENARIOS_DIR}"
-      EXPECTED_FILES="init-project core-pipeline cli-full mcp-system-tools mcp-kb-output quality-gates kb-pipeline rest-api-webui agent-e2e async-cron-email error-boundary production-validation final-verdict enduser-lifecycle human-agent-collaboration cross-dimension-e2e"
+      EXPECTED_FILES="init-project core-pipeline collect-process cli-full domain-management mcp-system-tools mcp-kb-output output-digest output-report search-kb quality-gates kb-pipeline rest-api-webui agent-e2e async-cron-email error-boundary production-validation final-verdict enduser-lifecycle enduser-deliverable human-agent-collaboration cross-dimension-e2e"
       COUNT=0
       for f in $EXPECTED_FILES; do
         if [ -f "$DIR/$f.yaml" ]; then
@@ -54,11 +54,11 @@ steps:
         fi
       done
       echo "SCENARIO_FILES=$COUNT"
-      [ "$COUNT" -ge 16 ] && echo "PASS: All 16 scenario files present" || echo "FAIL: Missing scenario files"
+      [ "$COUNT" -ge 22 ] && echo "PASS: All 22 scenario files present" || echo "FAIL: Missing scenario files"
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: All 16 scenario files present"
+        - "PASS: All 22 scenario files present"
 
   # -------------------------------------------------------------------------
   # Step 2: Count total steps across all scenarios

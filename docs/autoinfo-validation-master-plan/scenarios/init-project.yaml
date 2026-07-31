@@ -39,7 +39,6 @@ steps:
         - "CREATE"
     artifacts:
       - "${TEST_DIR}/.autoinfo/config.yaml"
-      - "${TEST_DIR}/.autoinfo/sources.yaml"
       - "${TEST_DIR}/.autoinfo/knowledge"
       - "${TEST_DIR}/.autoinfo/collections"
       - "${TEST_DIR}/.autoinfo/outputs"

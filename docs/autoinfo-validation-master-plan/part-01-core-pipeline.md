@@ -34,8 +34,7 @@ autoinfo init --demo medical-research
 ```
 **Expected Result:**
 - ✅ Exit code 0
-- ✅ `.autoinfo/config.yaml` created
-- ✅ `.autoinfo/sources.yaml` created
+- ✅ `.autoinfo/config.yaml` created (domains with embedded `sources` + `topics` — config.yaml is the single source of truth; **no standalone `sources.yaml` is created**)
 - ✅ `knowledge/`, `collections/`, `outputs/` directories created
 - ✅ Success message printed with next steps
 

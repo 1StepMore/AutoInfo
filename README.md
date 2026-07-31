@@ -151,7 +151,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
-| Test suite | ✅ 2452 tests (includes new collector tests; 1 collection error pre-existing) |
+| Test suite | ✅ 2537 tests (includes new collector tests; 1 collection error pre-existing) |
 
 ## Quick Start
 

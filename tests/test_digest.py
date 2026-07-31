@@ -144,6 +144,11 @@ class TestParseJsonResponse:
         result = _parse_json_response("not json at all")
         assert result == {}
 
+    def test_none_content_returns_empty(self) -> None:
+        """None content (LLM json_object mismatch) must not crash (issues #96/#99)."""
+        result = _parse_json_response(None)  # type: ignore[arg-type]
+        assert result == {}
+
 
 # ---------------------------------------------------------------------------
 # Helpers for test mocks

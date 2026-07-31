@@ -1804,11 +1804,11 @@ def _call_llm_for_digest(
         logger.error("LLM digest synthesis failed: %s", exc)
         return {}
 
-    content: str = response.choices[0].message.content  # type: ignore[union-attr]
+    content: str = response.choices[0].message.content or ""
     return _parse_json_response(content)
 
 
-def _parse_json_response(content: str) -> dict[str, Any]:
+def _parse_json_response(content: str | None) -> dict[str, Any]:
     """Parse a JSON string with fallback strategies.
 
     1. Direct :func:`json.loads`.
@@ -1816,6 +1816,10 @@ def _parse_json_response(content: str) -> dict[str, Any]:
     3. Find the first ``{…}`` brace-delimited block.
     """
     import re  # noqa: PLC0415
+
+    if content is None:
+        logger.warning("LLM returned None content — possible json_object mode mismatch")
+        return {}
 
     # Strategy 1 — direct
     try:
@@ -3485,7 +3489,7 @@ def _call_llm_for_translation(
         logger.error("LLM translation failed: %s", exc)
         return {"translated_title": "", "translated_body": ""}
 
-    content: str = response.choices[0].message.content  # type: ignore[union-attr]
+    content: str = response.choices[0].message.content or ""
     parsed = _parse_json_response(content)
     return {
         "translated_title": parsed.get("translated_title", ""),
@@ -4027,7 +4031,7 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
     except Exception as exc:
         logger.error("Tutorial generation failed: %s", exc)
         return {}
-    content: str = response.choices[0].message.content  # type: ignore[union-attr]
+    content: str = response.choices[0].message.content or ""
     return _parse_json_response(content)
 
 
@@ -4267,7 +4271,7 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     except Exception as exc:
         logger.error("LLM presentation synthesis failed: %s", exc)
         return {}
-    content: str = response.choices[0].message.content  # type: ignore[union-attr]
+    content: str = response.choices[0].message.content or ""
     return _parse_json_response(content)
 
 

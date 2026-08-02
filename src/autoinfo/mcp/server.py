@@ -4162,6 +4162,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
             "templates": [],
             "delivery_channels": ["api"],
             "quality_gates": list(domain_cfg.quality_gates.keys()),
+            "variants": ["api_feed", "webhook", "bulk_export"],
         }
     else:
         product = {
@@ -4212,6 +4213,7 @@ def _handle_list_products(domain: str) -> dict[str, Any]:
         "source_count": len(domain_cfg.sources),
         "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
         "quality_gate_count": len(domain_cfg.quality_gates),
+        "variants": ["api_feed", "webhook", "bulk_export"],
     }
 
     processed_product = {

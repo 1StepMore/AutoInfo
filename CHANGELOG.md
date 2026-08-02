@@ -2,6 +2,16 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## v1.8.4 (2026-08-02)
+
+### Added
+- **RAW product variants field** — `_handle_list_products` and `_handle_get_product` now return a `variants` field on RAW products: `["api_feed", "webhook", "bulk_export"]`. The `Product` model in `models.py` gains an optional `variants: list[str]` field. This makes the README's "RAW (API feeds, webhook streams, bulk export)" claim code-backed — the 3 variants map to `/api/v1/feeds` (api_feed), webhook push (`collect.py`), and `export_kb` (bulk_export) respectively. Backward-compatible: existing 2-product top-level structure unchanged; PROCESSED products have no `variants` field.
+
+### Infrastructure
+- `src/autoinfo/models.py`: `variants: list[str] = field(default_factory=list)` added to `Product` dataclass.
+- `src/autoinfo/mcp/server.py`: `_handle_list_products` raw_product dict + `_handle_get_product` RAW product dict now include `"variants": ["api_feed", "webhook", "bulk_export"]`.
+- `tests/test_v1_5_mcp.py`: `test_get_raw_product` + `test_list_products` extended to assert variants field presence and content.
+
 ## v1.8.3 (2026-07-31)
 
 ### Fixed

@@ -110,6 +110,7 @@ class Product:
     templates: list[str] = field(default_factory=list)
     delivery_channels: list[str] = field(default_factory=list)
     quality_gates: dict[str, Any] = field(default_factory=dict)
+    variants: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

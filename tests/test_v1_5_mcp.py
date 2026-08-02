@@ -200,7 +200,7 @@ class TestProductTools:
     """Product MCP tools return derived product config."""
 
     def test_get_raw_product(self, cwd_patch: Path) -> None:
-        """get_product with RAW type returns raw product."""
+        """get_product with RAW type returns raw product with variants."""
         result = _handle_get_product(domain="medical-research", product_type="RAW")
         assert "error_code" not in result, f"Unexpected error: {result}"
         product = result["product"]
@@ -208,6 +208,7 @@ class TestProductTools:
         assert product["domain"] == "medical-research"
         assert len(product["config"]["sources"]) == 1
         assert product["config"]["sources"][0]["name"] == "pubmed"
+        assert product["variants"] == ["api_feed", "webhook", "bulk_export"]
 
     def test_get_processed_product(self, cwd_patch: Path) -> None:
         """get_product with PROCESSED type returns processed product."""
@@ -224,12 +225,18 @@ class TestProductTools:
         assert "error_code" in result
 
     def test_list_products(self, cwd_patch: Path) -> None:
-        """list_products returns both RAW and PROCESSED products."""
+        """list_products returns both RAW and PROCESSED with RAW variants."""
         result = _handle_list_products(domain="medical-research")
         assert "error_code" not in result
         assert result["count"] == 2
         types = {p["type"] for p in result["products"]}
         assert types == {"raw", "processed"}
+
+        # RAW product has 3 variants; PROCESSED does not
+        raw_p = next(p for p in result["products"] if p["type"] == "raw")
+        assert raw_p["variants"] == ["api_feed", "webhook", "bulk_export"]
+        processed_p = next(p for p in result["products"] if p["type"] == "processed")
+        assert "variants" not in processed_p
 
     def test_list_products_nonexistent_domain(self, cwd_patch_no_domain: Path) -> None:
         """list_products on missing domain returns error."""

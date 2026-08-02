@@ -173,8 +173,6 @@ _NON_DISPATCH_TYPES: frozenset[str] = frozenset({
     "webhook",
     "ssrn",
     "gdelt",
-    "huggingface",
-    "kaggle",
     "unpaywall",
     "core",
 })

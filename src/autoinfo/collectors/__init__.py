@@ -5,6 +5,8 @@ from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
 from autoinfo.collectors.bilibili import BilibiliHandler
 from autoinfo.collectors.dblp import DBLPHandler
 from autoinfo.collectors.email_imap import EmailHandler
+from autoinfo.collectors.huggingface import HuggingFaceHandler
+from autoinfo.collectors.gdelt import GDELTHandler
 from autoinfo.collectors.nyt import NYTHandler
 from autoinfo.collectors.pdf import PDFHandler
 from autoinfo.collectors.reddit import RedditHandler
@@ -12,9 +14,11 @@ from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
 from autoinfo.collectors.spotify import SpotifyHandler
 from autoinfo.collectors.webhook import WebhookHandler
 from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+from autoinfo.collectors.unpaywall import UnpaywallHandler
 from autoinfo.collectors.uspto import USPTOHandler
 from autoinfo.collectors.youtube import YouTubeHandler
 from autoinfo.collectors.quandl import QuandlHandler
+from autoinfo.collectors.ssrn import SSRNHandler
 from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
 
 __all__ = [
@@ -23,6 +27,8 @@ __all__ = [
     "BilibiliHandler",
     "DBLPHandler",
     "EmailHandler",
+    "GDELTHandler",
+    "HuggingFaceHandler",
     "NYTHandler",
     "PDFHandler",
     "QuandlHandler",
@@ -31,6 +37,8 @@ __all__ = [
     "SpotifyHandler",
     "WebhookHandler",
     "SemanticScholarHandler",
+    "SSRNHandler",
+    "UnpaywallHandler",
     "USPTOHandler",
     "YahooFinanceHandler",
     "YouTubeHandler",

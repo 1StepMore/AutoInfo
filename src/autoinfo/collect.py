@@ -451,6 +451,16 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return ApplePodcastsHandler(config=source_config.settings or {})
 
+    if stype == "unpaywall":
+        from autoinfo.collectors.unpaywall import UnpaywallHandler
+
+        return UnpaywallHandler(config=source_config.settings or {})
+
+    if stype == "gdelt":
+        from autoinfo.collectors.gdelt import GDELTHandler
+
+        return GDELTHandler(config=source_config.settings or {})
+
     if stype == "yahoo_finance":
         from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
 
@@ -460,6 +470,17 @@ def _build_handler(source_config: SourceConfig) -> Any:
         from autoinfo.collectors.quandl import QuandlHandler
 
         return QuandlHandler(source_config=source_config)
+
+    if stype in ("huggingface", "kaggle"):
+        from autoinfo.collectors.huggingface import HuggingFaceHandler
+
+        provider = "kaggle" if stype == "kaggle" else "huggingface"
+        return HuggingFaceHandler(
+            config={
+                **(source_config.settings or {}),
+                "provider": provider,
+            },
+        )
 
     if stype == "rss":
         from autoinfo.collectors.rss import RSSHandler
@@ -480,6 +501,11 @@ def _build_handler(source_config: SourceConfig) -> Any:
         from autoinfo.collectors.pdf import PDFHandler
 
         return PDFHandler(source_name=source_config.name)
+
+    if stype == "ssrn":
+        from autoinfo.collectors.ssrn import SSRNHandler
+
+        return SSRNHandler(config=source_config.settings or {})
 
     if stype == "api":
         from autoinfo.collectors.http_api import HttpApiHandler
@@ -627,6 +653,30 @@ def _fetch_items(
     if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "apple_podcasts":
         term = topic if topic else ""
         items = handler.fetch(term=term, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- Unpaywall handler path -------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "unpaywall":
+        query = topic if topic else ""
+        items = handler.fetch(query=query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- SSRN handler path --------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "ssrn":
+        query = topic if topic else ""
+        items = handler.fetch(query=query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- GDELT handler path -------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "gdelt":
+        search_query = topic if topic else ""
+        items = handler.fetch(query=search_query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- HuggingFace / Kaggle handler path -----------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") in ("huggingface", "kaggle"):
+        search_query = topic if topic else ""
+        items = handler.fetch(query=search_query, limit=limit)
         return [handler.to_item(item) for item in items]
 
     # -- RSS / Web handler path --------------------------------------------

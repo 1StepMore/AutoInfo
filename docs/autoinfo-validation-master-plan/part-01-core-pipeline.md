@@ -2007,6 +2007,236 @@ done
 
 ---
 
+#### 2b.44 🟢 SSRN happy path mock (A23)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+cd /tmp/test-q2b && rm -rf test-ssrn && mkdir test-ssrn && cd test-ssrn
+
+# Run SSRN unit tests (mock httpx — zero real API calls)
+OUTPUT=$(python3 -m pytest /mnt/d/贯维/AutoInfo/tests/test_collector_ssrn.py -v 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "40 passed" \
+  && echo "  ✅ PASS: all 40 SSRN tests pass" \
+  || { echo "  ❌ FAIL: not all SSRN tests passed"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_handler_is_importable" \
+  && echo "  ✅ PASS: handler is importable" \
+  || { echo "  ❌ FAIL: handler not importable"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_source_type_is_ssrn" \
+  && echo "  ✅ PASS: source_type == 'ssrn'" \
+  || { echo "  ❌ FAIL: source_type not ssrn"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_fetch_returns_list" \
+  && echo "  ✅ PASS: fetch returns list of dicts" \
+  || { echo "  ❌ FAIL: fetch not returning list"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_fetch_http_error_returns_empty" \
+  && echo "  ✅ PASS: HTTP errors return empty list" \
+  || { echo "  ❌ FAIL: HTTP error handling broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_to_item_complete" \
+  && echo "  ✅ PASS: to_item conversion correct" \
+  || { echo "  ❌ FAIL: to_item conversion broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_requires_key_returns_false" \
+  && echo "  ✅ PASS: requires_key returns False" \
+  || { echo "  ❌ FAIL: requires_key broken"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE (expected 0)"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 2b.44 PASSED (A23 SSRN handler)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 2b.44 FAILED (A23 SSRN handler)"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ All 40 SSRN unit tests pass (mock httpx, zero real API calls)
+- ✅ SSRNHandler has `source_type = "ssrn"`, `requires_key() = False`
+- ✅ `fetch()` returns list of dicts with id/title/content/authors/published_date/source_url/abstract_id
+- ✅ HTTP errors, network errors, and timeouts return empty list `[]`
+- ✅ Empty query / limit=0 returns `[]`
+- ✅ `to_item()` produces valid `Item` with `source_platform="ssrn"`
+- ⚠️ SSRN has no public REST API — handler does best-effort HTML parsing of abstract-level data; full-text PDF is behind Elsevier's auth wall
+
+#### 2b.45 🟢 GDELT handler (A18) — 43 mock tests
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# Run all 43 GDELT collector tests (mock httpx, zero real API calls)
+cd /mnt/d/贯维/AutoInfo
+OUTPUT=$(python3 -m pytest tests/test_collector_gdelt.py -v --tb=short 2>&1)
+EXIT_CODE=$?
+
+PASSED=$(echo "$OUTPUT" | grep -c "PASSED" || true)
+FAILED=$(echo "$OUTPUT" | grep -c "FAILED" || true)
+
+echo "  Tests passed: $PASSED"
+echo "  Tests failed: $FAILED"
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: all 43 tests pass" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$PASSED" -ge 43 ] && echo "  ✅ PASS: at least 43 tests passed" || { echo "  ❌ FAIL: expected >=43 tests"; ALL_PASS=false; }
+[ "$FAILED" -eq 0 ] && echo "  ✅ PASS: zero failures" || { echo "  ❌ FAIL: $FAILED failures"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 2b.45 PASSED (A18 GDELT handler)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 2b.45 FAILED (A18 GDELT handler)"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ All 43 GDELT unit tests pass (mock httpx, zero real API calls)
+- ✅ GDELTHandler has `source_type = "gdelt"`, `requires_key() = False`
+- ✅ `fetch()` returns list of dicts with id/title/content/source_url/published_date
+- ✅ HTTP errors, network errors, and timeouts return empty list `[]`
+- ✅ Empty query / limit=0 returns `[]`
+- ✅ `to_item()` produces valid `Item` with `source_platform="gdelt"`
+- ✅ Rate limit enforced at 1 req/5s (mock time.sleep)
+- ⚠️ GDELT DOC 2.0 API returns headline-level data only (title + seendate + URL) — no full article text
+
+---
+
+#### 2b.46 🟢 Unpaywall handler (A25) — 40 mock tests
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# Run all 40 Unpaywall/CORE collector tests (mock httpx, zero real API calls)
+cd /mnt/d/贯维/AutoInfo
+OUTPUT=$(python3 -m pytest tests/test_collector_unpaywall.py -v --tb=short 2>&1)
+EXIT_CODE=$?
+
+PASSED=$(echo "$OUTPUT" | grep -c "PASSED" || true)
+FAILED=$(echo "$OUTPUT" | grep -c "FAILED" || true)
+
+echo "  Tests passed: $PASSED"
+echo "  Tests failed: $FAILED"
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: all tests pass" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$PASSED" -ge 40 ] && echo "  ✅ PASS: at least 40 tests passed" || { echo "  ❌ FAIL: expected >=40 tests"; ALL_PASS=false; }
+[ "$FAILED" -eq 0 ] && echo "  ✅ PASS: zero failures" || { echo "  ❌ FAIL: $FAILED failures"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_handler_is_importable" \
+  && echo "  ✅ PASS: handler is importable" \
+  || { echo "  ❌ FAIL: handler not importable"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_source_type_is_unpaywall" \
+  && echo "  ✅ PASS: source_type == 'unpaywall'" \
+  || { echo "  ❌ FAIL: source_type not unpaywall"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_fetch_missing_email_returns_empty" \
+  && echo "  ✅ PASS: missing email degrades to [] (no HTTP)" \
+  || { echo "  ❌ FAIL: missing-email degradation broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_field_mapping_non_oa_falls_back_to_doi_page" \
+  && echo "  ✅ PASS: non-OA falls back to DOI page" \
+  || { echo "  ❌ FAIL: non-OA fallback broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_core_fetch_returns_list" \
+  && echo "  ✅ PASS: CORE provider works" \
+  || { echo "  ❌ FAIL: CORE provider broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_to_item_complete" \
+  && echo "  ✅ PASS: to_item conversion correct" \
+  || { echo "  ❌ FAIL: to_item conversion broken"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 2b.46 PASSED (A25 Unpaywall/CORE handler)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 2b.46 FAILED (A25 Unpaywall/CORE handler)"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ All 40 Unpaywall/CORE unit tests pass (mock httpx, zero real API calls)
+- ✅ UnpaywallHandler has `source_type = "unpaywall"`, `requires_key() = True`
+- ✅ Unpaywall API `https://api.unpaywall.org/v2/search` — email from `AUTOINFO_UNPAYWALL_EMAIL`
+- ✅ CORE API `https://api.core.ac.uk/v3/search/works` — key from `AUTOINFO_CORE_API_KEY`
+- ✅ Metadata + OA link only: `is_oa`/`best_oa_location` → `source_url` (no PDF download/storage)
+- ✅ Non-OA items fall back to `https://doi.org/<doi>` landing page
+- ✅ Missing email/API key → `requires_key()` True, `fetch()` returns `[]` (graceful degradation, no crash)
+- ✅ HTTP/network/timeout errors return empty list `[]`
+- ✅ `to_item()` produces valid `Item` with `source_platform="unpaywall"` and OA metadata in `raw_data`
+
+#### 2b.47 🔴 Unpaywall — CLI dispatch via `_build_handler` / `_fetch_items` (A25)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# Verify the collect.py dispatch chain wires unpaywall sources end-to-end.
+# We do NOT make real network calls: missing email env var must cause a
+# graceful no-op (empty items) rather than a crash.
+cd /mnt/d/贯维/AutoInfo
+
+OUTPUT=$(python3 -c "
+import os
+os.environ.pop('AUTOINFO_UNPAYWALL_EMAIL', None)
+
+from autoinfo.config import load_config
+from autoinfo.collect import _build_handler, _fetch_items
+from autoinfo.models import SourceConfig
+
+sc = SourceConfig(name='unpaywall-oa', type='unpaywall',
+                  url='', settings={'query': 'CRISPR'})
+handler = _build_handler(sc)
+assert handler.source_type == 'unpaywall', handler.source_type
+print('  ✅ PASS: _build_handler returns UnpaywallHandler')
+
+items = _fetch_items(handler, sc, topic='', limit=5)
+assert items == [], f'expected [] without email, got {len(items)}'
+print('  ✅ PASS: _fetch_items returns [] without email (no crash)')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: _build_handler returns UnpaywallHandler" \
+  && echo "  ✅ PASS: _build_handler wires unpaywall" \
+  || { echo "  ❌ FAIL: _build_handler broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "PASS: _fetch_items returns \[\] without email" \
+  && echo "  ✅ PASS: _fetch_items graceful degradation" \
+  || { echo "  ❌ FAIL: _fetch_items broken"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 2b.47 PASSED (A25 unpaywall dispatch)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 2b.47 FAILED (A25 unpaywall dispatch)"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `_build_handler` returns `UnpaywallHandler` for `type="unpaywall"`
+- ✅ `_fetch_items` returns `[]` without `AUTOINFO_UNPAYWALL_EMAIL` (graceful, no crash)
+- ✅ `source_type`/`source_platform` = `"unpaywall"` on produced items (when credentials present)
+
+---
+
 ### 📊 Q2b Verdict
 
 | Scenario | Result |
@@ -2054,6 +2284,10 @@ done
 | 2b.41 Bilibili error code | ⬜ |
 | 2b.42 Bilibili empty query | ⬜ |
 | 2b.43 Apple Podcasts Chinese podcast coverage (A29, country=CN) | ⬜ |
+| 2b.44 SSRN handler (A23) mock | ⬜ |
+| 2b.45 GDELT handler (A18) mock | ⬜ |
+| 2b.46 Unpaywall handler (A25) mock | ⬜ |
+| 2b.47 Unpaywall dispatch (A25) | ⬜ |
 
 **OVERALL: ⬜**
 

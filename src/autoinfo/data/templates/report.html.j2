@@ -195,6 +195,7 @@
     section.report-section, .references, .toc { padding: 1.1rem 1rem; }
   }
 </style>
+{% if structured_data %}{{ structured_data|safe }}{% endif %}
 </head>
 <body>
 <div class="container">

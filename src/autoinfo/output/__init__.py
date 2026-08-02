@@ -248,7 +248,8 @@ def export_kb(
         Optional domain filter.  When ``None``, the entire KB is exported.
     format:
         Output format: ``"markdown"`` (default), ``"json"``, ``"sqlite"``,
-        ``"pdf"``, or ``"rss"``.
+        ``"pdf"``, ``"rss"``, ``"csv"``, ``"graphml"``, ``"agent"``,
+        ``"bundle"``, or ``"sitemap"``.
     collection_id:
         Reserved for future collection-scoped export (not yet implemented).
 
@@ -266,10 +267,14 @@ def export_kb(
     ValueError
         If *format* is not one of the supported values.
     """
-    if format not in ("markdown", "json", "sqlite", "pdf", "rss", "csv", "graphml", "agent", "bundle"):
+    if format not in (
+        "markdown", "json", "sqlite", "pdf", "rss",
+        "csv", "graphml", "agent", "bundle", "sitemap",
+    ):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
-            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, agent, bundle"
+            f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, "
+            f"agent, bundle, sitemap"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -403,6 +408,13 @@ def export_kb(
             timestamp=timestamp,
             domain_label=domain_label,
             pdf_timeout=pdf_timeout,
+        )
+    elif format == "sitemap":
+        result = _export_sitemap(
+            export_dir=export_dir,
+            domain=domain,
+            entries=entries,
+            domain_label=domain_label,
         )
     else:
         raise ValueError(f"Unsupported export format: '{format}'")
@@ -808,6 +820,73 @@ def _export_rss(
 
     return {
         "format": "rss",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+    }
+
+
+def _export_sitemap(
+    export_dir: Path,
+    domain: str | None,
+    entries: list[dict[str, Any]],
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as an XML sitemap (sitemaps.org protocol).
+
+    Builds one ``<url>`` element per KB entry using the entry's source
+    URL as ``<loc>`` and a ``<lastmod>`` derived from ``collected_at``.
+    An index page is always included via :func:`generate_sitemap`.
+    Written to ``exports/<domain>/sitemap.xml``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``.
+    """
+    from autoinfo.output.seo import generate_sitemap
+
+    # Create domain subdirectory under exports/
+    domain_dir = export_dir / (domain if domain else "all")
+    domain_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = domain_dir / "sitemap.xml"
+
+    sitemap_entries: list[dict[str, Any]] = []
+    for e in entries:
+        url = e.get("source_url") or ""
+        if not url:
+            continue
+
+        lastmod = ""
+        collected_at = e.get("collected_at") or ""
+        if collected_at:
+            try:
+                dt = datetime.fromisoformat(collected_at)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                lastmod = dt.strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                pass
+
+        sitemap_entries.append({
+            "url": url,
+            "lastmod": lastmod,
+            "changefreq": "weekly",
+            "priority": 0.8,
+        })
+
+    xml = generate_sitemap(
+        domain=domain or "",
+        base_url="https://example.com",
+        entries=sitemap_entries,
+    )
+    out_path.write_text(xml, encoding="utf-8")
+
+    return {
+        "format": "sitemap",
         "path": str(out_path),
         "entries_count": len(entries),
         "domain": domain_label,
@@ -3402,6 +3481,17 @@ def _render_report_html(report_data: ReportData, period: str = "month") -> str:
     exec_summary = report_data.executive_summary or ""
     exec_summary_html = _md_to_html(exec_summary) if exec_summary else ""
 
+    from autoinfo.output.seo import generate_structured_data
+
+    ld = generate_structured_data(
+        title=report_data.title,
+        description=exec_summary or report_data.title,
+        date_published=report_data.generated_at,
+        url="",
+        article_type="Report",
+    )
+    structured_data = f'<script type="application/ld+json">\n{ld}\n</script>'
+
     return template.render(
         title=report_data.title,
         domain_name=report_data.domain,
@@ -3411,6 +3501,7 @@ def _render_report_html(report_data: ReportData, period: str = "month") -> str:
         executive_summary_html=exec_summary_html,
         sections=html_sections,
         references=html_references,
+        structured_data=structured_data,
     )
 
 
@@ -4935,6 +5026,17 @@ def _render_digest_html(context: dict[str, Any]) -> str:
     date_to = context.get("date_to", "")
     period_str = f"{period_label} ({date_from} \u2013 {date_to})" if period_label else ""
 
+    from autoinfo.output.seo import generate_structured_data
+
+    ld = generate_structured_data(
+        title=context.get("title", ""),
+        description=synthesis.get("executive_summary", "") or context.get("title", ""),
+        date_published=context.get("generated_at", ""),
+        url="",
+        article_type="Article",
+    )
+    structured_data = f'<script type="application/ld+json">\n{ld}\n</script>'
+
     return template.render(
         title=context.get("title", ""),
         domain_name=context.get("domain", ""),
@@ -4945,6 +5047,7 @@ def _render_digest_html(context: dict[str, Any]) -> str:
         trends=synthesis.get("trends") or [],
         recommendations=synthesis.get("recommendations") or [],
         entries=html_entries,
+        structured_data=structured_data,
     )
 
 

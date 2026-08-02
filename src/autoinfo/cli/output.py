@@ -310,17 +310,34 @@ def sitemap(
     base_url: str = typer.Option("https://example.com", "--base-url", "-u", help="Base URL for sitemap"),
     output_dir: str = typer.Option("", "--output", "-o", help="Output directory"),
 ) -> None:
-    """Generate XML sitemap for KB entries."""
-    from autoinfo.output.seo import generate_sitemap
+    """Generate XML sitemap for KB entries with real entry URLs."""
+    from autoinfo.output import export_kb
 
-    xml = generate_sitemap(domain=domain, base_url=base_url)
+    try:
+        result = export_kb(domain=domain if domain else None, format="sitemap")
+    except FileNotFoundError:
+        # No config found — fall back to placeholder via seo module
+        from autoinfo.output.seo import generate_sitemap
 
-    if domain:
-        out_path = os.path.join(output_dir or f"outputs/{domain}/seo/sitemap.xml")
-    else:
-        out_path = os.path.join(output_dir or "outputs/seo/sitemap.xml")
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(xml)
+        xml = generate_sitemap(domain=domain, base_url=base_url)
+        if domain:
+            out_path = output_dir or f"outputs/{domain}/seo/sitemap.xml"
+        else:
+            out_path = output_dir or "outputs/seo/sitemap.xml"
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(xml)
+        typer.echo(f"Sitemap written to {out_path} (no KB entries — placeholder only)")
+        return
 
-    typer.echo(f"Sitemap written to {out_path}")
+    out_path = result.get("path", "")
+    if output_dir:
+        # Copy to user-specified output dir if given
+        import shutil
+
+        dest = os.path.join(output_dir, os.path.basename(out_path))
+        os.makedirs(output_dir, exist_ok=True)
+        shutil.copy2(out_path, dest)
+        out_path = dest
+
+    typer.echo(f"Sitemap written to {out_path} ({result.get('entries_count', 0)} entries)")

@@ -186,6 +186,7 @@
     .findings-grid { grid-template-columns: 1fr; }
   }
 </style>
+{% if structured_data %}{{ structured_data|safe }}{% endif %}
 </head>
 <body>
 <div class="container">

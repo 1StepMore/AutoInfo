@@ -62,6 +62,7 @@ from mcp.types import TextContent, Tool
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
+from autoinfo.config import VALID_SOURCE_TYPES
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -784,14 +785,50 @@ def _handle_list_domains() -> dict[str, Any]:
 
 # -- Platform metadata (static) -------------------------------------------
 
-PLATFORMS = [
-    {"type": "rss", "name": "RSS/Atom Feed", "description": "Fetch content from RSS or Atom feeds", "output_formats": ["xml", "json"]},
-    {"type": "api", "name": "REST API", "description": "Call REST API endpoints that return JSON data", "output_formats": ["json"]},
-    {"type": "web", "name": "Web Page", "description": "Extract content from web pages using trafilatura/readability", "output_formats": ["html", "markdown"]},
-    {"type": "webhook", "name": "Webhook Receiver", "description": "Receive pushed content via HTTP POST webhooks", "output_formats": ["json"]},
-    {"type": "email", "name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
-    {"type": "pdf", "name": "PDF Document", "description": "Extract text content from PDF documents", "output_formats": ["text", "markdown"]},
-    {"type": "apple_podcasts", "name": "Apple Podcasts (iTunes Search)", "description": "Search Apple Podcasts via free iTunes Search API (shows only, no episodes)", "output_formats": ["json"]},
+# Curated metadata for well-known source types; anything missing from this
+# map still gets advertised via ``list_available_platforms`` with a default
+# entry so PLATFORMS always mirrors VALID_SOURCE_TYPES.
+_PLATFORM_INFO: dict[str, dict[str, Any]] = {
+    "rss": {"name": "RSS/Atom Feed", "description": "Fetch content from RSS or Atom feeds", "output_formats": ["xml", "json"]},
+    "api": {"name": "REST API", "description": "Call REST API endpoints that return JSON data (PubMed via name match, or generic HTTP API)", "output_formats": ["json"]},
+    "web": {"name": "Web Page", "description": "Extract content from web pages using trafilatura/readability", "output_formats": ["html", "markdown"]},
+    "webhook": {"name": "Webhook Receiver", "description": "Receive pushed content via HTTP POST webhooks", "output_formats": ["json"]},
+    "email": {"name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
+    "email_imap": {"name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
+    "pdf": {"name": "PDF Document", "description": "Extract text content from PDF documents", "output_formats": ["text", "markdown"]},
+    "apple_podcasts": {"name": "Apple Podcasts (iTunes Search)", "description": "Search Apple Podcasts via free iTunes Search API (shows only, no episodes)", "output_formats": ["json"]},
+    "dblp": {"name": "DBLP", "description": "Computer science bibliography via the DBLP API", "output_formats": ["json"]},
+    "nyt": {"name": "NYT", "description": "New York Times article search API", "output_formats": ["json"]},
+    "openalex": {"name": "OpenAlex", "description": "Open scholarly metadata via the OpenAlex API", "output_formats": ["json"]},
+    "ap_api": {"name": "AP API", "description": "Associated Press content API (paid)", "output_formats": ["json"]},
+    "reuters_mcp": {"name": "Reuters MCP", "description": "Reuters content via the Reuters MCP server", "output_formats": ["json"]},
+    "reddit": {"name": "Reddit", "description": "Reddit submissions and comments via the JSON API", "output_formats": ["json"]},
+    "spotify": {"name": "Spotify", "description": "Spotify shows and episodes via the Spotify API", "output_formats": ["json"]},
+    "youtube": {"name": "YouTube", "description": "YouTube videos and playlists via the YouTube Data API", "output_formats": ["json"]},
+    "bilibili": {"name": "Bilibili", "description": "Bilibili video content via the public API", "output_formats": ["json"]},
+    "yahoo_finance": {"name": "Yahoo Finance", "description": "Yahoo Finance market data quotes", "output_formats": ["json"]},
+    "quandl": {"name": "Quandl (Nasdaq Data Link)", "description": "Financial and economic datasets via Quandl", "output_formats": ["json"]},
+    "ssrn": {"name": "SSRN", "description": "SSRN preprint repository (working papers)", "output_formats": ["json"]},
+    "gdelt": {"name": "GDELT", "description": "GDELT global news event database", "output_formats": ["json"]},
+    "huggingface": {"name": "Hugging Face", "description": "Hugging Face hub datasets and content", "output_formats": ["json"]},
+    "kaggle": {"name": "Kaggle", "description": "Kaggle datasets and competitions", "output_formats": ["json"]},
+    "unpaywall": {"name": "Unpaywall", "description": "Open-access scholarly full text via Unpaywall", "output_formats": ["json"]},
+    "core": {"name": "CORE", "description": "CORE aggregator of open-access research papers", "output_formats": ["json"]},
+}
+
+
+def _default_platform_info(source_type: str) -> dict[str, Any]:
+    """Fallback metadata for source types without a curated entry."""
+    return {
+        "name": source_type.replace("_", " ").title(),
+        "description": f"{source_type} source platform",
+        "output_formats": ["json"],
+    }
+
+
+PLATFORMS: list[dict[str, Any]] = [
+    {"type": source_type, **_PLATFORM_INFO.get(source_type, _default_platform_info(source_type))}
+    for source_type in sorted(VALID_SOURCE_TYPES)
 ]
 
 
@@ -1116,7 +1153,7 @@ def _handle_get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
 # Source management tools
 # ---------------------------------------------------------------------------
 
-_VALID_SOURCE_TYPES = frozenset({"rss", "api", "web", "webhook", "email", "pdf", "yahoo_finance", "quandl"})
+_VALID_SOURCE_TYPES = VALID_SOURCE_TYPES
 
 
 def _validate_url(
@@ -4946,10 +4983,12 @@ def _handle_create_checkout_session(
     product_id: str,
     end_user_id: str,
     *,
+    mode: str = "subscription",
     success_url: str = "http://localhost:8741/success",
     cancel_url: str = "http://localhost:8741/cancel",
     email: str = "",
     name: str = "",
+    article_id: str = "",
 ) -> dict[str, Any]:
     """Create a Stripe Checkout Session for a product."""
     from autoinfo.billing import create_checkout_session
@@ -4958,10 +4997,12 @@ def _handle_create_checkout_session(
         return create_checkout_session(
             product_id=product_id,
             end_user_id=end_user_id,
+            mode=mode,
             success_url=success_url,
             cancel_url=cancel_url,
             email=email,
             name=name,
+            article_id=article_id,
         )
     except Exception as exc:
         logger.exception("create_checkout_session failed for '%s'", end_user_id)
@@ -7612,7 +7653,7 @@ async def list_tools() -> list[Tool]:
             name="export_kb",
             description=(
                 "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle formats."
+                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle, sitemap formats."
             ),
             inputSchema={
                 "type": "object",
@@ -7625,7 +7666,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle (ZIP with PDF+JSON+MD+YAML)",
                         "default": "markdown",
-                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent", "bundle"],
+                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent", "bundle", "sitemap"],
                     },
                     "scope": {
                         "type": "string",
@@ -9174,17 +9215,28 @@ async def list_tools() -> list[Tool]:
         # -- Stripe Billing (2) ------------------------------------------------
         Tool(
             name="create_checkout_session",
-            description="Create a Stripe Checkout Session for a product. Creates (or looks up) a Stripe Customer for the end-user and generates a checkout URL. Works with stripe-mock (localhost:12111) or live/test Stripe keys via STRIPE_API_KEY env var.",
+            description="Create a Stripe Checkout Session for a product (subscription or one-time payment). Creates (or looks up) a Stripe Customer for the end-user and generates a checkout URL. Works with stripe-mock (localhost:12111) or live/test Stripe keys via STRIPE_API_KEY env var.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "product_id": {
                         "type": "string",
-                        "description": "Stripe Price ID (e.g. price_xxx)",
+                        "description": "Stripe Price ID (e.g. price_xxx for subscriptions; name for payment mode)",
                     },
                     "end_user_id": {
                         "type": "string",
                         "description": "AutoInfo end-user ID (e.g. alice)",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "Checkout mode: 'subscription' (default) or 'payment' (one-time purchase)",
+                        "default": "subscription",
+                        "enum": ["subscription", "payment"],
+                    },
+                    "article_id": {
+                        "type": "string",
+                        "description": "Article identifier for single-purchase metadata (payment mode only)",
+                        "default": "",
                     },
                     "success_url": {
                         "type": "string",
@@ -9324,7 +9376,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Check health of delivery channels. "
                 "Return health status (healthy, latency_ms, error) for one or all channels. "
-                "When channel_name is omitted, returns health for all 11 channels."
+                "When channel_name is omitted, returns health for all 13 channels."
             ),
             inputSchema={
                 "type": "object",
@@ -9333,7 +9385,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": (
                             "Specific channel to check (smtp, webhook, rest_api, file_export, "
-                            "discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss). "
+                            "discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, push). "
                             "When omitted, all channels are checked."
                         ),
                     },

@@ -18,13 +18,15 @@ Dispatch rules (from ``collect.py`` ``_build_handler()``):
 
 from __future__ import annotations
 
+import inspect
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from autoinfo.collect import _build_handler
-from autoinfo.config import SourceConfig
+from autoinfo.config import SourceConfig, VALID_SOURCE_TYPES
 
 DEMO_DIR = Path(__file__).resolve().parents[1] / "src" / "autoinfo" / "data" / "domains"
 
@@ -41,11 +43,11 @@ DOMAINS: list[str] = [
 # All sources now pass — HttpApiHandler handles any type=api source
 # that isn't pubmed (which gets PubMedHandler).
 EXPECTED_PASS: dict[str, list[str]] = {
-    "medical-research": ["pubmed", "arXiv", "CrossRef"],
-    "ai-commercial": ["techcrunch", "producthunt", "Crunchbase", "LMSYS"],
+    "medical-research": ["pubmed", "arXiv", "CrossRef", "dblp", "openalex", "semantic-scholar", "uspto"],
+    "ai-commercial": ["techcrunch", "producthunt", "Crunchbase", "36kr"],
     "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Twelve Data", "World Bank Data"],
-    "tech-ai-developer": ["Substack RSS (tech) — Pragmatic Engineer", "GitHub Trending", "HackerNews API", "Stack Exchange", "ProductHunt"],
-    "language-learning": ["voa-learning-english", "project-gutenberg", "news-in-levels", "commonlit"],
+    "tech-ai-developer": ["Substack RSS (tech) — Pragmatic Engineer", "GitHub Trending", "HackerNews API", "Stack Exchange", "ProductHunt", "Reddit", "Spotify AI Podcasts", "Bilibili (B站)"],
+    "language-learning": ["project-gutenberg", "news-in-levels", "commonlit"],
 }
 
 EXPECTED_FAIL: dict[str, list[str]] = {
@@ -153,7 +155,69 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-        # 3. Grand totals: 21 pass, 0 fail
-        assert len(all_pass) == 21, f"Expected 21 PASS, got {len(all_pass)}"
+        # 3. Grand totals: 27 pass, 0 fail
+        assert len(all_pass) == 27, f"Expected 27 PASS, got {len(all_pass)}"
         assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-        assert total == 21, f"Expected 21 total sources, got {total}"
+        assert total == 27, f"Expected 27 total sources, got {total}"
+
+
+# ---------------------------------------------------------------------------
+# VALID_SOURCE_TYPES parity with _build_handler dispatch
+# ---------------------------------------------------------------------------
+
+# Source types accepted by add_source but not dispatched by _build_handler:
+# * webhook — inbound push, delivered via the webhook receiver
+# * ssrn/gdelt/huggingface/kaggle/unpaywall/core — forward-declared types
+#   whose collectors land in later implementation tasks (T7-T10)
+_NON_DISPATCH_TYPES: frozenset[str] = frozenset({
+    "webhook",
+    "ssrn",
+    "gdelt",
+    "huggingface",
+    "kaggle",
+    "unpaywall",
+    "core",
+})
+
+# Matches `stype == "x"` and `stype in ("a", "b")` in _build_handler source.
+_DISPATCH_STYPE_RE = re.compile(
+    r'stype\s*==\s*["\']([a-z_0-9]+)["\']|stype\s*in\s*\(\s*([^)]*?)\s*\)'
+)
+
+
+def _build_handler_dispatch_types() -> set[str]:
+    """Extract every source type string compared against ``stype`` from the
+    live ``_build_handler`` source, so this test can never silently drift
+    from the real dispatch logic."""
+    src = inspect.getsource(_build_handler)
+    types: set[str] = set()
+    for match in _DISPATCH_STYPE_RE.finditer(src):
+        if match.group(1) is not None:
+            types.add(match.group(1))
+        else:
+            types.update(re.findall(r'["\']([a-z_0-9]+)["\']', match.group(2)))
+    return types
+
+
+def test_valid_source_types_parity_with_build_handler() -> None:
+    """VALID_SOURCE_TYPES must match every _build_handler dispatch type plus
+    the documented non-dispatch types. Catches single-place drift: adding a
+    branch to _build_handler without extending VALID_SOURCE_TYPES (or vice
+    versa) fails this test."""
+    dispatch_types = _build_handler_dispatch_types()
+    expected = dispatch_types | set(_NON_DISPATCH_TYPES)
+
+    # Direction 1: every type _build_handler can dispatch must be addable.
+    missing = dispatch_types - set(VALID_SOURCE_TYPES)
+    assert not missing, (
+        "Types dispatchable in _build_handler but missing from VALID_SOURCE_TYPES: "
+        f"{sorted(missing)}"
+    )
+
+    # Direction 2: VALID_SOURCE_TYPES must equal dispatch + documented extras.
+    extra = set(VALID_SOURCE_TYPES) - expected
+    assert set(VALID_SOURCE_TYPES) == expected, (
+        f"VALID_SOURCE_TYPES drifted from _build_handler dispatch.\n"
+        f"  In VALID_SOURCE_TYPES but not in _build_handler or _NON_DISPATCH_TYPES: "
+        f"{sorted(extra)}"
+    )

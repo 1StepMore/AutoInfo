@@ -17,6 +17,43 @@ from typing import Any
 import yaml
 
 # ---------------------------------------------------------------------------
+# Source type registry — single source of truth
+# ---------------------------------------------------------------------------
+
+# Every source type ``_build_handler`` can dispatch (``api`` covers PubMed and
+# the generic HTTP API), plus ``webhook`` (inbound push, delivered via the
+# webhook receiver, not ``_build_handler``) and six forward-declared types
+# (T7-T10). Adding a type requires updating BOTH this set and ``_build_handler``
+# — enforced by the parity test in ``tests/test_source_dispatch.py``.
+VALID_SOURCE_TYPES: frozenset[str] = frozenset({
+    "api",
+    "ap_api",
+    "apple_podcasts",
+    "bilibili",
+    "core",
+    "dblp",
+    "email",
+    "email_imap",
+    "gdelt",
+    "huggingface",
+    "kaggle",
+    "nyt",
+    "openalex",
+    "pdf",
+    "quandl",
+    "reddit",
+    "reuters_mcp",
+    "rss",
+    "spotify",
+    "ssrn",
+    "unpaywall",
+    "web",
+    "webhook",
+    "yahoo_finance",
+    "youtube",
+})
+
+# ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
 

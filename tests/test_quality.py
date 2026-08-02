@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -93,6 +94,126 @@ class TestG1SourceAuthority:
         result = g1.check(item)
 
         assert result.score == 3.0  # score = tier number
+
+
+class TestG1SourceScore:
+    """Deterministic source credibility score (E9)."""
+
+    def test_tier1_maps_to_90(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 1})
+        g1 = G1SourceAuthority()
+        result = g1.check(item)
+        assert result.details["source_score"] == 90.0
+
+    def test_tier2_maps_to_70(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 2})
+        g1 = G1SourceAuthority()
+        result = g1.check(item)
+        assert result.details["source_score"] == 70.0
+
+    def test_tier3_maps_to_50(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 3})
+        g1 = G1SourceAuthority()
+        result = g1.check(item)
+        assert result.details["source_score"] == 50.0
+        assert result.flagged is True
+
+    def test_tier4_maps_to_30(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 4})
+        g1 = G1SourceAuthority()
+        result = g1.check(item)
+        assert result.details["source_score"] == 30.0
+        assert result.flagged is True
+
+    def test_tier5_gets_fallback_score(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 5})
+        g1 = G1SourceAuthority()
+        result = g1.check(item)
+        raw_score = result.details["source_score"]
+        assert isinstance(raw_score, float)
+        assert 0.0 < raw_score < 30.0  # fallback below tier4
+
+    def test_gate_config_overrides_score_map(self, sample_item: Item) -> None:
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 1})
+        custom_map = {1: 95.0, 2: 75.0, 3: 55.0, 4: 25.0}
+        gate_config = QualityGateConfig(
+            name="G1-SourceAuthority", source_score_map=custom_map
+        )
+        g1 = G1SourceAuthority()
+        result = g1.check(item, gate_config=gate_config)
+        assert result.details["source_score"] == 95.0
+
+    def test_kb_entry_has_source_score_field(self, sample_kb_entry: KBEntry) -> None:
+        assert hasattr(sample_kb_entry, "source_score")
+        assert sample_kb_entry.source_score == 0.0  # default
+
+    def test_store_entry_persists_source_score(
+        self, sample_item: Item, tmp_path: Path
+    ) -> None:
+        from autoinfo.kb import KBStore
+
+        store = KBStore(base_path=tmp_path / "kb")
+        store.index.init_db()
+
+        from autoinfo.models import ExtractionResult
+
+        quality_results = {
+            "G1-SourceAuthority": QualityResult(
+                gate_name="G1-SourceAuthority",
+                passed=True,
+                score=1.0,
+                details={"quality_tier": 1, "source_score": 90.0},
+            ),
+        }
+        entry = store.store_entry(
+            sample_item,
+            extraction=ExtractionResult(item_id="t1", tl_dr="Test"),
+            quality_results=quality_results,
+        )
+        assert entry.source_score == 90.0
+
+        # Check frontmatter
+        md_path = Path(entry.file_path)
+        content = md_path.read_text(encoding="utf-8")
+        assert "source_score: 90.0" in content
+
+        # Check SQLite persistence
+        db_entry = store.index.get_entry(entry.entry_id)
+        assert db_entry is not None
+        assert db_entry["source_score"] == 90.0
+
+    def test_search_results_include_source_score(
+        self, sample_item: Item, tmp_path: Path
+    ) -> None:
+        from autoinfo.kb import KBStore
+        from autoinfo.models import ExtractionResult
+
+        store = KBStore(base_path=tmp_path / "kb")
+        store.index.init_db()
+
+        quality_results = {
+            "G1-SourceAuthority": QualityResult(
+                gate_name="G1-SourceAuthority",
+                passed=True,
+                score=1.0,
+                details={"quality_tier": 1, "source_score": 90.0},
+            ),
+        }
+        entry = store.store_entry(
+            sample_item,
+            extraction=ExtractionResult(item_id="t1", tl_dr="IVF embryo study"),
+            quality_results=quality_results,
+        )
+
+        results = store.search_knowledge_base(query="IVF embryo", limit=5)
+        assert results["total_count"] >= 1
+        found = False
+        for e in results["entries"]:
+            if e.get("entry_id") == entry.entry_id:
+                assert e.get("source_score") == 90.0
+                found = True
+                break
+        assert found, f"Entry {entry.entry_id} not found in search results"
 
 
 # ===================================================================

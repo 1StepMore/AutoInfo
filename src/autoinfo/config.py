@@ -186,6 +186,9 @@ class QualityGateConfig:
     action: str = "flag"  # hard: block | retry; soft: retry | flag | skip | archive
     threshold: float | None = None
     window_days: int = 0  # G2 dedup time window (0 = no window limit)
+    source_score_map: dict[int, float] = field(default_factory=dict)
+    # Optional G1 tier→score override. When non-empty, replaces the module-level
+    # SOURCE_TIER_SCORE_MAP for this gate. Example: {1: 95, 2: 75, 3: 55, 4: 25}.
 
 
 @dataclass

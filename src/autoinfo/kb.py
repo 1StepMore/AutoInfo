@@ -301,6 +301,11 @@ class SQLiteIndex:
                 conn.execute("ALTER TABLE entries ADD COLUMN supersedes TEXT DEFAULT ''")
             except Exception:
                 pass
+            # Migration: add source_score column (E9 — deterministic source credibility)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN source_score REAL DEFAULT 0.0")
+            except Exception:
+                pass
 
             conn.execute(
                 """CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts5
@@ -389,10 +394,10 @@ class SQLiteIndex:
                 INSERT OR REPLACE INTO entries
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
-                     relevance_score, dedup_status, file_path, tags,
+                     relevance_score, dedup_status, source_score, file_path, tags,
                      custom_fields, language, user_id, cefr,
                      version, previous_version, supersedes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?)
                 """,
                 (
@@ -408,6 +413,7 @@ class SQLiteIndex:
                     entry.quality_tier,
                     entry.relevance_score,
                     entry.dedup_status,
+                    entry.source_score,
                     entry.file_path,
                     json.dumps(entry.tags, ensure_ascii=False),
                     json.dumps(custom_fields, ensure_ascii=False),
@@ -1464,7 +1470,7 @@ class SQLiteIndex:
 
                 rows = conn.execute(
                     f"""SELECT e.entry_id, e.title, e.summary, e.relevance_score,
-                               e.file_path, e.domain, e.collected_at,
+                               e.source_score, e.file_path, e.domain, e.collected_at,
                                e.created_at, f.rank
                         FROM entries_fts5 f
                         JOIN entries e ON e.rowid = f.rowid
@@ -2245,6 +2251,7 @@ class KBStore:
         relevance_score: float = 0.0
         dedup_status: str = "unique"
         quality_tier: int = item.quality_tier
+        source_score: float = 0.0
 
         if quality_results:
             g3 = quality_results.get("G3-RelevanceScoring")
@@ -2259,6 +2266,12 @@ class KBStore:
                     dedup_status = str(raw)
                 elif g2.details.get("is_duplicate"):
                     dedup_status = "duplicate"
+
+            g1 = quality_results.get("G1-SourceAuthority")
+            if g1 is not None:
+                raw_score = g1.details.get("source_score")
+                if raw_score is not None:
+                    source_score = float(raw_score)
 
         # --- resolve user_id ---------------------------------------------------
         resolved_user_id: str = ""
@@ -2298,6 +2311,7 @@ class KBStore:
             quality_tier=quality_tier,
             relevance_score=relevance_score,
             dedup_status=dedup_status,
+            source_score=source_score,
             file_path=str(file_path),
             language=item.language,
             user_id=resolved_user_id,
@@ -3923,6 +3937,7 @@ def _build_frontmatter(
         "quality_tier": entry.quality_tier,
         "relevance_score": entry.relevance_score,
         "dedup_status": entry.dedup_status,
+        "source_score": entry.source_score,
         "language": entry.language,
         "user_id": entry.user_id,
         "version": entry.version,

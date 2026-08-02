@@ -182,6 +182,7 @@ class KBEntry:
     quality_tier: int = 1
     relevance_score: float = 0.0
     dedup_status: str = "unique"
+    source_score: float = 0.0
     file_path: str = ""
     custom_fields: dict[str, Any] = field(default_factory=dict)
     # --- KB frontmatter fields expanded in v1.1 ---

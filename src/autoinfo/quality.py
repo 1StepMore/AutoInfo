@@ -30,6 +30,22 @@ from autoinfo.models import ExtractionResult, Item, KBEntry
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Deterministic source credibility score map (E9)
+# ---------------------------------------------------------------------------
+# Maps quality_tier → source_score 0-100.
+# Can be overridden via QualityGateConfig.source_score_map (if provided)
+# or by patching this module constant at runtime.
+# Default: tier1=90, tier2=70, tier3=50, tier4=30.
+# ---------------------------------------------------------------------------
+
+SOURCE_TIER_SCORE_MAP: dict[int, float] = {
+    1: 90.0,
+    2: 70.0,
+    3: 50.0,
+    4: 30.0,
+}
+
+# ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------
 
@@ -226,6 +242,16 @@ class G1SourceAuthority:
         )
         action = gate_config.action if gate_config else "flag"
 
+        # Resolve source_score map: gate_config override → module constant
+        score_map: dict[int, float] = SOURCE_TIER_SCORE_MAP
+        if gate_config is not None and gate_config.source_score_map:
+            score_map = gate_config.source_score_map
+        # Fallback for tiers not in the map: derive proportionally from tier 4=30
+        source_score = score_map.get(
+            int(tier),
+            max(10.0, 30.0 - (int(tier) - 4) * 20.0),
+        )
+
         if tier <= 2:
             return QualityResult(
                 gate_name="G1-SourceAuthority",
@@ -236,6 +262,7 @@ class G1SourceAuthority:
                     "quality_tier": tier,
                     "source_name": item.source_name,
                     "action": action,
+                    "source_score": source_score,
                 },
             )
 
@@ -250,6 +277,7 @@ class G1SourceAuthority:
                     "quality_tier": tier,
                     "source_name": item.source_name,
                     "action": action,
+                    "source_score": source_score,
                     "warning": "low quality source",
                 },
             )
@@ -263,6 +291,7 @@ class G1SourceAuthority:
                 "quality_tier": tier,
                 "source_name": item.source_name,
                 "action": action,
+                "source_score": source_score,
                 "warning": "low quality source",
             },
         )

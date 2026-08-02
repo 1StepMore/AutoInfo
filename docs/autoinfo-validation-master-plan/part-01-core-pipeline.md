@@ -15,6 +15,7 @@ rm -rf /tmp/test-q3 && mkdir -p /tmp/test-q3
 rm -rf /tmp/test-q4 && mkdir -p /tmp/test-q4
 rm -rf /tmp/test-q5 && mkdir -p /tmp/test-q5
 rm -rf /tmp/test-q6 && mkdir -p /tmp/test-q6
+rm -rf /tmp/test-q6b && mkdir -p /tmp/test-q6b
 ```
 
 ## Q1: Can I initialize a project and configure sources?
@@ -1979,6 +1980,31 @@ echo "$OUTPUT" | grep -q "PASS: empty query" && echo "  ✅ PASS: Bilibili empty
 ```
 **Expected Result:** ✅ Returns `[]` when query is empty.
 
+#### 2b.43 🟢 Apple Podcasts — Chinese podcast coverage (A29, real iTunes Search, country=CN)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# A29 隐式覆盖验证：Apple Podcasts/iTunes Search API 以 country=CN 查询中文播客。
+# 真实网络查询（网络不可用时标记 SKIP，不判 FAIL）。抽查 3 个代表性中文播客：小宇宙/喜马拉雅/品牌星球。
+for term in "%E5%B0%8F%E5%AE%87%E5%AE%99" "%E5%96%9C%E9%A9%AC%E6%8B%89%E9%9B%85" "%E5%93%81%E7%89%8C%E6%98%9F%E7%90%83"; do
+  RES=$(curl -s --max-time 30 "https://itunes.apple.com/search?media=podcast&term=${term}&country=CN&limit=5" 2>/dev/null || true)
+  if [ -z "$RES" ]; then
+    echo "  ⚠️ SKIP: network unavailable for term=$term"
+    continue
+  fi
+  CNT=$(echo "$RES" | python3 -c "import json,sys; print(json.load(sys.stdin).get('resultCount', 0))" 2>/dev/null || echo 0)
+  [ "$CNT" -ge 1 ] && echo "  ✅ PASS: term=$term resultCount=$CNT" || { echo "  ❌ FAIL: term=$term resultCount=$CNT"; ALL_PASS=false; }
+done
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.43 PASSED (Chinese podcast coverage via iTunes Search country=CN)" && exit 0 || { echo "❌ SCENARIO 2b.43 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ iTunes Search API `country=CN` 对 3 个中文播客查询（小宇宙/喜马拉雅/品牌星球）均返回 `resultCount ≥ 1`
+- ✅ ApplePodcastsHandler 支持 config `country`（默认 US，可设 CN）→ A29 中文播客**隐式覆盖**（2026-08-02 实测确认）
+- ⚠️ 网络不可用时标记 `➖ SKIP`（不判 FAIL）；实测证据见 `.omo/evidence/task-5-apple-podcast-cn.json`
+
 ---
 
 ### 📊 Q2b Verdict
@@ -2027,6 +2053,7 @@ echo "$OUTPUT" | grep -q "PASS: empty query" && echo "  ✅ PASS: Bilibili empty
 | 2b.40 Bilibili happy path mock | ⬜ |
 | 2b.41 Bilibili error code | ⬜ |
 | 2b.42 Bilibili empty query | ⬜ |
+| 2b.43 Apple Podcasts Chinese podcast coverage (A29, country=CN) | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -2385,6 +2412,38 @@ echo "✅ Cross-domain collection complete. See per-domain results above."
 - ⚠️ Other domains may return 0 items if sources need API keys or feeds are empty
 - No scenario crashes or produces traceback for any domain
 
+#### 6b.2 🟢 Init + collect remaining 4 domains — online-video, financial-news, online-education, legal-compliance
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+DOMAINS="online-video financial-news online-education legal-compliance"
+for DOMAIN in $DOMAINS; do
+  echo "── Domain: $DOMAIN ──"
+  rm -rf "$DOMAIN" && mkdir "$DOMAIN" && cd "$DOMAIN"
+  OUTPUT=$(autoinfo init --demo "$DOMAIN" 2>&1)
+  COLLECT_OUT=$(timeout 15 autoinfo collect --domain "$DOMAIN" --limit 2 2>&1 || true)
+  echo "$COLLECT_OUT" | tail -3
+  # Check raw data files exist
+  RAW_COUNT=$(find collections/ -name "*.json" ! -name "_runs.json" 2>/dev/null | wc -l)
+  if [ "$RAW_COUNT" -gt 0 ]; then
+    echo "  ✅ PASS: $DOMAIN — $RAW_COUNT raw JSON files created"
+  else
+    echo "  ⚠️  $DOMAIN — 0 raw files (source may need API key or feed may be empty)"
+  fi
+  cd ..
+done
+echo ""
+echo "✅ Cross-domain collection (wave 2) complete. See per-domain results above."
+```
+**Expected Result:**
+- ✅ Each domain produces at least `init` output (config created)
+- ✅ `online-video` produces raw JSON files from RSS feeds (YouTube, Variety, Hollywood Reporter, Netflix Tech Blog)
+- ✅ `online-education` produces raw JSON files from RSS feeds (Coursera Blog, EdSurge, Class Central, Khan Academy, Open Culture)
+- ✅ `legal-compliance` produces raw JSON files from RSS feeds (SCOTUSblog, IAPP, Law.com, Oyez, GDPR.eu)
+- ⚠️ `financial-news` may return 0 items if RSS feeds are unreachable — its NYT source requires an API key; without a key, that source is skipped gracefully, remaining sources still produce output (mirrors Q2b.24 NYT degradation pattern)
+- No scenario crashes or produces traceback for any domain
+
 
 ---
 
@@ -2396,5 +2455,7 @@ echo "✅ Cross-domain collection complete. See per-domain results above."
 | 6.2 Add topic | ⬜ |
 | 6.3 Remove topic | ⬜ |
 | 6.4 Remove nonexistent | ⬜ |
+| 6b.1 Cross-domain 5 domains | ⬜ |
+| 6b.2 Cross-domain 4 domains | ⬜ |
 
 **OVERALL: ⬜**

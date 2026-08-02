@@ -81,6 +81,105 @@ print(f"✅ Legacy polling: domain=medical-research, status={pdata.get('status',
 **Expected Result:** ✅ Legacy domain-based polling still works.
 
 
+#### 54.5 🟢 Job-state survives cross-process kill (SQLite persistence) [E7 verified 2026-08-02]
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-e7-jobstate"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research > /dev/null 2>&1 \
+  && echo "  ✅ PASS: project initialized" \
+  || { echo "  ❌ FAIL: init failed"; ALL_PASS=false; }
+
+# Phase 1: start a collection in a separate process; the "running" job-state
+# row is persisted to autoinfo.db (SQLite) BEFORE run_collection executes.
+# Wait until the row appears, then kill -9 the process mid-collection.
+cat > job_driver.py << 'PYEOF'
+import asyncio, json, sys, time
+from autoinfo.mcp.server import call_tool
+
+async def main():
+    result = await call_tool("collect_sources", {"domain": "medical-research", "limit": 3})
+    data = json.loads(result[0].text)
+    inner = data.get("data", data)
+    job_id = inner.get("job_id", "")
+    print(f"JOB_ID={job_id}", flush=True)
+    time.sleep(120)
+
+asyncio.run(main())
+PYEOF
+
+python3 job_driver.py > driver.log 2>&1 &
+DRIVER_PID=$!
+
+# Poll SQLite for a "running" collection job state (written pre-collection)
+JOB_ID=""
+for i in $(seq 1 15); do
+  JOB_ID=$(python3 -c "
+import sqlite3
+conn = sqlite3.connect('autoinfo.db')
+conn.row_factory = sqlite3.Row
+row = conn.execute(\"SELECT job_id FROM job_state WHERE state_type='collection' AND status='running' ORDER BY created_at DESC LIMIT 1\").fetchone()
+print(row['job_id'] if row else '')
+" 2>/dev/null || echo "")
+  [ -n "$JOB_ID" ] && break
+  sleep 2
+done
+
+if [ -z "$JOB_ID" ]; then
+  echo "  ❌ FAIL: no 'running' collection job-state found in SQLite"
+  ALL_PASS=false
+else
+  echo "  ✅ PASS: running job-state row found: $JOB_ID"
+fi
+
+# Kill -9 the driver process mid-collection
+kill -9 "$DRIVER_PID" 2>/dev/null || true
+sleep 1
+echo "  ✅ PASS: driver process killed with SIGKILL (mid-collection)"
+
+# Phase 2: query the SAME job_id from a FRESH process (new interpreter).
+# If job-state is SQLite-persisted, the row is still readable.
+RECOVER=$(python3 -c "
+import asyncio, json
+from autoinfo.mcp.server import call_tool
+
+async def main():
+    result = await call_tool('get_collection_progress', {'job_id': '$JOB_ID'})
+    print(result[0].text)
+
+asyncio.run(main())
+" 2>/dev/null || echo "{}")
+
+echo "$RECOVER" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+inner = data.get('data', {})
+assert inner.get('job_id') == '$JOB_ID', f'job_id mismatch: {inner.get(\"job_id\")}'
+assert inner.get('status') in ('running', 'completed', 'error'), f'unexpected status: {inner.get(\"status\")}'
+assert 'is_complete' in inner, 'missing is_complete'
+print(f'  ✅ PASS: job-state recovered from fresh process: status={inner.get(\"status\")}, is_complete={inner.get(\"is_complete\")}')
+" && echo "  ✅ PASS: get_collection_progress(job_id) works cross-process" \
+  || { echo "  ❌ FAIL: job-state not recoverable from fresh process"; ALL_PASS=false; }
+
+# --- Verdict ---
+if [ "$ALL_PASS" = true ]; then
+  echo ""; echo "✅ SCENARIO 54.5 PASSED — job-state survives kill -9 (SQLite cross-process persistence)"
+  exit 0
+else
+  echo ""; echo "❌ SCENARIO 54.5 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ Job-state row (`state_type=collection`, `status=running`) is written to SQLite **before** collection executes
+- ✅ After `kill -9` of the running process, the same job_id is readable from a **fresh process** via `get_collection_progress(job_id)`
+- ✅ `is_complete` field present; status preserved as written by the killed process
+
+> **E7 note (2026-08-02 verified)**: Job-state persistence is SQLite-backed (`_save_job_state` in `mcp/server.py`). A killed process leaves its state as `running`; a fresh process reads it. This is the cross-process half of E7. The concurrency half (cron + manual collect → no duplicate KB entries) is in Q55.10.
+
+
 #### 54.4 🟢 Async process_collection with job_id [REQUIRES LLM KEY]
 ```python
 # Start async processing
@@ -118,12 +217,13 @@ else:
 
 | Scenario | Result |
 |----------|--------|
-| 54.1 Async collect job_id | ⬜ |
-| 54.2 Poll by job_id | ⬜ |
-| 54.3 Legacy domain poll | ⬜ |
-| 54.4 Async process | ⬜ |
+| 54.1 Async collect job_id | ✅ |
+| 54.2 Poll by job_id | ✅ |
+| 54.3 Legacy domain poll | ✅ |
+| 54.4 Async process | ✅ |
+| 54.5 Job-state survives kill -9 (cross-process) | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅**
 
 ---
 
@@ -529,23 +629,127 @@ fi
 - ✅ `health` field is one of `ok`, `error`, or `unknown`
 
 
+#### 55.10 🟢 Cron run + manual collect concurrently → no duplicate KB entries [E7 verified 2026-08-02]
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-e7-concurrency"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research > /dev/null 2>&1 \
+  && echo "  ✅ PASS: project initialized" \
+  || { echo "  ❌ FAIL: init failed"; ALL_PASS=false; }
+
+# Add a schedule that is always due (* * * * * → due when never run)
+autoinfo cron add-schedule --name "e7-cron" --expression "* * * * *" --domain medical-research > /dev/null 2>&1 \
+  && echo "  ✅ PASS: always-due schedule added" \
+  || { echo "  ❌ FAIL: add-schedule failed"; ALL_PASS=false; }
+
+# Launch the two collectors CONCURRENTLY (two independent OS processes).
+# Session A = cron run (invokes run_collection via scheduler).
+# Session B = manual collect (CLI).
+autoinfo cron run > cron-run.log 2>&1 &
+CRON_PID=$!
+autoinfo collect --domain medical-research --limit 3 > manual-collect.log 2>&1 &
+MANUAL_PID=$!
+
+wait "$CRON_PID" "$MANUAL_PID"
+echo "  ✅ PASS: both concurrent collectors finished"
+echo "  cron summary:   $(grep -oE '[0-9]+ new / [0-9]+ found' cron-run.log | tail -1)"
+echo "  manual summary: $(grep -oE '[0-9]+ new / [0-9]+ found' manual-collect.log | tail -1)"
+
+# Assertion 1: cache has no duplicate URLs (idempotent _cache_items +
+# URL dedup protect against concurrent double-writes)
+python3 << 'PYEOF'
+import glob, json
+urls = set()
+files = [f for f in glob.glob('collections/**/*.json', recursive=True) if not f.endswith('_runs.json')]
+dupes = 0
+for f in files:
+    with open(f) as fh:
+        d = json.load(fh)
+    u = d.get('source_url') or d.get('url') or ''
+    if u in urls:
+        dupes += 1
+    urls.add(u)
+print(f'  cached files: {len(files)}, unique URLs: {len(urls)}, dupes: {dupes}')
+assert dupes == 0, f'{dupes} duplicate URLs in cache'
+assert len(files) == len(urls), 'cache file count != unique URL count'
+PYEOF
+CACHE_EXIT=$?
+[ "$CACHE_EXIT" -eq 0 ] \
+  && echo "  ✅ PASS: cache has zero duplicate URLs (concurrent write protection)" \
+  || { echo "  ❌ FAIL: cache duplicates detected"; ALL_PASS=false; }
+
+# Assertion 2: process cache → KB entries; assert NO duplicate source_url in KB
+autoinfo process --domain medical-research > process.log 2>&1
+echo "  process summary: $(grep -oE '[0-9]+ items → [0-9]+ passed' process.log | tail -1)"
+
+python3 << 'PYEOF'
+import sqlite3, glob, json
+conn = sqlite3.connect('autoinfo.db')
+conn.row_factory = sqlite3.Row
+rows = conn.execute(
+    "SELECT entry_id, source_url FROM entries WHERE domain=? AND tier=?",
+    ('medical-research', '01-Raw')
+).fetchall()
+urls = [r['source_url'] for r in rows if r['source_url']]
+dupe_urls = {u for u in set(urls) if urls.count(u) > 1}
+cache_urls = set()
+for f in glob.glob('collections/**/*.json', recursive=True):
+    if f.endswith('_runs.json'): continue
+    with open(f) as fh:
+        d = json.load(fh)
+    u = d.get('source_url') or d.get('url') or ''
+    if u: cache_urls.add(u)
+print(f'  KB 01-Raw entries: {len(rows)}, unique URLs in KB: {len(set(urls))}')
+print(f'  duplicate source_url in KB: {len(dupe_urls)}')
+assert len(dupe_urls) == 0, f'duplicate URLs in KB: {dupe_urls}'
+assert len(urls) == len(set(urls)), 'KB URL count != unique URL count'
+# E7 core assertion: no KB entry is duplicated across concurrent triggers
+print(f'  ✅ KB no-dup assertion holds (cron + manual concurrent → no duplicate KB entries)')
+PYEOF
+KB_EXIT=$?
+[ "$KB_EXIT" -eq 0 ] \
+  && echo "  ✅ PASS: no duplicate KB entries after concurrent cron+manual collect" \
+  || { echo "  ❌ FAIL: duplicate KB entries found"; ALL_PASS=false; }
+
+# --- Verdict ---
+if [ "$ALL_PASS" = true ]; then
+  echo ""; echo "✅ SCENARIO 55.10 PASSED — cron + manual collect concurrently, no duplicate KB entries"
+  exit 0
+else
+  echo ""; echo "❌ SCENARIO 55.10 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `cron run` + `collect` execute concurrently as two OS processes without error
+- ✅ Cache contains zero duplicate `source_url` values (idempotent `_cache_items` + URL dedup prevent double-writes)
+- ✅ After processing, KB `01-Raw` has zero duplicate `source_url` values — **no duplicate KB entries from concurrent triggers**
+- ⚠️ Known pre-existing gap (not concurrency): two *different* records with identical titles may collide on the slug-based `entry_id` (SQLite index keeps one row; both files remain on disk). Logged separately — see issues.md.
+
+> **E7 note (2026-08-02 verified)**: Ran `cron run` (60 new) + `collect --limit 3` (9 new, subset) concurrently in tmux dual-session. Cache: 60 files / 60 unique URLs / 0 dupes. KB after process: 59 indexed rows / 0 duplicate URLs. The 60→59 index gap is the pre-existing title-slug collision (two OpenAlex records of the same paper), **not** a concurrency failure — both colliding items came from the same single cron run. URL-dedup + idempotent cache write protection held under cross-process concurrency.
+
+
 ---
 
 ### 📊 Q55 Verdict
 
 | Scenario | Result |
 |----------|--------|
-| 55.1 Add schedule | ⬜ |
-| 55.2 List schedules | ⬜ |
-| 55.3 Run schedules | ⬜ |
-| 55.4 Remove schedule | ⬜ |
-| 55.5 CLI cron commands | ⬜ |
-| 55.6 Heartbeat JSON persists | ⬜ |
-| 55.7 Missed schedule detected | ⬜ |
-| 55.8 Backfill catches up | ⬜ |
-| 55.9 get_schedule_status details | ⬜ |
+| 55.1 Add schedule | ✅ |
+| 55.2 List schedules | ✅ |
+| 55.3 Run schedules | ✅ |
+| 55.4 Remove schedule | ✅ |
+| 55.5 CLI cron commands | ✅ |
+| 55.6 Heartbeat JSON persists | ✅ |
+| 55.7 Missed schedule detected | ✅ |
+| 55.8 Backfill catches up | ✅ |
+| 55.9 get_schedule_status details | ✅ |
+| 55.10 Cron+manual concurrent → no dup KB entries | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅**
 
 ---
 

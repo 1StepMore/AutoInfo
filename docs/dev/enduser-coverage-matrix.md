@@ -74,7 +74,7 @@
 | B12 | **视频摘要** | 短视频（72% 渗透率） | ✅ `format="video"` (MP4, TTS narration + FFmpeg) | ✅ Part 4 Q33.11 / Part 2 Q9.18 | ✅ |
 | B13 | **JSON 数据导出** | API Feed | ✅ export_json | ✅ Part 4 Q34 | ✅ |
 | B14 | **CSV 数据导出** | 表格分析 | ✅ export_csv | ✅ Part 4 Q34 | ✅ |
-| B15 | **PDF 报告** | 可打印文档 | ✅ export_pdf/export_bundle | ⚠️ 未深度测试 | ⚠️ |
+| B15 | **PDF 报告** | 可打印文档 | ✅ export_pdf/export_bundle | ✅ Part 4 Q34.1c（需 weasyprint 环境；渲染超时 `output.pdf_timeout` 可配置，默认 120s） | ✅ |
 | B16 | **Markdown 导出** | 可编辑文档 | ✅ export_markdown | ✅ Part 4 Q34 | ✅ |
 | B17 | **RSS Feed 输出** | 订阅源 | ✅ export_rss | ✅ Part 4 Q34.9 | ✅ |
 | B18 | **GraphML 图导出** | 知识图谱 | ✅ export_graphml | ✅ Part 4 Q34.10 | ✅ |
@@ -92,9 +92,9 @@
 |------|:----:|
 | 报告识别产品形态总数 | 25 |
 | AutoInfo Code 已覆盖 | 21/25 (84%) |
-| Validation Plan 已测试 | 21/25 (84%) |
-| 双向覆盖（Code + Plan） | 19/25 (76%) |
-| 代码有但未验证 | 1/25 (4%) |
+| Validation Plan 已测试 | 22/25 (88%) |
+| 双向覆盖（Code + Plan） | 20/25 (80%) |
+| 代码有但未验证 | 0/25 (0%) |
 | 完全未覆盖 | 4/25 (16%) |
 
 ---
@@ -177,7 +177,7 @@
 | E4 | **多渠道分发** | 6+ 渠道 | ✅ 13 delivery adapters（含 push） | ✅ Part 13 Q63.17-63.19 | ✅ |
 | E5 | **RAG 输出** | Agent 检索的基础 | ✅ MCP KB search tools | ✅ Part 4 | ✅ |
 | E6 | **个性化推荐** | Perez 76% 用 Agent 购物 | ✅ `recommend_content` MCP 工具 | ✅ Part 04 36b.7/36b.8 | ✅ |
-| E7 | **定时任务/告警** | Cron 式触达 | ✅ cron scheduler | ⚠️ Part 9 | ⚠️ |
+| E7 | **定时任务/告警** | Cron 式触达 | ✅ cron scheduler | ✅ Part 9 Q54.5+Q55.10 (跨进程, 2026-08-02) | ✅ |
 | E8 | **Webhook/A2A 集成** | MCP+A2A 双轨 | ✅ webhook+delivery | ✅ Part 03 Q25.3-25.5 | ✅ |
 | E9 | **来源可信度评估** | 报告 §6.5：33% 场景 | ⚠️ 部分：G1 源权威分级（tier 1-4）；无独立可信度评分 | ✅ Part 5 Q37.x（G1） | ⚠️ |
 | E10 | **内容合规/版权风险管理** | 报告 §9.1 法规、§8.3 AI 训练数据授权、§10.2 合规路径 | ✅ SourceConfig quality_tier/tos_classification（open/licensed/restricted/sensitive）+ G1TosCompliance + 输出 attribution 页脚 | ✅ Part 5（G1 门） | ✅ |
@@ -220,12 +220,10 @@
 
 > A6 FRED / Alpha Vantage 已于 2026-08-02 补齐验证场景（Part 1 Q2b.48，env-gated，真实 API E2E：collect → Items → G0），当前环境无 `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`，记录 **SKIPPED**（待免费 key 到位后执行，不 FAIL）。该行保留在 H2 验证补齐清单，随凭证到位后回归。
 
-### P1 — 部分实现/部分验证（4 项）
+### P1 — 部分实现/部分验证（2 项）
 
 | 项 | 功能 | 阻塞原因 |
 |:--:|------|---------|
-| B15 | PDF 导出 | 超时未深度测试 |
-| E7 | cron 调度/告警 | Part 9 部分覆盖，缺跨进程验证 |
 | E9 | 来源可信度评估 | 仅 G1 源权威分级，无独立可信度评分 |
 | E11 | API 数据许可/RAW 产品 | 单一 raw feed 形态，webhook 流/批量导出非独立变体 |
 
@@ -282,13 +280,13 @@
 7. **C 维渠道排名修正 5 处**：自有网站 #3→#5、推送 #5→#6、邮件 #6→#7、RSS #7→#10、AI Agent #8→#13（对齐报告 §5.1）
 8. **新发现 gap**: #99 LLM response_format 空结果无保护, #100 多域 init 未复制全部 sources.yaml, #101 cron 假重复因测试残留, #102 lxml 未申明为直接依赖 — 已全部修复（v1.8.3），见下方 G 节
 9. **可行性判定（H 节）**：排除 6 项纯无解后分母为 **93**；零成本可覆盖 86/93（92%），加小额付费（Wind 个人版、微博/抖音）约 88/93（95%）；真 100% 卡在 5 个死结（X 涨价、小红书、LinkedIn、Coursera、公众号全量）
-10. **V1 实现清单（H 节）**：10 项生产实现（A23/A24/A25/A18/A29/E12/E14/E11/E9/C11）+ 5 项验证补齐（A6/B15/C6/E7/E11）——全部免费零成本，无外部依赖；**A29 中文播客已于 2026-08-02 验证完成**（iTunes Search country=CN 实测 3 例均返回，隐式覆盖确认，见 H1 行）；**E2 Stripe 生命周期已于 2026-08-02 通过 stripe-mock 集成测试完成**（48 测试: 42 mock + 6 stripe-mock 集成，skipif 无 stripe-mock 时自动 SKIP）；**A6 已于 2026-08-02 补齐验证场景**（Part 1 Q2b.48，env-gated SKIPPED 待 key）
+10. **V1 实现清单（H 节）**：10 项生产实现（A23/A24/A25/A18/A29/E12/E14/E11/E9/C11）+ 5 项验证补齐（A6/B15/C6/E7/E11）——全部免费零成本，无外部依赖；**A29 中文播客已于 2026-08-02 验证完成**（iTunes Search country=CN 实测 3 例均返回，隐式覆盖确认，见 H1 行）；**E2 Stripe 生命周期已于 2026-08-02 通过 stripe-mock 集成测试完成**（48 测试: 42 mock + 6 stripe-mock 集成，skipif 无 stripe-mock 时自动 SKIP）；**A6 已于 2026-08-02 补齐验证场景**（Part 1 Q2b.48，env-gated SKIPPED 待 key）；**E7 cron 跨进程已于 2026-08-02 验证完成**（Part 9 Q54.5 跨进程 job-state + Q55.10 cron+manual 并发去重，见验证记录）
 
 ---
 
 ## 距 100% 覆盖的差距清单（2026-08-02 更新 v3）
 
-> 全量对齐报告后，距 100% 的剩余缺口共 **29 项**：23 项未覆盖（P2 可工程化 7 + P3 不可工程化 8 + P4 范围外 8）+ 6 项部分覆盖（P1 5 + P0 1→已加场景待 key）。A29 中文播客已于 2026-08-02 实测确认 Apple Podcasts/iTunes Search 隐式覆盖，从缺口清单移除；A6 已于 2026-08-02 补齐验证场景（Part 1 Q2b.48，env-gated SKIPPED 待 key）；E2 已于 2026-08-02 通过 stripe-mock 集成测试完成（TestStripeLifecycle，48 测试: 42 mock + 6 集成，skipif 无 stripe-mock）。
+> 全量对齐报告后，距 100% 的剩余缺口共 **28 项**：23 项未覆盖（P2 可工程化 7 + P3 不可工程化 8 + P4 范围外 8）+ 5 项部分覆盖（P1 2 + P0 1→已加场景待 key + 其他 2）。A29 中文播客已于 2026-08-02 实测确认 Apple Podcasts/iTunes Search 隐式覆盖，从缺口清单移除；A6 已于 2026-08-02 补齐验证场景（Part 1 Q2b.48，env-gated SKIPPED 待 key）；E2 已于 2026-08-02 通过 stripe-mock 集成测试完成（TestStripeLifecycle，48 测试: 42 mock + 6 集成，skipif 无 stripe-mock）；**E7 cron 跨进程已于 2026-08-02 验证完成**（Part 9 Q54.5 跨进程 job-state + Q55.10 cron+manual 并发去重），从部分覆盖清单移除。
 
 ### ① 应覆盖但未做（7 项）— 可工程化，列为下一步开发优先
 
@@ -328,13 +326,11 @@
 | 范围外 | C13 联盟/推荐链接 | 无联盟系统 |
 | 范围外 | E13 RaaS 效果付费 | 需商业模式设计 |
 
-### ④ 部分覆盖（5 项）— 代码已有，验证或功能待补
+### ④ 部分覆盖（3 项）— 代码已有，验证或功能待补
 
 | 类别 | 项 | 原因 | 待办 |
 |:----:|:--:|------|------|
 | 验证缺失 | A6 FRED/Alpha Vantage | 场景已加（Part 1 Q2b.48），需用户 API Key | 凭证到位后执行 E2E（2026-08-02: SKIPPED 待 key） |
-| 验证缺失 | B15 PDF 导出 | weasyprint 渲染超时 | 环境依赖，非产品缺陷 |
-| 验证缺失 | E7 cron 跨进程 | 部分覆盖 | 属环境依赖验证 |
 | 部分实现 | E9 可信度评估 | 仅 G1 分级 | 独立可信度评分（P2 候选） |
 | 部分实现 | E11 RAW 产品 | 单一 raw feed 形态 | 拆分 API/webhook/批量变体（P2 候选） |
 
@@ -377,9 +373,9 @@
 | 项 | 功能 | 凭证方案 | 成本 |
 |:--:|---|---|:---:|
 | A6 | FRED / Alpha Vantage E2E | 两者免费 key 注册即得（AV 25 req/天、FRED 免费）；场景已加 Part 1 Q2b.48（2026-08-02） | 0 |
-| B15 | PDF 导出验证 | 修复 weasyprint 渲染超时（环境问题，非产品缺陷） | 环境修复 |
+| B15 | PDF 导出验证 | ✅ 2026-08-02 完成：weasyprint 渲染超时配置化（`output.pdf_timeout`，默认 120s，Task 17），Part 4 Q34.1c 实测通过（需 weasyprint 环境） | 已完成 |
 | C6 | SMTP 渠道验证 | Mailtrap / Resend 免费层或 Gmail app password | 0 |
-| E7 | cron 跨进程验证 | 本地跨进程定时测试 | 0 |
+| E7 | cron 跨进程验证 | 本地跨进程定时测试 | ✅ 已完成 (2026-08-02, Part 9 Q54.5+Q55.10) |
 | E11 | RAW 变体验证 | 随 H1-E11 拆分一起验证 | 0 |
 
 > **2026-08-02（Task 18）**：C6 SMTP 渠道验证场景已就绪 —— Part 9 Q56a 新增 56a.4（`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` env-gated，无凭证 SKIPPED 不 FAIL）。当前无凭证 → SKIPPED 明确记录；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑即可转 ✅。无任何 src/ 代码修改。
@@ -414,7 +410,7 @@
 第 1 批（低垂果实，1-2 天）: E12 单篇订阅 → E14 内容简化 → E9 可信度评分（A29 验证确认已于 2026-08-02 完成 ✅）
 第 2 批（新 collector，2-3 天）: A23 SSRN → A18 GDELT → A24 HF/Kaggle → A25 Unpaywall/CORE
 第 3 批（中量，1-2 天）: E11 RAW 变体拆分 → C11 播客目录发布
-验证批次（并行）: A6 / B15 / C6 / E2 / E7（免费凭证，随实现回归）
+验证批次（并行）: A6 / B15 / C6 / E2 / E7 — E7 已于 2026-08-02 完成 ✅（Part 9 Q54.5+Q55.10 跨进程验证）；剩余 A6/B15/C6/E2 随凭证回归
 ```
 
 ---

@@ -172,8 +172,8 @@
 ### Part 9: Async, Cron, Email, Webhooks
 | Q | Title | Result | Evidence |
 |---|-------|--------|----------|
-| Q54 | Async job_id Polling | ✅ | Job state persistence via SQLite; `get_collection_progress`/`get_processing_progress` handlers registered |
-| Q55 | Cron Schedules | ✅ | `autoinfo cron add-schedule/remove-schedule` lifecycle works; `cron list-schedules` shows configured schedules; `cron health` returns per-schedule status; `cron add-delivery/list-deliveries/remove-delivery` lifecycle works |
+| Q54 | Async job_id Polling | ✅ | Job state persistence via SQLite; `get_collection_progress`/`get_processing_progress` handlers registered; **54.5 E7 verified (2026-08-02): job-state written before collection, survives `kill -9` mid-run, readable from fresh process via `get_collection_progress(job_id)`** |
+| Q55 | Cron Schedules | ✅ | `autoinfo cron add-schedule/remove-schedule` lifecycle works; `cron list-schedules` shows configured schedules; `cron health` returns per-schedule status; `cron add-delivery/list-deliveries/remove-delivery` lifecycle works; **55.10 E7 verified (2026-08-02): cron run + manual collect concurrently → 0 duplicate source_url in KB (URL dedup + idempotent cache write protection)** |
 | Q56 | Email Digests | ⚠️ | `autoinfo email config` works (✅); `email send-digest` without SMTP → graceful error (✅); **56a.4 real SMTP E2E added 2026-08-02** (env-gated `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`, no creds → SKIPPED not FAIL) — pending credentials to reach ✅; 56a.3 `--cc/--bcc` rejected (CLI limitation, out of scope) |
 | Q57 | Webhooks & Agent Alerting | ⚠️ | `set_domain_webhooks`/`get_domain_webhooks` handlers registered; alert rules CRUD registered; needs MCP server running |
 | Q58 | Batch Run | ✅ | `batch_run` MCP handler registered; CLI batch operations supported |
@@ -270,8 +270,8 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 | Multi-domain pipeline | ⚠️ | domain-less collection (`collect_sources()` without domain) registered; cross-domain search registered; not tested due to single domain setup |
 | REST API responds (health, entries, search) | ➖ | Q47: FastAPI app imports OK, uvicorn not started on port 8741 — prompt human |
 | Web UI dashboard loads | ➖ | Q48: Dashboard templates exist; requires running uvicorn server |
-| Async operations with job_id polling | ✅ | Q54: Job state persistence via SQLite; progress polling handlers registered |
-| Cron schedules work | ✅ | Q55: `cron add-schedule/remove-schedule` lifecycle works; `cron health` returns status per schedule; delivery schedules work |
+| Async operations with job_id polling | ✅ | Q54: Job state persistence via SQLite; progress polling handlers registered; E7 54.5 verified: kill -9 → fresh process recovers job state |
+| Cron schedules work | ✅ | Q55: `cron add-schedule/remove-schedule` lifecycle works; `cron health` returns status per schedule; delivery schedules work; E7 55.10 verified: cron+manual concurrent collect → no duplicate KB entries |
 | Email digests (if SMTP configured) | ⚠️ | Q56: `email config` works; `email send-digest` needs SMTP — **56a.4 env-gated real SMTP E2E added 2026-08-02; SKIPPED (SMTP_HOST/SMTP_USER/SMTP_PASS not set) — expected, not a failure; provide creds and re-run** |
 | Webhooks configurable | ⚠️ | Q57: Handlers registered; needs MCP server running |
 | Agent proactive alerting | ⚠️ | Q57: Alert rules CRUD registered; `check & dispatch` via DeliveryChannel |

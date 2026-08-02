@@ -105,12 +105,38 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7: Output report with --type flag
+  # Step 7: Output report — --type industry
   # -------------------------------------------------------------------------
-  - name: "Generate report with --type (industry, trend, competitive)"
+  - name: "Generate report with --type industry"
     tool: bash
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type industry 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7b: Output report — --type competitive (B9)
+  # -------------------------------------------------------------------------
+  - name: "Generate report with --type competitive"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type competitive 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7c: Output report — --type trend (B10)
+  # -------------------------------------------------------------------------
+  - name: "Generate report with --type trend"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type trend 2>&1
     expected:
       exit_code: 0
       stdout_not_contains:
@@ -216,7 +242,7 @@ steps:
   - name: "Export knowledge graph via CLI"
     tool: bash
     command: |
-      cd ${TEST_DIR} && autoinfo knowledge graph --domain ${DOMAIN} 2>&1
+      cd ${TEST_DIR} && autoinfo knowledge graph export --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
       stdout_not_contains:

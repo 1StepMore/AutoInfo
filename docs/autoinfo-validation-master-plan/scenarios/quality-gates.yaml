@@ -264,3 +264,161 @@ steps:
       exit_code: 0
       stdout_contains:
         - "PASS: G2 empty existing list"
+
+  # =========================================================================
+  # G1 Extension: E9 source_score verification  [added 2026-08-02 — e-features]
+  # 唯一修改：追加 E9/E10 到 quality-gates.yaml 末尾
+  # Code: src/autoinfo/quality.py:41-46 SOURCE_TIER_SCORE_MAP
+  #       src/autoinfo/quality.py:245-253 source_score in G1SourceAuthority
+  # =========================================================================
+
+  - name: "G1-E9: SOURCE_TIER_SCORE_MAP tier ordering (tier1 > tier2 > tier3 > tier4)"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import SOURCE_TIER_SCORE_MAP
+
+      s1 = SOURCE_TIER_SCORE_MAP[1]
+      s2 = SOURCE_TIER_SCORE_MAP[2]
+      s3 = SOURCE_TIER_SCORE_MAP[3]
+      s4 = SOURCE_TIER_SCORE_MAP[4]
+
+      for tier, score in [(1, s1), (2, s2), (3, s3), (4, s4)]:
+          assert 0 <= score <= 100, f"tier{tier} score {score} out of 0-100"
+
+      assert s1 > s2 > s3 > s4, (
+          f"score order violated: {s1} > {s2} > {s3} > {s4}"
+      )
+      print(f"PASS: G1-E9 SOURCE_TIER_SCORE_MAP tier ordering — "
+            f"tier1={s1} > tier2={s2} > tier3={s3} > tier4={s4}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1-E9 SOURCE_TIER_SCORE_MAP tier ordering"
+
+  - name: "G1-E9: source_score embedded in G1SourceAuthority result details"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G1SourceAuthority, SOURCE_TIER_SCORE_MAP
+      from autoinfo.models import Item
+
+      gate = G1SourceAuthority()
+      for tier in [1, 2, 3, 4]:
+          item = Item(id=f"g1e9-{tier}", source_name=f"src{tier}",
+                      title="T", content="c", collected_at="2026-01-01",
+                      quality_tier=tier)
+          result = gate.check(item, {"quality_tier": tier})
+          score = result.details.get("source_score")
+          assert score is not None, f"tier {tier}: source_score missing"
+          assert score == SOURCE_TIER_SCORE_MAP.get(tier), (
+              f"tier {tier}: expected {SOURCE_TIER_SCORE_MAP.get(tier)}, got {score}"
+          )
+      print("PASS: G1-E9 source_score in G1SourceAuthority details for all 4 tiers")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1-E9 source_score in G1SourceAuthority details for all 4 tiers"
+
+  # =========================================================================
+  # G1 Extension: E10 ToS compliance  [added 2026-08-02 — e-features]
+  # Code: src/autoinfo/quality.py:305-474 G1TosCompliance
+  #       src/autoinfo/quality.py:328-333 _TIER_TOS_MAP
+  #       src/autoinfo/quality.py:1794-1890 D2FormatIntegrity.tos_delivery_check
+  # =========================================================================
+
+  - name: "G1-E10: G1TosCompliance — open/licensed pass, restricted/sensitive flagged"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import G1TosCompliance
+      from autoinfo.models import Item
+
+      gate = G1TosCompliance()
+
+      # open → passes
+      r = gate.check(
+          Item(id="tos-o", source_name="pubmed", title="T", content="c",
+               collected_at="2026-01-01", quality_tier=1),
+          {"tos_classification": "open", "quality_tier": 1},
+      )
+      assert r.passed and not r.flagged and r.details.get("tos_compliant") == True
+      print("PASS: G1-E10 'open' — passes, tos_compliant=True")
+
+      # licensed → passes
+      r = gate.check(
+          Item(id="tos-l", source_name="ap", title="T", content="c",
+               collected_at="2026-01-01", quality_tier=2),
+          {"tos_classification": "licensed", "quality_tier": 2},
+      )
+      assert r.passed and not r.flagged and r.details.get("tos_compliant") == True
+      print("PASS: G1-E10 'licensed' — passes, tos_compliant=True")
+
+      # restricted → flagged advisory
+      r = gate.check(
+          Item(id="tos-r", source_name="blog", title="T", content="c",
+               collected_at="2026-01-01", quality_tier=3),
+          {"tos_classification": "restricted", "quality_tier": 3},
+      )
+      assert r.flagged and r.details.get("tos_compliant") == False
+      assert "compliance_warning" in r.details
+      print("PASS: G1-E10 'restricted' — flagged, tos_compliant=False")
+
+      # sensitive → flagged advisory
+      r = gate.check(
+          Item(id="tos-s", source_name="private", title="T", content="c",
+               collected_at="2026-01-01", quality_tier=4),
+          {"tos_classification": "sensitive", "quality_tier": 4},
+      )
+      assert r.flagged and r.details.get("tos_compliant") == False
+      assert "compliance_warning" in r.details
+      print("PASS: G1-E10 'sensitive' — flagged, tos_compliant=False")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1-E10 'open' — passes, tos_compliant=True"
+        - "PASS: G1-E10 'licensed' — passes, tos_compliant=True"
+        - "PASS: G1-E10 'restricted' — flagged, tos_compliant=False"
+        - "PASS: G1-E10 'sensitive' — flagged, tos_compliant=False"
+
+  - name: "G1-E10: D2FormatIntegrity.tos_delivery_check — RAW blocked, PROCESSED passes"
+    tool: python
+    command: |
+      import sys, os
+      os.chdir("${TEST_DIR}")
+      from autoinfo.quality import D2FormatIntegrity
+
+      checker = D2FormatIntegrity()
+
+      # RAW with restricted → blocked
+      r = checker.tos_delivery_check({
+          "product_type": "raw",
+          "entries": [{"tos_classification": "restricted", "entry_id": "x"}],
+      })
+      assert r.passed == False and r.details.get("tos_blocked") == True
+      print("PASS: G1-E10 D2 RAW + restricted → blocked")
+
+      # PROCESSED with restricted → passes with notice
+      r = checker.tos_delivery_check({
+          "product_type": "processed",
+          "entries": [{"tos_classification": "restricted", "entry_id": "y"}],
+      })
+      assert r.passed == True and r.details.get("tos_compliance_notice") == True
+      print("PASS: G1-E10 D2 PROCESSED + restricted → passes with notice")
+
+      # No restricted → clean
+      r = checker.tos_delivery_check({
+          "product_type": "raw",
+          "entries": [{"tos_classification": "open", "entry_id": "z"}],
+      })
+      assert r.passed == True and r.details.get("tos_blocked") == False
+      print("PASS: G1-E10 D2 open only → clean pass")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: G1-E10 D2 RAW + restricted → blocked"
+        - "PASS: G1-E10 D2 PROCESSED + restricted → passes with notice"
+        - "PASS: G1-E10 D2 open only → clean pass"

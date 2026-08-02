@@ -390,8 +390,52 @@ docs/autoinfo-validation-master-plan/
 ├── part-12-final-verdict.md
 ├── part-13-enduser-lifecycle.md
 ├── part-14-human-agent-collaboration.md
-└── part-15-cross-dimension-e2e.md
+├── part-15-cross-dimension-e2e.md
+└── scenarios/                 ← Self-executing YAML scenario files (24 files)
 ```
+
+---
+
+## Scenario Files (scenarios/ — Self-Executing YAML)
+
+Each YAML file in `scenarios/` is a standalone executable validation scenario
+(Agent Execution Pattern: `name` / `tool: bash|python` / `command` / `expected`).
+Run them individually with the plan's runner or convert each step to the
+[Self-Executing Assert Pattern](#self-executing-assert-pattern) bash wrapper.
+
+| File | Covers |
+|------|--------|
+| `agent-e2e.yaml` | Real-API E2E (PubMed/RSS/Web + LLM), multi-domain, config override |
+| `async-cron-email.yaml` | Async job_id polling, cron schedules, email digests, webhooks, agent alerting |
+| `cli-full.yaml` | All 23 CLI command groups + subcommands |
+| `collect-process.yaml` | Init → Collect → Process happy path |
+| `collectors-e2e.yaml` | **All 26 collector handlers** (Step 0 VALID_SOURCE_TYPES + A2-A29 GAP collectors; key-required handlers env-gated SKIP) — added 2026-08-02 |
+| `core-pipeline.yaml` | Core collection pipeline, sources, topics |
+| `cross-dimension-e2e.yaml` | Director User → Agent → End User journey, agent callbacks |
+| `domain-management.yaml` | Domain add/remove/list/activate/deactivate |
+| `e-features.yaml` | E-dimension: E2 Stripe, E9 source_score, E10 ToS, E11 RAW variants, E12 single-article payment, E14 simplify_content — added 2026-08-02 |
+| `enduser-deliverable.yaml` | End-user product delivery, SLA, retry chain |
+| `enduser-lifecycle.yaml` | End-user lifecycle CRUD, state machine, 13-channel dispatch (63.17), push channel (63.17a/C5), 6 IM channels (63.17b/C14) |
+| `error-boundary.yaml` | Error/boundary matrix across all layers |
+| `final-verdict.yaml` | Summary verdict + sign-off criteria |
+| `human-agent-collaboration.yaml` | Human-Agent collaboration patterns |
+| `init-project.yaml` | `init_project` scaffolding + next_steps |
+| `kb-pipeline.yaml` | 4-tier KB, import/export (pdf/rss/sitemap/agent), versioning, relations, knowledge graph export |
+| `mcp-kb-output.yaml` | MCP KB/Search/Output tools, report types (competitive/trend) |
+| `mcp-system-tools.yaml` | MCP System/Discovery/Domain/Source/Topic/Projects/Monitor/Webhooks |
+| `output-digest.yaml` | Digest generation (md/html/json/agent) |
+| `output-report.yaml` | Report generation incl. investor audience (B4) |
+| `production-validation.yaml` | Doctor diagnostics, MCP stdio, stress test, test suite, observability |
+| `quality-gates.yaml` | G1-G5 quality gates + G1-E9/E10 source_score & ToS extension (2026-08-02) |
+| `rest-api-webui.yaml` | REST API CRUD (FastAPI 8741), Web UI dashboard |
+| `search-kb.yaml` | KB search modes (FTS5/hybrid/faceted/Q&A) |
+
+**Coverage note (2026-08-02)**: Prior to this update the scenario suite covered
+24/66 matrix features (~36%). The additions above (`collectors-e2e.yaml`,
+`e-features.yaml`, and 13-channel/push/IM, investor/competitive/trend, export
+formats, knowledge graph export, G1-E9/E10 steps) close all 42 GAP items from
+the 2026-08-02 audit (A-dim 21 collectors, B/C-dim 15, E-dim 6) — full
+correspondence with code-implemented features / `enduser-coverage-matrix.md`.
 
 ---
 

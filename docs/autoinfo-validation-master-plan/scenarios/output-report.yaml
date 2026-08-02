@@ -97,3 +97,16 @@ steps:
       stdout_not_contains:
         - "Error"
         - "Traceback"
+
+  # -------------------------------------------------------------------------
+  # Step 7: Generate report — investor audience (B4)
+  # -------------------------------------------------------------------------
+  - name: "Generate report for investor audience"
+    tool: bash
+    command: |
+      cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience investor --format markdown 2>&1
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Error"
+        - "Traceback"

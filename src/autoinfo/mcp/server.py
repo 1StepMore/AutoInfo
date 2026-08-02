@@ -5377,6 +5377,33 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _handle_simplify_content(
+    content: str,
+    target_level: str,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Handle simplify_content MCP tool."""
+    from autoinfo.output import simplify_text
+
+    result = simplify_text(content, target_level, language)
+
+    if target_level not in (frozenset({"A1", "A2", "B1", "B2", "C1"})):
+        return error_dict(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            message=(
+                f"Invalid target_level: '{target_level}'. "
+                "Must be one of A1, A2, B1, B2, C1."
+            ),
+            actionable=True,
+        )
+
+    error_msg = result.get("error")
+    if error_msg and not result["verified"]:
+        return success_response({**result, "warning": error_msg})
+
+    return success_response(result)
+
+
 def _handle_recommend_content(
     user_id: str,
     query: str = "",
@@ -9468,6 +9495,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["user_id"],
             },
         ),
+        # -- Simplification (1) ----------------------------------------------
+        Tool(
+            name="simplify_content",
+            description=(
+                "Simplify text content to a target CEFR reading level using LLM. "
+                "Classifies original level, rewrites at target level, and verifies "
+                "the result. Returns simplified text, original/simplified CEFR levels, "
+                "and a verified flag. Target levels: A1, A2, B1, B2, C1."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Text content to simplify",
+                    },
+                    "target_level": {
+                        "type": "string",
+                        "description": "Target CEFR level: A1, A2, B1, B2, or C1",
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "Language code: en, zh, or ja (default: en)",
+                    },
+                },
+                "required": ["content", "target_level"],
+            },
+        ),
     ]
 
 # -- LLM-required tools (13) ------------------------------------------------
@@ -9488,6 +9543,7 @@ _LLM_REQUIRED_TOOLS: frozenset[str] = frozenset({
     "query_collected",
     "process_collection",
     "recommend_content",
+    "simplify_content",
 })
 
 
@@ -9896,6 +9952,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # -- Recommendation (1) --------------------------------------------
         elif name == "recommend_content":
             result = _handle_recommend_content(**arguments)
+
+        # -- Simplification (1) --------------------------------------------
+        elif name == "simplify_content":
+            result = _handle_simplify_content(**arguments)
 
         else:
             return [

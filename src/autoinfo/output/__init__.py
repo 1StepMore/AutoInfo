@@ -5029,3 +5029,172 @@ def _render_agent_json(
     }
 
     return json.dumps(output, indent=2, ensure_ascii=False, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Content simplification (E14 — CEFR-level parameterised simplification)
+# ---------------------------------------------------------------------------
+
+_VALID_SIMPLIFY_TARGETS: frozenset[str] = frozenset({"A1", "A2", "B1", "B2", "C1"})
+_CEFR_RANK: dict[str, int] = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
+
+
+def simplify_text(
+    content: str,
+    target_level: str,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Simplify *content* to a target CEFR reading level using LLM.
+
+    First classifies the original text, then uses LLM to rewrite it at the
+    target level, and finally verifies the result with a second CEFR
+    classification.
+
+    On LLM failure the original text is returned unchanged with
+    ``verified=False`` so callers can inspect the ``.error`` key.
+
+    Parameters
+    ----------
+    content:
+        The text to simplify.  Must not be empty.
+    target_level:
+        Target CEFR level: ``"A1"``, ``"A2"``, ``"B1"``, ``"B2"``, or
+        ``"C1"``.
+    language:
+        Language code: ``"en"``, ``"zh"``, or ``"ja"`` (default ``"en"``).
+
+    Returns
+    -------
+    dict
+        ``{"simplified": str, "original_level": str, "simplified_level":
+        str, "verified": bool}`` plus an ``"error"`` key on failure.
+    """
+    from autoinfo.cefr import classify_text  # noqa: PLC0415
+
+    lang_names: dict[str, str] = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
+    lang_name = lang_names.get(language, "English")
+
+    # --- Validate target_level ------------------------------------------------
+    if target_level not in _VALID_SIMPLIFY_TARGETS:
+        return {
+            "simplified": content,
+            "original_level": "unknown",
+            "simplified_level": "unknown",
+            "verified": False,
+            "error": (
+                f"Invalid target_level: '{target_level}'. "
+                "Must be one of A1, A2, B1, B2, C1."
+            ),
+        }
+
+    if not content or not content.strip():
+        return {
+            "simplified": "",
+            "original_level": "unknown",
+            "simplified_level": "unknown",
+            "verified": False,
+            "error": "Content is empty",
+        }
+
+    # --- Classify original ----------------------------------------------------
+    original_result = classify_text(content, lang=language)
+    original_level: str = original_result.get("cefr_level", "unknown")
+
+    # --- LLM simplification ---------------------------------------------------
+    system_prompt = (
+        "You are a text simplification assistant. Your task is to rewrite "
+        "the given text so that it is suitable for readers at a specific "
+        "CEFR level. Follow these rules:\n"
+        "- Use vocabulary and sentence structures appropriate for the target CEFR level.\n"
+        "- Preserve the core meaning, key facts, and important details.\n"
+        "- Do NOT add new information or opinions.\n"
+        "- Return ONLY the simplified text — no explanations, no prefixes, no markdown wrapping."
+    )
+
+    user_prompt = (
+        f"Language: {lang_name}\n"
+        f"Target CEFR Level: {target_level}\n\n"
+        f"Original Text:\n{content[:5000]}\n\n"
+        "Rewrite this text at the target CEFR level. Return only the simplified text."
+    )
+
+    try:
+        import litellm  # noqa: PLC0415
+    except ImportError:
+        logger.error("litellm is not installed — cannot simplify content")
+        return {
+            "simplified": content,
+            "original_level": original_level,
+            "simplified_level": "unknown",
+            "verified": False,
+            "error": "litellm not installed",
+        }
+
+    # Resolve model config (same pattern as cefr.py)
+    from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
+
+    model = "openrouter/deepseek/deepseek-chat"
+    api_key = ""
+    base_url = ""
+    try:
+        config_path = get_config_path()
+        if config_path is not None:
+            config = load_config(config_path)
+            provider = config.llm.provider or "openrouter"
+            llm_model = config.llm.model or "deepseek/deepseek-chat"
+            model = f"{provider}/{llm_model}"
+            api_key = config.llm.api_key or ""
+            base_url = config.llm.base_url or ""
+    except Exception:
+        logger.debug("Could not load config for simplify_text", exc_info=True)
+
+    try:
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=4000,
+            temperature=0.3,
+            api_key=api_key or None,
+            api_base=base_url or None,
+        )
+        simplified: str = (response.choices[0].message.content or "").strip()  # type: ignore[union-attr]
+    except Exception as exc:
+        logger.warning("LLM simplification failed: %s", exc)
+        return {
+            "simplified": content,
+            "original_level": original_level,
+            "simplified_level": "unknown",
+            "verified": False,
+            "error": str(exc),
+        }
+
+    if not simplified:
+        return {
+            "simplified": content,
+            "original_level": original_level,
+            "simplified_level": "unknown",
+            "verified": False,
+            "error": "LLM returned empty response",
+        }
+
+    # --- Verify simplified level ----------------------------------------------
+    simplified_result = classify_text(simplified, lang=language)
+    simplified_level: str = simplified_result.get("cefr_level", "unknown")
+
+    target_rank = _CEFR_RANK.get(target_level, 0)
+    simplified_rank = _CEFR_RANK.get(simplified_level, 0)
+    verified: bool = (
+        simplified_rank > 0
+        and target_rank > 0
+        and simplified_rank <= target_rank
+    )
+
+    return {
+        "simplified": simplified,
+        "original_level": original_level,
+        "simplified_level": simplified_level,
+        "verified": verified,
+    }

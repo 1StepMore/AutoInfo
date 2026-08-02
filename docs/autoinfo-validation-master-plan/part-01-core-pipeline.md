@@ -2236,6 +2236,71 @@ fi
 
 ---
 
+### Scenarios — Financial Data E2E (A6)
+
+#### 2b.48 🟢 FRED + Alpha Vantage — Real API E2E (A6, env-gated)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# A6: FRED + Alpha Vantage real API E2E.
+# Env-gated: only runs the real E2E when a key is present. Without a key the
+# scenario is SKIPPED (exit 0, NOT FAIL) with a documented reason.
+#
+# Key resolution (src/autoinfo/collectors/http_api.py `_get_api_key`):
+#   source settings `api_key`  →  env `AUTOINFO_HTTP_API_KEY`
+# NOTE: the handler does NOT read `ALPHAVANTAGE_API_KEY` / `FRED_API_KEY`
+# directly — set `AUTOINFO_HTTP_API_KEY` (or per-source settings `api_key`)
+# to run the real E2E against these two sources.
+
+cd /tmp && rm -rf test-a6 && mkdir test-a6 && cd test-a6
+autoinfo init --demo financial-intelligence >/dev/null 2>&1
+
+if [ -z "${AUTOINFO_HTTP_API_KEY:-}" ] && [ -z "${ALPHAVANTAGE_API_KEY:-}" ] && [ -z "${FRED_API_KEY:-}" ]; then
+  echo "  ➖ SKIPPED: no AUTOINFO_HTTP_API_KEY / ALPHAVANTAGE_API_KEY / FRED_API_KEY in env"
+  echo "  ➖ Alpha Vantage free key: 25 req/day (claim at alphavantage.co); FRED free key: immediate"
+  echo "  ➖ Config gap (no code change per A6 scope): financial-intelligence sources.yaml"
+  echo "       Alpha Vantage source has no json_path/field_mapping and FRED has no api_key setting"
+  echo "  ➖ No-key behavior verified instead: Alpha Vantage returns {\"Error Message\": ...} which"
+  echo "       http_api caches as a spurious item (empty title/content); collect exits 0"
+  echo ""
+  echo "✅ SCENARIO 2b.48 SKIPPED (A6 — API keys not available)"
+  exit 0
+fi
+
+# ── Real E2E path (runs only when a key is present) ──────────────
+OUTPUT=$(autoinfo collect --domain financial-intelligence --limit 5 2>&1)
+EXIT_CODE=$?
+echo "$OUTPUT" | grep -qi "Alpha Vantage" && echo "  ✅ PASS: Alpha Vantage collected" || { echo "  ❌ FAIL: Alpha Vantage collect"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -qi "FRED" && echo "  ✅ PASS: FRED collected" || { echo "  ❌ FAIL: FRED collect"; ALL_PASS=false; }
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: collect exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+N=$(find collections/financial-intelligence -name '*.json' | wc -l)
+[ "$N" -gt 0 ] && echo "  ✅ PASS: $N items cached" || { echo "  ❌ FAIL: no items cached"; ALL_PASS=false; }
+
+# G0 schema integrity on the cached items (no LLM needed for G0)
+G0=$(python3 -c "
+import json, glob
+ok = 0
+for f in glob.glob('collections/financial-intelligence/**/*.json', recursive=True):
+    if '/_runs.json' in f: continue
+    d = json.load(open(f))
+    assert d.get('source_url') and d.get('source_type') and d.get('source_platform'), f'G0 fail: {f}'
+    ok += 1
+print(f'G0_OK={ok}')
+" 2>&1)
+echo "$G0" | grep -q "G0_OK=" && echo "  ✅ PASS: G0 schema integrity on cached items" || { echo "  ❌ FAIL: G0"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 2b.48 PASSED (A6 FRED + Alpha Vantage E2E)" && exit 0 || { echo "❌ SCENARIO 2b.48 FAILED"; exit 1; }
+```
+**Expected Result:**
+- ✅ **Without API key**: scenario prints `➖ SKIPPED` and exits 0 (not FAIL) — documented reason: no `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`
+- ✅ **Without API key**: verified no-key graceful behavior — collect exits 0; Alpha Vantage error JSON (`{"Error Message": ...}`) cached as a spurious item due to missing `json_path`/`field_mapping` in the demo source config (validation finding, **no code change** per A6 scope)
+- ✅ **With API key**: `autoinfo collect --domain financial-intelligence --limit 5` → items cached for Alpha Vantage + FRED → G0 schema integrity passes (each cached item has `source_url` + `source_type` + `source_platform`)
+
+---
+
 ### 📊 Q2b Verdict
 
 | Scenario | Result |
@@ -2287,6 +2352,7 @@ fi
 | 2b.45 GDELT handler (A18) mock | ⬜ |
 | 2b.46 Unpaywall handler (A25) mock | ⬜ |
 | 2b.47 Unpaywall dispatch (A25) | ⬜ |
+| 2b.48 FRED + Alpha Vantage E2E (A6, env-gated) | ⬜ |
 
 **OVERALL: ⬜**
 

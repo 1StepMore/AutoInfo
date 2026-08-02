@@ -1000,3 +1000,429 @@ class TestArticleEntitlement:
         assert len(user2) == 1
         nobody = store.list_article_entitlements("nobody")
         assert len(nobody) == 0
+
+
+# ======================================================================
+# 6. Integration tests with stripe-mock (E2 Stripe Lifecycle Regression)
+# ======================================================================
+
+
+def _stripe_mock_available() -> bool:
+    """Check whether stripe-mock is reachable at ``STRIPE_API_BASE``.
+
+    Returns ``True`` when the ``/v1/health`` endpoint responds with 200,
+    meaning ``docker compose up -d stripe-mock`` has been run.
+    """
+    import os
+    api_base = os.environ.get("STRIPE_API_BASE", "http://localhost:12111")
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"{api_base}/v1/health")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not _stripe_mock_available(),
+    reason="stripe-mock not available (start with `make stripe-mock` "
+           "or `docker compose up -d stripe-mock`)",
+)
+class TestStripeLifecycle:
+    """Integration tests against stripe-mock for full lifecycle regression.
+
+    These tests verify the end-to-end Stripe integration path:
+    ``create_checkout_session`` → webhook events →
+    ``get_subscription_status`` → subscription state transitions →
+    cancellation.
+
+    The **42 existing mock tests** (above) remain unaffected and
+    pass without stripe-mock.  This class is decorated with
+    ``@pytest.mark.skipif`` so that it is skipped automatically
+    when stripe-mock is not running — no Docker required for CI.
+
+    Run these with::
+
+        make stripe-mock
+        python3 -m pytest tests/test_stripe.py::TestStripeLifecycle -v
+    """
+
+    # ------------------------------------------------------------------
+    # Fixture helpers
+    # ------------------------------------------------------------------
+
+    @pytest.fixture(autouse=True)
+    def _setup_stripe_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Configure Stripe for stripe-mock and clear global state."""
+        import os
+        import stripe as _stripe
+
+        self._api_base = os.environ.get(
+            "STRIPE_API_BASE", "http://localhost:12111",
+        )
+        _stripe.api_key = "sk_test_mock_integration"
+        _stripe.api_base = self._api_base
+
+        # Clear in-memory state before each test to prevent cross-test leaks
+        _user_stripe_map.clear()
+        _billing_mod._stripe_sync_failures = 0
+        yield
+
+    # ------------------------------------------------------------------
+    # 6.1  create_checkout_session → stripe-mock
+    # ------------------------------------------------------------------
+
+    def test_create_checkout_session_subscription_succeeds(
+        self,
+    ) -> None:
+        """``create_checkout_session(mode='subscription')`` communicates
+        with stripe-mock and returns a valid ``session_id`` + ``customer_id``.
+        """
+        result = create_checkout_session(
+            "price_test_basic",
+            "user_integ_lifecycle",
+            email="integ@example.com",
+            name="Integration User",
+        )
+
+        assert "error" not in result, (
+            f"Unexpected error from create_checkout_session: "
+            f"{result.get('error')}"
+        )
+        assert result["session_id"], (
+            "session_id should not be empty"
+        )
+        assert result["customer_id"].startswith("cus_"), (
+            f"Expected customer_id to start with 'cus_', "
+            f"got {result['customer_id']!r}"
+        )
+        assert result["mode"] == "subscription"
+        assert result["end_user_id"] == "user_integ_lifecycle"
+
+    def test_create_checkout_session_payment_succeeds(
+        self,
+    ) -> None:
+        """``create_checkout_session(mode='payment')`` uses ``price_data``
+        and returns ``mode='payment'``."""
+        result = create_checkout_session(
+            "article_42",
+            "user_payment_integ",
+            mode="payment",
+            article_id="art_integ_42",
+        )
+
+        assert "error" not in result, (
+            f"Payment checkout failed: {result.get('error')}"
+        )
+        assert result["mode"] == "payment"
+        assert result["session_id"], "session_id should not be empty"
+        assert result["customer_id"].startswith("cus_")
+
+    # ------------------------------------------------------------------
+    # 6.2  Full subscription lifecycle regression
+    # ------------------------------------------------------------------
+
+    def test_full_subscription_lifecycle(
+        self,
+    ) -> None:
+        """Complete Stripe lifecycle regression:
+
+        1. ``create_checkout_session`` (subscription) → talks to
+           stripe-mock for customer + session creation.
+        2. Simulate ``checkout.session.completed`` webhook → profile
+           activated, ``stripe_subscription_id`` stored.
+        3. ``get_subscription_status`` → retrieves from stripe-mock.
+        4. ``customer.subscription.updated`` → status transitions
+           (active, past_due→suspended, unpaid→suspended,
+           canceled→cancelled).
+        5. ``customer.subscription.deleted`` → subscription cancelled.
+        """
+        import stripe as _stripe
+
+        end_user_id = "user_lifecycle_full"
+        TEST_SUB = "sub_mock_lifecycle"
+
+        # ── 1. Create checkout session via stripe-mock ──────────────────
+        result = create_checkout_session(
+            "price_test_lifecycle",
+            end_user_id,
+            email="lifecycle@example.com",
+            name="Lifecycle User",
+        )
+        assert "error" not in result, (
+            f"Checkout failed: {result.get('error')}"
+        )
+        session_id = result["session_id"]
+        customer_id = result["customer_id"]
+
+        # ── 2. Retrieve session from stripe-mock to get subscription_id ─
+        try:
+            session = _stripe.checkout.Session.retrieve(session_id)
+            subscription_id: str = session.get("subscription") or TEST_SUB  # type: ignore[arg-type]
+        except Exception:
+            subscription_id = TEST_SUB
+
+        # ── 3. Simulate checkout.session.completed webhook ──────────────
+        with (
+            patch("autoinfo.user_store.update_profile") as mock_update,
+            patch("autoinfo.user_store.get_stripe_customer_id") as mock_get,
+        ):
+            mock_get.return_value = customer_id
+
+            checkout_event = {
+                "id": "evt_lifecycle_cs",
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "id": session_id,
+                        "customer": customer_id,
+                        "subscription": subscription_id,
+                        "metadata": {"end_user_id": end_user_id},
+                        "mode": "subscription",
+                        "status": "complete",
+                    }
+                },
+            }
+
+            webhook_result = handle_webhook(checkout_event)
+
+        assert webhook_result["status"] == "processed", (
+            f"Webhook should be processed, got: {webhook_result}"
+        )
+        assert webhook_result["action"] == "activated_subscription"
+        assert webhook_result["end_user_id"] == end_user_id
+        assert webhook_result["subscription_id"] == subscription_id
+
+        # Verify profile update was called with correct args
+        mock_update.assert_any_call(
+            user_id=end_user_id,
+            stripe_subscription_id=subscription_id,
+            status="active",
+        )
+
+        # ── 4. Verify get_subscription_status retrieves from stripe-mock ─
+        # Patch _load_user_profile to return a fake profile with the
+        # subscription_id set (simulating profile state after webhook).
+        fake_profile = type(
+            "_FakeLifecycleProfile", (),
+            {
+                "tier": "premium",
+                "status": "active",
+                "stripe_customer_id": customer_id,
+                "stripe_subscription_id": subscription_id,
+            },
+        )()
+
+        with patch(
+            "autoinfo.billing._load_user_profile",
+            return_value=fake_profile,
+        ):
+            status_result = get_subscription_status(end_user_id)
+
+        assert status_result["end_user_id"] == end_user_id
+        assert status_result["subscription_id"] == subscription_id
+        assert status_result["customer_id"] == customer_id
+        # stripe-mock should return a valid status (not "error")
+        assert status_result["stripe_status"] != "error", (
+            f"stripe.Subscription.retrieve failed against stripe-mock: "
+            f"{status_result}"
+        )
+
+        # ── 5. Test subscription.updated status transitions ────────────
+        transitions = [
+            ("active", "active"),
+            ("past_due", "suspended"),
+            ("unpaid", "suspended"),
+            ("canceled", "cancelled"),
+        ]
+
+        for stripe_status, expected_status in transitions:
+            with patch(
+                "autoinfo.user_store.update_profile",
+            ) as mock_upd:
+                updated_event = {
+                    "id": f"evt_lifecycle_upd_{stripe_status}",
+                    "type": "customer.subscription.updated",
+                    "data": {
+                        "object": {
+                            "id": subscription_id,
+                            "customer": customer_id,
+                            "status": stripe_status,
+                        }
+                    },
+                }
+                upd_result = handle_webhook(updated_event)
+
+            assert upd_result["status"] == "processed", (
+                f"[{stripe_status}] Expected 'processed', "
+                f"got {upd_result['status']!r}"
+            )
+            assert upd_result["action"] == "updated_status"
+            assert upd_result["new_status"] == expected_status, (
+                f"[{stripe_status}] Expected new_status="
+                f"{expected_status!r}, got {upd_result['new_status']!r}"
+            )
+            mock_upd.assert_called_once_with(
+                user_id=end_user_id,
+                status=expected_status,
+            )
+
+        # ── 6. Test subscription.deleted → cancelled ──────────────────
+        with patch("autoinfo.user_store.update_profile") as mock_upd:
+            deleted_event = {
+                "id": "evt_lifecycle_del",
+                "type": "customer.subscription.deleted",
+                "data": {
+                    "object": {
+                        "id": subscription_id,
+                        "customer": customer_id,
+                    }
+                },
+            }
+            del_result = handle_webhook(deleted_event)
+
+        assert del_result["status"] == "processed"
+        assert del_result["action"] == "cancelled_subscription"
+        mock_upd.assert_called_once_with(
+            user_id=end_user_id,
+            status="cancelled",
+        )
+
+    # ------------------------------------------------------------------
+    # 6.3  mode="payment" regression (T3/T11)
+    # ------------------------------------------------------------------
+
+    def test_payment_mode_webhook_no_subscription_activation(
+        self,
+    ) -> None:
+        """``mode='payment'`` checkout → webhook ``payment_received``,
+        **not** subscription activation.  Regression for T3 + T11.
+        """
+        end_user_id = "user_payment_integ"
+        customer_id = "cus_payment_integ"
+        _user_stripe_map[end_user_id] = customer_id
+
+        payment_event = {
+            "id": "evt_payment_regression",
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_payment_regression",
+                    "customer": customer_id,
+                    "subscription": "",
+                    "payment_intent": "pi_test_regression",
+                    "metadata": {
+                        "end_user_id": end_user_id,
+                        "article_id": "art_regression_77",
+                    },
+                    "mode": "payment",
+                    "status": "complete",
+                }
+            },
+        }
+
+        with (
+            patch("autoinfo.user_store.update_profile") as mock_update,
+            patch("autoinfo.user_store.get_stripe_customer_id") as mock_get,
+            patch(
+                "autoinfo.consumption.ConsumptionStore"
+            ) as mock_store_cls,
+        ):
+            mock_get.return_value = customer_id
+            mock_store = MagicMock()
+            mock_store.grant_article_access.return_value = {
+                "granted": True, "article_id": "art_regression_77",
+                "user_id": end_user_id, "reason": "granted",
+            }
+            mock_store_cls.return_value = mock_store
+
+            result = handle_webhook(payment_event)
+
+        assert result["status"] == "processed"
+        assert result["action"] == "payment_received"
+        assert result["mode"] == "payment"
+        assert result["article_id"] == "art_regression_77"
+        assert result["entitlement_reason"] == "granted"
+
+        # KEY REGRESSION: must NOT call update_profile(status="active")
+        for call in mock_update.call_args_list:
+            _, kwargs = call
+            if kwargs.get("status") == "active":
+                pytest.fail(
+                    "BUG REGRESSION: mode=payment produced status='active' "
+                    "— T3 regression: empty subscription_id would be "
+                    "written to the profile"
+                )
+            if "stripe_subscription_id" in kwargs:
+                pytest.fail(
+                    "BUG REGRESSION: mode=payment wrote "
+                    "stripe_subscription_id to the profile"
+                )
+
+    # ------------------------------------------------------------------
+    # 6.4  get_subscription_status via stripe-mock
+    # ------------------------------------------------------------------
+
+    def test_get_subscription_status_retrieves_from_stripe_mock(
+        self,
+    ) -> None:
+        """After webhook activation, ``get_subscription_status`` calls
+        ``stripe.Subscription.retrieve`` against stripe-mock and returns
+        valid status data."""
+        end_user_id = "user_status_mock"
+        customer_id = "cus_status_mock"
+        subscription_id = "sub_status_mock"
+        _user_stripe_map[end_user_id] = customer_id
+
+        # Simulate a profile that has been activated
+        fake_profile = type(
+            "_FakeStatusProfile", (),
+            {
+                "tier": "premium",
+                "status": "active",
+                "stripe_customer_id": customer_id,
+                "stripe_subscription_id": subscription_id,
+            },
+        )()
+
+        with patch(
+            "autoinfo.billing._load_user_profile",
+            return_value=fake_profile,
+        ):
+            status = get_subscription_status(end_user_id)
+
+        assert status["end_user_id"] == end_user_id
+        assert status["subscription_id"] == subscription_id
+        assert status["customer_id"] == customer_id
+        assert status["stripe_status"] != "error", (
+            f"get_subscription_status should succeed against stripe-mock, "
+            f"got stripe_status={status['stripe_status']!r}"
+        )
+        # stripe-mock returns some plan/status — at minimum verify the
+        # call didn't crash and returned a non-error response.
+        assert isinstance(status["plan"], str)
+        assert isinstance(status["stripe_status"], str)
+
+    # ------------------------------------------------------------------
+    # 6.5  No-op with unmatched customer
+    # ------------------------------------------------------------------
+
+    def test_get_subscription_status_no_profile_no_stripe_id(
+        self,
+    ) -> None:
+        """When no profile exists and no subscription ID is stored,
+        ``get_subscription_status`` returns ``stripe_status='none'``
+        without crashing."""
+        with patch(
+            "autoinfo.billing._load_user_profile",
+            return_value=None,
+        ):
+            status = get_subscription_status("user_no_profile")
+
+        assert status["end_user_id"] == "user_no_profile"
+        assert status["profile_status"] == "unknown"
+        assert status["stripe_status"] == "none"
+        assert status["subscription_id"] == ""
+        assert status["customer_id"] == ""
+        assert status["plan"] == "free"

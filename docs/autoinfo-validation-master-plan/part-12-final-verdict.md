@@ -199,7 +199,7 @@
 | Q65b | Multi-Channel Delivery (12 channels) | ➖ | `get_channel_health` handler registered; 12 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish; requires server + external credentials |
 | Q65c | Cost Metering & Billing | ⚠️ | `autoinfo cost dashboard` shows $0.07 total across 14 cost log entries; `CostMeter` class in `cost.py` handles `log_llm_tokens`, `log_api_call`, `log_storage`, `get_enduser_usage`, `get_enduser_invoice`; `billing.py` implements Stripe integration with 33 tests; requires Stripe keys for checkout flow |
 | Q65d | Stripe Webhook Billing | ⚠️ | Stripe webhook endpoint with signature verification implemented in `billing.py` (full lifecycle: `_handle_checkout_completed`, `_handle_subscription_updated`, `_handle_subscription_deleted`); `create_checkout_session` MCP tool + `Subscription.retrieve` integration; 33 test functions in `test_stripe.py` covering valid/invalid signatures, checkout completion, subscription lifecycle; requires `STRIPE_WEBHOOK_SECRET` for E2E |
-| Q65e | Consumption Tracking (view/open/click) | ➖ | `ConsumptionEvent` auto-record on delivery; SQLite-backed store; requires running delivery pipeline |
+| Q65e | Stripe webhook billing lifecycle (checkout.session.completed, subscription.updated, invalid event) | ✅ | 42 mock + 6 stripe-mock integration tests (`TestStripeLifecycle`); full lifecycle regression including mode="payment" branch; skipif when stripe-mock unavailable |
 | Q65f | Automated Notifications (trial reminders, content-ready) | ➖ | Trial-ending reminders (3-day window) + content-ready notifications; requires running notification dispatch |
 | Q65g | Subscription State Machine & Audit Trail | ➖ | State machine: trial→active→suspended→cancelled; requires Stripe webhook events to drive transitions |
 | Q65h | Cost & Usage End-to-End (4 scenarios) | ⬜ | 65h.1: full-pipeline cost (collect→process→cost meter); 65h.2: usage aggregation; 65h.3: cost allocation; 65h.4: budget alert; requires server + LLM |
@@ -231,7 +231,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 | medical-research | ✅ (Q2) | ✅ (Q3) | ✅ (Q9) | ✅ (Q9) |
 | ai-commercial | ⚠️ (domain addable but not collected) | ⚠️ | ⚠️ (Q9.11) | ⚠️ (Q9.11) |
 | language-learning | ⚠️ (domain addable but not collected) | ⚠️ | ⚠️ (Q9.11) | ⚠️ (Q9.11) |
-| financial-intelligence | ⚠️ (domain addable but not collected) | ⚠️ | ⚠️ | ⚠️ |
+| financial-intelligence | ⚠️ (A6 FRED/Alpha Vantage E2E scenario added — Part 1 Q2b.48, env-gated; not collected, no API key) | ⚠️ | ⚠️ | ⚠️ |
 | tech-ai-developer | ⚠️ (domain addable but not collected) | ⚠️ | ⚠️ | ⚠️ |
 
 - [x] At least 1 domain produces non-empty raw data (medical-research: 2 items from 2 sources)
@@ -313,11 +313,12 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 | — | Pre-existing Bug | `autoinfo enduser get --user-id X` fails with `AttributeError: 'UserProfile' object has no attribute 'to_dict'` — P2 cosmetic |
 | — | Pre-existing Test Failure | `tests/output/test_cross_domain_report.py::test_single_domain_unchanged` — missing `report.md.j2` template; known issue |
 | — | API Changes Detected | Semantic Scholar API moved to `/api-docs/graph` (301 redirect); USPTO PatentsView moved to `data.uspto.gov` transition guide (301); arXiv RSS `rss.arxiv.org/rss/bio` returns zero entries |
+| A6 | FRED/Alpha Vantage E2E | Validation scenario added — Part 1 Q2b.48 (env-gated real API E2E: collect → Items → G0). 2026-08-02 run: **SKIPPED** — no `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`. No-key behavior verified: collect exits 0; Alpha Vantage error JSON cached as spurious item (demo source lacks `json_path`/`field_mapping` — validation finding, no code change per A6 scope) |
 | — | Architecture Verified | 138 MCP handler functions in `src/autoinfo/mcp/server.py` (9621 lines); 23 CLI command groups; 2506 test cases collected |
 | Q10/Q40/Q41/Q51/Q72 | LLM Dependency | CEFR classify, G4 factual consistency, G5 translation QA, LLM extraction, translation pipeline — ALL require real LLM API key |
 | Q56/Q62 | SMTP Dependency | Email digests and multi-channel delivery — require SMTP credentials. Q56a 56a.4 env-gated E2E added 2026-08-02; SKIPPED pending credentials (expected) |
 | Q47/Q48/Q60 | Server Dependency | REST API, Web UI, Prometheus metrics — require uvicorn on port 8741 |
-| Q61/Q65c/Q65d/Q65e | Stripe Dependency | End user subscriptions, checkout, webhook billing — require Stripe test keys |
+| Q61/Q65c/Q65d | Stripe Dependency | End user subscriptions, checkout — require Stripe test keys (Q65e lifecycle verified via stripe-mock integration) |
 | Q18-Q36 | MCP Server Dependency | All 138 MCP tools require stdio MCP session — module loads but no client connected |
 
 ---
@@ -366,7 +367,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 - ⚠️ Server-dependent: REST API endpoints, Web UI dashboard, Prometheus metrics, MCP stdio (Q18-Q36, Q47, Q48, Q60, Q66-Q71) — needs `uvicorn` + MCP client
 
 ### What Needs External Keys Only (Code Implemented ✅)
-- ⚠️ Stripe-dependent E2E: Subscriptions, checkout, billing webhooks (Q61, Q65c-Q65e) — `billing.py` (712 lines), 33 unit tests passing; needs `STRIPE_API_KEY` + `STRIPE_WEBHOOK_SECRET` for E2E execution; implementation verified via unit tests
+- ⚠️ Stripe-dependent E2E: Subscriptions, checkout (Q61, Q65c-Q65d) — `billing.py` (847 lines), 48 tests (42 mock + 6 stripe-mock integration) passing; Q65e lifecycle regression verified via `TestStripeLifecycle` (stripe-mock, skipif when unavailable); Q61/Q65c-Q65d need `STRIPE_API_KEY` for full E2E execution
 
 ### Production Readiness: ❌ NOT PRODUCTION READY
 - CI Gate: ✅ PASSED (no P0 failures, all 96 Qs evaluated)

@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import html
 import io
 import json
@@ -285,6 +286,12 @@ def export_kb(
     knowledge_dir = project_root / "knowledge"
     db_path = project_root / "autoinfo.db"
 
+    # Configurable weasyprint render timeout (output.pdf_timeout, default 120s)
+    try:
+        pdf_timeout: float = float(load_config(config_path).output.pdf_timeout)
+    except Exception:
+        pdf_timeout = 120.0
+
     # --- Resolve entries to export ----------------------------------------
     entries: list[dict[str, Any]] = []
     if db_path.exists():
@@ -360,6 +367,7 @@ def export_kb(
             entries=entries,
             timestamp=timestamp,
             domain_label=domain_label,
+            pdf_timeout=pdf_timeout,
         )
     elif format == "rss":
         result = _export_rss(
@@ -394,6 +402,7 @@ def export_kb(
             entries=entries,
             timestamp=timestamp,
             domain_label=domain_label,
+            pdf_timeout=pdf_timeout,
         )
     else:
         raise ValueError(f"Unsupported export format: '{format}'")
@@ -541,6 +550,31 @@ def _export_sqlite(
 # ---------------------------------------------------------------------------
 
 
+def _run_pdf_with_timeout(fn: Callable[[], Any], timeout: float, desc: str) -> Any:
+    """Run a weasyprint render callable, aborting after *timeout* seconds.
+
+    WeasyPrint's ``write_pdf`` is synchronous and cannot be interrupted in
+    process, so the render runs in a worker thread and the caller observes a
+    timeout as a raised ``ValueError``.  ``timeout <= 0`` disables the limit.
+    """
+    if timeout <= 0:
+        return fn()
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(fn)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False)
+        raise ValueError(
+            f"{desc} timed out after {timeout:.0f}s. "
+            "Increase output.pdf_timeout in .autoinfo/config.yaml "
+            "(default 120s) for large knowledge bases."
+        ) from None
+    except BaseException:
+        pool.shutdown(wait=False)
+        raise
+
+
 def _export_pdf(
     knowledge_dir: Path,
     export_dir: Path,
@@ -548,6 +582,7 @@ def _export_pdf(
     entries: list[dict[str, Any]],
     timestamp: str,
     domain_label: str,
+    pdf_timeout: float = 120.0,
 ) -> dict[str, Any]:
     """Export all entries as a PDF file.
 
@@ -672,7 +707,11 @@ def _export_pdf(
 
     # --- Render PDF ---------------------------------------------------------
     try:
-        weasyprint.HTML(string=full_html).write_pdf(str(out_path))
+        _run_pdf_with_timeout(
+            lambda: weasyprint.HTML(string=full_html).write_pdf(str(out_path)),
+            timeout=pdf_timeout,
+            desc="PDF rendering",
+        )
     except Exception as exc:
         logger.error("PDF generation failed: %s", exc)
         raise ValueError(
@@ -994,6 +1033,7 @@ def _export_bundle(
     entries: list[dict[str, Any]],
     timestamp: str,
     domain_label: str,
+    pdf_timeout: float = 120.0,
 ) -> dict[str, Any]:
     """Export a multi-format ZIP bundle containing PDF + JSON + Markdown + YAML.
 
@@ -1039,7 +1079,9 @@ def _export_bundle(
 
         # --- 4. PDF report (graceful fallback) --------------------------------
         try:
-            pdf_bytes = _build_bundle_pdf(entries, domain, domain_label, timestamp)
+            pdf_bytes = _build_bundle_pdf(
+                entries, domain, domain_label, timestamp, pdf_timeout=pdf_timeout
+            )
             zf.writestr("report.pdf", pdf_bytes)
             included_formats.append("pdf")
         except Exception as exc:
@@ -1172,6 +1214,7 @@ def _build_bundle_pdf(
     domain: str | None,
     domain_label: str,
     timestamp: str,
+    pdf_timeout: float = 120.0,
 ) -> bytes:
     """Build a PDF report in memory using weasyprint.
 
@@ -1276,7 +1319,11 @@ def _build_bundle_pdf(
 
     # Render to PDF bytes
     try:
-        return weasyprint.HTML(string=full_html).write_pdf()
+        return _run_pdf_with_timeout(
+            lambda: weasyprint.HTML(string=full_html).write_pdf(),
+            timeout=pdf_timeout,
+            desc="Bundle PDF rendering",
+        )
     except Exception as exc:
         logger.error("Bundle PDF generation failed: %s", exc)
         raise ValueError(
@@ -4435,6 +4482,25 @@ DEFAULT_TTS_VOICE = "alloy"
 
 # Default local TTS engine voice (edge-tts).
 DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
+
+
+def _make_audio_persist_path(domain: str | None) -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    domain_slug = domain or "all"
+    return str(Path("exports") / domain_slug / "podcast" / f"ep-{ts}.mp3")
+
+
+def _maybe_persist_audio(mp3_bytes: bytes, persist_path: str | None) -> None:
+    if not persist_path:
+        return
+    try:
+        p = Path(persist_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(mp3_bytes)
+        logger.info("Audio persisted to %s (%d bytes)", persist_path, len(mp3_bytes))
+    except OSError:
+        logger.warning("Failed to persist audio to %s", persist_path, exc_info=True)
+
 
 # Markdown patterns to strip when converting to plain text for TTS.
 _MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")

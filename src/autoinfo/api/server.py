@@ -22,7 +22,7 @@ import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from autoinfo import __version__
 from autoinfo.api.portal import router as portal_router
@@ -353,6 +353,54 @@ async def metrics() -> str:
 
     data = get_metrics()
     return format_prometheus(data)
+
+
+# ---------------------------------------------------------------------------
+# Media serving — podcast MP3 hosting
+# ---------------------------------------------------------------------------
+
+# Allowed root directories for media file serving (security: prevent
+# path traversal outside these directories).
+_MEDIA_ROOTS: tuple[Path, ...] = (
+    Path("exports"),
+    Path("data"),
+)
+
+
+@app.get("/media/{file_path:path}")
+async def serve_media(file_path: str) -> FileResponse:
+    """Serve a static media file (e.g. podcast MP3) from ``exports/`` or ``data/``.
+
+    Security: only serves files from allowed media root directories.
+    Returns 404 when the path escapes the allowed roots or the file
+    does not exist.
+    """
+    resolved = (Path(file_path)).resolve()
+    cwd = Path.cwd().resolve()
+    resolved_abs = (cwd / file_path).resolve()
+
+    allowed = False
+    for media_root in _MEDIA_ROOTS:
+        try:
+            root_abs = (cwd / media_root).resolve()
+            if str(resolved_abs).startswith(str(root_abs) + os.sep) or resolved_abs == root_abs:
+                if resolved_abs.is_file():
+                    allowed = True
+                    break
+        except (ValueError, OSError):
+            continue
+
+    if not allowed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Media file not found: {file_path}",
+        )
+
+    return FileResponse(
+        path=str(resolved_abs),
+        media_type="audio/mpeg",
+        headers={"Accept-Ranges": "bytes"},
+    )
 
 
 # ---------------------------------------------------------------------------

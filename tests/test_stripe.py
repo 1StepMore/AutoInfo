@@ -27,6 +27,7 @@ from autoinfo.billing import (
     handle_webhook,
     set_user_stripe_id,
 )
+from autoinfo.consumption import ConsumptionStore
 
 # Module reference for checking mutable global state
 import autoinfo.billing as _billing_mod
@@ -135,6 +136,30 @@ def payment_checkout_event() -> dict:
                 "id": "cs_test_payment",
                 "customer": "cus_test123",
                 "subscription": "",
+                "payment_intent": "pi_test_art42",
+                "metadata": {
+                    "end_user_id": "user_abc",
+                    "article_id": "art_42",
+                },
+                "mode": "payment",
+                "status": "complete",
+            }
+        },
+    }
+
+
+@pytest.fixture
+def payment_checkout_event_no_article() -> dict:
+    """A payment checkout event without article_id metadata (edge case)."""
+    return {
+        "id": "evt_cs_pay_no_art",
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_payment_no_art",
+                "customer": "cus_test123",
+                "subscription": "",
+                "payment_intent": "pi_test_no_art",
                 "metadata": {"end_user_id": "user_abc"},
                 "mode": "payment",
                 "status": "complete",
@@ -327,17 +352,34 @@ class TestHandleWebhookDispatch:
         with (
             patch("autoinfo.user_store.update_profile") as mock_update,
             patch("autoinfo.user_store.get_stripe_customer_id") as mock_get,
+            patch("autoinfo.consumption.ConsumptionStore") as mock_store_cls,
         ):
             mock_get.return_value = "cus_test123"
+            mock_store = MagicMock()
+            mock_store.grant_article_access.return_value = {
+                "granted": True, "article_id": "art_42",
+                "user_id": "user_abc", "reason": "granted",
+            }
+            mock_store_cls.return_value = mock_store
             result = handle_webhook(payment_checkout_event)
 
         assert result["status"] == "processed"
         assert result["action"] == "payment_received"
         assert result["mode"] == "payment"
         assert result["end_user_id"] == "user_abc"
+        assert result["article_id"] == "art_42"
+        assert result["entitlement_reason"] == "granted"
+
+        mock_store.grant_article_access.assert_called_once_with(
+            user_id="user_abc", article_id="art_42",
+            payment_intent_id="pi_test_art42",
+        )
+        mock_store.record_event.assert_called_once()
+        record_kwargs = mock_store.record_event.call_args.kwargs
+        assert record_kwargs["event_type"] == "purchased"
+        assert record_kwargs["product_type"] == "article"
 
         # KEY REGRESSION: must NOT call update_profile(status="active")
-        # with empty subscription_id (the data-corruption bug)
         for call in mock_update.call_args_list:
             _, kwargs = call
             if kwargs.get("status") == "active":
@@ -779,3 +821,182 @@ class TestCheckAccessTierFastPath:
             result = check_access("user_unknown", "premium")
         assert result["allowed"] is True
         assert "active premium subscription" in result["reason"]
+
+
+# ======================================================================
+# Single-article entitlement (E12)
+# ======================================================================
+
+
+@pytest.fixture
+def temp_consumption_db(tmp_path):
+    """Patch ConsumptionStore to use a temporary DB file."""
+    db_path = tmp_path / "consumption.db"
+    with patch(
+        "autoinfo.consumption._get_db_path", return_value=db_path
+    ):
+        yield tmp_path
+
+
+class TestArticleEntitlement:
+    """Verify single-article purchase entitlement (E12).
+
+    Coverage: article entitlement grant via webhook, check_access
+    article fast path, idempotent duplicate payments.
+    """
+
+    def test_payment_webhook_grants_entitlement(
+        self, temp_consumption_db, payment_checkout_event: dict,
+    ) -> None:
+        """Payment webhook → article_entitlement row + 'purchased' event."""
+        _user_stripe_map["user_abc"] = "cus_test123"
+
+        with patch("autoinfo.user_store.get_stripe_customer_id") as mock_get:
+            mock_get.return_value = "cus_test123"
+            result = handle_webhook(payment_checkout_event)
+
+        assert result["status"] == "processed"
+        assert result["action"] == "payment_received"
+        assert result["mode"] == "payment"
+        assert result["article_id"] == "art_42"
+        assert result["entitlement_reason"] == "granted"
+
+        store = ConsumptionStore()
+        assert store.check_article_access("user_abc", "art_42") is True
+
+        events = store.list_events("user_abc", limit=10)
+        purchased_events = [e for e in events if e["event_type"] == "purchased"]
+        assert len(purchased_events) == 1
+        assert purchased_events[0]["product_type"] == "article"
+        assert purchased_events[0]["product_id"] == "art_42"
+
+    def test_payment_webhook_no_article_skips_entitlement(
+        self, temp_consumption_db,
+        payment_checkout_event_no_article: dict,
+    ) -> None:
+        """Payment without article_id → no entitlement, no crash."""
+        _user_stripe_map["user_abc"] = "cus_test123"
+
+        with patch("autoinfo.user_store.get_stripe_customer_id") as mock_get:
+            mock_get.return_value = "cus_test123"
+            result = handle_webhook(payment_checkout_event_no_article)
+
+        assert result["status"] == "processed"
+        assert result["action"] == "payment_received"
+        assert result.get("entitlement_reason") is None
+
+    def test_check_article_access_hit(
+        self, temp_consumption_db,
+    ) -> None:
+        """User with entitlement → check_access with article_id allows."""
+        from autoinfo.billing import check_access
+
+        store = ConsumptionStore()
+        store.grant_article_access(
+            user_id="user_buyer",
+            article_id="art_99",
+            payment_intent_id="pi_99",
+        )
+
+        result = check_access(
+            "user_buyer", "premium", article_id="art_99",
+        )
+        assert result["allowed"] is True
+        assert "article entitlement fast path" in result["reason"]
+        assert result["plan"] == "article_purchase"
+        assert result["article_id"] == "art_99"
+
+    def test_check_article_access_miss(
+        self, temp_consumption_db,
+    ) -> None:
+        """User without entitlement → check_access denies (falls through to tier)."""
+        from autoinfo.billing import check_access
+
+        with patch(
+            "autoinfo.billing._load_user_profile", return_value=None,
+        ), patch("autoinfo.billing.get_subscription_status") as mock_sub:
+            mock_sub.return_value = {
+                "end_user_id": "user_nonbuyer",
+                "profile_status": "trial",
+                "stripe_status": "none",
+                "subscription_id": "",
+                "customer_id": "",
+                "plan": "free",
+            }
+            result = check_access(
+                "user_nonbuyer", "premium", article_id="art_nonexistent",
+            )
+
+        assert result["allowed"] is False
+        assert "trial" in result["reason"]  # skipped article path, went to tier
+
+    def test_duplicate_payment_idempotent(
+        self, temp_consumption_db,
+    ) -> None:
+        """Duplicate payment → entitlement is idempotent, second grant returns already_entitled."""
+        store = ConsumptionStore()
+
+        first = store.grant_article_access(
+            user_id="user_dup",
+            article_id="art_dup",
+            payment_intent_id="pi_1",
+        )
+        assert first["granted"] is True
+        assert first["reason"] == "granted"
+
+        second = store.grant_article_access(
+            user_id="user_dup",
+            article_id="art_dup",
+            payment_intent_id="pi_2",
+        )
+        assert second["granted"] is False
+        assert second["reason"] == "already_entitled"
+
+        assert store.check_article_access("user_dup", "art_dup") is True
+        entitlements = store.list_article_entitlements("user_dup")
+        assert len(entitlements) == 1
+
+    def test_check_access_subscription_supercedes_article(
+        self, temp_consumption_db,
+    ) -> None:
+        """Premium subscriber + article purchase → check_access grants via tier, not article."""
+        from autoinfo.billing import check_access
+
+        store = ConsumptionStore()
+        store.grant_article_access(
+            user_id="user_prem_buyer",
+            article_id="art_bonus",
+            payment_intent_id="pi_bonus",
+        )
+
+        profile = type(
+            "_FakeProfile", (),
+            {"tier": "premium", "status": "active",
+             "stripe_customer_id": "", "stripe_subscription_id": ""},
+        )()
+
+        with patch(
+            "autoinfo.billing._load_user_profile", return_value=profile,
+        ):
+            result = check_access(
+                "user_prem_buyer", "premium", article_id="art_bonus",
+            )
+
+        assert result["allowed"] is True
+        # article entitlement fast path fires because of article_id
+        assert "article entitlement fast path" in result["reason"]
+        assert result["plan"] == "article_purchase"
+
+    def test_article_entitlement_list(self, temp_consumption_db) -> None:
+        """list_article_entitlements returns all purchased articles."""
+        store = ConsumptionStore()
+        store.grant_article_access("user_el", "art_a", "pi_a")
+        store.grant_article_access("user_el", "art_b", "pi_b")
+        store.grant_article_access("user_el2", "art_c", "pi_c")
+
+        user1 = store.list_article_entitlements("user_el")
+        assert len(user1) == 2
+        user2 = store.list_article_entitlements("user_el2")
+        assert len(user2) == 1
+        nobody = store.list_article_entitlements("nobody")
+        assert len(nobody) == 0

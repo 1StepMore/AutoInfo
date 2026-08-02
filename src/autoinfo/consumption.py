@@ -88,7 +88,7 @@ class ConsumptionEvent:
     user_id: str = ""
     product_type: str = ""
     product_id: str = ""
-    event_type: Literal["delivered", "opened", "clicked"] = "delivered"
+    event_type: Literal["delivered", "opened", "clicked", "purchased"] = "delivered"
     timestamp: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     event_id: str = ""
@@ -177,6 +177,14 @@ class ConsumptionStore:
                     event_type  TEXT NOT NULL,
                     timestamp   TEXT NOT NULL,
                     metadata    TEXT DEFAULT '{}'
+                );
+
+                CREATE TABLE IF NOT EXISTS article_entitlement (
+                    user_id             TEXT NOT NULL,
+                    article_id          TEXT NOT NULL,
+                    payment_intent_id   TEXT NOT NULL,
+                    created_at          TEXT NOT NULL,
+                    UNIQUE(user_id, article_id)
                 );
             """)
 
@@ -335,3 +343,120 @@ class ConsumptionStore:
                 (limit, offset),
             ).fetchall()
         return [_row_to_dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Article entitlement (single-article purchase, E12)
+    # ------------------------------------------------------------------
+
+    def grant_article_access(
+        self,
+        user_id: str,
+        article_id: str,
+        payment_intent_id: str,
+    ) -> dict[str, Any]:
+        """Grant single-article access to *user_id* for *article_id*.
+
+        Idempotent: uses ``INSERT OR IGNORE`` with a ``UNIQUE(user_id, article_id)``
+        constraint.  Duplicate payments return ``granted: false, reason:
+        "already_entitled"`` without error.
+
+        Parameters
+        ----------
+        user_id:
+            End-user identity.
+        article_id:
+            Article identifier (auto-generated or KB entry ID).
+        payment_intent_id:
+            Stripe PaymentIntent ID from the checkout session.
+
+        Returns
+        -------
+        dict
+            ``{"granted": bool, "article_id": str, "user_id": str, "reason": str}``.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            try:
+                conn.execute(
+                    """INSERT INTO article_entitlement
+                       (user_id, article_id, payment_intent_id, created_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (user_id, article_id, payment_intent_id, now),
+                )
+                granted = True
+                reason = "granted"
+            except sqlite3.IntegrityError:
+                # Duplicate (user_id, article_id) — already entitled
+                granted = False
+                reason = "already_entitled"
+
+        logger.info(
+            "Article entitlement %s for user=%s article=%s pi=%s",
+            reason,
+            user_id,
+            article_id,
+            payment_intent_id,
+        )
+        return {
+            "granted": granted,
+            "article_id": article_id,
+            "user_id": user_id,
+            "reason": reason,
+        }
+
+    def check_article_access(
+        self,
+        user_id: str,
+        article_id: str,
+    ) -> bool:
+        """Check whether *user_id* has purchased access to *article_id*.
+
+        Parameters
+        ----------
+        user_id:
+            End-user identity.
+        article_id:
+            Article identifier.
+
+        Returns
+        -------
+        bool
+            ``True`` if the user has a valid entitlement row.
+        """
+        with _connect() as conn:
+            row = conn.execute(
+                """SELECT 1 FROM article_entitlement
+                   WHERE user_id = ? AND article_id = ?
+                   LIMIT 1""",
+                (user_id, article_id),
+            ).fetchone()
+        return row is not None
+
+    def list_article_entitlements(
+        self,
+        user_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return all article entitlements for *user_id*.
+
+        Results are ordered by ``created_at`` descending (newest first).
+
+        Parameters
+        ----------
+        user_id:
+            End-user identity to filter by.
+
+        Returns
+        -------
+        list[dict]
+            Each dict has keys: ``user_id``, ``article_id``,
+            ``payment_intent_id``, ``created_at``.
+        """
+        with _connect() as conn:
+            rows = conn.execute(
+                """SELECT user_id, article_id, payment_intent_id, created_at
+                   FROM article_entitlement
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]

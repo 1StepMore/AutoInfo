@@ -389,10 +389,40 @@ def _handle_checkout_completed(event: dict[str, Any]) -> dict[str, Any]:
 
     # --- Payment mode: one-time purchase, no subscription state change ---
     if session_mode == "payment":
+        article_id = metadata.get("article_id", "")
+        payment_intent_id = session.get("payment_intent", "")
+        entitlement: dict[str, Any] = {}
+
+        # Grant single-article entitlement (E12)
+        if article_id:
+            from autoinfo.consumption import ConsumptionStore
+
+            store = ConsumptionStore()
+            entitlement = store.grant_article_access(
+                user_id=end_user_id,
+                article_id=article_id,
+                payment_intent_id=payment_intent_id,
+            )
+
+            # Record purchase-consumption event
+            store.record_event(
+                user_id=end_user_id,
+                product_type="article",
+                product_id=article_id,
+                event_type="purchased",
+                metadata={
+                    "payment_intent_id": payment_intent_id,
+                    "customer_id": customer_id,
+                    "entitlement_reason": entitlement["reason"],
+                },
+            )
+
         logger.info(
-            "checkout.session.completed (payment) for %s — "
-            "no subscription activation",
+            "checkout.session.completed (payment) for %s article=%s "
+            "entitlement=%s",
             end_user_id,
+            article_id or "(none)",
+            entitlement.get("reason") if article_id else "no_article",
         )
         return {
             "status": "processed",
@@ -400,6 +430,8 @@ def _handle_checkout_completed(event: dict[str, Any]) -> dict[str, Any]:
             "action": "payment_received",
             "mode": "payment",
             "end_user_id": end_user_id,
+            "article_id": article_id,
+            "entitlement_reason": entitlement.get("reason") if article_id else None,
         }
 
     # --- Subscription mode: activate profile ---
@@ -592,23 +624,48 @@ def _map_stripe_status(stripe_status: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Freemium access gating (G15)
+# Freemium access gating (G15) + single-article entitlement (E12)
 # ---------------------------------------------------------------------------
+
+
+def _check_article_entitlement(user_id: str, article_id: str) -> bool:
+    """Check whether *user_id* owns single-article access to *article_id*.
+
+    Convenience wrapper around ``ConsumptionStore.check_article_access``
+    that catches storage errors silently and returns ``False`` on failure.
+    """
+    try:
+        from autoinfo.consumption import ConsumptionStore
+
+        return ConsumptionStore().check_article_access(user_id, article_id)
+    except Exception:
+        logger.debug(
+            "Article entitlement check failed for user=%s article=%s",
+            user_id, article_id, exc_info=True,
+        )
+        return False
 
 
 def check_access(
     end_user_id: str,
     access_level: str = "free",
+    *,
+    article_id: str = "",
 ) -> dict[str, Any]:
     """Check whether *end_user_id* has access to content at *access_level*.
 
-    Implements the freemium gating logic (G15):
+    Implements the freemium gating logic (G15) plus single-article
+    entitlement (E12):
 
     - ``"free"`` — always allowed.
     - ``"premium"`` — requires an active paid subscription (not trial,
-      not cancelled, not suspended).
+      not cancelled, not suspended).  Falls back to article entitlement
+      check when *article_id* is supplied.
     - ``"enterprise"`` — requires enterprise-tier access (plan/tier
       indicates enterprise billing tier).
+    - ``article_id`` (keyword-only) — when supplied, precedes all other
+      checks: single-article purchasers are always allowed regardless of
+      tier, for the specified article only.
 
     Parameters
     ----------
@@ -616,6 +673,10 @@ def check_access(
         AutoInfo end-user identifier.
     access_level:
         Required access level: ``"free"``, ``"premium"``, or ``"enterprise"``.
+    article_id:
+        Optional article identifier for single-article entitlement check
+        (E12).  When supplied and the user has purchased this article,
+        access is granted immediately.
 
     Returns
     -------
@@ -628,7 +689,23 @@ def check_access(
           (None when allowed).
         - ``profile_status`` (str) — user's current profile status.
         - ``plan`` (str) — user's current plan/tier.
+        - ``article_id`` (str | None) — article ID when article path was used.
     """
+    # --- Single-article entitlement fast path (E12) ---------------------
+    if article_id and _check_article_entitlement(end_user_id, article_id):
+        return {
+            "allowed": True,
+            "reason": (
+                f"User has purchased single-article access to '{article_id}' "
+                f"(article entitlement fast path)."
+            ),
+            "access_level": access_level,
+            "end_user_id": end_user_id,
+            "upgrade_prompt": None,
+            "profile_status": "any",
+            "plan": "article_purchase",
+            "article_id": article_id,
+        }
     # Free content is always allowed — no lookup needed
     if access_level == "free":
         return {
@@ -639,6 +716,7 @@ def check_access(
             "upgrade_prompt": None,
             "profile_status": "any",
             "plan": "any",
+            "article_id": None,
         }
 
     # --- Fast path: check UserProfile.tier (no Stripe dependency) ----------
@@ -661,6 +739,7 @@ def check_access(
                 "upgrade_prompt": None,
                 "profile_status": getattr(profile, "status", "active"),
                 "plan": user_tier,
+                "article_id": None,
             }
 
     # Fall through to Stripe-based subscription check
@@ -684,6 +763,7 @@ def check_access(
                 "upgrade_prompt": None,
                 "profile_status": profile_status,
                 "plan": plan,
+                "article_id": None,
             }
         else:
             return {
@@ -702,6 +782,7 @@ def check_access(
                 ),
                 "profile_status": profile_status,
                 "plan": plan,
+                "article_id": None,
             }
 
     # --- Enterprise: requires enterprise-tier plan -------------------------
@@ -731,6 +812,7 @@ def check_access(
                 "upgrade_prompt": None,
                 "profile_status": profile_status,
                 "plan": plan,
+                "article_id": None,
             }
         else:
             return {
@@ -749,6 +831,7 @@ def check_access(
                 ),
                 "profile_status": profile_status,
                 "plan": plan,
+                "article_id": None,
             }
 
     # Unknown access_level — default to blocked
@@ -760,4 +843,5 @@ def check_access(
         "upgrade_prompt": None,
         "profile_status": profile_status,
         "plan": plan,
+        "article_id": None,
     }

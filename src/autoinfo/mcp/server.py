@@ -6056,7 +6056,7 @@ app = Server("autoinfo")
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
-    """Declare the 30 available tools with their input schemas."""
+    """Declare the available MCP tools with their input schemas."""
     return [
         # -- System (2) ---------------------------------------------------
         Tool(

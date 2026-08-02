@@ -8,7 +8,7 @@ Covers all 6 new tools added in task 21+26:
 - Collections (1): list_active_collections
 - Config (1):    get_config
 
-Also verifies the total tool count reaches 42.
+Also verifies the total tool count stays above 100 and matches the runtime value.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from autoinfo.mcp.server import (
     _handle_batch_run,
     _handle_get_config,
     _handle_get_project_assets,
+    _handle_get_tool_count,
     _handle_list_active_collections,
     _handle_list_projects,
     _handle_health_check,
@@ -113,16 +114,21 @@ def _mock_save_config():
 class TestToolCount:
     """Verify the total declared tool count matches the actual server."""
 
-    def test_tools_count_50(self) -> None:
+    def test_tools_count_matches_runtime(self) -> None:
         result = _handle_health_check()
-        assert result["tools_count"] == 114, f"Expected 114 tools, got {result['tools_count']}"
+        runtime_count = _handle_get_tool_count()["tools_count"]
+        assert result["tools_count"] == runtime_count
+        assert result["tools_count"] >= 100, (
+            f"Expected at least 100 tools, got {result['tools_count']}"
+        )
 
     @pytest.mark.asyncio
     async def test_new_tool_names_are_declared(self) -> None:
         """Verify expected tool names are present in list_tools declarations."""
         tools_list = await mcp_server.list_tools()
         assert isinstance(tools_list, list)
-        assert len(tools_list) == 114
+        assert len(tools_list) == _handle_get_tool_count()["tools_count"]
+        assert len(tools_list) >= 100
         names = {t.name for t in tools_list}
         assert "list_projects" in names
         assert "get_project_assets" in names

@@ -2194,9 +2194,8 @@ OUTPUT=$(python3 -c "
 import os
 os.environ.pop('AUTOINFO_UNPAYWALL_EMAIL', None)
 
-from autoinfo.config import load_config
+from autoinfo.config import SourceConfig
 from autoinfo.collect import _build_handler, _fetch_items
-from autoinfo.models import SourceConfig
 
 sc = SourceConfig(name='unpaywall-oa', type='unpaywall',
                   url='', settings={'query': 'CRISPR'})

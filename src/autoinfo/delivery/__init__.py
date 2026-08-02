@@ -643,6 +643,7 @@ from autoinfo.delivery.dingtalk import DingTalkDeliveryChannel  # noqa: E402
 from autoinfo.delivery.feishu import FeiShuDeliveryChannel  # noqa: E402
 from autoinfo.delivery.rss import RSSDeliveryChannel  # noqa: E402
 from autoinfo.delivery.social import SocialDeliveryChannel  # noqa: E402
+from autoinfo.delivery.push import PushDeliveryChannel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -661,6 +662,7 @@ _CHANNEL_REGISTRY: dict[str, type[DeliveryChannel]] = {
     "feishu": FeiShuDeliveryChannel,
     "rss": RSSDeliveryChannel,
     "social_publish": SocialDeliveryChannel,
+    "push": PushDeliveryChannel,
 }
 
 
@@ -673,7 +675,7 @@ def get_channel(name: str) -> DeliveryChannel:
         Channel name — ``"smtp"``, ``"webhook"``, ``"rest_api"``,
         ``"file_export"``, ``"discord"``, ``"telegram"``,
         ``"wechat_work"``, ``"wechat_oa"``, ``"dingtalk"``,
-        ``"feishu"``, ``"rss"``, ``"social_publish"``, …
+        ``"feishu"``, ``"rss"``, ``"social_publish"``, ``"push"``, …
 
     Returns
     -------

@@ -30,7 +30,7 @@ VALID_OUTPUT_TYPES = {"digest", "report"}
 VALID_FORMATS = {"markdown", "html", "json", "agent", "audio", "pdf"}
 VALID_CHANNELS = {
     "email", "webhook", "rest", "smtp", "telegram", "discord",
-    "dingtalk", "feishu", "wechat_work", "wechat_oa", "rss", "file_export",
+    "dingtalk", "feishu", "wechat_work", "wechat_oa", "rss", "file_export", "push",
 }
 
 

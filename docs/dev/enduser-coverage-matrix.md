@@ -17,7 +17,7 @@
 | A3 | **学术文献（引用图）** | Semantic Scholar | ✅ SemanticScholarHandler | ✅ Part 1 Q2b.4-6 | ✅ |
 | A4 | **会议论文** | DBLP | ✅ DBLPHandler | ✅ Part 1 Q2b.7-9 | ✅ |
 | A5 | **专利** | USPTO | ✅ USPTOHandler | ✅ Part 1 Q2b.10-12 | ✅ |
-| A6 | **金融数据（免费）** | FRED, Alpha Vantage | ⚠️ http_api 通用 handler + FRED 源，需 API Key | ❌ 未深度测试 | ⚠️ |
+| A6 | **金融数据（免费）** | FRED, Alpha Vantage | ⚠️ http_api 通用 handler + FRED 源，需 API Key | ⚠️ Part 1 Q2b.48（A6 E2E 场景已加，env-gated，待 key） | ⚠️（待 key） |
 | A7 | **金融数据（机构）** | Bloomberg, Refinitiv, Wind, 东方财富 Choice, 同花顺 iFinD, CEIC | ❌ 无 collector | ❌ 未测试 | ❌ |
 | A8 | **财经/零售数据** | Quandl, Yahoo Finance | ✅ QuandlHandler + YahooFinanceHandler | ✅ Part 1 Q2b.13-17 | ✅ |
 | A9 | **新闻（企业级）** | Reuters Connect, AP | ✅ APHandler + ReutersMCPHandler | ✅ Part 1 Q2b.18-23 | ✅ |
@@ -110,7 +110,7 @@
 | C3 | **自有网站/APP** | #5 (51%) | A 主动拉取 | ✅ REST API (FastAPI, 8741) + Web UI Dashboard | ✅ Part 7 Q47/Q48 | ✅ |
 | C4 | **AI 聊天机器人/答案引擎** | #4 (10%) | D AI 代理 | ✅ MCP Server (138 tools) | ✅ Part 3+4 | ✅ |
 | C5 | **推送通知** | #6 | B 被动推送 | ✅ Push 推送通道 (PushDeliveryChannel + scheduler) | ✅ Part 13 场景 | ✅ |
-| C6 | **邮件订阅** | #7 | B 被动推送 | ✅ SMTP 渠道 | ⚠️ 需 SMTP 凭证 | ⚠️ |
+| C6 | **邮件订阅** | #7 | B 被动推送 | ✅ SMTP 渠道 | ✅ Part 9 Q56a 56a.4（env-gated：`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`，无凭证 SKIPPED 不 FAIL；2026-08-02 已加场景，凭证未提供故 SKIPPED） | ⚠️ 待 SMTP 凭证（场景就绪；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑 56a.4 → ✅） |
 | C7 | **RSS Feed** | #10 (6%) | A 主动拉取 | ✅ export_rss | ✅ Part 4 Q34.9 | ✅ |
 | C8 | **AI Agent 主动推送 (MCP/A2A)** | #13 (新兴) | D AI 代理 | ✅ MCP Server（MCP 侧完整；A2A 原生协议未实现，见 E15） | ✅ Part 3+4 | ✅ |
 | C9 | **电视/广播+智能电视** | #3 (52%) | B 被动推送 | ❌ 无 TV 输出能力 | ❌ 未测试 | ❌ |
@@ -172,7 +172,7 @@
 | # | Agent 能力 | 报告关键数据 | AutoInfo Code | Validation Plan | 覆盖状态 |
 |:-:|-----------|:-----------:|:-------------:|:---------------:|:--------:|
 | E1 | **MCP 工具暴露** | 报告推荐 | ✅ 138 tools | ✅ Part 3+4 | ✅ |
-| E2 | **付费用户管理** | 订阅经济 $7,388 亿 | ✅ Stripe 集成 (712行, 33测试) | ⚠️ Part 13 ➖ (需真实 Key) | ⚠️ |
+| E2 | **付费用户管理** | 订阅经济 $7,388 亿 | ✅ Stripe 集成 (847行, 48测试: 42 mock + 6 stripe-mock 集成) | ✅ Part 13 Q65e + TestStripeLifecycle 集成回归 (skipif 无 stripe-mock) | ✅ |
 | E3 | **用量追踪/计费** | Zuora SEI | ✅ CostMeter + ConsumptionEvent | ✅ Part 13 Q65h (cost E2E) | ✅ |
 | E4 | **多渠道分发** | 6+ 渠道 | ✅ 13 delivery adapters（含 push） | ✅ Part 13 Q63.17-63.19 | ✅ |
 | E5 | **RAG 输出** | Agent 检索的基础 | ✅ MCP KB search tools | ✅ Part 4 | ✅ |
@@ -193,8 +193,8 @@
 |------|:----:|
 | Agent 能力总数 | 15 |
 | AutoInfo Code 已覆盖 | 11/15 (73%) |
-| Validation Plan 已测试 | 11/15 (73%) |
-| 双向覆盖 | 7/15 (47%) |
+| Validation Plan 已测试 | 12/15 (80%) |
+| 双向覆盖 | 8/15 (53%) |
 | 完全未覆盖（Code 缺失） | 4/15 (27%) |
 
 ---
@@ -216,13 +216,9 @@
 
 > 各缺口的具体绕过路径与 V1/V2/放弃 决策见 **H 节**（2026-08-02 外部核实版）。
 
-### P0 — 代码已实现但未验证（1 项）
+### P0 — 代码已实现但未验证（0 项）
 
-这些功能代码已有，但 validation plan 未覆盖或未端到端执行：
-
-| 项 | 功能 | 报告依据 |
-|:--:|------|---------|
-| A6 | FRED / Alpha Vantage | 需 API Key，未深度测试 |
+> A6 FRED / Alpha Vantage 已于 2026-08-02 补齐验证场景（Part 1 Q2b.48，env-gated，真实 API E2E：collect → Items → G0），当前环境无 `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`，记录 **SKIPPED**（待免费 key 到位后执行，不 FAIL）。该行保留在 H2 验证补齐清单，随凭证到位后回归。
 
 ### P1 — 部分实现/部分验证（5 项）
 
@@ -287,13 +283,13 @@
 7. **C 维渠道排名修正 5 处**：自有网站 #3→#5、推送 #5→#6、邮件 #6→#7、RSS #7→#10、AI Agent #8→#13（对齐报告 §5.1）
 8. **新发现 gap**: #99 LLM response_format 空结果无保护, #100 多域 init 未复制全部 sources.yaml, #101 cron 假重复因测试残留, #102 lxml 未申明为直接依赖 — 已全部修复（v1.8.3），见下方 G 节
 9. **可行性判定（H 节）**：排除 6 项纯无解后分母为 **93**；零成本可覆盖 86/93（92%），加小额付费（Wind 个人版、微博/抖音）约 88/93（95%）；真 100% 卡在 5 个死结（X 涨价、小红书、LinkedIn、Coursera、公众号全量）
-10. **V1 实现清单（H 节）**：10 项生产实现（A23/A24/A25/A18/A29/E12/E14/E11/E9/C11）+ 6 项验证补齐（A6/B15/C6/E2/E7/E11）——全部免费零成本，无外部依赖；**A29 中文播客已于 2026-08-02 验证完成**（iTunes Search country=CN 实测 3 例均返回，隐式覆盖确认，见 H1 行）
+10. **V1 实现清单（H 节）**：10 项生产实现（A23/A24/A25/A18/A29/E12/E14/E11/E9/C11）+ 6 项验证补齐（A6/B15/C6/E2/E7/E11）——全部免费零成本，无外部依赖；**A29 中文播客已于 2026-08-02 验证完成**（iTunes Search country=CN 实测 3 例均返回，隐式覆盖确认，见 H1 行）；**A6 已于 2026-08-02 补齐验证场景**（Part 1 Q2b.48，env-gated SKIPPED 待 key）
 
 ---
 
 ## 距 100% 覆盖的差距清单（2026-08-02 更新 v3）
 
-> 全量对齐报告后，距 100% 的剩余缺口共 **29 项**：23 项未覆盖（P2 可工程化 7 + P3 不可工程化 8 + P4 范围外 8）+ 6 项部分覆盖（P0 1 + P1 5）。A29 中文播客已于 2026-08-02 实测确认 Apple Podcasts/iTunes Search 隐式覆盖，从缺口清单移除。
+> 全量对齐报告后，距 100% 的剩余缺口共 **29 项**：23 项未覆盖（P2 可工程化 7 + P3 不可工程化 8 + P4 范围外 8）+ 6 项部分覆盖（P1 5 + P0 1→已加场景待 key）。A29 中文播客已于 2026-08-02 实测确认 Apple Podcasts/iTunes Search 隐式覆盖，从缺口清单移除；A6 已于 2026-08-02 补齐验证场景（Part 1 Q2b.48，env-gated SKIPPED 待 key）。
 
 ### ① 应覆盖但未做（7 项）— 可工程化，列为下一步开发优先
 
@@ -337,7 +333,7 @@
 
 | 类别 | 项 | 原因 | 待办 |
 |:----:|:--:|------|------|
-| 验证缺失 | A6 FRED/Alpha Vantage | 需用户 API Key | 凭证到位后 E2E 验证 |
+| 验证缺失 | A6 FRED/Alpha Vantage | 场景已加（Part 1 Q2b.48），需用户 API Key | 凭证到位后执行 E2E（2026-08-02: SKIPPED 待 key） |
 | 验证缺失 | B15 PDF 导出 | weasyprint 渲染超时 | 环境依赖，非产品缺陷 |
 | 验证缺失 | E2 Stripe 生命周期 | 需真实 STRIPE_API_KEY | Part 13 可降级演练 |
 | 验证缺失 | E7 cron 跨进程 | 部分覆盖 | 属环境依赖验证 |
@@ -382,12 +378,14 @@
 
 | 项 | 功能 | 凭证方案 | 成本 |
 |:--:|---|---|:---:|
-| A6 | FRED / Alpha Vantage E2E | 两者免费 key 注册即得（AV 25 req/天、FRED 免费） | 0 |
+| A6 | FRED / Alpha Vantage E2E | 两者免费 key 注册即得（AV 25 req/天、FRED 免费）；场景已加 Part 1 Q2b.48（2026-08-02） | 0 |
 | B15 | PDF 导出验证 | 修复 weasyprint 渲染超时（环境问题，非产品缺陷） | 环境修复 |
 | C6 | SMTP 渠道验证 | Mailtrap / Resend 免费层或 Gmail app password | 0 |
 | E2 | Stripe 生命周期回归 | Stripe 测试 key（sk_test_ 免费）+ stripe-mock 已有 | 0 |
 | E7 | cron 跨进程验证 | 本地跨进程定时测试 | 0 |
 | E11 | RAW 变体验证 | 随 H1-E11 拆分一起验证 | 0 |
+
+> **2026-08-02（Task 18）**：C6 SMTP 渠道验证场景已就绪 —— Part 9 Q56a 新增 56a.4（`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` env-gated，无凭证 SKIPPED 不 FAIL）。当前无凭证 → SKIPPED 明确记录；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑即可转 ✅。无任何 src/ 代码修改。
 
 ### H3. 推迟到 V2（依赖预算决策 / 审核流程 / 生态成熟）
 

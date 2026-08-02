@@ -785,16 +785,65 @@ echo "$OUTPUT" | grep -vq "Traceback" \
 if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56a.3 PASSED"; exit 0; else echo "❌ SCENARIO 56a.3 FAILED"; exit 1; fi
 ```
 **Expected Result:** ✅ CLI accepts --cc and --bcc flags. No "No such option" error. Fails gracefully if SMTP unconfigured.
+> **2026-08-02 finding**: `autoinfo email send-digest` currently has NO `--cc`/`--bcc` options — the CLI rejects them with "No such option" (exit 2). This is a documented CLI limitation (send-digest supports only `--domain`/`--period`), tracked separately from the SMTP E2E task. Scenario recorded as ❌ (feature gap, no code change in this env-gated task).
+
+#### 56a.4 🟢 Real SMTP E2E send — env-gated (`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`)
+
+> **[REQUIRES SMTP] + env-gated (C6)**: This scenario performs a **real SMTP round-trip** — configure `email.*` from env vars, generate a digest, and send it over the wire. It must **never** hardcode credentials: values come exclusively from `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` (optional `SMTP_PORT`, default 587). When the vars are absent the scenario **exits 0 with an explicit SKIPPED message — it is NOT a failure** (unvalidated, not broken).
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q56a"
+cd "$TEST_DIR"
+
+# ── Env gate: real SMTP E2E requires credentials ────────────────
+if [ -z "${SMTP_HOST:-}" ] || [ -z "${SMTP_USER:-}" ] || [ -z "${SMTP_PASS:-}" ]; then
+  echo "  ➖ SKIPPED: SMTP credentials not set (SMTP_HOST/SMTP_USER/SMTP_PASS env-gated)"
+  echo "  ➖ SKIPPED: provide Mailtrap/Resend free-tier or Gmail app-password credentials,"
+  echo "  ➖ SKIPPED: then re-run. Expected — not a failure."
+  echo "✅ SCENARIO 56a.4 SKIPPED (env-gated, no credentials)"
+  exit 0
+fi
+
+# ── Configure SMTP from env only (never hardcode credentials) ────
+autoinfo email config \
+  --smtp-server "$SMTP_HOST" \
+  --smtp-port "${SMTP_PORT:-587}" \
+  --username "$SMTP_USER" \
+  --password "$SMTP_PASS" \
+  --enable 2>&1 > /dev/null
+
+# ── Actual E2E: generate + send digest over SMTP ────────────────
+OUTPUT=$(autoinfo email send-digest --domain medical-research --period weekly 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -qi "sent" \
+  && echo "  ✅ PASS: digest sent successfully" \
+  || { echo "  ❌ FAIL: no success message in output"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE (expected 0)"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 56a.4 PASSED — SMTP E2E round-trip"; exit 0; else echo "❌ SCENARIO 56a.4 FAILED"; exit 1; fi
+```
+**Expected Result:**
+- ✅ With `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` set: `email send-digest` connects, authenticates, and sends a real digest → output contains "sent", exit 0.
+- ➖ Without credentials: explicit SKIPPED message, **exit 0** (env-gated by design — SKIPPED, not FAIL).
+- ⛔ Never store, generate, or transmit SMTP credentials in docs/scenarios — env-only.
 
 ### 📊 Q56a Verdict
 
 | Scenario | Result |
 |----------|--------|
-| 56a.1 Email config show | ⬜ |
-| 56a.2 Send without SMTP | ⬜ |
-| 56a.3 CC/BCC flags | ⬜ |
+| 56a.1 Email config show | ✅ |
+| 56a.2 Send without SMTP | ✅ |
+| 56a.3 CC/BCC flags | ❌ |
+| 56a.4 Real SMTP E2E (env-gated) | ➖ SKIPPED — SMTP_HOST/SMTP_USER/SMTP_PASS not set (expected, not a failure) |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** — 56a.1/56a.2 pass; 56a.3 blocked by missing `--cc/--bcc` CLI options (feature gap, out of scope); 56a.4 env-gated SKIPPED pending real SMTP credentials. Provide `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` (Mailtrap/Resend free tier) and re-run 56a.4 to reach ✅.
 
 ---
 

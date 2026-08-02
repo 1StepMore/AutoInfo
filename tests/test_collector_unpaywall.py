@@ -11,10 +11,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.unpaywall import UnpaywallHandler
-
 
 # ---------------------------------------------------------------------------
 # Sample API response data
@@ -807,7 +805,6 @@ class TestUnpaywallToItem:
 
     def test_to_item_empty_id_uses_uuid(self) -> None:
         """When id is empty, a UUID should be generated as the item id."""
-        from autoinfo.models import Item
 
         handler = UnpaywallHandler({})
         article = {

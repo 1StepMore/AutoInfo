@@ -388,7 +388,6 @@ class UnpaywallHandler(BaseHandler):
         GET https://api.unpaywall.org/v2/search?query=...&email=...&page=N
         """
         email = os.environ.get("AUTOINFO_UNPAYWALL_EMAIL", "")
-        page_size = min(limit, MAX_LIMIT_UNPAYWALL)
 
         params: dict[str, Any] = {
             "query": query,

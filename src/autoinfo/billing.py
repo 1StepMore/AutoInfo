@@ -228,21 +228,26 @@ def create_checkout_session(
     product_id: str,
     end_user_id: str,
     *,
+    mode: str = "subscription",
     success_url: str = "http://localhost:8741/success",
     cancel_url: str = "http://localhost:8741/cancel",
     email: str = "",
     name: str = "",
+    article_id: str = "",
 ) -> dict[str, Any]:
     """Create a Stripe Checkout Session for *product_id*.
 
     Parameters
     ----------
     product_id:
-        Stripe Price ID (e.g. ``price_xxx``).  Pass any value when using
-        stripe-mock — the mock accepts arbitrary IDs.
+        Stripe Price ID (e.g. ``price_xxx``) for subscription mode.
+        For payment mode this serves as the price name.
     end_user_id:
         AutoInfo end-user identifier.  A Stripe Customer is created or
         looked up automatically.
+    mode:
+        Checkout mode: ``"subscription"`` (default) or ``"payment"``
+        (one-time purchase, e.g. single-article access).
     success_url:
         Redirect URL after successful payment.
     cancel_url:
@@ -251,6 +256,9 @@ def create_checkout_session(
         Customer email (optional — defaults to ``{end_user_id}@example.com``).
     name:
         Customer name (optional — defaults to *end_user_id*).
+    article_id:
+        Article identifier for single-purchase metadata (only meaningful
+        when *mode* is ``"payment"`` — reserved for T11).
 
     Returns
     -------
@@ -263,25 +271,44 @@ def create_checkout_session(
             end_user_id, email=email, name=name,
         )
 
+        metadata: dict[str, str] = {"end_user_id": end_user_id}
+        if article_id:
+            metadata["article_id"] = article_id
+
+        if mode == "payment":
+            # One-time payment: use price_data with unit_amount
+            line_items = [{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {"name": product_id},
+                    "unit_amount": 0,  # 0 = pay-what-you-want / T11 determines actual amount
+                },
+                "quantity": 1,
+            }]
+        else:
+            # Subscription mode: use existing price ID
+            line_items = [{"price": product_id, "quantity": 1}]
+
         session = stripe.checkout.Session.create(
             customer=customer_id,
-            line_items=[{"price": product_id, "quantity": 1}],
-            mode="subscription",
+            line_items=line_items,
+            mode=mode,
             success_url=success_url,
             cancel_url=cancel_url,
-            metadata={"end_user_id": end_user_id},
+            metadata=metadata,
         )
         logger.info(
-            "Checkout session %s created for %s",
+            "Checkout session %s created for %s (mode=%s)",
             session["id"],  # type: ignore[index]
             end_user_id,
+            mode,
         )
         return {
             "session_id": session["id"],  # type: ignore[index]
             "url": session.get("url", ""),
             "customer_id": customer_id,
             "end_user_id": end_user_id,
-            "mode": "subscription",
+            "mode": mode,
         }
     except Exception as exc:
         logger.exception("create_checkout_session failed for %s", end_user_id)
@@ -329,8 +356,17 @@ def handle_webhook(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_checkout_completed(event: dict[str, Any]) -> dict[str, Any]:
-    """Handle ``checkout.session.completed`` webhook."""
+    """Handle ``checkout.session.completed`` webhook.
+
+    Branches on ``session.mode``:
+
+    - ``"subscription"`` (or missing): activates subscription profile
+      (existing behaviour).
+    - ``"payment"``: one-time purchase — does **not** write an empty
+      subscription ID or set ``status="active"`` on the profile.
+    """
     session = event.get("data", {}).get("object", {})
+    session_mode = session.get("mode", "subscription")
     subscription_id = session.get("subscription", "")
     customer_id = session.get("customer", "")
     metadata = session.get("metadata", {})
@@ -351,7 +387,22 @@ def _handle_checkout_completed(event: dict[str, Any]) -> dict[str, Any]:
             end_user_id,
         )
 
-    # Update UserProfile with subscription info
+    # --- Payment mode: one-time purchase, no subscription state change ---
+    if session_mode == "payment":
+        logger.info(
+            "checkout.session.completed (payment) for %s — "
+            "no subscription activation",
+            end_user_id,
+        )
+        return {
+            "status": "processed",
+            "event_type": "checkout.session.completed",
+            "action": "payment_received",
+            "mode": "payment",
+            "end_user_id": end_user_id,
+        }
+
+    # --- Subscription mode: activate profile ---
     try:
         from autoinfo.user_store import update_profile
 

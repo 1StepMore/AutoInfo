@@ -124,6 +124,25 @@ def sub_deleted_event() -> dict:
     }
 
 
+@pytest.fixture
+def payment_checkout_event() -> dict:
+    """A ``checkout.session.completed`` event with ``mode="payment"``."""
+    return {
+        "id": "evt_cs_pay",
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_payment",
+                "customer": "cus_test123",
+                "subscription": "",
+                "metadata": {"end_user_id": "user_abc"},
+                "mode": "payment",
+                "status": "complete",
+            }
+        },
+    }
+
+
 # ===================================================================
 # 1. Webhook event signature verification (FastAPI endpoint)
 # ===================================================================
@@ -298,6 +317,39 @@ class TestHandleWebhookDispatch:
         result = handle_webhook(checkout_completed_event)
         assert result["status"] == "error"
         assert result["action"] == "missing_end_user_id"
+
+    def test_checkout_completed_payment_mode(
+        self, payment_checkout_event: dict,
+    ) -> None:
+        """``checkout.session.completed`` with mode="payment" → no subscription activation."""
+        _user_stripe_map["user_abc"] = "cus_test123"
+
+        with (
+            patch("autoinfo.user_store.update_profile") as mock_update,
+            patch("autoinfo.user_store.get_stripe_customer_id") as mock_get,
+        ):
+            mock_get.return_value = "cus_test123"
+            result = handle_webhook(payment_checkout_event)
+
+        assert result["status"] == "processed"
+        assert result["action"] == "payment_received"
+        assert result["mode"] == "payment"
+        assert result["end_user_id"] == "user_abc"
+
+        # KEY REGRESSION: must NOT call update_profile(status="active")
+        # with empty subscription_id (the data-corruption bug)
+        for call in mock_update.call_args_list:
+            _, kwargs = call
+            if kwargs.get("status") == "active":
+                pytest.fail(
+                    "BUG REGRESSION: mode=payment produced status='active' "
+                    "— empty subscription_id would be written to the profile"
+                )
+            if "stripe_subscription_id" in kwargs:
+                pytest.fail(
+                    "BUG REGRESSION: mode=payment wrote stripe_subscription_id "
+                    "to the profile"
+                )
 
     # ------------------------------------------------------------------
     # customer.subscription.updated
@@ -586,6 +638,32 @@ class TestCreateCheckoutSession:
         assert result["end_user_id"] == "user_newbie"
         mock_customer.assert_called_once()
         mock_session.assert_called_once()
+
+    def test_create_payment_mode_session(self) -> None:
+        """mode="payment" → uses price_data not price, metadata contains article_id."""
+        _user_stripe_map["user_pay"] = "cus_pay"
+
+        with patch("stripe.checkout.Session.create") as mock_session:
+            mock_session.return_value = {
+                "id": "cs_pay_123",
+                "url": "https://checkout.stripe.com/cs_pay_123",
+            }
+            result = create_checkout_session(
+                "article_42", "user_pay",
+                mode="payment", article_id="art_42",
+            )
+
+        assert result["session_id"] == "cs_pay_123"
+        assert result["mode"] == "payment"
+        assert result["end_user_id"] == "user_pay"
+
+        # Verify price_data was used (not bare "price")
+        call_kwargs = mock_session.call_args.kwargs
+        assert call_kwargs["mode"] == "payment"
+        line_item = call_kwargs["line_items"][0]
+        assert "price_data" in line_item
+        assert "price" not in line_item
+        assert call_kwargs["metadata"]["article_id"] == "art_42"
 
     def test_create_failure_returns_error_dict(self) -> None:
         """Exception during creation -> error dict returned (never raises)."""

@@ -601,6 +601,63 @@ class TestRunCollection:
             pubmed_result = result["per_source"][1]
             assert pubmed_result["status"] == "success"
 
+    @patch("autoinfo.collect.get_config_path")
+    @patch("autoinfo.collect.load_config")
+    def test_propagates_source_quality_tier_to_items(
+        self,
+        mock_load_config,
+        mock_get_config_path,
+        with_config,
+    ):
+        """Items fetched from tier-3 sources get quality_tier=3 (Fix A — E9)."""
+        from autoinfo.collect import run_collection
+        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+
+        pubmed_item = Item(
+            id="pmid-456",
+            source_name="pubmed",
+            source_type="api",
+            source_url="https://example.com/pmid456",
+            title="PubMed Tier3 Article",
+            content="Abstract content...",
+            collected_at="2026-07-20T00:00:00Z",
+            quality_tier=1,  # default — _fetch_and_cache_source should override
+        )
+
+        config = Config(
+            project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
+            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    active=True,
+                    sources=[
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                            quality_tier=3,
+                        ),
+                    ],
+                    topics=[],
+                ),
+            ],
+        )
+        mock_get_config_path.return_value = with_config / ".autoinfo" / "config.yaml"
+        mock_load_config.return_value = config
+
+        with patch("autoinfo.collect._fetch_items") as mock_fetch:
+            mock_fetch.return_value = [pubmed_item]
+
+            run_collection(domain="medical-research", topic="IVF", limit=5, dry_run=True)
+
+            # _fetch_and_cache_source should have set item.quality_tier
+            # from source_config.quality_tier = 3
+            assert pubmed_item.quality_tier == 3, (
+                f"Expected quality_tier=3 from source_config, got {pubmed_item.quality_tier}"
+            )
+            assert pubmed_item.domain == "medical-research"
+
 
 # ======================================================================
 # CLI integration tests

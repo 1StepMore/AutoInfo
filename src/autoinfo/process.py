@@ -620,6 +620,15 @@ def run_processing(
                 gate_config.update(d.quality_gates)
                 break
 
+    # Resolve source quality tiers from domain config (for G1 propagation)
+    source_tiers: dict[str, int] = {}
+    if config:
+        for d in config.domains:
+            if d.name == domain:
+                for s in d.sources:
+                    source_tiers[s.name] = s.quality_tier
+                break
+
     # Resolve custom extract_fields from domain config
     extract_fields: list[str] | None = None
     if config:
@@ -705,9 +714,13 @@ def run_processing(
                 )
 
             # Step b: Quality gates (G1, G2, G3)
+            item_source_config: dict[str, Any] = {}
+            if item.source_name in source_tiers:
+                item_source_config = {"quality_tier": source_tiers[item.source_name]}
             quality_results = run_quality_gates(
                 item,
                 context={
+                    "source_config": item_source_config,
                     "existing_entries": existing_entries,
                     "topic_keywords": topic_keywords,
                 },

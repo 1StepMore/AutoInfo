@@ -281,9 +281,10 @@ def _collect_from_source(
 
     items_found = len(items)
 
-    # Ensure every item carries the correct domain
+    # Ensure every item carries the correct domain and source quality tier
     for item in items:
         item.domain = domain
+        item.quality_tier = source_config.quality_tier
 
     # Log API call cost (non-blocking — failures are swallowed)
     try:

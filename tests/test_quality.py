@@ -695,6 +695,34 @@ class TestRunQualityGates:
         assert g1.flagged is True
         assert g1.details["warning"] == "low quality source"
 
+    def test_g1_uses_item_quality_tier_without_source_config(
+        self, sample_item: Item
+    ) -> None:
+        """G1 falls back to item.quality_tier when source_config not in context (Fix A path)."""
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 3})
+        context = {"topic_keywords": ["IVF"]}
+        results = run_quality_gates(item, context)
+
+        g1 = results["G1-SourceAuthority"]
+        assert g1.flagged is True
+        assert g1.details["warning"] == "low quality source"
+        assert g1.details["quality_tier"] == 3
+
+    def test_g1_source_config_overrides_item_tier_in_orchestrator(
+        self, sample_item: Item
+    ) -> None:
+        """source_config in context overrides item.quality_tier (Fix B path)."""
+        item = Item(**{**sample_item.to_dict(), "quality_tier": 1})
+        context = {
+            "source_config": {"quality_tier": 3},
+            "topic_keywords": ["IVF"],
+        }
+        results = run_quality_gates(item, context)
+
+        g1 = results["G1-SourceAuthority"]
+        assert g1.flagged is True
+        assert g1.details["quality_tier"] == 3
+
     def test_g2_detects_duplicate_in_orchestrator(
         self, sample_item: Item, sample_kb_entry: KBEntry
     ) -> None:

@@ -313,6 +313,21 @@ class MultiUserConfig:
 
 
 @dataclass
+class OutputConfig:
+    """Output generation settings.
+
+    Attributes
+    ----------
+    pdf_timeout:
+        Maximum seconds to allow for a single weasyprint PDF render
+        (default 120).  Large knowledge bases may exceed this on slow
+        machines — raise it via ``output.pdf_timeout`` in config.yaml.
+    """
+
+    pdf_timeout: float = 120.0
+
+
+@dataclass
 class TTSConfig:
     """Text-to-Speech engine settings.
 
@@ -348,6 +363,7 @@ class Config:
     cost_rates: CostRatesConfig = field(default_factory=CostRatesConfig)
     cost_alerts: CostAlertsConfig = field(default_factory=CostAlertsConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +600,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     cron_raw = _dict_or_empty("cron")
     multi_user_raw = _dict_or_empty("multi_user")
     tts_raw = _dict_or_empty("tts")
+    output_raw = _dict_or_empty("output")
 
     return Config(
         project=ProjectConfig(
@@ -649,6 +666,9 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         tts=TTSConfig(
             engine=str(tts_raw.get("engine", "openai")),
             local_voice=str(tts_raw.get("local_voice", "en-US-JennyNeural")),
+        ),
+        output=OutputConfig(
+            pdf_timeout=float(output_raw.get("pdf_timeout", 120.0)),
         ),
     )
 

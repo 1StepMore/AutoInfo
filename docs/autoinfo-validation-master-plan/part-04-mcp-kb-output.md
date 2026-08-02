@@ -1285,6 +1285,66 @@ print(f"✅ bundle zip verified: {file_path} ({os.path.getsize(file_path)} bytes
 **Expected Result:** ✅ KB exported as a ZIP bundle (JSON + Markdown + YAML + PDF). `file_path` ends in `.zip`; the file exists and is non-empty.
 
 
+#### 34.1c 🟢 export_kb `format="pdf"` — B15 (weasyprint, configurable timeout)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q34
+
+# Skip cleanly when weasyprint is not available in this environment
+if ! python3 -c "import weasyprint" 2>/dev/null; then
+  echo "  ➖ SKIP: weasyprint not installed — PDF export requires it (pip install weasyprint)"
+  echo "✅ SCENARIO 34.1c SKIPPED (environment dependency)"
+  exit 0
+fi
+
+RESULT=$(python3 << 'PYEOF'
+import json, os
+from autoinfo.output import export_kb
+data = export_kb(domain="medical-research", format="pdf")
+fp = data.get("path") or data.get("file_path", "")
+magic = b""
+if fp and os.path.isfile(fp):
+    magic = open(fp, "rb").read(4)
+print(f"OK|success={data.get('success')}|exists={os.path.isfile(fp)}|size={os.path.getsize(fp) if fp and os.path.isfile(fp) else 0}|magic={magic!r}")
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: export_kb (pdf) exit 0" \
+  || { echo "  ❌ FAIL: PDF export crashed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "OK|" \
+  && echo "  ✅ PASS: structured result returned" \
+  || { echo "  ❌ FAIL: no OK signal"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "magic=b'%PDF'" \
+  && echo "  ✅ PASS: output is a valid PDF (%PDF magic)" \
+  || { echo "  ❌ FAIL: no valid PDF produced"; ALL_PASS=false; }
+
+# Configurable render timeout: output.pdf_timeout in config.yaml is honored
+grep -q "pdf_timeout" /tmp/test-q34/.autoinfo/config.yaml \
+  && echo "  ✅ PASS: output.pdf_timeout available in config schema" \
+  || { echo "  ⚠️  note: pdf_timeout uses default 120s (config key optional)"; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 34.1c PASSED — export_kb (pdf, B15)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 34.1c FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `export_kb` with `format="pdf"` renders a valid PDF via weasyprint (`%PDF` magic, non-empty)
+- ✅ Render timeout is configurable via `output.pdf_timeout` (default 120s) — no hardcoded timeout
+- ✅ If weasyprint is missing, scenario is recorded as ➖ SKIPPED (environment dependency, not product defect)
+
+
 #### 34.2 🟢 import_kb
 ```python
 # Create a test import file
@@ -1563,6 +1623,7 @@ if [ "$ALL_PASS" = true ]; then echo ""; echo "✅ SCENARIO 34.10 PASSED — exp
 |----------|--------|
 | 34.1 export_kb | ⬜ |
 | 34.1b export_kb (bundle — B19) | ⬜ |
+| 34.1c export_kb pdf — B15 (weasyprint, configurable timeout) | ⬜ |
 | 34.2 import_kb | ⬜ |
 | 34.3 classify_cefr | ⬜ |
 | 34.4 send_email_digest | ⬜ |

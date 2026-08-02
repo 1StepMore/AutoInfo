@@ -1,6 +1,6 @@
-# Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36c)
+# Part 4: MCP Tools — KB, Search, Output, Cron, Email, CEFR, Extraction (Q28-Q36i)
 
-**Coverage:** 48 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (8), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1), Delivery Schedule (3). Plus v1.7 additions: consumption tracking, automated notifications, cron health (CLI). Phase 4 additions: `generate_cross_domain_report` (Output), `report_type` parameter, bundle export, delivery schedule automation.
+**Coverage:** 48 MCP tools: KB (9), KB Relations/Versioning/Monitor (6), KB Graph (1), Output (8), Export/Import (2), CEFR (1), Cron (5), Email (1), Custom Extraction (2), Q&A (1), Keywords (3), Knowledge Lifecycle (6), Product (1), Delivery Schedule (3). Plus v1.7 additions: consumption tracking, automated notifications, cron health (CLI). Phase 4 additions: `generate_cross_domain_report` (Output), `report_type` parameter, bundle export, delivery schedule automation. V1 SEO additions: `export_kb` format `"sitemap"`, JSON-LD structured data in HTML digest/report.
 
 ---
 
@@ -18,6 +18,7 @@ rm -rf /tmp/test-q36b && mkdir -p /tmp/test-q36b
 rm -rf /tmp/test-q36c && mkdir -p /tmp/test-q36c
 rm -rf /tmp/test-q36d && mkdir -p /tmp/test-q36d
 rm -rf /tmp/test-q36e && mkdir -p /tmp/test-q36e
+rm -rf /tmp/test-q36i && mkdir -p /tmp/test-q36i
 ```
 
 ## Q28: MCP KB Summary Tools
@@ -3381,3 +3382,439 @@ fi
 | 36h.1 _build_podcast_rss RSS 2.0 + enclosure + itunes:* | ✅ |
 
 **OVERALL: ✅** (self-executing script verified 2026-08-02; `_build_podcast_rss` is a pure function — no LLM, no network; unit tests 24/24 pass per learnings.md Task 15)
+
+
+## Q36i: Export Sitemap & JSON-LD Structured Data (V1 SEO)
+
+**Agent says:** "Export the KB as an XML sitemap for search engine submission, and verify that HTML digests/reports include schema.org JSON-LD structured data."
+
+Code references: `src/autoinfo/output/__init__.py` — `_export_sitemap()` (lines 830-894) reuses `seo.generate_sitemap()`, writes `exports/<domain>/sitemap.xml`; format `"sitemap"` is whitelisted in `export_kb` (line 272). `_render_digest_html()` (lines 4983-5050) and `_render_report_html()` (lines ~3460-3505) pass `structured_data` (wrapped in `<script type="application/ld+json">`) to Jinja2 templates (`digest.html.j2` / `report_html.j2`). See `src/autoinfo/output/seo.py` for `generate_sitemap()` and `generate_structured_data()`.
+
+### Prerequisites
+```bash
+mkdir -p /tmp/test-q36i
+cd /tmp/test-q36i
+rm -rf .autoinfo knowledge collections autoinfo.db outputs exports
+autoinfo init --demo medical-research
+autoinfo collect --domain medical-research --limit 5
+autoinfo process --domain medical-research
+```
+
+### Scenarios
+
+#### 36i.1 🟢 export_kb format="sitemap" — real KB entries
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36i
+
+# ── Execute: export_kb with format="sitemap" ──────────────────
+RESULT=$(python3 << 'PYEOF'
+import json, os
+from autoinfo.output import export_kb
+
+data = export_kb(domain="medical-research", format="sitemap")
+sitemap_path = data.get("path", "") or data.get("file_path", "")
+exists = os.path.isfile(sitemap_path) if sitemap_path else False
+size = os.path.getsize(sitemap_path) if exists else 0
+
+# Read the sitemap content for XML validation
+raw = ""
+if exists:
+    raw = open(sitemap_path, "r", encoding="utf-8").read()
+
+print(json.dumps({
+    "success": data.get("success"),
+    "format": data.get("format"),
+    "entries_count": data.get("entries_count", 0),
+    "path": sitemap_path,
+    "exists": exists,
+    "size": size,
+    "has_xml_decl": raw.startswith("<?xml"),
+    "raw_preview": raw[:200],
+}))
+PYEOF
+)
+EXIT_CODE=$?
+
+# ── Assert: export_kb returned success ────────────────────────
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: export_kb(sitemap) exit 0" \
+  || { echo "  ❌ FAIL: export_kb crashed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['success']==True, 'success not True'" 2>/dev/null \
+  && echo "  ✅ PASS: export success=True" \
+  || { echo "  ❌ FAIL: success not True"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['format']=='sitemap', f'format={d[\"format\"]}'" 2>/dev/null \
+  && echo "  ✅ PASS: format=sitemap in result" \
+  || { echo "  ❌ FAIL: format not sitemap"; ALL_PASS=false; }
+
+# ── Assert: sitemap.xml file exists and is non-empty ───────────
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['exists']==True, 'file missing'" 2>/dev/null \
+  && echo "  ✅ PASS: sitemap.xml file exists" \
+  || { echo "  ❌ FAIL: sitemap.xml not found"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['size']>0, 'file empty'" 2>/dev/null \
+  && echo "  ✅ PASS: sitemap.xml non-empty (${size:-?} bytes)" \
+  || { echo "  ❌ FAIL: sitemap.xml is empty"; ALL_PASS=false; }
+
+# ── Assert: sitemap.xml is valid XML ───────────────────────────
+SITEMAP_PATH=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['path'])")
+XML_OK=$(python3 -c "
+import xml.etree.ElementTree as ET
+try:
+    tree = ET.parse('$SITEMAP_PATH')
+    root = tree.getroot()
+    print(f'OK|tag={root.tag}|ns={root.get(\"xmlns\",\"?\")}')
+except Exception as e:
+    print(f'FAIL|{e}')
+" 2>&1)
+
+echo "$XML_OK" | grep -q "^OK|" \
+  && echo "  ✅ PASS: sitemap.xml is valid XML" \
+  || { echo "  ❌ FAIL: sitemap.xml not valid XML: $XML_OK"; ALL_PASS=false; }
+
+# ── Assert: root is <urlset> with sitemaps.org namespace ──────
+echo "$XML_OK" | grep -q "tag={http.*sitemaps.org.*urlset\|tag=urlset" \
+  && echo "  ✅ PASS: root is <urlset> (sitemaps.org namespace)" \
+  || { echo "  ❌ FAIL: root not urlset: $XML_OK"; ALL_PASS=false; }
+
+# ── Assert: contains <loc> elements ────────────────────────────
+LOC_COUNT=$(python3 -c "
+import xml.etree.ElementTree as ET
+ns = {'sm': 'https://www.sitemaps.org/schemas/sitemap/0.9'}
+tree = ET.parse('$SITEMAP_PATH')
+root = tree.getroot()
+# Try with namespace, then without
+locs = root.findall('.//sm:loc', ns) or root.findall('.//{https://www.sitemaps.org/schemas/sitemap/0.9}loc') or root.findall('.//loc')
+print(len(locs))
+" 2>/dev/null || echo "0")
+
+[ "$LOC_COUNT" -gt 0 ] 2>/dev/null \
+  && echo "  ✅ PASS: sitemap.xml contains ${LOC_COUNT} <loc> elements" \
+  || { echo "  ❌ FAIL: no <loc> elements found (${LOC_COUNT})"; ALL_PASS=false; }
+
+# ── Assert: contains <lastmod> elements ────────────────────────
+LM_COUNT=$(python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$SITEMAP_PATH')
+root = tree.getroot()
+lastmods = root.findall('.//lastmod') or root.findall('.//{https://www.sitemaps.org/schemas/sitemap/0.9}lastmod') or root.findall('.//{*}lastmod')
+print(len(lastmods))
+" 2>/dev/null || echo "0")
+
+[ "$LM_COUNT" -gt 0 ] 2>/dev/null \
+  && echo "  ✅ PASS: sitemap.xml contains ${LM_COUNT} <lastmod> elements" \
+  || { echo "  ❌ FAIL: no <lastmod> elements found (${LM_COUNT})"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36i.1 PASSED — export_kb format=sitemap produces valid XML sitemap with <urlset>, <loc>, <lastmod>"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36i.1 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `export_kb(domain="medical-research", format="sitemap")` returns `success=True`, `format="sitemap"`
+- ✅ File `exports/medical-research/sitemap.xml` exists, is non-empty
+- ✅ File is valid XML with `<urlset>` root element and sitemaps.org namespace
+- ✅ Contains `<loc>` elements (one per KB entry + index page)
+- ✅ Contains `<lastmod>` elements with `YYYY-MM-DD` date format
+- ✅ Deterministic: no LLM, no network — pure XML generation from KB entries
+- ✅ `format="sitemap"` is whitelisted in `export_kb()` (src/autoinfo/output/__init__.py line 272)
+
+
+#### 36i.2 🟢 JSON-LD structured data in HTML digest/report
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36i
+
+# ── Generate HTML digest via MCP ───────────────────────────────
+DIGEST_HTML=$(python3 << 'PYEOF'
+import json
+from autoinfo.mcp.server import app
+
+result = app.call_tool("generate_digest", {
+    "domain": "medical-research",
+    "period": "week",
+    "format": "html"
+})
+data = json.loads(result.content[0].text)
+html = data.get("content", "") or data.get("html", "") or data.get("output", "")
+
+with open("/tmp/test-q36i/digest_output.html", "w") as f:
+    f.write(html)
+
+# Quick checks
+has_ldjson = '<script type="application/ld+json">' in html
+has_closing = '</script>' in html
+
+# Extract JSON-LD content
+ld_json = ""
+if has_ldjson:
+    import re
+    m = re.search(r'<script type="application/ld+json">\s*(.*?)\s*</script>', html, re.DOTALL)
+    if m:
+        ld_json = m.group(1)
+
+parsed_ok = False
+parsed_keys = []
+if ld_json:
+    try:
+        obj = json.loads(ld_json)
+        parsed_ok = isinstance(obj, dict)
+        parsed_keys = list(obj.keys())
+    except Exception:
+        pass
+
+print(json.dumps({
+    "html_len": len(html),
+    "has_ldjson_script": has_ldjson,
+    "has_closing_script": has_closing,
+    "ld_json_len": len(ld_json),
+    "parsed_ok": parsed_ok,
+    "ld_keys": parsed_keys,
+    "has_context": "@context" in ld_json,
+    "has_type": "@type" in ld_json,
+}))
+PYEOF
+)
+EXIT_CODE=$?
+
+# ── Assert: digest HTML generation succeeded ──────────────────
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_digest(html) exit 0" \
+  || { echo "  ❌ FAIL: digest generation crashed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+HTML_LEN=$(echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('html_len',0))")
+[ "$HTML_LEN" -gt 100 ] 2>/dev/null \
+  && echo "  ✅ PASS: HTML output ${HTML_LEN} chars (non-trivial)" \
+  || { echo "  ❌ FAIL: HTML output too short (${HTML_LEN} chars)"; ALL_PASS=false; }
+
+# ── Assert: <script type="application/ld+json"> present ───────
+echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['has_ldjson_script']==True, 'no ld+json script'" 2>/dev/null \
+  && echo "  ✅ PASS: <script type=\"application/ld+json\"> found in HTML" \
+  || { echo "  ❌ FAIL: no application/ld+json script tag"; ALL_PASS=false; }
+
+echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['has_closing_script']==True, 'no closing script'" 2>/dev/null \
+  && echo "  ✅ PASS: closing </script> tag present" \
+  || { echo "  ❌ FAIL: no closing script tag"; ALL_PASS=false; }
+
+# ── Assert: JSON-LD payload is non-empty and valid JSON ───────
+LD_LEN=$(echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ld_json_len',0))")
+[ "$LD_LEN" -gt 10 ] 2>/dev/null \
+  && echo "  ✅ PASS: JSON-LD payload ${LD_LEN} chars (non-empty)" \
+  || { echo "  ❌ FAIL: JSON-LD too short (${LD_LEN} chars)"; ALL_PASS=false; }
+
+echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['parsed_ok']==True, 'JSON-LD not valid JSON'" 2>/dev/null \
+  && echo "  ✅ PASS: JSON-LD parses as valid JSON (python json.loads)" \
+  || { echo "  ❌ FAIL: JSON-LD is not valid JSON"; ALL_PASS=false; }
+
+# ── Assert: JSON-LD contains schema.org required fields ───────
+echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['has_context']==True, '@context missing'" 2>/dev/null \
+  && echo "  ✅ PASS: JSON-LD contains @context (schema.org)" \
+  || { echo "  ❌ FAIL: @context missing in JSON-LD"; ALL_PASS=false; }
+
+echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['has_type']==True, '@type missing'" 2>/dev/null \
+  && echo "  ✅ PASS: JSON-LD contains @type" \
+  || { echo "  ❌ FAIL: @type missing in JSON-LD"; ALL_PASS=false; }
+
+KEYS=$(echo "$DIGEST_HTML" | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join(d.get('ld_keys',[])))")
+echo "  ℹ️ JSON-LD keys: ${KEYS:-none}"
+
+# ── Verify saved HTML file ────────────────────────────────────
+[ -s /tmp/test-q36i/digest_output.html ] \
+  && echo "  ✅ PASS: digest_output.html saved (non-empty)" \
+  || { echo "  ❌ FAIL: digest_output.html missing"; ALL_PASS=false; }
+
+# Confirm the saved file also contains the ld+json script
+grep -q 'application/ld+json' /tmp/test-q36i/digest_output.html 2>/dev/null \
+  && echo "  ✅ PASS: saved HTML file contains ld+json script" \
+  || { echo "  ❌ FAIL: saved HTML file missing ld+json"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36i.2 PASSED — HTML digest contains valid JSON-LD structured data with @context, @type"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36i.2 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_digest(format="html")` returns non-trivial HTML content (>100 chars)
+- ✅ HTML contains `<script type="application/ld+json">...</script>` block
+- ✅ JSON-LD payload is valid JSON (parses with `json.loads`)
+- ✅ JSON-LD contains `@context` (schema.org) and `@type` fields
+- ✅ JSON-LD payload is non-empty (>10 chars)
+- ✅ Saved HTML file (`/tmp/test-q36i/digest_output.html`) contains the ld+json script
+- ⚠️ `_render_digest_html()` passes `structured_data` to `digest.html.j2` template; `_render_report_html()` does the same for `report_html.j2` (verified at lines 3484-3504 and 5029-5050 in `src/autoinfo/output/__init__.py`)
+- ⚠️ This is a **deterministic code-path check** (no LLM synthesis needed for structured data injection — the `<script>` block is rendered by the template regardless of LLM content)
+
+
+#### 36i.3 🟢 export_kb format="sqlite" — openable non-empty SQLite database
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36i
+
+# ── Seed KB (idempotent — KB may already exist from 36i.1/36i.2) ──
+if [ ! -f autoinfo.db ]; then
+  autoinfo init --demo medical-research
+  autoinfo collect --domain medical-research --limit 5
+  autoinfo process --domain medical-research
+fi
+
+# ── Execute: export_kb with format="sqlite" ───────────────────
+RESULT=$(python3 << 'PYEOF'
+import json, os
+from autoinfo.output import export_kb
+
+data = export_kb(domain="medical-research", format="sqlite")
+db_path = data.get("path", "") or data.get("file_path", "")
+exists = os.path.isfile(db_path) if db_path else False
+size = os.path.getsize(db_path) if exists else 0
+
+print(json.dumps({
+    "success": data.get("success"),
+    "format": data.get("format"),
+    "entries_count": data.get("entries_count", 0),
+    "path": db_path,
+    "exists": exists,
+    "size": size,
+}))
+PYEOF
+)
+EXIT_CODE=$?
+
+# ── Assert: export_kb returned success ────────────────────────
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: export_kb(sqlite) exit 0" \
+  || { echo "  ❌ FAIL: export_kb crashed, exit $EXIT_CODE"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['success']==True, 'success not True'" 2>/dev/null \
+  && echo "  ✅ PASS: export success=True" \
+  || { echo "  ❌ FAIL: success not True"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['format']=='sqlite', f\"format={d['format']}\"" 2>/dev/null \
+  && echo "  ✅ PASS: format=sqlite in result" \
+  || { echo "  ❌ FAIL: format not sqlite"; ALL_PASS=false; }
+
+# ── Assert: .db file exists and is non-empty ───────────────────
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['exists']==True, 'file missing'" 2>/dev/null \
+  && echo "  ✅ PASS: exported .db file exists" \
+  || { echo "  ❌ FAIL: .db file not found"; ALL_PASS=false; }
+
+echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['size']>0, 'file empty'" 2>/dev/null \
+  && echo "  ✅ PASS: exported .db non-empty (${size:-?} bytes)" \
+  || { echo "  ❌ FAIL: .db file is empty"; ALL_PASS=false; }
+
+# ── Assert: SQLite database is openable and has tables ─────────
+DB_PATH=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['path'])")
+SQLITE_OK=$(python3 -c "
+import sqlite3, json
+try:
+    conn = sqlite3.connect('$DB_PATH')
+    cur = conn.execute(\"SELECT name FROM sqlite_master WHERE type='table'\")
+    tables = [r[0] for r in cur.fetchall()]
+    # Check entries table exists
+    has_entries = 'entries' in tables
+    # Count rows in entries table
+    row_count = 0
+    if has_entries:
+        row_count = conn.execute('SELECT COUNT(*) FROM entries').fetchone()[0]
+    conn.close()
+    print(json.dumps({
+        'openable': True,
+        'table_count': len(tables),
+        'tables': tables,
+        'has_entries': has_entries,
+        'row_count': row_count,
+    }))
+except Exception as e:
+    print(json.dumps({'openable': False, 'error': str(e)}))
+")
+
+echo "$SQLITE_OK" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['openable']==True, f\"sqlite3 error: {d.get('error','?')}\"" 2>/dev/null \
+  && echo "  ✅ PASS: SQLite database opens successfully" \
+  || { echo "  ❌ FAIL: cannot open SQLite database"; ALL_PASS=false; }
+
+TABLE_COUNT=$(echo "$SQLITE_OK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('table_count',0))")
+[ "$TABLE_COUNT" -gt 0 ] 2>/dev/null \
+  && echo "  ✅ PASS: ${TABLE_COUNT} table(s) found in exported DB" \
+  || { echo "  ❌ FAIL: no tables in exported DB"; ALL_PASS=false; }
+
+echo "$SQLITE_OK" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['has_entries']==True, 'entries table missing'" 2>/dev/null \
+  && echo "  ✅ PASS: 'entries' table exists" \
+  || { echo "  ❌ FAIL: 'entries' table not found"; ALL_PASS=false; }
+
+ROW_COUNT=$(echo "$SQLITE_OK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('row_count',0))")
+[ "$ROW_COUNT" -gt 0 ] 2>/dev/null \
+  && echo "  ✅ PASS: entries table has ${ROW_COUNT} row(s) (non-empty)" \
+  || { echo "  ❌ FAIL: entries table is empty (${ROW_COUNT} rows)"; ALL_PASS=false; }
+
+# ── Assert: entries_count in result matches row_count ──────────
+EXPORTED_COUNT=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('entries_count',0))")
+[ "$EXPORTED_COUNT" -gt 0 ] 2>/dev/null \
+  && echo "  ✅ PASS: entries_count=${EXPORTED_COUNT} in export result" \
+  || { echo "  ❌ FAIL: entries_count=0 in export result"; ALL_PASS=false; }
+
+[ "$EXPORTED_COUNT" -eq "$ROW_COUNT" ] 2>/dev/null \
+  && echo "  ✅ PASS: entries_count (${EXPORTED_COUNT}) matches row_count (${ROW_COUNT})" \
+  || { echo "  ⚠️ WARN: entries_count (${EXPORTED_COUNT}) ≠ row_count (${ROW_COUNT}) — may be expected for filtered exports"; }
+
+# ── Verify: sqlite3 CLI can read the file (if available) ──────
+if command -v sqlite3 &> /dev/null; then
+  SQLITE_TABLES=$(sqlite3 "$DB_PATH" ".tables" 2>&1)
+  echo "$SQLITE_TABLES" | grep -q "entries" \
+    && echo "  ✅ PASS: sqlite3 CLI confirms 'entries' table" \
+    || { echo "  ❌ FAIL: sqlite3 CLI did not find 'entries'"; ALL_PASS=false; }
+else
+  echo "  ⚠️ sqlite3 CLI not available (python3 check already passed)"
+fi
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36i.3 PASSED — export_kb format=sqlite produces openable non-empty SQLite DB with 'entries' table"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36i.3 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `export_kb(domain="medical-research", format="sqlite")` returns `success=True`, `format="sqlite"`, `entries_count` > 0
+- ✅ Exported `.db` file (`exports/medical-research/autoinfo-export-*.db`) exists, is non-empty
+- ✅ `python3 sqlite3.connect(db_path)` opens the database without error
+- ✅ `sqlite_master` contains `entries` table with columns: `entry_id`, `title`, `domain`, `tier`, `source_url`, `source_type`, `summary`, `collected_at`, `relevance_score`
+- ✅ `SELECT COUNT(*) FROM entries` > 0 — database is populated, not empty
+- ✅ `entries_count` in the export result dict matches the row count in the DB
+- ✅ `sqlite3` CLI (if available) also confirms the `entries` table
+- ⚠️ Deterministic: no LLM, no network — pure SQLite file copy/filter from `autoinfo.db` (via `_export_sqlite()` at line 526 of `src/autoinfo/output/__init__.py`)
+- ⚠️ CLI equivalent: `autoinfo export kb --domain medical-research --format sqlite` (src/autoinfo/cli/output.py line 148)
+
+
+---
+
+### 📊 Q36i Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36i.1 export_kb format="sitemap" | ⬜ |
+| 36i.2 JSON-LD in HTML digest | ⬜ |
+| 36i.3 export_kb format="sqlite" | ⬜ |
+
+**OVERALL: ⬜**

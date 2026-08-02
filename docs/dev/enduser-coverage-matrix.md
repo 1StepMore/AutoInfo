@@ -36,8 +36,8 @@
 | A21 | **通用爬虫** | 任意 Web 页面 | ✅ Web + Playwright | ✅ Part 1 Q2 | ✅ |
 | A22 | **创作者订阅平台** | Substack, Patreon, Medium | ⚠️ Substack 经通用 RSS（tech-ai-developer 域）；Patreon/Medium 无 | ⚠️ Part 1 Q6b.2（Substack RSS） | ⚠️ |
 | A23 | **社科/法律工作论文** | SSRN | ✅ SSRNHandler（RSS 接入，同 Substack 模式） | ✅ Part 1 Q2b.44（SSRN E2E） | ✅ |
-| A24 | **开源数据集** | Hugging Face, Kaggle | ✅ HuggingFaceHandler（HF datasets-server 公开 API + Kaggle API） | ⚠️ 仅单元测试（无 Part 1 E2E 场景，collector 已测，集成场景待补） | ✅ |
-| A25 | **学术付费数据库** | Elsevier/Scopus, Springer Nature, IEEE Xplore | ✅ UnpaywallHandler + COREHandler（OA 全文子集，非机构付费全文） | ✅ Part 1 Q2b.43（Unpaywall/CORE OA E2E） | ⚠️（OA 全文子集，机构付费许可内容不在覆盖范围） |
+| A24 | **开源数据集** | Hugging Face, Kaggle | ✅ HuggingFaceHandler（HF datasets-server 公开 API + Kaggle API） | ✅ Part 1 Q2b.49（HF/Kaggle E2E，46 mock tests） | ✅ |
+| A25 | **学术付费数据库** | Elsevier/Scopus, Springer Nature, IEEE Xplore | ✅ UnpaywallHandler + COREHandler（OA 全文子集，非机构付费全文） | ✅ Part 1 Q2b.46/Q2b.47（Unpaywall/CORE OA E2E） | ⚠️（OA 全文子集，机构付费许可内容不在覆盖范围） |
 | A26 | **中文期刊库** | 知网 CNKI, 万方, 维普 | ❌ 无公开 API + 强反爬 | ❌ 未测试 | ❌ |
 | A27 | **MOOC/在线学位** | Coursera, edX | ❌ 无采集 API（许可复杂） | ❌ 未测试 | ❌ |
 | A28 | **海外短视频** | TikTok | ❌ 未接入（Research API 需学术审核） | ❌ 未测试 | ❌ |
@@ -107,16 +107,16 @@
 | # | 分发渠道 | 报告排名 | 触达路径 | AutoInfo Code | Validation Plan | 覆盖状态 |
 |:-:|---------|:-------:|:-------:|:-------------:|:---------------:|:--------:|
 | C1 | **社交+视频网络（算法分发）** | #1 (54%) | C 算法分发 | ✅ `social_publish` 渠道（mastodon/bluesky/linkedin/threads/x）(delivery/social.py) | ✅ tests/delivery/test_social.py | ✅ |
-| C2 | **搜索引擎+AI 概览** | #2 | A 主动拉取 | ✅ export_kb format="sitemap"（sitemap.xml）+ JSON-LD 结构化数据 | ✅ Part 3/4 场景 | ✅ |
+| C2 | **搜索引擎+AI 概览** | #2 | A 主动拉取 | ✅ export_kb format="sitemap"（sitemap.xml）+ JSON-LD 结构化数据 | ✅ Part 2 Q9.19（CLI sitemap）+ Part 4 Q36i.1/Q36i.2（export_kb sitemap + JSON-LD，新增场景） | ✅ |
 | C3 | **自有网站/APP** | #5 (51%) | A 主动拉取 | ✅ REST API (FastAPI, 8741) + Web UI Dashboard | ✅ Part 7 Q47/Q48 | ✅ |
 | C4 | **AI 聊天机器人/答案引擎** | #4 (10%) | D AI 代理 | ✅ MCP Server (139 tools) | ✅ Part 3+4 | ✅ |
-| C5 | **推送通知** | #6 | B 被动推送 | ✅ Push 推送通道 (PushDeliveryChannel + scheduler) | ✅ Part 13 场景 | ✅ |
+| C5 | **推送通知** | #6 | B 被动推送 | ✅ Push 推送通道 (PushDeliveryChannel + scheduler) | ✅ Part 13 Q63.20（push 渠道分发，新增场景）+ 单元测试 tests/delivery/test_push.py（23 tests） | ✅ |
 | C6 | **邮件订阅** | #7 | B 被动推送 | ✅ SMTP 渠道 | ✅ Part 9 Q56a 56a.4（env-gated：`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`，无凭证 SKIPPED 不 FAIL；2026-08-02 已加场景，凭证未提供故 SKIPPED） | ⚠️ 待 SMTP 凭证（场景就绪；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑 56a.4 → ✅） |
 | C7 | **RSS Feed** | #10 (6%) | A 主动拉取 | ✅ export_rss | ✅ Part 4 Q34.9 | ✅ |
 | C8 | **AI Agent 主动推送 (MCP/A2A)** | #13 (新兴) | D AI 代理 | ✅ MCP Server（MCP 侧完整；A2A 原生协议未实现，见 E15） | ✅ Part 3+4 | ✅ |
 | C9 | **电视/广播+智能电视** | #3 (52%) | B 被动推送 | ❌ 无 TV 输出能力 | ❌ 未测试 | ❌ |
 | C10 | **移动 App+应用商店** | #8 | A 主动拉取 | ❌ 无移动端 App（REST API 可被第三方 App 消费） | ❌ 未测试 | ❌ |
-| C11 | **播客平台目录** | #9 | B 被动推送 | ✅ RSS 2.0 播客目录发布（`<enclosure>` + `itunes:*` 命名空间，音频输出自动持久化 MP3） | ✅ Part 4 Q36e + 播客 RSS 发布验证（2026-08-02） | ✅ |
+| C11 | **播客平台目录** | #9 | B 被动推送 | ✅ RSS 2.0 播客目录发布（`<enclosure>` + `itunes:*` 命名空间，音频输出自动持久化 MP3） | ✅ Part 4 Q36h（36h.1 播客 RSS 发布 E2E） | ✅ |
 | C12 | **浏览器/默认首页/导航** | #11 | A 主动拉取 | ❌ 不适用（无浏览器产品） | ❌ 未测试 | ❌ |
 | C13 | **联盟/推荐链接** | #12 | A 主动拉取 | ❌ 不适用（无联盟系统） | ❌ 未测试 | ❌ |
 | C14 | **微信生态/IM 消息** | 补充（§10.2 中国触达） | B 被动推送 | ✅ wechat_work + wechat_oa + dingtalk + feishu + telegram + discord 6 渠道 | ✅ Part 13 Q63.17/63.18 | ✅ |
@@ -185,7 +185,7 @@
 | E11 | **API 数据许可/RAW 产品** | 报告 §8.3：API/数据许可（Reddit-Google $60M/年） | ✅ RAW 产品携带 `variants: ["api_feed", "webhook", "bulk_export"]` 字段，区分三种 RAW 交付模式 | ✅ Part 4 RAW 变体验证（2026-08-02） | ✅ |
 | E12 | **单篇/Micro-subscription** | 报告 §8.3（Substack IAP、单篇 $0.25-$15） | ✅ `create_checkout_session(mode="payment")` 单篇购买 + `check_access(article_id=...)` 权益快速路径 | ✅ Part 13 单篇支付 E2E（2026-08-02） | ✅ |
 | E13 | **RaaS 效果付费** | 报告 §8.3、§7.3 价值透明化 | ❌ 无按效果计费（E3 用量计量是基础） | ❌ 未测试 | ❌ |
-| E14 | **内容简化** | 报告 §6.5：30% 场景 | ✅ `simplify_content` MCP 工具（CEFR 参数化 A1-C1，LLM 改写 + 原始/简化分级 + 验证标记） | ✅ Part 4 Q36d（simplify_content E2E，2026-08-02） | ✅ |
+| E14 | **内容简化** | 报告 §6.5：30% 场景 | ✅ `simplify_content` MCP 工具（CEFR 参数化 A1-C1，LLM 改写 + 原始/简化分级 + 验证标记） | ✅ Part 4 Q36g（36g.1/36g.2） | ✅ |
 | E15 | **A2A 原生协议** | 报告 §9.5（Agent-to-Agent） | ❌ webhook 为单向回调，非 A2A 服务器 | ❌ 未测试 | ❌ |
 
 ### E 维度覆盖率统计

@@ -475,7 +475,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Obsidian wiki links | ✅ `[[wiki links]]` in KB Markdown files |
 | CEFR classification | ✅ LLM-based EN/ZH/JA (language-learning domain) |
 | Email sending | ✅ SMTP sender (digest delivery) |
-| Multi-channel delivery | ✅ 12 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish |
+| Multi-channel delivery | ✅ 13 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push |
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
 | End user portal | ✅ CLI-based self-service: preferences, history, product archive |
@@ -502,7 +502,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Access control | ✅ `check_access()` fast path — free always allowed, premium/enterprise require active paid subscription (G15) |
 | Consumption tracking | ✅ `ConsumptionEvent` auto-record on digest/report delivery (view/open/click), SQLite-backed store |
 | Automated notifications | ✅ Trial-ending reminders (3-day window) + content-ready notifications to end users |
-| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 12 delivery channels |
+| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 13 delivery channels |
 | Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |

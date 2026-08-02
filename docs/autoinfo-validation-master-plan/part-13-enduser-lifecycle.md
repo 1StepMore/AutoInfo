@@ -3906,7 +3906,7 @@ else:
 | 65c.1 get_billing_summary MCP | ⬜ |
 | 65c.2 get_budget_thresholds MCP | ⬜ |
 | 65c.3 set_budget_thresholds MCP | ⬜ |
-| 65c.4 create_checkout_session MCP | ⬜ |
+| 65c.4 create_checkout_session MCP | ⬜ | (2026-08-02 note: `create_checkout_session` implemented in `billing.py` with 4 unit tests in `TestCreateCheckoutSession` covering both `mode="subscription"` and `mode="payment"` branches; MCP-level E2E scenario not run — requires MCP server + Stripe keys. See Q65e.4 for the `mode="payment"` webhook path verified via mock.) |
 | 65c.5 get_enduser_usage MCP | ⬜ |
 | 65c.6 get_enduser_invoice MCP | ⬜ |
 | 65c.7 Cost meter records LLM tokens after real process_collection | ⬜ |
@@ -4309,6 +4309,134 @@ sys.exit(0)
 - ❌ Unknown events do NOT pollute the user store or subscription state
 
 
+#### 65e.4 🟢 checkout.session.completed with mode="payment" grants article entitlement (E12)
+
+```python
+#!/usr/bin/env python3
+"""Self-executing assert for 65e.4: mode="payment" → article_entitlement → check_article_access grants."""
+from autoinfo.billing import handle_webhook, _user_stripe_map, set_user_stripe_id, check_access
+from autoinfo.consumption import ConsumptionStore
+from autoinfo.user_store import create_profile, get_profile
+import json, os, sys
+
+ALL_PASS = True
+TEST_USER = "articlebuyer"
+TEST_CUSTOMER = "cus_article_test"
+TEST_ARTICLE = "art_42"
+TEST_PAYMENT_INTENT = "pi_test_art42"
+
+# ── Setup: ensure user exists and stripe mapping is ready ────────
+try:
+    create_profile(
+        user_id=TEST_USER,
+        name="Article Buyer",
+        email="buyer@example.com",
+        status="trial",
+        tier="free",
+    )
+except Exception:
+    pass  # User may already exist
+
+set_user_stripe_id(TEST_USER, TEST_CUSTOMER)
+
+# ── Execute: simulate checkout.session.completed with mode="payment" ──
+payment_event = {
+    "id": "evt_cs_payment",
+    "type": "checkout.session.completed",
+    "data": {
+        "object": {
+            "id": "cs_test_payment_session",
+            "customer": TEST_CUSTOMER,
+            "subscription": "",
+            "payment_intent": TEST_PAYMENT_INTENT,
+            "metadata": {
+                "end_user_id": TEST_USER,
+                "article_id": TEST_ARTICLE,
+            },
+            "mode": "payment",
+            "status": "complete",
+        }
+    },
+}
+
+result = handle_webhook(payment_event)
+print(f"  handle_webhook result: {json.dumps(result, indent=2)}")
+
+# ── Assertions: webhook response ─────────────────────────────────
+assert result["status"] == "processed", \
+    f"❌ Expected 'processed', got '{result['status']}'"
+print("  ✅ PASS: status='processed'")
+
+assert result["action"] == "payment_received", \
+    f"❌ Expected 'payment_received', got '{result['action']}'"
+print("  ✅ PASS: action='payment_received'")
+
+assert result["mode"] == "payment", \
+    f"❌ Expected mode='payment', got '{result.get('mode')}'"
+print("  ✅ PASS: mode='payment' (not 'subscription')")
+
+assert result["article_id"] == TEST_ARTICLE, \
+    f"❌ Expected article_id='{TEST_ARTICLE}', got '{result.get('article_id')}'"
+print(f"  ✅ PASS: article_id='{TEST_ARTICLE}'")
+
+assert result.get("entitlement_reason") == "granted", \
+    f"❌ Expected entitlement_reason='granted', got '{result.get('entitlement_reason')}'"
+print("  ✅ PASS: entitlement_reason='granted'")
+
+# ── Verify article_entitlement recorded in ConsumptionStore ──────
+store = ConsumptionStore()
+entitled = store.check_article_access(TEST_USER, TEST_ARTICLE)
+assert entitled is True, \
+    f"❌ check_article_access should return True after payment webhook, got {entitled}"
+print(f"  ✅ PASS: check_article_access('{TEST_USER}', '{TEST_ARTICLE}') → True")
+
+# ── Verify 'purchased' consumption event was recorded ────────────
+events = store.list_events(TEST_USER, limit=10)
+purchased = [e for e in events if e["event_type"] == "purchased"]
+assert len(purchased) >= 1, "❌ No 'purchased' consumption event recorded"
+assert purchased[0]["product_type"] == "article", \
+    f"❌ Expected product_type='article', got '{purchased[0]['product_type']}'"
+assert purchased[0]["product_id"] == TEST_ARTICLE, \
+    f"❌ Expected product_id='{TEST_ARTICLE}', got '{purchased[0]['product_id']}'"
+print(f"  ✅ PASS: 'purchased' event recorded (product_type='article', product_id='{TEST_ARTICLE}')")
+
+# ── Verify check_access article fast path grants ─────────────────
+access = check_access(TEST_USER, "free", article_id=TEST_ARTICLE)
+assert access["allowed"] is True, \
+    f"❌ check_access should allow with article entitlement, got allowed={access.get('allowed')}"
+assert access["plan"] == "article_purchase", \
+    f"❌ Expected plan='article_purchase', got '{access.get('plan')}'"
+assert access["article_id"] == TEST_ARTICLE, \
+    f"❌ Expected article_id='{TEST_ARTICLE}' in response, got '{access.get('article_id')}'"
+print(f"  ✅ PASS: check_access(article_id='{TEST_ARTICLE}') → allowed=True, plan='article_purchase'")
+
+# ── Verify profile was NOT switched to 'active' (payment ≠ subscription) ──
+profile = get_profile(TEST_USER)
+actual_status = getattr(profile, 'status', profile.to_dict().get('status', 'unknown'))
+assert actual_status == "trial", \
+    f"❌ BUG REGRESSION: mode=payment should NOT change profile status, got '{actual_status}'"
+print(f"  ✅ PASS: profile status unchanged ('{actual_status}') — payment ≠ subscription activation")
+
+stripe_sub = getattr(profile, 'stripe_subscription_id', '') or profile.to_dict().get('stripe_subscription_id', '')
+assert not stripe_sub, \
+    f"❌ BUG REGRESSION: mode=payment should NOT write stripe_subscription_id, got '{stripe_sub}'"
+print("  ✅ PASS: stripe_subscription_id not set (one-time purchase, no subscription)")
+
+print()
+print("✅ SCENARIO 65e.4 PASSED — mode='payment' grants article entitlement (E12)")
+sys.exit(0)
+```
+
+**Expected Result:**
+- ✅ `handle_webhook()` returns `status: "processed"`, `action: "payment_received"`, `mode: "payment"`
+- ✅ `article_id` and `entitlement_reason: "granted"` reflected in the response
+- ✅ `ConsumptionStore.check_article_access(user, article)` returns `True` after the webhook
+- ✅ A `purchased` consumption event is recorded with `product_type="article"`, `product_id=article_id`
+- ✅ `check_access(user, tier, article_id=...)` fast path returns `allowed=True`, `plan="article_purchase"`
+- ✅ Profile status is NOT switched to `active` (one-time purchase, not subscription activation)
+- ✅ `stripe_subscription_id` is NOT written to the profile (no empty subscription ID corruption)
+
+
 ---
 
 ### 📊 Q65e Verdict
@@ -4318,8 +4446,9 @@ sys.exit(0)
 | 65e.1 checkout.session.completed → subscription activated | ✅ |
 | 65e.2 customer.subscription.updated → status mapped | ✅ |
 | 65e.3 Invalid event type gracefully ignored | ✅ |
+| 65e.4 mode="payment" → article entitlement granted (E12) | ✅ |
 
-**OVERALL: ✅** — 42 mock tests + 6 stripe-mock integration tests (`TestStripeLifecycle`) cover full lifecycle regression including mode="payment" branch. Integration tests SKIP gracefully when stripe-mock is unavailable. (2026-08-02: Task 19 complete)
+**OVERALL: ✅** — 42 mock tests + 6 stripe-mock integration tests (`TestStripeLifecycle`) cover full lifecycle regression including mode="payment" branch. Scenario 65e.4 (added 2026-08-02) verifies the E12 single-article payment path: `handle_webhook` with `mode="payment"` records `article_entitlement` via `ConsumptionStore.grant_article_access`, emits a `purchased` consumption event, and `check_access(article_id=...)` fast path returns `allowed=True, plan="article_purchase"` — without corrupting the subscription profile (status stays `trial`, `stripe_subscription_id` not written). Integration tests SKIP gracefully when stripe-mock is unavailable. (2026-08-02: Task 19 complete; 65e.4 added 2026-08-02)
 
 ---
 

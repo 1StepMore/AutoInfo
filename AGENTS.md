@@ -22,7 +22,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (138 tools across 34 categories)
+2. **All capabilities** are exposed as MCP tools (139 tools across 34 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -67,7 +67,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 138 MCP tools across 34 categories
+│   │   │   ├── mcp-tools.md        # 139 MCP tools across 34 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -84,10 +84,10 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (138 tools)
+│       ├── mcp/                     # MCP server (139 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 22 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP)
+│       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output.py                # Output generation (digest, report, tutorial, export)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
@@ -179,7 +179,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-138 MCP tools across 34 categories:
+139 MCP tools across 34 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -213,7 +213,7 @@ freshness at output time.
 | **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
 | **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice`, `cost_dashboard`, `cost_allocation` |
 | **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
-| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content` |
+| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content`, `simplify_content` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Audit** | `query_audit_log` |
@@ -225,6 +225,8 @@ freshness at output time.
 4. Call `get_domain_schema(domain)` to see extraction fields for your domain
 5. Call `list_available_models()` to see configured LLM models
 6. Call `list_output_templates(domain)` to see output types for your domain
+
+**Response format**: All tools return `{success: true, data: ...}` on success and the error envelope `{success: false, error: {code, message, actionable}}` on failure. Error codes are centralized in `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 27 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API errors use the same envelope format.
 
 ## Common Patterns
 
@@ -246,8 +248,16 @@ freshness at output time.
 
 ### "Check system health"
 ```
-1. `diagnose_system()` → comprehensive health (LLM key, sources, disk, DB)
+1. `diagnose_system()` → comprehensive health (LLM key, sources, disk, DB) + `health_score` (0-100) + `phase` (init/collect/process/healthy/degraded)
 ```
+→ Returns structured health with composite score. On degraded status, inspect `phase` to identify the failing stage.
+
+### "Configure the LLM (BYOK)"
+```
+1. `configure_llm(api_key="sk-...", provider="openai", model="gpt-4")` → stores env var reference *(requires AutoInfo ≥ v1.8.1)*
+2. If LLM is missing, LLM-required tools return `LLM_NOT_CONFIGURED` (not a raw auth error) — see `docs/dev/required-api-keys.md`
+```
+→ Any of the 13 LLM-required tools (e.g. `process_collection`, `generate_digest`, `suggest_keywords`) return `ErrorCode.LLM_NOT_CONFIGURED` at dispatch when no key is configured.
 
 ### "Create a custom domain"
 ```
@@ -262,10 +272,10 @@ freshness at output time.
 ### "Initialise a project"
 ```
 1. `health_check()` → verify server availability
-2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure *(requires AutoInfo ≥ v1.3)*
+2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure *(requires AutoInfo ≥ v1.3)*, returns `next_steps` guidance array
 3. `list_domains()` → confirm demo domain is active
 ```
-→ Project initialised with demo domain, sources, and topics configured.
+→ Project initialised with demo domain, sources, and topics configured. Follow the `next_steps` items (e.g. `configure_llm`, add sources) to finish setup.
 
 ### "Save an article to the knowledge base"
 ```
@@ -348,7 +358,7 @@ freshness at output time.
 3. `curl http://localhost:8741/api/v1/entries?domain=medical-research` → paginated entries
 4. `curl -X POST http://localhost:8741/api/v1/search -H "Content-Type: application/json" -d '{"query": "embryo"}'`
 ```
-→ Full KB CRUD over HTTP, no auth required (localhost security).
+→ Full KB CRUD over HTTP, no auth required (localhost security). Errors use the same `{success, error: {code, message, actionable}}` envelope as MCP — nonexistent domains return `DomainNotFound` with remediation hint.
 
 ### "Configure the LLM"
 ```
@@ -356,7 +366,16 @@ freshness at output time.
 2. api_key is stored as `${AUTOINFO_LLM_API_KEY}` env var reference — never the raw key
 3. Set the actual key as an environment variable: `export AUTOINFO_LLM_API_KEY="sk-..."`
 ```
-→ LLM configured for extraction and processing.
+→ LLM configured for extraction and processing. If the key is missing, `configure_llm` returns `CONFIG_NOT_FOUND` and LLM-required tools return `LLM_NOT_CONFIGURED`. Full variable catalog: `docs/dev/required-api-keys.md`.
+
+### "Handle MCP error responses"
+All MCP tools return the canonical envelope `{success, error: {code, message, actionable}}`. When a tool fails:
+1. Read `error.code` to classify the failure (`DOMAIN_NOT_FOUND`, `LLM_NOT_CONFIGURED`, `VALIDATION_ERROR`, ...)
+2. If `actionable` is true, follow the remediation hint in `error.message` — e.g. `DOMAIN_NOT_FOUND` errors include "Use `add_domain()` to create it."
+3. For `LLM_NOT_CONFIGURED`, run `configure_llm()` first (or check `docs/dev/required-api-keys.md`)
+4. `process_collection` with no cached items returns `{status: "noop", total_items: 0}` — not an error, proceed with collection first
+```
+→ Every configuration gap produces a structured, actionable error; no raw tracebacks or silent fallbacks.
 
 ### "Generate cross-domain report"
 ```
@@ -433,7 +452,7 @@ Collection and processing now return a `job_id` for progress polling:
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
 | CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
-| Collection | ✅ 22 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP), scheduled via crond |
+| Collection | ✅ 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
@@ -448,7 +467,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 138 tools across 34 categories |
+| MCP server | ✅ 139 tools across 34 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -502,11 +521,23 @@ Collection and processing now return a `job_id` for progress polling:
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
-| Test suite | ✅ 2537 tests (includes new collector tests; 1 collection error pre-existing) |
+| Test suite | ✅ ~2747 tests (approx; includes new collector + E12/E14/E9/C11 tests; 1 collection error pre-existing) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
+| Standardized error envelope | ✅ All MCP + REST API errors return `{success: false, error: {code, message, actionable}}`; 27 ErrorCode values; `error_dict()` deprecated |
+| LLM guard | ✅ Centralized `LLM_NOT_CONFIGURED` at `call_tool` dispatch (13 LLM-required tools) — no more raw auth errors |
+| Actionable guidance | ✅ `init_project` returns `next_steps`; `diagnose_system` returns `health_score` (0-100) + `phase`; DOMAIN_NOT_FOUND includes "Use add_domain()" |
+| CLI help text | ✅ 9 CLI command groups have custom help descriptions |
+| Required API keys doc | ✅ `docs/dev/required-api-keys.md` catalogs all env vars; linked from error messages |
+| Content simplification (E14) | ✅ `simplify_content` MCP tool — CEFR-parameterized text simplification (A1-C1) with LLM rewrite + verification |
+| Single-article payment (E12) | ✅ `create_checkout_session` mode="payment" for one-time article purchases; `check_access(article_id=...)` entitlement fast path |
+| Source credibility score (E9) | ✅ Deterministic `source_score` (0-100) from quality tier, persisted on KBEntry, surfaced in G1 gate + search |
+| RAW product variants (E11) | ✅ RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field |
+| Podcast RSS publishing (C11) | ✅ RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace; audio output auto-persists MP3 |
+| Validated source types | ✅ `VALID_SOURCE_TYPES` frozenset (25 types) as single source of truth for source type validation |
 
 ## References
 
+- `docs/dev/required-api-keys.md` — Full catalog of API keys and environment variables
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
 - `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)

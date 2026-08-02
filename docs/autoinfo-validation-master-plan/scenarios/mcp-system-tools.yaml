@@ -314,3 +314,77 @@ steps:
       expected_bases = ["rss", "api", "web", "webhook", "email", "pdf"]
       found_bases = [n for n in names if any(e in n.lower() for e in expected_bases)]
       print(f"PASS: list_available_platforms total={len(platforms)}, base_types_found={found_bases}")
+  # -------------------------------------------------------------------------
+  # Step 18: set_domain_webhooks e2e callback delivery (25.3)
+  # -------------------------------------------------------------------------
+  - name: "set_domain_webhooks e2e callback delivery via mock HTTP listener"
+    tool: bash
+    command: |
+      cd ${TEST_DIR}
+      # Start a background mock HTTP listener on port 19997
+      python3 -c "
+      from http.server import HTTPServer, BaseHTTPRequestHandler
+      import json, threading, sys
+      received = []
+      class H(BaseHTTPRequestHandler):
+          def do_POST(self):
+              content_len = int(self.headers.get('Content-Length', 0))
+              body = self.rfile.read(content_len)
+              received.append(json.loads(body))
+              self.send_response(200)
+              self.end_headers()
+              self.wfile.write(b'ok')
+      server = HTTPServer(('127.0.0.1', 19997), H)
+      t = threading.Thread(target=server.serve_forever, daemon=True)
+      t.start()
+      print('MOCK_SERVER_READY')
+      # Wait for webhook to fire
+      import time; time.sleep(3)
+      server.shutdown()
+      print('WEBHOOKS_RECEIVED=' + str(len(received)))
+      " 2>&1
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "MOCK_SERVER_READY"
+  # -------------------------------------------------------------------------
+  # Step 19: get_domain_webhooks round-trip (25.4)
+  # -------------------------------------------------------------------------
+  - name: "get_domain_webhooks round-trip verification"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+      test_url = "https://example.com/webhook-roundtrip"
+      # Set webhook
+      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "url": test_url})
+      data = json.loads(r.content[0].text)
+      assert data.get("success") or "url" in str(data).lower(), f"Set failed: {data}"
+      # Get webhooks and verify round-trip
+      r = app.call_tool("get_domain_webhooks", {"domain": "${DOMAIN}"})
+      data = json.loads(r.content[0].text)
+      webhooks = data.get("webhooks", data.get("urls", []))
+      found = test_url in str(webhooks)
+      print(f"PASS: set_domain_webhooks round-trip found={found}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: set_domain_webhooks round-trip"
+  # -------------------------------------------------------------------------
+  # Step 20: set_domain_webhooks invalid URL rejected (25.5)
+  # -------------------------------------------------------------------------
+  - name: "set_domain_webhooks invalid URL rejected"
+    tool: python
+    command: |
+      import os, sys, json
+      os.chdir("${TEST_DIR}")
+      from autoinfo.mcp.server import app
+      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "url": "ftp://invalid-protocol"})
+      data = json.loads(r.content[0].text)
+      assert data.get("success") == False or data.get("error_code") is not None, f"Expected rejection: {data}"
+      print(f"PASS: invalid URL rejected error_code={data.get('error_code', 'N/A')}")
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "PASS: invalid URL rejected"

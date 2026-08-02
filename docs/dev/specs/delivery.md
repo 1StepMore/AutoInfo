@@ -17,7 +17,8 @@
 | **Tutorial** | `generate_tutorial()` | Step-by-step learning content built from KB | Jinja2 + LLM | Markdown, HTML | D1, D2 |
 | **Presentation** | `generate_presentation()` | Slide deck generated from KB entries | Jinja2 + Reveal.js CDN | HTML | D1, D2 |
 | **Agent-Native JSON** | `generate_digest(format="agent")` | Structured JSON-LD optimized for LLM re-consumption | LLM renderer | JSON-LD (`@type: "KnowledgeDigest"`) | D1, D2 |
-| **KB Export** | `export_kb()` | Bulk export of KB entries | Export renderer | Markdown, JSON, SQLite, PDF, CSV, GraphML | D1, D2 |
+| **KB Export** | `export_kb()` | Bulk export of KB entries | Export renderer | Markdown, JSON, SQLite, PDF, CSV, GraphML, **Bundle (ZIP)** | D1, D2 |
+| **RAW Feed** | `list_products()` / `get_product()` (type=`raw`) | Raw KB items delivered as API feed, webhook stream, or bulk export. `Product.variants` distinguishes the three modes: `["api_feed", "webhook", "bulk_export"]` (E11). | N/A (direct KB read) | API JSON, webhook payload, export bundle | D1, D3 |
 
 ### 1.2 Generation Pipeline
 
@@ -174,7 +175,7 @@ class DeliveryChannel(ABC):
 
 | Channel | Channel Type | Config Requirements | SLA Target |
 |---------|-------------|---------------------|------------|
-| **SMTP Email** | `email` | SMTP host, port, username, password, from_addr | < 30s |
+| **SMTP Email** | `smtp` | SMTP host, port, username, password, from_addr | < 30s |
 | **Telegram** | `telegram` | Bot token, chat_id | < 5s |
 | **WeChat OA** | `wechat_oa` | AppID, AppSecret, template_id | < 5s |
 | **WeChat Work** | `wechat_work` | CorpID, AgentID, Secret | < 5s |
@@ -182,26 +183,28 @@ class DeliveryChannel(ABC):
 | **FeiShu/Lark** | `feishu` | Webhook URL + secret | < 3s |
 | **Discord** | `discord` | Webhook URL | < 3s |
 | **Webhook** | `webhook` | URL, HMAC secret (opt), retry config | < 10s |
-| **REST API** | `rest` | Base URL, API key | < 5s |
-| **Local File Export** | `export` | Output directory | < 1s |
-| **RSS Feed** 🔜 | `rss` | Output directory, feed config (title, description, ttl) | < 30s |
-| **Agent Push** 🔜 | `agent_push` | Callback URL, auth token (opt), event filter | < 10s |
+| **REST API** | `rest_api` | Base URL, API key | < 5s |
+| **Local File Export** | `file_export` | Output directory | < 1s |
+| **RSS Feed** ✅ | `rss` | Output directory, feed config (title, description, ttl). RSS 2.0 channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation (C11). | < 30s |
+| **Social Publish** ✅ | `social_publish` | Platform credentials, post template | < 10s |
 
 ### 2.4 Retry & SLA
 
 ```python
 # Per-channel retry config
 CHANNEL_RETRY_CONFIG: dict[str, RetryConfig] = {
-    "email":      RetryConfig(max_retries=3, backoff_base=5.0, backoff_max=300.0),
-    "telegram":   RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
-    "wechat_oa":  RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
-    "wechat_work": RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
-    "dingtalk":   RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
-    "feishu":     RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
-    "discord":    RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
-    "webhook":    RetryConfig(max_retries=3, backoff_base=2.0, backoff_max=60.0),
-    "rest":       RetryConfig(max_retries=3, backoff_base=2.0, backoff_max=60.0),
-    "export":     RetryConfig(max_retries=1, backoff_base=1.0, backoff_max=5.0),
+    "smtp":          RetryConfig(max_retries=3, backoff_base=5.0, backoff_max=300.0),
+    "telegram":      RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
+    "wechat_oa":     RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
+    "wechat_work":   RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
+    "dingtalk":      RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
+    "feishu":        RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
+    "discord":       RetryConfig(max_retries=2, backoff_base=1.0, backoff_max=10.0),
+    "webhook":       RetryConfig(max_retries=3, backoff_base=2.0, backoff_max=60.0),
+    "rest_api":      RetryConfig(max_retries=3, backoff_base=2.0, backoff_max=60.0),
+    "file_export":   RetryConfig(max_retries=1, backoff_base=1.0, backoff_max=5.0),
+    "rss":           RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
+    "social_publish": RetryConfig(max_retries=2, backoff_base=2.0, backoff_max=30.0),
 }
 
 @dataclass
@@ -341,7 +344,7 @@ class Subscription:
     domain: str
     topics: list[str]
     products: list[str]              # ["digest", "report", "tutorial", "presentation"]
-    channels: list[str]              # Channel types for delivery ("email", "telegram", ...)
+    channels: list[str]              # Channel types for delivery ("smtp", "telegram", ...) — one of the 12 canonical channels
     schedule: str                    # Cron expression ("0 8 * * 1" = weekly Monday 8AM)
     status: SubscriptionStatus       # active | paused | cancelled
     created_at: datetime
@@ -738,7 +741,7 @@ subscriptions                      product_instances
 @dataclass
 class ChannelHealth:
     """Health status for a single delivery channel."""
-    channel_type: str                    # "email", "telegram", "wechat_oa", etc.
+    channel_type: str                    # "smtp", "telegram", "wechat_oa", etc. — one of 12 canonical channels
     status: ChannelHealthStatus
     health_score: float                  # 0.0–100.0 (composite score)
     
@@ -812,7 +815,7 @@ Default weights: SuccessRateWeight=60, LatencyWeight=30, ConsecutiveFailurePenal
 Health score clamped to [0, 100].
 ```
 
-> **SLA Targets** (from §2.3): Email < 30s, Telegram/DingTalk/FeiShu < 5s, Discord/Webhook < 10s, REST API < 5s, Export < 1s.
+> **SLA Targets** (from §2.3): SMTP < 30s, Telegram/DingTalk/FeiShu < 5s, Discord/Webhook < 10s, REST API < 5s, File Export < 1s, RSS < 30s, Social Publish < 10s.
 
 > **Implementation status (2026-07-27)**: No channel health monitoring exists. DeliveryLog records per-item delivery results but there is no aggregate channel health view, no auto-suspend mechanism, and no health monitoring MCP tools. See [CD-007](cross-dimensional-catalog.md#cd-007-delivery-channel-health-monitoring).
 

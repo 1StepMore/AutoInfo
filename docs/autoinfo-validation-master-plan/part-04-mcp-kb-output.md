@@ -1214,6 +1214,59 @@ fi
 - ✅ Content contains briefing-style markers (daily, briefing, today, headline)
 - ✅ Returns `success=True` with Markdown content
 
+#### 33.13 🔴 LLM guard on output tools — `LLM_NOT_CONFIGURED` envelope (v1.8.1)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q33
+
+# Run with AUTOINFO_LLM_API_KEY unset — output tools must return the
+# structured LLM_NOT_CONFIGURED error at dispatch, NOT a raw auth traceback.
+RESULT=$(env -u AUTOINFO_LLM_API_KEY python3 << 'PYEOF'
+import json, os
+os.environ.pop("AUTOINFO_LLM_API_KEY", None)
+from autoinfo.mcp.server import app
+
+res = app.call_tool("generate_digest", {"domain": "medical-research", "period": "week", "format": "markdown"})
+data = json.loads(res.content[0].text)
+if data.get("success") is False:
+    err = data.get("error", {})
+    print(f"OK|code={err.get('code','?')}|actionable={err.get('actionable','?')}")
+else:
+    # No LLM key configured, so success would be unexpected — but allow noop
+    print(f"OK|success={data.get('success')}|status={data.get('status','?')}")
+PYEOF
+)
+EXIT_CODE=$?
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: generate_digest with no LLM key exit 0 (structured error)" \
+  || { echo "  ❌ FAIL: raw crash exit $EXIT_CODE — expected LLM_NOT_CONFIGURED"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -q "OK|" \
+  && echo "  ✅ PASS: structured response returned (no raw traceback)" \
+  || { echo "  ❌ FAIL: no structured response"; ALL_PASS=false; }
+
+echo "$RESULT" | grep -qE "code=LLMNotConfigured|status=noop" \
+  && echo "  ✅ PASS: LLM_NOT_CONFIGURED envelope or noop status" \
+  || { echo "  ❌ FAIL: unexpected error code in: $RESULT"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 33.13 PASSED — LLM guard on output tools"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 33.13 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `generate_digest` (LLM-required) returns the canonical `LLM_NOT_CONFIGURED` envelope when no key is configured — not a raw litellm auth error
+- ✅ Centralized `call_tool` dispatch guard covers output tools (13 LLM-required tools total)
+- ✅ No silent fallback, no traceback
+
 ---
 
 ### 📊 Q33 Verdict
@@ -1232,6 +1285,7 @@ fi
 | 33.10 generate_cross_domain_report (B8) | ⬜ |
 | 33.11 generate_report format=video (Task 8) | ⬜ |
 | 33.12 generate_report report_type=daily-briefing (B7) | ⬜ |
+| 33.13 LLM guard on output tools (v1.8.1) | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -1623,7 +1677,7 @@ if [ "$ALL_PASS" = true ]; then echo ""; echo "✅ SCENARIO 34.10 PASSED — exp
 |----------|--------|
 | 34.1 export_kb | ⬜ |
 | 34.1b export_kb (bundle — B19) | ⬜ |
-| 34.1c export_kb pdf — B15 (weasyprint, configurable timeout) | ⬜ |
+| 34.1c export_kb pdf — B15 (weasyprint, configurable timeout) | ✅ |
 | 34.2 import_kb | ⬜ |
 | 34.3 classify_cefr | ⬜ |
 | 34.4 send_email_digest | ⬜ |
@@ -1923,6 +1977,99 @@ assert "score" in data or "freshness" in data or "statistics" in data
 **Expected Result:** ✅ Returns freshness score (0-100) for the domain.
 
 
+#### 36b.7 🟢 recommend_content [REQUIRES LLM KEY]
+```python
+from autoinfo.mcp.server import app
+import json
+
+# Seed KB entries first (create_kb_entry does NOT require LLM)
+entries = [
+    {"domain": "medical-research", "title": "CRISPR Gene Editing Advances in 2026",
+     "content": "Recent advances in CRISPR-Cas9 gene editing technology...",
+     "source_url": "https://example.com/crispr-2026", "source_type": "web"},
+    {"domain": "medical-research", "title": "mRNA Vaccine Platform Beyond COVID-19",
+     "content": "The mRNA vaccine platform developed during the pandemic...",
+     "source_url": "https://example.com/mrna-vaccine", "source_type": "web"},
+    {"domain": "medical-research", "title": "AI-Powered Drug Discovery in 2026",
+     "content": "Deep learning models have accelerated drug discovery...",
+     "source_url": "https://example.com/ai-drug-discovery", "source_type": "web"},
+]
+
+entry_ids = []
+for e in entries:
+    result = app.call_tool("create_kb_entry", e)
+    data = json.loads(result.content[0].text)
+    if data.get("success"):
+        entry_ids.append(data["data"]["entry_id"])
+
+assert len(entry_ids) == 3, f"Seeded {len(entry_ids)} entries, expected 3"
+
+# Call recommend_content
+result = app.call_tool("recommend_content", {
+    "user_id": "test-user-36b",
+    "query": "gene therapy and mRNA vaccines",
+    "domain": "medical-research",
+    "limit": 5,
+})
+data = json.loads(result.content[0].text)
+
+# Handle LLM guard gracefully
+if not data.get("success") and data.get("error", {}).get("code") == "LLMNotConfigured":
+    print("⏭ SKIP: LLM key not configured — recommend_content blocked by LLM guard")
+    exit(0)
+
+# Assertions
+payload = data.get("data", data)
+items = payload.get("items", [])
+count = payload.get("count", 0)
+
+assert len(items) > 0, "recommend_content returned empty items"
+assert count == len(items), f"count {count} != items length {len(items)}"
+
+for item in items:
+    assert "entry_id" in item and item["entry_id"], f"item missing entry_id"
+    assert "title" in item, f"item missing title"
+    assert "score" in item and 0 <= item["score"] <= 100, f"score {item.get('score')} out of range"
+    assert "reason" in item and item["reason"], f"item missing reason"
+
+print(f"✅ recommend_content: {len(items)} items, scores in range, all fields present")
+```
+**Expected Result:** ✅ Returns scored recommendations (items non-empty). Each item has `entry_id`, `title`, `score` (0-100), and `reason` fields. Scores are within expected range. When LLM key is unavailable, gracefully degrades with `LLM_NOT_CONFIGURED` skip.
+
+
+#### 36b.8 🔴 empty KB graceful degradation [REQUIRES LLM KEY]
+```python
+from autoinfo.mcp.server import app
+import json
+
+# With no entries in the KB (fresh/empty domain or nonsensical query)
+result = app.call_tool("recommend_content", {
+    "user_id": "test-user-empty",
+    "query": "zyxwvutsrqponmlkjihgfedcba",  # guaranteed no match
+    "domain": "medical-research",
+    "limit": 5,
+})
+data = json.loads(result.content[0].text)
+
+# Handle LLM guard
+if not data.get("success") and data.get("error", {}).get("code") == "LLMNotConfigured":
+    print("⏭ SKIP: LLM key not configured")
+    exit(0)
+
+# Assert empty KB returns empty results without error
+payload = data.get("data", data)
+items = payload.get("items", [])
+count = payload.get("count", 0)
+
+assert isinstance(items, list), "items must be a list"
+assert len(items) == 0, f"expected 0 items, got {len(items)}"
+assert count == 0, f"expected count 0, got {count}"
+
+print(f"✅ recommend_content empty KB: items={items}, count={count} — graceful degradation confirmed")
+```
+**Expected Result:** ✅ Empty KB returns `{items: [], count: 0}` without error or exception. Graceful degradation when KB has no matching content. When LLM key unavailable, degrades with LLM guard skip.
+
+
 ---
 
 ### 📊 Q36b Verdict
@@ -1935,6 +2082,8 @@ assert "score" in data or "freshness" in data or "statistics" in data
 | 36b.4 get_domain_decay | ⬜ |
 | 36b.5 mark_stale | ⬜ |
 | 36b.6 calculate_freshness_score | ⬜ |
+| 36b.7 recommend_content | ⬜ |
+| 36b.8 empty KB degradation | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -2908,3 +3057,327 @@ print(f"✅ schedule {sched_id} removed; {len(remaining)} remaining")
 | 36f.3 remove_delivery_schedule | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+## Q36g: E14 Content Simplification — `simplify_content` MCP Tool
+
+**Agent says:** "Rewrite this text to a target CEFR reading level (A1-C1) so language learners can read it."
+
+The `simplify_content` MCP tool (handler `_handle_simplify_content` in `src/autoinfo/mcp/server.py`) calls `simplify_text(content, target_level, language)` from `src/autoinfo/output/__init__.py`. It accepts `content` (str), `target_level` (one of A1/A2/B1/B2/C1), and `language` (en/zh/ja, default en). The LLM rewrites the text; `classify_text` measures the original and simplified CEFR levels; `verified=True` when the simplified level is at or below the target.
+
+### Prerequisites
+```bash
+mkdir -p /tmp/test-q36g
+cd /tmp/test-q36g
+rm -rf .autoinfo knowledge collections autoinfo.db outputs
+autoinfo init --demo medical-research
+```
+
+### Scenarios
+
+#### 36g.1 🟢 simplify_content — invalid target_level rejected (deterministic)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36g
+
+OUTPUT=$(python3 -c "
+from autoinfo.mcp.server import _handle_simplify_content
+import json
+
+# Invalid target_level must be rejected without calling the LLM
+res = _handle_simplify_content(
+    content='The mitochondria is the powerhouse of the cell.',
+    target_level='X9',
+    language='en',
+)
+print(json.dumps(res))
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "ValidationError" \
+  && echo "  ✅ PASS: invalid target_level rejected with ValidationError" \
+  || { echo "  ❌ FAIL: invalid level not rejected"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "Must be one of A1, A2, B1, B2, C1" \
+  && echo "  ✅ PASS: error message lists valid levels" \
+  || { echo "  ❌ FAIL: error message missing valid levels"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0 (graceful error, no crash)" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36g.1 PASSED — invalid target_level rejected"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36g.1 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `target_level="X9"` rejected with `ValidationError` (deterministic, no LLM call)
+- ✅ Error message lists valid levels: A1, A2, B1, B2, C1
+- ✅ Exit code 0 (graceful error response, no crash)
+
+#### 36g.2 🟢 simplify_content — CEFR level change [REQUIRES LLM KEY]
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36g
+
+# Env-gated: the actual CEFR-level rewrite requires an LLM API key.
+# Without a key, simplify_text returns the original text with verified=False
+# and a warning — the scenario records SKIPPED (exit 0, NOT FAIL).
+if [ -z "${AUTOINFO_LLM_API_KEY:-}" ]; then
+  echo "  ➖ SKIPPED: no AUTOINFO_LLM_API_KEY in env — CEFR rewrite requires LLM"
+  echo "  ➖ Deterministic graceful-degradation verified instead:"
+  OUTPUT=$(python3 -c "
+from autoinfo.mcp.server import _handle_simplify_content
+import json
+res = _handle_simplify_content(
+    content='The mitochondria is the powerhouse of the cell.',
+    target_level='A1',
+    language='en',
+)
+data = res.get('data', res)
+print(json.dumps({
+    'verified': data.get('verified'),
+    'has_warning': 'warning' in data,
+    'simplified_nonempty': bool(data.get('simplified')),
+}))
+" 2>&1)
+  echo "$OUTPUT"
+  echo "$OUTPUT" | grep -q '"verified": false' \
+    && echo "  ✅ PASS: verified=False without LLM key (graceful)" \
+    || { echo "  ❌ FAIL: expected verified=False"; ALL_PASS=false; }
+  echo "$OUTPUT" | grep -q '"has_warning": true' \
+    && echo "  ✅ PASS: warning present (LLM error surfaced)" \
+    || { echo "  ❌ FAIL: no warning"; ALL_PASS=false; }
+  echo "$OUTPUT" | grep -q '"simplified_nonempty": true' \
+    && echo "  ✅ PASS: original text returned as fallback" \
+    || { echo "  ❌ FAIL: no fallback text"; ALL_PASS=false; }
+  if [ "$ALL_PASS" = true ]; then
+    echo ""
+    echo "✅ SCENARIO 36g.2 SKIPPED (E14 — LLM key not available; deterministic degradation verified)"
+    exit 0
+  else
+    echo ""
+    echo "❌ SCENARIO 36g.2 FAILED (deterministic degradation)"
+    exit 1
+  fi
+fi
+
+# ── Real LLM path (runs only when a key is present) ──────────────
+OUTPUT=$(python3 -c "
+from autoinfo.mcp.server import _handle_simplify_content
+import json
+
+res = _handle_simplify_content(
+    content='The mitochondria is the powerhouse of the cell. It generates most of the cell\\'s supply of adenosine triphosphate (ATP), used as a source of chemical energy.',
+    target_level='A1',
+    language='en',
+)
+data = res.get('data', res)
+print(json.dumps({
+    'simplified': data.get('simplified', '')[:200],
+    'original_level': data.get('original_level'),
+    'simplified_level': data.get('simplified_level'),
+    'verified': data.get('verified'),
+}))
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q '"verified": true' \
+  && echo "  ✅ PASS: simplified level verified at or below target" \
+  || { echo "  ❌ FAIL: verified is not True"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -qP '"simplified_level": "(A1|A2)"' \
+  && echo "  ✅ PASS: simplified CEFR level is A1/A2 (target was A1)" \
+  || { echo "  ⚠️  note: simplified level above target (LLM may not reach A1)"; }
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36g.2 PASSED — simplify_content CEFR level change (E14)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36g.2 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ **Without LLM key**: scenario prints `➖ SKIPPED` and exits 0 — deterministic graceful degradation verified (`verified=False`, `warning` present, original text returned as fallback)
+- ✅ **With LLM key**: `simplify_content` returns `verified=True` with `simplified_level` at or below `target_level` (A1)
+- ✅ `original_level` and `simplified_level` fields populated by `classify_text` (CEFR classification)
+- ⚠️ Unit tests pass: `tests/test_simplify.py` 13/13 (see learnings.md Task 12)
+
+---
+
+### 📊 Q36g Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36g.1 invalid target_level rejected (deterministic) | ✅ |
+| 36g.2 CEFR level change [REQUIRES LLM KEY] | ➖ |
+
+**OVERALL: ⚠️** (36g.1 ✅ deterministic validation verified; 36g.2 ➖ SKIPPED — no LLM key, deterministic graceful degradation verified; unit tests 13/13 pass per learnings.md Task 12)
+
+---
+
+## Q36h: C11 Podcast RSS Publishing — RSS 2.0 with `<enclosure>` + `itunes:*` Namespace
+
+**Agent says:** "Generate a podcast RSS feed from collected audio content so I can submit it to Apple Podcasts / Spotify."
+
+The `_build_podcast_rss()` function in `src/autoinfo/delivery/rss.py` builds an RSS 2.0 XML document with Apple Podcasts-compatible `<enclosure>` elements and `itunes:*` namespace metadata (author, title, explicit, image, category, duration, episodeType, season, episode). See `docs/podcast-publishing.md` for the submission runbook.
+
+### Prerequisites
+```bash
+mkdir -p /tmp/test-q36h
+cd /tmp/test-q36h
+```
+
+### Scenarios
+
+#### 36h.1 🟢 _build_podcast_rss — RSS 2.0 structure with enclosure + itunes:* namespace
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+cd /tmp/test-q36h
+
+OUTPUT=$(python3 -c "
+import xml.etree.ElementTree as ET
+from autoinfo.delivery.rss import _build_podcast_rss
+
+xml_bytes = _build_podcast_rss(
+    title='AutoInfo Validation Podcast',
+    description='Validation feed for C11 scenario',
+    link='https://example.com/podcast',
+    language='en',
+    author='AutoInfo',
+    image_url='https://example.com/cover.png',
+    explicit='no',
+    category='Technology',
+    subcategory='Software',
+    episodes=[{
+        'title': 'Episode 1: CRISPR Breakthroughs',
+        'description': 'A deep dive into recent CRISPR advances.',
+        'guid': 'ep-001',
+        'pub_date': '2026-08-02T10:00:00',
+        'duration': 1840,
+        'audio_url': 'https://example.com/ep1.mp3',
+        'audio_data': b'fake-audio-bytes',
+        'episode_type': 'full',
+        'season': 1,
+        'episode': 1,
+    }],
+    base_url='https://example.com',
+)
+
+root = ET.fromstring(xml_bytes)
+ns = {'itunes': 'http://www.itunes.com/dtds/podcast-1.0.dtd'}
+channel = root.find('channel')
+
+checks = []
+# RSS 2.0 root
+checks.append(('root_is_rss', root.tag == 'rss'))
+checks.append(('rss_version_2.0', root.get('version') == '2.0'))
+# Channel-level elements
+checks.append(('channel_title', channel.find('title').text == 'AutoInfo Validation Podcast'))
+checks.append(('channel_link', channel.find('link').text == 'https://example.com/podcast'))
+checks.append(('channel_language', channel.find('language').text == 'en'))
+checks.append(('channel_description', channel.find('description').text is not None))
+# itunes:* namespace at channel level
+checks.append(('itunes_author', channel.find('itunes:author', ns) is not None))
+checks.append(('itunes_title', channel.find('itunes:title', ns) is not None))
+checks.append(('itunes_explicit', channel.find('itunes:explicit', ns) is not None))
+checks.append(('itunes_image', channel.find('itunes:image', ns) is not None))
+cat = channel.find('itunes:category', ns)
+checks.append(('itunes_category', cat is not None and cat.get('text') == 'Technology'))
+subcat = cat.find('itunes:category', ns) if cat is not None else None
+checks.append(('itunes_subcategory', subcat is not None and subcat.get('text') == 'Software'))
+# Episode item
+items = channel.findall('item')
+checks.append(('one_episode', len(items) == 1))
+enc = items[0].find('enclosure')
+checks.append(('enclosure_present', enc is not None))
+checks.append(('enclosure_url', enc.get('url') == 'https://example.com/ep1.mp3'))
+checks.append(('enclosure_type', enc.get('type') == 'audio/mpeg'))
+checks.append(('enclosure_length', enc.get('length') == str(len(b'fake-audio-bytes'))))
+# itunes:* per-episode metadata
+checks.append(('itunes_episode', items[0].find('itunes:episode', ns) is not None))
+checks.append(('itunes_duration', items[0].find('itunes:duration', ns) is not None))
+checks.append(('itunes_episodeType', items[0].find('itunes:episodeType', ns) is not None))
+checks.append(('itunes_season', items[0].find('itunes:season', ns) is not None))
+# GUID
+guid = items[0].find('guid')
+checks.append(('guid_present', guid is not None and guid.text == 'ep-001'))
+
+import json
+print(json.dumps({k: v for k, v in checks}, indent=2))
+print(f'XML_BYTES={len(xml_bytes)}')
+" 2>&1)
+EXIT_CODE=$?
+
+# Assert every check is True
+echo "$OUTPUT" | grep -q '"root_is_rss": true' && echo "  ✅ PASS: root is <rss>" || { echo "  ❌ FAIL: root not rss"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"rss_version_2.0": true' && echo "  ✅ PASS: RSS version 2.0" || { echo "  ❌ FAIL: version not 2.0"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"channel_title": true' && echo "  ✅ PASS: channel <title>" || { echo "  ❌ FAIL: channel title"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_author": true' && echo "  ✅ PASS: <itunes:author>" || { echo "  ❌ FAIL: itunes:author"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_title": true' && echo "  ✅ PASS: <itunes:title>" || { echo "  ❌ FAIL: itunes:title"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_explicit": true' && echo "  ✅ PASS: <itunes:explicit>" || { echo "  ❌ FAIL: itunes:explicit"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_image": true' && echo "  ✅ PASS: <itunes:image>" || { echo "  ❌ FAIL: itunes:image"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_category": true' && echo "  ✅ PASS: <itunes:category>" || { echo "  ❌ FAIL: itunes:category"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_subcategory": true' && echo "  ✅ PASS: <itunes:category> subcategory" || { echo "  ❌ FAIL: subcategory"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"enclosure_present": true' && echo "  ✅ PASS: <enclosure> present" || { echo "  ❌ FAIL: enclosure missing"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"enclosure_url": true' && echo "  ✅ PASS: enclosure url" || { echo "  ❌ FAIL: enclosure url"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"enclosure_type": true' && echo "  ✅ PASS: enclosure type=audio/mpeg" || { echo "  ❌ FAIL: enclosure type"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"enclosure_length": true' && echo "  ✅ PASS: enclosure length" || { echo "  ❌ FAIL: enclosure length"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_episode": true' && echo "  ✅ PASS: <itunes:episode>" || { echo "  ❌ FAIL: itunes:episode"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_duration": true' && echo "  ✅ PASS: <itunes:duration>" || { echo "  ❌ FAIL: itunes:duration"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_episodeType": true' && echo "  ✅ PASS: <itunes:episodeType>" || { echo "  ❌ FAIL: itunes:episodeType"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"itunes_season": true' && echo "  ✅ PASS: <itunes:season>" || { echo "  ❌ FAIL: itunes:season"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"guid_present": true' && echo "  ✅ PASS: <guid> present" || { echo "  ❌ FAIL: guid missing"; ALL_PASS=false; }
+echo "$OUTPUT" | grep -q '"one_episode": true' && echo "  ✅ PASS: one episode item" || { echo "  ❌ FAIL: episode count"; ALL_PASS=false; }
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: exit code 0" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 36h.1 PASSED — podcast RSS 2.0 with enclosure + itunes:* (C11)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 36h.1 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ Root element is `<rss version="2.0">` with `xmlns:itunes` namespace
+- ✅ Channel-level `<title>`, `<link>`, `<language>`, `<description>` present
+- ✅ Channel-level `itunes:*` elements: `author`, `title`, `explicit`, `image`, `category` (with subcategory)
+- ✅ Episode `<item>` contains `<enclosure>` with `url`, `length`, `type="audio/mpeg"`
+- ✅ Episode-level `itunes:*` metadata: `episode`, `duration`, `episodeType`, `season`
+- ✅ Episode `<guid isPermaLink="false">` present
+- ✅ Valid XML (parseable by `xml.etree.ElementTree`)
+- ⚠️ Unit tests pass: `tests/test_podcast_rss.py` 24/24 (see learnings.md Task 15)
+
+---
+
+### 📊 Q36h Verdict
+
+| Scenario | Result |
+|----------|--------|
+| 36h.1 _build_podcast_rss RSS 2.0 + enclosure + itunes:* | ✅ |
+
+**OVERALL: ✅** (self-executing script verified 2026-08-02; `_build_podcast_rss` is a pure function — no LLM, no network; unit tests 24/24 pass per learnings.md Task 15)

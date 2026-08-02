@@ -3,7 +3,7 @@
 > Extracted from `founder-expectations.md §12.11`. References: all F-numbers — every feature has a corresponding MCP tool surface.
 > **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — MCP tools are the B2 (Direct Agent) interface to every A1-A7 pipeline capability. The CD catalog's B2 row shows which stages have full tool coverage and which have gaps.
 
-**v1.8.2: 138 tools across 34 categories**. Phase 4 adds 1 new category (Delivery Schedule) and 4 new tools: `generate_cross_domain_report`, `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. v1.8.1 added `configure_llm` to the System category for agent-oriented BYOK setup. v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
+**v1.8.2: 139 tools across 34 categories**. Phase 4 adds 1 new category (Delivery Schedule) and 4 new tools: `generate_cross_domain_report`, `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. v1.8.1 added `configure_llm` to the System category for agent-oriented BYOK setup, plus `simplify_content` (Simplification category, E14 CEFR-parameterized content simplification). v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
 
 ---
 
@@ -38,10 +38,43 @@
 | **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
 | **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice`, `cost_dashboard`, `cost_allocation` |
 | **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
-| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content` |
+| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content`, `simplify_content` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Audit** | `query_audit_log` (immutable audit log query) |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
+
+## Collector Handlers (26 total)
+
+`list_available_platforms` advertises all 25 `VALID_SOURCE_TYPES`. The 26 collector handlers (in `src/autoinfo/collectors/`) cover:
+
+| Handler | Source Type(s) | Notes |
+|---------|---------------|-------|
+| `pubmed.py` | `api` (name contains "pubmed") | PubMed E-utilities REST API |
+| `rss.py` | `rss` | Generic RSS/Atom feeds |
+| `web.py` | `web` | trafilatura-based web scraping |
+| `web_playwright.py` | `web` (Playwright) | JS-rendered pages |
+| `webhook.py` | `webhook` | Inbound HMAC webhook (no `_build_handler` dispatch) |
+| `email_imap.py` | `email` | IMAP email ingestion |
+| `pdf.py` | `pdf` | PyMuPDF PDF parsing |
+| `http_api.py` | `http_api` | Generic REST API (Alpha Vantage, FRED, SEC EDGAR, etc.) |
+| `semantic_scholar.py` | `semantic_scholar` | Semantic Scholar API |
+| `dblp.py` | `dblp` | DBLP computer science bibliography |
+| `openalex.py` | `openalex` | OpenAlex scholarly works |
+| `uspto.py` | `uspto` | USPTO patent search |
+| `nyt.py` | `nyt` | NYT API |
+| `reddit.py` | `reddit` | Reddit posts |
+| `spotify.py` | `spotify` | Spotify podcasts |
+| `youtube.py` | `youtube` | YouTube videos |
+| `bilibili.py` | `bilibili` | Bilibili videos |
+| `apple_podcasts.py` | `apple_podcasts` | Apple Podcasts (iTunes Search API) |
+| `ap_api.py` | `ap_api` | Paid AP API |
+| `reuters_mcp.py` | `reuters_mcp` | Reuters MCP |
+| `quandl.py` | `quandl` | Quandl/Nasdaq Data Link |
+| `yahoo_finance.py` | `yahoo_finance` | Yahoo Finance |
+| `ssrn.py` | `ssrn` | SSRN working papers (HTML search, no REST API) — **v1.8.1** |
+| `gdelt.py` | `gdelt` | GDELT DOC 2.0 news events — **v1.8.1** |
+| `huggingface.py` | `huggingface` / `kaggle` | HuggingFace Hub + Kaggle datasets (dual provider) — **v1.8.1** |
+| `unpaywall.py` | `unpaywall` / `core` | Unpaywall + CORE OA fulltext (dual provider) — **v1.8.1** |

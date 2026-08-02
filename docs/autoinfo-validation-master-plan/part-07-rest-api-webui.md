@@ -367,16 +367,82 @@ if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.13 PASSED"; exit 0; else e
 
 #### 47.16 🔴 404 for nonexistent endpoint
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8741/api/v1/nonexistent
-```
-**Expected Result:** ❌ HTTP 404. Returns JSON error, not HTML.
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
 
+HTTP_CODE=$(curl -s -o /tmp/err-404.json -w "%{http_code}" http://127.0.0.1:8741/api/v1/nonexistent)
+[ "$HTTP_CODE" = "404" ] \
+  && echo "  ✅ PASS: HTTP 404" \
+  || { echo "  ❌ FAIL: HTTP $HTTP_CODE (expected 404)"; ALL_PASS=false; }
+
+# v1.8.1 UX: 404 returns JSON error, not HTML — and uses the canonical envelope
+python3 -c "
+import sys, json
+d = json.load(open('/tmp/err-404.json'))
+assert d.get('success') is False, 'missing success:false'
+assert 'error' in d, 'missing error envelope'
+assert 'code' in d['error'] and 'message' in d['error'], 'missing code/message'
+print('Envelope shape valid')
+" 2>&1 \
+  && echo "  ✅ PASS: JSON error envelope {success:false, error:{code, message, actionable}}" \
+  || { echo "  ❌ FAIL: 404 did not return canonical error envelope"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.16 PASSED"; exit 0; else echo "❌ SCENARIO 47.16 FAILED"; exit 1; fi
+```
+**Expected Result:** ❌ HTTP 404. Returns JSON error envelope `{success: false, error: {code, message, actionable}}`, not HTML.
 
 #### 47.17 🔴 422 for invalid parameters
 ```bash
-curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8741/api/v1/entries?limit=-1"
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+HTTP_CODE=$(curl -s -o /tmp/err-422.json -w "%{http_code}" "http://127.0.0.1:8741/api/v1/entries?limit=-1")
+[ "$HTTP_CODE" = "422" ] \
+  && echo "  ✅ PASS: HTTP 422" \
+  || { echo "  ❌ FAIL: HTTP $HTTP_CODE (expected 422)"; ALL_PASS=false; }
+
+python3 -c "
+import sys, json
+d = json.load(open('/tmp/err-422.json'))
+assert 'detail' in d or 'error' in d, 'missing validation error payload'
+print('Validation error payload present')
+" 2>&1 \
+  && echo "  ✅ PASS: validation error with details" \
+  || { echo "  ❌ FAIL: 422 missing validation error payload"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.17 PASSED"; exit 0; else echo "❌ SCENARIO 47.17 FAILED"; exit 1; fi
 ```
 **Expected Result:** ❌ HTTP 422. Validation error with details.
+
+#### 47.21 🟢 Nonexistent domain returns `DomainNotFound` (404) with remediation hint (v1.8.1)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+HTTP_CODE=$(curl -s -o /tmp/err-domain.json -w "%{http_code}" "http://127.0.0.1:8741/api/v1/entries?domain=no-such-domain")
+[ "$HTTP_CODE" = "404" ] \
+  && echo "  ✅ PASS: HTTP 404 for nonexistent domain" \
+  || { echo "  ❌ FAIL: HTTP $HTTP_CODE (expected 404)"; ALL_PASS=false; }
+
+# Domain precondition middleware returns the MCP-compatible envelope
+python3 -c "
+import sys, json
+d = json.load(open('/tmp/err-domain.json'))
+assert d.get('success') is False, 'missing success:false'
+err = d.get('error', {})
+assert err.get('code') == 'DomainNotFound', f'expected DomainNotFound, got {err.get(\"code\")}'
+assert err.get('actionable') is True, 'expected actionable=true remediation hint'
+print('DomainNotFound envelope valid')
+" 2>&1 \
+  && echo "  ✅ PASS: DomainNotFound code with actionable remediation hint" \
+  || { echo "  ❌ FAIL: expected DomainNotFound envelope"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then echo "✅ SCENARIO 47.21 PASSED"; exit 0; else echo "❌ SCENARIO 47.21 FAILED"; exit 1; fi
+```
+**Expected Result:** ✅ HTTP 404 with `{success: false, error: {code: "DomainNotFound", message: "Use add_domain() to create it.", actionable: true}}` — same envelope as MCP.
 
 
 #### 47.18 🟢 Infrastructure: verify uvicorn process is running and responsive
@@ -636,6 +702,7 @@ kill $API_PID 2>/dev/null || true
 | 47.18 uvicorn process check | ⬜ |
 | 47.19 Port conflict handling | ⬜ |
 | 47.20 Graceful shutdown | ⬜ |
+| 47.21 DomainNotFound envelope (v1.8.1) | ⬜ |
 
 **OVERALL: ⬜**
 

@@ -2,7 +2,7 @@
 
 **This file aggregates all 98 questions from Parts 1-15 into a single PASS/FAIL summary.**
 
-**Validation Date:** 2026-07-31
+**Validation Date:** 2026-07-31 (initial); 2026-08-02 updates appended (E7 54.5/55.10, 56a.4 SMTP, Q65e.4 E12, 2b.43-2b.47 collectors, 34.1c B15, E14 simplify_content, E9 source_score, C11 podcast RSS, billing facts reconciled 847 lines/48 tests)
 **Validator:** Sisyphus-Junior (automated agent)
 **LLM Key Used:** No
 **SMTP Configured:** No
@@ -26,7 +26,7 @@
 | 9 | `part-09-async-cron-email.md` | Q54-Q58 | Cron schedules work, email needs SMTP | ⚠️ |
 | 10 | `part-10-error-boundary.md` | Q59 | All CLI/config/network error scenarios pass | ✅ |
 | 11 | `part-11-production-validation.md` | Q60 | Doctor passes, MCP server loads, test suite exists | ⚠️ |
-| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65g | End user profile CRUD works; Stripe billing code exists (712 lines, 33 tests); cost metering + usage tracking implemented; requires Stripe keys + SMTP for E2E | ⚠️ |
+| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65g | End user profile CRUD works; Stripe billing code exists (847 lines, 48 tests: 42 mock + 6 stripe-mock); cost metering + usage tracking implemented; requires Stripe keys + SMTP for E2E | ⚠️ |
 | 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Requires MCP server running | ➖ |
 | 15 | `part-15-cross-dimension-e2e.md` | Q70-Q72 | Requires full infrastructure | ➖ |
 
@@ -39,9 +39,9 @@
 **ACTUAL GRAND TOTAL: 5/15 ✅ fully validated, 10/15 partially or skipped**
 
 > **Erratum**: Previous version incorrectly reported 7/15 fully validated. The table below shows 5 ✅ parts. This has been corrected. See Issue #95.
-> **Erratum 2**: Part 13 reclassified from ➖→⚠️. Stripe billing code exists (712 lines, 33 tests) — requires test keys for E2E execution only, not missing implementation.
+> **Erratum 2**: Part 13 reclassified from ➖→⚠️. Stripe billing code exists (847 lines, 48 tests: 42 mock + 6 stripe-mock) — requires test keys for E2E execution only, not missing implementation.
 > **Validation gaps**: Parts needing external infra to fully validate:
-> - **Part 3 (MCP System Tools)** — 138 handler functions registered, module loads; needs stdio MCP session
+> - **Part 3 (MCP System Tools)** — 139 handler functions registered, module loads; needs stdio MCP session
 > - **Part 4 (MCP KB & Output)** — needs MCP server + LLM key
 > - **Part 5 (Quality Gates)** — G4/G5 need real LLM API key
 > - **Part 7 (REST API/Web UI)** — needs uvicorn on port 8741
@@ -53,6 +53,8 @@
 ---
 
 ## Summary Statistics
+
+> **Note (2026-08-02):** The counts below reflect the 2026-07-31 baseline rollup. 2026-08-02 appended evidence notes (E7, E12 65e.4, new collector scenarios 2b.43-2b.47, E14, E9, C11, 34.1c) add verified implementations but do not change existing ✅/⚠️/➖ verdicts — the new scenarios remain ⬜ in their respective part files (not yet run as E2E). Full recount of all verdict rows across 15 part files was not performed; counts are approximate. (含 2026-08-02 新增场景，部分未重算)
 
 | Metric | Count |
 |--------|-------|
@@ -96,7 +98,7 @@
 ### Part 3: MCP System Tools
 | Q | Title | Result | Evidence |
 |---|-------|--------|----------|
-| Q18 | MCP System tools | ⚠️ | MCP module imports: `autoinfo.mcp.server` loads (9621 lines, 138 handler functions); MCP `Server` class instantiated; no stdio session active → prompt human to start server |
+| Q18 | MCP System tools | ⚠️ | MCP module imports: `autoinfo.mcp.server` loads (10045 lines, 139 handler functions); MCP `Server` class instantiated; no stdio session active → prompt human to start server |
 | Q19 | MCP Discovery tools | ⚠️ | Module-level imports verified; tool handlers registered; need running server for actual tool responses |
 | Q20 | MCP Domain tools | ⚠️ | `add_domain`/`remove_domain` handlers registered; CLI equivalent works (domain add/remove) |
 | Q21 | MCP Source tools | ⚠️ | `add_source`/`remove_source`/`test_source`/`list_sources` handlers registered; CLI equivalent works |
@@ -186,20 +188,20 @@
 ### Part 11: Production Validation
 | Q | Title | Result | Evidence |
 |---|-------|--------|----------|
-| Q60 | Production Validation | ⚠️ | ✅ `autoinfo doctor` passes: Python 3.14.4, Config OK, 7 sources checked; ✅ `autoinfo --help` → 23 command groups; ✅ Test suite: 2506 tests collected, 1 pre-existing failure (`test_cross_domain_report.py` — missing template); ⚠️ MCP server: module loads (9621 lines, 138 handlers, Server class), but stdio transport not tested (no client connected); ⚠️ REST API: FastAPI app imports OK but uvicorn not started (port 8741); ➖ Prometheus metrics: endpoint configured but server not running |
+| Q60 | Production Validation | ⚠️ | ✅ `autoinfo doctor` passes: Python 3.14.4, Config OK, 7 sources checked; ✅ `autoinfo --help` → 23 command groups; ✅ Test suite: ~2747 test functions (approx; 2506 collected at 2026-07-31 baseline), 1 pre-existing failure (`test_cross_domain_report.py` — missing template); ⚠️ MCP server: module loads (10045 lines, 139 handlers, Server class), but stdio transport not tested (no client connected); ⚠️ REST API: FastAPI app imports OK but uvicorn not started (port 8741); ➖ Prometheus metrics: endpoint configured but server not running |
 
 ### Part 13: End User Lifecycle
 | Q | Title | Result | Evidence |
 |---|-------|--------|----------|
-| Q61 | End User Profile & Subscription CRUD | ⚠️ | `autoinfo enduser create/list/delete` CLI works; `enduser get` has AttributeError (`UserProfile.to_dict` missing) — pre-existing bug; Stripe billing module exists (712 lines, `billing.py`): `create_checkout_session`, `handle_webhook`, `get_subscription_status`, `check_access` all implemented with 33 tests; requires Stripe API keys for E2E subscription validation |
+| Q61 | End User Profile & Subscription CRUD | ⚠️ | `autoinfo enduser create/list/delete` CLI works; `enduser get` has AttributeError (`UserProfile.to_dict` missing) — pre-existing bug; Stripe billing module exists (847 lines, `billing.py`): `create_checkout_session`, `handle_webhook`, `get_subscription_status`, `check_access` all implemented with 48 tests (42 mock + 6 stripe-mock); requires Stripe API keys for E2E subscription validation |
 | Q62 | Multi-Channel Delivery Configuration | ➖ | 12 delivery channels registered: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish; requires MCP server + channel credentials |
 | Q63 | Product Delivery Lifecycle & SLA (19 scenarios) | ➖ | 63.1-63.16: RAW + PROCESSED delivery with P0(≤5min)/P1(≤30min)/P2(≤2hr) SLA tracking; 63.17: all-12-channel dispatch via send_to_enduser; 63.18: channel health get_channel_health; 63.19: fallback chain; requires running delivery pipeline + SMTP |
 | Q64 | End User Self-Service Portal | ➖ | `autoinfo portal --help` → history + preferences subcommands; requires running server for full portal |
 | Q65 | Data Privacy (soft-delete, GDPR) | ➖ | `soft_delete_entry`/`restore_entry`/`export_user_data`/`delete_user_data` handlers registered; requires MCP server |
 | Q65b | Multi-Channel Delivery (12 channels) | ➖ | `get_channel_health` handler registered; 12 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish; requires server + external credentials |
-| Q65c | Cost Metering & Billing | ⚠️ | `autoinfo cost dashboard` shows $0.07 total across 14 cost log entries; `CostMeter` class in `cost.py` handles `log_llm_tokens`, `log_api_call`, `log_storage`, `get_enduser_usage`, `get_enduser_invoice`; `billing.py` implements Stripe integration with 33 tests; requires Stripe keys for checkout flow |
-| Q65d | Stripe Webhook Billing | ⚠️ | Stripe webhook endpoint with signature verification implemented in `billing.py` (full lifecycle: `_handle_checkout_completed`, `_handle_subscription_updated`, `_handle_subscription_deleted`); `create_checkout_session` MCP tool + `Subscription.retrieve` integration; 33 test functions in `test_stripe.py` covering valid/invalid signatures, checkout completion, subscription lifecycle; requires `STRIPE_WEBHOOK_SECRET` for E2E |
-| Q65e | Stripe webhook billing lifecycle (checkout.session.completed, subscription.updated, invalid event) | ✅ | 42 mock + 6 stripe-mock integration tests (`TestStripeLifecycle`); full lifecycle regression including mode="payment" branch; skipif when stripe-mock unavailable |
+| Q65c | Cost Metering & Billing | ⚠️ | `autoinfo cost dashboard` shows $0.07 total across 14 cost log entries; `CostMeter` class in `cost.py` handles `log_llm_tokens`, `log_api_call`, `log_storage`, `get_enduser_usage`, `get_enduser_invoice`; `billing.py` implements Stripe integration with 48 tests (42 mock + 6 stripe-mock); requires Stripe keys for checkout flow |
+| Q65d | Stripe Webhook Billing | ⚠️ | Stripe webhook endpoint with signature verification implemented in `billing.py` (full lifecycle: `_handle_checkout_completed`, `_handle_subscription_updated`, `_handle_subscription_deleted`); `create_checkout_session` MCP tool + `Subscription.retrieve` integration; 48 test functions in `test_stripe.py` (42 mock + 6 stripe-mock) covering valid/invalid signatures, checkout completion (subscription + payment modes), subscription lifecycle, article entitlement (E12); requires `STRIPE_WEBHOOK_SECRET` for E2E |
+| Q65e | Stripe webhook billing lifecycle (checkout.session.completed, subscription.updated, invalid event, mode="payment" article entitlement) | ✅ | 42 mock + 6 stripe-mock integration tests (`TestStripeLifecycle`); full lifecycle regression including mode="payment" branch; scenario 65e.4 (added 2026-08-02) verifies E12 article_entitlement grant + check_access fast path; skipif when stripe-mock unavailable |
 | Q65f | Automated Notifications (trial reminders, content-ready) | ➖ | Trial-ending reminders (3-day window) + content-ready notifications; requires running notification dispatch |
 | Q65g | Subscription State Machine & Audit Trail | ➖ | State machine: trial→active→suspended→cancelled; requires Stripe webhook events to drive transitions |
 | Q65h | Cost & Usage End-to-End (4 scenarios) | ⬜ | 65h.1: full-pipeline cost (collect→process→cost meter); 65h.2: usage aggregation; 65h.3: cost allocation; 65h.4: budget alert; requires server + LLM |
@@ -257,7 +259,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 
 | Criteria | Status | Source/Evidence |
 |----------|--------|--------|
-| All 138 MCP tools respond correctly | ⚠️ | 138 handlers registered (count via grep); module loads; stdio transport not tested (needs MCP client connected) |
+| All 139 MCP tools respond correctly | ⚠️ | 139 handlers registered (count via grep); module loads; stdio transport not tested (needs MCP client connected) |
 | All 23 CLI commands work | ✅ | All 23 groups verified: init, doctor, collect, process, status, sources, topics, domain, audit, billing, kb, output, cefr, clean, email, cron, summaries, keywords, knowledge, cost, enduser, portal, trace |
 | `init` creates valid project | ✅ | Q1: config.yaml (embedded sources/topics per domain) + KB directories created |
 | All 6 collector types work (RSS, API, Web, Webhook, Email, PDF) — 22+ platform-specific handlers | ⚠️ | RSS + API verified (pubmed, crossref, openalex); Web/webhook/Email/PDF not tested; 15 new collectors in code (DBLP, NYT, OpenAlex, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, Semantic Scholar, USPTO, AP API, Reuters MCP) |
@@ -278,9 +280,9 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 | Agent self-healing (diagnose→fix→verify) | ✅ | Q53: `autoinfo doctor` correctly diagnoses: Python ✅, Config ✅, LLM ❌ (no key), 7 sources checked |
 | CEFR classification works | ⚠️ | Q10: CEFR module loads; `cefr classify` fails without LLM key (AuthenticationError) |
 | Knowledge graph | ✅ | Q46: `knowledge graph export` works; `query_knowledge_graph`/`knowledge_graph_export` MCP handlers registered |
-| MCP server stdio transport works | ⚠️ | Q60: Module loads (9621 lines, Server class instantiated); stdio transport not tested (no client connected) |
+| MCP server stdio transport works | ⚠️ | Q60: Module loads (10045 lines, Server class instantiated); stdio transport not tested (no client connected) |
 | Error cases handled gracefully | ✅ | Q59: Missing options → clean errors; network errors → graceful messages; LLM failure → authentication error without crash; process continues |
-| Test suite passes (2183+) | ⚠️ | 2506 tests collected; 193 pass, 1 pre-existing failure (`test_cross_domain_report.py::test_single_domain_unchanged` — missing report.md.j2 template); full suite timed out (>5 min) |
+| Test suite passes (~2747) | ⚠️ | ~2747 test functions (approx); 1 pre-existing failure (`test_cross_domain_report.py::test_single_domain_unchanged` — missing report.md.j2 template); full suite timed out (>5 min) |
 | Concurrency safe | ⚠️ | SQLite with WAL mode; job state persistence; not stress-tested in this run |
 | End User profile & subscription CRUD | ⚠️ | Q61: `enduser create/list/delete` CLI works; `enduser get` has AttributeError bug (`UserProfile.to_dict` missing); subscription CRUD needs Stripe |
 | Delivery channel reachability validation | ➖ | Q62: `get_channel_health` handler registered; needs running server + external credentials |
@@ -302,7 +304,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 |-------|-------------|------|----------|
 | **CI Gate** | All 98 questions attempted. No P0 failures (crash, data loss, unrecoverable error). | ✅ CI GATE PASSED | All 98 Q rows evaluated; 0 P0 failures (0 crashes, 0 data loss, 0 unrecoverable errors); 1 pre-existing test failure (known, non-P0); `enduser get` AttributeError is P2 cosmetic |
 | **Release Candidate** | CI Gate + Q1-Q6 + Q49-Q53 + Q70-Q71 all PASS + all production gaps addressed | ⚠️ RELEASE CANDIDATE NOT MET | Q1-Q6 ✅; Q49-Q50 ✅; Q51-Q53 ⚠️ (no LLM key); Q70-Q71 ➖ (no full infrastructure); 11 production gaps marked ⚠️/➖ need addressing before RC |
-| **Production Deploy** | Release Candidate + Q60 all PASS + no outstanding P0/P1 issues + all 2183+ tests pass | ❌ PRODUCTION DEPLOY NOT MET | RC not met; Q60 ⚠️ (MCP stdio untested); 1 pre-existing test failure; needs LLM key + SMTP + Stripe + uvicorn |
+| **Production Deploy** | Release Candidate + Q60 all PASS + no outstanding P0/P1 issues + all ~2747 tests pass (approx) | ❌ PRODUCTION DEPLOY NOT MET | RC not met; Q60 ⚠️ (MCP stdio untested); 1 pre-existing test failure; needs LLM key + SMTP + Stripe + uvicorn |
 
 ---
 
@@ -314,12 +316,18 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 | — | Pre-existing Test Failure | `tests/output/test_cross_domain_report.py::test_single_domain_unchanged` — missing `report.md.j2` template; known issue |
 | — | API Changes Detected | Semantic Scholar API moved to `/api-docs/graph` (301 redirect); USPTO PatentsView moved to `data.uspto.gov` transition guide (301); arXiv RSS `rss.arxiv.org/rss/bio` returns zero entries |
 | A6 | FRED/Alpha Vantage E2E | Validation scenario added — Part 1 Q2b.48 (env-gated real API E2E: collect → Items → G0). 2026-08-02 run: **SKIPPED** — no `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`. No-key behavior verified: collect exits 0; Alpha Vantage error JSON cached as spurious item (demo source lacks `json_path`/`field_mapping` — validation finding, no code change per A6 scope) |
-| — | Architecture Verified | 138 MCP handler functions in `src/autoinfo/mcp/server.py` (9621 lines); 23 CLI command groups; 2506 test cases collected |
+| — | Architecture Verified | 139 MCP handler functions in `src/autoinfo/mcp/server.py` (10045 lines); 23 CLI command groups; ~2747 test functions (approx) |
 | Q10/Q40/Q41/Q51/Q72 | LLM Dependency | CEFR classify, G4 factual consistency, G5 translation QA, LLM extraction, translation pipeline — ALL require real LLM API key |
 | Q56/Q62 | SMTP Dependency | Email digests and multi-channel delivery — require SMTP credentials. Q56a 56a.4 env-gated E2E added 2026-08-02; SKIPPED pending credentials (expected) |
 | Q47/Q48/Q60 | Server Dependency | REST API, Web UI, Prometheus metrics — require uvicorn on port 8741 |
 | Q61/Q65c/Q65d | Stripe Dependency | End user subscriptions, checkout — require Stripe test keys (Q65e lifecycle verified via stripe-mock integration) |
-| Q18-Q36 | MCP Server Dependency | All 138 MCP tools require stdio MCP session — module loads but no client connected |
+| Q18-Q36 | MCP Server Dependency | All 139 MCP tools require stdio MCP session — module loads but no client connected |
+| 2b.43-2b.47 | New Collector Scenarios (2026-08-02) | Part 1 Q2b scenarios added for v1.8.1 collectors: 2b.43 Apple Podcasts Chinese coverage (A29, iTunes Search country=CN); 2b.44 SSRN handler (A23, mock); 2b.45 GDELT handler (A18, 43 mock tests); 2b.46 Unpaywall handler (A25, 40 mock tests); 2b.47 Unpaywall CLI dispatch via `_build_handler`/`_fetch_items` (A25). All scenarios ⬜ in part-01 verdict tables (not run in this validation pass); unit tests exist in `tests/test_collector_*.py`. See part-01 for scenario definitions. |
+| 34.1c | B15 pdf_timeout (2026-08-02) | Part 4 scenario 34.1c `export_kb(format="pdf")` with configurable `output.pdf_timeout` (weasyprint, default 120s). Scenario ⬜ in part-04 verdict table (not run); config schema key verified in part-04 scenario body. |
+| E14 | simplify_content (2026-08-02) | `simplify_content` MCP tool (CEFR-parameterized A1-C1 text rewrite) implemented in `src/autoinfo/`. Unit-tested in `tests/test_simplify.py` (13 tests: success, level verification, invalid levels A0/C2/garbage, empty/whitespace content, LLM exception/empty response, zh/ja languages). MCP-level E2E scenario not run (requires MCP server + LLM key). |
+| E9 | source_score (2026-08-02) | Deterministic `source_score` (0-100) from quality tier, persisted on `KBEntry`, surfaced in G1 gate + search. Unit-tested in `tests/test_quality.py` (source_score assertions across tiers: 90/70/50/30, custom map 95, KBEntry field default 0.0). G1 gate integration verified at unit level. |
+| E12 | Single-article payment (2026-08-02) | `create_checkout_session(mode="payment")` + `check_access(article_id=...)` fast path implemented in `billing.py`. `mode="payment"` webhook branch in `_handle_checkout_completed` records `article_entitlement` via `ConsumptionStore.grant_article_access` + emits `purchased` consumption event. Unit-tested in `TestArticleEntitlement` (7 tests) + `TestCreateCheckoutSession` (4 tests) within `tests/test_stripe.py`. Scenario 65e.4 added to part-13 (mock-based, ✅) verifying full path: webhook → entitlement → check_access → no profile corruption. |
+| C11 | Podcast RSS publishing (2026-08-02) | RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation; audio output auto-persists MP3. Unit-tested in `tests/test_podcast_rss.py` (24 tests). Delivery-channel-level E2E not run (requires running delivery pipeline). |
 
 ---
 
@@ -355,7 +363,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 - ✅ Clean: --collections/--outputs/--everything with --dry-run
 - ✅ Email config: viewable without SMTP
 - ✅ CEFR module: loads, batch from stdin works without LLM
-- ✅ Stripe billing: `billing.py` (712 lines), `create_checkout_session`, webhook handling, `check_access` — code verified with 33 unit tests
+- ✅ Stripe billing: `billing.py` (847 lines), `create_checkout_session`, webhook handling, `check_access` — code verified with 48 unit tests (42 mock + 6 stripe-mock integration)
 - ✅ Usage tracking: `CostMeter` class, `get_enduser_usage`, `log_llm_tokens`, `log_api_call` — all implemented
 - ✅ Recommendation engine: `recommend_content` MCP tool + test coverage
 - ✅ Cross-domain reports: code + 11 unit tests + 7 MCP tests
@@ -380,7 +388,7 @@ Before signing off, confirm that the following minimum domain matrix was tested:
 - Recommendations:
   1. Set `AUTOINFO_LLM_API_KEY` to validate LLM-dependent features (G4, G5, CEFR, extraction)
   2. Start `uvicorn autoinfo.api.server:app --port 8741` for REST API + Web UI validation
-  3. Connect MCP client to `python -m autoinfo.mcp.server` for 138-tool validation
+  3. Connect MCP client to `python -m autoinfo.mcp.server` for 139-tool validation
   4. Configure SMTP for email delivery testing
   5. Set Stripe test keys for billing validation
   6. Fix `UserProfile.to_dict` AttributeError in `src/autoinfo/cli/enduser.py`

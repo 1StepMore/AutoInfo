@@ -16,7 +16,7 @@ Each quality gate operates at a specific pipeline stage, evaluates a different s
 | Gate | Stage | Trigger | Subject | Effect on item/product |
 |------|-------|---------|---------|----------------------|
 | **G0** | **Collection** | `process_collection()` — runs first on every raw item before Item construction | Raw collected dict | Blocks malformed items (missing mandatory fields, invalid YAML) from entering the pipeline |
-| **G1** | **Collection** | `run_quality_gates()` — runs immediately after G0 passes | `Item` object | Flags items from low-authority sources (Tier 3+); never blocks. `action=skip` signals caller to exclude. |
+| **G1** | **Collection** | `run_quality_gates()` — runs immediately after G0 passes | `Item` object | Flags items from low-authority sources (Tier 3+); never blocks. `action=skip` signals caller to exclude. Computes deterministic `source_score` (0-100) from `quality_tier` via `SOURCE_TIER_SCORE_MAP` and persists it on the KBEntry (E9). |
 | **G2** | **Collection** | `run_quality_gates()` — runs after G1 | `Item` + existing `KBEntry[]` | Detects duplicates (URL → PMID → DOI). Duplicates are skipped/logged; unique items proceed. |
 | **G3** | **Collection** | `run_quality_gates()` — runs after G2 | `Item` + topic keywords | Scores relevance 0-100. Below-threshold items are archived (stored but hidden from default views). |
 | **G4** | **Processing** | LLM extraction phase (opt-in: `--check-factual` flag) | `Item` content vs `ExtractionResult.tl_dr` | Verifies LLM summary does not contradict source. On persistent failure: blocks item, writes diagnostics to `_failed/`. |
@@ -55,7 +55,7 @@ Raw Item ─→ [G0][G1][G2][G3] ─→ 01-Raw KB ─→ LLM Extract ─→ 02-D
 | Gate | Category | What it checks | Retry strategy | Action on persistent failure | Priority |
 |------|----------|---------------|----------------|------------------------------|----------|
 | **G0: Schema integrity** | 🔴 Hard | Entry structure, mandatory fields (`source_url`, `source_type`, `source_platform`), frontmatter validity | Retry once (re-parse) | Block item; log full parse diagnostics | 🔴 P0 |
-| **G1: Source authority** | 🟡 Soft | Source quality tier check. Items from Tier 3+ flagged. User's minimum tier enforced. | No retry (tier is static) | Hide from default view; store with warning flag | 🔴 P0 |
+| **G1: Source authority** | 🟡 Soft | Source quality tier check. Items from Tier 3+ flagged. User's minimum tier enforced. Computes a deterministic `source_score` (0-100) from `quality_tier` via `SOURCE_TIER_SCORE_MAP` (tier1=90, tier2=70, tier3=50, tier4=30) — see `src/autoinfo/quality.py`. The `quality_tier` is propagated from source config at collect time (`source_config.quality_tier` takes precedence over `item.quality_tier`). The score map is overridable via `QualityGateConfig.source_score_map`. The resulting `source_score` is persisted on the `KBEntry` and surfaced in search results (E9). | No retry (tier is static) | Hide from default view; store with warning flag | 🔴 P0 |
 | **G2: Dedup** | 🟡 Soft | URL exact match + fuzzy title match (within configurable window, default 30 days). | No retry (deterministic) | Skip duplicate; log "already collected [date]" | 🔴 P0 |
 | **G3: Relevance scoring** | 🟡 Soft | LLM-based relevance score against user's topics and keywords. Score 0-100. | Retry 2x with different model | Below threshold → archived (stored but not shown) | 🔴 P0 |
 | **G4: Summary factual consistency** | 🔴 Hard | LLM verifies: does the generated summary contradict the source text? | Retry 3x with escalating context (different model each retry) | Block item; flag for human review with full diff | 🟡 P1 |
@@ -123,15 +123,19 @@ quality_gates:
 
 ## 8. ErrorCode & Error Response System
 
-The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all 132 MCP tools. The `ErrorCode` enum (23 values) covers all known failure modes and includes three future-facing codes added in v1.8:
+The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all 139 MCP tools. The `ErrorCode` enum (27 values) covers all known failure modes and includes seven codes added since v1.8:
 
 | Code | Value | Purpose |
 |------|-------|---------|
 | `AUTH_REQUIRED` | `"AuthRequired"` | Future SSE authentication — returned when an SSE client attempts to connect without valid credentials |
 | `RATE_LIMITED` | `"RateLimited"` | Future rate limiting — returned when a client exceeds configured rate limits for MCP tool calls |
 | `SESSION_EXPIRED` | `"SessionExpired"` | Future session management — returned when an SSE session token has expired and requires re-authentication |
+| `LLM_NOT_CONFIGURED` | `"LLMNotConfigured"` | LLM-required tool dispatched with no API key configured (v1.8.1) |
+| `NO_CACHED_ITEMS` | `"NoCachedItems"` | No cached collection items to process (v1.8.1) |
+| `EMPTY_RESULT` | `"EmptyResult"` | Operation produced an empty result (v1.8.1) |
+| `CONFIG_NOT_FOUND` | `"ConfigNotFound"` | Project configuration not found (v1.8.1) |
 
-These three codes extend the existing 20 error codes (`NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`).
+These seven codes extend the existing 20 error codes (`NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`). The three v1.8 codes (`AuthRequired`, `RateLimited`, `SessionExpired`) remain reserved for future use; the four v1.8.1 codes (`LLMNotConfigured`, `NoCachedItems`, `EmptyResult`, `ConfigNotFound`) are actively thrown — `LLM_NOT_CONFIGURED` is dispatched centrally by `call_tool` for all 13 LLM-required tools.
 
 **Dual-format responses**: Error responses are backward-compatible via two formats:
 

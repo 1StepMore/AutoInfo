@@ -5,7 +5,25 @@ All notable changes to the AutoInfo project will be documented in this file.
 ## v1.8.4 (2026-08-02)
 
 ### Added
-- **RAW product variants field** — `_handle_list_products` and `_handle_get_product` now return a `variants` field on RAW products: `["api_feed", "webhook", "bulk_export"]`. The `Product` model in `models.py` gains an optional `variants: list[str]` field. This makes the README's "RAW (API feeds, webhook streams, bulk export)" claim code-backed — the 3 variants map to `/api/v1/feeds` (api_feed), webhook push (`collect.py`), and `export_kb` (bulk_export) respectively. Backward-compatible: existing 2-product top-level structure unchanged; PROCESSED products have no `variants` field.
+- **T1 — Unified `_VALID_SOURCE_TYPES` source-of-truth** — `_VALID_SOURCE_TYPES` frozenset (25 source types) is now the single source of truth for source type validation across MCP and CLI. Eliminates drift between separate validation lists. (758dd53)
+- **T2 — MCP tool count 139 + dynamic count assertion** — `get_tool_count` returns the live count (139); new test asserts the count dynamically so stale docstrings and hardcoded numbers surface immediately. (d9024bb)
+- **T3 — Stripe webhook branches on `session.mode`** — Webhook handler now branches on `session.mode` (`payment` vs `subscription`) instead of assuming subscription-only flow. `create_checkout_session` gains a `mode` parameter (`payment` | `subscription`) so callers can request one-time article purchases or recurring subscriptions. (6915141)
+- **T4 — Source `quality_tier` propagated to collected items** — `collect` now carries the source's `quality_tier` onto each collected item, so the G1 (Source Authority) gate can score against the actual source tier rather than a default. (f55b4f7)
+- **T5 — A29 Chinese podcast coverage validated** — Validation scenario confirms Chinese-language podcast sources are covered end to end (collection through KB). (0e342fb)
+- **T7 — SSRN RSS collector** — New SSRN handler fetches working-paper abstracts via RSS, registered in `collectors/__init__.py` and wired into `_build_handler()`. (07641ff)
+- **T8 — GDELT news collector** — New GDELT handler pulls global news events from the GDELT DOC 2.0 API, registered alongside the other news handlers. (30f2e37)
+- **T9 — HuggingFace/Kaggle dataset collector** — New handler fetches dataset metadata from HuggingFace Hub and Kaggle datasets APIs, broadening coverage into ML/AI dataset sources. (2542232)
+- **T10 — Unpaywall/CORE OA fulltext collector** — New Unpaywall/CORE handler resolves open-access fulltext URLs from DOIs. Followed by two cleanup commits: ruff lint (unused vars/imports) and a `SourceConfig` import fix in the Q2b validation scenario. (ac1798f, 2bd63bc, 11540f5)
+- **T11 — E12 single-article payment entitlement** — `create_checkout_session` supports `mode="payment"` for one-time article purchases; `check_access(article_id=...)` fast path verifies the article entitlement grant before delivery. (8347712)
+- **T12 — E14 CEFR-level content simplification** — `simplify_content` MCP tool rewrites text to a target CEFR reading level (A1-C1) via LLM, returning original level, simplified level, and a verification flag. (56730ca)
+- **T13 — E9 deterministic source credibility score** — `source_score` (0-100) is computed deterministically from the source's quality tier, persisted on the KBEntry, and surfaced in search results and G1 gate details. (0184245)
+- **T14 — RAW product variants field** — `_handle_list_products` and `_handle_get_product` now return a `variants` field on RAW products: `["api_feed", "webhook", "bulk_export"]`. The `Product` model in `models.py` gains an optional `variants: list[str]` field. This makes the README's "RAW (API feeds, webhook streams, bulk export)" claim code-backed — the 3 variants map to `/api/v1/feeds` (api_feed), webhook push (`collect.py`), and `export_kb` (bulk_export) respectively. Backward-compatible: existing 2-product top-level structure unchanged; PROCESSED products have no `variants` field. (1a17ba3)
+- **T15 — C11 podcast RSS with enclosures + MP3 hosting** — RSS 2.0 delivery channel now emits `<enclosure>` plus the `itunes:*` namespace for podcast feed generation. Audio output auto-persists the rendered MP3 to disk so enclosures resolve to a hosted file. (97c26e6)
+- **T16 — A6 FRED/AlphaVantage E2E validation** — New end-to-end validation scenario exercises the financial-intelligence domain against live FRED and Alpha Vantage endpoints. (a073da9)
+- **T17 — B15 configurable weasyprint/PDF timeout** — PDF generation timeout is now configurable so slow weasyprint runs no longer block the output pipeline. (79b851a)
+- **T18 — C6 SMTP channel E2E validation** — New validation scenario drives the SMTP delivery channel end to end, covering config, send, and receipt. (1c0af81)
+- **T19 — E2 Stripe lifecycle regression** — Regression test runs the full Stripe lifecycle (checkout → webhook → subscription state) against stripe-mock so billing changes can't silently break the flow. (b5d2352)
+- **T20 — E7 cron cross-process verification** — Validation scenario verifies cron schedules fire across separate processes (not just in-process), catching scheduler persistence bugs. (d3b2f1b)
 
 ### Infrastructure
 - `src/autoinfo/models.py`: `variants: list[str] = field(default_factory=list)` added to `Product` dataclass.
@@ -13,6 +31,23 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `tests/test_v1_5_mcp.py`: `test_get_raw_product` + `test_list_products` extended to assert variants field presence and content.
 
 ## v1.8.3 (2026-07-31)
+
+### Added
+- **4 new ErrorCode values** — `LLM_NOT_CONFIGURED`, `NO_CACHED_ITEMS`, `EMPTY_RESULT`, `CONFIG_NOT_FOUND` added to the `ErrorCode` enum (23 → 27 values) in `src/autoinfo/mcp/errors.py`. `error_response()` canonicalized to the `{success: false, error: {code, message, actionable}}` envelope; `error_dict()` deprecated with `DeprecationWarning`.
+- **Centralized LLM_NOT_CONFIGURED guard** — `call_tool()` dispatch now checks LLM configuration before invoking any of the 13 LLM-required tools (`_LLM_REQUIRED_TOOLS` frozenset), returning `LLM_NOT_CONFIGURED` instead of raw auth errors. `suggest_keywords` no longer silently falls back when config is missing.
+- **Exception→ErrorCode mapping** — `_error_response()` now maps `FileNotFoundError`→`NOT_FOUND`, `ValueError`/`KeyError`→`VALIDATION_ERROR`, `ConnectionError`/`httpx.ConnectError`→`TIMEOUT`, `litellm.exceptions.AuthenticationError`→`LLM_NOT_CONFIGURED` (all other exceptions fall back to `INTERNAL_ERROR`).
+- **`init_project` returns `next_steps` guidance** — The init response now includes a `next_steps` array with actionable follow-up actions (e.g. configure LLM, add sources) so agents know exactly what to do next.
+- **`diagnose_system` returns `health_score` + `phase`** — MCP health diagnostic now reports a composite health score (0-100, via `doctor.calculate_health_score`) and a detected operational phase, matching `autoinfo doctor --verbose`.
+- **DOMAIN_NOT_FOUND remediation hints** — All 18+ `DOMAIN_NOT_FOUND` error messages now include "Use `add_domain()` to create it." guidance. `collect_sources` single-domain path gained a domain existence guard.
+- **`process_collection` returns `status: "noop"`** — When no cached items exist to process, the handler returns `{status: "noop", total_items: 0}` instead of silently returning zero results.
+- **`configure_llm` uses `ErrorCode.CONFIG_NOT_FOUND`** — Replaced the previous string-literal error code with the enum member.
+- **KB listing tools distinguish states** — `list_kb_tier`/`list_summaries` now clearly differentiate uninitialized KB, empty tier, and populated results in their responses.
+- **No-entry check before LLM output generation** — `generate_digest`/`generate_report` return early when no KB entries exist, avoiding wasted LLM calls.
+- **Collection exception handling** — `_handle_collect_sources` catches exceptions in-handler instead of re-raising (eliminates double-logging).
+- **REST API structured error handling** — FastAPI `exception_handler`s for `Exception`, `ValueError`, `KeyError`, `FileNotFoundError` return the same `{success, error}` envelope as MCP. Domain precondition middleware returns `DomainNotFound` (404) with remediation hint for nonexistent domains. 19 new tests in `tests/api/test_error_responses.py`.
+- **CLI help text for 9 commands** — Custom `help=` text added to CLI command groups missing descriptions (collect, doctor, domain, email, sources, summaries, topics, plus shared).
+- **Required API Keys doc** — New `docs/dev/required-api-keys.md` cataloging every environment variable AutoInfo reads (28+ vars), linked from README and director-user-guide. Error messages in MCP and CLI now link to documentation where applicable.
+- **`AUTOINFO_LLM_API_KEY` env var in `.opencode/mcp.json`** — OpenCode MCP connection config now passes the LLM key env var (matching Cursor and Claude configs).
 
 ### Fixed
 - **#98 — Output template path resolution**: `_TEMPLATES_DIR` and `TEMPLATE_PATH` in `output/__init__.py` now resolve from the module's actual location instead of the CWD. Templates (`digest.md.j2`, `report.md.j2`, etc.) are now found regardless of working directory.
@@ -26,6 +61,15 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **Regression tests** — `tests/test_init.py`, `tests/test_output_templates.py`, `tests/test_web_handler.py::test_lxml_importable`, `tests/test_cron.py` (stale-schedule isolation), `tests/test_digest.py` (None-content guard).
 
 ### Infrastructure
+- `src/autoinfo/mcp/errors.py`: 4 new ErrorCodes (LLM_NOT_CONFIGURED, NO_CACHED_ITEMS, EMPTY_RESULT, CONFIG_NOT_FOUND); `ErrorResponse` canonical envelope `{success, error}`; `error_dict()` deprecated.
+- `src/autoinfo/mcp/server.py`: centralized LLM guard (`_LLM_REQUIRED_TOOLS`, `_is_llm_configured`); exception→ErrorCode mapping in `_error_response()`; `init_project` next_steps; `diagnose_system` health_score+phase; DOMAIN_NOT_FOUND remediation hints; `process_collection` noop; `configure_llm` CONFIG_NOT_FOUND; no-entry checks; KB list state distinction; collection exception handling (+380 lines).
+- `src/autoinfo/api/server.py`: `@app.exception_handler` for Exception/ValueError/KeyError/FileNotFoundError returning MCP-compatible envelope.
+- `src/autoinfo/api/routes.py`: domain precondition middleware returning `DomainNotFound` 404 with remediation hint.
+- `src/autoinfo/cli/__init__.py` + `cli/collect.py`, `cli/doctor.py`, `cli/domain.py`, `cli/email.py`, `cli/sources.py`, `cli/summaries.py`, `cli/topics.py`: custom help text for 9 command groups.
+- `.opencode/mcp.json`: `AUTOINFO_LLM_API_KEY` env var added.
+- `docs/dev/required-api-keys.md`: new doc (115 lines) cataloging all env vars.
+- `tests/api/test_error_responses.py`: 19 new REST API error response tests.
+- `tests/test_errors.py`, `tests/test_mcp_server.py`: updated for new ErrorCode count (27) and error mappings.
 - `src/autoinfo/output/__init__.py`: `_TEMPLATES_DIR`/`TEMPLATE_PATH` resolution fix; `_parse_json_response` signature `str | None` + 4 call sites `or ""`.
 - `src/autoinfo/cli/init.py`: removed standalone `sources.yaml` copy logic (config.yaml is source of truth).
 - `src/autoinfo/mcp/server.py`: `init_project` dry-run `would_create_files` no longer lists `.autoinfo/sources.yaml`.

@@ -64,18 +64,80 @@ print(f"✅ G1 no source_config: flagged={result.flagged} (using item tier=3)")
 **Expected Result:** ✅ Falls back to item.quality_tier when source_config is None.
 
 
+#### 37.5 🟢 G1 source_score — deterministic SOURCE_TIER_SCORE_MAP (E9)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+OUTPUT=$(python3 -c "
+from autoinfo.quality import SOURCE_TIER_SCORE_MAP, G1SourceAuthority
+from autoinfo.models import Item
+
+# 1. The module-level score map must be deterministic and match the spec
+assert SOURCE_TIER_SCORE_MAP == {1: 90.0, 2: 70.0, 3: 50.0, 4: 30.0}, \\
+    f'unexpected SOURCE_TIER_SCORE_MAP: {SOURCE_TIER_SCORE_MAP}'
+print('  ✅ PASS: SOURCE_TIER_SCORE_MAP = {1:90, 2:70, 3:50, 4:30}')
+
+# 2. G1 populates source_score in QualityResult.details for each tier
+for tier, expected in [(1, 90.0), (2, 70.0), (3, 50.0), (4, 30.0)]:
+    item = Item(
+        id=f't{tier}', source_name=f'src-tier{tier}', source_type='api',
+        source_url=f'https://example.com/{tier}', title='T', content='c',
+        collected_at='now', quality_tier=tier,
+    )
+    result = G1SourceAuthority().check(item, {'quality_tier': tier})
+    actual = result.details.get('source_score')
+    assert actual == expected, \\
+        f'tier {tier}: expected source_score={expected}, got {actual} (details={result.details})'
+    print(f'  ✅ PASS: tier {tier} → source_score={actual}')
+" 2>&1)
+EXIT_CODE=$?
+
+echo "$OUTPUT" | grep -q "PASS: SOURCE_TIER_SCORE_MAP" \
+  && echo "  ✅ PASS: deterministic score map values 90/70/50/30" \
+  || { echo "  ❌ FAIL: score map values wrong"; ALL_PASS=false; }
+
+for tier in 1 2 3 4; do
+  echo "$OUTPUT" | grep -q "tier $tier → source_score=" \
+    && echo "  ✅ PASS: G1 surfaces source_score for tier $tier" \
+    || { echo "  ❌ FAIL: no source_score for tier $tier"; ALL_PASS=false; }
+done
+
+[ "$EXIT_CODE" -eq 0 ] \
+  && echo "  ✅ PASS: exit code 0" \
+  || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 37.5 PASSED — G1 source_score (E9 deterministic)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 37.5 FAILED"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ `SOURCE_TIER_SCORE_MAP` in `src/autoinfo/quality.py` is deterministic: `{1: 90.0, 2: 70.0, 3: 50.0, 4: 30.0}`
+- ✅ G1 `check()` populates `source_score` in `QualityResult.details` for each tier (90/70/50/30)
+- ✅ Score map is overridable via `QualityGateConfig.source_score_map` (per-domain config)
+- ✅ Fallback for unmapped tiers: `max(10.0, 30.0 - (tier - 4) * 20.0)`
+- ⚠️ Unit tests pass: `tests/test_quality.py` 60/60 (see learnings.md Task 13)
+
 ---
 
 ### 📊 Q37 Verdict
 
 | Scenario | Result |
 |----------|--------|
-| 37.1 Flags Tier 3+ | ⬜ |
-| 37.2 Passes Tier 1 | ⬜ |
-| 37.3 source_config overrides | ⬜ |
-| 37.4 Falls back to item tier | ⬜ |
+| 37.1 Flags Tier 3+ | ✅ |
+| 37.2 Passes Tier 1 | ✅ |
+| 37.3 source_config overrides | ✅ |
+| 37.4 Falls back to item tier | ✅ |
+| 37.5 source_score — SOURCE_TIER_SCORE_MAP (E9) | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅** (per part-12 rollup: Q37a G1 Source Authority ✅; all scenarios deterministic, self-executing scripts verified 2026-08-02)
 
 ---
 
@@ -598,13 +660,13 @@ fi
 
 | Scenario | Result |
 |----------|--------|
-| 37a.1 Happy path — all fields | ⬜ |
-| 37a.2 Missing source_url → block | ⬜ |
-| 37a.3 Missing source_type → specific error | ⬜ |
-| 37a.4 Retry behavior (retry_count recorded) | ⬜ |
-| 37a.5 Item-scoped isolation | ⬜ |
+| 37a.1 Happy path — all fields | ✅ |
+| 37a.2 Missing source_url → block | ✅ |
+| 37a.3 Missing source_type → specific error | ✅ |
+| 37a.4 Retry behavior (retry_count recorded) | ✅ |
+| 37a.5 Item-scoped isolation | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅** (per part-12 rollup: Q37 G0 Schema Integrity ✅; hard gate, deterministic schema validation, no LLM required)
 
 **Design principles verified:**
 - G0 is a 🔴 **HARD** gate: failed items blocked, diagnostics written to `_failed/`
@@ -680,12 +742,12 @@ print(f"✅ Empty URL: is_duplicate={result['is_duplicate']} (no crash)")
 
 | Scenario | Result |
 |----------|--------|
-| 38.1 URL dedup | ⬜ |
-| 38.2 Unique passes | ⬜ |
-| 38.3 PMID dedup | ⬜ |
-| 38.4 Empty URL | ⬜ |
+| 38.1 URL dedup | ✅ |
+| 38.2 Unique passes | ✅ |
+| 38.3 PMID dedup | ✅ |
+| 38.4 Empty URL | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅** (per part-12 rollup: Q38 G2 Dedup ✅; URL + fuzzy title dedup, deterministic)
 
 ---
 
@@ -741,11 +803,11 @@ else:
 
 | Scenario | Result |
 |----------|--------|
-| 39.1 Score 0-100 | ⬜ |
-| 39.2 Higher overlap = higher | ⬜ |
-| 39.3 Low score flagged | ⬜ |
+| 39.1 Score 0-100 | ✅ |
+| 39.2 Higher overlap = higher | ✅ |
+| 39.3 Low score flagged | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅** (per part-12 rollup: Q39 G3 Relevance Scoring ✅; items scored 0-100, deterministic keyword overlap)
 
 ---
 
@@ -814,11 +876,11 @@ with patch("autoinfo.quality.litellm") as mock_litellm:
 
 | Scenario | Result |
 |----------|--------|
-| 40.1 Consistent passes | ⬜ |
-| 40.2 Contradictory flagged | ⬜ |
-| 40.3 LLM failure handled | ⬜ |
+| 40.1 Consistent passes | ➖ |
+| 40.2 Contradictory flagged | ➖ |
+| 40.3 LLM failure handled | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** (per part-12 rollup: Q40 G4 Factual Consistency ⚠️; 40.1-40.2 ➖ SKIPPED — [REQUIRES LLM KEY] for factual cross-checking, no key available; 40.3 ✅ deterministic LLM-failure handling verified; hard gate with 3× retry → block)
 
 ---
 
@@ -923,13 +985,13 @@ print(f"  verdict: {result.get('verdict')}")
 
 | Scenario | Result |
 |----------|--------|
-| 41.1 Faithful passes | ⬜ |
-| 41.2 Unfaithful flagged | ⬜ |
-| 41.3 No translation | ⬜ |
-| 41.4 All advisory | ⬜ |
-| 41.5 Detailed check | ⬜ |
+| 41.1 Faithful passes | ➖ |
+| 41.2 Unfaithful flagged | ➖ |
+| 41.3 No translation | ✅ |
+| 41.4 All advisory | ✅ |
+| 41.5 Detailed check | ➖ |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** (per part-12 rollup: Q41 G5 Translation + Advisory ⚠️; 41.1/41.2/41.5 ➖ SKIPPED — [REQUIRES LLM KEY] for translation verification, no key available; 41.3/41.4 ✅ deterministic advisory/orchestration verified; soft gate, configurable threshold)
 
 ---
 
@@ -1377,13 +1439,13 @@ fi
 
 | Scenario | Result |
 |----------|--------|
-| 41a.1 Pipeline produces composite score (0-100) | ⬜ |
-| 41a.2 High-quality translation scores > 70 | ⬜ |
-| 41a.3 Poor translation scores < 30 | ⬜ |
-| 41a.4 Back-translation matches original (threshold) | ⬜ |
-| 41a.5 Term guardrails detect violations | ⬜ |
+| 41a.1 Pipeline produces composite score (0-100) | ➖ |
+| 41a.2 High-quality translation scores > 70 | ➖ |
+| 41a.3 Poor translation scores < 30 | ➖ |
+| 41a.4 Back-translation matches original (threshold) | ➖ |
+| 41a.5 Term guardrails detect violations | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** (per part-12 rollup: Q41a Translation QA ⚠️; 41a.1-41a.4 ➖ SKIPPED — [REQUIRES LLM KEY] for back-translation + LLM judging, no key available; 41a.5 ✅ deterministic terminology guardrails verified — `do_not_translate`/`preferred` checks need no LLM)
 
 **Design principles verified:**
 - 🔄 **Back-translation pipeline**: forward → target language → back → source language → LLM faithfulness judge
@@ -1975,12 +2037,12 @@ fi
 
 | Scenario | Result |
 |----------|--------|
-| 41b.1 YAML loads and parses correctly | ⬜ |
-| 41b.2 `do_not_translate` enforcement | ⬜ |
-| 41b.3 Confidence scores applied | ⬜ |
-| 41b.4 Malformed YAML → clear error | ⬜ |
+| 41b.1 YAML loads and parses correctly | ✅ |
+| 41b.2 `do_not_translate` enforcement | ✅ |
+| 41b.3 Confidence scores applied | ✅ |
+| 41b.4 Malformed YAML → clear error | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** (per part-12 rollup: Q41b Terminology Guardrails ⚠️ — broader terminology pipeline requires LLM key for full validation; the 4 deterministic guardrail scenarios above all pass — YAML parsing, `do_not_translate`/`preferred` enforcement, confidence scoring, and graceful degradation are LLM-independent)
 
 **Design principles verified:**
 - `load_terminology()` returns a `Terminology` dataclass with `terms: dict[str, TermEntry]` and `score_weights: dict[str, int]`
@@ -2826,14 +2888,14 @@ fi
 
 | Scenario | Result |
 |----------|--------|
-| 41c.1 All valid → all gates pass, all stored | ⬜ |
-| 41c.2 Hard gate blocks bad, good items pass (G0) | ⬜ |
-| 41c.2‑alt G4 integration — runs with `--check-factual` [LLM] | ⬜ |
-| 41c.3 G3 threshold configurable → lower = more pass | ⬜ |
-| 41c.4 G2 dedup — duplicate flagged, soft gate | ⬜ |
-| 41c.5 G5 translation — runs with `--check-translation` [LLM] | ⬜ |
+| 41c.1 All valid → all gates pass, all stored | ✅ |
+| 41c.2 Hard gate blocks bad, good items pass (G0) | ✅ |
+| 41c.2‑alt G4 integration — runs with `--check-factual` [LLM] | ➖ |
+| 41c.3 G3 threshold configurable → lower = more pass | ✅ |
+| 41c.4 G2 dedup — duplicate flagged, soft gate | ✅ |
+| 41c.5 G5 translation — runs with `--check-translation` [LLM] | ➖ |
 
-**OVERALL: ⬜**
+**OVERALL: ⚠️** (per part-12 rollup: Q41c Pipeline Integration ⚠️; 41c.2‑alt/41c.5 ➖ SKIPPED — [REQUIRES LLM KEY] for G4 factual/G5 translation through the real pipeline, no key available; 41c.1/41c.2/41c.3/41c.4 ✅ deterministic pipeline integration verified — hard gate blocking, G3 threshold config, G2 dedup all LLM-independent)
 
 **Design principles verified (Q41c pipeline integration):**
 - 🔴 **HARD gates** (G0, G4): retry-first with escalating context → block-last writes `_failed/`. Only the violating item is blocked — the pipeline continues to process remaining items.

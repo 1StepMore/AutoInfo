@@ -339,41 +339,45 @@ echo "Both collections completed: $PID1=$?, $PID2=$?"
 
 ---
 
-## ErrorCode Reference (v1.8)
+## ErrorCode Reference (v1.8.1)
 
-AutoInfo centralizes error handling using an `ErrorCode` enum with **23 values** (updated from 20 in v1.3). Error responses use a **dual-format** design for backward compatibility:
+AutoInfo centralizes error handling using an `ErrorCode` enum with **27 values** (grown from 20 in v1.3, +3 reserved in v1.8, +4 active in v1.8.1). Error responses use a **dual-format** design for backward compatibility:
 
-- **Flat format** (legacy): `{"message": "error text", "error_code": "CONFIG_NOT_FOUND"}`
-- **Envelope format** (v1.8+): `{"error": {"message": "error text", "code": "CONFIG_NOT_FOUND", "details": {...}}}`
+- **Flat format** (legacy, `error_dict()` — deprecated): `{"error_code": "CONFIG_NOT_FOUND", "message": "error text", "actionable": true}`
+- **Envelope format** (v1.8+, `error_response()`): `{"success": false, "error": {"code": "CONFIG_NOT_FOUND", "message": "error text", "actionable": true}}`
 
-Both formats are returned simultaneously on every error response, allowing consumers to migrate from flat to envelope at their own pace.
+The flat format is kept for backward compatibility; new tool implementations and the REST API use the canonical envelope. Every error carries an `actionable` flag so agents can decide whether to retry or escalate to B3.
 
-### ErrorCode Enum Values (23 total)
+### ErrorCode Enum Values (27 total, matching `src/autoinfo/mcp/errors.py`)
 
 | ErrorCode | Category | Description |
 |-----------|----------|-------------|
-| `ConfigNotFound` | Config | Project configuration not found |
-| `ConfigInvalid` | Config | Config YAML is malformed or invalid |
+| `NotFound` | General | Requested resource not found |
 | `DomainNotFound` | Domain | Requested domain does not exist |
-| `DomainExists` | Domain | Domain name already in use |
+| `ValidationError` | Validation | Input validation failed |
+| `InvalidSourceId` | Source | Source ID is invalid |
 | `SourceNotFound` | Source | Source name not found in domain |
-| `SourceInvalid` | Source | Source configuration is invalid |
+| `Timeout` | System | Operation timed out (retryable) |
 | `TopicNotFound` | Topic | Topic name not found in domain |
+| `KeywordNotFound` | Topic | Keyword not found |
+| `EmailNotEnabled` | Email | Email delivery not enabled |
+| `EmailSendFailed` | Email | SMTP send failed |
+| `InvalidCronExpression` | Cron | Cron expression is malformed |
+| `ScheduleAlreadyExists` | Cron | Schedule already registered |
+| `ScheduleNotFound` | Cron | Schedule not found |
+| `NotPublished` | Output | Product not published |
 | `CollectionFailed` | Collection | Source collection task failed |
 | `ProcessingFailed` | Processing | LLM extraction or processing failed |
-| `LLMTimeout` | LLM | LLM API timed out (retryable) |
-| `LLMAuthFailed` | LLM | LLM API key invalid or expired |
-| `LLMRateLimited` | LLM | LLM provider rate limit hit |
-| `KBEntryNotFound` | KB | Knowledge base entry not found |
-| `KBTierInvalid` | KB | Invalid KB tier specified |
-| `ValidationFailed` | Validation | Input validation failed |
-| `ExportFailed` | Export | Export operation failed |
-| `DeliveryFailed` | Delivery | Delivery channel failed |
-| `ConcurrencyConflict` | Concurrency | Conflicting concurrent operation |
-| `SchemaMismatch` | Schema | Data schema validation failure |
-| `UnknownError` | System | Catch-all for unexpected errors |
+| `InvalidSection` | Output | Invalid output section |
+| `UnknownTool` | MCP | Tool not recognized |
+| `ConfirmationRequired` | MCP | Human confirmation required |
+| `InternalError` | System | Catch-all for unexpected errors |
 | `AuthRequired` (v1.8) | Auth | **NEW**: Future SSE transport authentication required |
 | `RateLimited` (v1.8) | RateLimit | **NEW**: Future rate limiting enforcement |
 | `SessionExpired` (v1.8) | Session | **NEW**: Future session token expiry handling |
+| `LLMNotConfigured` (v1.8.1) | LLM | **NEW**: LLM-required tool called with no API key configured |
+| `NoCachedItems` (v1.8.1) | Collection | **NEW**: No cached collection items to process |
+| `EmptyResult` (v1.8.1) | Output | **NEW**: Operation produced an empty result |
+| `ConfigNotFound` (v1.8.1) | Config | **NEW**: Project configuration not found |
 
-> **Note**: The 3 new ErrorCode values (`AuthRequired`, `RateLimited`, `SessionExpired`) are **reserved for future use** — added in v1.8 to support planned SSE transport authentication, rate limiting, and session management features. They are defined in the enum but may not yet be actively thrown by any code path.
+> **Note**: The 3 v1.8 ErrorCode values (`AuthRequired`, `RateLimited`, `SessionExpired`) are **reserved for future use** — added in v1.8 to support planned SSE transport authentication, rate limiting, and session management features. They are defined in the enum but may not yet be actively thrown by any code path. The 4 v1.8.1 values (`LLMNotConfigured`, `NoCachedItems`, `EmptyResult`, `ConfigNotFound`) are **actively thrown** — `LLM_NOT_CONFIGURED` is dispatched centrally by `call_tool` for all 13 LLM-required tools.

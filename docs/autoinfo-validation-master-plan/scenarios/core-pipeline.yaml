@@ -193,3 +193,29 @@ steps:
           " 2>&1
         expected_stdout:
           - "DOCTOR_JSON_VALID"
+  # -------------------------------------------------------------------------
+  # Step 11: Cross-domain collect — 4 additional domains (6b.2)
+  # -------------------------------------------------------------------------
+  - name: "Cross-domain collect — 4 additional demo domains (online-video, financial-news, online-education, legal-compliance)"
+    tool: bash
+    setup: |
+      rm -rf /tmp/test-q6b && mkdir -p /tmp/test-q6b
+    command: |
+      cd /tmp/test-q6b
+      autoinfo init --demo online-video --name "q6b-test" 2>&1 > /dev/null
+      autoinfo domain import --from-demo financial-news 2>/dev/null || true
+      autoinfo domain import --from-demo online-education 2>/dev/null || true
+      autoinfo domain import --from-demo legal-compliance 2>/dev/null || true
+      for domain in online-video financial-news online-education legal-compliance; do
+        echo "=== Collecting $domain ==="
+        autoinfo collect --domain "$domain" --limit 3 --dry-run 2>&1
+      done
+    expected:
+      exit_code: 0
+      stdout_contains:
+        - "financial-news"
+        - "online-education"
+        - "legal-compliance"
+      stdout_not_contains:
+        - "ERROR"
+        - "Traceback"

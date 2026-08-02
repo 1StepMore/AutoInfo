@@ -28,42 +28,44 @@ products (digests, reports, alerts, feeds) to End Users.
 ## Tool Discovery
 
 Not sure what tools exist? Use MCP protocol discovery.
-Full catalog (137 tools across **34 categories**):
+Full catalog (139 tools across **34 categories**):
 
 | Category | Key Tools |
 |----------|-----------|
-| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models` |
+| **System** | `health_check`, `diagnose_system`, `get_config`, `list_available_models`, `get_tool_count`, `configure_llm` |
 | **Discovery** | `list_domains`, `list_available_platforms`, `get_domain_schema`, `get_effective_llm_config`, `list_output_templates`, `activate_domain`, `deactivate_domain`, `get_domain_config` |
 | **Domain** | `add_domain`, `remove_domain` |
-| **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health` |
-| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
-| **Collection** | `collect_sources` (supports `dry_run=true`), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch), `get_processing_progress`, `batch_run` |
-| **KB** | `search_knowledge_base` (hybrid/mode=vector/mode=faceted), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_draft`, `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
+| **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health`, `get_feeds` |
+| **Topic** | `add_topic`, `remove_topic`, `list_topics`, `topic_group_add`, `topic_group_remove`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords` |
+| **Collection** | `collect_sources` (supports `dry_run=true`, domain-less), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch, check_factual, check_translation), `get_processing_progress`, `batch_run`, `clean_cache` |
+| **KB** | `search_knowledge_base` (hybrid/mode=vector/mode=faceted, cross-domain), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_entry`, `create_kb_draft` (from Raw only), `reject_kb_draft`, `list_kb_tier`, `reindex_kb`, `flag_for_knowledge_base` |
 | **KB Relations** | `link_items`, `get_item_relations` |
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
-| **KB Graph** | `query_knowledge_graph` |
-| **Output** | `list_output_templates`, `generate_digest`, `generate_report` (Markdown/JSON/PDF/HTML), `generate_tutorial`, `generate_presentation`, `localize_content` |
-| **Export/Import** | `export_kb`, `import_kb` |
-| **CEFR** | `classify_cefr` |
+| **KB Graph** | `query_knowledge_graph`, `knowledge_graph_export` |
+| **Output** | `list_output_templates`, `generate_digest` (md/html/json/agent), `generate_report` (md/json/pdf/html/audio/agent), `generate_cross_domain_report`, `generate_tutorial`, `generate_presentation`, `localize_content` |
+| **Export/Import** | `export_kb` (md/json/sqlite/pdf/csv/graphml/agent/bundle), `import_kb` |
+| **CEFR** | `classify_cefr` (EN/ZH/JA), `cefr_batch` |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
-| **Email** | `send_email_digest` |
+| **Email** | `send_email_digest`, `email_config` |
+| **Audit** | `query_audit_log` |
 | **Q&A** | `query_collected` |
 | **Custom Extraction** | `extract_fields`, `get_extraction` |
 | **Cron** | `list_schedules`, `add_schedule`, `remove_schedule`, `run_schedules`, `get_schedule_status` |
 | **Source Health** | `get_source_health`, `rate_item` |
 | **Projects** | `init_project`, `list_projects`, `get_project_assets`, `archive_project` |
-| **Monitor** | `list_active_collections`, `list_active_deliveries` |
+| **Monitor** | `list_active_collections`, `list_active_deliveries`, `get_channel_health` |
 | **Webhooks** | `set_domain_webhooks`, `get_domain_webhooks` |
 | **Quality Gate Config** | `get_gate_config`, `set_gate_config` |
 | **Product** | `list_products`, `get_product` |
 | **Alert Rules** | `add_alert_rule`, `get_alert_rules`, `remove_alert_rule` |
 | **End User** | `send_to_enduser`, `get_enduser_history`, `get_enduser_products`, `query_delivery_log`, `get_delivery_log`, `activate_trial`, `check_trial_expiry`, `update_preferences`, `get_preferences`, `get_subscription_status` |
-| **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice` |
-| **Data Privacy** | `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` |
-| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score` |
+| **Cost** | `get_billing_summary`, `get_budget_thresholds`, `set_budget_thresholds`, `create_checkout_session`, `get_enduser_usage`, `get_enduser_invoice`, `cost_dashboard`, `cost_allocation` |
+| **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
+| **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content`, `simplify_content` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
+| **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
 
 ## Common Workflows
 
@@ -129,6 +131,28 @@ get_collection_diff(domain="medical-research", since_collection_id="...")
 ### Check system health
 ```
 diagnose_system() → all-in-one health check
+→ returns {health_score: 0-100, phase: init|collect|process|healthy|degraded, ...}
+→ on degraded status, inspect `phase` to identify the failing stage
+```
+
+### Configure the LLM (BYOK)
+```
+configure_llm(api_key="sk-...", provider="openai", model="gpt-4")
+→ stores an env var reference (${AUTOINFO_LLM_API_KEY}), never the raw key
+→ if the key is missing, LLM-required tools return LLM_NOT_CONFIGURED (see Error Handling)
+```
+
+### Handle tool errors
+```
+All MCP tools return the canonical envelope:
+  success: {success: true, data: ...}
+  error:   {success: false, error: {code, message, actionable}}
+
+When a tool fails:
+1. Read error.code → classify the failure (DOMAIN_NOT_FOUND, LLM_NOT_CONFIGURED, ...)
+2. If actionable is true → follow the remediation hint in error.message
+3. For LLM_NOT_CONFIGURED → run configure_llm() first
+4. process_collection with no cached items returns {status: "noop", total_items: 0} — not an error, collect first
 ```
 
 ### Configure quality gates
@@ -150,28 +174,27 @@ remove_alert_rule(domain="medical-research", rule_id="...")
 
 **Create a new End User (starts in trial):**
 ```
-create_end_user(name="Acme Corp", email="admin@acme.com",
+send_to_enduser(name="Acme Corp", email="admin@acme.com",
   tier="pro", delivery_preferences={"channels": ["email", "webhook"]})
 ```
 
 **Manage delivery preferences:**
 ```
-update_end_user(user_id="usr_xxx",
+update_preferences(user_id="usr_xxx",
   delivery_preferences={"channels": ["telegram", "email"],
     "quiet_hours": {"start": "22:00", "end": "07:00", "timezone": "Asia/Shanghai"}})
 ```
 
-**Suspend/cancel subscription:**
+**Check subscription status:**
 ```
-update_end_user(user_id="usr_xxx", status="suspended")
-# or for cancellation:
-update_end_user(user_id="usr_xxx", status="cancelled")
+get_subscription_status(user_id="usr_xxx")
 ```
 
 **View cost vs. budget:**
 ```
-get_cost_report(domain="medical-research", period="month")
-get_cost_allocation(domain="medical-research", strategy="usage-based")
+get_billing_summary(domain="medical-research", period="month")
+cost_dashboard(domain="medical-research", period="month")
+cost_allocation(domain="medical-research", strategy="usage-based")
 ```
 
 **Trace a delivery issue:**
@@ -273,11 +296,11 @@ remove_agent_callback(callback_id="cb_xxx")
 |------|--------|
 | **DO NOT write to 03-Wiki** | Only human can promote Draft→Wiki. |
 | **DO NOT create Draft from nothing** | Must come from 01-Raw (call `create_kb_draft` with `raw_ids`). |
-| **DO NOT run `init` or manage API keys** | Those are Director User / human operations. |
+| **DO NOT run `init` or store raw API keys** | Use `init_project` MCP tool (not CLI init) and `configure_llm()` for BYOK — it stores `${AUTOINFO_LLM_API_KEY}` as an env var reference, never the raw key. |
 | **DO NOT delete sources or domains** | Ask human first. |
 | **DO NOT edit `.autoinfo/config.yaml` directly** | Use MCP tools (`add_source`, `add_topic`, etc.). |
 | **DO NOT run `autoinfo doctor`** | Use `diagnose_system()` MCP tool instead. |
-| **DO NOT permanently delete End Users** | Use `update_end_user(status="cancelled")`. Only Director User can purge. |
+| **DO NOT permanently delete End Users** | Use `get_subscription_status` / `update_preferences` to manage. Only Director User can purge. |
 | **DO NOT demote Wiki entries** | Wiki is append-only. Tag `deprecated` only upon explicit human command. |
 
 ## Authorization Boundaries

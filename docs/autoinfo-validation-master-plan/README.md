@@ -1,8 +1,8 @@
 # AutoInfo Master Validation Plan v2 — 100% Feature Coverage
 
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
-**Date:** 2026-07-27
-**Baseline:** AutoInfo v1.8 — 2537 tests (includes new collector tests), 23 CLI command groups, 138 MCP tools (34 categories), KB pipeline (4 tiers), 22 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (12 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
+**Date:** 2026-07-27 (initial); 2026-08-02 updates appended (question count reconciled with part-12 rollup, test count refreshed, new scenarios noted)
+**Baseline:** AutoInfo v1.8 — ~2747 test functions across 103 files (approximation; was 2537 at v1.8 baseline, grew with v1.8.1/v1.8.4 collector + E12/E14/E9/C11 tests), 23 CLI command groups, 139 MCP tools (34 categories), KB pipeline (4 tiers), 26 collector handlers, 6 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (12 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
 
 > **Spec references**: See `docs/dev/specs/` for the full specification (11 files). See also `docs/dev/cross-dimensional-catalog.md` (keystone product matrix, supersedes gap audit docs). See `docs/archive/` for superseded/one-time historical docs including `reality-assessment.md` (archived).
 
@@ -88,7 +88,7 @@ After executing all 15 parts, produce a summary verdict table in `part-12-final-
 
 **Improvement over v1**: v2 adds:
 - All 22 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
-- All 138 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
+- All 139 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
 - 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki (was only 01-Raw)
 - Quality gates G1-G5 (was G1-G3 only)
 - All search modes: FTS5, vector, hybrid, faceted, Q&A, knowledge graph
@@ -247,7 +247,7 @@ This pattern eliminates ambiguous "looks good" verdicts — every assertion is b
 | Part | File | Questions | Coverage |
 |------|------|-----------|----------|
 | 0 | `README.md` | — | Index, prerequisites, common patterns |
-| 1 | `part-01-core-pipeline.md` | Q1-Q6 | Init → Collect → Process → Browse → Status → Doctor |
+| 1 | `part-01-core-pipeline.md` | Q1-Q6b | Init → Collect (9 demo domains) → Process → Browse → Status → Doctor |
 | 2 | `part-02-cli-full.md` | Q7-Q20 | All 22 CLI commands with subcommand testing |
 | 3 | `part-03-mcp-system-tools.md` | Q21-Q27i | MCP: System, Discovery, Domain, Source, Topic, Collection, Projects, Monitor, Webhooks, Source Health, Quality Gate Config, Alert Rules, Email, KB Entry, KB Graph, CEFR, Cost, Audit |
 | 4 | `part-04-mcp-kb-output.md` | Q28-Q36c | MCP: KB (all tiers), Search, Output, Cron, Email, CEFR, Knowledge Lifecycle, Product |
@@ -259,11 +259,11 @@ This pattern eliminates ambiguous "looks good" verdicts — every assertion is b
 | 10 | `part-10-error-boundary.md` | Q59 | Comprehensive error/boundary matrix (all layers) |
 | 11 | `part-11-production-validation.md` | Q60 | Doctor diagnostics, MCP stdio, stress test, test suite, observability |
 | 12 | `part-12-final-verdict.md` | — | Summary verdict, production gap checklist, sign-off criteria |
-| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65f | End User lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product delivery SLA, self-service portal, data privacy, End User MCP (8 tools), Cost/Billing (6 tools), GDPR MCP tools, Stripe webhook billing lifecycle, Consumption tracking |
+| 13 | `part-13-enduser-lifecycle.md` | Q61-Q65h | End User lifecycle: profile & subscription CRUD, state machine, multi-channel delivery (19 scenarios in Q63), product delivery SLA, self-service portal, data privacy, End User MCP (8 tools), Cost/Billing (6 tools), GDPR MCP tools, Stripe webhook billing lifecycle, Consumption tracking, Cost & Usage E2E (Q65h) |
 | 14 | `part-14-human-agent-collaboration.md` | Q66-Q69 | Human-Agent collaboration: ambiguous intent clarification, failure escalation, human review & iteration, human override & compliance |
 | 15 | `part-15-cross-dimension-e2e.md` | Q70-Q71b | Cross-dimension E2E journey spanning Director User → Direct User (Agent) → End User, Agent Callbacks |
 
-**Total: 75 questions, 15 part files + verdict**
+**Total: 98 questions (per part-12 rollup) across 15 part files + verdict.** Note: the Table of Contents above lists 76 top-level question IDs (Q1-Q72); the part-12 final-verdict rollup counts 98 when including sub-question variants (Q6b, Q27b-Q27i, Q36b-Q36e, Q41a-Q41c, Q65b-Q65h, Q71b) that carry independent verdict rows. The 98 figure is the authoritative total used in the part-12 sign-off criteria.
 
 ---
 
@@ -285,7 +285,7 @@ This pattern eliminates ambiguous "looks good" verdicts — every assertion is b
 pip install -e ".[dev]"
 
 # 2. Verify test infrastructure
-pytest --collect-only -q  # Should collect 2183+ tests without errors
+pytest --collect-only -q  # Should collect ~2747 tests without errors (approximation; was 2183+ at v1.4, 2537 at v1.8 baseline)
 
 # 3. Set minimum env vars
 export AUTOINFO_LLM_API_KEY="sk-dummy-for-testing"
@@ -330,7 +330,7 @@ All CLI commands support these **global flags**:
 | Feature Area | Existing v1 | v2 Target | Status |
 |-------------|-------------|-----------|--------|
 | CLI commands tested | 6/17 (35%) | 23/23 (100%) | 📝 Part 2 |
-| MCP tools tested | 8/72 (11%) | 138/138 (100%) | 📝 Parts 3-4 |
+| MCP tools tested | 8/72 (11%) | 139/139 (100%) | 📝 Parts 3-4 |
 | KB tiers tested | 1/4 (01-Raw only) | 4/4 (Inbox→Raw→Draft→Wiki) | 📝 Part 6 |
 | Quality gates tested | 3/5 (G1-G3) | 5/5 (G1-G5) | 📝 Part 5 |
 | Search modes tested | 1 (summaries list) | FTS5 (currently only FTS5 implemented; vector/hybrid/faceted/Q&A/graph planned) | 📝 Part 6 |

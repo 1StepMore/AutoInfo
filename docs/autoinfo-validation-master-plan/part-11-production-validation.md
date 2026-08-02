@@ -38,7 +38,7 @@ echo 'invalid json' | timeout 5 python3 -m autoinfo.mcp.server 2>/dev/null; echo
 **Expected Result:** ❌ Server does NOT crash. Returns JSON-RPC error response. No Python traceback.
 
 
-#### 60.4 🟢 MCP server lists all 138 tools
+#### 60.4 🟢 MCP server lists all 139 tools
 ```python
 from autoinfo.mcp.server import app
 tools = app.list_tools()()
@@ -78,7 +78,7 @@ for cat, cat_tools in categories.items():
     present = [t for t in cat_tools if t in tool_names]
     print(f"  {cat}: {len(present)}/{len(cat_tools)} tools present")
 ```
-**Expected Result:** ✅ 138 tools registered with correct names. All 34 categories have expected tools.
+**Expected Result:** ✅ 139 tools registered with correct names. All 34 categories have expected tools.
 
 
 #### 60.5 🟢 3 consecutive pipeline runs — no crash
@@ -104,14 +104,14 @@ python3 -c "import autoinfo; print(f'AutoInfo v{autoinfo.__version__}')"
 ```bash
 cd /mnt/d/贯维/AutoInfo && pytest -v --tb=short -x 2>&1 | tail -30
 ```
-**Expected Result:** ✅ 2183 tests pass. 0 failures.
+**Expected Result:** ✅ ~2747 tests pass (approx). 0 failures.
 
 
 #### 60.8 🟢 Test collection without errors
 ```bash
 cd /mnt/d/贯维/AutoInfo && pytest --collect-only -q
 ```
-**Expected Result:** ✅ All 2183 tests collected without import errors.
+**Expected Result:** ✅ All ~2747 tests collected (approx) without import errors.
 
 
 #### 60.9 🟢 CLI entry point works from anywhere
@@ -1458,7 +1458,7 @@ fi
 | Doctor all checks | ⬜ |
 | MCP stdio ping | ⬜ |
 | Invalid JSON-RPC | ⬜ |
-| All 138 tools | ⬜ |
+| All 139 tools | ⬜ |
 | 3x stress run | ⬜ |
 | Clean import | ⬜ |
 | Test suite | ⬜ |

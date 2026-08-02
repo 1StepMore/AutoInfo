@@ -8,7 +8,7 @@
 name: "Production Validation"
 description: >
   Validates AutoInfo is production-ready: doctor diagnostics, MCP server
-  stdio transport, tool count (138 tools, 34 categories, 22+ collectors),
+  stdio transport, tool count (139 tools, 34 categories, 26 collectors),
   3-pass stress test, test suite collection, observability MCP tools
   (trace_item, get_metrics, get_prometheus_metrics), package import,
   CLI/module/MCP entry points, SQLite backup/restore, subscription tier
@@ -70,9 +70,9 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 4: Verify tool count (138 tools), 34 categories, 22+ collector handlers
+  # Step 4: Verify tool count (139 tools), 34 categories, 26 collector handlers
   # -------------------------------------------------------------------------
-  - name: "MCP tool count returns 138 tools across 34 categories"
+  - name: "MCP tool count returns 139 tools across 34 categories"
     tool: python
     command: |
       import os, sys, json

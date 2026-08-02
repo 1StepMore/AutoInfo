@@ -62,9 +62,42 @@ assert "llm" in data
 assert "sources" in data
 assert "disk" in data
 assert "db" in data
-print(f"✅ diagnose_system: LLM key={'key_configured' in data.get('llm',{})}, Sources={data.get('sources',{}).get('count',0)}, Disk={data.get('disk',{})}")
+# v1.8.1 UX: composite health score + phase
+assert "health_score" in data, "missing health_score (0-100)"
+assert 0 <= data["health_score"] <= 100
+assert data.get("phase") in ("init", "collect", "process", "healthy", "degraded"), f"unexpected phase: {data.get('phase')}"
+print(f"✅ diagnose_system: LLM key={'key_configured' in data.get('llm',{})}, Sources={data.get('sources',{}).get('count',0)}, Disk={data.get('disk',{})}, health_score={data['health_score']}, phase={data.get('phase')}")
 ```
-**Expected Result:** ✅ Returns comprehensive health with llm, sources, disk, db sections.
+**Expected Result:** ✅ Returns comprehensive health with llm, sources, disk, db sections, plus `health_score` (0-100) and `phase` (init/collect/process/healthy/degraded).
+
+
+#### 18.6 🟢 configure_llm (BYOK, v1.8.1)
+```python
+result = app.call_tool("configure_llm", {"api_key": "sk-dummy", "provider": "openai", "model": "gpt-4o-mini"})
+data = json.loads(result.content[0].text)
+print(f"✅ configure_llm: {data}")
+assert data.get("success") is True or "configured" in str(data).lower()
+```
+**Expected Result:** ✅ LLM configured. Key stored as `${AUTOINFO_LLM_API_KEY}` env var reference — never the raw key. If config is missing, returns `CONFIG_NOT_FOUND` (actionable).
+
+
+#### 18.7 🔴 LLM guard — LLM-required tool with no key returns `LLM_NOT_CONFIGURED` (v1.8.1)
+```python
+# Run in an environment WITHOUT AUTOINFO_LLM_API_KEY set.
+# Any of the 13 LLM-required tools (process_collection, generate_digest,
+# suggest_keywords, classify_cefr, query_collected, ...) must return the
+# structured LLM_NOT_CONFIGURED error at dispatch — NOT a raw auth error.
+import os
+os.environ.pop("AUTOINFO_LLM_API_KEY", None)
+result = app.call_tool("suggest_keywords", {"domain": "medical-research", "topic": "IVF"})
+data = json.loads(result.content[0].text)
+print(f"✅ LLM guard: {json.dumps(data)[:300]}")
+assert data.get("success") is False
+err = data.get("error", {})
+assert err.get("code") == "LLMNotConfigured", f"expected LLMNotConfigured, got {err.get('code')}"
+assert "actionable" in err
+```
+**Expected Result:** ✅ Centralized guard at `call_tool` dispatch. Returns `{success: false, error: {code: "LLMNotConfigured", message, actionable}}` instead of raw litellm auth errors. No silent fallback.
 
 
 #### 18.3 🟢 get_config
@@ -101,6 +134,8 @@ print(f"✅ list_available_models: {len(data['models'])} models available")
 | 18.3 get_config | ⬜ |
 | 18.4 list_available_models | ⬜ |
 | 18.5 get_tool_count | ⬜ |
+| 18.6 configure_llm | ⬜ |
+| 18.7 LLM guard (LLM_NOT_CONFIGURED) | ⬜ |
 
 **OVERALL: ⬜**
 
@@ -116,7 +151,7 @@ assert "count" in data
 assert data["count"] >= 115
 print(f"✅ get_tool_count: {data['count']} tools registered (dynamic)")
 ```
-**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (138 expected in v1.8.2).  
+**Expected Result:** ✅ Returns dynamic tool count. No hardcoded number. Count ≥ 115 (139 expected).  
 Tool: `get_tool_count` — self-discovery tool that returns the dynamic count of registered MCP tools at runtime.
 
 ---
@@ -747,8 +782,29 @@ print(f"✅ batch_run: {json.dumps(data, indent=2)[:300]}")
 | 23.6 get_processing_progress | ⬜ |
 | 23.7 batch_run | ⬜ |
 | 23.8 clean_cache (v1.8) | ⬜ |
+| 23.9 process_collection noop (v1.8.1) | ⬜ |
 
 **OVERALL: ⬜**
+
+---
+
+### Q23.9: process_collection with no cached items (v1.8.1)
+
+#### 23.9 🟢 process_collection noop — graceful empty handling
+```python
+from autoinfo.mcp.server import app
+import json
+import os
+
+# Use a fresh domain-less scope where nothing has been collected
+result = app.call_tool("process_collection", {"domain": "medical-research"})
+data = json.loads(result.content[0].text)
+print(f"✅ process_collection (noop check): {json.dumps(data)[:300]}")
+# MUST be a structured noop response — NOT an error and NOT a raw traceback
+assert data.get("status") == "noop", f"expected status=noop, got {data.get('status')}"
+assert data.get("total_items") == 0
+```
+**Expected Result:** ✅ Returns `{status: "noop", total_items: 0}` when no cached collection items exist — not an error envelope, no traceback. Agents proceed with `collect_sources` first.
 
 ---
 
@@ -791,8 +847,11 @@ result = app.call_tool("init_project", {"name": "mcp-test-project", "demo": "med
 data = json.loads(result.content[0].text)
 print(f"✅ init_project: {data}")
 assert "status" in data or "name" in data
+# v1.8.1 UX: actionable next_steps guidance array
+assert isinstance(data.get("next_steps"), list) and len(data["next_steps"]) > 0, \
+    f"expected next_steps guidance array, got {data.get('next_steps')}"
 ```
-**Expected Result:** ✅ Project initialized with demo domain. Config files created.
+**Expected Result:** ✅ Project initialized with demo domain. Config files created. Returns `next_steps` guidance array (e.g. `configure_llm`, add sources) so agents know exactly what to do next.
 
 
 #### 24.2 🟢 list_projects
@@ -876,6 +935,143 @@ print(f"✅ get_domain_webhooks: {data}")
 **Expected Result:** ✅ Returns configured webhook URL and event list.
 
 
+#### 25.3 🟢 set_domain_webhooks (end-to-end callback delivery)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+TEST_DIR="/tmp/test-q25"
+rm -rf "$TEST_DIR" && mkdir -p "$TEST_DIR" && cd "$TEST_DIR"
+autoinfo init --demo medical-research 2>&1 > /dev/null
+
+python3 -c "
+import http.server, threading, json, sys, asyncio, time
+
+# ── Mock HTTP listener ──────────────────────────────────────
+RECEIVED: list[dict] = []
+MOCK_PORT = 19997  # avoid conflicts
+
+class MockHandler(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length)
+        RECEIVED.append(json.loads(body))
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{\"status\": \"ok\"}')
+    def log_message(self, *args):
+        pass
+
+mock_server = http.server.HTTPServer(('127.0.0.1', MOCK_PORT), MockHandler)
+mock_thread = threading.Thread(target=mock_server.serve_forever, daemon=True)
+mock_thread.start()
+print(f'  Mock HTTP listener started on port {MOCK_PORT}')
+
+# ── Set domain webhook via call_tool ────────────────────────
+from autoinfo.mcp.server import call_tool
+
+result = asyncio.run(call_tool('set_domain_webhooks', {
+    'domain': 'medical-research',
+    'webhook_urls': [f'http://127.0.0.1:{MOCK_PORT}/webhook']
+}))
+envelope = json.loads(result[0].text)
+data = envelope.get('data', envelope)
+urls = data.get('webhook_urls', [])
+assert len(urls) == 1, f'Expected 1 webhook URL, got {len(urls)}'
+assert urls[0].endswith('/webhook'), f'Unexpected URL: {urls[0]}'
+print(f'  ✅ PASS: webhook configured — urls={urls}')
+
+# ── Directly invoke webhook dispatch (no real collection needed) ─
+from autoinfo.collect import _fire_webhooks
+from autoinfo.models import Item
+
+item = Item(
+    id='test-wb-001',
+    content='Test content for webhook callback verification.',
+    title='Test Webhook Item',
+    source_url='http://example.com/test-webhook',
+    source_name='test-source',
+    source_type='test',
+)
+
+# Run the async webhook fire synchronously (blocks until POST completes)
+asyncio.run(_fire_webhooks('medical-research', [item], [f'http://127.0.0.1:{MOCK_PORT}/webhook']))
+
+# ── Assert callback received ────────────────────────────────
+time.sleep(0.3)  # allow daemon thread flush if needed
+
+if not RECEIVED:
+    print('  ❌ FAIL: no webhook callback received')
+    mock_server.shutdown()
+    sys.exit(1)
+
+payload = RECEIVED[0]
+assert 'domain' in payload, f'Missing domain in payload: {list(payload.keys())}'
+assert payload['domain'] == 'medical-research', f'Wrong domain: {payload[\"domain\"]}'
+assert payload['title'] == 'Test Webhook Item', f'Wrong title: {payload.get(\"title\")}'
+print(f'  ✅ PASS: mock received POST — domain={payload[\"domain\"]}, '
+      f'title={payload.get(\"title\",\"?\")[:40]}, '
+      f'total_received={len(RECEIVED)}')
+
+mock_server.shutdown()
+" 2>&1 || { echo "  ❌ FAIL: webhook e2e delivery failed"; ALL_PASS=false; }
+
+[ "$ALL_PASS" = true ] && echo "✅ SCENARIO 25.3 PASSED — end-to-end webhook" && exit 0
+echo "❌ SCENARIO 25.3 FAILED" && exit 1
+```
+**Expected Result:** ✅ Webhook set via MCP tool. ✅ `_fire_webhooks` dispatches POST to localhost mock. ✅ Mock server receives JSON payload with `domain`=`medical-research` and `title`=`Test Webhook Item`.
+
+
+#### 25.4 🟢 get_domain_webhooks (round-trip)
+```python
+from autoinfo.mcp.server import call_tool
+import asyncio, json
+
+# Set webhook
+set_result = asyncio.run(call_tool("set_domain_webhooks", {
+    "domain": "medical-research",
+    "webhook_urls": ["https://webhook.example.com/callback"]
+}))
+set_envelope = json.loads(set_result[0].text)
+set_data = set_envelope.get("data", set_envelope)
+set_urls = set_data.get("webhook_urls", [])
+
+# Get webhook and assert round-trip equality
+get_result = asyncio.run(call_tool("get_domain_webhooks", {"domain": "medical-research"}))
+get_envelope = json.loads(get_result[0].text)
+get_data = get_envelope.get("data", get_envelope)
+get_urls = get_data.get("webhook_urls", [])
+
+assert set_urls == get_urls, f"Round-trip mismatch: set={set_urls} get={get_urls}"
+assert len(get_urls) == 1
+assert get_urls[0] == "https://webhook.example.com/callback"
+print(f"✅ get_domain_webhooks round-trip: set={set_urls}, get={get_urls}")
+```
+**Expected Result:** ✅ `get_domain_webhooks` returns exact same URLs set by `set_domain_webhooks`. Round-trip equality verified.
+
+
+#### 25.5 🔴 set_domain_webhooks (invalid URL rejected)
+```python
+from autoinfo.mcp.server import call_tool
+import asyncio, json
+
+# Attempt with malformed URL (ftp:// — not http/https)
+result = asyncio.run(call_tool("set_domain_webhooks", {
+    "domain": "medical-research",
+    "webhook_urls": ["ftp://invalid.example.com/callback"]
+}))
+data = json.loads(result[0].text)
+
+# Structured error expected: error_code field + actionable guidance
+assert data.get("success") is False, f"Expected success=false, got: {json.dumps(data)[:200]}"
+assert "error_code" in data, f"Missing error_code in: {json.dumps(data)[:200]}"
+assert data["error_code"] == "ValidationError", f"Wrong error_code: {data.get('error_code')}"
+print(f"✅ invalid URL rejected: error_code={data['error_code']}, "
+      f"message={data.get('message','')[:80]}")
+```
+**Expected Result:** ✅ Invalid webhook URL (`ftp://`) returns structured error with `error_code`/`message` fields. No webhook URLs stored.
+
+
 ---
 
 ### 📊 Q25 Verdict
@@ -884,6 +1080,9 @@ print(f"✅ get_domain_webhooks: {data}")
 |----------|--------|
 | 25.1 set_domain_webhooks | ⬜ |
 | 25.2 get_domain_webhooks | ⬜ |
+| 25.3 e2e callback delivery | ⬜ |
+| 25.4 round-trip | ⬜ |
+| 25.5 invalid URL rejected | ⬜ |
 
 **OVERALL: ⬜**
 

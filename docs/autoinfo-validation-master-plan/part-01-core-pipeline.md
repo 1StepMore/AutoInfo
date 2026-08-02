@@ -210,7 +210,7 @@ cd /tmp/empty-dir && autoinfo collect --domain medical-research
 
 ---
 
-## Q2b: Collector Validation — All 15 Source Handlers (Mock Transport)
+## Q2b: Collector Validation — All 26 Source Handlers (Mock Transport)
 
 **User says:** "Does every collector handle its API correctly? Happy path, empty results, and errors?"
 
@@ -2301,6 +2301,84 @@ echo "$G0" | grep -q "G0_OK=" && echo "  ✅ PASS: G0 schema integrity on cached
 
 ---
 
+### Scenarios — Dataset/Model Metadata Collectors (A24)
+
+#### 2b.49 🟢 HuggingFace Hub / Kaggle handler (A24) — 46 mock tests
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ALL_PASS=true
+
+# Run all 46 HuggingFace/Kaggle collector tests (mock httpx, zero real API calls)
+cd /mnt/d/贯维/AutoInfo
+OUTPUT=$(python3 -m pytest tests/test_collector_huggingface.py -v --tb=short 2>&1)
+EXIT_CODE=$?
+
+PASSED=$(echo "$OUTPUT" | grep -c "PASSED" || true)
+FAILED=$(echo "$OUTPUT" | grep -c "FAILED" || true)
+
+echo "  Tests passed: $PASSED"
+echo "  Tests failed: $FAILED"
+
+[ "$EXIT_CODE" -eq 0 ] && echo "  ✅ PASS: all tests pass" || { echo "  ❌ FAIL: exit code $EXIT_CODE"; ALL_PASS=false; }
+[ "$PASSED" -ge 46 ] && echo "  ✅ PASS: at least 46 tests passed" || { echo "  ❌ FAIL: expected >=46 tests"; ALL_PASS=false; }
+[ "$FAILED" -eq 0 ] && echo "  ✅ PASS: zero failures" || { echo "  ❌ FAIL: $FAILED failures"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_handler_is_importable" \
+  && echo "  ✅ PASS: handler is importable" \
+  || { echo "  ❌ FAIL: handler not importable"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_source_type_default_huggingface" \
+  && echo "  ✅ PASS: source_type == 'huggingface'" \
+  || { echo "  ❌ FAIL: source_type not huggingface"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_fetch_returns_list" \
+  && echo "  ✅ PASS: fetch returns list of dicts" \
+  || { echo "  ❌ FAIL: fetch not returning list"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_fetch_handles_empty_results" \
+  && echo "  ✅ PASS: empty results handled" \
+  || { echo "  ❌ FAIL: empty results handling broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_kaggle_provider_sets_source_type" \
+  && echo "  ✅ PASS: Kaggle provider sets source_type='kaggle'" \
+  || { echo "  ❌ FAIL: Kaggle provider broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_kaggle_requires_key_handling" \
+  && echo "  ✅ PASS: Kaggle missing-key degrades gracefully" \
+  || { echo "  ❌ FAIL: Kaggle missing-key handling broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_to_item_complete" \
+  && echo "  ✅ PASS: to_item conversion correct" \
+  || { echo "  ❌ FAIL: to_item conversion broken"; ALL_PASS=false; }
+
+echo "$OUTPUT" | grep -q "test_requires_key_returns_false_for_huggingface" \
+  && echo "  ✅ PASS: requires_key returns False for HuggingFace" \
+  || { echo "  ❌ FAIL: requires_key broken"; ALL_PASS=false; }
+
+if [ "$ALL_PASS" = true ]; then
+  echo ""
+  echo "✅ SCENARIO 2b.49 PASSED (A24 HuggingFace/Kaggle handler)"
+  exit 0
+else
+  echo ""
+  echo "❌ SCENARIO 2b.49 FAILED (A24 HuggingFace/Kaggle handler)"
+  exit 1
+fi
+```
+**Expected Result:**
+- ✅ All 46 HuggingFace/Kaggle unit tests pass (mock httpx, zero real API calls)
+- ✅ HuggingFaceHandler has `source_type = "huggingface"` (default), `requires_key() = False` for HF Hub
+- ✅ Kaggle provider sets `source_type = "kaggle"`, `source_name = "kaggle"`; missing `KAGGLE_USERNAME`/`KAGGLE_KEY` → `fetch()` returns `[]` (graceful, no crash)
+- ✅ `fetch()` returns list of dicts with id/title/content/authors/downloads/tags/source_url
+- ✅ HTTP errors, network errors, timeouts, and non-JSON responses return empty list `[]`
+- ✅ Empty query / limit=0 returns `[]`
+- ✅ `to_item()` produces valid `Item` with `source_platform="huggingface"` (or `"kaggle"`)
+- ✅ Metadata-only collection: no dataset/model files are downloaded
+- ⚠️ HuggingFace Hub API returns flat JSON list (not wrapped in `{"results": [...]}`) — handled via `isinstance(data, list)` check
+
+---
+
 ### 📊 Q2b Verdict
 
 | Scenario | Result |
@@ -2347,14 +2425,15 @@ echo "$G0" | grep -q "G0_OK=" && echo "  ✅ PASS: G0 schema integrity on cached
 | 2b.40 Bilibili happy path mock | ⬜ |
 | 2b.41 Bilibili error code | ⬜ |
 | 2b.42 Bilibili empty query | ⬜ |
-| 2b.43 Apple Podcasts Chinese podcast coverage (A29, country=CN) | ⬜ |
-| 2b.44 SSRN handler (A23) mock | ⬜ |
-| 2b.45 GDELT handler (A18) mock | ⬜ |
-| 2b.46 Unpaywall handler (A25) mock | ⬜ |
-| 2b.47 Unpaywall dispatch (A25) | ⬜ |
-| 2b.48 FRED + Alpha Vantage E2E (A6, env-gated) | ⬜ |
+| 2b.43 Apple Podcasts Chinese podcast coverage (A29, country=CN) | ✅ |
+| 2b.44 SSRN handler (A23) mock | ✅ |
+| 2b.45 GDELT handler (A18) mock | ✅ |
+| 2b.46 Unpaywall handler (A25) mock | ✅ |
+| 2b.47 Unpaywall dispatch (A25) | ✅ |
+| 2b.48 FRED + Alpha Vantage E2E (A6, env-gated) | ➖ |
+| 2b.49 HuggingFace/Kaggle handler (A24) mock | ✅ |
 
-**OVERALL: ⬜**
+**OVERALL: ✅** (2b.48 ➖ SKIPPED — env-gated, no `AUTOINFO_HTTP_API_KEY`/`ALPHAVANTAGE_API_KEY`/`FRED_API_KEY`; per part-12 2026-08-02 run. All other scenarios have self-executing scripts with PASSED assertions — see learnings.md Tasks 5/7/8/9/10/16.)
 
 ---
 

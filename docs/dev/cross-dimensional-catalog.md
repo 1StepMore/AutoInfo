@@ -13,6 +13,8 @@
 > **CD-NNN scheme:** Cross-Dimensional, sequentially numbered by category. Historical gap IDs (AU, G, C, A, B) cross-referenced in Appendix.
 >
 > **Cell status:** 🔴 = Never Designed (gap), 🟡 = Spec'd Not Impl / Partially Impl, 🟢 = Spec Outdated, 🟠 = Architecture Gap
+>
+> **Last updated:** 2026-08-02 (V1 completion audit — see "2026-08-02 V1 更新" section near end of document)
 
 ---
 
@@ -116,11 +118,11 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Update |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A5 Delivery** | 🟢 Delivery tools listed | 🟢 MCP tools | 🟢 `send_to_enduser`, channel config | 🟡 Delivery works, `query_delivery_log` exists | 🟢 `get_channel_health` MCP with 11 channels | 🟢 Config is mutable |
+| **A5 Delivery** | 🟢 Delivery tools listed | 🟢 MCP tools | 🟢 `send_to_enduser`, channel config | 🟡 Delivery works, `query_delivery_log` exists | 🟢 `get_channel_health` MCP with 12 channels | 🟢 Config is mutable |
 
 | Lifecycle → | B3.1 Define | B3.2 Configure | B3.3 Monitor | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A5 Delivery** | 🟢 11 delivery channels | 🟢 Channel config via webhook/schedule | 🟡 No unified delivery dashboard | 🟢 Adapters are modular | 🟡 DeliveryLog with SLA tracking, `get_channel_health` checks all 11 channels, no auto-failover |
+| **A5 Delivery** | 🟢 12 delivery channels | 🟢 Channel config via webhook/schedule | 🟡 No unified delivery dashboard | 🟢 Adapters are modular | 🟡 DeliveryLog with SLA tracking, `get_channel_health` checks all 12 channels, no auto-failover |
 
 #### A6 Consumption
 
@@ -218,10 +220,10 @@ Concepts that have never been designed — no spec, no code, no MCP tools.
 - **Status:** 🟡 Partially — notifications exist but not unified, no template system, no user preferences.
 
 #### CD-007: [RESOLVED] Delivery Channel Health Monitoring
-- **Description:** `get_channel_health` MCP tool is implemented and registered. It checks health + latency for all 11 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss). Each channel adapter has `send()` and `validate_config()` methods. No automatic channel suspension on failure.
+- **Description:** `get_channel_health` MCP tool is implemented and registered. It checks health + latency for all 12 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish). Each channel adapter has `send()` and `validate_config()` methods. No automatic channel suspension on failure.
 - **Affected Stages:** A5 (Delivery), A7 (Operations)
 - **Affected Users:** B1, B2, B3
-- **Evidence:** `_handle_get_channel_health` registered at `mcp/server.py:4112`. Registered as `Tool(name="get_channel_health")`. 12 delivery adapters with `send()` and `validate_config()` methods.
+- **Evidence:** `_handle_get_channel_health` registered at `mcp/server.py:4112`. Registered as `Tool(name="get_channel_health")`. 12 delivery channels with `send()` and `validate_config()` methods.
 - **Status:** 🟢 Resolved — channel health monitoring implemented. Remaining: auto-suspension on repeated failure (low priority).
 
 #### CD-008: Pre-Delivery Product Preview
@@ -322,7 +324,7 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B1 (End User — channel preferences are freeform), B2 (Direct Agent — cannot validate channel config)
 - **Existing Cross-Ref:** None (new)
-- **Evidence:** 11 delivery channels registered (SMTP, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss). `Subscription.channels` is `List[str]` with no validation against registry.
+- **Evidence:** 12 delivery channels registered (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish). `Subscription.channels` is `List[str]` with no validation against registry.
 
 #### CD-021: Identity Anchor
 - **Description:** `delivery.md` §1.1 specs an "Identity Anchor" — a unique identifier for an end user that is `source_platform + source_user_id`. No code implements this. End users are identified by a direct `enduser_id` parameter.
@@ -359,8 +361,8 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 
 #### CD-025: Payment Provider Abstraction Layer
 - **Description:** Currently has Stripe-specific integration (`create_checkout_session` MCP, `POST /api/v1/webhook/stripe`, 3 webhook handlers). Need a **payment provider abstraction** so that Subscription model can work with any provider (WeChat Pay, Alipay, UnionPay, Stripe, etc.) without hardcoding. The Stripe implementation serves as a reference for the abstraction interface.
-  - **V1:** No payment integration needed — manually control user `tier` for demo. Existing Stripe code stays as-is (it works).
-  - **V2+:** Define `PaymentProvider` ABC with common interface (create_checkout, handle_webhook, refund, query_status). Implement for target markets. The Stripe implementation already has the right patterns (webhook routing, status mapping, subscription activation).
+  - **V1 (v1.8.4) update:** Single-article payment IS now implemented — `create_checkout_session` supports `mode="payment"` for one-time article purchases, `check_access(article_id=...)` fast path verifies article entitlement grants (`billing.py`, `consumption.py` `article_entitlement` table). The `PaymentProvider` abstraction itself is still absent — Stripe remains the sole hardcoded provider. This gap stays open for the abstraction layer.
+  - **V2+:** Define `PaymentProvider` ABC with common interface (create_checkout, handle_webhook, refund, query_status). Implement for target markets. The Stripe implementation already has the right patterns (webhook routing, status mapping, subscription activation, payment-mode branching).
 - **Affected Stages:** A4 (Products), A5 (Delivery), A7 (Operations)
 - **Affected Users:** B1 (End User — cannot pay), B3 (Director — cannot monetize)
 - **Existing Cross-Ref:** F30/F42, AUD-02
@@ -514,7 +516,7 @@ Gaps that are not about missing features but about how the system is architected
 | Gap | Old Status | New Status | Reason |
 |-----|-----------|-----------|--------|
 | CD-004 | 🔴 Never Designed | 🟢 Resolved | Cron heartbeat + missed-schedule detection + alerts + `get_schedule_status` MCP |
-| CD-007 | 🟡 Spec'd Not Impl | 🟢 Resolved | `get_channel_health` MCP tool checks all 11 channels |
+| CD-007 | 🟡 Spec'd Not Impl | 🟢 Resolved | `get_channel_health` MCP tool checks all 12 channels |
 | CD-011 | 🔴 Never Designed | 🟢 Resolved | `ConsumptionEvent` + `ConsumptionStore` with auto-record on delivery |
 | CD-014 | 🔴 Never Designed | 🟢 Resolved | `backup-db.sh`, `restore-db.sh`, `make backup` all operational |
 | CD-018 | 🟡 Spec'd Not Impl | 🟢 Resolved | Core consumption tracking implemented (MCP query tool still pending P2) |
@@ -705,7 +707,7 @@ Priorities are assigned based on:
 |------|------|--------|---------|--------|
 | 3.1 | Consumption tracking foundation: `ConsumptionEvent` model + basic API (open tracking pixel/read receipt can wait V2) | 3-5 days | Demo can show "user consumed content" | 🟢 **Done** — `ConsumptionEvent` + `ConsumptionStore` with auto-record on delivery (delivered/opened/clicked) |
 | 3.2 | Basic lifecycle notifications via existing email sender (trial reminder, content-ready notice) | 2-3 days | Users get key lifecycle communication | 🟢 **Done** — `notifications.py` with `check_expiring_trials()` and `notify_content_ready()` |
-| 3.3 | Channel health monitoring: per-channel health endpoint + aggregate health MCP tool | 3-5 days | Demo delivery won't fail silently | 🟢 **Done** — `get_channel_health` MCP tool checks all 11 delivery channels with latency |
+| 3.3 | Channel health monitoring: per-channel health endpoint + aggregate health MCP tool | 3-5 days | Demo delivery won't fail silently | 🟢 **Done** — `get_channel_health` MCP tool checks all 12 delivery channels with latency |
 | 3.4 | Backup automation: SQLite backup cron + basic restore procedure | 2-3 days | Demo data is safe | 🟢 **Done** — `backup-db.sh`, `restore-db.sh`, `make backup`, keeps last 7 backups |
 
 ### Phase 4: P2 Implementation — Product Quality (Weeks 11-16)
@@ -749,6 +751,37 @@ Priorities are assigned based on:
 
 ---
 
+## 2026-08-02 V1 更新
+
+This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-02) that were not previously cataloged as CD-NNN gaps. The 42-cell A1-A7 × B1/B2/B3 matrix tracks **pipeline stages × user lifecycle**, not individual features, so none of these additions flip any cell status. Where a feature arguably strengthens a cell, that is noted without changing the cell's 🟢/🟡/🔴 value.
+
+### New features landed
+
+| Feature | Code location | Summary |
+|---------|---------------|---------|
+| **A18 GDELT collector** | `collectors/gdelt.py` | GDELT DOC 2.0 news headline collector (artlist JSON, 1 req/5s free tier, 3-month default window). Headline-level only. |
+| **A23 SSRN collector** | `collectors/ssrn.py` | SSRN HTML search-URL parser (no public REST/RSS — config-driven abstract-level only). |
+| **A24 HuggingFace/Kaggle collector** | `collectors/huggingface.py` | Dual-provider handler (`provider` config key). HF Hub flat-list API + Kaggle env-gated (`KAGGLE_USERNAME`/`KAGGLE_KEY`). |
+| **A25 Unpaywall/CORE collector** | `collectors/unpaywall.py` | Dual-provider OA fulltext-link collector. Unpaywall (free, email-gated) + CORE (v3, Bearer key). V1 scope: metadata + OA link only, no PDF download. |
+| **E9 Source credibility score** | `quality.py` (`SOURCE_TIER_SCORE_MAP`), `models.py` (`KBEntry.source_score`), `kb.py` (persistence) | Deterministic `source_score` (0-100) from quality tier, persisted on KBEntry, surfaced in G1 gate details and search results. |
+| **E11 RAW product variants** | `models.py` (`Product.variants`), `mcp/server.py` (`_handle_list_products`, `_handle_get_product`) | RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field distinguishing the three RAW delivery modes. |
+| **E12 Single-article payment** | `billing.py` (`create_checkout_session` `mode="payment"`, `check_access(article_id=...)`), `consumption.py` (`article_entitlement` table) | One-time article purchases via `mode="payment"` checkout; entitlement fast path in `check_access`. See CD-025 note above — abstraction layer still absent. |
+| **E14 Content simplification** | `output/__init__.py` (`simplify_text`), `mcp/server.py` (`simplify_content` MCP tool) | CEFR-parameterized text rewrite (A1-C1) with original/simplified level classification and verification flag. |
+| **C11 Podcast RSS publishing** | `delivery/rss.py` (`PodcastRSSDeliveryChannel`, `_build_podcast_rss`), `output/__init__.py` (`_maybe_persist_audio`) | RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace; audio output auto-persists MP3 to disk. |
+
+### Cell-impact statement
+
+**No matrix cell flips.** The 42-cell matrix (A1-A7 × B1/B2/B3) evaluates pipeline-stage completeness against user-lifecycle stages. The features above are enhancements within already-evaluated stages, not new stages or lifecycle transitions. Two cells arguably gained strength without changing status:
+
+- **A4 Products (B2.4 Operate, B2.6 Update):** RAW product `variants` field (E11) makes the RAW/PROCESSED product model more expressive. The cells remain 🟡 (product lifecycle state machine still 0% implemented — CD-017/CD-022 open).
+- **A5 Delivery (B3.1 Define, B3.5 Scale):** Podcast RSS channel (C11) adds a 12th delivery channel with audio persistence. The cells remain 🟢 (delivery channels were already 🟢; podcast RSS is an additive channel, not a structural change).
+
+### Open CD gaps unaffected
+
+All open CD gaps (CD-001..CD-042 minus the 12 already resolved/merged) remain open. V1 features were never cataloged as CD gaps, so none get closed by this update. The only gap whose note changed is **CD-025** (Payment Provider Abstraction) — its stale "V1: No payment integration needed" note was replaced to reflect that single-article payment (E12) is now implemented while the `PaymentProvider` ABC remains absent.
+
+---
+
 ## Appendix: Existing Gap ID Cross-Reference
 
 Maps existing gap IDs from other (now archived) documents to CD-NNN. Kept for historical traceability — code comments or old references may use these IDs.
@@ -777,4 +810,4 @@ Maps existing gap IDs from other (now archived) documents to CD-NNN. Kept for hi
 
 ---
 
-*End of Cross-Dimensional Catalog. 38 gaps cataloged across 5 types (4 gaps resolved/merged after codebase reality check), with full priority matrix and implementation roadmap. This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (12 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap. Last updated 2026-08-02 (V1 completion audit). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

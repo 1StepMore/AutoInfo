@@ -20,7 +20,7 @@ Every collected source item is represented as an `Item`:
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # "pubmed" | "rss" | "web" | "email" | "pdf"
+    source_type: str                  # one of VALID_SOURCE_TYPES (25 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text
@@ -31,6 +31,7 @@ class Item:
     raw_metadata: dict = field(default_factory=dict)  # source-specific (DOI, PMID, URL)
     topics: list[str] = field(default_factory=list)   # matched topic names
     relevance_score: float = 0.0      # populated by G3
+    quality_tier: int = 1             # 1-4, propagated from source config at collect time (G1 input)
     quality_flags: list[str] = field(default_factory=list)
 ```
 
@@ -64,13 +65,36 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 
 ### 1.4 Source Handler Implementations
 
+> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (25 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 26 handler modules below live in `src/autoinfo/collectors/`.
+
 | Source | Implementation | Key behavior |
 |--------|---------------|--------------|
 | **PubMed** | NCBI E-Utilities (`esearch.fcgi` + `efetch.fcgi`) | Supports PMID list, query string, date range. Respects NCBI rate limits (3 req/s). |
+| **arXiv** | arXiv API (`export.arxiv.org/api/query`) | Atom feed parsing, date range, category filters. |
+| **Semantic Scholar** | Semantic Scholar Graph API | Paper metadata, citation counts, DOI lookup. |
+| **CrossRef** | CrossRef REST API (`api.crossref.org`) | DOI metadata, works query, reference lists. |
+| **DBLP** | DBLP XML API (`dblp.org/search`) | Computer science bibliography, author/publication search. |
+| **OpenAlex** | OpenAlex REST API | Works, authors, institutions, concepts. |
+| **USPTO** | PatentsView API | Patent metadata, assignee, classification. |
+| **NYT** | NYT Article Search API | Article metadata, query, date range. |
 | **RSS/Atom** | `feedparser` | Standard feed parsing. Proxied via Playwright for JS-rendered feeds. |
-| **Web** | `trafilatura` (primary) + Playwright fallback (JS-rendered) | Extracts article body, ignores boilerplate. |
+| **Web** | `trafilatura` (primary) + Playwright fallback (JS-rendered, separate `web_playwright.py` handler) | Extracts article body, ignores boilerplate. |
+| **Webhook** | HMAC-signed inbound push | Per-domain webhook receiver, signature verification. |
 | **Email** | IMAP IDLE + polling | Configurable folders. New emails trigger collection. |
-| **PDF** | PyMuPDF (`fitz`) | Text extraction. Layout-aware reading order. |
+| **PDF** | PyMuPDF (`fitz`) | Text extraction. Layout-aware reading order. Configurable timeout (default 120s). |
+| **Reddit** | Reddit API | Subreddit monitoring, post/comment collection. |
+| **Spotify** | Spotify Web API | Podcast episodes, show metadata. |
+| **YouTube** | YouTube Data API v3 | Channel videos, search, transcript retrieval. |
+| **Bilibili** | Bilibili API | Video metadata, danmaku, channel monitoring. |
+| **Apple Podcasts** | Apple Podcasts Connect API | Episode metadata, feed URL lookup. |
+| **AP API** | Associated Press API (paid) | Newswire content, licensing tiers. |
+| **Reuters MCP** | Reuters MCP server (paid) | News feed via MCP protocol, licensing required. |
+| **SSRN** | SSRN API | Social science preprints, working papers. |
+| **GDELT** | GDELT DOC 2.0 API | Global event tracking, news monitoring at scale. |
+| **HuggingFace/Kaggle** | HuggingFace Hub + Kaggle APIs | Dataset/model metadata, competition data. |
+| **Unpaywall/CORE** | Unpaywall + CORE APIs | Open-access paper lookup, full-text retrieval. |
+| **Yahoo Finance** | Yahoo Finance API | Market data, quotes, historical prices. |
+| **HTTP API** | Generic HTTP/REST adapter | Configurable endpoint, auth, pagination. Covers Quandl and other generic REST sources. |
 
 ### 1.5 Incremental Collection Tracking
 

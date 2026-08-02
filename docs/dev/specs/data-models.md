@@ -68,7 +68,7 @@ consumes each entity. "spec only" marks models not yet implemented in code.
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # "pubmed" | "rss" | "web" | "email" | "pdf"
+    source_type: str                  # one of VALID_SOURCE_TYPES (25 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text
@@ -79,6 +79,7 @@ class Item:
     raw_metadata: dict = field(default_factory=dict)  # source-specific (DOI, PMID, URL)
     topics: list[str] = field(default_factory=list)   # matched topic names
     relevance_score: float = 0.0      # populated by G3
+    quality_tier: int = 1             # 1-4, propagated from source config at collect time (G1 input)
     quality_flags: list[str] = field(default_factory=list)
 ```
 
@@ -115,6 +116,8 @@ content_sha: "abc123def456"
 trace_id: "trc_abc123"
 version: 1
 relevance_score: 85
+quality_tier: 1          # 1-4, propagated from source config (G1 input)
+source_score: 90.0       # 0-100 deterministic credibility score from quality_tier via SOURCE_TIER_SCORE_MAP (E9)
 status: "active"       # "active" | "deleted" | "stale"
 tier: "01-raw"         # "01-raw" | "02-draft" | "03-wiki"
 ---
@@ -321,8 +324,8 @@ class ConsumptionEvent:
     id: str                          # "cns_{uuid8}"
     product_id: str                  # FK to ProductInstance
     user_id: str                     # FK to UserProfile
-    event_type: str                  # "delivered" | "opened" | "read" | "clicked" | "shared" | "discarded"
-    channel: str                     # Channel through which consumed (e.g., "email", "telegram")
+    event_type: str                  # "delivered" | "opened" | "clicked" | "purchased" (aligned with src/autoinfo/consumption.py)
+    channel: str                     # Channel through which consumed (e.g., "smtp", "telegram") — one of 12 canonical channels
     timestamp: datetime
     metadata: dict = field(default_factory=dict)  # user-agent, IP-geo, referrer, etc.
 
@@ -373,7 +376,7 @@ class NotificationTemplate:
     type: str                        # "welcome" | "trial_ending" | "digest_ready" | "cancellation" | "system_alert" | "budget_alert"
     subject_template: str            # Jinja2 template for subject line
     body_template: str               # Jinja2 template for body
-    channel: str                     # "email" | "telegram" | "wechat" | "webhook"
+    channel: str                     # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "webhook" — one of 12 canonical channels
     locale: str = "en"               # ISO language code
     variables_schema: dict = field(default_factory=dict)  # JSON Schema for template variables
 
@@ -400,7 +403,7 @@ class NotificationPreferences:
     """Per-user notification channel and timing preferences."""
     user_id: str                     # FK to UserProfile
     per_type_channel_preference: dict[str, list[str]] = field(default_factory=dict)
-    # Example: {"digest_ready": ["email"], "budget_alert": ["telegram", "email"]}
+    # Example: {"digest_ready": ["smtp"], "budget_alert": ["telegram", "smtp"]}
     quiet_hours: QuietHours | None = None  # Reuses existing QuietHours model
     digest_frequency: str = "daily"  # "realtime" | "daily" | "weekly" | "never"
     max_notifications_per_day: int = 10
@@ -599,7 +602,7 @@ class SubscriptionConfig:
 
 @dataclass
 class ChannelBinding:
-    channel_type: str                  # "email" | "telegram" | "wechat_oa" | "wechat_work" | "dingtalk" | "feishu" | "discord"
+    channel_type: str                  # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "dingtalk" | "feishu" | "discord" | "webhook" | "rest_api" | "file_export" | "rss" | "social_publish" — 12 canonical channels
     config: dict                       # Channel-specific config (e.g., {"chat_id": "..."} for Telegram)
     enabled: bool = True
 

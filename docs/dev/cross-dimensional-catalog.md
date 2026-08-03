@@ -435,12 +435,13 @@ Gaps where the implementation exists but spec documents still describe the old/p
 - **Evidence:** `output.py` `_render_agent_json()`. MCP `generate_digest` accepts `format=agent`.
 - **Final Status:** ✅ Resolved — no further action needed.
 
-#### CD-034: AGENTS.md Format Claims Outdated
+#### CD-034: AGENTS.md Format Claims Outdated [RESOLVED]
 - **Description:** AGENTS.md section "Output generation" line says "Digest (Markdown/HTML/JSON/PDF), report (Markdown/JSON/PDF/HTML/Audio/Agent)" but the actual project structure tree below it just says "Output generation ... Digest, report, tutorial, export" without format details. Inconsistent self-description.
 - **Affected Stages:** A4 (Products)
 - **Affected Users:** B2 (Direct Agent — doc self-inconsistency)
 - **Existing Cross-Ref:** None (new)
-- **Evidence:** AGENTS.md project structure tree shows `output.py` comment "Output generation (digest, report, tutorial, export)" — missing Audio/Agent formats.
+- **Evidence:** AGENTS.md project structure tree `output.py` comment now reads "Output generation (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent)" — matches the status table. Inconsistency resolved 2026-08-04.
+- **Status:** ✅ Resolved
 
 #### CD-035: consumer-output-gaps.md G1/G11 Outdated [RESOLVED]
 - **Description:** `consumer-output-gaps.md` (now archived) marked G1 (Audio output) and G11 (Agent-native format) as 🔴. Both are implemented.
@@ -510,9 +511,9 @@ Gaps that are not about missing features but about how the system is architected
 | 🔴 Type 1: Never Designed | 16 | 12 | 4 | CD-001 to CD-016 |
 | 🟡 Type 2: Spec'd Not Impl | 7 | 5 | 2 | CD-017 to CD-023 |
 | 🟡 Type 3: Partially Impl | 8 | 6 | 2 (1 merged) | CD-024 to CD-031 |
-| 🟢 Type 4: Spec Outdated | 5 | 2 | 3 | CD-032 to CD-036 |
+| 🟢 Type 4: Spec Outdated | 5 | 1 | 4 | CD-032 to CD-036 |
 | 🟠 Type 5: Architecture | 6 | 5 | 1 (partial) | CD-037 to CD-042 |
-| **Total** | **42** | **30** | **12** | |
+| **Total** | **42** | **29** | **13** | |
 
 **Newly resolved gaps (this audit):**
 | Gap | Old Status | New Status | Reason |
@@ -529,6 +530,7 @@ Gaps that are not about missing features but about how the system is architected
 | CD-032 | 🟢 Spec Outdated | ✅ Resolved | Audio output working, docs already updated |
 | CD-033 | 🟢 Spec Outdated | ✅ Resolved | Agent-native JSON working, docs already updated |
 | CD-035 | 🟢 Spec Outdated | ✅ Resolved | Source doc archived, no further action |
+| CD-034 | 🟢 Spec Outdated | ✅ Resolved | AGENTS.md structure-tree `output.py` comment updated to list all formats (Audio/Agent/presentation) — matches status table (2026-08-04) |
 | CD-040 | 🟠 Architecture | 🟡 Partially Resolved | Consumption data collection exists, feedback loop missing |
 
 ---

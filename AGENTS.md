@@ -89,7 +89,7 @@ AutoInfo/
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
 │       ├── llm.py                   # LLM extraction engine
-│       ├── output.py                # Output generation (digest, report, tutorial, export)
+│       ├── output.py                # Output generation (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
 │       ├── email_sender.py          # SMTP email sending
 │       ├── keywords.py              # Keyword management

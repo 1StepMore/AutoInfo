@@ -25,6 +25,8 @@
 3. [Gap-to-Doc Mapping](#section-3-gap-to-doc-mapping)
 4. [Priority Fix Matrix](#section-4-priority-fix-matrix)
 5. [Implementation Roadmap](#section-5-implementation-roadmap)
+6. [2026-08-02 V1 更新](#2026-08-02-v1-更新)
+7. [2026-08-03 更新 — Agent-native validation toolset](#2026-08-03-更新--agent-native-validation-toolset)
 
 ---
 
@@ -66,7 +68,7 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B3.1 Define | B3.2 Configure | B3.3 Monitor | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|
-| **A1 Collection** | 🟢 `add_domain`, `add_source` | 🟢 `activate_domain`, source health | 🟡 No collection pipeline dashboard | 🟢 Sources are editable | 🟡 No multi-source orchestration, no rate limiting |
+| **A1 Collection** | 🟢 `add_domain`, `add_source` | 🟢 `activate_domain`, source health | 🟡 No collection pipeline dashboard | 🟢 Sources are editable | 🟡 Domain-less collect + batch_run orchestration; no rate limiting |
 
 #### A2 Extraction
 
@@ -80,7 +82,7 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B3.1 Define | B3.2 Configure | B3.3 Monitor | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|
-| **A2 Extraction** | 🟢 Custom extraction field schema | 🟢 Per-domain LLM config | 🟡 No extraction quality dashboard | 🟢 Gates are configurable | 🟡 No batch processing batching |
+| **A2 Extraction** | 🟢 Custom extraction field schema | 🟢 Per-domain LLM config | 🟡 No extraction quality dashboard | 🟢 Gates are configurable | 🟢 Batch processing via batch_size + batch_run MCP tool |
 
 #### A3 Knowledge Base
 
@@ -90,7 +92,7 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Update |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A3 Knowledge Base** | 🟢 KB tools listed | 🟢 Full KB tool set | 🟢 `reindex_kb`, `list_kb_tier` | 🟢 `create_kb_draft`, `search_kb`, `query_knowledge_graph` | 🟢 `compare_versions` registered, `merge_items` partially | 🟢 KB is mutable (soft-delete, restore) |
+| **A3 Knowledge Base** | 🟢 KB tools listed | 🟢 Full KB tool set | 🟢 `reindex_kb`, `list_kb_tier` | 🟢 `create_kb_draft`, `search_knowledge_base`, `query_knowledge_graph` | 🟢 `compare_versions` registered, `merge_items` partially | 🟢 KB is mutable (soft-delete, restore) |
 
 | Lifecycle → | B3.1 Define | B3.2 Configure | B3.3 Monitor | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|
@@ -150,17 +152,17 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B3.1 Define | B3.2 Configure | B3.3 Monitor | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A7 Operations** | 🟡 No RPO/RTO defined | 🟢 Config via MCP/CLI | 🟡 No live operations dashboard | 🟢 Backup/restore scripts exist (`backup-db.sh`, `restore-db.sh`, `make backup`) | 🔴 No horizontal scaling strategy, SQLite is single-node |
+| **A7 Operations** | 🟡 RPO/RTO loosely defined in ops-runbook (1h snapshots, RTO estimate); no formal targets | 🟢 Config via MCP/CLI | 🟡 No live operations dashboard | 🟢 Backup/restore scripts exist (`backup-db.sh`, `restore-db.sh`, `make backup`) | 🔴 No horizontal scaling strategy, SQLite is single-node |
 
 ### Matrix Summary Statistics
 
 | Metric | Count |
 |--------|-------|
 | Total cells | 119 (7×17 lifecycle stages) |
-| 🟢 Fully delivered | 66 (55%) |
-| 🟡 Partially delivered | 25 (21%) |
-| 🔴 Not delivered | 24 (20%) |
-| ⚪ Not applicable | 4 (3%) |
+| 🟢 Fully delivered | 60 (50.4%) |
+| 🟡 Partially delivered | 18 (15.1%) |
+| 🔴 Not delivered | 17 (14.3%) |
+| ⚪ Not applicable | 24 (20.2%) |
 
 ---
 
@@ -223,7 +225,7 @@ Concepts that have never been designed — no spec, no code, no MCP tools.
 - **Description:** `get_channel_health` MCP tool is implemented and registered. It checks health + latency for all 13 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push). Each channel adapter has `send()` and `validate_config()` methods. No automatic channel suspension on failure.
 - **Affected Stages:** A5 (Delivery), A7 (Operations)
 - **Affected Users:** B1, B2, B3
-- **Evidence:** `_handle_get_channel_health` registered at `mcp/server.py:4112`. Registered as `Tool(name="get_channel_health")`. 13 delivery channels with `send()` and `validate_config()` methods.
+- **Evidence:** `_handle_get_channel_health` registered at `mcp/server.py:4724`. Registered as `Tool(name="get_channel_health")`. 13 delivery channels with `send()` and `validate_config()` methods.
 - **Status:** 🟢 Resolved — channel health monitoring implemented. Remaining: auto-suspension on repeated failure (low priority).
 
 #### CD-008: Pre-Delivery Product Preview
@@ -248,11 +250,11 @@ Concepts that have never been designed — no spec, no code, no MCP tools.
 - **Evidence:** `list_products` MCP tool exists but returns products for agent use, not for end-user browsing. No public product catalog.
 
 #### CD-011: [RESOLVED] Consumption Tracking (Read Receipts / Engagement)
-- **Description:** `consumption.py` IS implemented with `ConsumptionEvent` dataclass (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Auto-record on delivery from `output.py:1949-1951` and `output.py:2309-2311`. No dedicated MCP tool for querying consumption events yet (accessed via `ConsumptionStore.list_events()` programmatically). No engagement metrics dashboard.
+- **Description:** `consumption.py` IS implemented with `ConsumptionEvent` dataclass (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Auto-record on delivery from `src/autoinfo/output/__init__.py:2433` and `:2881`. No dedicated MCP tool for querying consumption events yet (accessed via `ConsumptionStore.list_events()` programmatically). No engagement metrics dashboard.
 - **Affected Stages:** A6 (Consumption)
 - **Affected Users:** B1 (End User — consumption history tracked), B2 (Direct Agent — no MCP tool for querying), B3 (Director — no dashboard)
 - **Existing Cross-Ref:** AUD-04, G8
-- **Evidence:** `consumption.py` has `ConsumptionEvent` with `event_id`, `user_id`, `product_type`, `product_id`, `event_type`, `timestamp`, `metadata`. `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Events auto-recorded in `output.py:1949` and `output.py:2309`.
+- **Evidence:** `consumption.py` has `ConsumptionEvent` with `event_id`, `user_id`, `product_type`, `product_id`, `event_type`, `timestamp`, `metadata`. `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Events auto-recorded in `src/autoinfo/output/__init__.py:2433` and `:2881`.
 - **Status:** 🟢 Resolved — core consumption tracking implemented. Remaining: MCP query tool, engagement dashboard (P2).
 
 #### CD-012: Retention & Churn Analysis
@@ -302,14 +304,14 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B2 (Direct Agent — no lifecycle tooling), B3 (Director — no product management)
 - **Existing Cross-Ref:** AUD-06
-- **Evidence:** `product.py` has `ProductType` (RAW/PROCESSED) and `ProductTemplate` but no `ProductInstance`, no `ProductState`, no lifecycle MCP handlers.
+- **Evidence:** `ProductType` at `src/autoinfo/models.py:94`, `ProductTemplate` at `src/autoinfo/output/__init__.py:1645` but no `ProductInstance`, no `ProductState`, no lifecycle MCP handlers.
 
 #### CD-018: [RESOLVED] Consumption Tracking MCP Tools
-- **Description:** `delivery.md` specs consumption tracking (read receipts, open rates, engagement signals). `consumption.py` IS implemented with `ConsumptionEvent` (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Events auto-record on delivery from `output.py:1949-1951` and `output.py:2309-2311`. No dedicated MCP tool for querying consumption events yet (accessed programmatically via `ConsumptionStore.list_events()`). No engagement metrics dashboard.
+- **Description:** `delivery.md` specs consumption tracking (read receipts, open rates, engagement signals). `consumption.py` IS implemented with `ConsumptionEvent` (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Events auto-record on delivery from `src/autoinfo/output/__init__.py:2433` and `:2881`. No dedicated MCP tool for querying consumption events yet (accessed programmatically via `ConsumptionStore.list_events()`). No engagement metrics dashboard.
 - **Affected Stages:** A6 (Consumption)
 - **Affected Users:** B2 (Direct Agent — no consumption MCP tool), B1 (End User — reading history auto-tracked)
 - **Existing Cross-Ref:** AUD-04
-- **Evidence:** `consumption.py` has `ConsumptionEvent` dataclass, `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Auto-record in `output.py:1949` and `output.py:2309`. No MCP tool registered for querying.
+- **Evidence:** `consumption.py` has `ConsumptionEvent` dataclass, `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Auto-record in `src/autoinfo/output/__init__.py:2433` and `:2881`. No MCP tool registered for querying.
 - **Status:** 🟢 Resolved — core consumption tracking implemented. Remaining: MCP query tool (P2), engagement dashboard (P3).
 
 #### CD-019: Quiet Hours Configuration
@@ -320,7 +322,7 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Evidence:** `delivery.py` has `DeliveryPreferences` as `Dict[str, Any]`. No `QuietHours` dataclass. No quiet hours enforcement in delivery pipeline.
 
 #### CD-020: Subscription → Channel Linking
-- **Description:** `delivery.md` §4.2 specs that subscriptions have preferred channels, fallback channels, and per-channel config. In code, `Subscription` model has `channels` as a list field but channels are not typed, not validated against the 11 registered adapters, and not linked to the delivery channel registry (`_CHANNEL_REGISTRY` at `delivery/__init__.py:574`). All 11 adapters are fully implemented (`send()`, `validate_config()` methods); the gap is at the subscription→channel wiring layer.
+- **Description:** `delivery.md` §4.2 specs that subscriptions have preferred channels, fallback channels, and per-channel config. In code, `Subscription` model has `channels` as a list field but channels are not typed, not validated at config time against the 13 registered adapters (`_CHANNEL_REGISTRY` at `delivery/__init__.py:652`), though `scheduler.py:519-536` validates channel names at dispatch time via `get_channel()`. All 13 adapters are fully implemented (`send()`, `validate_config()` methods); the gap is at the subscription→channel wiring layer.
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B1 (End User — channel preferences are freeform), B2 (Direct Agent — cannot validate channel config)
 - **Existing Cross-Ref:** None (new)
@@ -331,7 +333,7 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Affected Stages:** A5 (Delivery), A6 (Consumption)
 - **Affected Users:** B1 (End User — no identity anchor), B2 (Direct Agent — cannot resolve user across channels)
 - **Existing Cross-Ref:** None (new)
-- **Evidence:** `EndUserProfile` has `user_id` (UUID) with no identity anchor field. No multi-platform identity resolution.
+- **Evidence:** `UserProfile` at `src/autoinfo/models.py:318` has `user_id` (UUID) with no identity anchor field. No multi-platform identity resolution. User store logic at `src/autoinfo/user_store.py`.
 
 #### CD-022: Product Lifecycle MCP Tools (Spec'd Not Implemented)
 - **Description:** `delivery.md` specs 4 product lifecycle MCP tools that remain unimplemented: `regenerate_product`, `archive_product`, `get_product_lifecycle`, `get_engagement_metrics`. No `ProductState` enum, no lifecycle state machine for product instances.
@@ -339,7 +341,7 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B2 (Direct Agent — no lifecycle tooling), B3 (Director — no product management)
 - **Existing Cross-Ref:** AUD-06
-- **Evidence:** `product.py` has `ProductType` (RAW/PROCESSED) and `ProductTemplate` but no `ProductInstance`, no `ProductState`, no lifecycle MCP handlers. 10 end-user MCP tools confirmed registered.
+- **Evidence:** `ProductType` at `src/autoinfo/models.py:94`, `ProductTemplate` at `src/autoinfo/output/__init__.py:1645` but no `ProductInstance`, no `ProductState`, no lifecycle MCP handlers. 10 end-user MCP tools confirmed registered.
 
 #### CD-023: [RESOLVED] `get_schedule_status` IS Registered
 - **Description:** `get_schedule_status` IS fully registered as an MCP tool (confirmed: `Tool(name="get_schedule_status")` in server.py). The cron reliability gap is about monitoring / missed-schedule detection, not tool availability. Merged into CD-004.
@@ -352,11 +354,11 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 Gaps where code exists but is incomplete, broken by design, or has significant missing pieces.
 
 #### CD-024: [PARTIALLY RESOLVED] Subscription → Product Gating
-- **Description:** Subscription gating IS implemented end-to-end. `check_access()` in `billing.py` gates by tier. ProductTemplate in `output.py:1218-1236` supports three tiers (free/premium/enterprise). 7 product templates defined: 5 free, 1 premium, 1 enterprise. Subscription model (`models.py:340`) has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit` fields. What's missing: no end-user-facing "upgrade" flow that seamlessly transitions from free to paid (Stripe checkout exists but isn't linked to template gating in a self-service UX). No consumption-based tier graduation.
+- **Description:** Subscription gating IS implemented end-to-end. `check_access()` in `billing.py` gates by tier. ProductTemplate in `output/__init__.py:1768-1808` supports three tiers (free/premium/enterprise). 6 product templates defined: 4 free, 1 premium, 1 enterprise. Subscription model (`models.py:340`) has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit` fields. What's missing: no end-user-facing "upgrade" flow that seamlessly transitions from free to paid (Stripe checkout exists but isn't linked to template gating in a self-service UX). No consumption-based tier graduation.
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B1 (End User — no self-service upgrade), B3 (Director — cannot configure tier graduation)
 - **Existing Cross-Ref:** AUD-01, A-01
-- **Evidence:** `billing.py:548` `check_access()` works. `output.py:1334-1364` — 5 free + 1 premium + 1 enterprise templates. `Subscription` model at `models.py:340` has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit`, `raw_access`, `processed_access`. Stripe checkout session creation + webhook processing exist in `billing.py`.
+- **Evidence:** `billing.py:657` `check_access()` works. `output/__init__.py:1768-1808` — 4 free + 1 premium + 1 enterprise templates. `Subscription` model at `models.py:340` has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit`, `raw_access`, `processed_access`. Stripe checkout session creation + webhook processing exist in `billing.py:235`.
 - **Status:** 🟡 Resolved — core gating infrastructure exists, templates are tiered. Remaining: self-service upgrade UX (P2), consumption-based graduation (P3).
 
 #### CD-025: Payment Provider Abstraction Layer
@@ -366,14 +368,14 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 - **Affected Stages:** A4 (Products), A5 (Delivery), A7 (Operations)
 - **Affected Users:** B1 (End User — cannot pay), B3 (Director — cannot monetize)
 - **Existing Cross-Ref:** F30/F42, AUD-02
-- **Evidence:** `billing.py` has Stripe-specific `create_checkout_session` and `handle_webhook`. No `PaymentProvider` ABC, no provider registry. Stripe webhook flow confirmed working: `api/server.py:183-250`, `billing.py:294-467`.
+- **Evidence:** `billing.py` has Stripe-specific `create_checkout_session` at `:235` and `check_access` at `:657`. No `PaymentProvider` ABC, no provider registry. Stripe webhook flow confirmed working: `api/server.py:183-250`, `billing.py:294-467`.
 
 #### CD-026: [OBSOLETE CLAIM] `mark_stale` is O(1), Not O(n)
-- **Description:** `mark_stale` in `kb.py:4091` is O(1) — single entry lookup by `entry_id` + single YAML frontmatter update. Catalog previously claimed O(n) scan; this was incorrect. Remaining gap: no automated staleness lifecycle, no staleness-based retention triggering.
+- **Description:** `mark_stale` in `kb.py:4136` is O(1) — single entry lookup by `entry_id` + single YAML frontmatter update. Catalog previously claimed O(n) scan; this was incorrect. Remaining gap: no automated staleness lifecycle, no staleness-based retention triggering.
 - **Affected Stages:** A3 (KB), A7 (Operations)
 - **Affected Users:** B2 (Direct Agent — fine at scale), B3 (Director — no automated stale management)
 - **Existing Cross-Ref:** AUD-10
-- **Evidence:** `kb.py:4091-4113` — direct lookup by `entry_id`, single `update_frontmatter_field` call. No iteration.
+- **Evidence:** `kb.py:4136-4158` — direct lookup by `entry_id`, single `update_frontmatter_field` call. No iteration.
 
 #### CD-027: merge_items Partially Implemented
 - **Description:** `merge_items` MCP exists and uses LLM-assisted merge. But: no conflict resolution strategy, no merge history tracking, no undo capability.
@@ -404,11 +406,11 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 - **Evidence:** Mixed logging patterns across codebase. Some modules use `print()`, some use `logging`, some use structured JSON.
 
 #### CD-031: [MERGED INTO CD-024] Product Templates All Hardcoded to `free` (RESOLVED)
-- **Description:** Originally reported that all product templates had `access_level="free"`. Updated findings: there are 7 templates — 5 free + 1 premium + 1 enterprise (`output.py:1334-1364`). `check_access()` IS implemented and active at `billing.py:548`. The remaining gap (self-service upgrade UX) is tracked under CD-024.
+- **Description:** Originally reported that all product templates had `access_level="free"`. Updated findings: there are 6 templates — 4 free + 1 premium + 1 enterprise (`output/__init__.py:1768-1808`). `check_access()` IS implemented and active at `billing.py:657`. The remaining gap (self-service upgrade UX) is tracked under CD-024.
 - **Affected Stages:** A4 (Products)
 - **Affected Users:** B1 (End User — tiered product access works), B3 (Director — templates are tiered)
 - **Existing Cross-Ref:** AUD-01 (merged with CD-024)
-- **Evidence:** `output.py:1334-1364` — 5 free + 1 premium + 1 enterprise templates. `billing.py:548` (`check_access`). Templates: weekly-briefing(free), deep-dive(free), weekly-roundup(free), alert-stream(free), daily-quick-scan(free), premium-briefing(premium), executive-summary(enterprise).
+- **Evidence:** `output/__init__.py:1768-1808` — 4 free + 1 premium + 1 enterprise templates. `billing.py:657` (`check_access`). Templates: weekly-briefing(free), deep-dive(free), weekly-roundup(free), alert-stream(free), daily-quick-scan was removed, now 4 free; premium-briefing(premium), executive-summary(enterprise).
 - **Status:** 🟢 Resolved — templates are tiered, gating works. Merged into CD-024 for remaining items.
 
 ---
@@ -471,7 +473,7 @@ Gaps that are not about missing features but about how the system is architected
 - **Affected Stages:** A5 (Delivery), A7 (Operations)
 - **Affected Users:** B1 (End User — inconsistent notification experience), B2 (Direct Agent — no unified notification API), B3 (Director — no notification policy)
 - **Existing Cross-Ref:** None (new)
-- **Evidence:** No `Notification` model, no notification registry, no notification preferences in `EndUserProfile` or `Subscription`.
+- **Evidence:** No `Notification` model, no notification registry, no notification preferences in `UserProfile` or `Subscription`.
 
 #### CD-039: No Delivery Schema Enforcement
 - **Description:** Delivery channels receive products but there is no schema enforcement — a product expected to have certain fields can be sent without them. No per-channel format validation. If a channel requires specific formatting, it's implemented per-adapter with no shared contract.
@@ -483,7 +485,7 @@ Gaps that are not about missing features but about how the system is architected
 - **Description:** Core consumption tracking IS implemented (`ConsumptionEvent` + `ConsumptionStore`), but the consumption data is not yet used for feedback loops. Events are auto-recorded on delivery (delivered/opened/clicked) in `output.py`. No preference learning, no content adaptation based on engagement, no personalized ranking.
 - **Affected Stages:** A6 (Consumption) → A1-A4 (feedback)
 - **Affected Users:** B1 (End User — no personalized experience), B3 (Director — no data-driven optimization)
-- **Evidence:** `consumption.py` has `ConsumptionEvent`, `ConsumptionStore`, `record_event()`, `list_events()`. Events auto-recorded at `output.py:1949-1951` and `output.py:2309-2311`. Database at `.autoinfo/consumption.db`. No MCP tool for querying events. No feedback loop to influence collection/extraction/delivery.
+- **Evidence:** `consumption.py` has `ConsumptionEvent`, `ConsumptionStore`, `record_event()`, `list_events()`. Events auto-recorded at `src/autoinfo/output/__init__.py:2433` and `:2881`. Database at `.autoinfo/consumption.db`. No MCP tool for querying events. No feedback loop to influence collection/extraction/delivery.
 - **Status:** 🟡 Partially — data collection exists, feedback loop missing.
 
 #### CD-041: No Data-Driven Business Metrics
@@ -521,9 +523,9 @@ Gaps that are not about missing features but about how the system is architected
 | CD-014 | 🔴 Never Designed | 🟢 Resolved | `backup-db.sh`, `restore-db.sh`, `make backup` all operational |
 | CD-018 | 🟡 Spec'd Not Impl | 🟢 Resolved | Core consumption tracking implemented (MCP query tool still pending P2) |
 | CD-023 | 🟡 Spec'd Not Impl | 🟢 Resolved | `get_schedule_status` IS registered |
-| CD-024 | 🟡 Partially Impl | 🟡 Partially Resolved | Templates tiered (5 free + 1 premium + 1 enterprise), Subscription has `channels`/`domains`/`products` fields; self-service upgrade UX missing |
+| CD-024 | 🟡 Partially Impl | 🟡 Partially Resolved | Templates tiered (4 free + 1 premium + 1 enterprise), Subscription has `channels`/`domains`/`products` fields; self-service upgrade UX missing |
 | CD-031 | 🟡 Partially Impl | 🔗 Merged → CD-024 | All templates no longer hardcoded to `free`, merged into CD-024 |
-| CD-031 (evidence) | — | 🟢 Resolved | 7 templates verified: 5 free + 1 premium + 1 enterprise |
+| CD-031 (evidence) | — | 🟢 Resolved | 6 templates verified: 4 free + 1 premium + 1 enterprise |
 | CD-032 | 🟢 Spec Outdated | ✅ Resolved | Audio output working, docs already updated |
 | CD-033 | 🟢 Spec Outdated | ✅ Resolved | Agent-native JSON working, docs already updated |
 | CD-035 | 🟢 Spec Outdated | ✅ Resolved | Source doc archived, no further action |
@@ -622,13 +624,13 @@ Priorities are assigned based on:
 | ID | Gap | Reason | Effort |
 |----|-----|--------|--------|
 | CD-038 | Notification delivery for demo | Basic lifecycle notifications exist (trial reminder, content ready) but not a unified framework; adequate for demo | 1-2 days for unification |
-| CD-020 | Subscription→channel linking | `Subscription.channels` is `List[str]` not validated against 11 registered channel adapters | 1 day |
+| CD-020 | Subscription→channel linking | `Subscription.channels` is `List[str]` not validated at config time against 13 registered channel adapters; dispatch-time validation exists | 1 day |
 
 ### P2 🟢 — Worth Fixing (Important, Can Wait Past V1 Demo)
 
 | ID | Gap | Reason | Effort |
 |----|-----|--------|--------|
-| CD-024 | Self-service upgrade UX | Core gating ✅, templates tiered ✅ (5 free + 1 premium + 1 enterprise). Remaining: self-service free→paid transition flow | 3-5 days |
+| CD-024 | Self-service upgrade UX | Core gating ✅, templates tiered ✅ (4 free + 1 premium + 1 enterprise). Remaining: self-service free→paid transition flow | 3-5 days |
 | CD-040 | Consumption feedback loop | Data collection ✅ (ConsumptionEvent + ConsumptionStore). Remaining: use consumption data for personalization/ranking | 5-8 days |
 | CD-005 | Admin dashboard | No visual operations view | 5-10 days |
 | CD-006 | Notification framework unification | Notifications exist but scattered (notifications.py, alerts.py, cron.py); no central template system | 3-5 days |
@@ -697,7 +699,7 @@ Priorities are assigned based on:
 
 | Step | Task | Effort | Outcome | Status |
 |------|------|--------|---------|--------|
-| 2.1 | Subscription model redesign: add `tier`, `channels`, `domains`, `products`, `platform_limit` fields; wire `check_access()` to real tier checks; create 1 premium template for demo | 2-3 days | Subscription model is correct by design; demo can show free vs premium access | 🟢 **Done** — Subscription model has `tier`/`channels`/`domains`/`products`/`platform_limit`/`domain_limit`/`raw_access`/`processed_access`; 7 templates tiered (5 free + 1 premium + 1 enterprise); `check_access()` gates delivery |
+| 2.1 | Subscription model redesign: add `tier`, `channels`, `domains`, `products`, `platform_limit` fields; wire `check_access()` to real tier checks; create 1 premium template for demo | 2-3 days | Subscription model is correct by design; demo can show free vs premium access | 🟢 **Done** — Subscription model has `tier`/`channels`/`domains`/`products`/`platform_limit`/`domain_limit`/`raw_access`/`processed_access`; 6 templates tiered (4 free + 1 premium + 1 enterprise); `check_access()` gates delivery |
 | 2.2 | Cron reliability: monitoring, failure detection, missed-schedule backfill | 2-3 days | Collection is reliable; demo pipeline won't break silently | 🟢 **Done** — heartbeat tracking, missed-schedule detection, email alerts, `get_schedule_status` MCP, `cron health` CLI |
 
 ### Phase 3: P1 Implementation — V1 Demo Hardening (Weeks 6-10) ✅ COMPLETED
@@ -753,7 +755,7 @@ Priorities are assigned based on:
 
 ## 2026-08-02 V1 更新
 
-This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-02) that were not previously cataloged as CD-NNN gaps. The 42-cell A1-A7 × B1/B2/B3 matrix tracks **pipeline stages × user lifecycle**, not individual features, so none of these additions flip any cell status. Where a feature arguably strengthens a cell, that is noted without changing the cell's 🟢/🟡/🔴 value.
+This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-02) that were not previously cataloged as CD-NNN gaps. The 119-cell matrix (A1-A7 × 17 lifecycle stages); 42 is the CD gap count) tracks **pipeline stages × user lifecycle**, not individual features, so none of these additions flip any cell status. Where a feature arguably strengthens a cell, that is noted without changing the cell's 🟢/🟡/🔴 value.
 
 ### New features landed
 
@@ -771,14 +773,22 @@ This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-0
 
 ### Cell-impact statement
 
-**No matrix cell flips.** The 42-cell matrix (A1-A7 × B1/B2/B3) evaluates pipeline-stage completeness against user-lifecycle stages. The features above are enhancements within already-evaluated stages, not new stages or lifecycle transitions. Two cells arguably gained strength without changing status:
+**No matrix cell flips.** The 119-cell matrix (A1-A7 × 17 lifecycle stages); 42 is the CD gap count) evaluates pipeline-stage completeness against user-lifecycle stages. The features above are enhancements within already-evaluated stages, not new stages or lifecycle transitions. Two cells arguably gained strength without changing status:
 
 - **A4 Products (B2.4 Operate, B2.6 Update):** RAW product `variants` field (E11) makes the RAW/PROCESSED product model more expressive. The cells remain 🟡 (product lifecycle state machine still 0% implemented — CD-017/CD-022 open).
-- **A5 Delivery (B3.1 Define, B3.5 Scale):** Podcast RSS channel (C11) adds a 12th delivery channel with audio persistence. The cells remain 🟢 (delivery channels were already 🟢; podcast RSS is an additive channel, not a structural change).
+- **A5 Delivery (B3.1 Define, B3.5 Scale):** Podcast RSS channel (C11) adds a 13th delivery channel with audio persistence. The cells remain 🟢 (delivery channels were already 🟢; podcast RSS is an additive channel, not a structural change).
 
 ### Open CD gaps unaffected
 
 All open CD gaps (CD-001..CD-042 minus the 12 already resolved/merged) remain open. V1 features were never cataloged as CD gaps, so none get closed by this update. The only gap whose note changed is **CD-025** (Payment Provider Abstraction) — its stale "V1: No payment integration needed" note was replaced to reflect that single-article payment (E12) is now implemented while the `PaymentProvider` ABC remains absent.
+
+---
+
+## 2026-08-03 更新 — Agent-native validation toolset
+
+Landed after the 2026-08-02 audit: `list_validation_scenarios` / `run_validation_scenario` MCP tools (src/autoinfo/mcp/server.py:9586,9594) backed by a standalone executor (src/autoinfo/mcp/validation.py). 43 scenario YAMLs in src/autoinfo/mcp/scenarios/ cover 141/141 MCP tools (141 MCP tools), all 23 CLI groups, and 8 REST endpoints (verified via scripts/coverage_audit.py — MISSING: 0). Scenarios execute through the MCP surface plus real CLI subprocess and REST HTTP steps; `llm_assert` steps run real model calls; env-gated steps report `unconfigured` (Director User BYOK obligation). Scenario authoring contract: docs/dev/validation-scenario-contract.md.
+
+**Cell-impact**: no matrix cell flips — validation is a B2/B3 operational capability strengthening A7 Operations (B2.5 Monitor) and the B2 lifecycle (validation of collection/extraction/delivery), not a new pipeline stage or user lifecycle transition. Tool count is now 141 (was 139 at the 08-02 audit).
 
 ---
 
@@ -810,4 +820,4 @@ Maps existing gap IDs from other (now archived) documents to CD-NNN. Kept for hi
 
 ---
 
-*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (12 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap. Last updated 2026-08-02 (V1 completion audit). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (12 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap. Last updated 2026-08-03 (2026-08-02 V1 completion audit + 2026-08-03 stale-item fix + Agent-native validation toolset). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

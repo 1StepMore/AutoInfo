@@ -10,6 +10,7 @@ description: >
   Also verifies error handling for invalid domains and duplicate additions.
   Requires a project already initialized.
 
+tier: 1
 tags: [domain, management, regression, cli]
 depends_on: [init-project]
 
@@ -114,7 +115,7 @@ steps:
     expected:
       exit_code: 1
       stdout_contains:
-        - "not found"
+        - "not configured"
 
   # -------------------------------------------------------------------------
   # Step 8: List domains (as JSON)

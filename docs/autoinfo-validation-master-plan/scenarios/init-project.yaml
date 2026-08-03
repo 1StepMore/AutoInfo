@@ -10,6 +10,7 @@ description: >
   multi-demo, custom project name, --list-domains, --no-interactive with TTY,
   --no-interactive without TTY, and idempotent re-init.
 
+tier: 1
 tags: [init, regression, cli, project-scaffold]
 depends_on: []
 

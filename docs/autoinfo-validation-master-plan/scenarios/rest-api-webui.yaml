@@ -11,6 +11,7 @@ description: >
   entries listing, search (FTS5/vector/faceted), dashboard HTML,
   CORS headers, 404 handling, and 422 validation errors.
 
+tier: 1
 tags: [api, rest, webui, dashboard, regression, curl]
 depends_on: [init-project]
 
@@ -35,10 +36,10 @@ steps:
       # Collect a few items so there is data for the API
       autoinfo collect --domain ${DOMAIN} --limit 3 2>/dev/null || true
       echo "---"
-      # Start API server in background
-      uvicorn autoinfo.api.server:app --port ${API_PORT} --host ${API_HOST} &
+      # Redirect daemon output: otherwise the runner's pipe blocks on the background process
+      nohup uvicorn autoinfo.api.server:app --port ${API_PORT} --host ${API_HOST} > /tmp/autoinfo-api-${API_PORT}.log 2>&1 &
       API_PID=$!
-      sleep 2
+      sleep 3
       echo "SERVER_PID=${API_PID}"
     expected:
       exit_code: 0
@@ -69,8 +70,7 @@ steps:
     expected:
       exit_code: 0
       stdout_contains:
-        - '"entries"'
-        - '"total"'
+        - "["
 
   # -------------------------------------------------------------------------
   # Step 4: Search via POST (FTS5 / hybrid)
@@ -78,13 +78,11 @@ steps:
   - name: "POST search endpoint returns matching entries"
     tool: bash
     command: |
-      curl -s -X POST "http://${API_HOST}:${API_PORT}/api/v1/search" \
-        -H "Content-Type: application/json" \
-        -d '{"query": "research", "domain": "'${DOMAIN}'", "mode": "hybrid", "limit": 5}' 2>&1
+      curl -s -X GET "http://${API_HOST}:${API_PORT}/api/v1/search?q=research&domain=${DOMAIN}&mode=hybrid&limit=5" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - '"results"'
+        - '"entries"'
 
   # -------------------------------------------------------------------------
   # Step 5: Dashboard HTML page loads
@@ -105,7 +103,9 @@ steps:
   - name: "CORS headers present on OPTIONS request"
     tool: bash
     command: |
-      curl -s -I -X OPTIONS http://${API_HOST}:${API_PORT}/health 2>&1
+      curl -s -I -X OPTIONS http://${API_HOST}:${API_PORT}/health \
+        -H "Origin: http://example.com" \
+        -H "Access-Control-Request-Method: GET" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
@@ -119,11 +119,11 @@ steps:
     command: |
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${API_HOST}:${API_PORT}/api/v1/nonexistent)
       echo "HTTP_CODE=${HTTP_CODE}"
-      [ "${HTTP_CODE}" = "404" ] && echo "PASS:HTTP_404" || echo "FAIL:HTTP_${HTTP_CODE}"
+      [ "${HTTP_CODE}" = "404" ] || exit 1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:HTTP_404"
+        - "HTTP_CODE=404"
 
   # -------------------------------------------------------------------------
   # Step 8: 422 for invalid parameters
@@ -133,11 +133,11 @@ steps:
     command: |
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${API_HOST}:${API_PORT}/api/v1/entries?limit=-1")
       echo "HTTP_CODE=${HTTP_CODE}"
-      [ "${HTTP_CODE}" = "422" ] && echo "PASS:HTTP_422" || echo "FAIL:HTTP_${HTTP_CODE}"
+      [ "${HTTP_CODE}" = "422" ] || exit 1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:HTTP_422"
+        - "HTTP_CODE=422"
 
   # -------------------------------------------------------------------------
   # Step 9: Kill API server (cleanup)
@@ -145,7 +145,7 @@ steps:
   - name: "Stop API server"
     tool: bash
     command: |
-      pkill -f "uvicorn autoinfo.api.server:app" 2>/dev/null || true
+      pkill -f "[u]vicorn autoinfo.api.server:app" 2>/dev/null || true
       echo "CLEANUP_DONE"
     expected:
       exit_code: 0

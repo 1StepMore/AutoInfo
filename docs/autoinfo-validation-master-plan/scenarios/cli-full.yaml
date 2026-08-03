@@ -11,6 +11,7 @@ description: >
   cron schedule management. Verifies happy paths, idempotency, error handling,
   and JSON output modes.
 
+tier: 3
 tags: [domain, source, topic, output, kb, cron, cli, regression]
 depends_on: [init-project]
 
@@ -189,6 +190,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate digest in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output digest --domain "${DOMAIN}" --period week --format markdown 2>&1
     expected:
@@ -202,6 +205,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain "${DOMAIN}" --format markdown 2>&1
     expected:

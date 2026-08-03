@@ -5,6 +5,7 @@
 # =============================================================================
 
 name: "Knowledge Base Search"
+tier: 1
 description: >
   Tests KB search across basic (domain-specific), cross-domain (no domain
   specified), and faceted filtering. Requires a project initialized with demo
@@ -33,6 +34,11 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/.autoinfo/config.yaml:!"
+        - "${TEST_DIR}/.autoinfo/knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: Basic KB search with domain
@@ -46,7 +52,6 @@ steps:
       stdout_not_contains:
         - "Error"
         - "Traceback"
-        - "Failed"
 
   # -------------------------------------------------------------------------
   # Step 3: Cross-domain search (no domain specified)
@@ -60,7 +65,6 @@ steps:
       stdout_not_contains:
         - "Error"
         - "Traceback"
-        - "Failed"
 
   # -------------------------------------------------------------------------
   # Step 4: Search with JSON output

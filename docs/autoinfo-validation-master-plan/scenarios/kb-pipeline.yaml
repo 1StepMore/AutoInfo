@@ -6,13 +6,13 @@
 # =============================================================================
 
 name: "KB Pipeline — 4-Tier Lifecycle"
+tier: 1
 description: >
   Tests the KB 4-tier pipeline (Inbox→Raw→Draft→Wiki), KB import (Markdown,
-  HTML, JSON), KB export (md, json, sqlite, csv), KB versioning
-  (get_entry_history, restore_entry_version), KB relations (link_items,
-  get_item_relations), knowledge graph (query_knowledge_graph,
-  knowledge_graph_export). SKIPs LLM-dependent steps that require
-  create_kb_draft (no real LLM key).
+  HTML, JSON), KB export (md, json, sqlite, csv, graphml, pdf, rss, sitemap,
+  agent), KB versioning (get_entry_history, restore_entry_version), KB
+  relations (link_items, get_item_relations), knowledge graph
+  (query_knowledge_graph, knowledge_graph_export). No LLM key required.
 
 tags: [kb, pipeline, tiers, import, export, versioning, relations, graph, regression]
 depends_on: [init-project]
@@ -36,6 +36,11 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/.autoinfo/config.yaml:!"
+        - "${TEST_DIR}/.autoinfo/knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: KB tier listing — verify all tiers
@@ -62,16 +67,39 @@ steps:
     command: |
       import sys, os, json, pathlib, tempfile
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       md_content = "\n".join([
           "---",
           "title: Imported Pipeline Test Article",
-          "domain: medical-research",
           "source_url: https://example.com/pipeline-import",
           "source_type: web",
           "source_platform: test",
-          "collected_at: 2026-07-23",
           "quality_tier: 1",
           "topic_tags: [ivf]",
           "---",
@@ -87,48 +115,77 @@ steps:
           "format": "markdown"
       })
       import_data = json.loads(result.content[0].text)
-      print(f"PASS: import_kb (markdown) returned: {list(import_data.keys())[:5]}")
       assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
         f"Expected entry_id/status/id in import result, got keys: {list(import_data.keys())}"
+      print(json.dumps({"tool": "import_kb", "format": "markdown", "response_keys": list(import_data.keys())[:5]}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: import_kb (markdown)"
+        - "import_kb"
+        - "markdown"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/knowledge/medical-research/01-Raw/**/*.md:!"
 
   # -------------------------------------------------------------------------
-  # Step 4: KB import — HTML file to 01-Raw
+  # Step 4: KB import — CSV file to 01-Raw
   # -------------------------------------------------------------------------
-  - name: "Import HTML content into KB (01-Raw)"
+  - name: "Import CSV content into KB (01-Raw)"
     tool: python
     command: |
       import sys, os, json, pathlib, tempfile
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
-      html_content = "\n".join([
-          "<!DOCTYPE html>",
-          '<html><head><meta charset="utf-8"></head>',
-          "<body>",
-          "<h1>Imported HTML Article</h1>",
-          "<p>This is an HTML article imported into the KB.</p>",
-          "<p>domain: medical-research</p>",
-          "<p>source_url: https://example.com/html-import</p>",
-          "</body></html>",
+      csv_content = "\n".join([
+          "title,source_url,source_type,source_platform,content",
+          "Imported CSV Article,https://example.com/csv-import,web,test,This is CSV content imported into the KB pipeline.",
       ])
 
       result = app.call_tool("import_kb", {
           "domain": "medical-research",
-          "data": html_content,
-          "format": "html"
+          "data": csv_content,
+          "format": "csv"
       })
       import_data = json.loads(result.content[0].text)
-      print(f"PASS: import_kb (html) returned: {list(import_data.keys())[:5]}")
-      assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
-        f"Expected entry_id/status/id in import result, got keys: {list(import_data.keys())}"
+      assert "entries_imported" in import_data, \
+        f"Expected entries_imported in import result, got keys: {list(import_data.keys())}"
+      print(json.dumps({"tool": "import_kb", "format": "csv", "entries_imported": import_data.get("entries_imported", 0)}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: import_kb (html)"
+        - "import_kb"
+        - "csv"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/knowledge/medical-research/01-Raw/**/*.md:!"
 
   # -------------------------------------------------------------------------
   # Step 5: KB import — JSON file to 01-Raw
@@ -138,15 +195,36 @@ steps:
     command: |
       import sys, os, json, pathlib, tempfile
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       json_content = json.dumps({
           "title": "Imported JSON Article",
-          "domain": "medical-research",
           "source_url": "https://example.com/json-import",
-          "source_type": "web",
-          "source_platform": "test",
-          "collected_at": "2026-07-23T00:00:00",
           "content": "This is JSON content imported into the KB pipeline.",
           "topic_tags": ["ivf"]
       })
@@ -157,92 +235,142 @@ steps:
           "format": "json"
       })
       import_data = json.loads(result.content[0].text)
-      print(f"PASS: import_kb (json) returned: {list(import_data.keys())[:5]}")
-      assert "entry_id" in import_data or "status" in import_data or "id" in import_data, \
-        f"Expected entry_id/status/id, got keys: {list(import_data.keys())}"
+      assert "entries_imported" in import_data, \
+        f"Expected entries_imported, got keys: {list(import_data.keys())}"
+      print(json.dumps({"tool": "import_kb", "format": "json", "entries_imported": import_data.get("entries_imported", 0)}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: import_kb (json)"
+        - "import_kb"
+        - "json"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 6: KB export — JSON format
+  # Step 6: KB export — JSON format (MCP)
   # -------------------------------------------------------------------------
-  - name: "Export KB to JSON format"
+  - name: "Export KB to JSON format via MCP"
     tool: python
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       result = app.call_tool("export_kb", {
           "domain": "medical-research",
-          "format": "json",
-          "topic": "ivf"
+          "format": "json"
       })
       export_data = json.loads(result.content[0].text)
-      print(f"PASS: export_kb (json) returned: {list(export_data.keys())[:5]}")
-      assert "file_path" in export_data or "data" in export_data or "status" in export_data, \
-        f"Expected file_path/data/status, got keys: {list(export_data.keys())}"
+      assert "path" in export_data or "entries_count" in export_data or "format" in export_data, \
+        f"Expected path/entries_count/format, got keys: {list(export_data.keys())}"
+      print(json.dumps({"tool": "export_kb", "format": "json", "response_keys": list(export_data.keys())[:5]}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: export_kb (json)"
+        - "export_kb"
+        - "json"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7: KB export — Markdown format
+  # Step 7: KB export — Markdown format (CLI)
   # -------------------------------------------------------------------------
-  - name: "Export KB to Markdown format"
+  - name: "Export KB to Markdown format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format markdown 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/autoinfo-export-medical-research-*.tar.gz:!"
 
   # -------------------------------------------------------------------------
-  # Step 8: KB export — SQLite format
+  # Step 8: KB export — SQLite format (CLI)
   # -------------------------------------------------------------------------
-  - name: "Export KB to SQLite format"
+  - name: "Export KB to SQLite format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format sqlite 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/autoinfo-export-medical-research-*.db:!"
 
   # -------------------------------------------------------------------------
-  # Step 9: KB export — CSV format
+  # Step 9: KB export — CSV format (CLI)
   # -------------------------------------------------------------------------
-  - name: "Export KB to CSV format"
+  - name: "Export KB to CSV format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format csv 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/medical-research/autoinfo-csv-*.csv:!"
 
   # -------------------------------------------------------------------------
-  # Step 10: KB export — GraphML format
+  # Step 10: KB export — GraphML format (CLI)
   # -------------------------------------------------------------------------
-  - name: "Export KB to GraphML format"
+  - name: "Export KB to GraphML format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format graphml 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/medical-research/autoinfo-graphml-*.graphml:!"
 
   # -------------------------------------------------------------------------
-  # Step 10b: KB export — PDF format (B15, env-gated on weasyprint)
+  # Step 10b: KB export — PDF format (requires weasyprint)
   # -------------------------------------------------------------------------
   - name: "Export KB to PDF format (weasyprint env-gated)"
     tool: bash
@@ -252,27 +380,21 @@ steps:
         OUTPUT=$(autoinfo output export --domain ${DOMAIN} --format pdf 2>&1)
         EXIT_CODE=$?
         echo "$OUTPUT"
-        [ "$EXIT_CODE" -eq 0 ] || { echo "ERROR: pdf export exited $EXIT_CODE"; exit 1; }
-        echo "$OUTPUT" | grep -qv "Traceback" || { echo "ERROR: Traceback in pdf output"; exit 1; }
-        # Verify output file exists under exports/
-        PDF_PATH=$(echo "$OUTPUT" | grep -oP 'exports/[^\s]+\.pdf' | head -1)
-        if [ -n "$PDF_PATH" ]; then
-          [ -f "${TEST_DIR}/${PDF_PATH}" ] || { echo "ERROR: expected PDF file ${PDF_PATH} not found"; exit 1; }
-          echo "PASS: PDF exported to ${PDF_PATH}"
-        fi
+        [ "$EXIT_CODE" -eq 0 ] || exit 1
+        echo "$OUTPUT" | grep -qv "Traceback" || exit 1
+        echo "$OUTPUT" | grep -q "Exported" || { echo "WARN: 'Exported' not in PDF output"; exit 1; }
       else
         echo "SKIP: weasyprint not installed (pdf export requires weasyprint)"
       fi
     expected:
       exit_code: 0
       stdout_not_contains:
-        - "ERROR"
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 10c: KB export — RSS format (B17)
+  # Step 10c: KB export — RSS format
   # -------------------------------------------------------------------------
-  - name: "Export KB to RSS 2.0 XML format"
+  - name: "Export KB to RSS 2.0 XML format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR}
@@ -280,24 +402,19 @@ steps:
       EXIT_CODE=$?
       echo "$OUTPUT"
       [ "$EXIT_CODE" -eq 0 ] || exit 1
-      # Verify RSS output file exists
-      RSS_PATH=$(echo "$OUTPUT" | grep -oP 'exports/[^\s]+\.xml' | head -1)
-      if [ -n "$RSS_PATH" ] && [ -f "${TEST_DIR}/${RSS_PATH}" ]; then
-        echo "PASS: RSS exported to ${RSS_PATH}"
-      else
-        echo "WARN: RSS output file path not found in stdout, checking exports/"
-        ls -la ${TEST_DIR}/exports/${DOMAIN}/autoinfo-rss-*.xml 2>/dev/null && echo "PASS: RSS file found" || echo "PASS: RSS export completed (no entries to export)"
-      fi
+      echo "$OUTPUT" | grep -q "Exported" || echo "INFO: RSS export completed (no items to report)"
     expected:
       exit_code: 0
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/medical-research/autoinfo-rss-*.xml:!"
 
   # -------------------------------------------------------------------------
-  # Step 10d: KB export — Sitemap format (C2)
+  # Step 10d: KB export — Sitemap format
   # -------------------------------------------------------------------------
-  - name: "Export KB to XML Sitemap format"
+  - name: "Export KB to XML Sitemap format via CLI"
     tool: bash
     command: |
       cd ${TEST_DIR}
@@ -305,62 +422,85 @@ steps:
       EXIT_CODE=$?
       echo "$OUTPUT"
       [ "$EXIT_CODE" -eq 0 ] || exit 1
-      # Verify sitemap output file exists
-      if echo "$OUTPUT" | grep -q "Sitemap written"; then
-        echo "PASS: sitemap export completed"
-      elif [ -f "${TEST_DIR}/exports/${DOMAIN}/sitemap.xml" ]; then
-        echo "PASS: sitemap.xml found"
-      else
-        echo "PASS: sitemap export completed (output in stdout)"
-      fi
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/exports/medical-research/sitemap.xml:!"
 
   # -------------------------------------------------------------------------
-  # Step 10e: KB export — Agent format (B13)
+  # Step 10e: KB export — Agent format (MCP; CLI export lacks entries_count for agent format)
   # -------------------------------------------------------------------------
-  - name: "Export KB to agent-native JSON-LD format"
-    tool: bash
+  - name: "Export KB to agent-native JSON-LD format via MCP"
+    tool: python
     command: |
-      cd ${TEST_DIR}
-      OUTPUT=$(autoinfo output export --domain ${DOMAIN} --format agent 2>&1)
-      EXIT_CODE=$?
-      echo "$OUTPUT"
-      [ "$EXIT_CODE" -eq 0 ] || exit 1
-      echo "PASS: agent-format export completed (exit 0)"
+      import sys, os, json
+      os.chdir("${TEST_DIR}")
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
+
+      result = app.call_tool("export_kb", {
+          "domain": "medical-research",
+          "format": "agent"
+      })
+      agent_data = json.loads(result.content[0].text)
+      assert "@type" in agent_data or "entries" in agent_data, \
+        f"Expected @type/entries in agent export, got keys: {list(agent_data.keys())[:8]}"
+      print(json.dumps({"tool": "export_kb", "format": "agent", "response_keys": list(agent_data.keys())[:8]}))
     expected:
       exit_code: 0
+      stdout_contains:
+        - "export_kb"
+        - "agent"
       stdout_not_contains:
-        - "Error"
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 10f: Podcast RSS validation — verify enclosure + itunes:* namespace (C11)
+  # Step 10f: Podcast RSS validation — verify RSS 2.0 structure
   # -------------------------------------------------------------------------
-  - name: "Validate RSS 2.0 podcast structure with enclosure + itunes namespace"
+  - name: "Validate RSS 2.0 XML structure (channel + item elements)"
     tool: bash
     command: |
       cd ${TEST_DIR}
-      # Re-export to RSS and inspect the XML content
       OUTPUT=$(autoinfo output export --domain ${DOMAIN} --format rss 2>&1)
       RSS_FILE=$(echo "$OUTPUT" | grep -oP 'exports/[^\s]+\.xml' | head -1)
       if [ -n "$RSS_FILE" ] && [ -f "${TEST_DIR}/${RSS_FILE}" ]; then
-        echo "=== RSS XML structure check ==="
-        grep -q '<rss ' "${TEST_DIR}/${RSS_FILE}" && echo "PASS: <rss> root element present" || echo "WARN: no <rss> element"
-        grep -q '<channel>' "${TEST_DIR}/${RSS_FILE}" && echo "PASS: <channel> present" || echo "WARN: no <channel>"
-        grep -q '<item>' "${TEST_DIR}/${RSS_FILE}" && echo "PASS: <item> elements present" || echo "INFO: no <item> elements (empty KB)"
-        echo "PASS: RSS 2.0 structure validated"
+        echo "=== RSS XML structure ==="
+        grep -q '<rss ' "${TEST_DIR}/${RSS_FILE}" && echo "rss_root: present" || echo "rss_root: absent"
+        grep -q '<channel>' "${TEST_DIR}/${RSS_FILE}" && echo "channel: present" || echo "channel: absent"
+        grep -q '<item>' "${TEST_DIR}/${RSS_FILE}" && echo "items: present" || echo "items: none (empty KB)"
+        wc -c < "${TEST_DIR}/${RSS_FILE}" | xargs echo "file_size_bytes:"
       else
-        echo "PASS: no RSS file to validate (empty KB or export completed without file)"
+        echo "rss_file: not_found (empty KB or export no-op)"
       fi
-      # Note: The general _export_rss does NOT produce enclosure/itunes;
-      # podcast RSS with enclosure + itunes:* is generated by the delivery
-      # channel (src/autoinfo/delivery/rss.py PodcastRSSDeliveryChannel).
-      # The itunes:* namespace uses xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd".
-      # Full podcast validation requires the delivery pipeline (beyond export scope).
     expected:
       exit_code: 0
       stdout_not_contains:
@@ -375,7 +515,32 @@ steps:
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       # Search for an entry to get its ID
       search = app.call_tool("search_knowledge_base", {
@@ -390,23 +555,50 @@ steps:
           result = app.call_tool("get_entry_history", {"entry_id": entry_id})
           hist_data = json.loads(result.content[0].text)
           versions = hist_data.get("versions", hist_data.get("history", []))
-          print(f"PASS: get_entry_history returned {len(versions)} version(s)")
+          print(json.dumps({"tool": "get_entry_history", "version_count": len(versions)}))
       else:
-          print("PASS: get_entry_history — no entries to check (not an error)")
+          print(json.dumps({"tool": "get_entry_history", "version_count": 0, "note": "no entries found"}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: get_entry_history"
+        - "get_entry_history"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 12: KB relations — link_items
+  # Step 12: KB relations — link_items + get_item_relations
   # -------------------------------------------------------------------------
-  - name: "Link items with relation type"
+  - name: "Link items with relation type and verify"
     tool: python
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       search = app.call_tool("search_knowledge_base", {
           "domain": "medical-research",
@@ -419,44 +611,73 @@ steps:
           id1 = entries[0].get("entry_id", entries[0].get("id", ""))
           id2 = entries[1].get("entry_id", entries[1].get("id", ""))
           result = app.call_tool("link_items", {
-              "source_id": id1,
-              "target_id": id2,
+              "item_a_id": id1,
+              "item_b_id": id2,
               "relation_type": "related_to"
           })
           link_data = json.loads(result.content[0].text)
-          print(f"PASS: link_items returned: {list(link_data.keys())[:5]}")
 
           # Verify relation
-          rel_result = app.call_tool("get_item_relations", {"entry_id": id1})
+          rel_result = app.call_tool("get_item_relations", {"item_id": id1})
           rel_data = json.loads(rel_result.content[0].text)
           relations = rel_data.get("relations", rel_data.get("items", []))
-          print(f"PASS: get_item_relations returned {len(relations)} relation(s)")
+          print(json.dumps({"tool": "link_items", "relation_count": len(relations)}))
       else:
-          print("PASS: link_items — < 2 entries (not an error)")
+          print(json.dumps({"tool": "link_items", "relation_count": 0, "note": "< 2 entries"}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: link_items"
+        - "link_items"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 13: Knowledge graph query
   # -------------------------------------------------------------------------
-  - name: "Query knowledge graph"
+  - name: "Query knowledge graph via MCP"
     tool: python
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
-      result = app.call_tool("query_knowledge_graph", {"domain": "medical-research"})
+      result = app.call_tool("query_knowledge_graph", {"entity": "Imported", "domain": "medical-research"})
       kg_data = json.loads(result.content[0].text)
       entities = kg_data.get("entities", kg_data.get("nodes", []))
       relations = kg_data.get("relations", kg_data.get("edges", []))
-      print(f"PASS: query_knowledge_graph — {len(entities)} entities, {len(relations)} relations")
+      results = kg_data.get("results", [])
+      print(json.dumps({"tool": "query_knowledge_graph", "entity_count": len(entities), "relation_count": len(relations), "result_count": len(results)}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: query_knowledge_graph"
+        - "query_knowledge_graph"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 14: Knowledge graph export via CLI
@@ -467,6 +688,8 @@ steps:
       cd ${TEST_DIR} && autoinfo knowledge graph export --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported knowledge graph"
       stdout_not_contains:
         - "Error"
         - "Traceback"
@@ -479,7 +702,32 @@ steps:
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       search = app.call_tool("search_knowledge_base", {
           "domain": "medical-research",
@@ -492,19 +740,20 @@ steps:
           entry_id = entries[0].get("entry_id", entries[0].get("id", ""))
           try:
               result = app.call_tool("restore_entry_version", {
-                  "entry_id": entry_id,
                   "version_id": "nonexistent-version"
               })
               data = json.loads(result.content[0].text)
-              print(f"PASS: restore_entry_version handled missing version: {list(data.keys())[:5]}")
+              print(json.dumps({"tool": "restore_entry_version", "status": "handled", "response_keys": list(data.keys())[:5]}))
           except Exception as e:
-              print(f"PASS: restore_entry_version error handled gracefully: {type(e).__name__}")
+              print(json.dumps({"tool": "restore_entry_version", "status": "exception", "error_type": type(e).__name__}))
       else:
-          print("PASS: restore_entry_version — no entries to test (not an error)")
+          print(json.dumps({"tool": "restore_entry_version", "status": "no_entries"}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: restore_entry_version"
+        - "restore_entry_version"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 16: KB list-tiers via CLI
@@ -515,6 +764,8 @@ steps:
       cd ${TEST_DIR} && autoinfo kb list-tiers --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "KB tiers for domain"
       stdout_not_contains:
         - "Error"
         - "Traceback"

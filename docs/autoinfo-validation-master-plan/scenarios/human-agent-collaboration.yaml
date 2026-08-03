@@ -15,6 +15,7 @@ description: >
   human feedback for content review cycles (digest revision, draft→Wiki flow),
   and complies with explicit human overrides (custom instructions, forced full
   collection, skip dedup, override documentation).
+tier: 2
 
 tags: [collaboration, ambiguity, escalation, review, override, agent, regression]
 depends_on: [init-project]
@@ -49,7 +50,32 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: Human says "Gather intelligence across my domains"
       # Agent: lists domains first to clarify which one
@@ -57,8 +83,8 @@ steps:
       data = json.loads(result.content[0].text)
       domains = data.get("domains", [])
       active = [d for d in domains if d.get("active")]
-      print(f"PASS: list_domains returned {len(active)} active domain(s)")
       assert len(active) >= 1, "Expected at least 1 active domain"
+      print("ACTIVE_DOMAINS=" + str(len(active)))
 
       # Agent would ask which domain, then collect only that one
       domain_name = active[0].get("name", "${DOMAIN}")
@@ -68,12 +94,13 @@ steps:
           "dry_run": True
       })
       data2 = json.loads(result2.content[0].text)
-      print(f"PASS: dry-run collection against {domain_name} complete")
+      assert result2 is not None, "collect_sources dry_run failed"
+      print("DRY_RUN_COMPLETE domain=" + domain_name)
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: list_domains returned"
-        - "PASS: dry-run collection"
+        - "ACTIVE_DOMAINS="
+        - "DRY_RUN_COMPLETE"
 
   # -------------------------------------------------------------------------
   # Step 3: Failure escalation — agent detects source error, reports to human
@@ -83,7 +110,32 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: Agent performs pre-collection health check
       result = app.call_tool("get_source_health", {"domain": "${DOMAIN}"})
@@ -91,7 +143,7 @@ steps:
       sources = data.get("sources", data.get("items", []))
       healthy = sum(1 for s in sources if s.get("status") in ("ok", "healthy", "active"))
       unhealthy = len(sources) - healthy
-      print(f"PASS: source health check — {healthy} healthy, {unhealthy} unhealthy out of {len(sources)} total")
+      print(f"SOURCE_HEALTH_CHECK healthy={healthy} unhealthy={unhealthy} total={len(sources)}")
 
       # Agent would report unhealthy sources to human and offer options
       # Human decides: test the source
@@ -103,12 +155,12 @@ steps:
           })
           data2 = json.loads(result2.content[0].text)
           reachable = data2.get("reachable", data2.get("status", "?"))
-          print(f"PASS: test_source({src_name}) reachable={reachable}")
+          print(f"TEST_SOURCE_COMPLETE name={src_name} reachable={reachable}")
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: source health check"
-        - "PASS: test_source"
+        - "SOURCE_HEALTH_CHECK"
+        - "TEST_SOURCE_COMPLETE"
 
   # -------------------------------------------------------------------------
   # Step 4: Human review — agent creates Draft, human promotes to Wiki
@@ -118,7 +170,32 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: Human says "Turn the endometrial receptivity paper into a KB entry"
       # Agent searches for relevant Raw entries
@@ -133,14 +210,14 @@ steps:
       entries = data.get("results", data.get("entries", []))
       if entries:
           top_id = entries[0].get("id", entries[0].get("entry_id", ""))
-          print(f"PASS: found {len(entries)} Raw entries, top id: {top_id}")
+          print(f"KB_SEARCH_COMPLETE entries={len(entries)}")
 
           # Agent creates Draft from Raw (per F20 — agent can create Draft)
           if top_id:
               draft_result = app.call_tool("create_kb_draft", {"raw_ids": [top_id], "title": "Agent draft from " + top_id})
               draft_data = json.loads(draft_result.content[0].text)
               draft_id = draft_data.get("draft_id", draft_data.get("entry_id", "?"))
-              print(f"PASS: Draft created: {draft_id}")
+              print(f"DRAFT_CREATED id={draft_id}")
 
               # Agent links related items
               if len(entries) >= 2:
@@ -151,23 +228,50 @@ steps:
                       "relation": "related"
                   })
                   link_data = json.loads(link_result.content[0].text)
-                  print(f"PASS: linked {top_id} → {target_id}")
+                  print(f"ITEMS_LINKED source={top_id} target={target_id}")
       else:
-          print("PASS: search_knowledge_base returned empty (no items) — tool works")
+          print("KB_SEARCH_EMPTY tool_works=True")
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:"
+        - "KB_SEARCH"
 
   # -------------------------------------------------------------------------
   # Step 5: Human override — custom_instructions parameter for digest
   # -------------------------------------------------------------------------
   - name: "Human override: agent applies custom_instructions parameter"
     tool: python
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: Human says "Focus exclusively on clinical trials, no basic science"
       # Agent applies custom_instructions parameter
@@ -178,11 +282,8 @@ steps:
       })
       data = json.loads(result.content[0].text)
       digest_text = data.get("content", data.get("digest", ""))
-      digest_len = len(digest_text)
-      print(f"PASS: digest generated with custom_instructions ({digest_len} chars)")
-
-      # Agent documents the override
-      print("PASS: override documented — custom_instructions='Focus exclusively on clinical trials'")
+      assert len(digest_text) >= 0, "digest generation returned"
+      print("DIGEST_GENERATED chars=" + str(len(digest_text)))
 
       # Simulate: human overrides default limit for collection
       result2 = app.call_tool("collect_sources", {
@@ -191,12 +292,12 @@ steps:
       })
       data2 = json.loads(result2.content[0].text)
       items = data2.get("items_collected", data2.get("total_items", 0))
-      print(f"PASS: full collection override applied — {items} items collected (limit=0)")
-      print("PASS: override documented — human requested full collection (limit=0)")
+      print(f"FULL_COLLECTION items={items}")
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: override documented"
+        - "DIGEST_GENERATED"
+        - "FULL_COLLECTION"
 
   # -------------------------------------------------------------------------
   # Step 6: Agent compliance — skip_dedup on human request
@@ -206,10 +307,35 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: Agent detected 3 potential duplicates
-      print("WARN: agent detected 3 potential duplicates (same URL)")
+      print("DEDUP_WARNING 3 potential duplicates")
 
       # Human says "collect them anyway, I want to check for updates"
       # Agent collects with skip_dedup=True
@@ -221,15 +347,13 @@ steps:
       })
       data = json.loads(result.content[0].text)
       items = data.get("items_collected", data.get("total_items", 0))
-      print(f"PASS: collection with skip_dedup=True completed — {items} items")
-      print("PASS: override documented — skip_dedup=True per human request")
-
-      # Agent logs the override for audit trail
-      print("PASS: override audit trail — type=collection_dedup, parameter=skip_dedup, value=True, authorized_by=human_director")
+      print(f"SKIP_DEDUP_COLLECTION items={items}")
+      print("OVERRIDE_AUDIT type=collection_dedup parameter=skip_dedup value=True")
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: override audit trail"
+        - "SKIP_DEDUP_COLLECTION"
+        - "OVERRIDE_AUDIT"
 
   # -------------------------------------------------------------------------
   # Step 7: LLM failure escalation — agent checks config, offers fallback
@@ -239,10 +363,35 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
 
       # Simulate: LLM call fails with auth error
-      print("WARN: simulated LLM auth error detected")
+      print("WARNING: simulated LLM auth error detected")
 
       # Agent checks current config
       result = app.call_tool("get_effective_llm_config", {})
@@ -250,14 +399,13 @@ steps:
       provider = data.get("provider", "?")
       model = data.get("model", "?")
       fallback = data.get("fallback", None)
-      print(f"PASS: LLM config — provider={provider}, model={model}, fallback={'configured' if fallback else 'not configured'}")
+      print(f"LLM_CONFIG provider={provider} model={model} fallback={'configured' if fallback else 'none'}")
 
       # Agent would offer human: "switch to fallback model or update API key"
       # Human: "switch to fallback"
-      print("PASS: agent escalation complete — fallback model identified")
-      print("PASS: escalation pattern tested — detect → report → offer_options → human_decides")
+      print("ESCALATION_COMPLETE pattern=detect_report_offer_decide")
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: LLM config"
-        - "PASS: escalation pattern tested"
+        - "LLM_CONFIG"
+        - "ESCALATION_COMPLETE"

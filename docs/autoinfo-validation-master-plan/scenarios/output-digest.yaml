@@ -5,9 +5,10 @@
 # =============================================================================
 
 name: "Output Digest Generation"
+tier: 2
 description: >
   Tests digest generation in markdown, HTML, and agent JSON-LD formats.
-  Requires a project initialized with a demo domain.
+  Requires a project initialized with a demo domain and AUTOINFO_LLM_API_KEY.
 
 tags: [output, digest, regression, cli]
 depends_on: [init-project]
@@ -18,7 +19,7 @@ variables:
 
 steps:
   # -------------------------------------------------------------------------
-  # Step 1: Init project (prerequisite)
+  # Step 1: Init project (prerequisite) — tier 1
   # -------------------------------------------------------------------------
   - name: "Initialize project for digest tests"
     tool: bash
@@ -31,12 +32,19 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - ".autoinfo/config.yaml:!"
+        - "knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: Generate digest — markdown format
   # -------------------------------------------------------------------------
   - name: "Generate digest in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --period week --format markdown 2>&1
     expected:
@@ -50,6 +58,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate digest in HTML format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --period week --format html 2>&1
     expected:
@@ -63,6 +73,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate digest in agent format (JSON-LD)"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --period week --format agent 2>&1
     expected:
@@ -80,3 +92,8 @@ steps:
       cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --format nonexistent 2>&1
     expected:
       exit_code: 2
+      stdout_contains:
+        - "Error"
+        - "nonexistent"
+      stdout_not_contains:
+        - "Traceback"

@@ -6,14 +6,14 @@
 # =============================================================================
 
 name: "MCP KB Search and Output Tools"
+tier: 2
 description: >
   Tests KB search modes (FTS5 via CLI, hybrid/faceted via MCP), KB tier
   operations (list_kb_tier, create_kb_draft, reject_kb_draft), output
   generation (digest, report with --type, report with --domains, tutorial,
   presentation, export with formats including bundle), CEFR classification,
-  knowledge lifecycle tools (find_similar_items, get_domain_decay,
-  mark_stale, calculate_freshness_score), product tools, and list_output_templates.
-  SKIPs LLM-dependent steps (no real LLM key or SMTP required).
+  knowledge lifecycle tools (recommend_content), product tools, and
+  list_output_templates. LLM-dependent steps gated on AUTOINFO_LLM_API_KEY.
 
 tags: [mcp, kb, search, output, regression, knowledge-lifecycle, cefr]
 depends_on: [init-project]
@@ -25,7 +25,7 @@ variables:
 
 steps:
   # -------------------------------------------------------------------------
-  # Step 1: Init project with domain (prerequisite)
+  # Step 1: Init project with domain (prerequisite) — tier 1
   # -------------------------------------------------------------------------
   - name: "Initialize project for MCP KB/output tests"
     tool: bash
@@ -38,6 +38,11 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - ".autoinfo/config.yaml:!"
+        - "knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: KB FTS5 search via CLI
@@ -92,10 +97,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 6: Output digest — markdown format
+  # Step 6: Output digest — markdown format (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate digest in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output digest --domain ${DOMAIN} --period week --format markdown 2>&1
     expected:
@@ -105,10 +112,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7: Output report — --type industry
+  # Step 7: Output report — --type industry (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate report with --type industry"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type industry 2>&1
     expected:
@@ -118,10 +127,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7b: Output report — --type competitive (B9)
+  # Step 7b: Output report — --type competitive (B9) (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate report with --type competitive"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type competitive 2>&1
     expected:
@@ -131,10 +142,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7c: Output report — --type trend (B10)
+  # Step 7c: Output report — --type trend (B10) (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate report with --type trend"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown --type trend 2>&1
     expected:
@@ -144,10 +157,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 8: Output report with --domains (cross-domain)
+  # Step 8: Output report with --domains (cross-domain) (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate cross-domain report (init second domain first)"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     setup: |
       cd ${TEST_DIR} && autoinfo domain import --from-demo ${DOMAIN2} 2>/dev/null || true
     command: |
@@ -159,10 +174,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 9: Output tutorial generation
+  # Step 9: Output tutorial generation (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate tutorial in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output tutorial --domain ${DOMAIN} --topic "IVF" --format markdown 2>&1
     expected:
@@ -172,10 +189,12 @@ steps:
         - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 10: Output presentation generation
+  # Step 10: Output presentation generation (LLM-gated)
   # -------------------------------------------------------------------------
   - name: "Generate presentation in markdown format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output presentation --domain ${DOMAIN} --topic "IVF" --format markdown 2>&1
     expected:
@@ -193,9 +212,14 @@ steps:
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format json 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "exports/medical-research/autoinfo-export-*.json:!"
 
   # -------------------------------------------------------------------------
   # Step 12: Export KB in markdown format
@@ -206,12 +230,17 @@ steps:
       cd ${TEST_DIR} && autoinfo output export --domain ${DOMAIN} --format markdown 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported"
+        - "entries"
       stdout_not_contains:
         - "Error"
         - "Traceback"
+      artifacts:
+        - "exports/medical-research/autoinfo-export-*.tar.gz:!"
 
   # -------------------------------------------------------------------------
-  # Step 13: CEFR classify (no LLM key — verify command exists)
+  # Step 13: CEFR classify help (no LLM key needed)
   # -------------------------------------------------------------------------
   - name: "CEFR classify command help (no LLM key)"
     tool: bash
@@ -222,6 +251,8 @@ steps:
       stdout_contains:
         - "cefr"
         - "classify"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 14: List output templates
@@ -232,6 +263,8 @@ steps:
       cd ${TEST_DIR} && autoinfo output list-templates --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "templates"
       stdout_not_contains:
         - "Error"
         - "Traceback"
@@ -245,6 +278,8 @@ steps:
       cd ${TEST_DIR} && autoinfo knowledge graph export --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Exported knowledge graph"
       stdout_not_contains:
         - "Error"
         - "Traceback"
@@ -274,15 +309,44 @@ steps:
       stdout_contains:
         - "invalid"
         - "nonexistent"
+      stdout_not_contains:
+        - "Traceback"
+
   # -------------------------------------------------------------------------
-  # Step 18: recommend_content happy path (36b.7)
+  # Step 18: recommend_content happy path (no LLM key needed)
   # -------------------------------------------------------------------------
   - name: "recommend_content happy path with seeded KB entries"
     tool: python
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+
       # Seed KB entries for recommendation
       for i in range(3):
           app.call_tool("create_kb_entry", {
@@ -293,42 +357,73 @@ steps:
               "source_type": "web",
               "source_platform": "test"
           })
+
       # Recommend content
       try:
           r = app.call_tool("recommend_content", {"query": "cancer research"})
           data = json.loads(r.content[0].text)
           items = data.get("items", data.get("recommendations", []))
+          print(json.dumps({"tool": "recommend_content", "item_count": len(items), "response_keys": list(data.keys())[:5]}))
+          assert isinstance(items, list), f"Expected list, got {type(items)}"
           if items:
               first = items[0]
-              has_keys = all(k in first for k in ["entry_id", "title", "score"] if k in first)
-              print(f"PASS: recommend_content returned {len(items)} items, first_keys={list(first.keys())[:5]}")
-          else:
-              print("PASS: recommend_content returned empty list (graceful)")
+              assert isinstance(first, dict), f"Expected dict item, got {type(first)}"
       except Exception as e:
-          print(f"PASS: recommend_content handled: {type(e).__name__}")
+          print(json.dumps({"tool": "recommend_content", "error_handled": type(e).__name__}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: recommend_content"
+        - "recommend_content"
+      stdout_not_contains:
+        - "Traceback"
+
   # -------------------------------------------------------------------------
-  # Step 19: recommend_content empty KB degradation (36b.8)
+  # Step 19: recommend_content empty KB graceful degradation
   # -------------------------------------------------------------------------
   - name: "recommend_content empty KB graceful degradation"
     tool: python
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+
       try:
           r = app.call_tool("recommend_content", {"query": "zyxwvutsrqponmlkjihgfedcba"})
           data = json.loads(r.content[0].text)
           items = data.get("items", data.get("recommendations", []))
           count = data.get("count", len(items))
           assert count == 0 or len(items) == 0, f"Expected empty: count={count}, items={len(items)}"
-          print(f"PASS: empty KB degradation count={count}")
+          print(json.dumps({"tool": "recommend_content_empty", "count": count}))
       except Exception as e:
-          print(f"PASS: empty KB handled: {type(e).__name__}")
+          print(json.dumps({"tool": "recommend_content_empty", "error_handled": type(e).__name__}))
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: empty KB"
+        - "recommend_content_empty"
+      stdout_not_contains:
+        - "Traceback"

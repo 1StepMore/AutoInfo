@@ -13,6 +13,7 @@ description: >
   management tools (add_topic, list_topics, remove_topic). Requires a project
   initialized with a demo domain.
 
+tier: 1
 tags: [mcp, system, discovery, source, topic, regression]
 depends_on: [init-project]
 
@@ -46,17 +47,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("health_check", {})
       data = json.loads(result.content[0].text)
       assert data["status"] == "ok", f"Expected status=ok, got {data}"
       assert "version" in data, "Missing version field"
       assert data.get("tools_count", 0) >= 68, f"Expected tools_count >= 68, got {data.get('tools_count', 0)}"
-      print(f"PASS: health_check status={data['status']}, version={data.get('version')}, tools={data['tools_count']}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: health_check"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 3: diagnose_system — comprehensive health check
@@ -66,13 +91,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("diagnose_system", {})
       data = json.loads(result.content[0].text)
       sections = ["llm", "sources", "disk", "db"]
       for s in sections:
         assert s in data, f"Missing section: {s}"
-      print(f"PASS: diagnose_system sections={list(data.keys())[:6]}")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 4: get_config — retrieve full project config
@@ -82,15 +135,45 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("get_config", {})
       data = json.loads(result.content[0].text)
-      assert "project" in data, "Missing project section"
-      assert "llm" in data, "Missing llm section"
-      assert "domains" in data, "Missing domains section"
-      domain_count = len(data.get("domains", []))
+      assert "config" in data, f"Missing config section. Keys: {list(data.keys())[:5]}"
+      config = data.get("config", data)
+      assert "project" in config, "Missing project section"
+      assert "llm" in config, "Missing llm section"
+      assert "domains" in config, "Missing domains section"
+      domain_count = len(config.get("domains", []))
       assert domain_count >= 1, f"Expected >= 1 domain, got {domain_count}"
-      print(f"PASS: get_config project={data.get('project',{}).get('name','?')}, domains={domain_count}")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 5: list_available_models — show configured LLM models
@@ -100,13 +183,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_available_models", {})
       data = json.loads(result.content[0].text)
       assert "models" in data, "Missing models key"
       models = data["models"]
       assert len(models) > 0, "Expected at least 1 model"
-      print(f"PASS: list_available_models count={len(models)}")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 6: get_tool_count — self-discovery of tool registry size
@@ -116,12 +227,40 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("get_tool_count", {})
       data = json.loads(result.content[0].text)
-      assert "count" in data, "Missing count field"
-      assert data["count"] >= 115, f"Expected count >= 115, got {data['count']}"
-      print(f"PASS: get_tool_count={data['count']}")
+      assert "tools_count" in data, f"Missing tools_count. Keys: {list(data.keys())[:5]}"
+      assert data["tools_count"] >= 115, f"Expected tools_count >= 115, got {data['tools_count']}"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 7: list_domains — discover configured domains
@@ -131,7 +270,32 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_domains", {})
       data = json.loads(result.content[0].text)
       assert "domains" in data, "Missing domains key"
@@ -139,7 +303,10 @@ steps:
       assert len(domains) >= 1, f"Expected >= 1 domain, got {len(domains)}"
       names = [d.get("name") for d in domains]
       assert "${DOMAIN}" in names, f"${DOMAIN} not found in {names}"
-      print(f"PASS: list_domains found {names}")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 8: get_domain_schema — retrieve extraction schema
@@ -149,12 +316,40 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("get_domain_schema", {"domain": "${DOMAIN}"})
       data = json.loads(result.content[0].text)
-      has_fields = "fields" in data or "extraction_fields" in data
-      assert has_fields, f"Missing fields/extraction_fields. Keys: {list(data.keys())[:5]}"
-      print(f"PASS: get_domain_schema keys={list(data.keys())[:5]}")
+      has_fields = "extract_fields" in data or "fields" in data
+      assert has_fields, f"Missing extract_fields/fields. Keys: {list(data.keys())[:5]}"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 9: list_available_platforms — discover collector platforms
@@ -164,14 +359,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_available_platforms", {})
       data = json.loads(result.content[0].text)
       assert "platforms" in data, "Missing platforms key"
       platforms = data["platforms"]
       assert len(platforms) >= 6, f"Expected >= 6 platforms, got {len(platforms)}"
-      names = [p.get("name") for p in platforms[:8]]
-      print(f"PASS: list_available_platforms count={len(platforms)}, sample={names}")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 10: add_source — add a test source via MCP
@@ -181,7 +403,32 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("add_source", {
           "domain": "${DOMAIN}",
           "name": "mcp-test-source",
@@ -189,8 +436,11 @@ steps:
           "url": "https://example.com/mcp-feed"
       })
       data = json.loads(result.content[0].text)
-      assert "status" in data or "name" in data, f"No confirmation in response: {list(data.keys())[:5]}"
-      print(f"PASS: add_source response={data.get('status', data.get('name', 'OK'))}")
+      assert "source" in data or "source_id" in data, f"No confirmation in response: {list(data.keys())[:5]}"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 11: list_sources — verify source was added
@@ -200,13 +450,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_sources", {"domain": "${DOMAIN}"})
       data = json.loads(result.content[0].text)
       sources = data.get("sources", data.get("items", []))
       names = [s.get("name") for s in sources]
       assert "mcp-test-source" in names, f"mcp-test-source not in {names}"
-      print(f"PASS: list_sources found mcp-test-source")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 12: remove_source — clean up test source
@@ -216,17 +494,43 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
-      result = app.call_tool("remove_source", {"domain": "${DOMAIN}", "name": "mcp-test-source"})
-      data = json.loads(result.content[0].text)
-      print(f"PASS: remove_source response received")
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+      result = app.call_tool("remove_source", {"source_id": "${DOMAIN}:mcp-test-source"})
       # Verify it's gone
       result = app.call_tool("list_sources", {"domain": "${DOMAIN}"})
       data = json.loads(result.content[0].text)
       sources = data.get("sources", data.get("items", []))
       names = [s.get("name") for s in sources]
       assert "mcp-test-source" not in names, f"Source still present: {names}"
-      print(f"PASS: remove_source verified — source no longer listed")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 13: add_topic — add a topic via MCP
@@ -236,14 +540,43 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("add_topic", {
           "domain": "${DOMAIN}",
           "name": "MCP Test Topic",
           "keywords": ["test", "mcp", "validation"]
       })
       data = json.loads(result.content[0].text)
-      print(f"PASS: add_topic response={json.dumps(data)[:200]}")
+      assert data.get("success") or data.get("name"), f"No confirmation: {list(data.keys())[:5]}"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 14: list_topics — verify topic was added
@@ -253,13 +586,41 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_topics", {"domain": "${DOMAIN}"})
       data = json.loads(result.content[0].text)
       topics = data.get("topics", data.get("items", []))
       names = [t.get("name") for t in topics]
       assert "MCP Test Topic" in names, f"MCP Test Topic not in {names}"
-      print(f"PASS: list_topics found MCP Test Topic")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 15: remove_topic — clean up test topic
@@ -269,17 +630,43 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
-      result = app.call_tool("remove_topic", {"domain": "${DOMAIN}", "name": "MCP Test Topic"})
-      data = json.loads(result.content[0].text)
-      print(f"PASS: remove_topic response received")
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+      result = app.call_tool("remove_topic", {"domain": "${DOMAIN}", "topic_id": "MCP Test Topic"})
       # Verify it's gone
       result = app.call_tool("list_topics", {"domain": "${DOMAIN}"})
       data = json.loads(result.content[0].text)
       topics = data.get("topics", data.get("items", []))
       names = [t.get("name") for t in topics]
       assert "MCP Test Topic" not in names, f"Topic still present: {names}"
-      print(f"PASS: remove_topic verified — topic no longer listed")
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 16: Negative — call unknown tool (error handling)
@@ -289,13 +676,39 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
-      try:
-          result = app.call_tool("nonexistent_tool_name", {})
-          print("UNEXPECTED: call_tool did not raise for unknown tool")
-          sys.exit(1)
-      except Exception as e:
-          print(f"PASS: unknown tool correctly raised exception: {type(e).__name__}")
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+      result = app.call_tool("nonexistent_tool_name", {})
+      assert result.get("success") == False, f"Expected failure for unknown tool"
+      assert "error" in result, "Missing error in response"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 17: list_available_platforms — verify all 6+ base types
@@ -305,15 +718,44 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       result = app.call_tool("list_available_platforms", {})
       data = json.loads(result.content[0].text)
       platforms = data["platforms"]
       names = [p.get("name") for p in platforms]
-      # 6 base types: RSS, REST API, web, webhook, email, PDF
       expected_bases = ["rss", "api", "web", "webhook", "email", "pdf"]
       found_bases = [n for n in names if any(e in n.lower() for e in expected_bases)]
-      print(f"PASS: list_available_platforms total={len(platforms)}, base_types_found={found_bases}")
+      assert len(found_bases) >= 1, f"No base platforms found in {names[:8]}"
+    expected:
+      exit_code: 0
+      stdout_not_contains:
+        - "Traceback"
+
   # -------------------------------------------------------------------------
   # Step 18: set_domain_webhooks e2e callback delivery (25.3)
   # -------------------------------------------------------------------------
@@ -321,7 +763,6 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      # Start a background mock HTTP listener on port 19997
       python3 -c "
       from http.server import HTTPServer, BaseHTTPRequestHandler
       import json, threading, sys
@@ -338,7 +779,6 @@ steps:
       t = threading.Thread(target=server.serve_forever, daemon=True)
       t.start()
       print('MOCK_SERVER_READY')
-      # Wait for webhook to fire
       import time; time.sleep(3)
       server.shutdown()
       print('WEBHOOKS_RECEIVED=' + str(len(received)))
@@ -347,6 +787,9 @@ steps:
       exit_code: 0
       stdout_contains:
         - "MOCK_SERVER_READY"
+      stdout_not_contains:
+        - "Traceback"
+
   # -------------------------------------------------------------------------
   # Step 19: get_domain_webhooks round-trip (25.4)
   # -------------------------------------------------------------------------
@@ -355,22 +798,45 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
       test_url = "https://example.com/webhook-roundtrip"
-      # Set webhook
-      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "url": test_url})
+      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "webhook_urls": [test_url]})
       data = json.loads(r.content[0].text)
-      assert data.get("success") or "url" in str(data).lower(), f"Set failed: {data}"
-      # Get webhooks and verify round-trip
+      assert data.get("updated") or "webhook_urls" in data, f"Set failed: {data}"
       r = app.call_tool("get_domain_webhooks", {"domain": "${DOMAIN}"})
       data = json.loads(r.content[0].text)
-      webhooks = data.get("webhooks", data.get("urls", []))
-      found = test_url in str(webhooks)
-      print(f"PASS: set_domain_webhooks round-trip found={found}")
+      webhooks = data.get("webhook_urls", data.get("urls", []))
+      assert test_url in str(webhooks), f"Round-trip failed: {webhooks}"
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: set_domain_webhooks round-trip"
+      stdout_not_contains:
+        - "Traceback"
+
   # -------------------------------------------------------------------------
   # Step 20: set_domain_webhooks invalid URL rejected (25.5)
   # -------------------------------------------------------------------------
@@ -379,12 +845,36 @@ steps:
     command: |
       import os, sys, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
-      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "url": "ftp://invalid-protocol"})
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+
+      app = _App()
+      r = app.call_tool("set_domain_webhooks", {"domain": "${DOMAIN}", "webhook_urls": ["ftp://invalid-protocol"]})
       data = json.loads(r.content[0].text)
       assert data.get("success") == False or data.get("error_code") is not None, f"Expected rejection: {data}"
-      print(f"PASS: invalid URL rejected error_code={data.get('error_code', 'N/A')}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: invalid URL rejected"
+      stdout_not_contains:
+        - "Traceback"

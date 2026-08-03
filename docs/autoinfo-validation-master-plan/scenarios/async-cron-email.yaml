@@ -11,6 +11,7 @@ description: >
   Covers CLI and MCP-based workflows. Steps marked [REQUIRES SMTP] need working
   SMTP config; they test command existence otherwise.
 
+tier: 3
 tags: [async, cron, email, webhook, alerting, regression, mcp]
 depends_on: [init-project]
 
@@ -37,15 +38,10 @@ steps:
       cd ${TEST_DIR}
       autoinfo collect --domain ${DOMAIN} --limit 3 2>&1
       EXIT=$?
-      echo "COLLECT_EXIT=${EXIT}"
-      echo "---PROGRESS---"
+      [ ${EXIT} -eq 0 ] || exit ${EXIT}
       autoinfo status 2>&1
-      echo "---PROGRESS_EXIT:$?---"
-      [ ${EXIT} -eq 0 ] && echo "PASS:COLLECT_OK"
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS:COLLECT_OK"
       stdout_not_contains:
         - "Traceback"
 
@@ -53,11 +49,10 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import os,json; os.environ['AD']='${DOMAIN}'; from autoinfo.mcp.server import app; d=os.environ['AD']; r=app.call_tool('collect_sources',{'domain':d,'limit':3,'async':True}); data=json.loads(r.content[0].text); print('JOB_ID='+str(data.get('job_id',''))); assert 'job_id' in data, 'No job_id'; print('PASS:ASYNC_JOB_ID')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; r=json.loads(asyncio.run(_ct('collect_sources',{'domain':'${DOMAIN}','limit':3,'async':True}))[0].text); print('JOB_ID='+str(r.get('job_id',''))); assert 'job_id' in r, 'No job_id'" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:ASYNC_JOB_ID"
         - "JOB_ID="
       stdout_not_contains:
         - "Traceback"
@@ -66,11 +61,11 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import json; from autoinfo.mcp.server import app; p=app.call_tool('get_collection_progress',{'domain':'${DOMAIN}'}); data=json.loads(p.content[0].text); s=data.get('status','unknown'); print('STATUS='+str(s)); assert s is not None; print('PASS:PROGRESS_POLL')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; data=json.loads(asyncio.run(_ct('get_collection_progress',{'domain':'${DOMAIN}'}))[0].text); s=data.get('status','unknown'); print('STATUS='+str(s)); assert s is not None" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:PROGRESS_POLL"
+        - "STATUS="
       stdout_not_contains:
         - "Traceback"
         - "Error"
@@ -79,13 +74,9 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      OUTPUT=$(autoinfo cron add-schedule --name "weekly-digest" --expression "0 8 * * 1" --domain ${DOMAIN} 2>&1)
-      echo "${OUTPUT}"
-      echo "${OUTPUT}" | grep -qi "added\|created\|ok" && echo "PASS:SCHEDULE_ADDED" || echo "WARN:NO_CONFIRM_MSG"
+      autoinfo cron add-schedule --name "weekly-digest" --expression "0 8 * * 1" --domain ${DOMAIN} 2>&1
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS:SCHEDULE_ADDED"
       stdout_not_contains:
         - "Traceback"
         - "Error"
@@ -95,11 +86,8 @@ steps:
     command: |
       cd ${TEST_DIR}
       autoinfo cron list-schedules 2>&1
-      echo "---EXIT:$?---"
     expected:
       exit_code: 0
-      stdout_contains:
-        - "---EXIT:0---"
       stdout_not_contains:
         - "Traceback"
 
@@ -108,18 +96,11 @@ steps:
     command: |
       cd ${TEST_DIR}
       autoinfo cron run 2>&1
-      echo "---RUN_EXIT:$?---"
       HB=".autoinfo/cron-heartbeat.json"
-      if [ -f "${HB}" ]; then
-        echo "PASS:HEARTBEAT_EXISTS"
-        python3 -c "import json; hb=json.load(open('${HB}')); assert 'schedules' in hb; print('PASS:HEARTBEAT_VALID')" 2>&1
-      else
-        echo "WARN:NO_HEARTBEAT"
-      fi
+      [ -f "${HB}" ] || exit 1
+      python3 -c "import json; hb=json.load(open('${HB}')); assert 'schedules' in hb" 2>&1
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS:"
       stdout_not_contains:
         - "Traceback"
 
@@ -128,11 +109,8 @@ steps:
     command: |
       cd ${TEST_DIR}
       autoinfo cron remove-schedule --name "weekly-digest" 2>&1
-      echo "---REMOVE_EXIT:$?---"
     expected:
       exit_code: 0
-      stdout_contains:
-        - "---REMOVE_EXIT:0---"
       stdout_not_contains:
         - "Traceback"
 
@@ -140,11 +118,11 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('set_domain_webhooks',{'domain':'${DOMAIN}','webhook_urls':['https://example.com/webhook'],'events':['item_collected']}); d=json.loads(r.content[0].text); print('SET_WEBHOOK='+json.dumps(d)[:200]); print('PASS:WEBHOOK_SET')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; d=json.loads(asyncio.run(_ct('set_domain_webhooks',{'domain':'${DOMAIN}','webhook_urls':['https://example.com/webhook'],'events':['item_collected']}))[0].text); print('SET_WEBHOOK='+json.dumps(d)[:200])" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:WEBHOOK_SET"
+        - "SET_WEBHOOK="
       stdout_not_contains:
         - "Traceback"
         - "Error"
@@ -153,11 +131,11 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('get_domain_webhooks',{'domain':'${DOMAIN}'}); d=json.loads(r.content[0].text); print('GET_WEBHOOK='+json.dumps(d)[:200]); assert 'webhook_urls' in d; print('PASS:WEBHOOK_GET')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; d=json.loads(asyncio.run(_ct('get_domain_webhooks',{'domain':'${DOMAIN}'}))[0].text); print('GET_WEBHOOK='+json.dumps(d)[:200]); assert 'webhook_urls' in d" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:WEBHOOK_GET"
+        - "GET_WEBHOOK="
       stdout_not_contains:
         - "Traceback"
 
@@ -165,11 +143,11 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('add_alert_rule',{'domain':'${DOMAIN}','name':'source-down-alert','condition':'source_health != ok','action':'log'}); d=json.loads(r.content[0].text); print('ADD_ALERT='+json.dumps(d)[:200]); print('PASS:ALERT_ADDED')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; d=json.loads(asyncio.run(_ct('add_alert_rule',{'domain':'${DOMAIN}','name':'source-down-alert','condition':'source_health != ok','action':'log'}))[0].text); print('ADD_ALERT='+json.dumps(d)[:200])" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:ALERT_ADDED"
+        - "ADD_ALERT="
       stdout_not_contains:
         - "Traceback"
 
@@ -177,23 +155,22 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      python3 -c "import json; from autoinfo.mcp.server import app; r=app.call_tool('get_alert_rules',{'domain':'${DOMAIN}'}); d=json.loads(r.content[0].text); rules=d.get('rules',d.get('items',[])); print('ALERT_RULES_COUNT='+str(len(rules))); print('PASS:ALERTS_LISTED')" 2>&1
+      python3 -c "import asyncio,json; from autoinfo.mcp.server import call_tool as _ct; d=json.loads(asyncio.run(_ct('get_alert_rules',{'domain':'${DOMAIN}'}))[0].text); rules=d.get('rules',d.get('items',[])); print('ALERT_RULES_COUNT='+str(len(rules)))" 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:ALERTS_LISTED"
+        - "ALERT_RULES_COUNT="
       stdout_not_contains:
         - "Traceback"
 
   - name: "[REQUIRES SMTP] Email config command exists and runs"
     tool: bash
+    env_required:
+      - AUTOINFO_SMTP_HOST
     command: |
       cd ${TEST_DIR}
       autoinfo email config 2>&1
-      echo "---EMAIL_EXIT:$?---"
     expected:
       exit_code: 0
-      stdout_contains:
-        - "---EMAIL_EXIT:0---"
       stdout_not_contains:
         - "Traceback"

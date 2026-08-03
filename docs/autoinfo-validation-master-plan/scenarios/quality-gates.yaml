@@ -5,6 +5,7 @@
 # =============================================================================
 
 name: "Quality Gates Validation"
+tier: 1
 description: >
   Tests quality gates G1 (source authority tier check), G2 (dedup),
   G3 (relevance scoring), and gate configuration (get_gate_config,
@@ -34,236 +35,310 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - "${TEST_DIR}/.autoinfo/config.yaml:!"
+        - "${TEST_DIR}/.autoinfo/knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: G1 Source Authority — Tier 1 passes unflagged
   # -------------------------------------------------------------------------
   - name: "G1: Tier 1 source passes unflagged"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G1SourceAuthority
       from autoinfo.models import Item
 
-      item = Item(id="g1-1", source_name="pubmed", title="Test", content="test",
-                  collected_at="2026-07-20", quality_tier=1)
-      result = G1SourceAuthority().check(item, {"quality_tier": 1})
-      assert result.passed == True, f"Expected passed=True, got {result.passed}"
-      assert result.flagged == False, f"Expected flagged=False, got {result.flagged}"
-      print("PASS: G1 Tier 1 passes unflagged")
+      item = Item(id='g1-1', source_name='pubmed', source_type='pubmed',
+                  source_url='https://pubmed.ncbi.nlm.nih.gov/1',
+                  title='Test', content='test',
+                  collected_at='2026-07-20', quality_tier=1)
+      result = G1SourceAuthority().check(item, {'quality_tier': 1})
+      assert result.passed is True, 'expected passed=True, got ' + str(result.passed)
+      assert result.flagged is False, 'expected flagged=False, got ' + str(result.flagged)
+      assert result.details['source_score'] == 90.0, 'expected source_score=90.0, got ' + str(result.details['source_score'])
+      print('G1 tier1: passed=' + str(result.passed) + ' flagged=' + str(result.flagged) +
+            ' source_score=' + str(result.details['source_score']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1 Tier 1 passes unflagged"
+        - "G1 tier1: passed=True flagged=False source_score=90.0"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 3: G1 Source Authority — Tier 3+ flagged advisory
   # -------------------------------------------------------------------------
   - name: "G1: Tier 3 source flagged (advisory, not blocked)"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G1SourceAuthority
       from autoinfo.models import Item
 
-      item = Item(id="g1-2", source_name="blog", title="Test", content="test",
-                  collected_at="2026-07-20", quality_tier=3)
-      result = G1SourceAuthority().check(item, {"quality_tier": 3})
-      assert result.flagged == True, f"Expected flagged=True for Tier 3, got {result.flagged}"
-      print("PASS: G1 Tier 3 flagged advisory")
+      item = Item(id='g1-2', source_name='blog', source_type='web',
+                  source_url='https://example.com/blog',
+                  title='Test', content='test',
+                  collected_at='2026-07-20', quality_tier=3)
+      result = G1SourceAuthority().check(item, {'quality_tier': 3})
+      assert result.flagged is True, 'expected flagged=True for tier 3, got ' + str(result.flagged)
+      assert result.passed is True, 'tier 3 advisory should still pass, got ' + str(result.passed)
+      assert result.details['source_score'] == 50.0, 'expected source_score=50.0, got ' + str(result.details['source_score'])
+      print('G1 tier3: passed=' + str(result.passed) + ' flagged=' + str(result.flagged) +
+            ' source_score=' + str(result.details['source_score']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1 Tier 3 flagged advisory"
+        - "G1 tier3: passed=True flagged=True source_score=50.0"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 4: G2 Dedup — exact URL match
   # -------------------------------------------------------------------------
   - name: "G2: Exact URL match dedup"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.dedup import DedupChecker
-      from autoinfo.models import Item
+      from autoinfo.models import Item, KBEntry
 
       checker = DedupChecker()
-      item = Item(id="dup-1", source_name="pubmed",
-                  source_url="https://doi.org/10.1234/test",
-                  title="Dup Article", content="same content",
-                  collected_at="2026-07-20")
-      existing = [{"source_url": "https://doi.org/10.1234/test"}]
+      item = Item(id='dup-1', source_name='pubmed', source_type='pubmed',
+                  source_url='https://doi.org/10.1234/test',
+                  title='Dup Article', content='same content',
+                  collected_at='2026-07-20')
+      existing = [KBEntry(entry_id='kb-1', title='Dup Article', domain='${DOMAIN}',
+                          source_url='https://doi.org/10.1234/test',
+                          collected_at='2026-07-19')]
       result = checker.check(item, existing)
-      assert result["is_duplicate"] == True, f"Expected duplicate, got {result}"
-      print("PASS: G2 URL exact match dedup works")
+      assert result['is_duplicate'] is True, 'expected duplicate, got ' + str(result)
+      assert result['matched_by'] == 'url', 'expected matched_by=url, got ' + str(result)
+      print('G2 url-match: is_duplicate=' + str(result['is_duplicate']) +
+            ' matched_by=' + str(result['matched_by']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G2 URL exact match dedup works"
+        - "G2 url-match: is_duplicate=True matched_by=url"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 5: G2 Dedup — unique URL passes
   # -------------------------------------------------------------------------
   - name: "G2: Unique URL passes dedup"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.dedup import DedupChecker
-      from autoinfo.models import Item
+      from autoinfo.models import Item, KBEntry
 
       checker = DedupChecker()
-      item = Item(id="unique-1", source_name="pubmed",
-                  source_url="https://doi.org/10.9999/unique",
-                  title="Unique Article", content="different",
-                  collected_at="2026-07-20")
-      existing = [{"source_url": "https://doi.org/10.1234/other"}]
+      item = Item(id='unique-1', source_name='pubmed', source_type='pubmed',
+                  source_url='https://doi.org/10.9999/unique',
+                  title='Unique Article', content='different',
+                  collected_at='2026-07-20')
+      existing = [KBEntry(entry_id='kb-1', title='Weather forecast for tomorrow',
+                          domain='${DOMAIN}',
+                          source_url='https://doi.org/10.1234/other',
+                          collected_at='2026-07-19')]
       result = checker.check(item, existing)
-      assert result["is_duplicate"] == False, f"Expected unique, got {result}"
-      print("PASS: G2 unique URL passes dedup")
+      assert result['is_duplicate'] is False, 'expected unique, got ' + str(result)
+      print('G2 unique-url: is_duplicate=' + str(result['is_duplicate']) +
+            ' matched_by=' + str(result['matched_by']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G2 unique URL passes dedup"
+        - "G2 unique-url: is_duplicate=False matched_by="
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 6: G2 Dedup — empty source_url handled gracefully
   # -------------------------------------------------------------------------
   - name: "G2: Empty source_url does not crash"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.dedup import DedupChecker
-      from autoinfo.models import Item
+      from autoinfo.models import Item, KBEntry
 
       checker = DedupChecker()
-      item = Item(id="no-url", source_name="pubmed", source_url="",
-                  title="No URL", content="test", collected_at="2026-07-20")
-      existing = [{"source_url": "https://example.com"}]
+      item = Item(id='no-url', source_name='pubmed', source_type='pubmed',
+                  source_url='', title='No URL', content='test',
+                  collected_at='2026-07-20')
+      existing = [KBEntry(entry_id='kb-1', title='Weather forecast for tomorrow',
+                          domain='${DOMAIN}', source_url='https://example.com',
+                          collected_at='2026-07-19')]
       result = checker.check(item, existing)
-      assert result["is_duplicate"] == False, f"Empty URL should not match, got {result}"
-      print("PASS: G2 empty source_url handled gracefully (no crash)")
+      assert result['is_duplicate'] is False, 'empty source_url should not match, got ' + str(result)
+      print('G2 empty-url: is_duplicate=' + str(result['is_duplicate']) +
+            ' matched_by=' + str(result['matched_by']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G2 empty source_url handled gracefully"
+        - "G2 empty-url: is_duplicate=False matched_by="
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 7: G3 Relevance — score in 0-100 range
+  # Step 7: G3 Relevance — score in 0-100 range (lexical scoring, no LLM)
   # -------------------------------------------------------------------------
   - name: "G3: Relevance score within 0-100 range"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G3RelevanceScoring
       from autoinfo.models import Item
 
-      item = Item(id="g3-1", title="IVF treatment outcomes in 2026",
-                  content="This paper discusses IVF embryo implantation success rates...",
-                  collected_at="2026-07-20")
-      result = G3RelevanceScoring().check(item, {"keywords": ["IVF", "embryo", "implantation"]})
-      assert 0 <= result.score <= 100, f"Score {result.score} out of range"
-      print(f"PASS: G3 relevance score {result.score} in [0,100]")
+      item = Item(id='g3-1', source_name='pubmed', source_type='pubmed',
+                  source_url='https://example.com/g3-1',
+                  title='IVF treatment outcomes in 2026',
+                  content='This paper discusses IVF embryo implantation success rates...',
+                  collected_at='2026-07-20')
+      result = G3RelevanceScoring().check(item, ['IVF', 'embryo', 'implantation'])
+      assert 0 <= result.score <= 100, 'score ' + str(result.score) + ' out of 0-100 range'
+      assert result.details['scoring_method'] == 'lexical', 'expected lexical scoring, got ' + str(result.details.get('scoring_method'))
+      print('G3 relevance score: ' + str(result.score) + ' method=' + str(result.details['scoring_method']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G3 relevance score"
+        - "G3 relevance score: 100.0 method=lexical"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 8: G3 Relevance — higher keyword overlap = higher score
   # -------------------------------------------------------------------------
   - name: "G3: Higher keyword overlap scores higher"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G3RelevanceScoring
       from autoinfo.models import Item
 
-      item_high = Item(id="g3-hi", title="IVF embryo implantation study 2026",
-                       content="IVF embryo implantation research findings...",
-                       collected_at="2026-07-20")
-      item_low = Item(id="g3-lo", title="Cooking recipes",
-                      content="How to make pasta carbonara...",
-                      collected_at="2026-07-20")
-      result_high = G3RelevanceScoring().check(item_high, {"keywords": ["IVF", "embryo", "implantation"]})
-      result_low = G3RelevanceScoring().check(item_low, {"keywords": ["IVF", "embryo", "implantation"]})
+      item_high = Item(id='g3-hi', source_name='pubmed', source_type='pubmed',
+                       source_url='https://example.com/g3-hi',
+                       title='IVF embryo implantation study 2026',
+                       content='IVF embryo implantation research findings...',
+                       collected_at='2026-07-20')
+      item_low = Item(id='g3-lo', source_name='pubmed', source_type='pubmed',
+                      source_url='https://example.com/g3-lo',
+                      title='Cooking recipes',
+                      content='How to make pasta carbonara...',
+                      collected_at='2026-07-20')
+      result_high = G3RelevanceScoring().check(item_high, ['IVF', 'embryo', 'implantation'])
+      result_low = G3RelevanceScoring().check(item_low, ['IVF', 'embryo', 'implantation'])
       assert result_high.score > result_low.score, \
-        f"Expected high({result_high.score}) > low({result_low.score})"
-      print(f"PASS: G3 relevance ranking: high={result_high.score} > low={result_low.score}")
+          'expected high(' + str(result_high.score) + ') > low(' + str(result_low.score) + ')'
+      print('G3 relevance ranking: high=' + str(result_high.score) +
+            ' low=' + str(result_low.score))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G3 relevance ranking"
+        - "G3 relevance ranking: high=100.0 low=0.0"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
-  # Step 9: Gate config — get default gate configuration
+  # Step 9: Gate config — set then get default gate configuration via MCP
   # -------------------------------------------------------------------------
   - name: "Get default gate configuration via MCP"
-    tool: python
+    tool: bash
     command: |
-      import sys, os, json
-      os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      cd ${TEST_DIR} && python3 -c "
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool
 
-      result = app.call_tool("get_gate_config", {"domain": "medical-research"})
-      data = json.loads(result.content[0].text)
-      assert "G1" in str(data) or "G2" in str(data) or "gates" in str(data) or isinstance(data, dict), \
-        f"Expected gate config data, got: {data}"
-      print(f"PASS: get_gate_config returned: {list(data.keys())[:5] if isinstance(data, dict) else type(data).__name__}")
+      set_list = asyncio.run(call_tool('set_gate_config', {
+          'domain': '${DOMAIN}', 'gate': 'G1',
+          'config': {'action': 'flag', 'category': 'soft'},
+      }))
+      set_body = json.loads(set_list[0].text)
+      assert set_body.get('success') is True, 'set_gate_config failed: ' + str(set_body)
+      assert set_body['data'].get('updated') is True, 'expected updated=True, got ' + str(set_body['data'])
+
+      get_list = asyncio.run(call_tool('get_gate_config', {
+          'domain': '${DOMAIN}', 'gate': 'G1',
+      }))
+      body = json.loads(get_list[0].text)
+      assert body.get('success') is True, 'get_gate_config failed: ' + str(body)
+      data = body.get('data', {})
+      assert data.get('gate') == 'G1', 'expected gate G1, got ' + str(data.get('gate'))
+      assert data.get('gate_type') == 'quality', 'expected gate_type quality, got ' + str(data.get('gate_type'))
+      print('get_gate_config: domain=' + str(data.get('domain')) +
+            ' gate=' + str(data.get('gate')) +
+            ' gate_type=' + str(data.get('gate_type')))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: get_gate_config"
+        - "get_gate_config: domain=medical-research gate=G1 gate_type=quality"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 10: Gate config — error on invalid gate name
   # -------------------------------------------------------------------------
   - name: "Gate config with invalid gate name should handle gracefully"
-    tool: python
+    tool: bash
     command: |
-      import sys, os, json
-      os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      cd ${TEST_DIR} && python3 -c "
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool
 
-      try:
-        result = app.call_tool("get_gate_config", {"domain": "medical-research", "gate_name": "nonexistent_gate"})
-        data = json.loads(result.content[0].text)
-        print(f"PASS: invalid gate name handled: {data}")
-      except Exception as e:
-        print(f"PASS: invalid gate name raised exception (expected): {type(e).__name__}")
+      result_list = asyncio.run(call_tool('get_gate_config', {
+          'domain': '${DOMAIN}', 'gate': 'nonexistent_gate',
+      }))
+      body = json.loads(result_list[0].text)
+      assert body.get('success') is False, 'expected failure envelope, got ' + str(body)
+      code = body.get('error_code') or (body.get('error') or {}).get('code')
+      assert code == 'GateNotFound', 'expected GateNotFound, got ' + str(code)
+      print('invalid gate rejected: success=' + str(body.get('success')) +
+            ' error_code=' + str(code))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: invalid gate"
+        - "invalid gate rejected: success=False error_code=GateNotFound"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 11: G2 Dedup — empty existing list passes
   # -------------------------------------------------------------------------
   - name: "G2: Empty existing list — not a duplicate"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.dedup import DedupChecker
       from autoinfo.models import Item
 
       checker = DedupChecker()
-      item = Item(id="fresh-1", source_name="pubmed",
-                  source_url="https://doi.org/10.1234/fresh",
-                  title="Fresh Article", content="new content",
-                  collected_at="2026-07-20")
+      item = Item(id='fresh-1', source_name='pubmed', source_type='pubmed',
+                  source_url='https://doi.org/10.1234/fresh',
+                  title='Fresh Article', content='new content',
+                  collected_at='2026-07-20')
       result = checker.check(item, [])
-      assert result["is_duplicate"] == False, f"Empty existing should not match, got {result}"
-      print("PASS: G2 empty existing list — not duplicate")
+      assert result['is_duplicate'] is False, 'empty existing should not match, got ' + str(result)
+      print('G2 empty-existing: is_duplicate=' + str(result['is_duplicate']) +
+            ' matched_by=' + str(result['matched_by']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G2 empty existing list"
+        - "G2 empty-existing: is_duplicate=False matched_by="
+      stdout_not_contains:
+        - "Traceback"
 
   # =========================================================================
   # G1 Extension: E9 source_score verification  [added 2026-08-02 — e-features]
@@ -273,10 +348,9 @@ steps:
   # =========================================================================
 
   - name: "G1-E9: SOURCE_TIER_SCORE_MAP tier ordering (tier1 > tier2 > tier3 > tier4)"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import SOURCE_TIER_SCORE_MAP
 
       s1 = SOURCE_TIER_SCORE_MAP[1]
@@ -285,42 +359,54 @@ steps:
       s4 = SOURCE_TIER_SCORE_MAP[4]
 
       for tier, score in [(1, s1), (2, s2), (3, s3), (4, s4)]:
-          assert 0 <= score <= 100, f"tier{tier} score {score} out of 0-100"
+          assert 0 <= score <= 100, 'tier' + str(tier) + ' score ' + str(score) + ' out of 0-100'
 
-      assert s1 > s2 > s3 > s4, (
-          f"score order violated: {s1} > {s2} > {s3} > {s4}"
-      )
-      print(f"PASS: G1-E9 SOURCE_TIER_SCORE_MAP tier ordering — "
-            f"tier1={s1} > tier2={s2} > tier3={s3} > tier4={s4}")
+      assert s1 > s2 > s3 > s4, 'score order violated: ' + str((s1, s2, s3, s4))
+      print('G1-E9 SOURCE_TIER_SCORE_MAP: tier1=' + str(s1) +
+            ' tier2=' + str(s2) +
+            ' tier3=' + str(s3) +
+            ' tier4=' + str(s4))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1-E9 SOURCE_TIER_SCORE_MAP tier ordering"
+        - "G1-E9 SOURCE_TIER_SCORE_MAP: tier1=90.0 tier2=70.0 tier3=50.0 tier4=30.0"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "G1-E9: source_score embedded in G1SourceAuthority result details"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G1SourceAuthority, SOURCE_TIER_SCORE_MAP
       from autoinfo.models import Item
 
       gate = G1SourceAuthority()
+      scores = {}
       for tier in [1, 2, 3, 4]:
-          item = Item(id=f"g1e9-{tier}", source_name=f"src{tier}",
-                      title="T", content="c", collected_at="2026-01-01",
+          item = Item(id='g1e9-' + str(tier), source_name='src' + str(tier),
+                      source_type='web', source_url='https://example.com/src' + str(tier),
+                      title='T', content='c', collected_at='2026-01-01',
                       quality_tier=tier)
-          result = gate.check(item, {"quality_tier": tier})
-          score = result.details.get("source_score")
-          assert score is not None, f"tier {tier}: source_score missing"
+          result = gate.check(item, {'quality_tier': tier})
+          score = result.details.get('source_score')
+          assert score is not None, 'tier ' + str(tier) + ': source_score missing'
           assert score == SOURCE_TIER_SCORE_MAP.get(tier), (
-              f"tier {tier}: expected {SOURCE_TIER_SCORE_MAP.get(tier)}, got {score}"
+              'tier ' + str(tier) + ': expected ' + str(SOURCE_TIER_SCORE_MAP.get(tier)) +
+              ', got ' + str(score)
           )
-      print("PASS: G1-E9 source_score in G1SourceAuthority details for all 4 tiers")
+          scores[tier] = score
+      print('G1-E9 source_score: tier1=' + str(scores[1]) +
+            ' tier2=' + str(scores[2]) +
+            ' tier3=' + str(scores[3]) +
+            ' tier4=' + str(scores[4]))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1-E9 source_score in G1SourceAuthority details for all 4 tiers"
+        - "G1-E9 source_score: tier1=90.0 tier2=70.0 tier3=50.0 tier4=30.0"
+      stdout_not_contains:
+        - "Traceback"
 
   # =========================================================================
   # G1 Extension: E10 ToS compliance  [added 2026-08-02 — e-features]
@@ -330,95 +416,113 @@ steps:
   # =========================================================================
 
   - name: "G1-E10: G1TosCompliance — open/licensed pass, restricted/sensitive flagged"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import G1TosCompliance
       from autoinfo.models import Item
 
       gate = G1TosCompliance()
 
-      # open → passes
+      # open -> passes
       r = gate.check(
-          Item(id="tos-o", source_name="pubmed", title="T", content="c",
-               collected_at="2026-01-01", quality_tier=1),
-          {"tos_classification": "open", "quality_tier": 1},
+          Item(id='tos-o', source_name='pubmed', source_type='pubmed',
+               source_url='https://pubmed.ncbi.nlm.nih.gov/o',
+               title='T', content='c', collected_at='2026-01-01', quality_tier=1),
+          {'tos_classification': 'open', 'quality_tier': 1},
       )
-      assert r.passed and not r.flagged and r.details.get("tos_compliant") == True
-      print("PASS: G1-E10 'open' — passes, tos_compliant=True")
+      assert r.passed and not r.flagged and r.details.get('tos_compliant') is True
+      print('G1-E10 open: passed=' + str(r.passed) + ' flagged=' + str(r.flagged) +
+            ' tos_compliant=' + str(r.details['tos_compliant']))
 
-      # licensed → passes
+      # licensed -> passes
       r = gate.check(
-          Item(id="tos-l", source_name="ap", title="T", content="c",
-               collected_at="2026-01-01", quality_tier=2),
-          {"tos_classification": "licensed", "quality_tier": 2},
+          Item(id='tos-l', source_name='ap', source_type='api',
+               source_url='https://example.com/l',
+               title='T', content='c', collected_at='2026-01-01', quality_tier=2),
+          {'tos_classification': 'licensed', 'quality_tier': 2},
       )
-      assert r.passed and not r.flagged and r.details.get("tos_compliant") == True
-      print("PASS: G1-E10 'licensed' — passes, tos_compliant=True")
+      assert r.passed and not r.flagged and r.details.get('tos_compliant') is True
+      print('G1-E10 licensed: passed=' + str(r.passed) + ' flagged=' + str(r.flagged) +
+            ' tos_compliant=' + str(r.details['tos_compliant']))
 
-      # restricted → flagged advisory
+      # restricted -> flagged advisory
       r = gate.check(
-          Item(id="tos-r", source_name="blog", title="T", content="c",
-               collected_at="2026-01-01", quality_tier=3),
-          {"tos_classification": "restricted", "quality_tier": 3},
+          Item(id='tos-r', source_name='blog', source_type='web',
+               source_url='https://example.com/r',
+               title='T', content='c', collected_at='2026-01-01', quality_tier=3),
+          {'tos_classification': 'restricted', 'quality_tier': 3},
       )
-      assert r.flagged and r.details.get("tos_compliant") == False
-      assert "compliance_warning" in r.details
-      print("PASS: G1-E10 'restricted' — flagged, tos_compliant=False")
+      assert r.flagged and r.details.get('tos_compliant') is False
+      assert 'compliance_warning' in r.details
+      print('G1-E10 restricted: passed=' + str(r.passed) + ' flagged=' + str(r.flagged) +
+            ' tos_compliant=' + str(r.details['tos_compliant']) +
+            ' warning=' + str('compliance_warning' in r.details))
 
-      # sensitive → flagged advisory
+      # sensitive -> flagged advisory
       r = gate.check(
-          Item(id="tos-s", source_name="private", title="T", content="c",
-               collected_at="2026-01-01", quality_tier=4),
-          {"tos_classification": "sensitive", "quality_tier": 4},
+          Item(id='tos-s', source_name='private', source_type='web',
+               source_url='https://example.com/s',
+               title='T', content='c', collected_at='2026-01-01', quality_tier=4),
+          {'tos_classification': 'sensitive', 'quality_tier': 4},
       )
-      assert r.flagged and r.details.get("tos_compliant") == False
-      assert "compliance_warning" in r.details
-      print("PASS: G1-E10 'sensitive' — flagged, tos_compliant=False")
+      assert r.flagged and r.details.get('tos_compliant') is False
+      assert 'compliance_warning' in r.details
+      print('G1-E10 sensitive: passed=' + str(r.passed) + ' flagged=' + str(r.flagged) +
+            ' tos_compliant=' + str(r.details['tos_compliant']) +
+            ' warning=' + str('compliance_warning' in r.details))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1-E10 'open' — passes, tos_compliant=True"
-        - "PASS: G1-E10 'licensed' — passes, tos_compliant=True"
-        - "PASS: G1-E10 'restricted' — flagged, tos_compliant=False"
-        - "PASS: G1-E10 'sensitive' — flagged, tos_compliant=False"
+        - "G1-E10 open: passed=True flagged=False tos_compliant=True"
+        - "G1-E10 licensed: passed=True flagged=False tos_compliant=True"
+        - "G1-E10 restricted: passed=True flagged=True tos_compliant=False warning=True"
+        - "G1-E10 sensitive: passed=True flagged=True tos_compliant=False warning=True"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "G1-E10: D2FormatIntegrity.tos_delivery_check — RAW blocked, PROCESSED passes"
-    tool: python
+    tool: bash
     command: |
-      import sys, os
-      os.chdir("${TEST_DIR}")
+      cd ${TEST_DIR} && python3 -c "
       from autoinfo.quality import D2FormatIntegrity
 
       checker = D2FormatIntegrity()
 
-      # RAW with restricted → blocked
+      # RAW with restricted -> blocked
       r = checker.tos_delivery_check({
-          "product_type": "raw",
-          "entries": [{"tos_classification": "restricted", "entry_id": "x"}],
+          'product_type': 'raw',
+          'entries': [{'tos_classification': 'restricted', 'entry_id': 'x'}],
       })
-      assert r.passed == False and r.details.get("tos_blocked") == True
-      print("PASS: G1-E10 D2 RAW + restricted → blocked")
+      assert r.passed is False and r.details.get('tos_blocked') is True
+      print('G1-E10 D2 raw: passed=' + str(r.passed) +
+            ' tos_blocked=' + str(r.details['tos_blocked']))
 
-      # PROCESSED with restricted → passes with notice
+      # PROCESSED with restricted -> passes with notice
       r = checker.tos_delivery_check({
-          "product_type": "processed",
-          "entries": [{"tos_classification": "restricted", "entry_id": "y"}],
+          'product_type': 'processed',
+          'entries': [{'tos_classification': 'restricted', 'entry_id': 'y'}],
       })
-      assert r.passed == True and r.details.get("tos_compliance_notice") == True
-      print("PASS: G1-E10 D2 PROCESSED + restricted → passes with notice")
+      assert r.passed is True and r.details.get('tos_compliance_notice') is True
+      print('G1-E10 D2 processed: passed=' + str(r.passed) +
+            ' tos_blocked=' + str(r.details['tos_blocked']) +
+            ' tos_compliance_notice=' + str(r.details['tos_compliance_notice']))
 
-      # No restricted → clean
+      # No restricted -> clean
       r = checker.tos_delivery_check({
-          "product_type": "raw",
-          "entries": [{"tos_classification": "open", "entry_id": "z"}],
+          'product_type': 'raw',
+          'entries': [{'tos_classification': 'open', 'entry_id': 'z'}],
       })
-      assert r.passed == True and r.details.get("tos_blocked") == False
-      print("PASS: G1-E10 D2 open only → clean pass")
+      assert r.passed is True and r.details.get('tos_blocked') is False
+      print('G1-E10 D2 clean: passed=' + str(r.passed) +
+            ' tos_blocked=' + str(r.details['tos_blocked']))
+      " 2>&1
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS: G1-E10 D2 RAW + restricted → blocked"
-        - "PASS: G1-E10 D2 PROCESSED + restricted → passes with notice"
-        - "PASS: G1-E10 D2 open only → clean pass"
+        - "G1-E10 D2 raw: passed=False tos_blocked=True"
+        - "G1-E10 D2 processed: passed=True tos_blocked=False tos_compliance_notice=True"
+        - "G1-E10 D2 clean: passed=True tos_blocked=False"
+      stdout_not_contains:
+        - "Traceback"

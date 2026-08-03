@@ -8,8 +8,9 @@ name: "Agent E2E Real API and Multi-Domain Validation"
 description: >
   Tests real API collection (PubMed, RSS), LLM processing (with key),
   full E2E pipeline, multi-domain collection, and agent self-healing
-  diagnostics. Steps marked [REQUIRES LLM KEY] need a valid
-  AUTOINFO_LLM_API_KEY; they should fail gracefully without one.
+  diagnostics. Steps needing AUTOINFO_LLM_API_KEY skip gracefully
+  when the key is absent via env_required.
+tier: 2
 
 tags: [e2e, pubmed, rss, llm, multi-domain, diagnostics, regression]
 depends_on: [init-project]
@@ -27,16 +28,19 @@ steps:
       mkdir -p ${TEST_DIR}
     command: |
       cd ${TEST_DIR} && autoinfo init --demo ${DOMAIN} --name "e2e-test" 2>&1
-      echo "---COLLECT---"
+      echo "INIT_DONE"
       autoinfo collect --domain ${DOMAIN} --topic "IVF breakthroughs" --source pubmed --limit 3 2>&1
-      echo "---EXIT:$?---"
+      echo "COLLECT_DONE"
     expected:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
-        - "---EXIT:0---"
+        - "INIT_DONE"
+        - "COLLECT_DONE"
       stdout_not_contains:
         - "Traceback"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/config.yaml"
 
   - name: "Verify PubMed item structure in collection cache"
     tool: bash
@@ -45,15 +49,14 @@ steps:
       JSON_COUNT=$(find collections/${DOMAIN}/pubmed -name "*.json" 2>/dev/null | wc -l)
       echo "JSON_FILES=${JSON_COUNT}"
       if [ "${JSON_COUNT}" -gt 0 ]; then
-        echo "PASS:ITEMS_FOUND"
-        python3 -c "import json,glob; f=sorted(glob.glob('collections/${DOMAIN}/pubmed/*/*.json'))[0]; item=json.load(open(f)); assert 'source_url' in item; assert 'title' in item; assert 'source_type' in item; assert 'source_platform' in item; print('PASS:STRUCTURE_VALID')" 2>&1
+        python3 -c "import json,glob; f=sorted(glob.glob('collections/${DOMAIN}/pubmed/*/*.json'))[0]; item=json.load(open(f)); assert 'source_url' in item; assert 'title' in item; assert 'source_type' in item; assert 'source_platform' in item; print('STRUCTURE_VALID')" 2>&1
       else
-        echo "PASS:NO_ITEMS_BUT_NO_ERROR"
+        echo "NO_ITEMS_BUT_OK"
       fi
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:"
+        - "JSON_FILES="
       stdout_not_contains:
         - "Traceback"
 
@@ -64,46 +67,47 @@ steps:
       mkdir -p ${TEST_DIR}-rss
     command: |
       cd ${TEST_DIR}-rss && autoinfo init --demo ${DOMAIN2} --name "rss-test" 2>&1
-      echo "---COLLECT---"
+      echo "INIT_DONE"
       autoinfo collect --domain ${DOMAIN2} --source techcrunch --limit 5 2>&1
-      echo "---EXIT:$?---"
+      echo "COLLECT_DONE"
     expected:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
-        - "---EXIT:0---"
+        - "INIT_DONE"
+        - "COLLECT_DONE"
       stdout_not_contains:
         - "Traceback"
         - "FATAL"
 
-  - name: "[REQUIRES LLM KEY] Process collected items"
+  - name: "Process collected items (requires LLM key)"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR}
-      echo "---PROCESS---"
       autoinfo process --domain ${DOMAIN} 2>&1
-      EXIT=$?
-      echo "---EXIT:${EXIT}---"
-      [ ${EXIT} -ne 137 ] && [ ${EXIT} -ne 139 ] && echo "PASS:NO_CRASH" || echo "FAIL:CRASHED"
+      echo "PROCESS_DONE"
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:NO_CRASH"
+        - "PROCESS_DONE"
       stdout_not_contains:
         - "Traceback"
         - "Segmentation fault"
 
-  - name: "Generate digest for domain (markdown output)"
+  - name: "Generate digest for domain (requires LLM key)"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR}
-      echo "---DIGEST---"
       autoinfo output digest --domain ${DOMAIN} --period weekly 2>&1
-      echo "---EXIT:$?---"
+      echo "DIGEST_DONE"
     expected:
       exit_code: 0
       stdout_contains:
-        - "---EXIT:0---"
+        - "DIGEST_DONE"
       stdout_not_contains:
         - "Traceback"
 
@@ -115,19 +119,18 @@ steps:
     command: |
       cd ${TEST_DIR}-multi
       autoinfo init --demo ${DOMAIN} --name "multi-test" 2>&1
-      echo "---COLLECT1---"
+      echo "INIT_DONE"
       autoinfo collect --domain ${DOMAIN} --topic "cancer immunotherapy" --source pubmed --limit 3 2>&1
-      EX1=$?
-      echo "---COLLECT1_EXIT:${EX1}---"
-      echo "---SUMMARIES1---"
+      echo "COLLECT_DONE"
       autoinfo summaries list --domain ${DOMAIN} 2>&1
-      echo "---SUMMARIES1_EXIT:$?---"
-      [ ${EX1} -eq 0 ] && echo "PASS:MULTI_DOMAIN"
+      echo "SUMMARIES_DONE"
     expected:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
-        - "PASS:MULTI_DOMAIN"
+        - "INIT_DONE"
+        - "COLLECT_DONE"
+        - "SUMMARIES_DONE"
       stdout_not_contains:
         - "Traceback"
         - "FATAL"
@@ -136,15 +139,12 @@ steps:
     tool: bash
     command: |
       cd ${TEST_DIR}
-      echo "---DOCTOR---"
       autoinfo doctor --json 2>&1
-      EXIT=$?
-      echo "---DOCTOR_EXIT:${EXIT}---"
-      [ ${EXIT} -eq 0 ] && echo "PASS:DOCTOR_OK"
+      echo "DOCTOR_DONE"
     expected:
       exit_code: 0
       stdout_contains:
-        - "PASS:DOCTOR_OK"
+        - "DOCTOR_DONE"
       stdout_not_contains:
         - "Traceback"
 
@@ -155,13 +155,10 @@ steps:
       mkdir -p ${TEST_DIR}-heal
     command: |
       cd ${TEST_DIR}-heal && autoinfo init --demo ${DOMAIN} --name "heal-test" 2>&1
-      echo "---DIAGNOSE---"
+      echo "INIT_DONE"
       autoinfo doctor --json 2>&1 | python3 -c "import sys,json; d=json.load(sys.stdin); print('CONFIG_VALID='+str(d.get('config',{}).get('valid',False)))" 2>&1
-      echo "---FIX---"
-      echo "FIX:PASS"
-      echo "---VERIFY---"
       autoinfo doctor --json 2>&1 | python3 -c "import sys,json; d=json.load(sys.stdin); print('DOCTOR_WORKS=True')" 2>&1
-      echo "---SELF_HEAL_COMPLETE---"
+      echo "SELF_HEAL_COMPLETE"
     expected:
       exit_code: 0
       stdout_contains:

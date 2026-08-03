@@ -37,6 +37,7 @@ description: >
   simplify_content). All tests use real internal API; Stripe
   and LLM steps are env-gated with SKIP.
 
+tier: 3
 tags: [e-dimension, stripe, source-score, tos, raw-variants, payment, simplify, regression]
 depends_on: [init-project]
 
@@ -78,11 +79,10 @@ steps:
       assert s1 > s2 > s3 > s4, (
           f"tier score order violated: {s1} > {s2} > {s3} > {s4}"
       )
-      print(f"PASS: SOURCE_TIER_SCORE_MAP={SOURCE_TIER_SCORE_MAP}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: SOURCE_TIER_SCORE_MAP="
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E9: G1SourceAuthority embeds source_score in details for all tiers"
     tool: python
@@ -115,11 +115,10 @@ steps:
               f"tier {tier}: expected source_score={expected}, got {score}"
           )
           assert 0 <= score <= 100, f"tier {tier}: score {score} out of 0-100"
-      print("PASS: G1SourceAuthority embeds source_score for all tiers")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: G1SourceAuthority embeds source_score for all tiers"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E9: KBEntry model has source_score field (E9 persistence)"
     tool: python
@@ -139,11 +138,10 @@ steps:
       assert entry.source_score == 87.5, (
           f"source_score not persisted: {entry.source_score}"
       )
-      print(f"PASS: KBEntry.source_score={entry.source_score} (field exists)")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: KBEntry.source_score="
+      stdout_not_contains:
+        - "Traceback"
 
   # ===========================================================================
   # E10 — ToS Compliance (G1TosCompliance, D2FormatIntegrity.tos_delivery_check)
@@ -169,11 +167,10 @@ steps:
           3: "restricted",
           4: "sensitive",
       }, f"Unexpected _TIER_TOS_MAP: {tier_tos}"
-      print(f"PASS: _TIER_TOS_MAP={tier_tos}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: _TIER_TOS_MAP="
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E10: G1TosCompliance — open/licensed pass, restricted/sensitive flagged"
     tool: python
@@ -194,7 +191,6 @@ steps:
       assert r.passed == True, f"open should pass, got passed={r.passed}"
       assert r.flagged == False, f"open should not be flagged, got flagged={r.flagged}"
       assert r.details.get("tos_compliant") == True, f"open should be tos_compliant"
-      print("PASS: ToS classification 'open' — passes unflagged")
 
       # Licensed source → passed, not flagged
       item_lic = Item(
@@ -205,7 +201,6 @@ steps:
       assert r.passed == True, f"licensed should pass, got passed={r.passed}"
       assert r.flagged == False, f"licensed should not be flagged, got flagged={r.flagged}"
       assert r.details.get("tos_compliant") == True, f"licensed should be tos_compliant"
-      print("PASS: ToS classification 'licensed' — passes unflagged")
 
       # Restricted source → flagged advisory
       item_res = Item(
@@ -217,7 +212,6 @@ steps:
       assert r.details.get("tos_compliant") == False, f"restricted should NOT be tos_compliant"
       assert "compliance_warning" in r.details, "restricted should have compliance_warning"
       assert r.passed == True, "advisory = passes (default action=flag)"
-      print("PASS: ToS classification 'restricted' — flagged advisory")
 
       # Sensitive source → flagged advisory
       item_sens = Item(
@@ -229,14 +223,10 @@ steps:
       assert r.details.get("tos_compliant") == False, f"sensitive should NOT be tos_compliant"
       assert "compliance_warning" in r.details, "sensitive should have compliance_warning"
       assert r.passed == True, "advisory = passes (default action=flag)"
-      print("PASS: ToS classification 'sensitive' — flagged advisory")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: ToS classification 'open' — passes unflagged"
-        - "PASS: ToS classification 'licensed' — passes unflagged"
-        - "PASS: ToS classification 'restricted' — flagged advisory"
-        - "PASS: ToS classification 'sensitive' — flagged advisory"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E10: G1TosCompliance with source_config=None derives ToS from item tier"
     tool: python
@@ -260,7 +250,6 @@ steps:
       )
       assert r.passed == True
       assert r.flagged == False
-      print("PASS: ToS derived from item quality_tier=1 → 'open' correctly")
 
       item4 = Item(
           id="tos-derived4", source_name="scraper", title="T", content="t",
@@ -272,12 +261,10 @@ steps:
           f"tier 4 should derive to 'sensitive', got {r.details.get('source_tos')}"
       )
       assert r.flagged == True
-      print("PASS: ToS derived from item quality_tier=4 → 'sensitive' correctly")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: ToS derived from item quality_tier=1 → 'open' correctly"
-        - "PASS: ToS derived from item quality_tier=4 → 'sensitive' correctly"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E10: D2FormatIntegrity.tos_delivery_check blocks RAW with restricted sources"
     tool: python
@@ -308,7 +295,6 @@ steps:
       assert result.details.get("tos_blocked") == True, (
           "RAW restricted entries should set tos_blocked=True"
       )
-      print("PASS: D2 RAW product with 'restricted' entry — blocked correctly")
 
       # PROCESSED product with restricted entry → passes with notice
       processed_output = {
@@ -329,7 +315,6 @@ steps:
       assert result2.details.get("tos_compliance_notice") == True, (
           "PROCESSED should carry tos_compliance_notice=True"
       )
-      print("PASS: D2 PROCESSED product with 'restricted' — passes with notice")
 
       # No restricted entries → all clear
       clean_output = {
@@ -341,13 +326,10 @@ steps:
       result3 = checker.tos_delivery_check(clean_output)
       assert result3.passed == True
       assert result3.details.get("tos_blocked") == False
-      print("PASS: D2 product with only 'open' entries — passes cleanly")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: D2 RAW product with 'restricted' entry — blocked correctly"
-        - "PASS: D2 PROCESSED product with 'restricted' — passes with notice"
-        - "PASS: D2 product with only 'open' entries — passes cleanly"
+      stdout_not_contains:
+        - "Traceback"
 
   # ===========================================================================
   # E11 — RAW Product Variants
@@ -368,7 +350,6 @@ steps:
       assert hasattr(p_default, "variants"), "Product missing variants field"
       assert isinstance(p_default.variants, list), f"variants should be list, got {type(p_default.variants)}"
       assert p_default.variants == [], f"default variants should be [], got {p_default.variants}"
-      print("PASS: Product default variants=[] (backward compat — no crash)")
 
       # Product with explicit variants
       p_explicit = Product(
@@ -378,7 +359,6 @@ steps:
       assert p_explicit.variants == ["api_feed", "webhook", "bulk_export"], (
           f"variants mismatch: {p_explicit.variants}"
       )
-      print("PASS: Product variants=['api_feed','webhook','bulk_export'] stored correctly")
 
       # to_dict / from_dict round-trip preserves variants
       d = p_explicit.to_dict()
@@ -386,20 +366,42 @@ steps:
       assert p_roundtrip.variants == ["api_feed", "webhook", "bulk_export"], (
           f"round-trip variants lost: {p_roundtrip.variants}"
       )
-      print("PASS: Product variants survive to_dict/from_dict round-trip")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: Product default variants=[] (backward compat — no crash)"
-        - "PASS: Product variants=['api_feed','webhook','bulk_export'] stored correctly"
-        - "PASS: Product variants survive to_dict/from_dict round-trip"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E11: MCP list_products returns RAW with variants field"
     tool: python
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       r = app.call_tool("list_products", {"domain": "${DOMAIN}"})
       data = json.loads(r.content[0].text)
@@ -419,18 +421,42 @@ steps:
       assert "api_feed" in variants, f"api_feed missing from variants: {variants}"
       assert "webhook" in variants, f"webhook missing from variants: {variants}"
       assert "bulk_export" in variants, f"bulk_export missing from variants: {variants}"
-      print(f"PASS: RAW product variants={variants}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: RAW product variants="
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E11: MCP get_product returns variants for raw products"
     tool: python
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       r = app.call_tool("get_product", {"product_id": "${DOMAIN}-raw"})
       data = json.loads(r.content[0].text)
@@ -442,11 +468,10 @@ steps:
       assert sorted(variants) == sorted(["api_feed", "webhook", "bulk_export"]), (
           f"variants mismatch: {sorted(variants)}"
       )
-      print(f"PASS: get_product({DOMAIN}-raw) variants={variants}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: get_product("
+      stdout_not_contains:
+        - "Traceback"
 
   # ===========================================================================
   # E12 — Single-Article Payment
@@ -458,16 +483,11 @@ steps:
 
   - name: "E12: create_checkout_session mode='payment' — env-gated (SKIP without STRIPE_API_KEY)"
     tool: python
+    env_required:
+      - STRIPE_API_KEY
     command: |
       import sys, os
       os.chdir("${TEST_DIR}")
-
-      has_key = bool(
-          os.environ.get("STRIPE_API_KEY") or os.environ.get("AUTOINFO_STRIPE_KEY")
-      )
-      if not has_key:
-          print("SKIP: E12 create_checkout_session(mode=payment) — no STRIPE_API_KEY set")
-          sys.exit(0)
 
       from autoinfo.billing import create_checkout_session
 
@@ -477,7 +497,6 @@ steps:
           mode="payment",
           article_id="article-e12-001",
       )
-      # With mock key the call may fail, but the function should return a dict
       assert isinstance(result, dict), f"Expected dict return, got {type(result)}"
       if "error" in result:
           print(f"SKIP: create_checkout_session returned error (expected with test key): {result.get('error')}")
@@ -485,15 +504,10 @@ steps:
 
       assert "mode" in result, f"Missing 'mode' in: {result}"
       assert result["mode"] == "payment", f"Expected mode=payment, got {result['mode']}"
-      print(f"PASS: create_checkout_session(mode=payment) returned: session_id={result.get('session_id')}, mode={result['mode']}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: create_checkout_session"  # when key exists
-      stdout_contains_any:
-        - "PASS: create_checkout_session"
-        - "SKIP: E12 create_checkout_session"
-        - "SKIP: create_checkout_session returned error"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E12: check_access article_id fast path — grants access for entitled users"
     tool: python
@@ -518,7 +532,6 @@ steps:
       assert result.get("article_id") == "nonexistent-article", (
           f"article_id not propagated: {result}"
       )
-      print(f"PASS: check_access free tier with article_id — allowed={result['allowed']}")
 
       # Test 2: premium access without article entitlement → blocked
       result2 = check_access(
@@ -528,8 +541,6 @@ steps:
       )
       assert isinstance(result2, dict)
       assert result2.get("article_id") == "article-e12-001"
-      # Should be blocked (no premium subscription for this user)
-      print(f"PASS: check_access premium with article_id — allowed={result2['allowed']}, reason={result2.get('reason')}")
 
       # Test 3: check_access article_id parameter exists in function signature
       import inspect
@@ -538,13 +549,10 @@ steps:
       assert "article_id" in params, (
           f"check_access missing article_id param: {params}"
       )
-      print(f"PASS: check_access signature includes article_id: {params}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: check_access free tier with article_id"
-        - "PASS: check_access premium with article_id"
-        - "PASS: check_access signature includes article_id"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E12: ConsumptionStore.grant_article_access and check_article_access (E12 persistence)"
     tool: python
@@ -564,7 +572,6 @@ steps:
       assert result.get("reason") in ("granted", "already_entitled"), (
           f"unexpected grant reason: {result}"
       )
-      print(f"PASS: grant_article_access → reason={result.get('reason')}")
 
       # Check access
       has_access = store.check_article_access(
@@ -574,7 +581,6 @@ steps:
       assert has_access == True, (
           f"check_article_access should return True after grant, got {has_access}"
       )
-      print("PASS: check_article_access returns True for granted article")
 
       # Check non-existent article
       no_access = store.check_article_access(
@@ -584,13 +590,10 @@ steps:
       assert no_access == False, (
           f"check_article_access should return False for unpurchased, got {no_access}"
       )
-      print("PASS: check_article_access returns False for unpurchased article")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: grant_article_access"
-        - "PASS: check_article_access returns True for granted article"
-        - "PASS: check_article_access returns False for unpurchased article"
+      stdout_not_contains:
+        - "Traceback"
 
   # ===========================================================================
   # E2 — Stripe Payment Lifecycle
@@ -602,31 +605,22 @@ steps:
 
   - name: "E2: create_checkout_session and stripe webhook signature — env-gated"
     tool: python
+    env_required:
+      - STRIPE_API_KEY
     command: |
       import sys, os
       os.chdir("${TEST_DIR}")
 
-      has_key = bool(
-          os.environ.get("STRIPE_API_KEY") or os.environ.get("AUTOINFO_STRIPE_KEY")
-      )
-      if not has_key:
-          print("SKIP: E2 Stripe lifecycle — no STRIPE_API_KEY set (env-gated)")
-          sys.exit(0)
-
-      # Verify create_checkout_session function exists and is callable
       from autoinfo.billing import create_checkout_session
 
       assert callable(create_checkout_session), "create_checkout_session not callable"
 
-      # Verify it accepts mode='payment' and article_id parameters
       import inspect
       sig = inspect.signature(create_checkout_session)
       params = list(sig.parameters.keys())
       assert "mode" in params, f"create_checkout_session missing 'mode' param: {params}"
       assert "article_id" in params, f"create_checkout_session missing 'article_id' param: {params}"
-      print(f"PASS: create_checkout_session signature: {params}")
 
-      # Attempt a real call (will fail with test key — expected)
       result = create_checkout_session(
           product_id="price_test_e2",
           end_user_id="e2-test-user",
@@ -634,14 +628,13 @@ steps:
       )
       assert isinstance(result, dict), f"Expected dict, got {type(result)}"
       if "session_id" in result:
-          print(f"PASS: create_checkout_session returned session_id={result['session_id']}")
+          pass
       elif "error" in result:
-          print(f"PASS: create_checkout_session returned error (expected with test key): {result.get('error')}")
+          pass  # expected with test key
     expected:
       exit_code: 0
-      stdout_contains_any:
-        - "PASS: create_checkout_session signature"
-        - "SKIP: E2 Stripe lifecycle"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E2: Webhook signature verification function structure (no key needed)"
     tool: python
@@ -674,12 +667,10 @@ steps:
           f"webhook_secret should be str, got {type(cfg.webhook_secret)}"
       )
 
-      print("PASS: Stripe webhook signaling — handle_webhook exists, "
-            f"StripeConfig.webhook_secret={repr(cfg.webhook_secret)}")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: Stripe webhook signaling — handle_webhook exists,"
+      stdout_not_contains:
+        - "Traceback"
 
   # ===========================================================================
   # E14 — Content Simplification (simplify_text + simplify_content MCP tool)
@@ -694,33 +685,53 @@ steps:
     command: |
       import sys, os, json
       os.chdir("${TEST_DIR}")
-      from autoinfo.mcp.server import app
+      import asyncio, json
+      from autoinfo.mcp.server import call_tool as _ct, list_tools as _lt
+      
+      class _Result:
+          def __init__(self, texts):
+              self.content = texts
+          def __getitem__(self, k): return json.loads(self.content[0].text)[k]
+          def get(self, k, d=None): return json.loads(self.content[0].text).get(k, d)
+          def __contains__(self, k): return k in json.loads(self.content[0].text)
+      
+      class _App:
+          def call_tool(self, name, args=None):
+              texts = asyncio.run(_ct(name, args or {}))
+              try:
+                  d = json.loads(texts[0].text)
+                  if isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), dict):
+                      texts = [type(texts[0])(type="text", text=json.dumps({**d, **d["data"]}))]
+                  elif isinstance(d, dict) and d.get("success") and isinstance(d.get("data"), list):
+                      texts = [type(texts[0])(type="text", text=json.dumps(d["data"]))]
+              except Exception:
+                  pass
+              return _Result(texts)
+          def list_tools(self):
+              return asyncio.run(_lt())
+      
+      app = _App()
 
       # Verify tool list includes simplify_content
       r = app.call_tool("get_tool_count", {})
       count_data = json.loads(r.content[0].text)
-      print(f"PASS: get_tool_count returned: total={count_data.get('total')}, "
-            f"categories={count_data.get('categories')}")
 
       # verify simplify_content schema is valid (via tool discovery)
-      tools = app.list_tools()()
+      tools = app.list_tools()
       tool_names = [t.name for t in tools]
       assert "simplify_content" in tool_names, (
           f"simplify_content missing from tool list: {tool_names[:10]}..."
       )
-      print("PASS: simplify_content MCP tool registered in tool list")
 
       # Verify simplify_content is in LLM_REQUIRED_TOOLS frozenset (from mcp/server.py)
       from autoinfo.mcp.server import _LLM_REQUIRED_TOOLS
       assert "simplify_content" in _LLM_REQUIRED_TOOLS, (
           "simplify_content not in _LLM_REQUIRED_TOOLS — should block without LLM key"
       )
-      print("PASS: simplify_content in _LLM_REQUIRED_TOOLS (LLM-gated)")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: simplify_content MCP tool registered in tool list"
-        - "PASS: simplify_content in _LLM_REQUIRED_TOOLS"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E14: _handle_simplify_content validates target_level (no LLM needed)"
     tool: python
@@ -741,7 +752,6 @@ steps:
       else:
           data = result
       assert not data.get("success", True), f"Expected error for invalid target_level: {data}"
-      print("PASS: invalid target_level 'D3' → rejected with error")
 
       # Valid target_level passes validation (but will fail on LLM if no key)
       # — no LLM call here because _handle_simplify_content calls simplify_text
@@ -756,24 +766,18 @@ steps:
           data2 = json.loads(text2)
       else:
           data2 = result2
-      # If no LLM key, the result may contain a warning or error
-      print(f"PASS: valid target_level 'A1' — handler returned (check output: {list(data2.keys())[:5]}...)")
     expected:
       exit_code: 0
-      stdout_contains:
-        - "PASS: invalid target_level 'D3' → rejected with error"
-        - "PASS: valid target_level 'A1'"
+      stdout_not_contains:
+        - "Traceback"
 
   - name: "E14: simplify_text function structure — env-gated (SKIP without LLM key)"
     tool: python
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       import sys, os
       os.chdir("${TEST_DIR}")
-
-      has_key = bool(os.environ.get("AUTOINFO_LLM_API_KEY"))
-      if not has_key:
-          print("SKIP: E14 simplify_text LLM call — no AUTOINFO_LLM_API_KEY set")
-          sys.exit(0)
 
       from autoinfo.output import simplify_text
 
@@ -790,13 +794,7 @@ steps:
       assert "original_level" in result, f"Missing 'original_level' in: {list(result.keys())}"
       assert "simplified_level" in result, f"Missing 'simplified_level' in: {list(result.keys())}"
       assert "verified" in result, f"Missing 'verified' in: {list(result.keys())}"
-
-      print(f"PASS: simplify_text(A1) original_level={result['original_level']}, "
-            f"simplified_level={result['simplified_level']}, "
-            f"verified={result['verified']}")
-      print(f"PASS: simplified text (first 80 chars): {result['simplified'][:80]}...")
     expected:
       exit_code: 0
-      stdout_contains_any:
-        - "PASS: simplify_text(A1)"
-        - "SKIP: E14 simplify_text LLM call"
+      stdout_not_contains:
+        - "Traceback"

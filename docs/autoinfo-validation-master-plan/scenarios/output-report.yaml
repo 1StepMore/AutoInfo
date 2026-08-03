@@ -5,10 +5,11 @@
 # =============================================================================
 
 name: "Output Report Generation"
+tier: 2
 description: >
   Tests report generation with different --audience flags (researcher,
   clinician, executive, student, investor) and validates output structure.
-  Requires a project initialized with a demo domain.
+  Requires a project initialized with a demo domain and AUTOINFO_LLM_API_KEY.
 
 tags: [output, report, regression, cli]
 depends_on: [init-project]
@@ -19,7 +20,7 @@ variables:
 
 steps:
   # -------------------------------------------------------------------------
-  # Step 1: Init project (prerequisite)
+  # Step 1: Init project (prerequisite) — tier 1
   # -------------------------------------------------------------------------
   - name: "Initialize project for report tests"
     tool: bash
@@ -32,12 +33,19 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+      artifacts:
+        - ".autoinfo/config.yaml:!"
+        - "knowledge/01-Raw"
 
   # -------------------------------------------------------------------------
   # Step 2: Generate report — markdown (default)
   # -------------------------------------------------------------------------
   - name: "Generate report in markdown format (default)"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format markdown 2>&1
     expected:
@@ -51,6 +59,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report for researcher audience"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience researcher --format markdown 2>&1
     expected:
@@ -64,6 +74,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report for executive audience"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience executive --format markdown 2>&1
     expected:
@@ -77,6 +89,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report for student audience"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience student --format markdown 2>&1
     expected:
@@ -90,6 +104,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report in JSON format"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --format json 2>&1
     expected:
@@ -103,6 +119,8 @@ steps:
   # -------------------------------------------------------------------------
   - name: "Generate report for investor audience"
     tool: bash
+    env_required:
+      - AUTOINFO_LLM_API_KEY
     command: |
       cd ${TEST_DIR} && autoinfo output report --domain ${DOMAIN} --audience investor --format markdown 2>&1
     expected:

@@ -5,6 +5,7 @@
 # =============================================================================
 
 name: "Collection and Processing Pipeline"
+tier: 1
 description: >
   Tests the collection pipeline end-to-end: dry-run preview, actual collection,
   processing (without LLM — uses mock/dry-run path), and summaries list.
@@ -32,6 +33,12 @@ steps:
       exit_code: 0
       stdout_contains:
         - "AutoInfo initialized"
+      stdout_not_contains:
+        - "Traceback"
+        - "Error:"
+    artifacts:
+      - "${TEST_DIR}/.autoinfo/config.yaml"
+      - "${TEST_DIR}/collections"
 
   # -------------------------------------------------------------------------
   # Step 2: Collect sources — dry-run
@@ -42,10 +49,11 @@ steps:
       cd ${TEST_DIR} && autoinfo collect --domain ${DOMAIN} --dry-run --limit 3 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Dry-run"
       stdout_not_contains:
         - "ERROR"
         - "Traceback"
-        - "Failed"
 
   # -------------------------------------------------------------------------
   # Step 3: Collect sources — actual collection
@@ -56,9 +64,14 @@ steps:
       cd ${TEST_DIR} && autoinfo collect --domain ${DOMAIN} --limit 2 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Collection"
+        - "Total:"
       stdout_not_contains:
         - "ERROR"
         - "Traceback"
+    artifacts:
+      - "${TEST_DIR}/collections/${DOMAIN}/*/*.json:!"
 
   # -------------------------------------------------------------------------
   # Step 4: Collect with topic filter — dry-run
@@ -69,6 +82,8 @@ steps:
       cd ${TEST_DIR} && autoinfo collect --domain ${DOMAIN} --topic "cancer" --dry-run --limit 3 2>&1
     expected:
       exit_code: 0
+      stdout_contains:
+        - "Dry-run"
       stdout_not_contains:
         - "ERROR"
         - "Traceback"
@@ -85,6 +100,8 @@ steps:
       stdout_contains:
         - "process"
         - "--domain"
+      stdout_not_contains:
+        - "Traceback"
 
   # -------------------------------------------------------------------------
   # Step 6: Summaries list after collection

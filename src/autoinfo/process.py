@@ -329,7 +329,7 @@ def _classify_entry_cefr(
         if config.cefr.model:
             model_config["model"] = config.cefr.model
         elif config.llm.provider and config.llm.model:
-            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+            model_config["model"] = config.llm.resolve_model()
         if config.llm.api_key:
             model_config["api_key"] = config.llm.api_key
         if config.llm.base_url:

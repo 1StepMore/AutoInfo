@@ -99,7 +99,7 @@ class LLMExtractor:
 
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL
-        self._model = f"{provider}/{model}"
+        self._model = config.llm.resolve_model() or f"{provider}/{model}"
         self._base_url = config.llm.base_url
 
         # If the config carries an API key, let the environment variable take

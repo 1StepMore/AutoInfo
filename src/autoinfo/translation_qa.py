@@ -468,9 +468,8 @@ def _resolve_default_model() -> str:
     except Exception:
         config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    return f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    return model
 
 
 def _resolve_model_pool(model_pool: list[str] | None) -> list[str]:
@@ -496,7 +495,10 @@ def _resolve_model_pool(model_pool: list[str] | None) -> list[str]:
 
         provider = config.llm.provider or "openrouter"
         model = config.llm.model or "deepseek/deepseek-chat"
-        pool.append(f"{provider}/{model}")
+        if "/" not in model:
+            pool.append(f"{provider}/{model}")
+        else:
+            pool.append(model)
 
         # Add fallback models
         for fb in config.llm.fallback:

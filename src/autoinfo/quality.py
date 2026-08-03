@@ -2630,9 +2630,8 @@ def _resolve_llm_model() -> str:
     except Exception:
         config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    return f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    return model
 
 
 def run_translation_quality_gates(

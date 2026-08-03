@@ -219,7 +219,9 @@ def _resolve_model() -> str:
             if config.llm.api_key:
                 env_key = f"{provider.upper()}_API_KEY"
                 os.environ.setdefault(env_key, config.llm.api_key)
-            return f"{provider}/{model}"
+            if "/" not in model:
+                return f"{provider}/{model}"
+            return model
     except Exception:
         logger.warning("Failed to load LLM config, using defaults")
     return f"{DEFAULT_PROVIDER}/{DEFAULT_MODEL}"

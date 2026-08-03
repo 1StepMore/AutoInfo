@@ -70,15 +70,17 @@ def classify_text(
     # --- Build prompts -------------------------------------------------------
     system_prompt = (
         "You are a CEFR classification assistant. "
-        "Classify the given text into a CEFR level (A1, A2, B1, B2, C1, or C2). "
-        "Respond with ONLY the level name, nothing else."
+        "Classify the given text into a CEFR level (A1, A2, B1, B2, C1, or C2)."
     )
 
     user_prompt = (
-        f"Language: {lang_name}\n\n"
+        "Examples:\n"
+        '- "I am happy" -> A1\n'
+        '- "The mitochondria is the powerhouse of the cell" -> B2\n'
+        f'Language: {lang_name}\n\n'
         f"Text: {text[:3000]}\n\n"
         "What is the CEFR level of this text? "
-        "Respond with only the level (A1, A2, B1, B2, C1, or C2)."
+        "Output only the level (A1, A2, B1, B2, C1, or C2)."
     )
 
     # For Chinese and Japanese, add guidance about approximated equivalents
@@ -104,7 +106,7 @@ def classify_text(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=10,
+            max_tokens=50,
             temperature=0.1,
             api_base=base_url or None,
             api_key=api_key or None,
@@ -150,7 +152,9 @@ def _resolve_model_config(
             else:
                 provider = config.llm.provider or "openrouter"
                 llm_model = config.llm.model or "deepseek/deepseek-chat"
-                model = f"{provider}/{llm_model}"
+                if "/" not in llm_model:
+                    llm_model = f"{provider}/{llm_model}"
+                model = llm_model
             api_key = config.llm.api_key or ""
             base_url = config.llm.base_url or ""
             return model, api_key, base_url

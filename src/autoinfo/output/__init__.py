@@ -1909,9 +1909,8 @@ def _call_llm_for_digest(
         else:
             config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    full_model = f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    full_model = model
 
     try:
         response = litellm.completion(
@@ -3599,9 +3598,8 @@ def _call_llm_for_translation(
         else:
             config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    full_model = f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    full_model = model
 
     user_prompt = _build_translation_prompt(
         title=title,
@@ -4144,9 +4142,8 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
     else:
         config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    full_model = f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    full_model = model
 
     try:
         response = litellm.completion(
@@ -4384,9 +4381,8 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     else:
         config = Config()
 
-    provider = config.llm.provider or "openrouter"
-    model = config.llm.model or "deepseek/deepseek-chat"
-    full_model = f"{provider}/{model}"
+    model = config.llm.resolve_model() or "openrouter/deepseek/deepseek-chat"
+    full_model = model
 
     try:
         response = litellm.completion(

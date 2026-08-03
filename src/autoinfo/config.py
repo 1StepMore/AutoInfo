@@ -76,6 +76,20 @@ class LLMConfig:
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
+    def resolve_model(self) -> str:
+        """Return the fully-qualified model string for LiteLLM.
+
+        ``model`` may already carry a provider prefix (e.g.
+        ``openai/deepseek-v4-flash``) or be a bare model name (e.g.
+        ``gpt-4``).  When bare, the provider is prepended.  This avoids
+        double-prefixing (``openai/openai/...``) when callers configure a
+        prefixed model while also passing ``provider``.
+        """
+        model = self.model or ""
+        if "/" in model or not model:
+            return model
+        return f"{self.provider or 'openrouter'}/{model}"
+
 
 @dataclass
 class LLMTaskConfig:

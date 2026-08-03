@@ -333,8 +333,8 @@ class TestRateItem:
         assert result["rating"] == 4
         assert result["feedback"] == "Great article!"
 
-        # Verify in DB (stored in .autoinfo/ next to config)
-        db_path = chdir_proj / ".autoinfo" / "autoinfo.db"
+        # Verify in DB (project-root autoinfo.db — same path as KBStore)
+        db_path = chdir_proj / "autoinfo.db"
         conn = sqlite3.connect(str(db_path))
         rows = conn.execute(
             "SELECT item_id, rating, feedback FROM feedback",
@@ -362,7 +362,7 @@ class TestRateItem:
         result = rate_item(item_id="item-003", rating=5, feedback="Changed my mind")
 
         assert result["recorded"] is True
-        db_path = chdir_proj / ".autoinfo" / "autoinfo.db"
+        db_path = chdir_proj / "autoinfo.db"
         conn = sqlite3.connect(str(db_path))
         rows = conn.execute(
             "SELECT rating, feedback FROM feedback WHERE item_id = ? ORDER BY id",

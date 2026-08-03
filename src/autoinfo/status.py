@@ -69,8 +69,10 @@ def show_status(domain: str | None = None) -> dict[str, Any]:
         )
 
     # -- Locate the SQLite index --------------------------------------------
-    autoinfo_dir = config_path.parent
-    db_path = autoinfo_dir / "autoinfo.db"
+    # Same resolution as KBStore: ``Path("knowledge").resolve().parent / "autoinfo.db"``
+    # (project root), NOT the config dir.  KBStore writes the index there, so
+    # reading the config-dir DB would miss the ``entries`` table.
+    db_path = Path("knowledge").resolve().parent / "autoinfo.db"
     index = SQLiteIndex(db_path) if db_path.exists() else None
 
     domains_status: list[dict[str, Any]] = []
@@ -339,9 +341,8 @@ def rate_item(
             "message": "Rating must be between 1 and 5",
         }
 
-    # Use same DB path as KBStore
-    autoinfo_dir = _find_autoinfo_dir()
-    db_path = autoinfo_dir / "autoinfo.db"
+    # Use same DB path as KBStore: project-root autoinfo.db
+    db_path = Path("knowledge").resolve().parent / "autoinfo.db"
 
     try:
         conn = sqlite3.connect(str(db_path))
@@ -376,15 +377,6 @@ def rate_item(
         "rating": rating,
         "feedback": feedback,
     }
-
-
-def _find_autoinfo_dir() -> Path:
-    """Locate the project's ``.autoinfo`` directory (config parent)."""
-    config_path = get_config_path()
-    if config_path:
-        return config_path.parent
-    # Fallback: look for autoinfo.db in CWD
-    return Path.cwd()
 
 
 # ===================================================================

@@ -580,7 +580,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--dir", type=str, default=None,
-        help="Path to the scenarios directory (default: docs/autoinfo-validation-master-plan/scenarios/)",
+        help="Path to the scenarios directory (default: ../plan-v2/scenarios/ relative to this script; archived suite)",
     )
 
     args = parser.parse_args()

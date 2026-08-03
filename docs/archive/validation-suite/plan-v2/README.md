@@ -1,5 +1,7 @@
 # AutoInfo Master Validation Plan v2 — 100% Feature Coverage
 
+> **🔴 ARCHIVED — 2026-08-03.** This validation suite (15 part files + 24 YAML scenarios + `scripts/run-validation-scenarios.py`) has been **superseded**. It was a shell/bash-command contract, not an Agent-native validation surface: scenarios only invoke `bash`/`python` tools, the runner forbids self-echoed PASS/FAIL (assertions live in `expected`), and it was never wired into CI (`Makefile`, `pyproject.toml`, `tests/`, `.github/` all reference it zero times). The replacement is the **MCP-native validation toolset** (`list_validation_scenarios` / `run_validation_scenario`), which executes scenarios through the MCP surface and returns the canonical `{success, data}` envelope. Retained here for historical reference only — do NOT use as the active validation method.
+
 **For:** OpenCode, Claude Code, Cline, Hermes Agent — any AI agent validating AutoInfo
 **Date:** 2026-07-27 (initial); 2026-08-02 updates appended (question count reconciled with part-12 rollup, test count refreshed, new scenarios noted)
 **Baseline:** AutoInfo v1.8 — ~2747 test functions across 103 files (approximation; was 2537 at v1.8 baseline, grew with v1.8.1/v1.8.4 collector + E12/E14/E9/C11 tests), 23 CLI command groups, 139 MCP tools (34 categories), KB pipeline (4 tiers), 26 collector handlers, 10 output/export formats, REST API, Web UI, domain management, webhook push, cron digest, CEFR classification, translation QA, multi-channel delivery (13 channels), end user lifecycle, cost governance, audit logging, structured pipeline logging, per-item traceability, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), Prometheus metrics, subscription tier gating (Free/Premium/Enterprise), consumption tracking, automated notifications, channel health monitoring, cron health monitoring, SQLite backup/restore
@@ -374,7 +376,7 @@ All CLI commands support these **global flags**:
 ## File Organization
 
 ```
-docs/autoinfo-validation-master-plan/
+docs/archive/validation-suite/plan-v2/
 ├── README.md              ← You are here
 ├── part-01-core-pipeline.md
 ├── part-02-cli-full.md
@@ -453,4 +455,4 @@ correspondence with code-implemented features / `enduser-coverage-matrix.md`.
 |--------|------|-----------|-------|----------|-----|
 | [`tier1-baseline4-report.md`](tier1-baseline4-report.md) | 2026-08-03 | 13/13 | 168/168 | 100.0% | `/tmp/opencode/tier1-baseline4.log` |
 
-**baseline4** is the current full tier1 run: all 13 scenario files pass end to end (168/168 steps). Runner usage: `python3 scripts/run-validation-scenarios.py --check` (contract lint, 24 scenarios / 305 steps) and `python3 scripts/run-validation-scenarios.py --tier tier1` (full run).
+**baseline4** is the current full tier1 run: all 13 scenario files pass end to end (168/168 steps). Runner usage: `python3 ../scripts/run-validation-scenarios.py --check` (contract lint, 24 scenarios / 305 steps) and `python3 ../scripts/run-validation-scenarios.py --tier tier1` (full run).

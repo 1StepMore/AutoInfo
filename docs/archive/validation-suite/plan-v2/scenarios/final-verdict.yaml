@@ -34,7 +34,7 @@ depends_on:
   - cross-dimension-e2e
 
 variables:
-  SCENARIOS_DIR: "/mnt/d/贯维/AutoInfo/docs/autoinfo-validation-master-plan/scenarios"
+  SCENARIOS_DIR: "/mnt/d/贯维/AutoInfo/docs/archive/validation-suite/plan-v2/scenarios"
 
 steps:
   # -------------------------------------------------------------------------
@@ -102,7 +102,7 @@ steps:
       python3 -c "from autoinfo.audit import query_audit_log" 2>/dev/null && echo "AUDIT_OK"
       TEST_COUNT=$(python3 -m pytest --collect-only -q 2>/dev/null | tail -1 | grep -oP '\d+(?= tests)')
       echo "TEST_COUNT=${TEST_COUNT:-?}"
-      [ -f "${PROJECT_ROOT}/docs/autoinfo-validation-master-plan/README.md" ] && echo "DOCS_OK"
+      [ -f "${PROJECT_ROOT}/docs/archive/validation-suite/plan-v2/README.md" ] && echo "DOCS_OK"
     expected:
       exit_code: 0
       stdout_contains:
@@ -149,7 +149,7 @@ steps:
       TEST_COLLECT_OUT=$(cd /mnt/d/贯维/AutoInfo && python3 -m pytest --collect-only -q 2>&1 | tail -1)
       echo "TEST_COLLECTION=$TEST_COLLECT_OUT"
       python3 -c "import autoinfo" 2>/dev/null && echo "AUTOINFO_IMPORT_OK"
-      SCN_COUNT=$(ls /mnt/d/贯维/AutoInfo/docs/autoinfo-validation-master-plan/scenarios/*.yaml 2>/dev/null | wc -l)
+      SCN_COUNT=$(ls /mnt/d/贯维/AutoInfo/docs/archive/validation-suite/plan-v2/scenarios/*.yaml 2>/dev/null | wc -l)
       echo "SCENARIO_FILE_COUNT=$SCN_COUNT"
       cd /tmp && rm -rf /tmp/sign-off-test && mkdir /tmp/sign-off-test && cd /tmp/sign-off-test
       autoinfo init --demo medical-research 2>&1 > /dev/null && echo "INIT_WORKS"

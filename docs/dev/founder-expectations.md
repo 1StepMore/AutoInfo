@@ -442,7 +442,7 @@ Consumer requirements identified from global information payment research (5 rep
 | Source handlers | 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, Webhook, Email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, Yahoo Finance, HTTP API) + crontab installer |
 | Quality gates | All 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) |
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams) |
-| Delivery channels | 12 channels ✅ (SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish). Email as mandatory fallback. |
+| Delivery channels | 13 channels ✅ (SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push). Email as mandatory fallback. |
 | Subscription/billing | ✅ Fully implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
 | Tests | 2700+ (includes new collector tests; 1 pre-existing collection error) |
 | Demo domains | 5 with curated sources (7 total) |

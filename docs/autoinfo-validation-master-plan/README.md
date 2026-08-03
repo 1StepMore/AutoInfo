@@ -87,7 +87,7 @@ The same applies to `[REQUIRES SMTP]` sections.
 After executing all 15 parts, produce a summary verdict table in `part-12-final-verdict.md` covering every Q with ✅/❌/⚠️/➖ per question and an overall project verdict.
 
 **Improvement over v1**: v2 adds:
-- All 22 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
+- All 23 CLI commands with per-subcommand scenarios (was 6/17 in v1, expanded from 17 in v1.4)
 - All 139 MCP tools with parameter validation (was 8/72 in v1, expanded from 72 in v1.4)
 - 4-tier KB pipeline: 00-Inbox → 01-Raw → 02-Draft → 03-Wiki (was only 01-Raw)
 - Quality gates G1-G5 (was G1-G3 only)
@@ -248,7 +248,7 @@ This pattern eliminates ambiguous "looks good" verdicts — every assertion is b
 |------|------|-----------|----------|
 | 0 | `README.md` | — | Index, prerequisites, common patterns |
 | 1 | `part-01-core-pipeline.md` | Q1-Q6b | Init → Collect (9 demo domains) → Process → Browse → Status → Doctor |
-| 2 | `part-02-cli-full.md` | Q7-Q20 | All 22 CLI commands with subcommand testing |
+| 2 | `part-02-cli-full.md` | Q7-Q20 | All 23 CLI commands with subcommand testing |
 | 3 | `part-03-mcp-system-tools.md` | Q21-Q27i | MCP: System, Discovery, Domain, Source, Topic, Collection, Projects, Monitor, Webhooks, Source Health, Quality Gate Config, Alert Rules, Email, KB Entry, KB Graph, CEFR, Cost, Audit |
 | 4 | `part-04-mcp-kb-output.md` | Q28-Q36c | MCP: KB (all tiers), Search, Output, Cron, Email, CEFR, Knowledge Lifecycle, Product |
 | 5 | `part-05-quality-gates.md` | Q37-Q41 | G1 source authority, G2 dedup, G3 relevance, G4 factual, G5 translation |
@@ -446,3 +446,11 @@ correspondence with code-implemented features / `enduser-coverage-matrix.md`.
 3. Then **Parts 3-4** (MCP) to validate the agent-facing interface
 4. Continue with remaining parts in any order (they have no interdependencies)
 5. End with **Part 12** (final verdict) to produce the overall PASS/FAIL summary
+
+## Baseline Run Reports
+
+| Report | Date | Scenarios | Steps | Coverage | Log |
+|--------|------|-----------|-------|----------|-----|
+| [`tier1-baseline4-report.md`](tier1-baseline4-report.md) | 2026-08-03 | 13/13 | 168/168 | 100.0% | `/tmp/opencode/tier1-baseline4.log` |
+
+**baseline4** is the current full tier1 run: all 13 scenario files pass end to end (168/168 steps). Runner usage: `python3 scripts/run-validation-scenarios.py --check` (contract lint, 24 scenarios / 305 steps) and `python3 scripts/run-validation-scenarios.py --tier tier1` (full run).

@@ -187,6 +187,7 @@ class DeliveryChannel(ABC):
 | **Local File Export** | `file_export` | Output directory | < 1s |
 | **RSS Feed** ✅ | `rss` | Output directory, feed config (title, description, ttl). RSS 2.0 channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation (C11). | < 30s |
 | **Social Publish** ✅ | `social_publish` | Platform credentials, post template | < 10s |
+| **Push** ✅ | `push` | Generic HTTP POST endpoint (`push_endpoint` or `${PUSH_ENDPOINT}` env var), optional Bearer token (`push_token` or `${PUSH_TOKEN}`) | < 10s |
 
 ### 2.4 Retry & SLA
 

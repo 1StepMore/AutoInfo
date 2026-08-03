@@ -1,6 +1,6 @@
 # Part 2: Full CLI Surface Mastery (Q7-Q20)
 
-**Coverage:** All 22 CLI commands with subcommands
+**Coverage:** All 23 CLI commands with subcommands
 
 ---
 

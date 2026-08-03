@@ -2215,7 +2215,7 @@ sys.exit(0)
 ```
 
 **Expected Result:**
-- ✅ `get_channel_health()` returns a list of dicts (≥10 channels)
+- ✅ `get_channel_health()` returns a list of dicts (≥13 channels)
 - ✅ Each channel entry has `channel` (string), `healthy` (bool), `latency_ms` (numeric)
 - ✅ All 13 known channels (smtp/webhook/rest_api/file_export/discord/telegram/wechat_work/wechat_oa/dingtalk/feishu/rss/social_publish/push) present
 - ✅ `healthy` is always boolean — never None or missing

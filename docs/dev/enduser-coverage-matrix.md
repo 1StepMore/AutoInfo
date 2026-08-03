@@ -2,10 +2,11 @@
 
 > AutoInfo v1.8.3 vs 综合报告-资讯付费与AI触达研究.md  
 > Mapping: Report Dimension → Code Coverage → Validation Plan Coverage → Gap  
+> 2026-08-03 更新（第 6 次）：**MCP 原生验证工具集落地** — `list_validation_scenarios` / `run_validation_scenario` MCP 工具 + 43 个场景（`src/autoinfo/mcp/scenarios/`）通过 MCP 面执行（含 CLI 子进程 + REST HTTP 真实调用），**141/141 MCP 工具全覆盖、0 MISSING**（`scripts/coverage_audit.py` 可复验）、23 CLI 组全覆盖、8 REST 端点覆盖。旧 shell 验证套件（本文档引用的 Part N Qx 场景）已归档至 `docs/archive/validation-suite/plan-v2/`。llm_assert 语义断言 + env-gated unconfigured（Director User BYOK 义务）。本文档 Plan 列的历史 Part 引用指向归档套件，新验证以 MCP 工具集为准。
 > 2026-08-02 更新（第 5 次，V1 计划完成）：H1 生产清单 10 项全部落地（A18 GDELT / A23 SSRN / A24 HuggingFace-Kaggle / A25 Unpaywall-CORE OA 子集 / A29 中文播客 / E9 source_score / E11 RAW variants / E12 单篇支付 / E14 simplify_content / C11 播客 RSS），H2 验证补齐 B15/E7/E11 ✅ 已完成、A6/C6 待凭证 SKIPPED。覆盖率从 76% 升至 83%，P2 可工程化缺口从 7 项降至 3 项，剩余缺口从 28 项降至 18 项。同步修正历史计数偏差（B/C/E 维 stats 与 item 表不一致），全量重算。
 > 2026-08-02 更新（第 4 次）：新增 **H 节"可行性判定与实现路线图"**——基于 2026-08-02 外部核实（GDELT / Unpaywall / CORE / Stripe / X API / RSSHub / NSSD / Listen Notes / edX / 公众号 API 共 12 条绕过路径），为全部缺口标注 V1 实现 / V2 推迟 / 放弃 决策与替代方案。  
 > 2026-08-02 更新（第 3 次）：全量对齐报告场景——五维从 66 项扩至 **99 项**（+33：A+8 / B+5 / C+6 / D+7 / E+7），修正 C 维 5 处渠道排名（C3/C5/C6/C7/C8），补齐报告 §6.5/§7.3/§8.3/§9/§10.2 场景映射（E9-E15、C14），新增不可工程化/范围外明细。  
-> Code 83% (82/99) | Validation 83% (82/99) | 双向 73% (72/99) | 可覆盖上限 93/99（排除 6 项纯无解）
+> Code 83% (82/99) | Validation 83% (82/99) | 双向 73% (72/99) | 可覆盖上限 93/99（排除 6 项纯无解）| MCP 工具验证 141/141（2026-08-03）
 
 ---
 

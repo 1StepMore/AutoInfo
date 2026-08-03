@@ -63,7 +63,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/operations.md` | Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability (logging, metrics, diagnostics) | 🔴 P0 — extracted spec | When operations features change |
 | `docs/dev/specs/market-positioning.md` | Priority matrix, competitive landscape, target user personas, WTP comparison, pricing benchmarks, content/regional strategy, market trends | 🔴 P0 — extracted spec | When market/positioning changes |
 | `docs/archive/reality-assessment.md` | Core value propositions (5.1-5.5 assessment), current reality assessment (v1.6 status, gap table, metrics) | 🔴 P0 — extracted spec (archived) | When reality/gap status changes |
-| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (139 tools across 34 categories) | 🔴 P0 — extracted spec | When MCP tools change |
+| `docs/dev/specs/mcp-tools.md` | Complete MCP tool inventory table (141 tools across 35 categories) | 🔴 P0 — extracted spec | When MCP tools change |
 | `docs/dev/specs/data-models.md` | Consolidated data model schemas: Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth | 🟡 P1 — reference | When data models change |
 | `docs/archive/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟡 P1 — design reference (archived) | Rarely — only when archived doc reference changes |
 | `docs/dev/agent-alerting.md` | Agent proactive alerting pattern — polling-based source health monitoring | 🟡 P1 — agent pattern | When health monitoring changes |
@@ -77,25 +77,19 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 
 ### 1.5 Validation Docs (testing and verification plans)
 
+> **Active validation method (2026-08-03+):** the **MCP-native validation toolset** — `list_validation_scenarios` / `run_validation_scenario` tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocess and REST HTTP steps). Scenario authoring contract: `docs/dev/validation-scenario-contract.md`. Scenario library: `src/autoinfo/mcp/scenarios/` (42 YAML files covering 141/141 MCP tools, all 23 CLI groups, 8 REST endpoints). When the feature surface changes, add/update scenarios in `src/autoinfo/mcp/scenarios/` per the contract — do NOT update archived part files.
+>
+> **Archived 2026-08-03.** The validation plan v2 suite (README, part-01..part-15, 24 YAML scenarios, `tier1-baseline4-report.md`) and its runner (`scripts/run-validation-scenarios.py`) moved to `docs/archive/validation-suite/` — see the §1.7 Archive Docs entry. Superseded by the MCP-native validation toolset. Do NOT update the archived part files when the feature surface changes; add/update MCP validation scenarios instead.
+
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
-| `docs/autoinfo-validation-master-plan.md` | Original validation plan (~40% feature coverage) | 🟠 P2 — legacy | Rarely (superseded by v2) |
-| `docs/autoinfo-validation-master-plan/README.md` | Validation plan v2 index: 100% coverage, 74 questions, 15 part files + verdict | 🟡 P1 — validation | When feature surface changes |
-| `docs/autoinfo-validation-master-plan/part-01-core-pipeline.md` | Core pipeline: init, collect, process, browse, status, doctor | 🟡 P1 | When core pipeline changes |
-| `docs/autoinfo-validation-master-plan/part-02-cli-full.md` | All 17 CLI commands with subcommand testing | 🟡 P1 | When CLI changes |
-| `docs/autoinfo-validation-master-plan/part-03-mcp-system-tools.md` | MCP system/discovery/domain/source/topic tools | 🟡 P1 | When MCP tools change |
-| `docs/autoinfo-validation-master-plan/part-04-mcp-kb-output.md` | MCP KB/search/output/cron/email/CEFR tools | 🟡 P1 | When MCP tools change |
-| `docs/autoinfo-validation-master-plan/part-05-quality-gates.md` | G1-G5 quality gates | 🟡 P1 | When quality gates change |
-| `docs/autoinfo-validation-master-plan/part-06-kb-pipeline.md` | KB 4-tier pipeline, import/export, versioning, graph | 🟡 P1 | When KB pipeline changes |
-| `docs/autoinfo-validation-master-plan/part-07-rest-api-webui.md` | REST API CRUD, Web UI dashboard | 🟡 P1 | When API/UI changes |
-| `docs/autoinfo-validation-master-plan/part-08-agent-e2e.md` | Real API E2E (PubMed/RSS/Web + LLM) | 🟡 P1 | When E2E flow changes |
-| `docs/autoinfo-validation-master-plan/part-09-async-cron-email.md` | Async jobs, cron, email, webhooks, alerting | 🟡 P1 | When async/cron/email changes |
-| `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Error/boundary matrix across all layers | 🟡 P1 | When error handling changes |
-| `docs/autoinfo-validation-master-plan/part-11-production-validation.md` | Doctor diagnostics, MCP stdio, stress test, test suite | 🟡 P1 | When diagnostics/test changes |
-| `docs/autoinfo-validation-master-plan/part-12-final-verdict.md` | Summary verdict, production gap checklist | 🟡 P1 | When validation completes |
-| `docs/autoinfo-validation-master-plan/part-13-enduser-lifecycle.md` | End user lifecycle: profile & subscription CRUD, state machine, multi-channel delivery, product SLA, data privacy (4743 lines) | 🟡 P1 | When end user lifecycle changes |
-| `docs/autoinfo-validation-master-plan/part-14-human-agent-collaboration.md` | Human-Agent collaboration: ambiguous intent clarification, failure escalation, human review & iteration, overrides (886 lines) | 🟡 P1 | When agent interaction model changes |
-| `docs/autoinfo-validation-master-plan/part-15-cross-dimension-e2e.md` | Full E2E journey spanning all three user dimensions: Director User → Direct User → End User, agent callbacks (3097 lines) | 🟡 P1 | When cross-dimension flows change |
+| `docs/dev/validation-scenario-contract.md` | Scenario authoring contract for the MCP-native validation toolset (schema, semantics, coverage audit) | 🔴 P0 — active validation | When scenario schema/semantics change |
+| `src/autoinfo/mcp/scenarios/*.yaml` | Active Agent-native validation scenario library (42 files) | 🔴 P0 — active validation | When feature surface changes |
+| `src/autoinfo/mcp/validation.py` | Scenario loader + executor (llm_assert, cli/http steps, unconfigured semantics) | 🔴 P0 — active validation | When executor logic changes |
+| `docs/archive/validation-suite/plan-v2/README.md` | Validation plan v2 index (ARCHIVED) | 🟠 P2 — historical | Never (archived) |
+| `docs/archive/validation-suite/plan-v2/part-01..part-15-*.md` | 15 part files (ARCHIVED) | 🟠 P2 — historical | Never (archived) |
+| `docs/archive/validation-suite/plan-v2/scenarios/*.yaml` | 24 self-executing YAML scenarios (ARCHIVED) | 🟠 P2 — historical | Never (archived) |
+| `docs/archive/validation-suite/scripts/run-validation-scenarios.py` | Scenario runner (ARCHIVED) | 🟠 P2 — historical | Never (archived) |
 
 ### 1.6 Configuration Docs (MCP connection configs)
 
@@ -114,7 +108,8 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/archive/founder-expectations-pre-split.md` | Pre-split backup of original founder-expectations.md (2108 lines before 2026-07-26 restructure) | 🟠 P2 — historical | Superseded by `docs/dev/specs/` |
 | `docs/archive/reality-assessment.md` | Core value propositions assessment, v1.6 reality status, gap table | 🟠 P2 — historical | Moved from `docs/dev/specs/` during restructure |
 | `docs/archive/kb-pipeline-reference.md` | KB pipeline reference model (4-tier: Inbox→Raw→Draft→Wiki) | 🟠 P2 — historical | Superseded by `docs/dev/specs/pipeline.md` |
-| `docs/archive/autoinfo-validation-master-plan.md` | Original validation plan (~40% coverage) | 🟠 P2 — historical | Superseded by v2 validation plan parts |
+| `docs/archive/autoinfo-validation-master-plan.md` | Original validation plan (~40% coverage) | 🟠 P2 — historical | Superseded by MCP-native validation tools |
+| `docs/archive/validation-suite/` | Validation plan v2 suite: 15 part files, 24 YAML scenarios, tier1 baseline report, runner script (archived 2026-08-03) | 🟠 P2 — historical | Superseded by MCP-native validation tools (`list_validation_scenarios` / `run_validation_scenario`) |
 | `docs/archive/comprehensive-gap-audit.md` | Comprehensive gap audit (pre-keystone) | 🟠 P2 — historical | Superseded by `docs/dev/cross-dimensional-catalog.md` |
 | `docs/archive/consumer-output-gaps.md` | Consumer-facing output gap analysis | 🟠 P2 — historical | Superseded by cross-dimensional-catalog.md |
 | `docs/archive/implementation-gaps.md` | Feature-level implementation gap audit | 🟠 P2 — historical | Superseded by cross-dimensional-catalog.md |
@@ -147,7 +142,7 @@ When you modify each code module below, the listed documentation files **must** 
  
  | Submodule | Docs to Update | What to Update |
  |-----------|---------------|----------------|
-| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 139) |
+| `server.py` — new tool | `AGENTS.md` | Tool Discovery table (category + tool name), tool count (currently 141) |
 | `server.py` — new tool | `README.md` | MCP Tools table (category + tool name), tool count |
 | `server.py` — new tool | `autoinfo-SKILL.md` | Tool Discovery table, Workflow sections if new workflow |
 | `server.py` — new tool | `CHANGELOG.md` | Add entry |
@@ -159,7 +154,8 @@ When you modify each code module below, the listed documentation files **must** 
 | `errors.py` — new ErrorCode | `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error code to boundary matrix |
 | `errors.py` — 3 new ErrorCodes (AuthRequired, RateLimited, SessionExpired) | `docs/dev/specs/quality-gates.md`, `docs/autoinfo-validation-master-plan/part-10-error-boundary.md` | Add error codes to error response spec and boundary matrix |
 | `agent_callback.py` — SQLite persistence | `AGENTS.md`, `README.md`, `CHANGELOG.md` | Persistent agent callbacks feature description |
-| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "139 tools" / "34 categories" references |
+| `validation.py` — new validation tools | `AGENTS.md`, `README.md`, `autoinfo-SKILL.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Add "Validation" category row with `list_validation_scenarios` / `run_validation_scenario`; update tool count |
+| Tool count changes | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | Update "141 tools" / "35 categories" references |
 
 ### 2.3 KB Pipeline (`src/autoinfo/kb.py`)
 
@@ -421,7 +417,7 @@ Affected sections to check:
 - Quick Start → update commands if CLI changed
 - Architecture diagram → update if pipeline changed
 - CLI Commands table → verify 23 groups, update descriptions
-- MCP Tools table → verify tool count (currently 139), update categories/tools
+- MCP Tools table → verify tool count (currently 141), update categories/tools
 - Demo Domains table → update sources per domain
 - Known Limitations → update deferred items, version references
 ```
@@ -480,8 +476,8 @@ Some numbers appear in multiple docs and must stay consistent:
 
 | Reference | Check in | Current Value |
 |-----------|----------|---------------|
-| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 139 |
-| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 34 |
+| MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 141 |
+| MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 35 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
 | Test count | `README.md`, `AGENTS.md`, `docs/autoinfo-validation-master-plan/README.md` | ~2747 |
 | Validation plan part files | `docs/autoinfo-validation-master-plan/README.md`, `docs/dev/cross-dimensional-catalog.md` | 15 (parts 01-15) |
@@ -568,7 +564,7 @@ These gates determine whether a doc update is complete:
 
 **Docs to update**: `README.md` (MCP table), `AGENTS.md` (Tool Discovery table), `CHANGELOG.md`, `autoinfo-SKILL.md` (if it adds a new workflow category)
 
-**Quantities to bump**: MCP tool count (currently 139), category count if new category
+**Quantities to bump**: MCP tool count (currently 141), category count if new category
 
 **Validation plan**: Add scenarios to the appropriate v2 part file (part-03 for system/domain/source/topic tools, part-04 for KB/output/cron/email/CEFR tools)
 

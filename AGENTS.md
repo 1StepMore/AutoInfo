@@ -22,7 +22,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
-2. **All capabilities** are exposed as MCP tools (139 tools across 34 categories)
+2. **All capabilities** are exposed as MCP tools (141 tools across 35 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -67,7 +67,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 139 MCP tools across 34 categories
+│   │   │   ├── mcp-tools.md        # 141 MCP tools across 35 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
@@ -84,7 +84,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 23 CLI command groups
-│       ├── mcp/                     # MCP server (139 tools)
+│       ├── mcp/                     # MCP server (141 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
@@ -179,7 +179,7 @@ freshness at output time.
 
 ## Tool Discovery Guidance
 
-139 MCP tools across 34 categories:
+141 MCP tools across 35 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -217,6 +217,7 @@ freshness at output time.
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Audit** | `query_audit_log` |
+| **Validation** | `list_validation_scenarios`, `run_validation_scenario` |
 
 **Discovery flow**:
 1. Call `health_check()` first to verify server is alive and get version info
@@ -404,6 +405,15 @@ All MCP tools return the canonical envelope `{success, error: {code, message, ac
 ```
 → Specialized report types (competitive, trend, industry, summary) with audience targeting.
 
+### "Run MCP-native validation"
+```
+1. `list_validation_scenarios()` → returns available scenario names (43 built-in across all MCP categories, CLI, and REST API surfaces)
+2. `run_validation_scenario(scenario="system-health")` → executes steps in-process (real tool calls, real subprocesses for CLI steps, real HTTP requests for REST steps), returns {success, data: {scenario, status: passed|failed|unconfigured, summary, steps}}
+3. Scenarios with requires_env (e.g. llm-gated needs AUTOINFO_LLM_API_KEY) return status "unconfigured" when env vars are missing — never silently skipped, never fake-passed. Director User must provide BYOK keys during onboarding.
+4. Steps may use `llm_assert` — a real LLM call judges the tool output against a natural-language assertion (semantic validation, not just structure checks)
+```
+→ Agent-native validation: scenarios execute MCP tools through the MCP surface (plus CLI subprocess + REST HTTP steps) and assert on the standard {success, data} envelope. Real calls only — no mocks, no compromise.
+
 ## LLM Configuration
 
 AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
@@ -467,7 +477,7 @@ Collection and processing now return a `job_id` for progress polling:
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 139 tools across 34 categories |
+| MCP server | ✅ 141 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |

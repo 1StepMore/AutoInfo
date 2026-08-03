@@ -28,7 +28,7 @@ products (digests, reports, alerts, feeds) to End Users.
 ## Tool Discovery
 
 Not sure what tools exist? Use MCP protocol discovery.
-Full catalog (139 tools across **34 categories**):
+Full catalog (141 tools across **35 categories**):
 
 | Category | Key Tools |
 |----------|-----------|
@@ -66,6 +66,7 @@ Full catalog (139 tools across **34 categories**):
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
+| **Validation** | `list_validation_scenarios`, `run_validation_scenario` |
 
 ## Common Workflows
 

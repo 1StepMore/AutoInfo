@@ -2,6 +2,20 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## Unreleased (2026-08-03)
+
+### Added
+- **Agent-native MCP validation toolset** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocesses and real REST HTTP requests): each step makes a real call and asserts on the `{success, data}` envelope. Env-gated steps report `unconfigured` when BYOK keys are missing (never silently skipped, never fake-passed). `llm_assert` steps run a real model call for semantic verification. **43 built-in scenarios** covering 141/141 MCP tools, all 23 CLI command groups, and 8 REST API endpoints. Tool count 139 → 141, 35 categories. Scenario contract: `docs/dev/validation-scenario-contract.md`.
+
+### Changed
+- **Validation suite archived** — The shell-based validation plan v2 (15 part files + 24 YAML scenarios + runner) moved to `docs/archive/validation-suite/` (2026-08-03), superseded by the MCP-native validation tools.
+- **Validation semantics** — `requires_env` missing now reports `unconfigured` (was `skipped`): Director User is obligated to provide BYOK keys during onboarding; the tool never silently skips verification.
+- **Bugfix: `autoinfo status` / `rate_item` read the wrong SQLite DB** — `status.py` resolved the index at `.autoinfo/autoinfo.db` (a small feedback-only DB) instead of the project-root `autoinfo.db` that KBStore writes, causing `autoinfo status --json` to crash with `no such table: entries`. Both now resolve `Path("knowledge").resolve().parent / "autoinfo.db"` (same as KBStore). Tests updated to match.
+- **Bugfix: LLM model double-prefix** — 11 call sites built the model string as `f"{provider}/{model}"` without checking whether `model` already carried a provider prefix, producing `openai/openai/deepseek-v4-flash` when `configure_llm` stored a prefixed model. Added `LLMConfig.resolve_model()` (bare model → prepend provider; prefixed → use as-is) and switched all call sites (`llm.py`, `output/`, `process.py`, `qa.py`, `quality.py`, `translation_qa.py`, `cefr.py`, `mcp/validation.py`) to it.
+- **Bugfix: `llm_assert` judge did not pass api_key/api_base** — `_llm_judge` called `litellm.completion(model=...)` without the configured key/base_url, so every LLM-gated scenario failed with `AuthenticationError` even when the key was set. It now resolves full call config (model, api_key, api_base).
+- **Bugfix: `suggest_keywords` crashed on empty LLM content** — `json.loads('')` raised `JSONDecodeError` as a raw traceback. Now returns a graceful `EmptyResult` error envelope so validation can report it.
+- **Bugfix: CEFR prompt produced empty responses on some models** — added few-shot examples and relaxed the strict "only the level" instruction (some providers return empty content for overly constrained single-token prompts); raised `max_tokens` 10 → 50.
+
 ## v1.8.4 (2026-08-02)
 
 ### Added

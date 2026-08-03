@@ -289,7 +289,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
 | Tests | ✅ 2700+ tests across 100+ test files (includes new collector tests; 1 pre-existing collection error) |
-| MCP tools | ✅ 139 tools across 34 categories |
+| MCP tools | ✅ 141 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 23 command groups |
 
@@ -350,7 +350,7 @@ Doctor:              autoinfo doctor
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, 2700+ tests (includes new collector tests), and 139 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/57 expectations fully implemented (✅), F30/F42 partially implemented (🟡). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics.
+The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, 2700+ tests (includes new collector tests), and 141 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/57 expectations fully implemented (✅), F30/F42 partially implemented (🟡). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics.
 
 v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
 
@@ -438,7 +438,7 @@ Consumer requirements identified from global information payment research (5 rep
 | Expectations documented | 72 F-expectations across 16 phases (F01-F57 original + F58-F64 blank spaces + F65-F72 lifecycle coverage) + consumer-facing output requirements (see `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036, superseding archived `docs/archive/consumer-output-gaps.md`) |
 | Value propositions fulfilled | 5/5 |
 | True Test passing | 13/13 |
-| MCP tools | 139 across 34 categories |
+| MCP tools | 141 across 35 categories |
 | Source handlers | 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, Webhook, Email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, Yahoo Finance, HTTP API) + crontab installer |
 | Quality gates | All 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) |
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams) |
@@ -464,8 +464,8 @@ Consumer requirements identified from global information payment research (5 rep
 - `docs/dev/specs/operations.md` — Cost governance, data privacy, knowledge lifecycle, observability
 - `docs/dev/specs/market-positioning.md` — Priority matrix, competitive landscape, pricing, personas
 - `docs/archive/reality-assessment.md` — Value propositions, current reality, metrics (archived)
-- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (139 tools, 34 categories)
+- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (141 tools, 35 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/specs/user-lifecycle-definition.md` — **Root spec**: B1/B2/B3 user types and complete lifecycle definitions
 - `docs/dev/director-user-guide.md` — Human-Agent interaction lifecycle, communication patterns, escalation protocol
-- `docs/autoinfo-validation-master-plan/README.md` — Comprehensive validation plan: 96 questions across 15 parts
+- `docs/archive/validation-suite/plan-v2/README.md` — Comprehensive validation plan: 96 questions across 15 parts (archived 2026-08-03; superseded by MCP-native `list_validation_scenarios` / `run_validation_scenario` tools)

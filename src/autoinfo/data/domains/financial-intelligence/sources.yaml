@@ -54,6 +54,16 @@ sources:
     json_path: "1"
     field_mapping: {id: indicator.id, title: country.value, content: value, source_url: ''}
 
+  - name: Quandl/Nasdaq Data Link
+    type: quandl
+    url: https://data.nasdaq.com/api/v3/datasets/WIKI/AAPL.json
+    quality_tier: 2
+    frequency: daily
+    access: api_key
+    requires_key: true
+    rate_limit: 5  # requests per minute (free tier)
+    field_mapping: {id: dataset_code, title: name, content: description, source_url: ''}
+
 topics:
   - name: "Market Trends"
     keywords:

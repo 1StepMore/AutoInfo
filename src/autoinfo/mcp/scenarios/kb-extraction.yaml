@@ -1,0 +1,28 @@
+# KB Extraction — LLM-dependent extraction and Q&A tools.
+# Without AUTOINFO_LLM_API_KEY this scenario reports unconfigured (never
+# silently skipped): the Director User is obligated to provide BYOK keys
+# during onboarding.
+name: kb-extraction
+description: "LLM-required extraction and Q&A tools with real model calls"
+category: extraction
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "extract_fields performs on-demand LLM extraction"
+    tool: extract_fields
+    arguments:
+      content_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      schema:
+        - main_findings
+        - methodology
+    expect:
+      success: true
+      llm_assert: "Does the result contain custom_fields with keys 'main_findings' and 'methodology'? The content is a medical research article about CRISPR gene editing, so the extracted fields should contain plausible research findings and methodology descriptions."
+
+  - name: "query_collected performs Q&A on collected content"
+    tool: query_collected
+    arguments:
+      query: "What genetic engineering technologies are discussed?"
+      domain: medical-research
+    expect:
+      success: true
+      llm_assert: "Does the result contain an answer about genetic engineering or gene editing? The domain is medical-research and there are entries about CRISPR, so the response should mention gene editing or genetic engineering technologies."

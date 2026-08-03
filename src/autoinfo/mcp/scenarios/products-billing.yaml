@@ -1,0 +1,75 @@
+name: products-billing
+description: "Products listing and end-user billing tools: usage, invoice, summary, checkout"
+category: cost
+requires_env: []
+steps:
+  - name: "list_products for medical-research domain"
+    tool: list_products
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "products", "count"]
+
+  - name: "get_product RAW type for medical-research"
+    tool: get_product
+    arguments:
+      domain: medical-research
+      product_type: RAW
+    expect:
+      success: true
+      data_has: ["product"]
+
+  - name: "create test user for billing tools"
+    tool: enduser_create
+    arguments:
+      user_id: scenario-test-billing
+      name: "Billing Test User"
+      email: "billing-test@example.com"
+    expect:
+      success: true
+      data_has: ["user_id", "name"]
+
+  - name: "get_enduser_usage returns billable usage"
+    tool: get_enduser_usage
+    arguments:
+      end_user_id: scenario-test-billing
+    expect:
+      success: true
+      data_has: ["end_user_id", "llm_units", "storage_mb"]
+
+  - name: "get_enduser_invoice returns cost estimate"
+    tool: get_enduser_invoice
+    arguments:
+      end_user_id: scenario-test-billing
+    expect:
+      success: true
+      data_has: ["end_user_id", "line_items", "estimated_total"]
+
+  - name: "get_billing_summary combines usage and subscription"
+    tool: get_billing_summary
+    arguments:
+      user_id: scenario-test-billing
+    expect:
+      success: true
+      data_has: ["user_id", "usage", "subscription"]
+
+  - name: "create_checkout_session returns session data"
+    tool: create_checkout_session
+    arguments:
+      product_id: medical-research-premium
+      end_user_id: scenario-test-billing
+      mode: subscription
+      email: billing-test@example.com
+      name: "Billing Test User"
+    expect:
+      success: true
+      data_has: ["end_user_id"]
+
+  - name: "cleanup billing test user"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-billing
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]

@@ -1,0 +1,28 @@
+# CLI groups — init, collect (dry-run), portal.  Real subprocess execution.
+# collect uses --dry-run (previews without storing); portal history with a
+# nonexistent user returns a graceful rc=1 error — asserted as expected failure.
+name: cli-extra
+description: "CLI: init, collect (dry-run), portal"
+category: cli
+requires_env: []
+steps:
+  - name: "init --list-domains"
+    kind: cli
+    command: "autoinfo init --list-domains"
+    expect:
+      success: true
+      stdout_has: ["medical-research"]
+
+  - name: "collect dry-run for medical-research"
+    kind: cli
+    command: "autoinfo collect --domain medical-research --limit 1 --dry-run"
+    expect:
+      success: true
+      stdout_has: ["pubmed"]
+
+  - name: "portal history graceful error for unknown user"
+    kind: cli
+    command: "autoinfo portal history --user testuser --json"
+    expect:
+      success: false
+      stderr_has: ["not found"]

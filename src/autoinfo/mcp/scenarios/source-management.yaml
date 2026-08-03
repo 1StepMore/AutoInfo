@@ -1,0 +1,91 @@
+# Source management tools — add, batch-add, test, health, feeds, rate, remove.
+# Uses medical-research domain with add-then-remove to leave no side effects.
+name: source-management
+description: "Source lifecycle: test, add (single+batch), health, feeds, rate, remove"
+category: source
+requires_env: []
+steps:
+  - name: "test_source verifies example.com reachability"
+    tool: test_source
+    arguments:
+      url: "https://www.example.com"
+      type: web
+    expect:
+      success: true
+      data_has: ["reachable", "status_code", "content_type", "suggested_extract_fields"]
+
+  - name: "list_sources returns configured sources"
+    tool: list_sources
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "sources", "count"]
+
+  - name: "add a temporary test source to medical-research"
+    tool: add_source
+    arguments:
+      name: __val_test_src__
+      url: "https://val-test-9a7b3c.example.com/feed"
+      type: rss
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "get_source_health for the test source"
+    tool: get_source_health
+    arguments:
+      source_id: "medical-research:__val_test_src__"
+    expect:
+      success: true
+      data_has: ["source_id", "status"]
+
+  - name: "get_feeds from medical-research domain"
+    tool: get_feeds
+    arguments:
+      domain: medical-research
+      limit: 5
+    expect:
+      success: true
+      data_has: ["domain", "items", "pagination"]
+
+  - name: "rate_item records feedback for a collected item"
+    tool: rate_item
+    arguments:
+      item_id: "val_test_item_123"
+      rating: 4
+      feedback: "validation scenario test rating"
+    expect:
+      success: true
+      data_has: ["recorded", "item_id", "rating"]
+
+  - name: "add_sources batch-adds a test source"
+    tool: add_sources
+    arguments:
+      sources:
+        - name: __val_test_batch__
+          url: "https://val-test-batch-f1e2d3.example.com/feed"
+          type: rss
+          domain: medical-research
+    expect:
+      success: true
+      data_has: ["results", "total", "succeeded", "errored"]
+
+  - name: "remove_source cleans up the single test source"
+    tool: remove_source
+    arguments:
+      source_id: "medical-research:__val_test_src__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]
+
+  - name: "remove_source cleans up the batch test source"
+    tool: remove_source
+    arguments:
+      source_id: "medical-research:__val_test_batch__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]

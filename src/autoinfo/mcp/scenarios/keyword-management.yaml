@@ -1,0 +1,43 @@
+# Keyword management tools — list, approve, reject.
+# approve_keyword and reject_keyword work with managed keywords from
+# knowledge/medical-research/_keywords.yaml.
+# suggest_keywords is LLM-required and covered by the llm-gated scenario.
+name: keyword-management
+description: "Keyword lifecycle: list, approve, reject"
+category: topic
+requires_env: []
+steps:
+  - name: "list_keywords returns keywords for medical-research"
+    tool: list_keywords
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "topics", "count", "keywords_file"]
+
+  - name: "list_keywords with topic filter"
+    tool: list_keywords
+    arguments:
+      domain: medical-research
+      topic: "IVF breakthroughs"
+    expect:
+      success: true
+      data_has: ["domain", "topic", "topics"]
+
+  - name: "approve_keyword changes keyword to verified state"
+    tool: approve_keyword
+    arguments:
+      domain: medical-research
+      keyword: "multicenter"
+    expect:
+      success: true
+
+  - name: "reject_keyword marks keyword as deprecated"
+    tool: reject_keyword
+    arguments:
+      domain: medical-research
+      keyword: "time-lapse embryo imaging"
+    expect:
+      success: true
+
+

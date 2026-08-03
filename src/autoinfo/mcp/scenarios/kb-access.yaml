@@ -1,0 +1,31 @@
+# KB access — verify KB search and tier listing in the real project (has populated 01-Raw).
+name: kb-access
+description: "KB search and tier listing in real project context"
+category: kb
+requires_env: []
+steps:
+  - name: "search_knowledge_base returns entries"
+    tool: search_knowledge_base
+    arguments:
+      query: test
+    expect:
+      success: true
+      data_has: ["entries", "total_count"]
+
+  - name: "list_kb_tier lists 01-Raw entries"
+    tool: list_kb_tier
+    arguments:
+      domain: medical-research
+      tier: 01-Raw
+    expect:
+      success: true
+      data_has: ["entries", "count"]
+
+  - name: "list_summaries returns processed summaries"
+    tool: list_summaries
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["entries", "count"]
+

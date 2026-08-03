@@ -1,0 +1,43 @@
+name: cost-budget
+description: "Budget thresholds, cost dashboard, and cost allocation"
+category: cost
+requires_env: []
+steps:
+  - name: "get_budget_thresholds returns current thresholds"
+    tool: get_budget_thresholds
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["budget_thresholds", "current_spend", "threshold_status"]
+
+  - name: "set_budget_thresholds updates thresholds"
+    tool: set_budget_thresholds
+    arguments:
+      thresholds: [10.0, 30.0, 60.0, 90.0]
+    expect:
+      success: true
+      data_has: ["budget_thresholds", "updated"]
+
+  - name: "restore budget thresholds to defaults"
+    tool: set_budget_thresholds
+    arguments:
+      thresholds: [50.0, 75.0, 90.0, 100.0]
+    expect:
+      success: true
+      data_has: ["updated"]
+
+  - name: "cost_dashboard returns period summary"
+    tool: cost_dashboard
+    arguments:
+      period: week
+    expect:
+      success: true
+      data_has: ["period", "total_cost", "by_domain"]
+
+  - name: "cost_allocation returns breakdown"
+    tool: cost_allocation
+    arguments:
+      period: all
+    expect:
+      success: true
+      data_has: ["period", "total_cost", "by_domain"]

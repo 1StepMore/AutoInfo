@@ -1,0 +1,74 @@
+name: enduser-lifecycle
+description: "End-user CRUD lifecycle: create, get, update, list, delete with delivery and portal query"
+category: enduser
+requires_env: []
+steps:
+  - name: "enduser_create test user"
+    tool: enduser_create
+    arguments:
+      user_id: scenario-test-enduser-lifecycle
+      name: "Scenario Test User"
+      email: "scenario-test@example.com"
+    expect:
+      success: true
+      data_has: ["user_id", "name", "status", "tier"]
+
+  - name: "enduser_get retrieves the created user"
+    tool: enduser_get
+    arguments:
+      user_id: scenario-test-enduser-lifecycle
+    expect:
+      success: true
+      data_has: ["user_id", "name", "email", "status"]
+
+  - name: "enduser_update changes user name"
+    tool: enduser_update
+    arguments:
+      user_id: scenario-test-enduser-lifecycle
+      name: "Updated Scenario User"
+    expect:
+      success: true
+      data_has: ["user_id", "name"]
+
+  - name: "enduser_list includes the test user"
+    tool: enduser_list
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["items", "count"]
+
+  - name: "send_to_enduser via file_export channel"
+    tool: send_to_enduser
+    arguments:
+      end_user_id: scenario-test-enduser-lifecycle
+      product_type: raw
+      product_id: medical-research-raw
+      channel: file_export
+    expect:
+      success: true
+      data_has: ["delivery_id", "status", "channel"]
+
+  - name: "get_enduser_history returns delivery records"
+    tool: get_enduser_history
+    arguments:
+      end_user_id: scenario-test-enduser-lifecycle
+      limit: 10
+    expect:
+      success: true
+      data_has: ["end_user_id", "entries", "count"]
+
+  - name: "get_enduser_products returns available products"
+    tool: get_enduser_products
+    arguments:
+      end_user_id: scenario-test-enduser-lifecycle
+    expect:
+      success: true
+      data_has: ["end_user_id", "products", "count"]
+
+  - name: "enduser_delete cleans up test user"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-enduser-lifecycle
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]

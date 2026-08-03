@@ -1,0 +1,31 @@
+# KB Versioning — verify version history, restoration, and comparison.
+name: kb-versioning
+description: "KB entry version history, restore, and diff comparison"
+category: kb
+requires_env: []
+steps:
+  - name: "get_entry_history returns versions list"
+    tool: get_entry_history
+    arguments:
+      entry_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+      data_has: ["entry_id", "versions", "count"]
+
+  - name: "restore_entry_version handles missing version gracefully"
+    tool: restore_entry_version
+    arguments:
+      version_id: medical-research-general-crispr-gene-editing-advances-in-2026--v99
+    expect:
+      success: true
+      data_has: ["restored"]
+
+  - name: "compare_versions returns structured diff"
+    tool: compare_versions
+    arguments:
+      entry_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      version_a: medical-research-general-crispr-gene-editing-advances-in-2026--v1
+      version_b: medical-research-general-crispr-gene-editing-advances-in-2026--v2
+    expect:
+      success: true
+      data_has: ["entry_id", "field_diffs", "summary"]

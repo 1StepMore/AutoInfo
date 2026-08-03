@@ -1,0 +1,63 @@
+# KB Draft tools — verify draft lifecycle: Raw→Draft→reject/reindex.
+name: kb-draft
+description: "KB draft creation, rejection, and reindex in real project context"
+category: kb
+requires_env: []
+steps:
+  - name: "create_kb_entry writes to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Draft Scenario Test Entry"
+      content: "This is a test entry created by the kb-draft validation scenario."
+      source_url: https://example.com/kb-draft-scenario
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "get_summary returns detail for an entry"
+    tool: get_summary
+    arguments:
+      summary_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+      data_has: ["entry_id", "title", "relevance_score"]
+
+  - name: "flag_for_knowledge_base flags a summary"
+    tool: flag_for_knowledge_base
+    arguments:
+      summary_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+      data_has: ["flagged", "entry_id"]
+
+  - name: "create_kb_draft creates Draft from Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-crispr-gene-editing-advances-in-2026
+      title: "KB Draft Scenario Draft"
+      summary: "Draft created for kb-draft validation scenario."
+      tags: ["validation", "scenario"]
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "reject_kb_draft archives the draft"
+    tool: reject_kb_draft
+    arguments:
+      draft_id: medical-research-draft-kb-draft-scenario-draft
+      reason: "validation scenario cleanup"
+      action: archive
+    expect:
+      success: true
+      data_has: ["status", "draft_id"]
+
+  - name: "reindex_kb rebuilds index"
+    tool: reindex_kb
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["files_found", "fts5_indexed"]

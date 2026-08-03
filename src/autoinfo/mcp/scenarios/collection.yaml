@@ -1,0 +1,46 @@
+# Collection tools — verify collection primitives using dry_run to avoid
+# real network calls.  clean_cache uses dry_run to avoid deleting artifacts.
+name: collection
+description: "Collection execution, progress, status, processing progress, and cache cleanup"
+category: collection
+requires_env: []
+steps:
+  - name: "collect_sources dry_run for medical-research"
+    tool: collect_sources
+    arguments:
+      domain: medical-research
+      limit: 1
+      dry_run: true
+    expect:
+      success: true
+      data_has: ["job_id", "total_new", "total_found"]
+
+  - name: "get_collection_progress for medical-research"
+    tool: get_collection_progress
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+
+  - name: "get_collection_status for medical-research"
+    tool: get_collection_status
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "status"]
+
+  - name: "get_processing_progress defaults"
+    tool: get_processing_progress
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "clean_cache dry_run"
+    tool: clean_cache
+    arguments:
+      everything: true
+      dry_run: true
+    expect:
+      success: true
+      data_has: ["items_removed", "dry_run"]

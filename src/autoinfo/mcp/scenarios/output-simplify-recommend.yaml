@@ -1,0 +1,38 @@
+# Output tools — content simplification and recommendation.
+# Both are LLM-required.  Without AUTOINFO_LLM_API_KEY the
+# scenario reports unconfigured (BYOK obligation).
+#
+# simplify_content returns success_response(...) → {success, data: {simplified, ...}}
+# recommend_content returns flat dict → call_tool wraps with success_response → {success, data: {items, count, ...}}
+# Both support data_has assertions on env["data"].
+name: output-simplify-recommend
+description: "Content simplification and recommendation"
+category: output
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "simplify_content B1 level english"
+    tool: simplify_content
+    arguments:
+      content: "The mitochondria is the powerhouse of the cell."
+      target_level: B1
+      language: en
+    expect:
+      success: true
+      data_has:
+        - simplified
+        - original_level
+        - simplified_level
+        - verified
+
+  - name: "recommend_content for medical domain"
+    tool: recommend_content
+    arguments:
+      user_id: test_user
+      query: medical
+      domain: medical-research
+      limit: 5
+    expect:
+      success: true
+      data_has:
+        - items
+        - count

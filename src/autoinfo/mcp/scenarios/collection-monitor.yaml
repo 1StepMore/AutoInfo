@@ -1,0 +1,38 @@
+# Collection monitor — stats and diff across domains.
+# get_collection_stats takes period (daily/weekly/monthly), NO domain kwarg.
+# get_collection_diff takes since_collection_id (a date string works).
+name: collection-monitor
+description: "Collection stats and diff across domains"
+category: collection
+requires_env: []
+steps:
+  - name: "get_collection_stats daily"
+    tool: get_collection_stats
+    arguments:
+      period: daily
+    expect:
+      success: true
+      data_has: ["period", "total_items", "domains"]
+
+  - name: "get_collection_stats weekly"
+    tool: get_collection_stats
+    arguments:
+      period: weekly
+    expect:
+      success: true
+      data_has: ["period", "total_items", "domains"]
+
+  - name: "get_collection_diff with old baseline"
+    tool: get_collection_diff
+    arguments:
+      since_collection_id: "2020-01-01"
+    expect:
+      success: true
+      data_has: ["since_id", "new_entries", "count"]
+
+  - name: "list_active_collections returns current collections"
+    tool: list_active_collections
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["active_collections", "count"]

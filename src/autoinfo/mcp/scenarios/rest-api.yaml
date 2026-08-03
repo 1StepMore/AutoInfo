@@ -1,0 +1,77 @@
+name: rest-api
+description: REST API endpoints via real HTTP requests
+category: http
+requires_env: []
+steps:
+- name: GET /health
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/health
+  expect:
+    success: true
+    status_code: 200
+    json_has:
+    - status
+  tool: _http
+- name: GET / root dashboard
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/
+  expect:
+    success: true
+    status_code: 200
+  tool: _http
+- name: GET /dashboard
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/dashboard
+  expect:
+    success: true
+    status_code: 200
+  tool: _http
+- name: GET /api/v1/entries
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/api/v1/entries?domain=medical-research
+  expect:
+    success: true
+    status_code: 200
+  tool: _http
+- name: GET /api/v1/search
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/api/v1/search?q=ivf
+  expect:
+    success: true
+    status_code: 200
+    json_has:
+    - entries
+  tool: _http
+- name: GET /api/v1/feeds
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/api/v1/feeds?domain=medical-research
+  expect:
+    success: true
+    status_code: 200
+    json_has:
+    - items
+  tool: _http
+- name: GET /metrics (Prometheus)
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/metrics
+  expect:
+    success: true
+    status_code: 200
+  tool: _http
+- name: GET /storefront/products?format=json
+  kind: http
+  method: GET
+  url: http://127.0.0.1:8741/storefront/products?format=json
+  expect:
+    success: true
+    status_code: 200
+    json_has:
+    - products
+  tool: _http

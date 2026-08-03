@@ -1,0 +1,53 @@
+# Topic management tools — list, add, remove, group-add, group-remove.
+# Uses medical-research with add-then-remove to leave no side effects.
+name: topic-management
+description: "Topic lifecycle: list, add, remove, and group management"
+category: topic
+requires_env: []
+steps:
+  - name: "list_topics returns topics for medical-research"
+    tool: list_topics
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "topics", "count"]
+
+  - name: "add a temporary test topic"
+    tool: add_topic
+    arguments:
+      domain: medical-research
+      name: __val_test_topic__
+      keywords: ["test", "validation"]
+    expect:
+      success: true
+      data_has: ["topic", "created", "topic_id"]
+
+  - name: "topic_group_add assigns the test topic to a group"
+    tool: topic_group_add
+    arguments:
+      domain: medical-research
+      group_name: __val_test_group__
+      topic_names: ["__val_test_topic__"]
+    expect:
+      success: true
+      data_has: ["domain", "group", "assigned"]
+
+  - name: "topic_group_remove clears the group assignment"
+    tool: topic_group_remove
+    arguments:
+      domain: medical-research
+      group_name: __val_test_group__
+    expect:
+      success: true
+      data_has: ["domain", "group", "cleared"]
+
+  - name: "remove_topic cleans up the test topic"
+    tool: remove_topic
+    arguments:
+      domain: medical-research
+      topic_id: "medical-research:__val_test_topic__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "topic_id"]

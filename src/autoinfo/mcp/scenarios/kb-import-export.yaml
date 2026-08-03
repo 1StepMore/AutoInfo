@@ -1,0 +1,31 @@
+# KB Import/Export — verify markdown import and JSON export of knowledge base entries.
+name: kb-import-export
+description: "KB import (markdown) and export (JSON) in real project context"
+category: kb
+requires_env: []
+steps:
+  - name: "import_kb imports markdown entry"
+    tool: import_kb
+    arguments:
+      domain: medical-research
+      format: markdown
+      data: |
+        ---
+        source_url: https://example.com/validation-import
+        source_type: web
+        source_platform: web
+        ---
+        # Validation Import Entry
+
+        This entry was imported by the kb-import-export validation scenario.
+    expect:
+      success: true
+      data_has: ["domain", "format", "entries_imported"]
+
+  - name: "export_kb exports domain as JSON"
+    tool: export_kb
+    arguments:
+      domain: medical-research
+      format: json
+    expect:
+      success: true

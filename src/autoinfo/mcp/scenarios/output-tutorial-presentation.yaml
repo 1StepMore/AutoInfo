@@ -1,0 +1,33 @@
+# Output generation — tutorial, presentation, and localize_content.
+# All three are LLM-required.  Without AUTOINFO_LLM_API_KEY the
+# scenario reports unconfigured (BYOK obligation).
+name: output-tutorial-presentation
+description: "Tutorial, presentation, and content localization"
+category: output
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "generate_tutorial markdown format"
+    tool: generate_tutorial
+    arguments:
+      domain: medical-research
+      format: markdown
+    expect:
+      success: true
+
+  - name: "generate_presentation markdown 5 slides"
+    tool: generate_presentation
+    arguments:
+      domain: medical-research
+      format: markdown
+      slides: 5
+    expect:
+      success: true
+
+  - name: "localize_content direct text en-to-fr"
+    tool: localize_content
+    arguments:
+      content: "Hello world"
+      source_lang: en
+      target_lang: fr
+    expect:
+      success: true

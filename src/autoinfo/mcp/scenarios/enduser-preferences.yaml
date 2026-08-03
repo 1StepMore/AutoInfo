@@ -1,0 +1,65 @@
+name: enduser-preferences
+description: "End-user trial, preferences, and subscription status lifecycle"
+category: enduser
+requires_env: []
+steps:
+  - name: "enduser_create for prefs test"
+    tool: enduser_create
+    arguments:
+      user_id: scenario-test-enduser-prefs
+      name: "Prefs Test User"
+      email: "prefs-test@example.com"
+    expect:
+      success: true
+      data_has: ["user_id", "name"]
+
+  - name: "activate_trial sets trial period"
+    tool: activate_trial
+    arguments:
+      end_user_id: scenario-test-enduser-prefs
+      days: 14
+    expect:
+      success: true
+
+  - name: "check_trial_expiry reports trial status"
+    tool: check_trial_expiry
+    arguments:
+      end_user_id: scenario-test-enduser-prefs
+    expect:
+      success: true
+      data_has: ["days_remaining", "status", "trial_days"]
+
+  - name: "update_preferences merges new settings"
+    tool: update_preferences
+    arguments:
+      end_user_id: scenario-test-enduser-prefs
+      preferences:
+        lang: zh
+        channel: email
+        digest_frequency: weekly
+    expect:
+      success: true
+
+  - name: "get_preferences returns stored prefs"
+    tool: get_preferences
+    arguments:
+      end_user_id: scenario-test-enduser-prefs
+    expect:
+      success: true
+      data_has: ["user_id", "preferences"]
+
+  - name: "get_subscription_status returns billing status"
+    tool: get_subscription_status
+    arguments:
+      end_user_id: scenario-test-enduser-prefs
+    expect:
+      success: true
+      data_has: ["end_user_id", "profile_status", "plan"]
+
+  - name: "enduser_delete cleans up prefs test user"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-enduser-prefs
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]

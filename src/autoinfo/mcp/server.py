@@ -1892,9 +1892,21 @@ def _handle_suggest_keywords(
             api_base=base_url,
             api_key=api_key or None,
         )
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+        content: str = response.choices[0].message.content or ""  # type: ignore[union-attr]
 
-        parsed = json.loads(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            # LLM returned empty or non-JSON content — surface a graceful
+            # error instead of a raw traceback so validation can report it.
+            return error_response(
+                code=ErrorCode.EMPTY_RESULT,
+                message=(
+                    "Keyword suggestion failed: LLM returned empty or "
+                    "non-JSON content. Retry the request."
+                ),
+                actionable=True,
+            )
         if isinstance(parsed, list):
             suggestions = parsed
         elif isinstance(parsed, dict):
@@ -3195,7 +3207,10 @@ def _handle_classify_cefr(text: str, lang: str = "en") -> dict[str, Any]:
         if config.cefr.model:
             model_config["model"] = config.cefr.model
         elif config.llm.provider and config.llm.model:
-            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+            llm_model = config.llm.model
+            if "/" not in llm_model:
+                llm_model = f"{config.llm.provider}/{llm_model}"
+            model_config["model"] = llm_model
         if config.llm.api_key:
             model_config["api_key"] = config.llm.api_key
         if config.llm.base_url:
@@ -5406,6 +5421,43 @@ def _handle_simplify_content(
     return success_response(result)
 
 
+# ---------------------------------------------------------------------------
+# Validation (2)
+# ---------------------------------------------------------------------------
+
+
+def _handle_list_validation_scenarios() -> dict[str, Any]:
+    """Handle list_validation_scenarios MCP tool."""
+    from autoinfo.mcp.validation import list_scenarios
+
+    return list_scenarios()
+
+
+async def _handle_run_validation_scenario(
+    scenario: str,
+    steps: list[int] | None = None,
+) -> dict[str, Any]:
+    """Handle run_validation_scenario MCP tool."""
+    from autoinfo.mcp.validation import run_scenario
+
+    async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        texts = await call_tool(name, arguments)
+        return json.loads(texts[0].text)
+
+    try:
+        return await run_scenario(
+            scenario,
+            dispatch=_validation_dispatch,
+            steps=steps,
+        )
+    except ValueError as exc:
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=str(exc),
+            actionable=True,
+        )
+
+
 def _handle_recommend_content(
     user_id: str,
     query: str = "",
@@ -5632,7 +5684,10 @@ def _handle_cefr_batch(
         if hasattr(config, "cefr") and config.cefr.model:
             model_config["model"] = config.cefr.model
         elif config.llm.provider and config.llm.model:
-            model_config["model"] = f"{config.llm.provider}/{config.llm.model}"
+            llm_model = config.llm.model
+            if "/" not in llm_model:
+                llm_model = f"{config.llm.provider}/{llm_model}"
+            model_config["model"] = llm_model
         if config.llm.api_key:
             model_config["api_key"] = config.llm.api_key
         if config.llm.base_url:
@@ -9525,6 +9580,39 @@ async def list_tools() -> list[Tool]:
                 "required": ["content", "target_level"],
             },
         ),
+
+        # -- Validation (2) -------------------------------------------------
+        Tool(
+            name="list_validation_scenarios",
+            description=(
+                "List available Agent-native validation scenarios "
+                "(MCP tool-call scenarios; SKIP when requires_env vars missing)"
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="run_validation_scenario",
+            description=(
+                "Execute an Agent-native validation scenario in-process: "
+                "each step calls an MCP tool and asserts on the "
+                "{success, data} envelope. Returns per-step passed/failed/skipped status"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "description": "Scenario name from list_validation_scenarios",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "1-based step indices to run only a subset",
+                    },
+                },
+                "required": ["scenario"],
+            },
+        ),
     ]
 
 # -- LLM-required tools (13) ------------------------------------------------
@@ -9958,6 +10046,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # -- Simplification (1) --------------------------------------------
         elif name == "simplify_content":
             result = _handle_simplify_content(**arguments)
+
+        # -- Validation (2) ------------------------------------------------
+        elif name == "list_validation_scenarios":
+            result = _handle_list_validation_scenarios()
+        elif name == "run_validation_scenario":
+            result = await _handle_run_validation_scenario(**arguments)
 
         else:
             return [

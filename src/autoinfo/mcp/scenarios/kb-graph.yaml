@@ -1,0 +1,42 @@
+# KB Graph — verify entity linking, relation queries, and graph export.
+name: kb-graph
+description: "KB graph operations: link items, get relations, query graph, export"
+category: kb
+requires_env: []
+steps:
+  - name: "link_items creates relation between two entries"
+    tool: link_items
+    arguments:
+      item_a_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      item_b_id: medical-research-general-mrna-vaccine-platform-beyond-covid-19
+      relation_type: related
+    expect:
+      success: true
+      data_has: ["relation_id"]
+
+  - name: "get_item_relations returns relations for an item"
+    tool: get_item_relations
+    arguments:
+      item_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+      data_has: ["item_id", "relations", "count"]
+
+  - name: "query_knowledge_graph queries for entities"
+    tool: query_knowledge_graph
+    arguments:
+      entity: embryo
+      relation: related_to
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["entity", "results", "total_count"]
+
+  - name: "knowledge_graph_export exports graph as JSON"
+    tool: knowledge_graph_export
+    arguments:
+      domain: medical-research
+      format: json
+    expect:
+      success: true
+      data_has: ["domain", "entity_count", "relation_count"]

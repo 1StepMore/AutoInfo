@@ -1,0 +1,36 @@
+# LLM-gated tools — real LLM calls required.  Without AUTOINFO_LLM_API_KEY
+# this scenario reports unconfigured (never silently skipped): the Director
+# User is obligated to provide BYOK keys during onboarding.
+# Handler signatures verified 2026-08-03: classify_cefr(text, lang),
+# cefr_batch(texts, lang), suggest_keywords(domain, text, limit).
+name: llm-gated
+description: "LLM-required tools with real model calls"
+category: llm
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "classify_cefr english text"
+    tool: classify_cefr
+    arguments:
+      text: "The mitochondria is the powerhouse of the cell."
+      lang: "en"
+    expect:
+      success: true
+      llm_assert: "Does the result contain a CEFR level (A1-C2) and a confidence score between 0 and 1? The text is a standard biology sentence — the level must be plausible (B1 or B2 expected, not A1)."
+
+  - name: "suggest_keywords for medical domain"
+    tool: suggest_keywords
+    arguments:
+      domain: medical-research
+      text: "In vitro fertilization and embryo transfer"
+    expect:
+      success: true
+      llm_assert: "Does the result contain at least 3 suggested keywords? Each keyword must be a plausible medical/IVF-related term (e.g. in vitro fertilization, embryo, fertility)."
+
+  - name: "cefr_batch classifies multiple texts"
+    tool: cefr_batch
+    arguments:
+      texts: ["The mitochondria is the powerhouse of the cell.", "Hello, how are you today?"]
+      lang: "en"
+    expect:
+      success: true
+      llm_assert: "Does the result contain CEFR level classifications for BOTH input texts, each with a plausible level (A1-C2)?"

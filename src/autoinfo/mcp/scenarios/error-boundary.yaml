@@ -1,0 +1,29 @@
+# Error boundary — verify graceful error handling for unknown tools,
+# nonexistent domains, and missing entries.
+name: error-boundary
+description: "Error boundary testing for unknown tools and nonexistent resources"
+category: errors
+requires_env: []
+steps:
+  - name: "unknown tool returns UnknownTool"
+    tool: definitely_not_a_real_tool
+    arguments: {}
+    expect:
+      success: false
+      error_code: "UnknownTool"
+
+  - name: "nonexistent domain schema returns DomainNotFound"
+    tool: get_domain_schema
+    arguments:
+      domain: nonexistent-domain-xyz
+    expect:
+      success: false
+      error_code: "DomainNotFound"
+
+  - name: "nonexistent kb entry returns NotFound"
+    tool: get_kb_entry
+    arguments:
+      entry_id: nonexistent
+    expect:
+      success: false
+      error_code: "NotFound"

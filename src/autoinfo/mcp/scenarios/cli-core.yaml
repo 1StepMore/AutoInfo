@@ -1,0 +1,29 @@
+name: cli-core
+description: 'Core CLI groups: init, doctor, collect, process, status'
+category: cli
+requires_env: []
+steps:
+- name: status --json
+  kind: cli
+  command: autoinfo status --json
+  expect:
+    success: true
+    stdout_has:
+    - domains
+  tool: _cli
+- name: doctor --json
+  kind: cli
+  command: autoinfo doctor --json
+  expect:
+    success: true
+    stdout_has:
+    - status
+  tool: _cli
+- name: domain list
+  kind: cli
+  command: autoinfo domain list
+  expect:
+    success: true
+    stdout_has:
+    - medical-research
+  tool: _cli

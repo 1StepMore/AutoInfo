@@ -1,0 +1,41 @@
+# Agent callbacks — register, list, remove.
+# set_agent_callback returns a dynamic callback_id, so cleanup uses
+# a CLI step to iterate and remove all callbacks.
+# list_agent_callbacks returns a list as data (not dict), so no data_has.
+name: agent-callbacks
+description: "Agent callbacks: register, list, and remove (cleanup via CLI)"
+category: system
+requires_env: []
+steps:
+  - name: "set_agent_callback registers a test callback"
+    tool: set_agent_callback
+    arguments:
+      agent_url: "https://example.com/test-callback"
+      events:
+        - "new_digest"
+        - "new_report"
+    expect:
+      success: true
+      data_has: ["callback_id", "agent_url", "events", "created"]
+
+  - name: "list_agent_callbacks returns callback list (data is list, not dict)"
+    tool: list_agent_callbacks
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "remove_agent_callback removes by ID (returns NotFound for unknown ID)"
+    tool: remove_agent_callback
+    arguments:
+      callback_id: nonexistent-test-id
+    expect:
+      success: false
+      error_code: "NotFound"
+
+  - name: "cleanup: remove all remaining agent callbacks"
+    kind: cli
+    tool: _cli_cleanup
+    command: "python3 -c \"from autoinfo.agent_callback import list_agent_callbacks as lac, remove_agent_callback as rac; cbs=lac(); [rac(cb.get('callback_id','')) for cb in (cbs if isinstance(cbs, list) else [])]; print('CLEANUP_DONE')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["CLEANUP_DONE"]

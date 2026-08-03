@@ -1,0 +1,57 @@
+name: cli-content
+description: 'CLI content commands: sources, topics, summaries, keywords, kb, output'
+category: cli
+requires_env: []
+steps:
+- name: sources list
+  kind: cli
+  command: autoinfo sources list --domain medical-research
+  expect:
+    success: true
+    stdout_has:
+    - Sources for domain 'medical-research'
+  tool: _cli
+- name: topics list
+  kind: cli
+  command: autoinfo topics list --domain medical-research
+  expect:
+    success: true
+    stdout_has:
+    - IVF breakthroughs
+  tool: _cli
+- name: summaries list
+  kind: cli
+  command: autoinfo summaries list --domain medical-research
+  expect:
+    success: true
+  tool: _cli
+- name: keywords list
+  kind: cli
+  command: autoinfo keywords list --domain medical-research
+  expect:
+    success: true
+  tool: _cli
+- name: kb search
+  kind: cli
+  command: autoinfo kb search --query ivf --domain medical-research
+  expect:
+    success: true
+    stdout_has:
+    - entries
+  tool: _cli
+- name: kb list-tiers
+  kind: cli
+  command: autoinfo kb list-tiers --domain medical-research
+  expect:
+    success: true
+    stdout_has:
+    - 01-Raw
+  tool: _cli
+- name: output list-templates
+  kind: cli
+  command: autoinfo output list-templates --domain medical-research
+  expect:
+    success: true
+    stdout_has:
+    - digest
+  tool: _cli

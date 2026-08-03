@@ -1,0 +1,49 @@
+# Cron schedule management — full lifecycle: add, list, status, dry_run,
+# remove.  Uses a clearly-safe test schedule name and removes it within the
+# same scenario to avoid polluting state.
+name: cron-schedules
+description: "Cron schedule lifecycle: add, list, status, dry-run, and remove"
+category: collection
+requires_env: []
+steps:
+  - name: "list_schedules initially empty or populated"
+    tool: list_schedules
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["schedules", "count"]
+
+  - name: "add_schedule for medical-research"
+    tool: add_schedule
+    arguments:
+      name: autoinfo-scenario-test-collection
+      expression: "0 2 * * *"
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["created", "schedule"]
+
+  - name: "get_schedule_status after add"
+    tool: get_schedule_status
+    arguments:
+      schedule_id: autoinfo-scenario-test-collection
+    expect:
+      success: true
+      data_has: ["schedules", "count"]
+
+  - name: "run_schedules dry_run"
+    tool: run_schedules
+    arguments:
+      dry_run: true
+    expect:
+      success: true
+      data_has: ["results", "due_count"]
+
+  - name: "remove_schedule test cleanup"
+    tool: remove_schedule
+    arguments:
+      name: autoinfo-scenario-test-collection
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "schedule"]

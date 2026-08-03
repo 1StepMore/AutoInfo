@@ -1,0 +1,80 @@
+# Webhooks and alert rules — read, mutate, restore.
+# set_domain_webhooks: read original → set new → verify → restore.
+# add_alert_rule: add → verify → remove.
+name: webhooks-alerts
+description: "Webhooks and alert rules: read, mutate, verify, restore"
+category: system
+requires_env: []
+steps:
+  - name: "get_domain_webhooks reads current webhooks"
+    tool: get_domain_webhooks
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "webhook_urls"]
+
+  - name: "set_domain_webhooks updates webhook URLs"
+    tool: set_domain_webhooks
+    arguments:
+      domain: medical-research
+      webhook_urls:
+        - "https://example.com/scenario-webhook"
+    expect:
+      success: true
+      data_has: ["domain", "webhook_urls", "updated"]
+
+  - name: "get_domain_webhooks verifies updated webhooks"
+    tool: get_domain_webhooks
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "webhook_urls"]
+
+  - name: "restore original webhook URLs"
+    tool: set_domain_webhooks
+    arguments:
+      domain: medical-research
+      webhook_urls:
+        - "http://127.0.0.1:19997/webhook"
+    expect:
+      success: true
+      data_has: ["domain", "webhook_urls", "updated"]
+
+  - name: "get_alert_rules lists rules for domain"
+    tool: get_alert_rules
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "alert_rules", "count"]
+
+  - name: "add_alert_rule creates a test rule"
+    tool: add_alert_rule
+    arguments:
+      domain: medical-research
+      topic_keywords:
+        - "test-scenario"
+      relevance_threshold: 50.0
+      channel: email
+      enabled: false
+    expect:
+      success: true
+      data_has: ["created"]
+
+  - name: "remove_alert_rule with non-existent ID returns AlertRuleNotFound"
+    tool: remove_alert_rule
+    arguments:
+      id: nonexistent-alert-id
+    expect:
+      success: false
+      error_code: "AlertRuleNotFound"
+
+  - name: "cleanup: remove test alert rules"
+    kind: cli
+    tool: _cli_cleanup
+    command: "python3 -c \"from autoinfo.alerts import list_alert_rules, remove_alert_rule; rules=list_alert_rules(domain='medical-research'); [remove_alert_rule(r.id) for r in rules if 'test-scenario' in str(getattr(r, 'topic_keywords', []))]; print('CLEANED')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["CLEANED"]

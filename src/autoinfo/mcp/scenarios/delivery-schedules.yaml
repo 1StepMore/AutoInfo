@@ -1,0 +1,37 @@
+# Delivery schedule lifecycle — add, list, and remove.
+# NOTE: schedule IDs are random UUIDs so cross-step cleanup in static YAML
+# is not possible.  The remove step validates the error path for a
+# nonexistent schedule.
+name: delivery-schedules
+description: "Delivery schedule lifecycle: add, list, and remove (error path)"
+category: delivery
+requires_env: []
+steps:
+  - name: "add_delivery_schedule for medical-research"
+    tool: add_delivery_schedule
+    arguments:
+      domain: medical-research
+      cron_expression: "0 6 * * 1"
+      output_type: digest
+      channel: file_export
+      output_format: markdown
+      period: weekly
+    expect:
+      success: true
+      data_has: ["created", "schedule_id", "schedule"]
+
+  - name: "list_delivery_schedules includes the new schedule"
+    tool: list_delivery_schedules
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["schedules", "count"]
+
+  - name: "remove_delivery_schedule rejects unknown schedule"
+    tool: remove_delivery_schedule
+    arguments:
+      schedule_id: autoinfo-scenario-nonexistent
+      confirm: true
+    expect:
+      success: false
+      error_code: "ScheduleNotFound"

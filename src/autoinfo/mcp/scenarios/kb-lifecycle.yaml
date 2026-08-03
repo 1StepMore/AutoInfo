@@ -1,0 +1,57 @@
+# KB Lifecycle — decay, staleness, freshness, merging, similarity, and extraction.
+name: kb-lifecycle
+description: "KB lifecycle tools: decay, staleness, freshness, merge, similarity, extraction"
+category: lifecycle
+requires_env: []
+steps:
+  - name: "get_domain_decay returns decay metrics"
+    tool: get_domain_decay
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["decay_grade", "staleness_ratio"]
+
+  - name: "mark_stale marks an entry as stale"
+    tool: mark_stale
+    arguments:
+      entry_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+
+  - name: "calculate_freshness_score returns freshness"
+    tool: calculate_freshness_score
+    arguments:
+      entry_id: medical-research-general-ai-powered-drug-discovery-in-2026
+      ttl_days: 90
+    expect:
+      success: true
+      data_has: ["freshness_score", "ttl_days"]
+
+  - name: "merge_items merges two entries"
+    tool: merge_items
+    arguments:
+      item_ids:
+        - medical-research-general-crispr-gene-editing-advances-in-2026
+        - medical-research-general-mrna-vaccine-platform-beyond-covid-19
+      strategy: simple
+    expect:
+      success: true
+      data_has: ["status", "entry"]
+
+  - name: "find_similar_items finds items by query"
+    tool: find_similar_items
+    arguments:
+      query: CRISPR gene editing technology
+      threshold: 0.3
+    expect:
+      success: true
+      data_has: ["entries"]
+
+  - name: "get_extraction reads stored extraction data"
+    tool: get_extraction
+    arguments:
+      content_id: medical-research-general-crispr-gene-editing-advances-in-2026
+    expect:
+      success: true
+      data_has: ["content_id", "extracted_fields"]

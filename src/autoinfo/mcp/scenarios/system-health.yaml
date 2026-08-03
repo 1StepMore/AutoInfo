@@ -1,0 +1,26 @@
+# System health primitives — verify core monitoring tools.
+name: system-health
+description: "System health primitives"
+category: system
+requires_env: []
+steps:
+  - name: "health_check ok"
+    tool: health_check
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["status", "version", "tools_count"]
+
+  - name: "get_tool_count envelope"
+    tool: get_tool_count
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["tools_count"]
+
+  - name: "diagnose_system envelope"
+    tool: diagnose_system
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["phase", "health_score"]

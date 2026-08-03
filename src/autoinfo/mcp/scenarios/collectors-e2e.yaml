@@ -1,0 +1,46 @@
+# Collector handlers — real reachability probes across supported platform types.
+# test_source makes a real HTTP request to each platform (no mocks). Free,
+# key-less platforms are probed directly; key-required platforms (spotify,
+# youtube, reddit, ap_api, reuters_mcp, etc.) are gated via requires_env.
+# gdelt/ssrn probes are absent: this sandbox cannot reach them (3x timeout /
+# Errno 101) — environment limitation, not a code defect.
+name: collectors-e2e
+description: "Collector platform reachability via test_source (real HTTP probes)"
+category: collection
+requires_env: []
+steps:
+  - name: "rss platform reachable (arXiv)"
+    tool: test_source
+    arguments:
+      url: "https://rss.arxiv.org/rss/bio"
+      type: rss
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]
+
+  - name: "web platform reachable"
+    tool: test_source
+    arguments:
+      url: "https://example.com"
+      type: web
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]
+
+  - name: "api platform reachable (PubMed E-utilities)"
+    tool: test_source
+    arguments:
+      url: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/einfo.fcgi"
+      type: api
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]
+
+  - name: "openalex platform reachable"
+    tool: test_source
+    arguments:
+      url: "https://api.openalex.org"
+      type: openalex
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]

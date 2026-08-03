@@ -1,0 +1,49 @@
+# Delivery channels — view config, channel health, active deliveries,
+# delivery log, and email digest (graceful error without SMTP config).
+name: delivery-channels
+description: "Delivery channel health, config, active deliveries, and log queries"
+category: delivery
+requires_env: []
+steps:
+  - name: "email_config view mode returns current config"
+    tool: email_config
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["config", "updated", "test_result"]
+
+  - name: "send_email_digest fails gracefully without SMTP config"
+    tool: send_email_digest
+    arguments:
+      domain: medical-research
+    expect:
+      success: false
+      error_code: "EmailNotEnabled"
+
+  - name: "get_channel_health returns all channel statuses"
+    tool: get_channel_health
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "list_active_deliveries returns deliveries and count"
+    tool: list_active_deliveries
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["deliveries", "count"]
+
+  - name: "get_delivery_log paginated query"
+    tool: get_delivery_log
+    arguments:
+      limit: 10
+    expect:
+      success: true
+      data_has: ["deliveries", "count", "limit", "offset"]
+
+  - name: "query_delivery_log returns log entries"
+    tool: query_delivery_log
+    arguments:
+      limit: 5
+    expect:
+      success: true

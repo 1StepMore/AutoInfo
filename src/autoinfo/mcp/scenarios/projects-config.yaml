@@ -1,0 +1,69 @@
+# Projects, init, config, and misc — all safe read operations or guarded mutations.
+# init_project: dry_run=True avoids clobbering real project.
+# configure_llm: no args => noop, no mutation to config.yaml.
+# archive_project: no confirm => ConfirmationRequired error.
+# clean_cache: no flags => noop (no files deleted).
+# Other tools: read-only.
+name: projects-config
+description: "Projects, config, init, LLM, clean, archive — safe reads and guarded ops"
+category: system
+requires_env: []
+steps:
+  - name: "list_projects returns project list"
+    tool: list_projects
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["projects", "count"]
+
+  - name: "get_project_assets returns asset paths"
+    tool: get_project_assets
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["collections_dir", "knowledge_dir", "database", "exports_dir", "config_dir"]
+
+  - name: "get_config returns full config"
+    tool: get_config
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["config"]
+
+  - name: "get_config with section filter returns filtered config"
+    tool: get_config
+    arguments:
+      section: llm
+    expect:
+      success: true
+      data_has: ["config"]
+
+  - name: "init_project dry_run does not write files"
+    tool: init_project
+    arguments:
+      domain: medical-research
+      dry_run: true
+    expect:
+      success: true
+      data_has: ["status", "domain"]
+
+  - name: "configure_llm with no args returns noop"
+    tool: configure_llm
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["status", "message"]
+
+  - name: "archive_project without confirm returns ConfirmationRequired"
+    tool: archive_project
+    arguments: {}
+    expect:
+      success: false
+      error_code: "ConfirmationRequired"
+
+  - name: "clean_cache with no flags returns zero items_removed"
+    tool: clean_cache
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["items_removed", "dry_run", "targets"]

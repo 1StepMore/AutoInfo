@@ -1,0 +1,27 @@
+# Output discovery — verify output/product/config tools in real project context.
+name: output-discovery
+description: "Output and config tool discovery in real project context"
+category: output
+requires_env: []
+steps:
+  - name: "list_output_templates returns templates"
+    tool: list_output_templates
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["templates"]
+
+  - name: "get_config returns project config"
+    tool: get_config
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["config"]
+
+  - name: "list_available_models resolves configured model"
+    tool: list_available_models
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["models"]
+

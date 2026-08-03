@@ -1,0 +1,22 @@
+# Meta-validation — verify the validation toolset itself works.
+# list_validation_scenarios must list scenarios; run_validation_scenario must
+# execute one (system-health) and report a real passed status.
+name: meta-validation
+description: "Validation toolset self-check: list and run scenarios"
+category: system
+requires_env: []
+steps:
+  - name: "list_validation_scenarios returns the scenario library"
+    tool: list_validation_scenarios
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["scenarios", "count"]
+
+  - name: "run_validation_scenario executes system-health"
+    tool: run_validation_scenario
+    arguments:
+      scenario: system-health
+    expect:
+      success: true
+      data_has: ["scenario", "status", "summary"]

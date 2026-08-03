@@ -1,0 +1,65 @@
+name: cli-ops
+description: 'CLI operations: cron, clean, trace, cost, enduser, audit, email, knowledge'
+category: cli
+requires_env: []
+steps:
+- name: cron list-schedules
+  kind: cli
+  command: autoinfo cron list-schedules
+  expect:
+    success: true
+  tool: _cli
+- name: cron health
+  kind: cli
+  command: autoinfo cron health
+  expect:
+    success: true
+  tool: _cli
+- name: clean
+  kind: cli
+  command: autoinfo clean
+  expect:
+    success: true
+  tool: _cli
+- name: trace nonexistent id
+  kind: cli
+  command: autoinfo trace nonexistent-trace-xyz
+  expect:
+    success: true
+  tool: _cli
+- name: cost dashboard
+  kind: cli
+  command: autoinfo cost dashboard --period week
+  expect:
+    success: true
+  tool: _cli
+- name: enduser list
+  kind: cli
+  command: autoinfo enduser list
+  expect:
+    success: true
+  tool: _cli
+- name: audit query
+  kind: cli
+  command: autoinfo audit query --limit 3
+  expect:
+    success: true
+  tool: _cli
+- name: email config
+  kind: cli
+  command: autoinfo email config
+  expect:
+    success: true
+  tool: _cli
+- name: knowledge graph export
+  kind: cli
+  command: autoinfo knowledge graph export --domain medical-research
+  expect:
+    success: true
+  tool: _cli
+- name: billing summary
+  kind: cli
+  command: autoinfo billing summary --user-id testuser --json
+  expect:
+    success: true
+  tool: _cli

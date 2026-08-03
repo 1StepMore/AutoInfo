@@ -1,0 +1,39 @@
+# Data privacy tools — soft-delete, restore, export, delete.
+# Uses the validation import entry for soft-delete/restore (non-destructive pair).
+# delete_user_data requires purge=True; we verify the guard rail.
+name: data-privacy
+description: "Data privacy: soft-delete, restore, export, and GDPR delete guard"
+category: privacy
+requires_env: []
+steps:
+  - name: "soft_delete_entry marks entry as deleted"
+    tool: soft_delete_entry
+    arguments:
+      entry_id: medical-research-general-validation-import-entry
+    expect:
+      success: true
+      data_has: ["entry_id"]
+
+  - name: "restore_entry revives the soft-deleted entry"
+    tool: restore_entry
+    arguments:
+      entry_id: medical-research-general-validation-import-entry
+    expect:
+      success: true
+      data_has: ["entry_id"]
+
+  - name: "export_user_data returns profile for a user"
+    tool: export_user_data
+    arguments:
+      user_id: test_user
+    expect:
+      success: true
+      data_has: ["user_id", "profile"]
+
+  - name: "delete_user_data rejects call without purge=True"
+    tool: delete_user_data
+    arguments:
+      user_id: test_user
+    expect:
+      success: false
+      error_code: "ValidationError"

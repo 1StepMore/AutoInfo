@@ -1,0 +1,38 @@
+# Output generation — digest, report, and cross-domain report tools.
+# All three are LLM-required.  Without AUTOINFO_LLM_API_KEY the
+# scenario reports unconfigured (BYOK obligation) — never skipped.
+name: output-digest-report
+description: "Digest, report, and cross-domain report generation"
+category: output
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "generate_digest json format"
+    tool: generate_digest
+    arguments:
+      domain: medical-research
+      period: daily
+      format: json
+    expect:
+      success: true
+
+  - name: "generate_report industry type json"
+    tool: generate_report
+    arguments:
+      domain: medical-research
+      format: json
+      period: monthly
+      report_type: industry
+    expect:
+      success: true
+
+  - name: "generate_cross_domain_report trend json"
+    tool: generate_cross_domain_report
+    arguments:
+      domains:
+        - medical-research
+        - tech-ai-developer
+      format: json
+      period: month
+      report_type: trend
+    expect:
+      success: true

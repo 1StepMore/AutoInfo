@@ -1,0 +1,19 @@
+# CLI groups — process and cefr require a real LLM key (BYOK).
+# Without AUTOINFO_LLM_API_KEY this scenario reports unconfigured — never
+# silently skipped.  Director User must configure the key during onboarding.
+name: cli-llm
+description: "CLI LLM-dependent groups: process, cefr"
+category: cli
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "process medical-research"
+    kind: cli
+    command: "autoinfo process --domain medical-research --batch-size 0 --json"
+    expect:
+      success: true
+
+  - name: "cefr classify"
+    kind: cli
+    command: "autoinfo cefr classify 'hello world' --lang en"
+    expect:
+      success: true

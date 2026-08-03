@@ -1,0 +1,28 @@
+# Processing + batch_run — LLM-required operations.  Without
+# AUTOINFO_LLM_API_KEY this scenario reports unconfigured: the Director
+# User is obligated to provide BYOK keys during onboarding.
+# check_factual/check_translation explicitly enable the G4/G5 quality gates.
+name: processing
+description: "LLM-gated processing, batch run, and G4/G5 quality gates"
+category: collection
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "process_collection with G4/G5 gates"
+    tool: process_collection
+    arguments:
+      domain: medical-research
+      batch_size: 1
+      check_factual: true
+      check_translation: true
+    expect:
+      success: true
+      llm_assert: "Does the response contain a status field — either 'completed' (items were processed), 'noop' (no cached items), or describe a successful batch processing result? The domain is medical-research."
+
+  - name: "batch_run small limit for medical-research"
+    tool: batch_run
+    arguments:
+      domain: medical-research
+      limit: 1
+    expect:
+      success: true
+      llm_assert: "Does the response contain a 'phases' array with both 'collection' and 'processing' phase entries, each having a 'status' field?"

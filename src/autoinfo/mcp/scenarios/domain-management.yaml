@@ -1,0 +1,55 @@
+# Domain management tools — create, configure, activate, deactivate, remove.
+# Uses a temporary test domain with add-then-remove to leave no side effects.
+name: domain-management
+description: "Domain lifecycle: add, configure, activate, deactivate, remove"
+category: domain
+requires_env: []
+steps:
+  - name: "add a temporary test domain"
+    tool: add_domain
+    arguments:
+      name: __val_test_domain__
+      description: "Temporary validation scenario test domain"
+    expect:
+      success: true
+      data_has: ["domain", "created", "active"]
+
+  - name: "deactivate the test domain"
+    tool: deactivate_domain
+    arguments:
+      name: __val_test_domain__
+    expect:
+      success: true
+      data_has: ["domain", "active"]
+
+  - name: "reactivate the test domain"
+    tool: activate_domain
+    arguments:
+      name: __val_test_domain__
+    expect:
+      success: true
+      data_has: ["domain", "active"]
+
+  - name: "get domain config for the test domain"
+    tool: get_domain_config
+    arguments:
+      name: __val_test_domain__
+    expect:
+      success: true
+      data_has: ["domain", "sources", "topics"]
+
+  - name: "get domain config for medical-research domain"
+    tool: get_domain_config
+    arguments:
+      name: medical-research
+    expect:
+      success: true
+      data_has: ["domain", "active", "sources", "source_count", "topics", "topic_count"]
+
+  - name: "remove the test domain"
+    tool: remove_domain
+    arguments:
+      name: __val_test_domain__
+    expect:
+      success: true
+      data_has: ["removed", "domain"]

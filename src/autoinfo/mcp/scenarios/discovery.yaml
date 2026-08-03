@@ -1,0 +1,40 @@
+# Discovery tools — verify domain/LLM/output discovery in real project context.
+name: discovery
+description: "Discovery tools in real project context"
+category: discovery
+requires_env: []
+steps:
+  - name: "list_domains returns configured domains"
+    tool: list_domains
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["domains", "count"]
+
+  - name: "list_available_platforms returns 25 source types"
+    tool: list_available_platforms
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["platforms"]
+
+  - name: "list_available_models resolves configured model"
+    tool: list_available_models
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["models"]
+
+  - name: "get_effective_llm_config resolves task config"
+    tool: get_effective_llm_config
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["provider", "model"]
+
+  - name: "list_output_templates returns templates"
+    tool: list_output_templates
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["templates"]

@@ -1426,3 +1426,47 @@ class TestStripeLifecycle:
         assert status["subscription_id"] == ""
         assert status["customer_id"] == ""
         assert status["plan"] == "free"
+
+
+# ---------------------------------------------------------------------------
+# R1 guard: STRIPE_API_KEY set but STRIPE_API_BASE still stripe-mock
+# ---------------------------------------------------------------------------
+
+
+class TestStripeMockGuard:
+    """A real STRIPE_API_KEY with the default stripe-mock base would
+    silently send real keys to the mock endpoint. The guard must warn."""
+
+    def test_configure_stripe_warns_when_key_set_but_base_is_mock(
+        self, caplog
+    ) -> None:
+        import logging
+
+        from autoinfo.billing import _configure_stripe
+
+        # Patch the module-level constants directly (read at import time)
+        with patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"), \
+             patch.object(_billing_mod, "_STRIPE_API_BASE", "http://localhost:12111"), \
+             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+            _configure_stripe()
+
+        assert any("stripe-mock" in r.message for r in caplog.records), (
+            "Expected a warning that a real key is pointed at stripe-mock, "
+            f"got records: {[r.message for r in caplog.records]}"
+        )
+
+    def test_configure_stripe_no_warning_when_base_is_real(
+        self, caplog
+    ) -> None:
+        import logging
+
+        from autoinfo.billing import _configure_stripe
+
+        with patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"), \
+             patch.object(_billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"), \
+             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+            _configure_stripe()
+
+        assert not any("stripe-mock" in r.message for r in caplog.records), (
+            f"Unexpected warning: {[r.message for r in caplog.records]}"
+        )

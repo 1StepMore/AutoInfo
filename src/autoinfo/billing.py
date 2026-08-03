@@ -124,6 +124,14 @@ def _configure_stripe() -> None:
     """Set up stripe library with the correct endpoint and key."""
     if _STRIPE_API_KEY:
         stripe.api_key = _STRIPE_API_KEY
+        if "localhost" in _STRIPE_API_BASE or "127.0.0.1" in _STRIPE_API_BASE:
+            logger.warning(
+                "STRIPE_API_KEY is set but STRIPE_API_BASE points at "
+                "stripe-mock (%s). Real keys would be sent to the mock "
+                "endpoint — set STRIPE_API_BASE=https://api.stripe.com for "
+                "real test-mode payments.",
+                _STRIPE_API_BASE,
+            )
     else:
         # stripe-mock mode — use a fake key (stripe-mock ignores it)
         stripe.api_key = "sk_test_mock"

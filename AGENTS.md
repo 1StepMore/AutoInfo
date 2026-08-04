@@ -82,7 +82,7 @@ AutoInfo/
 │       ├── mcp/                     # MCP server (141 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
+│       ├── collectors/              # 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output.py                # Output generation (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
@@ -244,7 +244,7 @@ The table indexes every pattern; the five most-used are inlined below.
 
 **Check system health**: `diagnose_system()` → returns `health_score` (0-100) + `phase` (init/collect/process/healthy/degraded). On degraded, inspect `phase`.
 
-**Configure the LLM (BYOK)**: `configure_llm(api_key, provider, model)` stores an env var reference (`${AUTOINFO_LLM_API_KEY}`), never the raw key. If missing, the 13 LLM-required tools return `LLM_NOT_CONFIGURED` at dispatch. Full variable catalog: `docs/dev/required-api-keys.md`.
+**Configure the LLM (BYOK)**: `configure_llm(api_key, provider, model)` stores an env var reference (`${AUTOINFO_LLM_API_KEY}`), never the raw key. If missing, the 14 LLM-required tools return `LLM_NOT_CONFIGURED` at dispatch. Full variable catalog: `docs/dev/required-api-keys.md`.
 
 **Search KB**: `search_knowledge_base(domain, query, mode="hybrid")` (FTS5 + vector), `mode="vector"` (semantic only), or `mode="faceted"` with `filters={...}`. Omit `domain` to search across all domains.
 
@@ -304,7 +304,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
 | CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
-| Collection | ✅ 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE), scheduled via crond |
+| Collection | ✅ 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
@@ -373,10 +373,10 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
-| Test suite | ✅ ~2747 tests (approx; includes new collector + E12/E14/E9/C11 tests; 1 collection error pre-existing) |
+| Test suite | ✅ ~2866 tests (approx; includes new collector + E12/E14/E9/C11 tests) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 | Standardized error envelope | ✅ All MCP + REST API errors return `{success: false, error: {code, message, actionable}}`; 27 ErrorCode values; `error_dict()` deprecated |
-| LLM guard | ✅ Centralized `LLM_NOT_CONFIGURED` at `call_tool` dispatch (13 LLM-required tools) — no more raw auth errors |
+| LLM guard | ✅ Centralized `LLM_NOT_CONFIGURED` at `call_tool` dispatch (14 LLM-required tools) — no more raw auth errors |
 | Actionable guidance | ✅ `init_project` returns `next_steps`; `diagnose_system` returns `health_score` (0-100) + `phase`; DOMAIN_NOT_FOUND includes "Use add_domain()" |
 | CLI help text | ✅ 9 CLI command groups have custom help descriptions |
 | Required API keys doc | ✅ `docs/dev/required-api-keys.md` catalogs all env vars; linked from error messages |
@@ -385,7 +385,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Source credibility score (E9) | ✅ Deterministic `source_score` (0-100) from quality tier, persisted on KBEntry, surfaced in G1 gate + search |
 | RAW product variants (E11) | ✅ RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field |
 | Podcast RSS publishing (C11) | ✅ RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace; audio output auto-persists MP3 |
-| Validated source types | ✅ `VALID_SOURCE_TYPES` frozenset (25 types) as single source of truth for source type validation |
+| Validated source types | ✅ `VALID_SOURCE_TYPES` frozenset (26 types) as single source of truth for source type validation |
 
 ## References
 

@@ -62,6 +62,7 @@ src/autoinfo/data/domains/
 | `youtube` | YouTubeHandler | YouTube channel/search tracking |
 | `bilibili` | BilibiliHandler | Bilibili (B站) video search |
 | `spotify` | SpotifyHandler | Podcast/show episodes |
+| `hackernews` | HackerNewsHandler | HackerNews API (top/new/best stories) |
 | `apple_podcasts` | ApplePodcastsHandler | Apple Podcasts search |
 | `dblp` | DBLPHandler | Computer science bibliography |
 | `openalex` | OpenAlexHandler | Open scholarly research |
@@ -832,7 +833,7 @@ including it in the domain config:
 **File**: `src/autoinfo/data/domains/tech-ai-developer/sources.yaml`
 
 **Pattern highlights**:
-- Mix of `api` (GitHub, HackerNews, Stack Exchange) and specialized collectors (Reddit, Bilibili)
+- Mix of `api` (GitHub, Stack Exchange), dedicated `hackernews` type, and specialized collectors (Reddit, Bilibili)
 - Some sources disabled by default (`enabled: false`) — user opts in
 - Rate limits vary widely (10 req/d GitHub unauthenticated, 300 req/d Stack Exchange)
 - Settings include subreddit lists and search queries

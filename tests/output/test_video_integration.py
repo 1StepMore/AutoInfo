@@ -18,11 +18,11 @@ import pytest
 
 from autoinfo.output.video import (
     VideoConfig,
-    generate_audio_narration,
     generate_report_video,
-    generate_slide_images,
     render_video,
 )
+
+pytest.importorskip("PIL")
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -407,8 +407,6 @@ class TestGenerateReportVideo:
 class TestReportVideoIntegration:
     def test_generate_report_format_video_accepted(self, temp_dir: str) -> None:
         """format='video' flows through generate_report and returns JSON status."""
-        import time
-
         mock_run = MagicMock()
         mock_run.return_value.returncode = 0
 
@@ -420,10 +418,15 @@ class TestReportVideoIntegration:
 
                 with patch("autoinfo.output.video._find_binary", return_value="/usr/bin/ffmpeg"):
                     with patch("autoinfo.output.video._run_ffmpeg", mock_run):
-                        with patch("autoinfo.output.video._probe_audio_duration", return_value=10.0):
+                        with patch(
+                            "autoinfo.output.video._probe_audio_duration",
+                            return_value=10.0,
+                        ):
                             # Pre-create an output file so post-render validation passes.
-                            # _render_video_scaffold writes to /tmp/autoinfo/video/<ts>/report_<ts>.mp4.
-                            # We intercept by mocking generate_report_video to return our own path.
+                            # _render_video_scaffold writes to
+                            # /tmp/autoinfo/video/<ts>/report_<ts>.mp4.
+                            # We intercept by mocking generate_report_video to return
+                            # our own path.
                             fake_video = os.path.join(temp_dir, "fake_report.mp4")
                             with open(fake_video, "wb") as f:
                                 f.write(b"\x00" * 500)

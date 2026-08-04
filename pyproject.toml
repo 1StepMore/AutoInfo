@@ -75,6 +75,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-vcr>=1.0.2",
+    "pytest-timeout>=2.3",
     "ruff>=0.5",
     "mypy>=1.10",
     "pre-commit>=3.7",
@@ -89,7 +90,10 @@ pdf = [
 tts = [
     "edge-tts>=6.1",
 ]
-all = ["autoinfo[dev,web,pdf,tts]"]
+video = [
+    "pillow>=10.0",
+]
+all = ["autoinfo[dev,web,pdf,tts,video]"]
 
 [project.urls]
 Homepage = "https://github.com/your-org/autoinfo"
@@ -122,3 +126,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# pytest-timeout: bound every test so the suite can never hang indefinitely.
+# Method auto-selects: signal on POSIX (interrupts subprocess waits), thread on Windows.
+timeout = 180

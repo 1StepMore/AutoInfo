@@ -23,7 +23,7 @@ sources:
       source_url: html_url
 
   - name: HackerNews API
-    type: api
+    type: hackernews
     url: https://hacker-news.firebasedatabase.app/v0
     quality_tier: 2
     frequency: hourly

@@ -507,6 +507,11 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return SSRNHandler(config=source_config.settings or {})
 
+    if stype == "hackernews":
+        from autoinfo.collectors.hackernews import HackerNewsHandler
+
+        return HackerNewsHandler(source_config)
+
     if stype == "api":
         from autoinfo.collectors.http_api import HttpApiHandler
 
@@ -629,6 +634,11 @@ def _fetch_items(
     if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "spotify":
         query = topic if topic else ""
         items = handler.fetch(limit=limit, query=query)
+        return [handler.to_item(item) for item in items]
+
+    # -- HackerNews handler path ----------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "hackernews":
+        items = handler.fetch(limit=limit)
         return [handler.to_item(item) for item in items]
 
     # -- YouTube handler path ------------------------------------------------

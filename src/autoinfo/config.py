@@ -35,6 +35,7 @@ VALID_SOURCE_TYPES: frozenset[str] = frozenset({
     "email",
     "email_imap",
     "gdelt",
+    "hackernews",
     "huggingface",
     "kaggle",
     "nyt",

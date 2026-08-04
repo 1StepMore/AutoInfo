@@ -51,7 +51,7 @@ def hackernews_config() -> SourceConfig:
     return SourceConfig(
         name="HackerNews API",
         type="api",
-        url="https://hacker-news.firebaseio.com/v0",
+        url="https://hacker-news.firebasedatabase.app/v0",
         settings={
             "json_path": "",
             "field_mapping": {
@@ -69,7 +69,7 @@ def stacked_config() -> SourceConfig:
     return SourceConfig(
         name="Stack Exchange",
         type="api",
-        url="https://api.stackexchange.com/2.3",
+        url="https://api.stackexchange.com/2.3/questions?order=desc&sort=activity&site=stackoverflow&pagesize=10",
         settings={
             "query_param": "q",
             "json_path": "items",
@@ -456,6 +456,30 @@ class TestHttpApiHandlerFetch:
 
         call_kwargs = mock_get.call_args.kwargs
         assert call_kwargs["headers"]["Authorization"] == "Bearer secret-key-123"
+
+    @patch("autoinfo.collectors.http_api.httpx.get")
+    def test_fetch_passes_configured_url_verbatim(
+        self, mock_get: MagicMock, stacked_config: SourceConfig
+    ) -> None:
+        """Regression: httpx.get must receive the configured URL exactly,
+        not a bare base. Catches missing urljoin / items_path bugs."""
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.json.return_value = {"items": []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        handler = HttpApiHandler(stacked_config)
+        handler.fetch(stacked_config.url, limit=5)
+
+        # First positional arg to httpx.get MUST be the full configured URL
+        url_arg = mock_get.call_args.args[0]
+        assert url_arg == stacked_config.url, (
+            f"Expected httpx.get URL to be the configured URL exactly.\n"
+            f"  Configured: {stacked_config.url}\n"
+            f"  Actual:     {url_arg}"
+        )
+        assert "questions" in url_arg, "URL must include /questions path"
+        assert "site=stackoverflow" in url_arg, "URL must include site param"
 
 
 # ---------------------------------------------------------------------------

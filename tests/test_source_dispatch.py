@@ -45,7 +45,7 @@ DOMAINS: list[str] = [
 EXPECTED_PASS: dict[str, list[str]] = {
     "medical-research": ["pubmed", "arXiv", "CrossRef", "dblp", "openalex", "semantic-scholar", "uspto"],
     "ai-commercial": ["techcrunch", "producthunt", "Crunchbase", "36kr"],
-    "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Twelve Data", "World Bank Data"],
+    "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"],
     "tech-ai-developer": ["Substack RSS (tech) — Pragmatic Engineer", "GitHub Trending", "HackerNews API", "Stack Exchange", "ProductHunt", "Reddit", "Spotify AI Podcasts", "Bilibili (B站)"],
     "language-learning": ["project-gutenberg", "news-in-levels", "commonlit"],
 }
@@ -155,10 +155,10 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-        # 3. Grand totals: 27 pass, 0 fail
-        assert len(all_pass) == 27, f"Expected 27 PASS, got {len(all_pass)}"
+        # 3. Grand totals: 28 pass, 0 fail
+        assert len(all_pass) == 28, f"Expected 28 PASS, got {len(all_pass)}"
         assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-        assert total == 27, f"Expected 27 total sources, got {total}"
+        assert total == 28, f"Expected 28 total sources, got {total}"
 
 
 # ---------------------------------------------------------------------------

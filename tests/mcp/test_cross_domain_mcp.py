@@ -176,15 +176,21 @@ class TestDelegation:
                     "# Cross-Domain Report\n\n## executive summary\n\nTest via dispatch."
                 )
 
-                result_list = await call_tool(
-                    "generate_cross_domain_report",
-                    {
-                        "domains": ["medical-research", "ai-commercial"],
-                        "format": "markdown",
-                        "period": "week",
-                        "report_type": "standard",
-                    },
-                )
+                # generate_cross_domain_report is LLM-required; the guard in
+                # call_tool reads the real config, not the mock above — patch
+                # _is_llm_configured so the guard passes.
+                with patch(
+                    "autoinfo.mcp.server._is_llm_configured", return_value=True
+                ):
+                    result_list = await call_tool(
+                        "generate_cross_domain_report",
+                        {
+                            "domains": ["medical-research", "ai-commercial"],
+                            "format": "markdown",
+                            "period": "week",
+                            "report_type": "standard",
+                        },
+                    )
 
         assert len(result_list) == 1
         assert isinstance(result_list[0], TextContent)

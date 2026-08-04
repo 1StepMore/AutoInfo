@@ -18,7 +18,7 @@ import os
 import pytest
 
 from autoinfo.models import Item
-from conftest import HAVE_LLM_KEY, requires_llm_key
+from tests.conftest import HAVE_LLM_KEY, requires_llm_key
 
 # ---------------------------------------------------------------------------
 # All tests in this module skip by default.

@@ -65,7 +65,7 @@ class TestInitSuccess:
         assert result["domain"] == "medical-research"
         assert (tmp_path / ".autoinfo").is_dir()
         assert (tmp_path / ".autoinfo" / "config.yaml").is_file()
-        assert (tmp_path / ".autoinfo" / "knowledge" / "01-Raw").is_dir()
+        assert (tmp_path / "knowledge" / "01-Raw").is_dir()
 
     def test_creates_with_project_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)

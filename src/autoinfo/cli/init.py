@@ -23,7 +23,7 @@ _DATA_DIR = _HERE.parent / "data"
 _DEFAULT_CONFIG = _DATA_DIR / "default_config.yaml"
 _DEMO_DOMAINS_DIR = _DATA_DIR / "domains"
 
-# Directory structure created inside .autoinfo/
+# Runtime directories created at project root (data dirs; config stays in .autoinfo/)
 _REQUIRED_SUBDIRS = [
     "knowledge/00-Inbox",
     "knowledge/01-Raw",
@@ -133,7 +133,7 @@ def _run_init(domains: list[str], autoinfo_dir: Path, project_name: str = "") ->
     _generate_config(domains, config_dst, project_name=project_name)
 
     for sub in _REQUIRED_SUBDIRS:
-        d = autoinfo_dir / sub
+        d = autoinfo_dir.parent / sub
         if _ensure_dir(d):
             typer.echo(f"  CREATE  {d}/")
         else:

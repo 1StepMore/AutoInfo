@@ -3346,12 +3346,12 @@ def _handle_init_project(
             "llm_base_url": llm_base_url or "(default)",
             "would_create_dirs": [
                 ".autoinfo/",
-                ".autoinfo/knowledge/00-Inbox/",
-                ".autoinfo/knowledge/01-Raw/",
-                ".autoinfo/knowledge/02-Draft/",
-                ".autoinfo/knowledge/03-Wiki/",
-                ".autoinfo/collections/",
-                ".autoinfo/outputs/",
+                "knowledge/00-Inbox/",
+                "knowledge/01-Raw/",
+                "knowledge/02-Draft/",
+                "knowledge/03-Wiki/",
+                "collections/",
+                "outputs/",
             ],
             "would_create_files": [
                 ".autoinfo/config.yaml",

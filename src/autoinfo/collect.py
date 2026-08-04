@@ -707,7 +707,7 @@ def _cache_items(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     for item in items:
-        safe_id = item.id.replace("/", "_") if item.id else item.id
+        safe_id = str(item.id).replace("/", "_") if item.id else item.id
         file_path = base_dir / f"{safe_id}.json"
         # Avoid overwriting existing cached files (idempotent)
         if file_path.exists():

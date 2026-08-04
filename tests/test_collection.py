@@ -13,12 +13,14 @@ Covers:
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
+from autoinfo.collect import _cache_items
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import Item, KBEntry
 
@@ -876,3 +878,49 @@ class TestCollectCli:
         for c in calls:
             assert c["limit"] == 10
             assert c["dry_run"] is True
+
+
+# ======================================================================
+# _cache_items id handling (GitHub issue #104)
+# ======================================================================
+
+
+def _make_item(item_id) -> Item:
+    return Item(
+        id=item_id,
+        source_name="gh-trending",
+        source_type="api",
+        source_url=f"https://example.com/{item_id}",
+        title="Test Item",
+        content="Test content",
+    )
+
+
+class TestCacheItemsIdHandling:
+    def test_cache_items_accepts_int_id(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        item = _make_item(123456)
+        _cache_items([item], "tech", "gh-trending")
+        expected = (
+            tmp_path
+            / "collections"
+            / "tech"
+            / "gh-trending"
+            / date.today().isoformat()
+            / "123456.json"
+        )
+        assert expected.is_file()
+
+    def test_cache_items_accepts_slash_in_str_id(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        item = _make_item("10.4103/2348-2907.142333")
+        _cache_items([item], "tech", "gh-trending")
+        expected = (
+            tmp_path
+            / "collections"
+            / "tech"
+            / "gh-trending"
+            / date.today().isoformat()
+            / "10.4103_2348-2907.142333.json"
+        )
+        assert expected.is_file()

@@ -2,14 +2,9 @@
 
 ## What Is AutoInfo
 
-AutoInfo is a **universal information tracking and knowledge base platform**.
-You configure sources and topics; AutoInfo handles collection, LLM-based
-structured extraction, summarization, and builds a queryable knowledge base.
+AutoInfo is a **universal information tracking and knowledge base platform**. You configure sources and topics; AutoInfo handles collection, LLM-based structured extraction, summarization, and builds a queryable knowledge base.
 
-**Key principle**: Domain-agnostic. The nine demo domains (medical-research,
-ai-commercial, financial-intelligence, tech-ai-developer, language-learning,
-online-video, financial-news, online-education, legal-compliance) are configurations, not hardcoded features.
-Users define their own domains.
+**Key principle**: Domain-agnostic. The nine demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance) are configurations, not hardcoded features. Users define their own domains.
 
 ## Agent Operating Model
 
@@ -87,25 +82,20 @@ AutoInfo/
 │       ├── mcp/                     # MCP server (141 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
+│       ├── collectors/              # 26 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output.py                # Output generation (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
-│       ├── email_sender.py          # SMTP email sending
-│       ├── keywords.py              # Keyword management
 │       ├── quality.py               # Quality gates G0-G5, D1-D3 delivery gates
-│       ├── delivery.py              # Delivery channel abstraction (SMTP, webhook, REST, export)
-│       ├── delivery/
-│       │   └── scheduler.py          # Delivery schedule management (add/list/remove schedules, cron integration)
+│       ├── delivery.py              # Delivery channel abstraction (13 channels)
+│       ├── delivery/scheduler.py    # Delivery schedule management (cron integration)
 │       ├── alerts.py                # Alert rule CRUD, YAML persistence, check & dispatch
-│       ├── qa.py                    # Q&A with LLM synthesis
-│       └── ...
+│       └── ...                      # email_sender, keywords, qa, etc.
 ```
 
 ## Architecture Rules
 
-These are hard constraints derived from `founder-expectations.md`.
-Violating them produces incorrect behavior.
+Hard constraints derived from `founder-expectations.md`. Violating them produces incorrect behavior.
 
 ### KB Pipeline
 
@@ -145,12 +135,7 @@ Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
 
 ### Quality Gates (Production-Grade)
 
-Production-grade quality with hard/soft split and retry-first, block-last philosophy.
-G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — they retry
-up to 3 times with escalating context, then block on failure. G1-G3 and G5 are
-**soft gates** with configurable thresholds and actions (archive/flag/pass).
-3 delivery gates (D1-D3) check product completeness, format integrity, and
-freshness at output time.
+Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — 3× retry then block. G1-G3 and G5 are **soft gates** with configurable thresholds and actions (archive/flag/pass). 3 delivery gates (D1-D3) check product completeness, format integrity, and freshness at output time.
 
 | Gate | Type | Priority | Action on Failure |
 |------|------|----------|-------------------|
@@ -219,200 +204,51 @@ freshness at output time.
 | **Audit** | `query_audit_log` |
 | **Validation** | `list_validation_scenarios`, `run_validation_scenario` |
 
-**Discovery flow**:
-1. Call `health_check()` first to verify server is alive and get version info
-2. Use MCP protocol `tools/list` for auto-discovery of all available tools
-3. Call `list_domains()` to see available domains
-4. Call `get_domain_schema(domain)` to see extraction fields for your domain
-5. Call `list_available_models()` to see configured LLM models
-6. Call `list_output_templates(domain)` to see output types for your domain
+**Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
-**Response format**: All tools return `{success: true, data: ...}` on success and the error envelope `{success: false, error: {code, message, actionable}}` on failure. Error codes are centralized in `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 27 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API errors use the same envelope format.
+**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 27 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
 
 ## Common Patterns
 
-### "Track a new topic in medical research"
-```
-1. `add_topic(domain="medical-research", name="IVF breakthroughs", keywords=["IVF", "embryo"])`
-2. `collect_sources(domain="medical-research", topic="IVF breakthroughs", dry_run=true)` → preview
-3. `collect_sources(domain="medical-research", topic="IVF breakthroughs")` → actual collection
-4. `process_collection(domain="medical-research")` → LLM extraction
-5. `list_summaries(domain="medical-research", topic="IVF")` → review results
-6. `flag_for_knowledge_base(summary_id, tags=["ivf", "breakthrough"])` → promote to KB
-```
+Full step-by-step worked examples live in `docs/dev/mcp-usage-examples.md`.
+The table indexes every pattern; the five most-used are inlined below.
 
-### "What changed since last week?"
-```
-1. `get_collection_stats(period="week")` → overview
-2. `get_collection_diff(domain="medical-research", since_collection_id="...")` → new items
-```
+| Pattern | What it does |
+|---------|--------------|
+| Track a new topic | add topic → collect → process → flag to KB (see below) |
+| What changed since last week | collection stats + diff |
+| Check system health | `diagnose_system()` returns health_score + phase (see below) |
+| Configure the LLM (BYOK) | `configure_llm()` stores env var reference (see below) |
+| Create a custom domain | add_domain → add_source → add_topic → collect |
+| Initialise a project | `init_project()` scaffolds + returns next_steps |
+| Save an article to the KB | flag → create_kb_draft → human promotes |
+| Set up and run a cron schedule | add_schedule → cron_install → run |
+| Generate and send a digest email | generate_digest → send_email |
+| Classify content by CEFR level | `classify_cefr(text, language)` |
+| Search (hybrid / vector / faceted) | `search_knowledge_base(mode=...)` (see below) |
+| Export KB to PDF | `export_kb(format="pdf")` |
+| Manage keywords | list → suggest → approve/reject |
+| Generate agent-native JSON | `generate_digest(format="agent")` → JSON-LD |
+| Subscribe to agent push delivery | `set_agent_callback(url, events)` |
+| Generate and deliver digest email | generate_digest(html) → send_email_digest |
+| Use the REST API | FastAPI on port 8741, same error envelope |
+| Handle MCP error responses | read error.code → follow actionable hint (see below) |
+| Generate cross-domain report | `generate_report(domains=[...])` |
+| Set up a delivery schedule | `add_delivery_schedule(cron, output_type, channel)` |
+| Export KB as bundle | `export_kb(format="bundle")` → ZIP |
+| Generate a specialized report | `generate_report(report_type, target_audience)` |
+| Run MCP-native validation | `list_validation_scenarios` / `run_validation_scenario` |
+| Monitor long-running jobs | poll `get_collection_progress(job_id)` |
 
-### "Check system health"
-```
-1. `diagnose_system()` → comprehensive health (LLM key, sources, disk, DB) + `health_score` (0-100) + `phase` (init/collect/process/healthy/degraded)
-```
-→ Returns structured health with composite score. On degraded status, inspect `phase` to identify the failing stage.
+**Track a new topic**: `add_topic(domain, name, keywords)` → `collect_sources(domain, topic, dry_run=true)` → `collect_sources(...)` → `process_collection(domain)` → `list_summaries(domain, topic)` → `flag_for_knowledge_base(summary_id, tags)`.
 
-### "Configure the LLM (BYOK)"
-```
-1. `configure_llm(api_key="sk-...", provider="openai", model="gpt-4")` → stores env var reference *(requires AutoInfo ≥ v1.8.1)*
-2. If LLM is missing, LLM-required tools return `LLM_NOT_CONFIGURED` (not a raw auth error) — see `docs/dev/required-api-keys.md`
-```
-→ Any of the 13 LLM-required tools (e.g. `process_collection`, `generate_digest`, `suggest_keywords`) return `ErrorCode.LLM_NOT_CONFIGURED` at dispatch when no key is configured.
+**Check system health**: `diagnose_system()` → returns `health_score` (0-100) + `phase` (init/collect/process/healthy/degraded). On degraded, inspect `phase`.
 
-### "Create a custom domain"
-```
-1. `add_domain(name="my-custom-domain", description="My custom domain")` → domain created
-2. `list_available_platforms()` → discover supported source types
-3. `add_source(domain="my-custom-domain", name="my-rss", type="rss", url="https://example.com/feed")` → source added
-4. `add_topic(domain="my-custom-domain", name="My Topic", keywords=["keyword1", "keyword2"])` → topic configured
-5. `collect_sources(domain="my-custom-domain")` → collect from all sources
-```
-→ Custom domain with sources and topics fully configured.
+**Configure the LLM (BYOK)**: `configure_llm(api_key, provider, model)` stores an env var reference (`${AUTOINFO_LLM_API_KEY}`), never the raw key. If missing, the 13 LLM-required tools return `LLM_NOT_CONFIGURED` at dispatch. Full variable catalog: `docs/dev/required-api-keys.md`.
 
-### "Initialise a project"
-```
-1. `health_check()` → verify server availability
-2. `init_project(name="my-project", demo="medical-research")` → scaffold project structure *(requires AutoInfo ≥ v1.3)*, returns `next_steps` guidance array
-3. `list_domains()` → confirm demo domain is active
-```
-→ Project initialised with demo domain, sources, and topics configured. Follow the `next_steps` items (e.g. `configure_llm`, add sources) to finish setup.
+**Search KB**: `search_knowledge_base(domain, query, mode="hybrid")` (FTS5 + vector), `mode="vector"` (semantic only), or `mode="faceted"` with `filters={...}`. Omit `domain` to search across all domains.
 
-### "Save an article to the knowledge base"
-```
-1. `flag_for_knowledge_base(summary_id="sum_123", tags=["important", "review"])` → promote summary
-2. `create_kb_draft(summary_id="sum_123")` → agent creates Draft from Raw
-3. (User promotes Draft → Wiki via CLI `autoinfo kb promote`)
-```
-→ Summary flagged, Draft created, awaiting human promotion to Wiki.
-
-### "Set up and run a cron schedule"
-```
-1. `add_schedule(domain="medical-research", cron="0 8 * * 1", topic="IVF breakthroughs")` → schedule created *(requires AutoInfo ≥ v1.2)*
-2. `cron_install()` → install crontab entries *(requires AutoInfo ≥ v1.2)*
-3. `list_schedules()` → verify active schedules
-4. `run_schedules()` → manual trigger for immediate collection
-```
-→ Scheduled collection runs every Monday at 8 AM.
-
-### "Generate and send a digest email"
-```
-1. `generate_digest(domain="medical-research", period="week")` → digest Markdown
-2. `send_email(to="user@example.com", subject="Weekly Digest", body=digest)` → email sent via SMTP *(requires AutoInfo ≥ v1.2)*
-```
-→ Weekly digest generated and delivered to inbox.
-
-### "Classify content by CEFR level"
-```
-1. `classify_cefr(text="The mitochondria is the powerhouse of the cell.", language="en")` → returns CEFR level *(requires AutoInfo ≥ v1.2)*
-```
-→ Returns `{"level": "B2", "confidence": 0.87, "features": ["academic vocabulary", "complex structure"]}`
-
-### "Search with hybrid or vector mode"
-```
-1. `search_knowledge_base(domain="medical-research", query="embryo development", mode="hybrid")` → FTS5 + vector
-2. `search_knowledge_base(domain="medical-research", query="embryo development", mode="vector")` → semantic only *(requires AutoInfo ≥ v1.2)*
-3. `search_knowledge_base(domain="medical-research", mode="faceted", filters={"source_type": "pubmed", "relevance_min": 70})` → filtered *(requires AutoInfo ≥ v1.2)*
-```
-→ Ranked results from KB with source citations.
-
-### "Export knowledge base to PDF"
-```
-1. `export_kb(domain="medical-research", format="pdf", topic="IVF breakthroughs")` → generates PDF report
-```
-→ PDF file written to `exports/medical-research/IVF-breakthroughs-report.pdf`
-
-### "Manage keywords for a domain"
-```
-1. `list_keywords(domain="medical-research")` → view current keywords and pending candidates
-2. `suggest_keywords(domain="medical-research", topic="IVF breakthroughs")` → LLM suggests new keyword candidates
-3. `approve_keyword(keyword_id="kw_123")` → accept a suggested keyword into the active set
-4. `reject_keyword(keyword_id="kw_456")` → reject a suggested or obsolete keyword
-```
-→ Keywords curated for source filtering and topic matching. Use the CLI (`autoinfo keywords add|remove|list`) for direct add/remove outside the suggest-then-approve workflow.
-
-### "Generate agent-native JSON output"
-```
-1. `generate_digest(domain="medical-research", period="week", format="agent")` → returns structured JSON-LD optimized for LLM re-consumption
-```
-→ Returns `{"@type": "KnowledgeDigest", "entries": [{uuid, title, tl_dr, source_url, confidence_score, entities, key_points}], "trends": [...], "metadata": {entry_count, quality_gates}}`. Agent can re-synthesize, cache, or combine with other data.
-
-### "Subscribe to agent push delivery"
-```
-1. `set_agent_callback(url="https://my-agent.example.com/callback", events=["new_digest", "new_report"])` → register callback
-2. AutoInfo pushes structured JSON when a matching product is generated
-3. Agent receives `{callback_event: "new_digest", product: {...}}` via HTTP POST
-```
-→ Agent subscription pattern: register once, receive pushes without polling. *(requires AutoInfo ≥ v1.7)*
-
-### "Generate and deliver a digest email"  
-```
-1. `generate_digest(domain="medical-research", period="week", format="html")` → digest HTML
-2. `send_email_digest(domain="medical-research", period="week", recipients=["user@example.com"])` → sends via SMTP
-```
-→ Digest generated as HTML and emailed to subscribers.
-
-### "Use the REST API"
-```
-1. Start the FastAPI server: `uvicorn autoinfo.api.server:app --port 8741`
-2. `curl http://localhost:8741/health` → {"status": "ok"}
-3. `curl http://localhost:8741/api/v1/entries?domain=medical-research` → paginated entries
-4. `curl -X POST http://localhost:8741/api/v1/search -H "Content-Type: application/json" -d '{"query": "embryo"}'`
-```
-→ Full KB CRUD over HTTP, no auth required (localhost security). Errors use the same `{success, error: {code, message, actionable}}` envelope as MCP — nonexistent domains return `DomainNotFound` with remediation hint.
-
-### "Configure the LLM"
-```
-1. `configure_llm(api_key="sk-...", provider="openai", model="gpt-4")` → stores env var reference in config *(requires AutoInfo ≥ v1.8.1)*
-2. api_key is stored as `${AUTOINFO_LLM_API_KEY}` env var reference — never the raw key
-3. Set the actual key as an environment variable: `export AUTOINFO_LLM_API_KEY="sk-..."`
-```
-→ LLM configured for extraction and processing. If the key is missing, `configure_llm` returns `CONFIG_NOT_FOUND` and LLM-required tools return `LLM_NOT_CONFIGURED`. Full variable catalog: `docs/dev/required-api-keys.md`.
-
-### "Handle MCP error responses"
-All MCP tools return the canonical envelope `{success, error: {code, message, actionable}}`. When a tool fails:
-1. Read `error.code` to classify the failure (`DOMAIN_NOT_FOUND`, `LLM_NOT_CONFIGURED`, `VALIDATION_ERROR`, ...)
-2. If `actionable` is true, follow the remediation hint in `error.message` — e.g. `DOMAIN_NOT_FOUND` errors include "Use `add_domain()` to create it."
-3. For `LLM_NOT_CONFIGURED`, run `configure_llm()` first (or check `docs/dev/required-api-keys.md`)
-4. `process_collection` with no cached items returns `{status: "noop", total_items: 0}` — not an error, proceed with collection first
-```
-→ Every configuration gap produces a structured, actionable error; no raw tracebacks or silent fallbacks.
-
-### "Generate cross-domain report"
-```
-1. generate_report(domain="medical-research", domains=["medical-research", "ai-commercial"], format="markdown", report_type="industry") → combined analysis
-2. Or via CLI: autoinfo output report --domains medical --domains ai-commercial --type trend
-```
-→ Cross-domain analysis combining insights from multiple domains.
-
-### "Set up a delivery schedule"
-```
-1. add_delivery_schedule(domain="medical-research", cron_expression="0 8 * * 1", output_type="digest", channel="email") → schedule created
-2. list_delivery_schedules() → view all schedules
-3. Schedules execute automatically via autoinfo cron run
-```
-→ Automated scheduled delivery of digests and reports.
-
-### "Export knowledge base as bundle"
-```
-1. export_kb(domain="medical-research", format="bundle") → creates ZIP with JSON+MD+YAML+PDF
-```
-→ Comprehensive export bundle with all formats in a single ZIP archive.
-
-### "Generate a specialized report"
-```
-1. generate_report(domain="medical-research", format="markdown", report_type="competitive", target_audience="researcher") → competitive analysis report
-```
-→ Specialized report types (competitive, trend, industry, summary) with audience targeting.
-
-### "Run MCP-native validation"
-```
-1. `list_validation_scenarios()` → returns available scenario names (43 built-in across all MCP categories, CLI, and REST API surfaces)
-2. `run_validation_scenario(scenario="system-health")` → executes steps in-process (real tool calls, real subprocesses for CLI steps, real HTTP requests for REST steps), returns {success, data: {scenario, status: passed|failed|unconfigured, summary, steps}}
-3. Scenarios with requires_env (e.g. llm-gated needs AUTOINFO_LLM_API_KEY) return status "unconfigured" when env vars are missing — never silently skipped, never fake-passed. Director User must provide BYOK keys during onboarding.
-4. Steps may use `llm_assert` — a real LLM call judges the tool output against a natural-language assertion (semantic validation, not just structure checks)
-```
-→ Agent-native validation: scenarios execute MCP tools through the MCP surface (plus CLI subprocess + REST HTTP steps) and assert on the standard {success, data} envelope. Real calls only — no mocks, no compromise.
+**Handle MCP errors**: All tools return `{success, error: {code, message, actionable}}`. Read `error.code`, follow the `actionable` hint (e.g. `DOMAIN_NOT_FOUND` says "Use `add_domain()`"). `process_collection` with no cached items returns `{status: "noop"}`, not an error.
 
 ## LLM Configuration
 
@@ -431,30 +267,36 @@ AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
 3. Environment variable `AUTOINFO_LLM_API_KEY`
 4. Default values (openrouter/deepseek/deepseek-chat)
 
-**Custom endpoint example** (e.g. OpenCode Go, Ollama, Azure):
-1. Set `provider` to `"openai"`
-2. Set `base_url` to your endpoint (e.g. `http://localhost:11434/v1`)
-3. Set `api_key` via env var or config
-4. Set `model` to your model name
+**Custom endpoint** (e.g. OpenCode Go, Ollama, Azure): set `provider="openai"`, `base_url` to your endpoint, `api_key` via env var, `model` to your model name.
 
-### "Monitor long-running collection or processing"
+## `.omo/` Workspace
 
-Collection and processing now return a `job_id` for progress polling:
+The `.omo/` directory is the **agent-orchestrator workspace** used by Sisyphus-style workflows (plans, notepads, evidence, drafts, run-continuation, scripts, `boulder.json`). It is agent runtime scratch space, not AutoInfo product data.
 
-1. Start collection: `collect_sources(domain="medical", topic="IVF", async=true)` → returns `{..., "job_id": "uuid-xxx"}`
-2. Poll every 5 seconds:
-   ```
-   while True:
-       status = get_collection_progress(job_id="uuid-xxx")
-       if status["is_complete"]:
-           break
-       sleep(5)
-   ```
-3. Start processing: `process_collection(domain="medical")` → returns `{..., "job_id": "uuid-yyy"}`
-4. Poll: `get_processing_progress(job_id="uuid-yyy")` → check `status["is_complete"]`
-5. When done: `list_summaries(domain="medical")` to review results
+- Agents may **read** `.omo/` to recover orchestrator context (plans, evidence, notepads).
+- Do **not** treat `.omo/` contents as KB entries, sources, or product output. Not part of the collection pipeline or 4-tier KB.
+- Do **not** modify `.omo/` from AutoInfo MCP tools. It is owned by the orchestrator layer above AutoInfo.
+- `.omo/` is gitignored runtime state, not a source-of-truth directory.
 
-**Legacy**: `get_collection_progress(domain="medical")` and `get_processing_progress(domain="medical")` still work for simple single-domain usage without job_id.
+## Runtime Artifacts vs Source Files
+
+AutoInfo generates runtime state at execution time. Distinguish from source:
+
+| Path | Type | Notes |
+|------|------|-------|
+| `src/` | **Source** | Code, the only source of truth for behavior |
+| `tests/` | **Source** | Test suite |
+| `docs/` | **Source** | Documentation |
+| `AGENTS.md`, `README.md`, `pyproject.toml`, `Makefile` | **Source** | Project metadata |
+| `collections/` | Runtime | Raw JSON cache from `collect`, gitignored |
+| `knowledge/` | Runtime | 4-tier KB pipeline output (01-Raw, 02-Draft, 03-Wiki), gitignored |
+| `outputs/` | Runtime | Generated digests, reports, exports, gitignored |
+| `autoinfo.db` | Runtime | SQLite KB + user + cost stores, gitignored |
+| `logs/` | Runtime | Structured pipeline logs, gitignored |
+| `.autoinfo/` | Runtime | Project config (`config.yaml`), gitignored — modify via MCP tools, not by hand |
+| `.omo/` | Runtime | Agent-orchestrator workspace, gitignored (see above) |
+
+Never hand-edit runtime artifacts to fix behavior — fix the source.
 
 ## Status
 
@@ -547,6 +389,7 @@ Collection and processing now return a `job_id` for progress polling:
 
 ## References
 
+- `docs/dev/mcp-usage-examples.md` — Full worked MCP tool workflow examples (moved from Common Patterns)
 - `docs/dev/required-api-keys.md` — Full catalog of API keys and environment variables
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
 - `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)

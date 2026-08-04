@@ -183,6 +183,82 @@ autoinfo output digest --domain medical-research --period week
 autoinfo output export --domain medical-research --format json
 ```
 
+## Run the AutoInfo MCP server
+
+AutoInfo ships an MCP server (`python -m autoinfo.mcp.server`) that exposes
+141 tools over stdio. Editor configs are already committed for Cursor
+(`.cursor/mcp.json`), OpenCode (`.opencode/mcp.json`), and Claude Desktop
+(`.claude/claude_desktop_config.json`). They all run
+`python -m autoinfo.mcp.server` and pass `AUTOINFO_LLM_API_KEY` through from
+your environment.
+
+### 1. Install the package
+
+The configs invoke bare `python`, so the `autoinfo` package must be
+importable by whatever interpreter `python` resolves to on your PATH. From
+the repo root:
+
+```bash
+pip install -e .
+```
+
+If you work inside a virtualenv, install into that interpreter instead:
+
+```bash
+.venv/bin/pip install -e .
+# or, with uv
+uv pip install -e .
+```
+
+Then verify the module resolves before wiring up the editor:
+
+```bash
+python -c "import autoinfo; print(autoinfo.__file__)"
+```
+
+If `python -m autoinfo.mcp.server` later fails with
+`No module named autoinfo`, the package was installed into a different
+interpreter than the one `python` points at. Activate the right environment
+or adjust PATH so the editor finds the same `python`.
+
+### 2. Provide the LLM API key
+
+AutoInfo reads its LLM key from the `AUTOINFO_LLM_API_KEY` environment
+variable. Export it in the shell that launches your editor, so the editor
+process inherits it (not just your terminal session):
+
+```bash
+export AUTOINFO_LLM_API_KEY="sk-..."
+```
+
+AutoInfo does not load `.env` files automatically. The key has to be
+present in the environment of whatever process spawns the MCP server. For
+the full catalog of environment variables each source and feature expects,
+see [`docs/dev/required-api-keys.md`](docs/dev/required-api-keys.md).
+
+### 3. What the `${...}` placeholder in the configs means
+
+Both `.cursor/mcp.json` and `.opencode/mcp.json` contain:
+
+```json
+"env": { "AUTOINFO_LLM_API_KEY": "${AUTOINFO_LLM_API_KEY}" }
+```
+
+The `${AUTOINFO_LLM_API_KEY}` is a placeholder that the editor (Cursor,
+OpenCode, or Claude Desktop) interpolates from its own process environment
+when it spawns the MCP server. AutoInfo never sees or expands this token
+itself, and it is not shell variable expansion done by `python`. If the
+variable is unset in the editor's environment, the server starts with an
+empty key and every LLM-required tool returns `LLM_NOT_CONFIGURED` until
+you fix it.
+
+The same lookup rule applies to `"command": "python"`: the editor runs
+whatever `python` is on PATH at launch time. If you installed `autoinfo`
+into a virtualenv, make sure that virtualenv's `python` is the one the
+editor finds. Either activate the virtualenv before launching the editor,
+or change the config to point at the absolute interpreter path (for
+example `/home/you/.venv/bin/python`).
+
 ## Architecture
 
 ```

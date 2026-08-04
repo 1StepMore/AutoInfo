@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Cron CLI — manage scheduled collection jobs.
 
 Usage::
@@ -10,6 +8,7 @@ Usage::
     autoinfo cron remove-schedule --name nightly
 """
 
+from __future__ import annotations
 
 import json
 import logging
@@ -494,7 +493,11 @@ def run(
         raise typer.Exit(code=1)
 
     if json_output:
-        typer.echo(json.dumps({"items": results, "count": len(results)}, ensure_ascii=False, indent=2))
+        typer.echo(
+            json.dumps(
+                {"items": results, "count": len(results)}, ensure_ascii=False, indent=2
+            )
+        )
         return
 
     due = [r for r in results if r.get("due")]
@@ -827,12 +830,16 @@ def _get_crontab_lines() -> list[str]:
             ["crontab", "-l"],
             capture_output=True,
             text=True,
+            timeout=15,
         )
         if result.returncode == 0:
             return [line for line in result.stdout.splitlines() if line.strip()]
         return []
     except FileNotFoundError:
         _check_crontab()
+        return []
+    except subprocess.TimeoutExpired:
+        logger.warning("`crontab -l` timed out after 15s; treating as empty crontab")
         return []
 
 
@@ -848,9 +855,13 @@ def _set_crontab_lines(lines: list[str]) -> None:
             text=True,
             capture_output=True,
             check=True,
+            timeout=30,
         )
     except FileNotFoundError:
         _check_crontab()
+    except subprocess.TimeoutExpired:
+        logger.error("`crontab -` timed out after 30s; crontab not updated")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -917,7 +928,9 @@ def add_delivery(
         "digest", "--output", help="Output type: digest or report",
     ),
     channel: str = typer.Option(
-        "email", "--channel", help="Delivery channel: email, webhook, rest, telegram, discord, etc.",
+        "email",
+        "--channel",
+        help="Delivery channel: email, webhook, rest, telegram, discord, etc.",
     ),
     to: str = typer.Option(
         "", "--to", help="Comma-separated recipients (emails, webhook URLs, etc.)",

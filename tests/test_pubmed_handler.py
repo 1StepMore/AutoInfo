@@ -7,6 +7,7 @@ NCBI API so tests are deterministic and fast after the first run.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
@@ -32,15 +33,35 @@ def vcr_config():
     }
 
 
+_CASSETTE_NAMES = (
+    "TestPubMedIntegration.test_search_returns_pmids.yaml",
+    "TestPubMedIntegration.test_search_empty_result.yaml",
+    "TestPubMedIntegration.test_fetch_returns_parsed_articles.yaml",
+    "TestPubMedIntegration.test_fetch_to_item_round_trip.yaml",
+)
+
+
+def _cassettes_present() -> bool:
+    return all(
+        (Path(__file__).parent / "cassettes" / name).exists()
+        for name in _CASSETTE_NAMES
+    )
+
+
 # ---------------------------------------------------------------------------
 # Integration tests (VCR-recorded, touch the real NCBI API on first run)
 # ---------------------------------------------------------------------------
 
 
 class TestPubMedIntegration:
-    """End-to-end tests that record real HTTP traffic."""
+    """End-to-end tests that replay recorded HTTP traffic."""
 
-    @pytest.mark.vcr("test_pubmed_search.yaml")
+    pytestmark = pytest.mark.skipif(
+        not _cassettes_present(),
+        reason="PubMed VCR cassettes missing — record once with network, then commit them",
+    )
+
+    @pytest.mark.vcr
     def test_search_returns_pmids(self) -> None:
         """Search should return a list of numeric PMID strings."""
         handler = PubMedHandler()
@@ -53,14 +74,14 @@ class TestPubMedIntegration:
             assert isinstance(pmid, str)
             assert pmid.isdigit(), f"PMID should be numeric, got {pmid!r}"
 
-    @pytest.mark.vcr("test_pubmed_search.yaml")
+    @pytest.mark.vcr
     def test_search_empty_result(self) -> None:
         """A query unlikely to match anything should return an empty list."""
         handler = PubMedHandler()
         pmids = handler.search("ZZZZZZNONEXISTENT999999", max_results=5)
         assert isinstance(pmids, list)
 
-    @pytest.mark.vcr("test_pubmed_fetch.yaml")
+    @pytest.mark.vcr
     def test_fetch_returns_parsed_articles(self) -> None:
         """Fetch should return structured dicts with all expected fields."""
         handler = PubMedHandler()
@@ -97,7 +118,7 @@ class TestPubMedIntegration:
                 assert "firstname" in author
                 assert "initials" in author
 
-    @pytest.mark.vcr("test_pubmed_fetch.yaml")
+    @pytest.mark.vcr
     def test_fetch_to_item_round_trip(self) -> None:
         """Fetch → to_item should produce valid Item instances."""
         handler = PubMedHandler()
@@ -319,15 +340,14 @@ class TestPubMedErrorHandling:
             raise httpx.TimeoutException(msg, request=None)  # type:ignore[arg-type]
 
         with patch("httpx.get", side_effect=_fake_get):
-            start = time.time()
-            with pytest.raises(httpx.TimeoutException):
-                handler.search("test", max_results=1)
-            elapsed = time.time() - start
+            with patch("autoinfo.collectors.pubmed.time.sleep") as mock_sleep:
+                with pytest.raises(httpx.TimeoutException):
+                    handler.search("test", max_results=1)
 
         assert call_count == 3
-        # Expect at least 2 + 4 = 6 seconds of backoff sleep
-        # (third attempt does not sleep before raising)
-        assert elapsed >= 6.0
+        sleep_delays = [call.args[0] for call in mock_sleep.call_args_list]
+        assert 2 in sleep_delays
+        assert 4 in sleep_delays
 
     def test_retry_on_network_error(self) -> None:
         """NetworkError is also retried 3 times before raising."""
@@ -340,8 +360,9 @@ class TestPubMedErrorHandling:
             raise httpx.NetworkError("Simulated network error", request=None)  # type:ignore[arg-type]
 
         with patch("httpx.get", side_effect=_fake_get):
-            with pytest.raises(httpx.NetworkError):
-                handler.search("test", max_results=1)
+            with patch("autoinfo.collectors.pubmed.time.sleep"):
+                with pytest.raises(httpx.NetworkError):
+                    handler.search("test", max_results=1)
 
         assert call_count == 3
 

@@ -189,12 +189,18 @@ class TestWebHandlerErrors:
 
     def test_unreachable_url_returns_empty_list(self, handler: WebHandler) -> None:
         """An unreachable URL should return an empty list."""
-        items = handler.fetch("https://invalid.example.com/nonexistent-page")
+        with patch("httpx.get", side_effect=httpx.ConnectError("unreachable", request=None)):
+            with patch("autoinfo.collectors.web.time.sleep"):
+                items = handler.fetch("https://invalid.example.com/nonexistent-page")
         assert items == []
 
     def test_non_html_url_returns_empty_list(self, handler: WebHandler) -> None:
         """A URL returning non-HTML content should be skipped."""
-        items = handler.fetch("https://httpbin.org/robots.txt")
+        resp = httpx.Response(
+            200, text="{}", headers={"content-type": "application/json"}
+        )
+        with patch("httpx.get", return_value=resp):
+            items = handler.fetch("https://httpbin.org/robots.txt")
         assert items == []
 
     def test_handler_never_raises(self, handler: WebHandler) -> None:
@@ -220,7 +226,8 @@ class TestWebHandlerErrors:
             raise httpx.TimeoutException(msg, request=None)  # type:ignore[arg-type]
 
         with patch("httpx.get", side_effect=_fake_get):
-            items = handler.fetch("https://example.com/article")
+            with patch("autoinfo.collectors.web.time.sleep"):
+                items = handler.fetch("https://example.com/article")
         assert items == []
         assert call_count == 3
 
@@ -234,7 +241,8 @@ class TestWebHandlerErrors:
             raise httpx.NetworkError("Simulated network error", request=None)  # type:ignore[arg-type]
 
         with patch("httpx.get", side_effect=_fake_get):
-            items = handler.fetch("https://example.com/article")
+            with patch("autoinfo.collectors.web.time.sleep"):
+                items = handler.fetch("https://example.com/article")
         assert items == []
         assert call_count == 3
 
@@ -265,7 +273,9 @@ class TestWebHandlerErrors:
         result = handler._extract("<html><head></head><body></body></html>", "http://x.com")
         assert result is None
 
-    def test_extract_logs_on_exception(self, handler: WebHandler, caplog: pytest.LogCaptureFixture) -> None:
+    def test_extract_logs_on_exception(
+        self, handler: WebHandler, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """If trafilatura raises, _extract logs the error and returns None."""
         import logging
         caplog.set_level(logging.ERROR)

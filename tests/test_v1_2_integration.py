@@ -25,13 +25,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
-from autoinfo.models import Item, KBEntry
-
+from autoinfo.models import Item
 
 # ======================================================================
 # Mark registration
@@ -104,7 +103,12 @@ def sample_item() -> Item:
         source_type="api",
         source_url="https://example.com/article1",
         title="Improved IVF outcomes with time-lapse imaging: an RCT",
-        content="Time-lapse embryo imaging significantly improves live birth rates compared to standard morphological assessment in IVF patients. A multicenter RCT with 1,200 patients showed 48.2% vs 39.5% live birth rate (p=0.006).",
+        content=(
+            "Time-lapse embryo imaging significantly improves live birth rates "
+            "compared to standard morphological assessment in IVF patients. "
+            "A multicenter RCT with 1,200 patients showed 48.2% vs 39.5% live "
+            "birth rate (p=0.006)."
+        ),
         content_type="text",
         collected_at="2026-07-15T10:30:00Z",
         language="en",
@@ -190,9 +194,9 @@ class TestVectorSearch:
         """store_embedding writes to DB; search_embeddings reads (without sqlite-vec)."""
         with patch("autoinfo.embeddings._sqlite_vec_available", False):
             from autoinfo.embeddings import (
-                store_embedding,
-                search_embeddings,
                 ensure_embedding_table,
+                search_embeddings,
+                store_embedding,
             )
             conn = sqlite3.connect(":memory:")
             ensure_embedding_table(conn)
@@ -225,19 +229,22 @@ class TestRestAPI:
     @pytest.fixture
     def client(self, tmp_project: Path):
         """Create a TestClient with a temporary KB store in the project dir."""
-        from autoinfo.api.server import app
-        from autoinfo.api.routes import _get_store
         from fastapi.testclient import TestClient
 
         # Reset the singleton
         import autoinfo.api.routes as routes
+        from autoinfo.api.routes import _get_store
+        from autoinfo.api.server import app
         routes._store = None
 
         store = _get_store()
         store.base_path = tmp_project / "knowledge"
         store.base_path.mkdir(parents=True, exist_ok=True)
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.config.get_config_path",
+            return_value=tmp_project / ".autoinfo" / "config.yaml",
+        ):
             yield TestClient(app)
 
         routes._store = None
@@ -331,7 +338,10 @@ class TestRestAPI:
                 "tags": ["IVF"],
             },
         )
-        response = client.get("/api/v1/search", params={"q": "IVF", "mode": "fts5", "domain": "medical-research"})
+        response = client.get(
+            "/api/v1/search",
+            params={"q": "IVF", "mode": "fts5", "domain": "medical-research"},
+        )
         assert response.status_code == 200
         data = response.json()
         assert "entries" in data
@@ -448,8 +458,8 @@ class TestEmailSender:
 
     def test_send_digest_success(self, tmp_path):
         """send_digest succeeds with valid config and mocked SMTP."""
-        from autoinfo.email_sender import send_digest
         from autoinfo.config import Config, EmailConfig
+        from autoinfo.email_sender import send_digest
 
         # Build config with email enabled
         config = Config(
@@ -466,7 +476,10 @@ class TestEmailSender:
         # Mock SMTP
         mock_smtp = MagicMock()
         with patch("smtplib.SMTP", return_value=mock_smtp):
-            with patch("autoinfo.email_sender.generate_digest", return_value="# Digest\n\nContent here"):
+            with patch(
+                "autoinfo.email_sender.generate_digest",
+                return_value="# Digest\n\nContent here",
+            ):
                 result = send_digest(domain="medical-research", period="weekly", config=config)
 
         assert result["success"] is True
@@ -477,8 +490,8 @@ class TestEmailSender:
 
     def test_send_digest_not_enabled_raises(self):
         """send_digest raises when email is not enabled."""
-        from autoinfo.email_sender import send_digest
         from autoinfo.config import Config, EmailConfig
+        from autoinfo.email_sender import send_digest
 
         config = Config(email=EmailConfig(enabled=False))
         with pytest.raises(RuntimeError, match="not enabled"):
@@ -486,8 +499,8 @@ class TestEmailSender:
 
     def test_send_digest_no_smtp_host_raises(self):
         """send_digest raises when SMTP host is not configured."""
-        from autoinfo.email_sender import send_digest
         from autoinfo.config import Config, EmailConfig
+        from autoinfo.email_sender import send_digest
 
         config = Config(email=EmailConfig(enabled=True, from_addr="test@example.com"))
         with pytest.raises(RuntimeError, match="SMTP host"):
@@ -495,8 +508,8 @@ class TestEmailSender:
 
     def test_send_digest_no_from_addr_raises(self):
         """send_digest raises when from_addr is not configured."""
-        from autoinfo.email_sender import send_digest
         from autoinfo.config import Config, EmailConfig
+        from autoinfo.email_sender import send_digest
 
         config = Config(email=EmailConfig(enabled=True, smtp_host="smtp.example.com"))
         with pytest.raises(RuntimeError, match="From address"):
@@ -504,9 +517,10 @@ class TestEmailSender:
 
     def test_send_digest_smtp_failure_raises(self):
         """send_digest raises when SMTP delivery fails."""
-        from autoinfo.email_sender import send_digest
-        from autoinfo.config import Config, EmailConfig
         import smtplib
+
+        from autoinfo.config import Config, EmailConfig
+        from autoinfo.email_sender import send_digest
 
         config = Config(
             email=EmailConfig(
@@ -646,7 +660,6 @@ class TestKeywordsLifecycle:
 
     def test_cli_keywords_approve(self, cli_runner, tmp_path):
         """autoinfo keywords approve transitions keyword to verified."""
-        from autoinfo.cli import app
         from autoinfo.keywords import KeywordsFile, KeywordState
         kf = KeywordsFile(base_dir=tmp_path)
         kf.add_keyword("medical-research", "IVF")
@@ -657,7 +670,6 @@ class TestKeywordsLifecycle:
 
     def test_cli_keywords_reject(self, cli_runner, tmp_path):
         """autoinfo keywords reject transitions keyword to deprecated."""
-        from autoinfo.cli import app
         from autoinfo.keywords import KeywordsFile, KeywordState
         kf = KeywordsFile(base_dir=tmp_path)
         kf.add_keyword("medical-research", "IVF")
@@ -683,7 +695,7 @@ class TestCrontabInstaller:
 
     def test_install_crontab(self):
         """install adds a crontab line marked with the managed marker."""
-        from autoinfo.cli.cron import install, CRONTAB_MARKER
+        from autoinfo.cli.cron import CRONTAB_MARKER, install
         mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
         with patch("shutil.which", return_value="/usr/bin/crontab"):
             with patch("subprocess.run", mock_run):
@@ -698,15 +710,19 @@ class TestCrontabInstaller:
 
     def test_install_idempotent(self):
         """install is idempotent when an entry already exists."""
-        from autoinfo.cli.cron import install, CRONTAB_MARKER
-        mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=f"0 6 * * * cd /tmp && cmd {CRONTAB_MARKER}"))
+        from autoinfo.cli.cron import CRONTAB_MARKER, install
+        mock_run = MagicMock(
+            return_value=MagicMock(
+                returncode=0, stdout=f"0 6 * * * cd /tmp && cmd {CRONTAB_MARKER}"
+            )
+        )
         with patch("shutil.which", return_value="/usr/bin/crontab"):
             with patch("subprocess.run", mock_run):
                 install()
 
     def test_uninstall_removes_marked_lines(self):
         """uninstall removes lines containing the managed marker."""
-        from autoinfo.cli.cron import uninstall, CRONTAB_MARKER
+        from autoinfo.cli.cron import CRONTAB_MARKER, uninstall
         existing = f"0 6 * * * cd /tmp && cmd {CRONTAB_MARKER}"
         mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=existing))
         with patch("shutil.which", return_value="/usr/bin/crontab"):
@@ -726,6 +742,32 @@ class TestCrontabInstaller:
         with patch("shutil.which", return_value="/usr/bin/crontab"):
             with patch("subprocess.run", mock_run):
                 uninstall()
+
+    def test_get_crontab_lines_timeout_returns_empty(self):
+        """A timed-out `crontab -l` is treated as an empty crontab."""
+        import subprocess
+
+        from autoinfo.cli.cron import _get_crontab_lines
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="crontab -l", timeout=15),
+        ):
+            assert _get_crontab_lines() == []
+
+    def test_set_crontab_lines_timeout_exits(self):
+        """A timed-out `crontab -` aborts with exit code 1."""
+        import subprocess
+
+        import typer
+
+        from autoinfo.cli.cron import _set_crontab_lines
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="crontab -", timeout=30),
+        ):
+            with pytest.raises(typer.Exit) as excinfo:
+                _set_crontab_lines(["0 6 * * * cd /tmp && cmd"])
+        assert excinfo.value.exit_code == 1
 
     def test_check_crontab_missing_binary(self, cli_runner):
         """install raises when crontab binary is missing."""
@@ -767,8 +809,8 @@ class TestPDFExport:
 
     def test_export_pdf_requires_weasyprint(self, tmp_project: Path):
         """_export_pdf raises ValueError when weasyprint is missing."""
+
         from autoinfo.output import _export_pdf
-        from pathlib import Path
         knowledge_dir = tmp_project / "knowledge"
         knowledge_dir.mkdir(exist_ok=True)
         export_dir = tmp_project / "exports"
@@ -787,7 +829,10 @@ class TestPDFExport:
     def test_export_kb_unsupported_format_raises(self):
         """export_kb raises ValueError for unsupported formats."""
         from autoinfo.output import export_kb
-        with patch("autoinfo.output.get_config_path", return_value=Path("/nonexistent/config.yaml")):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=Path("/nonexistent/config.yaml"),
+        ):
             with pytest.raises(ValueError, match="Unsupported export format"):
                 export_kb(domain="medical-research", format="docx")
 
@@ -988,21 +1033,21 @@ class TestSchemaVersioning:
 
     def test_apply_migrations_upgrades_to_target(self):
         """apply_migrations runs migrations sequentially."""
-        from autoinfo.schema import apply_migrations, get_schema_version, SCHEMA_VERSION
+        from autoinfo.schema import SCHEMA_VERSION, apply_migrations, get_schema_version
         conn = sqlite3.connect(":memory:")
         apply_migrations(conn, SCHEMA_VERSION)
         assert get_schema_version(conn) == SCHEMA_VERSION
 
     def test_check_schema_auto_migrates(self):
         """check_schema auto-migrates a fresh database to SCHEMA_VERSION."""
-        from autoinfo.schema import check_schema, get_schema_version, SCHEMA_VERSION
+        from autoinfo.schema import SCHEMA_VERSION, check_schema, get_schema_version
         conn = sqlite3.connect(":memory:")
         check_schema(conn)
         assert get_schema_version(conn) == SCHEMA_VERSION
 
     def test_apply_migrations_downgrade_raises(self):
         """apply_migrations raises SchemaVersionError on downgrade attempt."""
-        from autoinfo.schema import apply_migrations, SchemaVersionError
+        from autoinfo.schema import SchemaVersionError, apply_migrations
         conn = sqlite3.connect(":memory:")
         apply_migrations(conn, 1)
         with pytest.raises(SchemaVersionError, match="downgrade"):
@@ -1010,12 +1055,17 @@ class TestSchemaVersioning:
 
     def test_check_schema_newer_db_raises(self):
         """check_schema raises when DB is newer than code."""
-        from autoinfo.schema import check_schema, SchemaVersionError
+        from autoinfo.schema import SchemaVersionError, check_schema
         conn = sqlite3.connect(":memory:")
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER NOT NULL, applied_at TEXT NOT NULL, description TEXT NOT NULL DEFAULT '')"
+            "CREATE TABLE IF NOT EXISTS _schema_version ("
+            "version INTEGER NOT NULL, applied_at TEXT NOT NULL, "
+            "description TEXT NOT NULL DEFAULT '')"
         )
-        conn.execute("INSERT INTO _schema_version (version, applied_at, description) VALUES (999, 'now', 'future')")
+        conn.execute(
+            "INSERT INTO _schema_version (version, applied_at, description) "
+            "VALUES (999, 'now', 'future')"
+        )
         with pytest.raises(SchemaVersionError, match="newer"):
             check_schema(conn)
 
@@ -1108,16 +1158,20 @@ class TestFacetedSearch:
     def test_faceted_search_via_rest_api(self, tmp_project):
         """REST API search endpoint passes faceted filter params."""
         from fastapi.testclient import TestClient
-        from autoinfo.api.server import app
-        from autoinfo.api.routes import _get_store
+
         import autoinfo.api.routes as routes
+        from autoinfo.api.routes import _get_store
+        from autoinfo.api.server import app
         routes._store = None
 
         store = _get_store()
         store.base_path = tmp_project / "knowledge"
         store.base_path.mkdir(parents=True, exist_ok=True)
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.config.get_config_path",
+            return_value=tmp_project / ".autoinfo" / "config.yaml",
+        ):
             client = TestClient(app)
             response = client.get(
                 "/api/v1/search",
@@ -1142,8 +1196,8 @@ class TestJSONReport:
 
     def test_generate_report_json_format(self, tmp_path, sample_item):
         """generate_report with format='json' returns valid JSON string with correct keys."""
-        from autoinfo.output import generate_report
         from autoinfo.kb import KBStore
+        from autoinfo.output import generate_report
 
         # Setup: create an entry so report has data
         store = KBStore(base_path=tmp_path / "knowledge")
@@ -1255,7 +1309,7 @@ class TestInitNameFlag:
         """init --demo medical-research --name creates config with project_name."""
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             result = cli_runner.invoke(
-                app := __import__("autoinfo.cli", fromlist=["app"]).app,
+                __import__("autoinfo.cli", fromlist=["app"]).app,
                 ["init", "--demo", "medical-research", "--name", "My Research Project"],
             )
         assert result.exit_code == 0
@@ -1380,10 +1434,14 @@ class TestConfigSchemaDefaults:
 
     def test_load_config_populates_defaults(self, tmp_path):
         """Loading a minimal config populates v1.2 sections with defaults."""
-        from autoinfo.config import load_config, get_config_path
+        from autoinfo.config import get_config_path, load_config
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
-        minimal = {"project": {"name": "test"}, "llm": {"provider": "openrouter", "model": "gpt-4", "api_key": "k"}, "domains": []}
+        minimal = {
+            "project": {"name": "test"},
+            "llm": {"provider": "openrouter", "model": "gpt-4", "api_key": "k"},
+            "domains": [],
+        }
         with open(config_dir / "config.yaml", "w") as f:
             yaml.dump(minimal, f)
         with patch("pathlib.Path.cwd", return_value=tmp_path):
@@ -1398,7 +1456,7 @@ class TestConfigSchemaDefaults:
 
     def test_load_config_with_v1_2_sections(self, tmp_path):
         """Loading a config with v1.2 sections populated uses provided values."""
-        from autoinfo.config import load_config, get_config_path
+        from autoinfo.config import get_config_path, load_config
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         full = {
@@ -1407,7 +1465,11 @@ class TestConfigSchemaDefaults:
             "domains": [],
             "cefr": {"enabled": True, "languages": ["en", "zh"]},
             "rest_api": {"port": 9999, "host": "0.0.0.0"},
-            "vector_search": {"enabled": True, "hybrid_weight_fts5": 0.5, "hybrid_weight_vector": 0.5},
+            "vector_search": {
+                "enabled": True,
+                "hybrid_weight_fts5": 0.5,
+                "hybrid_weight_vector": 0.5,
+            },
             "multi_user": {"enabled": True, "default_user_id": "team_a"},
             "email": {"enabled": True, "smtp_port": 465},
             "cron": {"auto_install": True, "install_path": "/usr/bin/crontab"},
@@ -1445,7 +1507,8 @@ class TestConfigSchemaDefaults:
         from autoinfo.config import Config, config_to_dict
         config = Config()
         d = config_to_dict(config)
-        # v1.2 sections may not be included if default/empty; at minimum the core sections are present
+        # v1.2 sections may not be included if default/empty; at minimum the
+        # core sections are present
         assert "project" in d
         assert "llm" in d
         assert "domains" in d

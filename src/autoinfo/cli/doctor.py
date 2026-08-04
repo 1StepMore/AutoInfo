@@ -77,8 +77,8 @@ def _print_human(result: dict[str, Any]) -> None:
             "(set AUTOINFO_LLM_API_KEY or configure llm.api_key)"
         )
         typer.echo(
-            "       Agent: call configure_llm("
-            "api_key='...', provider='...', model='...') to set up the LLM"
+            "       Agents: use the MCP tool configure_llm() to set up the LLM "
+            "(or set the AUTOINFO_LLM_API_KEY env var)"
         )
         typer.echo(
             "       See docs/dev/required-api-keys.md for API key setup"

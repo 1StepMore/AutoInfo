@@ -20,7 +20,7 @@ Every collected source item is represented as an `Item`:
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # one of VALID_SOURCE_TYPES (25 types, single source of truth in src/autoinfo/config.py)
+    source_type: str                  # one of VALID_SOURCE_TYPES (26 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text
@@ -65,7 +65,7 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 
 ### 1.4 Source Handler Implementations
 
-> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (25 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 26 handler modules below live in `src/autoinfo/collectors/`.
+> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (26 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 27 handler modules below live in `src/autoinfo/collectors/`.
 
 | Source | Implementation | Key behavior |
 |--------|---------------|--------------|
@@ -91,6 +91,7 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 | **Reuters MCP** | Reuters MCP server (paid) | News feed via MCP protocol, licensing required. |
 | **SSRN** | SSRN API | Social science preprints, working papers. |
 | **GDELT** | GDELT DOC 2.0 API | Global event tracking, news monitoring at scale. |
+| **HackerNews** | Hacker News Firebase API | Two-step fetch: item metadata then content. |
 | **HuggingFace/Kaggle** | HuggingFace Hub + Kaggle APIs | Dataset/model metadata, competition data. |
 | **Unpaywall/CORE** | Unpaywall + CORE APIs | Open-access paper lookup, full-text retrieval. |
 | **Yahoo Finance** | Yahoo Finance API | Market data, quotes, historical prices. |

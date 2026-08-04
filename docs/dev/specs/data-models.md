@@ -68,7 +68,7 @@ consumes each entity. "spec only" marks models not yet implemented in code.
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # one of VALID_SOURCE_TYPES (25 types, single source of truth in src/autoinfo/config.py)
+    source_type: str                  # one of VALID_SOURCE_TYPES (26 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text

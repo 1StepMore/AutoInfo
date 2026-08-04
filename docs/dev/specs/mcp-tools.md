@@ -47,9 +47,9 @@
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 
-## Collector Handlers (26 total)
+## Collector Handlers (27 total)
 
-`list_available_platforms` advertises all 25 `VALID_SOURCE_TYPES`. The 26 collector handlers (in `src/autoinfo/collectors/`) cover:
+`list_available_platforms` advertises all 26 `VALID_SOURCE_TYPES`. The 27 collector handlers (in `src/autoinfo/collectors/`) cover:
 
 | Handler | Source Type(s) | Notes |
 |---------|---------------|-------|
@@ -77,5 +77,6 @@ All tools accept `domain` parameter where applicable. Pagination (`limit`/`offse
 | `yahoo_finance.py` | `yahoo_finance` | Yahoo Finance |
 | `ssrn.py` | `ssrn` | SSRN working papers (HTML search, no REST API) — **v1.8.1** |
 | `gdelt.py` | `gdelt` | GDELT DOC 2.0 news events — **v1.8.1** |
+| `hackernews.py` | `hackernews` | Hacker News official Firebase API (two-step fetch) — **v1.8.2** |
 | `huggingface.py` | `huggingface` / `kaggle` | HuggingFace Hub + Kaggle datasets (dual provider) — **v1.8.1** |
 | `unpaywall.py` | `unpaywall` / `core` | Unpaywall + CORE OA fulltext (dual provider) — **v1.8.1** |

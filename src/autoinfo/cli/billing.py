@@ -19,11 +19,15 @@ app = typer.Typer(help="Read-only billing summary (usage + subscription)")
 
 @app.command()
 def summary(
-    user_id: str = typer.Option(..., "--user-id", help="End-user ID (e.g. alice)"),
+    user_id: str = typer.Option("", "--user-id", help="End-user ID (defaults to config multi_user.default_user_id)"),
     period: str = typer.Option("month", "--period", help="Time period (today/week/month/all)"),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Show combined billing summary — usage + subscription status."""
+    from autoinfo.billing import resolve_user_id
+
+    user_id = resolve_user_id(user_id or None)
+
     try:
         from autoinfo.billing import get_subscription_status
         from autoinfo.cost import CostMeter

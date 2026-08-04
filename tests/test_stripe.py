@@ -1470,3 +1470,31 @@ class TestStripeMockGuard:
         assert not any("stripe-mock" in r.message for r in caplog.records), (
             f"Unexpected warning: {[r.message for r in caplog.records]}"
         )
+
+    def test_configure_stripe_real_mode_sets_key_and_base(
+        self, caplog
+    ) -> None:
+        """When STRIPE_API_KEY and real STRIPE_API_BASE are set,
+        stripe.api_key and api_base should be correctly configured
+        without any stripe-mock warning."""
+        import logging
+        import autoinfo.billing as billing_mod
+
+        from autoinfo.billing import _configure_stripe
+
+        mock_stripe = MagicMock()
+        with patch.object(billing_mod, "_STRIPE_API_KEY", "sk_test_xyz"), \
+             patch.object(billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"), \
+             patch.object(billing_mod, "stripe", mock_stripe), \
+             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+            _configure_stripe()
+
+        assert mock_stripe.api_key == "sk_test_xyz", (
+            f"Expected api_key 'sk_test_xyz', got {mock_stripe.api_key}"
+        )
+        assert mock_stripe.api_base == "https://api.stripe.com", (
+            f"Expected api_base 'https://api.stripe.com', got {mock_stripe.api_base}"
+        )
+        assert not any("stripe-mock" in r.message for r in caplog.records), (
+            f"Unexpected stripe-mock warning: {[r.message for r in caplog.records]}"
+        )

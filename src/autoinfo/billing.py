@@ -42,6 +42,29 @@ _user_stripe_map: dict[str, str] = {}
 _stripe_sync_failures: int = 0
 
 
+def resolve_user_id(user_id: str | None = None) -> str:
+    """Resolve the effective end-user id.
+
+    Precedence (highest to lowest):
+    1. Explicit ``user_id`` argument
+    2. Config ``multi_user.default_user_id``
+    3. Hard-coded fallback ``"default"`` (single-user mode)
+    """
+    if user_id:
+        return user_id
+    try:
+        from autoinfo.config import get_config_path, load_config
+
+        path = get_config_path()
+        if path:
+            cfg = load_config(path)
+            if getattr(cfg, "multi_user", None) and cfg.multi_user.default_user_id:
+                return cfg.multi_user.default_user_id
+    except Exception:
+        pass
+    return "default"
+
+
 def _backfill_stripe_map() -> None:
     """Load all persisted stripe_customer_ids from DB into the in-memory cache."""
     try:

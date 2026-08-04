@@ -5030,10 +5030,11 @@ def _handle_create_checkout_session(
         }
 
 
-def _handle_get_subscription_status(end_user_id: str) -> dict[str, Any]:
+def _handle_get_subscription_status(end_user_id: str = "") -> dict[str, Any]:
     """Check Stripe subscription status for an end-user."""
-    from autoinfo.billing import get_subscription_status
+    from autoinfo.billing import get_subscription_status, resolve_user_id
 
+    end_user_id = resolve_user_id(end_user_id or None)
     try:
         return get_subscription_status(end_user_id=end_user_id)
     except Exception as exc:
@@ -5046,7 +5047,7 @@ def _handle_get_subscription_status(end_user_id: str) -> dict[str, Any]:
 
 
 def _handle_get_billing_summary(
-    user_id: str,
+    user_id: str = "",
     period: str = "month",
 ) -> dict[str, Any]:
     """Return combined billing summary — usage + subscription.
@@ -5057,7 +5058,8 @@ def _handle_get_billing_summary(
     Parameters
     ----------
     user_id:
-        AutoInfo end-user ID (e.g. ``alice``).
+        AutoInfo end-user ID (e.g. ``alice``).  Optional — falls back
+        to ``multi_user.default_user_id`` from config, then ``"default"``.
     period:
         Time period: ``"today"``, ``"week"``, ``"month"``, ``"all"``.
         Defaults to ``"month"``.
@@ -5066,9 +5068,10 @@ def _handle_get_billing_summary(
     -------
     dict with keys: ``user_id``, ``period``, ``usage``, ``subscription``.
     """
-    from autoinfo.billing import get_subscription_status
+    from autoinfo.billing import get_subscription_status, resolve_user_id
     from autoinfo.cost import CostMeter
 
+    user_id = resolve_user_id(user_id or None)
     try:
         meter = CostMeter()
         usage = meter.get_enduser_usage(end_user_id=user_id, period=period)
@@ -9354,10 +9357,10 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "end_user_id": {
                         "type": "string",
-                        "description": "AutoInfo end-user ID (e.g. alice)",
+                        "description": "AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then \"default\".",
+                        "default": "",
                     },
                 },
-                "required": ["end_user_id"],
             },
         ),
         Tool(
@@ -9368,7 +9371,8 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "user_id": {
                         "type": "string",
-                        "description": "AutoInfo end-user ID (e.g. alice)",
+                        "description": "AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then \"default\".",
+                        "default": "",
                     },
                     "period": {
                         "type": "string",
@@ -9376,7 +9380,6 @@ async def list_tools() -> list[Tool]:
                         "default": "month",
                     },
                 },
-                "required": ["user_id"],
             },
         ),
         # -- End-user Usage & Invoice (G16 — 2) ------------------------------

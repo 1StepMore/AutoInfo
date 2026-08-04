@@ -76,6 +76,7 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/new-domain-guide.md` | Guide for creating new domains: domain schema, source configuration, topic setup, demo domain import | 🟡 P1 — onboarding guide | When domain config/demo domains change |
 | `docs/dev/enduser-coverage-matrix.md` | End-user feature coverage matrix (99-dimension, updated 2026-08-02) — keystone reference like cross-dimensional-catalog | 🔴 P0 — keystone | When feature surface changes |
 | `docs/dev/required-api-keys.md` | Full catalog of environment variables and API keys required by AutoInfo (referenced by AGENTS.md and README) | 🟡 P1 — reference | When env vars / API keys change |
+| `docs/dev/mcp-usage-examples.md` | Full worked MCP tool workflow examples — step-by-step patterns for all common operations (referenced by AGENTS.md) | 🟡 P1 — reference | When MCP workflows change |
 
 > **Note on `docs/dev/specs/reality-assessment.md`**: This file was moved to `docs/archive/reality-assessment.md` during the 2026-07-26 restructuring. Update path references accordingly.
 
@@ -484,7 +485,7 @@ Some numbers appear in multiple docs and must stay consistent:
 | MCP tool count | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 141 |
 | MCP tool categories | `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/dev/specs/mcp-tools.md` | 35 |
 | CLI command groups | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 23 |
-| Test count | `README.md`, `AGENTS.md`, `docs/archive/validation-suite/plan-v2/README.md` | ~2747 |
+| Test count | `README.md`, `AGENTS.md`, `docs/archive/validation-suite/plan-v2/README.md` | ~2866 |
 | Validation plan part files | `docs/archive/validation-suite/plan-v2/README.md`, `docs/dev/cross-dimensional-catalog.md` | 15 (parts 01-15) |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 9 |

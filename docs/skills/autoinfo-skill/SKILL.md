@@ -188,13 +188,13 @@ update_preferences(user_id="usr_xxx",
 
 **Check subscription status:**
 ```
-get_subscription_status(user_id="usr_xxx")
+get_subscription_status(end_user_id="usr_xxx")
 ```
 
 **View cost vs. budget:**
 ```
-get_billing_summary(domain="medical-research", period="month")
-cost_dashboard(domain="medical-research", period="month")
+get_billing_summary(user_id="usr_xxx", period="month")
+cost_dashboard(period="month")
 cost_allocation(domain="medical-research", strategy="usage-based")
 ```
 
@@ -256,13 +256,13 @@ import_kb(domain="medical-research", file_path="/path/to/doc.pdf", format="pdf")
 
 ### View billing summary
 ```
-get_billing_summary(domain="medical-research", period="month")
+get_billing_summary(user_id="usr_xxx", period="month")
 → returns total spend, per-model costs, budget status
 ```
 
 ### Monitor active deliveries
 ```
-list_active_deliveries(domain="medical-research")
+list_active_deliveries()
 → returns in-flight deliveries with status and retry info
 get_delivery_log(subscription_id="sub_xxx", period="week")
 → returns delivery history with SLA compliance metrics

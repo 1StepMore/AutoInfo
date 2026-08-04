@@ -2,6 +2,24 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## Unreleased (2026-08-04)
+
+### Fixed
+- **Bugfix: numeric and slash item IDs crashed collection caching** — `collect` now stringifies numeric and slash-containing item ids before writing the raw JSON cache, preventing `TypeError`/path errors. (f750019, closes #104)
+- **Bugfix: `autoinfo init` created runtime dirs inside `.autoinfo/`** — runtime dirs (`collections/`, `knowledge/`, `outputs/`) are now created at the project root (same layout KBStore resolves); `.autoinfo/` keeps only `config.yaml`. (79b188a, closes #106)
+- **Bugfix: real-API guard used the wrong import path** — collection tests now import the guard via `tests.conftest` so the `REAL_API_TESTS` env gate works regardless of invocation path. (09b09f6, closes #108)
+- **Bugfix: cross-domain report MCP test bypassed the LLM guard** — test now patches the centralized `LLM_NOT_CONFIGURED` dispatch so it passes without a configured key. (3517f96, closes #109)
+- **Bugfix: doctor LLM hint pointed at CLI instead of MCP** — the LLM-not-configured hint in `autoinfo doctor` now directs agents to the `configure_llm` MCP tool (BYOK), per agent-first operating model. (3f0c1e1, closes #110)
+
+### Added
+- **Dedicated HackerNews collector** — new `HackerNewsHandler` (src/autoinfo/collectors/hackernews.py) with two-step fetch (item metadata then content) against the official Firebase API; registered in `_build_handler`; `hackernews` added to `VALID_SOURCE_TYPES` (25 → 26 types, 26 → 27 handlers). (cd9f261, closes #105)
+- **`resolve_user_id` defaulting in billing tools** — billing/usage/invoice MCP tools and CLI now resolve the current user when `--user-id` is omitted; `get_billing_summary`/`get_subscription_status` `user_id`/`end_user_id` params are optional. (78b7cb0, closes #107)
+- **Single-source `__version__`** — version now derives from `_version.py` via dynamic module attribute, eliminating pyproject/`__init__`/health drift (unified at 1.8.1). (5518244, closes #112)
+
+### Docs
+- **README MCP server install guide** — new sections on bare-`python` importability, LLM key injection, and `${...}` placeholder semantics in editor configs. (b9e0f05, closes #111)
+- **AGENTS.md restructure** — worked MCP usage examples moved to `docs/dev/mcp-usage-examples.md`; AGENTS.md now links to it. (63f0c85, closes #113)
+
 ## Unreleased (2026-08-03)
 
 ### Added

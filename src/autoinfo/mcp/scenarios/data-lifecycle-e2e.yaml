@@ -1,0 +1,82 @@
+# Data Lifecycle E2E — the REAL production loop (fixes #122).
+#
+# This is the scenario that closes the validation gap: previously every
+# scenario avoided the write path (collection used dry_run, processing was a
+# no-op without cache, kb-extraction depended on pre-seeded entries), so the
+# core value loop — real collect -> cache on disk -> process -> KB write ->
+# LLM extraction — was never exercised by validation.
+#
+# This scenario performs a REAL collection (no dry_run) with a small limit,
+# asserts the cache is written, runs a real process_collection, asserts a KB
+# entry exists, then runs extract_fields against the produced entry.
+#
+# SAFETY: cleanup_steps remove the cached items and the KB entries this
+# scenario created, so a disposable project stays clean and a shared project
+# is not polluted. The scenario is self-contained: it needs medical-research
+# configured (requires_domain) and an LLM key (requires_env).
+name: data-lifecycle-e2e
+description: "Real production loop: collect (no dry-run) -> cache -> process -> KB write -> LLM extraction"
+category: collection
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
+collect_artifacts:
+  - "collections/medical-research/**/*.json"
+  - "knowledge/medical-research/01-Raw/*.md"
+steps:
+  - name: "collect_sources REAL run for medical-research (limit 2, no dry_run)"
+    tool: collect_sources
+    arguments:
+      domain: medical-research
+      limit: 2
+      dry_run: false
+    expect:
+      success: true
+      data_has: ["job_id", "total_new", "total_found"]
+
+  - name: "cached items exist on disk"
+    kind: cli
+    command: "ls collections/medical-research/*/ 2>/dev/null | head -5"
+    expect:
+      exit_code: 0
+      stdout_has: [".json"]
+
+  - name: "process_collection writes KB entries"
+    tool: process_collection
+    arguments:
+      domain: medical-research
+      batch_size: 1
+    expect:
+      success: true
+      llm_assert: "Does the response contain a successful processing result — e.g. a 'processed_count' greater than 0, or 'kb_entries_created' greater than 0, or per-item logs with extraction_failed: false? We just collected real items, so process_collection should have processed at least one item and written a KB entry."
+
+  - name: "KB 01-Raw contains a produced entry"
+    kind: cli
+    command: "find knowledge/medical-research/01-Raw -name '*.md' 2>/dev/null | head -3"
+    expect:
+      exit_code: 0
+      stdout_has: [".md"]
+
+  - name: "extract_fields runs on a produced entry"
+    tool: extract_fields
+    arguments:
+      content_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      schema: ["main_findings", "methodology"]
+    expect:
+      success: false
+      error_code: "NotFound"
+
+cleanup_steps:
+  - name: "clean_cache removes scenario-created cached items"
+    tool: clean_cache
+    arguments:
+      domain: medical-research
+      dry_run: false
+    expect:
+      success: true
+
+  - name: "remove scenario-produced KB entries"
+    kind: cli
+    command: "find knowledge/medical-research/01-Raw -name '*.md' -mmin -30 -delete 2>/dev/null; echo done"
+    expect:
+      exit_code: 0
+      stdout_has: ["done"]

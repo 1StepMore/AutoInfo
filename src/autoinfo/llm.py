@@ -105,9 +105,23 @@ class LLMExtractor:
         # If the config carries an API key, let the environment variable take
         # it — LiteLLM reads OPENROUTER_API_KEY automatically for OpenRouter
         # calls, OPENAI_API_KEY for OpenAI calls, etc.
-        if config.llm.api_key:
+        # Fall back to the AUTOINFO_LLM_API_KEY env var when the config key is
+        # empty or is an unresolved ${ENV} placeholder (fixes #119: llm.py
+        # previously ignored AUTOINFO_LLM_API_KEY entirely, while
+        # _is_llm_configured / _resolve_llm_config in mcp/validation.py
+        # honored it — inconsistent key resolution).
+        resolved_key = config.llm.api_key or ""
+        if (
+            isinstance(resolved_key, str)
+            and resolved_key.startswith("${")
+            and resolved_key.endswith("}")
+        ):
+            resolved_key = os.environ.get(resolved_key[2:-1], "")
+        if not resolved_key:
+            resolved_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+        if resolved_key:
             env_key = f"{provider.upper()}_API_KEY"
-            os.environ.setdefault(env_key, config.llm.api_key)
+            os.environ.setdefault(env_key, resolved_key)
 
         # Build fallback model chain from config.llm.fallback.
         # Each entry is a dict with "model" (provider/model string) and

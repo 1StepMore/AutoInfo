@@ -9,6 +9,7 @@ name: sources-a6-keyed
 description: "A6 — FRED + Finnhub keyed source lifecycle (financial-intelligence)"
 category: source
 requires_env: ["FRED_API_KEY", "FINNHUB_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "add_source FRED keyed api source"
     tool: add_source

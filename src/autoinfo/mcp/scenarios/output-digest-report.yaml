@@ -5,6 +5,7 @@ name: output-digest-report
 description: "Digest, report, and cross-domain report generation"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "generate_digest json format"
     tool: generate_digest

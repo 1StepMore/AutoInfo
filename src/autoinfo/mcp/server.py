@@ -2556,10 +2556,15 @@ def _handle_generate_digest(
     _store = KBStore()
     _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
     if not _preview:
-        return success_response({
+        return {
+            "success": True,
+            "domain": domain,
+            "format": format,
+            "period": period,
             "status": "noop",
+            "content": "",
             "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        })
+        }
 
     try:
         result = _generate_digest(
@@ -2632,10 +2637,15 @@ def _handle_generate_report(
     _store = KBStore()
     _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
     if not _preview:
-        return success_response({
+        return {
+            "success": True,
+            "domain": domain,
+            "format": format,
+            "period": period,
             "status": "noop",
+            "content": "",
             "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        })
+        }
 
     try:
         product_template = None

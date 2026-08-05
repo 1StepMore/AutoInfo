@@ -5,6 +5,7 @@ name: output-tutorial-presentation
 description: "Tutorial, presentation, and content localization"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "generate_tutorial markdown format"
     tool: generate_tutorial

@@ -6,6 +6,7 @@ name: kb-extraction
 description: "LLM-required extraction and Q&A tools with real model calls"
 category: extraction
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "extract_fields performs on-demand LLM extraction"
     tool: extract_fields

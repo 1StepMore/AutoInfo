@@ -5,6 +5,7 @@ name: cli-extra
 description: "CLI: init, collect (dry-run), portal"
 category: cli
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "init --list-domains"
     kind: cli

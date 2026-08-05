@@ -4,6 +4,7 @@ name: topic-management
 description: "Topic lifecycle: list, add, remove, and group management"
 category: topic
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "list_topics returns topics for medical-research"
     tool: list_topics

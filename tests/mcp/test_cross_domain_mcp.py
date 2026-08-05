@@ -143,6 +143,7 @@ class TestDelegation:
             period="month",
             target_audience="researchers",
             report_type="trend",
+            user_id="",
         )
 
         # Verify result structure

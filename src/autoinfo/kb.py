@@ -3860,6 +3860,11 @@ class KBStore:
             if created_at:
                 try:
                     created_dt = datetime.fromisoformat(created_at)
+                    # Make naive datetimes UTC-aware (fixes naive-vs-aware
+                    # subtraction crash for date-only collected_at values
+                    # such as OpenAlex '2020-06-08').
+                    if created_dt.tzinfo is None:
+                        created_dt = created_dt.replace(tzinfo=timezone.utc)
                     age_days = (now - created_dt).days
                     is_stale = age_days >= ttl_days
                 except (ValueError, TypeError):

@@ -17,6 +17,7 @@ name: processing
 description: "LLM-gated processing, batch run, and G4/G5 quality gates"
 category: collection
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "process_collection with G4/G5 gates"
     tool: process_collection

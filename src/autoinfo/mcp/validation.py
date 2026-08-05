@@ -103,6 +103,23 @@ def _is_llm_configured() -> bool:
     return bool(os.environ.get("AUTOINFO_LLM_API_KEY"))
 
 
+def _configured_domain_names() -> list[str]:
+    """Return the names of domains configured in the project config.
+
+    Used by ``run_scenario`` to check ``requires_domain`` preconditions
+    (fixes #120). Falls back to an empty list when no config exists or it
+    cannot be read.
+    """
+    from autoinfo.config import Config, get_config_path, load_config  # noqa: PLC0415
+
+    try:
+        config_path = get_config_path()
+        config = load_config(config_path) if config_path else Config()
+        return [d.name for d in config.domains]
+    except Exception:
+        return []
+
+
 def _resolve_llm_config() -> dict[str, Any]:
     """Resolve the LLM call config from the project config.
 
@@ -123,7 +140,17 @@ def _resolve_llm_config() -> dict[str, Any]:
     model = config.llm.model or "deepseek/deepseek-chat"
     if "/" not in model:
         model = f"{provider}/{model}"
-    api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
+    # Resolve api_key consistently (fixes #119): resolve ${ENV} placeholders,
+    # fall back to AUTOINFO_LLM_API_KEY env var when config key is empty.
+    api_key = config.llm.api_key or ""
+    if (
+        isinstance(api_key, str)
+        and api_key.startswith("${")
+        and api_key.endswith("}")
+    ):
+        api_key = os.environ.get(api_key[2:-1], "")
+    if not api_key:
+        api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
     return {
         "model": model,
         "api_key": api_key,
@@ -524,6 +551,7 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
         # Set defaults for optional fields
         data.setdefault("category", "general")
         data.setdefault("requires_env", [])
+        data.setdefault("requires_domain", [])
 
         scenarios.append(data)
 
@@ -744,6 +772,50 @@ async def run_scenario(
             "steps": unconfigured_steps,
         }
 
+    # Precondition check: scenarios may declare required domains (fixes #120).
+    # If the project config does not have one of the required domains, the
+    # scenario reports unconfigured with the missing domain names instead of
+    # failing every step with DomainNotFound.
+    requires_domain: list[str] = scenario.get("requires_domain", [])
+    if requires_domain:
+        configured_domains = _configured_domain_names()
+        missing_domains = [
+            d for d in requires_domain if d not in configured_domains
+        ]
+        if missing_domains:
+            all_steps = scenario["steps"]
+            unconfigured_steps = [
+                {
+                    "name": s["name"],
+                    "tool": s.get("tool") or s.get("command") or s.get("url", ""),
+                    "status": "unconfigured",
+                    "detail": (
+                        f"missing required domain(s): {', '.join(missing_domains)}. "
+                        "Run `autoinfo init --demo <domain>` or add_domain() to "
+                        "configure them before running this scenario."
+                    ),
+                }
+                for s in all_steps
+            ]
+            return {
+                "scenario": name,
+                "description": scenario["description"],
+                "category": scenario.get("category", "general"),
+                "status": "unconfigured",
+                "unconfigured_reason": (
+                    f"missing required domain(s): {', '.join(missing_domains)}. "
+                    "Run `autoinfo init --demo <domain>` or add_domain() to "
+                    "configure them before running this scenario."
+                ),
+                "summary": {
+                    "passed": 0,
+                    "failed": 0,
+                    "unconfigured": len(unconfigured_steps),
+                    "total": len(unconfigured_steps),
+                },
+                "steps": unconfigured_steps,
+            }
+
     # Determine which steps to run
     if steps is not None:
         if not steps:
@@ -815,4 +887,24 @@ async def run_scenario(
     }
     if cleanup is not None:
         result["cleanup"] = cleanup
+
+    # --- collect_artifacts: gather real data files produced by the scenario ---
+    # (fixes #123). Scenarios may declare glob patterns; matching files are
+    # collected AFTER cleanup so they exist on disk (cleanup first removed
+    # scenario state). Artifacts give the delivery layer real RAW/PROCESSED
+    # data to package for end-user quality review.
+    collect_patterns = scenario.get("collect_artifacts", [])
+    if collect_patterns:
+        artifacts: list[dict[str, Any]] = []
+        for pattern in collect_patterns:
+            for path in sorted(Path.cwd().glob(pattern)):
+                if path.is_file():
+                    artifacts.append({
+                        "pattern": pattern,
+                        "path": str(path),
+                        "size": path.stat().st_size,
+                        "name": path.name,
+                    })
+        result["artifacts"] = artifacts
+
     return result

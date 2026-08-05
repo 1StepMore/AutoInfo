@@ -10,6 +10,7 @@ name: keyword-management
 description: "Keyword lifecycle: list, approve, reject (self-cleaning via backup/restore)"
 category: topic
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "backup _keywords.yaml before mutation"
     kind: cli

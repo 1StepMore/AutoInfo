@@ -9,6 +9,7 @@ name: output-simplify-recommend
 description: "Content simplification and recommendation"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "simplify_content B1 level english"
     tool: simplify_content

@@ -5,6 +5,7 @@ name: quality-gate-config
 description: "Quality gate config: read, set, verify, restore"
 category: quality
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "get_gate_config returns GateNotFound for unconfigured gate"
     tool: get_gate_config

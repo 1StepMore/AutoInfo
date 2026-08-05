@@ -1,7 +1,7 @@
 name: products-billing
-description: "Products listing and end-user billing tools: usage, invoice, summary, checkout"
+description: "Products listing and end-user billing tools: usage, invoice, summary, checkout. Requires STRIPE_API_KEY: create_checkout_session returns {error, end_user_id} (no success key) when Stripe is unavailable, which the dispatcher would otherwise wrap as success — the scenario reports 'unconfigured' without a key instead of false-passing. Cleanup deletes the created billing test user."
 category: cost
-requires_env: []
+requires_env: [STRIPE_API_KEY]
 steps:
   - name: "list_products for medical-research domain"
     tool: list_products
@@ -64,9 +64,21 @@ steps:
       name: "Billing Test User"
     expect:
       success: true
-      data_has: ["end_user_id"]
+      # session_id is only present on a genuine Stripe session; the failure
+      # path returns {"error", "end_user_id"} without it, so requiring
+      # session_id (and end_user_id) rejects the false-positive error path.
+      data_has: ["session_id", "end_user_id"]
 
   - name: "cleanup billing test user"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-billing
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]
+
+cleanup_steps:
+  - name: "cleanup: delete leftover billing test user (safety net if main delete did not run)"
     tool: enduser_delete
     arguments:
       user_id: scenario-test-billing

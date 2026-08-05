@@ -1,5 +1,5 @@
 name: enduser-lifecycle
-description: "End-user CRUD lifecycle: create, get, update, list, delete with delivery and portal query"
+description: "End-user CRUD lifecycle: create, get, update, list, delete with delivery and portal query. Cleanup deletes the created user and removes the file_export artifact it writes to cwd (scenario-test@example.com). NOT re-run-safe after a mid-scenario failure: a leftover profile with the same user_id makes enduser_create fail with an IntegrityError on duplicate user_id — delete the user store row before re-running."
 category: enduser
 requires_env: []
 steps:
@@ -72,3 +72,19 @@ steps:
     expect:
       success: true
       data_has: ["user_id", "deleted"]
+
+cleanup_steps:
+  - name: "cleanup: delete leftover test user (safety net if main delete did not run)"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-enduser-lifecycle
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]
+
+  - name: "cleanup: remove file_export artifact written to cwd"
+    kind: cli
+    command: "rm -f \"scenario-test@example.com\" && echo FILE_CLEANED"
+    expect:
+      exit_code: 0
+      stdout_has: ["FILE_CLEANED"]

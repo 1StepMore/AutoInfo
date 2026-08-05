@@ -260,7 +260,12 @@ class SMTPDeliveryChannel(DeliveryChannel):
         config = payload.get("config", None)
 
         try:
-            result = send_digest(domain=domain, period=period, config=config)
+            result = send_digest(
+                domain=domain,
+                period=period,
+                config=config,
+                user_id=payload.get("end_user_id", ""),
+            )
             return DeliveryResult(
                 product_id=product.id,
                 channel=self.name,

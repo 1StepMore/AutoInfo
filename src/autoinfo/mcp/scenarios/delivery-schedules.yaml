@@ -7,7 +7,7 @@
 # are never touched.  The cleanup is idempotent and also removes schedules
 # leaked by older scenario versions.
 name: delivery-schedules
-description: "Delivery schedule lifecycle: add, list, and remove (cleanup via CLI)"
+description: "Delivery schedule lifecycle: add, list, and remove. Cleanup runs via cleanup_steps (a CLI subprocess matching the exact scenario signature) so schedules created by this scenario are removed even when a main step fails. NOTE: the CLI cleanup runs `python3` verbatim through the shell — the harness must ensure `python3` resolves to the interpreter that has autoinfo installed (e.g. activate the venv or put .venv/bin on PATH), because the scenario engine does not substitute the server's own interpreter."
 category: delivery
 requires_env: []
 steps:
@@ -40,6 +40,7 @@ steps:
       success: false
       error_code: "ScheduleNotFound"
 
+cleanup_steps:
   - name: "cleanup: remove delivery schedules created by this scenario"
     kind: cli
     tool: _cli_cleanup

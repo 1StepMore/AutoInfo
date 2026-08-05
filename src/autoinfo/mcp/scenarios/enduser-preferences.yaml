@@ -1,5 +1,5 @@
 name: enduser-preferences
-description: "End-user trial, preferences, and subscription status lifecycle"
+description: "End-user trial, preferences, and subscription status lifecycle. Cleanup deletes the created user so interrupted runs do not leak a profile that blocks re-runs (create_profile IntegrityError on duplicate user_id)."
 category: enduser
 requires_env: []
 steps:
@@ -57,6 +57,15 @@ steps:
       data_has: ["end_user_id", "profile_status", "plan"]
 
   - name: "enduser_delete cleans up prefs test user"
+    tool: enduser_delete
+    arguments:
+      user_id: scenario-test-enduser-prefs
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]
+
+cleanup_steps:
+  - name: "cleanup: delete leftover prefs test user (safety net if main delete did not run)"
     tool: enduser_delete
     arguments:
       user_id: scenario-test-enduser-prefs

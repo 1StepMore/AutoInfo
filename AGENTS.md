@@ -330,7 +330,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Multi-channel delivery | ✅ 13 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push |
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
-| End user portal | 🟡 CLI-based self-service: preferences (untyped JSON) + history; no typed preferences (QuietHours/identity_anchor) and no product archive in portal CLI |
+| End user portal | 🟡 CLI-based self-service: preferences (untyped JSON) + history; REST API portal surfaces typed preferences (content_preference, QuietHours, identity_anchor) via merge with legacy; no typed preference editor or product archive in portal CLI |
 | Immutable audit log | ✅ Append-only; dispatch-level MCP tool calls with whitelisted fields (actor/action/tool/resource/result_code/trace_id); read-probes (health_check, get_tool_count, list_*) excluded; GDPR-exempt (operations.md §2.1) |
 | Structured pipeline logging | ✅ JSON structured logging per pipeline event |
 | Per-item traceability | ✅ UUID trace_id from collection through delivery, CLI trace |

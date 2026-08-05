@@ -214,8 +214,11 @@ async def portal_preferences(
             request, user_id, f"User '{user_id}' not found.", status_code=404
         )
 
-    # delivery_preferences is the canonical model field name
-    prefs = profile.delivery_preferences or {}
+    # Canonical typed preferences live in profile.preferences
+    # (content_preference, target_audience, format, max_items, QuietHours,
+    # identity_anchor). The legacy untyped delivery_preferences dict is
+    # merged underneath so old profiles still render — typed keys win.
+    prefs = {**(profile.delivery_preferences or {}), **(profile.preferences or {})}
 
     context = {
         "user_id": user_id,

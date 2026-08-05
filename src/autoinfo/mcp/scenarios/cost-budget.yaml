@@ -1,5 +1,5 @@
 name: cost-budget
-description: "Budget thresholds, cost dashboard, and cost allocation"
+description: "Budget thresholds, cost dashboard, and cost allocation. Pre-existing custom thresholds are captured to /tmp/autoinfo-cost-budget-prior.json before the scenario's set_budget_thresholds calls and restored by cleanup_steps afterwards, so a run never leaves custom thresholds clobbered. Requires an initialized project (init_project creates .autoinfo/config.yaml which cost_alerts reads/writes)."
 category: cost
 requires_env: []
 steps:
@@ -9,6 +9,13 @@ steps:
     expect:
       success: true
       data_has: ["budget_thresholds", "current_spend", "threshold_status"]
+
+  - name: "capture pre-existing budget thresholds before any set"
+    kind: cli
+    command: "python3 -c \"import json; from pathlib import Path; from autoinfo.config import load_config, save_config; cfg = load_config(Path.cwd() / '.autoinfo' / 'config.yaml'); Path('/tmp/autoinfo-cost-budget-prior.json').write_text(json.dumps(list(cfg.cost_alerts.budget_thresholds))); print('CAPTURED')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["CAPTURED"]
 
   - name: "set_budget_thresholds updates thresholds"
     tool: set_budget_thresholds
@@ -41,3 +48,11 @@ steps:
     expect:
       success: true
       data_has: ["period", "total_cost", "by_domain"]
+
+cleanup_steps:
+  - name: "cleanup: restore pre-existing budget thresholds from capture file"
+    kind: cli
+    command: "python3 -c \"import json; from pathlib import Path; from autoinfo.config import load_config, save_config; p = Path('/tmp/autoinfo-cost-budget-prior.json'); prior = json.loads(p.read_text()) if p.exists() else []; cfg = load_config(Path.cwd() / '.autoinfo' / 'config.yaml'); cfg.cost_alerts.budget_thresholds = [float(t) for t in prior] if prior else cfg.cost_alerts.budget_thresholds; save_config(cfg, Path.cwd() / '.autoinfo' / 'config.yaml'); p.unlink(missing_ok=True); print('RESTORED')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["RESTORED"]

@@ -104,6 +104,11 @@ def send_digest(
     period: str = typer.Option(
         "weekly", "--period", help="Digest period: daily, weekly, monthly"
     ),
+    user_id: str = typer.Option(
+        "",
+        "--user-id",
+        help="End-user ID for content-preference filtering (default: all tiers)",
+    ),
 ) -> None:
     """Generate and send a digest email for a domain over the given period.
 
@@ -113,7 +118,7 @@ def send_digest(
     from autoinfo.email_sender import send_digest as _send  # noqa: PLC0415
 
     try:
-        result = _send(domain=domain, period=period)
+        result = _send(domain=domain, period=period, user_id=user_id)
         typer.echo(result["message"])
         if result.get("entry_count", 0) >= 0:
             typer.echo(f"  Domain: {result['domain']}")

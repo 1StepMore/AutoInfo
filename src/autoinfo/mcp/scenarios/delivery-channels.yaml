@@ -1,7 +1,7 @@
 # Delivery channels — view config, channel health, active deliveries,
 # delivery log, and email digest (graceful error without SMTP config).
 name: delivery-channels
-description: "Delivery channel health, config, active deliveries, and log queries"
+description: "Delivery channel health, config, active deliveries, and log queries. Prerequisite: must run after init_project — email_config reads .autoinfo/config.yaml, which only exists on an initialized project."
 category: delivery
 requires_env: []
 steps:

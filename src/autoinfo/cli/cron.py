@@ -45,6 +45,7 @@ class Schedule:
     created_at: str = ""
     recipients: list[str] = field(default_factory=list)  # email recipients (digest type)
     format: str = "html"  # digest output format: "html" or "markdown"
+    user_id: str = ""  # end-user ID for content-preference filtering (digest type)
 
 
 def _now_iso() -> str:
@@ -96,6 +97,7 @@ def load_schedules() -> dict[str, Schedule]:
             created_at=s.get("created_at", ""),
             recipients=s.get("recipients", []),
             format=s.get("format", "html"),
+            user_id=s.get("user_id", ""),
         )
     return schedules
 
@@ -115,6 +117,7 @@ def save_schedules(schedules: dict[str, Schedule]) -> None:
         if s.type != "collection":
             schedule_dict["type"] = s.type
             schedule_dict["format"] = s.format
+            schedule_dict["user_id"] = s.user_id
             if s.recipients:
                 schedule_dict["recipients"] = s.recipients
         raw["schedules"][name] = schedule_dict
@@ -379,7 +382,12 @@ def run_due_schedules(
             if sched.type == "digest":
                 from autoinfo.email_sender import send_digest
 
-                send_digest(domain=sched.domain, period="daily", config=None)
+                send_digest(
+                    domain=sched.domain,
+                    period="daily",
+                    config=None,
+                    user_id=sched.user_id,
+                )
                 sched.last_run = now.isoformat()
                 save_schedules(schedules)
                 _update_heartbeat(name, status="ok")

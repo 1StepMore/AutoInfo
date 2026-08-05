@@ -35,7 +35,7 @@ Expectations are grouped by journey phase.
 > - **B2 Direct User (Agent Operator)**: An AI agent operates AutoInfo via MCP tools on behalf of the end user.
 > - **B3 Director User (Human Commander)**: A human operator defines domains, configures sources, and monitors the system.
 >
-> **Current status: 55/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 11/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).**
+> **Current status (as of 2026-07-27): 55/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 11/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).** Note: this is a historical snapshot — several items have since progressed (e.g., G14-G16 billing and subscription features, automated notifications, and rate limiting foundations have been implemented post-snapshot).
 
 ### 3.1 Phase 1: Setup
 
@@ -55,7 +55,7 @@ Expectations are grouped by journey phase.
 | UX Detail | Specification |
 |-----------|---------------|
 | **Human: `autoinfo` with no arguments** | Shows standard typer help text listing commands. No splash screen, no branding display. |
-| **Agent: MCP server connection** | Agent connects to MCP server via stdio or SSE. Calls `health_check` tool to verify connectivity. Tool manifest is auto-discovered via MCP protocol. |
+| **Agent: MCP server connection** | Agent connects to MCP server via stdio (SSE transport is future work). Calls `health_check` tool to verify connectivity. Tool manifest is auto-discovered via MCP protocol. |
 | **Output format — human** | Plain text help. `--json` flag available globally for machine-readable output. |
 | **Output format — agent** | JSON-RPC over stdio. All tools return structured dicts. Tool descriptions are self-documenting via MCP protocol. |
 | **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (27 values) covers NotFound, DomainNotFound, ValidationError, InternalError, and additional codes: `AuthRequired` (future SSE auth), `RateLimited` (future rate limiting), `SessionExpired` (future session management), `LLMNotConfigured` (LLM guard, v1.8.1), `NoCachedItems`, `EmptyResult`, `ConfigNotFound`. Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
@@ -70,7 +70,7 @@ Expectations are grouped by journey phase.
 | **Init process — agent** | Agent does not run `init`. Agent expects `.autoinfo/` to already exist with valid config. If missing, MCP tools return appropriate error. |
 | **Re-running init** | Idempotent: creates any missing files but never overwrites existing config. To reset fully, delete `.autoinfo/` and re-run init. |
 | **What init creates** | Full project skeleton: `.autoinfo/config.yaml` (domains with embedded `sources` + `topics` — config.yaml is the single source of truth; no standalone `sources.yaml`/`domains.yaml`/`topics.yaml`) + directory structure (`collections/`, `outputs/`, `knowledge/`). `knowledge/` contains the 4 pipeline tiers: `00-Inbox/` (scaffolded but deprecated — no code writes to it), `01-Raw/`, `02-Draft/`, `03-Wiki/`. If demo domains selected, ships demo source lists. |
-| **Demo domains shipped** | Five pre-configured domain templates: `medical-research`, `ai-commercial`, `financial-intelligence`, `tech-ai-developer`, `language-learning`. Each includes curated default sources, suggested topics, and output templates. User can activate any subset. |
+| **Demo domains shipped** | Nine pre-configured domain templates: `medical-research`, `ai-commercial`, `financial-intelligence`, `tech-ai-developer`, `language-learning`, `online-video`, `financial-news`, `online-education`, `legal-compliance`. Each includes curated default sources, suggested topics, and output templates. User can activate any subset. |
 
 #### F04 — LLM Configuration (BYOK) ✅
 
@@ -100,7 +100,7 @@ Expectations are grouped by journey phase.
 | **Source types supported** | RSS/Atom feeds, REST APIs (JSON), web pages (with extraction rules), webhook push, email (incoming newsletters via IMAP), PDF endpoints. |
 | **Universal extraction** | LLM-based flexible schema extraction: user describes what fields they want, LLM extracts them. No per-source coding needed. |
 | **Validation** | `autoinfo doctor` validates source configuration. URLs/API endpoints tested for reachability. |
-| **Agent: discover demo domains** | `list_demo_domains()` → returns `[{name: "medical-research", description: "...", source_count: 4}]`. |
+| **Agent: discover demo domains** | `list_domains()` → returns all defined domains. Use `get_domain_schema(domain)` to inspect a domain's extraction fields, output templates, and topics. |
 | **Agent: activate domain** | `activate_domain(name="medical-research")` — loads demo configuration into user's `.autoinfo/`. |
 | **Agent: deactivate domain** | `deactivate_domain(name="medical-research")` — removes domain config but preserves collected data. |
 | **Agent: read domain config** | `get_domain_config(domain="medical-research")` — returns full domain configuration including sources, topics, extraction schema, and output templates. |
@@ -122,7 +122,7 @@ Expectations are grouped by journey phase.
 
 #### F07 — Demo Domain Source Libraries ✅
 
-*The system ships with curated source lists for three demo domains, proving value out of the box.*
+*The system ships with curated source lists for nine demo domains, proving value out of the box.*
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -131,7 +131,7 @@ Expectations are grouped by journey phase.
 | **Language Learning sources** | Project Gutenberg (classics, public domain), VOA Learning English (leveled news), news-in-levels, commonlit.org (free leveled reading), public domain children's literature. |
 | **Source metadata** | Each default source includes: name, URL/API endpoint, domain, content type, update frequency, quality tier (1-4), language, access restrictions. |
 | **Quality tiers** | Tier 1: official APIs, peer-reviewed databases. Tier 2: reputable news, curated databases. Tier 3: blogs, community sources. Tier 4: user-defined custom (no quality guarantee). |
-| **Agent: list defaults** | `list_demo_sources(domain="medical-research")` → returns `[{name, url, type, quality_tier, frequency}]`. |
+| **Agent: list defaults** | `list_available_platforms()` → returns all supported source platform types (RSS, API, Web, Webhook, Email, PDF) with descriptions. Use `list_sources(domain)` to see currently-configured sources for a domain. |
 | **Agent: activate sources** | `add_source(source_name="pubmed", domain="medical-research")` — activates a demo source. |
 
 #### F07b — Source API Capability Matrix (NEW) ✅
@@ -172,7 +172,7 @@ This section provides a structured API capability catalog for every pre-configur
 | **Quandl (Nasdaq Data Link)** | ✅ REST + Python/R packages | Freemium (free datasets + premium by source) | API key rate-limited | EOD, fundamentals, macro, alternative data | Developers, quantitative research | ⭐⭐⭐⭐ |
 | **Alpha Vantage** | ✅ REST | Free: 25 req/day (5 req/min); Premium: $49.99-$79.99/mo | Rate-limited (free tier very restrictive) | Stocks, forex, crypto, technical indicators | Personal finance, prototyping, lightweight projects | ⭐⭐⭐ |
 | **FRED (Federal Reserve)** | ✅ REST API | **Free** | Generous | US economic time series (millions of series) | US macroeconomic analysis, research | ⭐⭐⭐⭐⭐ |
-| **Yahoo Finance** | ❌ No official API (shut down 2017) | — | Blocks automated requests | — (3rd party yfinance library exists, ToS-violating) | Not recommended for production | ⭐ (ToS risk) |
+| **Yahoo Finance** | ❌ No official API (shut down 2017) | — | Blocks automated requests | — (3rd party yfinance library exists, ToS-violating). A `yahoo_finance` collector handler IS shipped (`collectors/yahoo_finance.py`) — the handler provides access but the underlying data source carries ToS risk and is **not recommended for production use**. | ⭐ (ToS risk, handler exists) |
 | **CEIC** | ⚠️ API available | High-price institutional subscription | Per contract | Global macroeconomics (200+ countries) | Global macro research | ⭐⭐ |
 
 ##### News & Media Sources
@@ -447,7 +447,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **01-Raw** (auto, primary) | **Sole entry point** for all collected content. Every collected item (from F11) lands here automatically. **全量保留，不做取舍** — keep everything, filter later. File name = readable topic slug, not source ID. Corresponds to KB tier `01-Raw/`. |
 | **02-Draft** (agent-writable) | Agent can create Draft entries from Raw: cleaned, merged, restructured, enriched. But agent **cannot** create Draft directly from outside — only from 01-Raw. User reviews Draft before promotion. Corresponds to KB tier `02-Draft/`. |
 | **03-Wiki** (human-only, append-only) | Permanently reviewed knowledge. **No direct writes allowed** (hard rule). Only human can promote Draft→Wiki. Agent never writes to 03-Wiki. **Append-only**: once promoted, entries stay. Agent cannot demote or delete Wiki entries — only human can. Agent may deprecate (tag `status: deprecated`) or annotate entries upon explicit human command. Corresponds to KB tier `03-Wiki/`. |
-| **Directory structure** | `knowledge/<domain>/<tier>/<collection>/<YYYY-MM-DD>-<slug>.md`. Example: `knowledge/medical-research/01-Raw/ivf/2026-07-20-endometrial-receptivity.md`. |
+| **Directory structure** | `knowledge/<domain>/<tier>/<topic>/<YYYY-MM-DD>-<slug>.md`. Example: `knowledge/medical-research/01-Raw/ivf/2026-07-20-endometrial-receptivity.md`. |
 | **Entry frontmatter** | `title`, `domain`, `tier` (raw/draft/wiki), `source_url` (必填), `source_type` (paper/article/video/…), `source_platform` (pubmed/arxiv/…), `author`, `collected_at`, `summary`, `source_ids[]`, `tags[]`, `status` (raw/processing/compiled), `priority` (1-5), `language`, `related_concepts[]`, `linked_entries[]`, `custom_fields: {key: value}`. |
 | **Generic schema + custom fields** | All entries share base fields. Each domain defines `custom_fields`. Medical: `{doi, authors, journal, methodology, sample_size}`. AI: `{category, pricing, competitors}`. User-defined: anything. |
 | **Keywords system** | Central `_keywords.yaml` per domain or global. Managed status: `verified` (human-confirmed), `auto_added` (LLM-extracted candidate), `merged`, `deprecated`. Prevents synonym proliferation. Modeled after external `_keywords.yaml` pattern (554 entries across the KB). |
@@ -702,7 +702,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Metering granularity** | Per-domain, per-end-user (if attributable), per-pipeline-stage. LLM costs broken down by task type (extraction, summarization, synthesis, quality check, embedding). |
 | **Storage model** | Append-only cost log: `cost_log_id, timestamp, domain, user_id?, stage, cost_unit, quantity, unit_price_estimate, total_cost_estimate`. Written asynchronously to avoid blocking pipeline. |
 | **Unit prices** | Pre-populated default prices: DeepSeek Chat $0.15/M input $0.60/M output, Claude Sonnet $3/M input $15/M output, text-embedding-3-small $0.02/M. User can override in config to reflect actual provider pricing. |
-| **MCP tool** | `get_cost_report(domain, period, group_by)` — returns aggregated cost breakdown by specified dimension. Agent queries to answer "what did medical research cost me this month?" |
+| **MCP tool** | `cost_dashboard(period)` — returns totals by domain, daily trend, top models/sources, and budget status. Agent queries to answer "what did medical research cost me this month?" |
 | **CLI** | `autoinfo cost --domain <domain> --period <period> --group-by <dimension>` — human-direct equivalent. |
 
 #### F42 — External Billing Model 🟡
@@ -736,7 +736,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Per-domain attribution** | LLM extraction costs attributed to domain where item was processed. Shared LLM synthesis (digest generation) allocated across all domains that contributed items. Storage attributed by entry count per domain. |
 | **Per-end-user attribution** | Direct costs (items collected for user's subscribed domains) attributed directly to end user. Shared costs (platform overhead, shared synthesis) allocated by subscription tier weight or pro-rata across active users. |
 | **Configuration** | `cost_allocation.strategy: usage_based` in global config. Overridable per domain. Allocation method logged in cost audit trail. |
-| **MCP tool** | `get_cost_allocation(period)` — returns cost breakdown per domain and per end user with allocation method and rule identifier. |
+| **MCP tool** | `cost_allocation(domain, user_id, period)` — returns cost breakdown per domain and per end user with allocation method and rule identifier. |
 
 #### F45 — Budget Alerts & Cost Control ✅
 
@@ -746,8 +746,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Alert channels** | Agent notification (MCP tool return warning with details), email to operator (scheduled, not real-time), dashboard banner in portal. Configurable per threshold rule. |
 | **Alert events** | LLM spend approaching monthly budget (80%, 90%, 100% thresholds), storage nearing limit (80%, 90%, 100%), unexpected cost spikes (>2x previous period), end-user overage approaching subscription cap. |
 | **Auto-remediation actions** | Configurable per alert: pause collection for domain, switch to cheaper LLM model for non-critical tasks, skip G4 quality check on low-priority items, notify agent with suggested actions. |
-| **Configuration** | `cost_alerts:` block in config.yaml. List of alert rules with type, threshold, action, channel. Agent configures via `set_budget_alert` MCP tool. |
-| **MCP tool** | `set_budget_alert(domain, threshold_type, value, action)` — configure a budget alert rule. `get_budget_alerts()` — list active alerts with current status. |
+| **Configuration** | `cost_alerts:` block in config.yaml. List of alert rules with type, threshold, action, channel. Agent configures via `set_budget_thresholds` MCP tool. |
+| **MCP tool** | `set_budget_thresholds(thresholds, auto_remediation_enabled, alert_webhook)` — update budget threshold percentages. `get_budget_thresholds()` — list active threshold configuration. |
 
 ### 3.10 Phase 10: Data Privacy
 
@@ -781,7 +781,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Log schema** | `audit_log_id, timestamp, actor_type (agent|human|system), actor_id, action, resource_type, resource_id, details (JSON with secrets redacted), result (success|failure|blocked), session_id`. Immutable append-only log. |
 | **Agent operations** | Every MCP tool call recorded: tool name, parameters (API keys and tokens redacted), result status, duration. Actor identity from MCP session metadata. |
 | **Human operations** | CLI commands logged: command name, arguments (secrets redacted), exit code. Portal actions logged via FastAPI middleware. |
-| **Retention** | Audit logs retained 90 days minimum, up to 1 year configurable. Exportable via `query_audit_log()` or CLI `autoinfo audit`. |
+| **Retention** | Audit logs retained per tier (authoritative from `operations.md` §2.5): Free 90 days, Premium 90 days, Enterprise 180 days. Exportable via `query_audit_log()` or CLI `autoinfo audit`. |
 | **MCP tool** | `query_audit_log(filters)` — search audit log by actor, action, resource, time range. Returns paginated results with total count. |
 | **CLI** | `autoinfo audit --actor <actor> --action <action> --since <date>` — human-direct audit trail browsing with JSON output support. |
 

@@ -249,7 +249,7 @@ Product → D1 → D2 → D3 → Agent Push (HTTP POST to agent callback URL)
 | **Pull model (existing)** | Agent calls `generate_digest()`, `search_knowledge_base()`, etc. synchronously. No callback needed. |
 | **Hybrid** | Agent polls for availability, AutoInfo provides callback as optimization. Both coexist. |
 
-**Callback payload**: Same structure as Agent-Native JSON (§1.5) with additional delivery metadata: `{delivery_id, subscription_id, callback_event: "new_digest", product: {...}}`.
+**Callback payload**: Canonical push envelope `{event, payload, schema_version, trace_id, product_id}`. `event` is one of `new_digest`, `new_report`, `new_tutorial`; `payload` is the generated output (JSON-LD for `format="agent"`, markdown/HTML otherwise); `schema_version` is `1`; `trace_id` and `product_id` carry delivery context. Delivery is fire-and-forget through the durable SQLite outbox (`agent_outbox`): the row is persisted before any attempt, a background worker drains it (`pending` → `delivered` | `failed`), and `failed` rows are requeued on process start. No retry or backoff; failures surface via the `delivery_failures_total` metric.
 
 **Use cases**:
 - AI agent (e.g., Perplexity Comet, ChatGPT Tasks) subscribes to "weekly medical research digest" — AutoInfo pushes when ready
@@ -302,7 +302,7 @@ class DeliveryLog:
 
 ## 4. End User Lifecycle (§12.15)
 
-> **Note**: The end-user lifecycle model (UserProfile/Subscription/DeliveryLog) supports B1.2 Subscribe and B1.4 Consume lifecycle stages. See §11 for B1.1 (Discovery), B1.3 (Onboarding), B1.5 (Config Modification), and B1.7 (Reactivation). Root spec: `docs/dev/specs/user-lifecycle-definition.md` §2.
+> **Root spec**: `docs/dev/specs/user-lifecycle-definition.md` §2 (B1 End User Lifecycle) — that is the canonical home for B1 lifecycle stages, state machine, and identity model. This section covers **delivery-specific aspects only**: data models for delivery, channel configuration, and MCP end-user tools. Do not duplicate lifecycle-stage tables here; refer to the root spec.
 
 ### 4.1 Data Model
 
@@ -345,7 +345,7 @@ class Subscription:
     domain: str
     topics: list[str]
     products: list[str]              # ["digest", "report", "tutorial", "presentation"]
-    channels: list[str]              # Channel types for delivery ("smtp", "telegram", ...) — one of the 12 canonical channels
+    channels: list[str]              # Channel types for delivery ("smtp", "telegram", ...) — one of the 13 canonical channels
     schedule: str                    # Cron expression ("0 8 * * 1" = weekly Monday 8AM)
     status: SubscriptionStatus       # active | paused | cancelled
     created_at: datetime
@@ -645,7 +645,9 @@ While v1 does not implement explicit consumption tracking for all channels, the 
 
 ## 6. Consumption Tracking (CD-011, CD-018)
 
-> **Gap-filled 2026-07-27**: Consumption tracking is documented as a gap ([CD-011](cross-dimensional-catalog.md#cd-011-consumption-tracking-read-receipts--engagement) — never designed; [CD-018](cross-dimensional-catalog.md#cd-018-consumption-tracking-mcp-tools) — spec'd not implemented). This section defines the consumption tracking model, event types, and MCP tools needed to close the consumption gap. The entire A6 Consumption stage is currently blank (all cells 🔴 in the cross-dimensional matrix).
+> **Gap-filled 2026-07-27**: Consumption tracking is documented as a gap ([CD-011](cross-dimensional-catalog.md#cd-011-consumption-tracking-read-receipts--engagement) — never designed; [CD-018](cross-dimensional-catalog.md#cd-018-consumption-tracking-mcp-tools) — spec'd not implemented). This section defines the consumption tracking model, event types, and MCP tools needed to close the consumption gap.
+>
+> ✅ **Implemented 2026-08-04**: `ConsumptionEvent` (view/open/click) auto-recorded on delivery. SQLite store at `src/autoinfo/consumption.py`. The entire A6 Consumption stage is 🔴 blank in the cross-dimensional matrix.
 
 ### 6.1 ConsumptionEvent Model
 
@@ -729,12 +731,16 @@ subscriptions                      product_instances
 | **Engagement Score** | Weighted composite (configurable weights) | 🟡 P1 |
 
 > **Implementation status (2026-07-27)**: Zero consumption tracking code exists. No `ConsumptionEvent` model, no consumption event storage, no MCP tools for engagement. The entire A6 Consumption stage is 🔴 blank. This section serves as the implementation specification.
+>
+> ✅ **Implemented 2026-08-04**: `ConsumptionEvent` is now auto-recorded on digest/report delivery (view/open/click events). SQLite-backed store exists at `src/autoinfo/consumption.py`. See `get_enduser_usage` MCP tool for consumption queries.
 
 ---
 
 ## 7. Delivery Channel Health Monitoring (CD-007)
 
 > **Gap-filled 2026-07-27**: Channel health monitoring is a never-designed gap ([CD-007](cross-dimensional-catalog.md#cd-007-delivery-channel-health-monitoring)). Currently, if a delivery channel (Telegram Bot, WeChat OA, DingTalk, etc.) fails or degrades, delivery silently retries without alerting. This section defines the health monitoring model.
+>
+> ✅ **Implemented 2026-08-04**: `get_channel_health` MCP tool now reports health + latency for all 13 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push).
 
 ### 7.1 Channel Health Model
 
@@ -742,7 +748,7 @@ subscriptions                      product_instances
 @dataclass
 class ChannelHealth:
     """Health status for a single delivery channel."""
-    channel_type: str                    # "smtp", "telegram", "wechat_oa", etc. — one of 12 canonical channels
+    channel_type: str                    # "smtp", "telegram", "wechat_oa", etc. — one of 13 canonical channels
     status: ChannelHealthStatus
     health_score: float                  # 0.0–100.0 (composite score)
     
@@ -819,6 +825,8 @@ Health score clamped to [0, 100].
 > **SLA Targets** (from §2.3): SMTP < 30s, Telegram/DingTalk/FeiShu < 5s, Discord/Webhook < 10s, REST API < 5s, File Export < 1s, RSS < 30s, Social Publish < 10s.
 
 > **Implementation status (2026-07-27)**: No channel health monitoring exists. DeliveryLog records per-item delivery results but there is no aggregate channel health view, no auto-suspend mechanism, and no health monitoring MCP tools. See [CD-007](cross-dimensional-catalog.md#cd-007-delivery-channel-health-monitoring).
+>
+> ✅ **Implemented 2026-08-04**: `get_channel_health` now reports `{healthy, latency_ms, error}` per channel. The auto-suspend mechanism and historical health tracking remain spec-only; the core monitoring surface is shipped.
 
 ---
 
@@ -1093,11 +1101,11 @@ Subscriptions ──→ Schedule Trigger ──→ Product Generation
 
 ## 11. B1 Lifecycle Integration
 
-> **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §2 (B1 End User Lifecycle)
+> **Root spec:** `docs/dev/specs/user-lifecycle-definition.md` §2 (B1 End User Lifecycle) — that is the canonical home for B1 stage definitions, lifecycle state machine, and subscription config model. **This section covers delivery-specific aspects only**: referral flow delivery mechanics, onboarding delivery actions, NL→Config pipeline delivery integration, and reactivation retention windows. §11.4 retention windows (Free 30d / Premium 90d / Enterprise 180d) remain authoritative for the delivery spec.
 > **F-expectations:** F65 (B1.1 Discovery), F66 (B1.3 Onboarding), F67 (B1.5 Config Modification), F68 (B1.7 Reactivation)
 > **Associated data models:** `docs/dev/specs/data-models.md` §4.9-4.13
 
-This section maps B1 lifecycle stages (from the root spec) to delivery mechanisms. It closes the gap between subscription configuration (what B1 wants) and delivery execution (what AutoInfo produces).
+This section maps B1 lifecycle stages (from the root spec) to delivery mechanisms — delivery channels, DeliveryLog, retry chain, SLA — only. The root spec owns lifecycle stage definitions and the B1 state machine.
 
 ### 11.1 B1.1 Discovery & Referral
 
@@ -1168,7 +1176,7 @@ B1: "帮我把金融资讯加到订阅里"
   → Agent confirms to B1: "已添加金融资讯到你的订阅，下次收集周期生效。"
 ```
 
-**Billing vs non-billing rules** (from lifecycle-definition §2.4):
+**Billing vs non-billing rules** (authoritative source: `docs/dev/specs/user-lifecycle-definition.md` §2.4 — this is a delivery-specific summary only):
 
 | Change Type | Examples | Effective | Action |
 |-------------|----------|-----------|--------|

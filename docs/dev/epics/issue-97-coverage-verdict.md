@@ -57,7 +57,7 @@ The original 66-dimension target has been superseded by a 99-dimension matrix (`
 | — | Portal / storefront | ✅ shipped | `src/autoinfo/api/portal.py` + `src/autoinfo/api/storefront.py` + CLI `portal`/`enduser` groups |
 | — | Agent callbacks | ✅ shipped | `src/autoinfo/mcp/server.py:10038` — `set_agent_callback` MCP tool; `src/autoinfo/agent_callback.py:96` — SQLite persistence |
 | — | target_audience parameter | ✅ shipped | `src/autoinfo/output/__init__.py:2517` — `--audience` (researcher/executive/investor/clinician/student) |
-| — | Demo domain sources | ✅ shipped | 9 domains, 46 real sources across 27 collector handlers (29 files in `src/autoinfo/collectors/`) |
+| — | Demo domain sources | ✅ shipped | 13 domains, 200 real sources across 30 collector handlers (31 files in `src/autoinfo/collectors/`) |
 
 ---
 
@@ -65,8 +65,8 @@ The original 66-dimension target has been superseded by a 99-dimension matrix (`
 
 | Area | Issue Target | Current State | Evidence |
 |------|:-----------:|---------------|----------|
-| MCP tools | 66 dimensions validated | **141/141 (100%)** | 43 scenarios in `src/autoinfo/mcp/scenarios/*.yaml`; `scripts/coverage_audit.py` confirms 0 MISSING |
-| CLI command groups | 8 untested | **23/23 (100%)** | Scenarios cover all CLI groups via subprocess steps |
+| MCP tools | 66 dimensions validated | **141/141 (100%)** | 47 scenarios in `src/autoinfo/mcp/scenarios/*.yaml`; `scripts/coverage_audit.py` confirms 0 MISSING |
+| CLI command groups | 8 untested | **28/28 (100%)** | Scenarios cover all CLI groups via subprocess steps |
 | REST API endpoints | 0 tested | **8/8 (100%)** | `rest-api.yaml` scenario with real HTTP calls |
 | Collector validation (12 items) | 0% | **Covered** | `collectors-e2e.yaml` scenario; individual collector scenarios in coverage audit |
 | Output validation (7 items) | Incomplete | **Covered** | `output-digest-report.yaml`, `output-tutorial-presentation.yaml`, `output-simplify-recommend.yaml`, `kb-import-export.yaml` |
@@ -92,7 +92,7 @@ These are the only items the audit confirms as genuinely unresolved. None block 
 ## Why Close
 
 1. **All 15 issue-blocked items are shipped** with concrete code evidence — collectors, output types, channels, and agent capabilities are all in `src/autoinfo/` with MCP tool surfaces and CLI commands.
-2. **Validation coverage is effectively 100% on the MCP tool surface** (141/141 tools, 23/23 CLI groups, 8/8 REST endpoints via 43 scenarios). The issue's original 36% metric is obsolete.
+2. **Validation coverage is effectively 100% on the MCP tool surface** (141/141 tools, 28/28 CLI groups, 8/8 REST endpoints via 47 scenarios). The issue's original 36% metric is obsolete.
 3. **Code coverage is 83% on a 99-dimension superset** (`docs/dev/enduser-coverage-matrix.md`), far exceeding the original 66-dimension scope.
 4. **The 6 residual gaps (R1-R6)** are operational guardrails, BYOK obligations, or cleanup items — not missing features. None warrant keeping a 66-dimension epic open.
 5. **The issue's own owner** (1StepMore) recommended re-framing to 93 engineerable dimensions at 92% coverage in the 2026-08-03 comment — the audit independently confirms this assessment.
@@ -103,7 +103,7 @@ These are the only items the audit confirms as genuinely unresolved. None block 
 
 - `gh issue view 97` — fetched full body + 3 comments (2026-08-04)
 - `grep` verified all 15 claimed implementations against `src/autoinfo/collectors/`, `src/autoinfo/output/`, `src/autoinfo/delivery/`, `src/autoinfo/mcp/`, `src/autoinfo/billing.py`, `src/autoinfo/consumption.py`
-- `glob src/autoinfo/mcp/scenarios/*.yaml` — confirmed 43 scenarios
-- `glob src/autoinfo/collectors/*.py` — confirmed 29 files (27 handlers + base + init)
+- `glob src/autoinfo/mcp/scenarios/*.yaml` — confirmed 47 scenarios (as of 2026-08-05; 44 at audit time)
+- `glob src/autoinfo/collectors/*.py` — confirmed 31 files (30 handlers + base + init)
 - `grep` confirmed R4 gap (quandl/yahoo not in demo domain configs)
 - `docs/dev/enduser-coverage-matrix.md` confirmed at docs/dev path (returned from archive 2026-08-04)

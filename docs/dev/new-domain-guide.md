@@ -49,30 +49,43 @@ src/autoinfo/data/domains/
 
 ### Available source types
 
+> All 29 source types below mirror `VALID_SOURCE_TYPES` in
+> `src/autoinfo/config.py` — the single source of truth for source type
+> validation. Handlers not listed as a dedicated type (e.g. PubMed,
+> Semantic Scholar, USPTO, web scraping with Playwright) are configured via
+> the generic `api` / `web` types with per-source settings.
+
 | Type | Handler | Use Case |
 |------|---------|----------|
-| `rss` | RSSHandler | Blogs, news sites, any RSS/Atom feed |
-| `api` | HttpApiHandler/REST | REST APIs with JSON responses |
-| `web` | WebScraperHandler | Static web pages (trafilatura) |
-| `web_playwright` | PlaywrightHandler | JS-rendered pages |
-| `email` | EmailHandler | IMAP mailbox ingestion |
-| `pdf` | PDFHandler | PDF document parsing |
-| `webhook` | WebhookHandler | Push-based ingestion |
-| `reddit` | RedditHandler | Reddit subreddit monitoring |
-| `youtube` | YouTubeHandler | YouTube channel/search tracking |
-| `bilibili` | BilibiliHandler | Bilibili (B站) video search |
-| `spotify` | SpotifyHandler | Podcast/show episodes |
-| `hackernews` | HackerNewsHandler | HackerNews API (top/new/best stories) |
-| `apple_podcasts` | ApplePodcastsHandler | Apple Podcasts search |
-| `dblp` | DBLPHandler | Computer science bibliography |
-| `openalex` | OpenAlexHandler | Open scholarly research |
-| `nyt` | NYTHandler | New York Times API |
-| `pubmed` | PubMedHandler | PubMed E-utilities |
-| `semantic_scholar` | SemanticScholarHandler | Semantic Scholar API |
-| `uspto` | USPTOHandler | US patent data |
+| `akshare` | AKShareHandler | Chinese A-share market data (quotes, history) |
+| `api` | HttpApiHandler/REST | Generic REST APIs with JSON responses (PubMed, Semantic Scholar, USPTO, CrossRef, arXiv, etc. via endpoint config) |
 | `ap_api` | APAPIHandler | Associated Press API (paid) |
-| `reuters_mcp` | ReutersMCPHandler | Reuters (paid, MCP-based) |
+| `apple_podcasts` | ApplePodcastsHandler | Apple Podcasts search |
+| `bilibili` | BilibiliHandler | Bilibili (B站) video search |
+| `core` | UnpaywallHandler (CORE provider) | CORE API v3 open-access full-text search |
+| `dblp` | DBLPHandler | Computer science bibliography |
+| `edx_sitemap` | EdxSitemapHandler | edX course catalog via sitemap index |
+| `email` | EmailHandler | IMAP mailbox ingestion |
+| `email_imap` | EmailHandler | Explicit IMAP mailbox ingestion |
+| `gdelt` | GDELTHandler | GDELT global news/event stream |
+| `hackernews` | HackerNewsHandler | HackerNews API (top/new/best stories) |
+| `huggingface` | HuggingFaceHandler | HuggingFace Hub datasets/models |
+| `kaggle` | HuggingFaceHandler (`provider="kaggle"`) | Kaggle datasets (requires `KAGGLE_USERNAME`/`KAGGLE_KEY`) |
+| `nyt` | NYTHandler | New York Times API |
+| `openalex` | OpenAlexHandler | Open scholarly research |
+| `pdf` | PDFHandler | PDF document parsing |
 | `quandl` | QuandlHandler | Financial/economic data |
+| `reddit` | RedditHandler | Reddit subreddit monitoring |
+| `reuters_mcp` | ReutersMCPHandler | Reuters (paid, MCP-based) |
+| `rss` | RSSHandler | Blogs, news sites, any RSS/Atom feed |
+| `sec_edgar` | SecEdgarHandler | SEC EDGAR company filings (ticker → CIK → submissions) |
+| `spotify` | SpotifyHandler | Podcast/show episodes |
+| `ssrn` | SSRNHandler | SSRN preprint papers (social science) |
+| `unpaywall` | UnpaywallHandler | Unpaywall open-access metadata + full-text links |
+| `web` | WebScraperHandler | Static web pages (trafilatura) |
+| `webhook` | WebhookHandler | Push-based ingestion |
+| `yahoo_finance` | YahooFinanceHandler | Yahoo Finance market data |
+| `youtube` | YouTubeHandler | YouTube channel/search tracking |
 
 ---
 
@@ -163,7 +176,7 @@ settings:
 ### Via CLI
 
 ```bash
-autoinfo domain add --name "online-video-ott" \
+autoinfo domain add --name "online-video" \
   --description "Online video, OTT platforms, and streaming industry news"
 ```
 
@@ -171,6 +184,12 @@ autoinfo domain add --name "online-video-ott" \
 
 Create `src/autoinfo/data/domains/<domain-name>/sources.yaml` following the
 pattern in [§ Reference: Existing Domain Patterns](#reference-existing-domain-patterns).
+
+> **Domain-config model**: demo domains ship as templates in
+> `src/autoinfo/data/domains/` (importable via `autoinfo domain import
+> --from-demo <domain>`); user-created domains live in `.autoinfo/config.yaml`
+> (the single source of truth), managed via `autoinfo domain add` or
+> `autoinfo init`.
 
 ### Config structure
 
@@ -450,16 +469,29 @@ print(c.list_sources(domain='<domain-name>'))
 
 ## New Domain Blueprint: 4 Demo Candidates
 
+> ✅ **All 4 blueprints shipped as demo domains (2026-08-04).** The live
+> configs live under `src/autoinfo/data/domains/` (shipped dirs:
+> `online-video`, `financial-news`, `online-education`, `legal-compliance`).
+> The blueprints below remain useful as reference for how each domain was
+> assembled, but the shipped YAML in `src/autoinfo/data/domains/` is
+> authoritative.
+
 The following blueprints provide ready-to-use `sources.yaml` configurations for
-four new demo domains. Each follows the existing pattern established by the 5
-current demo domains.
+four new demo domains. Each follows the existing pattern established by the
+current demo domains (13 shipped: medical-research, ai-commercial,
+financial-intelligence, tech-ai-developer, language-learning, online-video,
+financial-news, online-education, legal-compliance, general-news, gaming, b2b,
+retail).
 
 ### Blueprint: Online Video / OTT (`online-video-ott`)
+
+> **Note**: shipped as demo domain `online-video` — see
+> `src/autoinfo/data/domains/online-video/sources.yaml` for the live config.
 
 ```yaml
 # AutoInfo demo domain: Online Video / OTT
 # Tracks streaming industry news, OTT platform developments, and video content trends
-name: online-video-ott
+name: online-video
 description: "Online video, OTT platforms, and streaming industry intelligence"
 
 sources:
@@ -537,6 +569,9 @@ topics:
 
 ### Blueprint: Financial News (`financial-news`)
 
+> **Note**: shipped as demo domain `financial-news` — see
+> `src/autoinfo/data/domains/financial-news/sources.yaml` for the live config.
+
 ```yaml
 # AutoInfo demo domain: Financial News
 # Tracks market news, economic indicators, and corporate events
@@ -596,6 +631,9 @@ topics:
 ```
 
 ### Blueprint: Online Education (`online-education`)
+
+> **Note**: shipped as demo domain `online-education` — see
+> `src/autoinfo/data/domains/online-education/sources.yaml` for the live config.
 
 ```yaml
 # AutoInfo demo domain: Online Education
@@ -663,6 +701,9 @@ topics:
 ```
 
 ### Blueprint: Legal / Compliance (`legal-compliance`)
+
+> **Note**: shipped as demo domain `legal-compliance` — see
+> `src/autoinfo/data/domains/legal-compliance/sources.yaml` for the live config.
 
 ```yaml
 # AutoInfo demo domain: Legal / Compliance
@@ -751,7 +792,7 @@ topics:
 | Feed returns 0 entries | Feed URL is wrong or blocked | Test with `curl -I <url>`, check HTTP status code |
 | `bozo = 1` in feedparser | Malformed XML | Check feed with validator.w3.org/feed |
 | Feed has content but no items parsed | Non-standard format | Use `web` type instead of `rss`, add custom parser |
-| API returns 403 | Missing/invalid API key | Configure key via `autoinfo configure` or env var |
+| API returns 403 | Missing/invalid API key | Set the source's env var (see `docs/dev/required-api-keys.md`); configure the LLM key via the `configure_llm` MCP tool or `autoinfo init` |
 | API rate limited | Exceeding rate limit | Reduce `rate_limit` in source config, add delays |
 | Source times out | Slow server or network | Increase timeout setting, reduce frequency |
 | No summaries after processing | Extraction schema mismatch | Check `field_mapping` matches API response structure |

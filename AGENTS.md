@@ -4,7 +4,7 @@
 
 AutoInfo is a **universal information tracking and knowledge base platform**. You configure sources and topics; AutoInfo handles collection, LLM-based structured extraction, summarization, and builds a queryable knowledge base.
 
-**Key principle**: Domain-agnostic. The nine demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance) are configurations, not hardcoded features. Users define their own domains.
+**Key principle**: Domain-agnostic. The thirteen demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail) are configurations, not hardcoded features. Users define their own domains.
 
 ## Agent Operating Model
 
@@ -16,7 +16,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
                                 └──── structured JSON-RPC ───┘
 ```
 
-1. **You (the agent)** connect to AutoInfo's MCP server over stdio or SSE
+1. **You (the agent)** connect to AutoInfo's MCP server over stdio (SSE transport is future work)
 2. **All capabilities** are exposed as MCP tools (141 tools across 35 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
@@ -64,13 +64,12 @@ AutoInfo/
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
 │   │   │   ├── mcp-tools.md        # 141 MCP tools across 35 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
+│   │   │   ├── user-lifecycle-definition.md # Foundational user type definitions (B1/B2/B3)
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
 │   │   │   └── ops-runbook.md           # Operations runbook spec
 │   │   ├── cross-dimensional-catalog.md # Cross-dimensional catalog — keystone product matrix (A1-A7 × B1/B2/B3, supersedes archived gap docs)
 │   │   ├── archive/                  # Archived/historical docs
-│   │   ├── kb-pipeline-reference.md  # KB pipeline reference model (archived)
 │   │   ├── director-user-guide.md    # Human-Agent interaction lifecycle
-│   │   └── consumer-output-gaps.md    # Consumer-facing output gap analysis (archived)
 │   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
 │       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
 │       └── translator-qa-skill/    # Translation QA workflow
@@ -78,13 +77,13 @@ AutoInfo/
 │   └── skills/                     # Coding agent skills (for developing AutoInfo)
 ├── src/
 │   └── autoinfo/
-│       ├── cli/                     # 23 CLI command groups
+│       ├── cli/                     # 28 CLI command groups
 │       ├── mcp/                     # MCP server (141 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews)
+│       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap)
 │       ├── llm.py                   # LLM extraction engine
-│       ├── output.py                # Output generation (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent)
+│       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook) — __init__.py + ebook.py (B23: EPUB/MOBI/audiobook) + video.py + seo.py
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
 │       ├── quality.py               # Quality gates G0-G5, D1-D3 delivery gates
 │       ├── delivery.py              # Delivery channel abstraction (13 channels)
@@ -181,7 +180,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | **KB Graph** | `query_knowledge_graph`, `knowledge_graph_export` |
 | **Output** | `list_output_templates`, `generate_digest` (format=md/html/json/agent), `generate_report` (format=md/json/pdf/html/audio/agent), `generate_cross_domain_report`, `generate_tutorial` (format=md/agent), `generate_presentation` (format=md/agent), `localize_content` |
 | **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
-| **Export/Import** | `export_kb` (format=md/json/sqlite/pdf/csv/graphml/agent), `import_kb` |
+| **Export/Import** | `export_kb` (format=md/json/sqlite/pdf/csv/graphml/agent/bundle), `import_kb` |
 | **CEFR** | `classify_cefr`, `cefr_batch` |
 | **Keywords** | `approve_keyword`, `reject_keyword`, `suggest_keywords` |
 | **Email** | `send_email_digest`, `email_config` |
@@ -200,13 +199,13 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | **Data Privacy** | `soft_delete_entry` (with purge flag), `restore_entry`, `export_user_data`, `delete_user_data` |
 | **Knowledge Lifecycle** | `compare_versions`, `find_similar_items`, `merge_items`, `get_domain_decay`, `mark_stale`, `calculate_freshness_score`, `recommend_content`, `simplify_content` |
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
-| **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
+| **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` (push delivers canonical `{event, payload, schema_version: 1, trace_id, product_id}` via durable SQLite outbox) |
 | **Audit** | `query_audit_log` |
-| **Validation** | `list_validation_scenarios`, `run_validation_scenario` |
+| **Validation** | `list_validation_scenarios`, `run_validation_scenario` (47 scenarios, M7T52: sources-gap-closure + output-column + sources-a6-keyed) |
 
 **Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
-**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 27 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
+**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. `actionable` is a boolean flag; the remediation guidance itself lives in `message`. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 27 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
 
 ## Common Patterns
 
@@ -229,7 +228,7 @@ The table indexes every pattern; the five most-used are inlined below.
 | Export KB to PDF | `export_kb(format="pdf")` |
 | Manage keywords | list → suggest → approve/reject |
 | Generate agent-native JSON | `generate_digest(format="agent")` → JSON-LD |
-| Subscribe to agent push delivery | `set_agent_callback(url, events)` |
+| Subscribe to agent push delivery | `set_agent_callback(url, events)` → receives `{event, payload, schema_version, trace_id, product_id}` |
 | Generate and deliver digest email | generate_digest(html) → send_email_digest |
 | Use the REST API | FastAPI on port 8741, same error envelope |
 | Handle MCP error responses | read error.code → follow actionable hint (see below) |
@@ -242,13 +241,13 @@ The table indexes every pattern; the five most-used are inlined below.
 
 **Track a new topic**: `add_topic(domain, name, keywords)` → `collect_sources(domain, topic, dry_run=true)` → `collect_sources(...)` → `process_collection(domain)` → `list_summaries(domain, topic)` → `flag_for_knowledge_base(summary_id, tags)`.
 
-**Check system health**: `diagnose_system()` → returns `health_score` (0-100) + `phase` (init/collect/process/healthy/degraded). On degraded, inspect `phase`.
+**Check system health**: `diagnose_system()` → returns `health_score` (0-100) + `phase` (`uninitialized` / `llm_unconfigured` / `no_sources` / `ready_to_collect` / `operational`). On degraded status, inspect `phase`.
 
 **Configure the LLM (BYOK)**: `configure_llm(api_key, provider, model)` stores an env var reference (`${AUTOINFO_LLM_API_KEY}`), never the raw key. If missing, the 14 LLM-required tools return `LLM_NOT_CONFIGURED` at dispatch. Full variable catalog: `docs/dev/required-api-keys.md`.
 
 **Search KB**: `search_knowledge_base(domain, query, mode="hybrid")` (FTS5 + vector), `mode="vector"` (semantic only), or `mode="faceted"` with `filters={...}`. Omit `domain` to search across all domains.
 
-**Handle MCP errors**: All tools return `{success, error: {code, message, actionable}}`. Read `error.code`, follow the `actionable` hint (e.g. `DOMAIN_NOT_FOUND` says "Use `add_domain()`"). `process_collection` with no cached items returns `{status: "noop"}`, not an error.
+**Handle MCP errors**: All tools return `{success, error: {code, message, actionable}}`. Read `error.code`, follow the remediation hint in `error.message` (`actionable: true` marks that a hint exists, e.g. `DOMAIN_NOT_FOUND` says "Use `add_domain()`"). `process_collection` with no cached items returns `{status: "noop"}`, not an error.
 
 ## LLM Configuration
 
@@ -303,8 +302,8 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
-| Collection | ✅ 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews), scheduled via crond |
+| CLI | ✅ 28 command groups (init, doctor, collect, process, status, summaries, sources, topics, topic-group, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace, import-kb, query-collected, alert-rules, agent-callback) |
+| Collection | ✅ 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
@@ -312,9 +311,10 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF), report (Markdown/JSON/HTML/Audio/Agent), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
+| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB/MOBI) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI) |
 | Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
-| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) |
+| JSON-LD schemas | ✅ `docs/schemas/{knowledge-digest,knowledge-tutorial,knowledge-presentation,knowledge-base-export}-v1.json` (JSON Schema draft-07) pin `@context`/`@type` via `const`; validated by M4T35 round-trip tests |
+| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS); `format="audiobook"` = chaptered MP3 + ZIP (ID3v2.3 CHAP/CTOC via mutagen) |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
@@ -331,7 +331,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
 | End user portal | ✅ CLI-based self-service: preferences, history, product archive |
-| Immutable audit log | ✅ Append-only audit log with MCP + CLI query |
+| Immutable audit log | ✅ Append-only; dispatch-level MCP tool calls with whitelisted fields (actor/action/tool/resource/result_code/trace_id); read-probes (health_check, get_tool_count, list_*) excluded; GDPR-exempt (operations.md §2.1) |
 | Structured pipeline logging | ✅ JSON structured logging per pipeline event |
 | Per-item traceability | ✅ UUID trace_id from collection through delivery, CLI trace |
 | Cost metering | ✅ LLM tokens, storage, API calls per domain/user |
@@ -358,7 +358,9 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |
-| Agent callback persistence | ✅ SQLite-backed agent callback registration survives restarts |
+| Agent callback persistence | ✅ SQLite-backed callback registration survives restarts; pushes canonical `{event, payload, schema_version: 1, trace_id, product_id}` via durable outbox (fire-and-forget, `failed` rows requeued on restart) |
+| Agent push outbox | ✅ Durable SQLite outbox (`agent_outbox` table) enqueues before delivery attempt; requeue_undelivered at process start; failed → `delivery_failures_total` metric; callers never blocked |
+| Dispatch-level audit | ✅ Every MCP tool call (mutations + parameterized reads) audited at dispatch with whitelisted fields (actor/action/tool/resource/result_code/trace_id); read-probes excluded |
 | Cross-domain search | ✅ search_knowledge_base searches all domains when domain omitted |
 | Domain-less collection | ✅ collect_sources collects from all domains when domain omitted |
 | Hard-delete purge | ✅ soft_delete_entry purge flag for permanent removal |
@@ -372,20 +374,24 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Email config MCP | ✅ email_config MCP tool |
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
-| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
-| Test suite | ✅ ~2866 tests (approx; includes new collector + E12/E14/E9/C11 tests) |
+| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
+| Test suite | ✅ ~2942 tests (2906 passed + 34 skipped + 2 network-only; includes new collector + E12/E14/E9/C11 tests) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 | Standardized error envelope | ✅ All MCP + REST API errors return `{success: false, error: {code, message, actionable}}`; 27 ErrorCode values; `error_dict()` deprecated |
+| REST success envelope | ✅ REST API success responses return `{success: true, data: ...}` (breaking change v1.9; migration: `docs/dev/migration-v1.9.md`); dashboard JS unwraps transparently |
 | LLM guard | ✅ Centralized `LLM_NOT_CONFIGURED` at `call_tool` dispatch (14 LLM-required tools) — no more raw auth errors |
 | Actionable guidance | ✅ `init_project` returns `next_steps`; `diagnose_system` returns `health_score` (0-100) + `phase`; DOMAIN_NOT_FOUND includes "Use add_domain()" |
 | CLI help text | ✅ 9 CLI command groups have custom help descriptions |
+| CLI/MCP parity groups | ✅ 6 parity groups added M6 (topic-group, import-kb, query-collected, alert-rules, agent-callback + keywords suggest) — 28 CLI groups mirroring MCP tool params; parity matrix: `docs/dev/cli-mcp-rest-parity.md` |
 | Required API keys doc | ✅ `docs/dev/required-api-keys.md` catalogs all env vars; linked from error messages |
 | Content simplification (E14) | ✅ `simplify_content` MCP tool — CEFR-parameterized text simplification (A1-C1) with LLM rewrite + verification |
 | Single-article payment (E12) | ✅ `create_checkout_session` mode="payment" for one-time article purchases; `check_access(article_id=...)` entitlement fast path |
 | Source credibility score (E9) | ✅ Deterministic `source_score` (0-100) from quality tier, persisted on KBEntry, surfaced in G1 gate + search |
 | RAW product variants (E11) | ✅ RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field |
 | Podcast RSS publishing (C11) | ✅ RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace; audio output auto-persists MP3 |
-| Validated source types | ✅ `VALID_SOURCE_TYPES` frozenset (26 types) as single source of truth for source type validation |
+| Column product (B24) | ✅ `generate_report(report_type="column")` + premium ProductTemplate + G15 `check_access` gate + `column.md.j2` |
+| Magazine digest (D11) | ✅ `generate_digest` magazine-digest ProductTemplate + `magazine-digest.md.j2` per-title RSS clustering (templates 6→8) |
+| Validated source types | ✅ `VALID_SOURCE_TYPES` frozenset (29 types) as single source of truth for source type validation |
 
 ## References
 
@@ -394,8 +400,5 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
 - `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
-- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes the archived gap docs below.
-- `docs/archive/comprehensive-gap-audit.md` — Comprehensive gap audit (archived)
-- `docs/archive/consumer-output-gaps.md` — Consumer-facing output gap analysis (archived)
-- `docs/archive/implementation-gaps.md` — Feature-level implementation gap audit (archived)
-- `docs/archive/reality-assessment.md` — Reality assessment (archived)
+- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes archived gap-audit docs.
+- `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (keystone reference)

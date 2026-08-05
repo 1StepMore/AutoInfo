@@ -26,6 +26,7 @@ The following operations have no MCP tool equivalent and must be escalated to a 
 
 > **Date:** 2026-07-27
 > **Status:** 🔴 Spec — not implemented. All procedures are designed for future implementation.
+> **Status 2026-08-04:** Partially implemented — SQLite backup (`scripts/backup-db.sh` / `scripts/restore-db.sh`, keeps last 7), cron health (`autoinfo cron health` — heartbeat + missed-schedule detection), and channel health (`get_channel_health`) are shipped; remaining items spec-only.
 > **References:** `cross-dimensional-catalog.md` (CD-004 Cron Reliability & Backup, CD-007 Delivery Channel Health, CD-013 Live Operations Dashboard, CD-014 Backup & Disaster Recovery, CD-015 Horizontal Scaling Strategy), `operations.md` §4 (Observability), `pipeline.md` (Collection & KB pipeline).
 > **Current Reality:** AutoInfo runs as a single-node SQLite application. Backup is a manual `make backup` target. No automated monitoring alerts. No DR plan. No scaling beyond the single process.
 
@@ -230,6 +231,8 @@ fi
 
 **MCP tool** (spec'd, not implemented):
 
+> **Status 2026-08-04:** SQLite backup shipped via `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups; `make backup`). The backup MCP tools below remain spec-only.
+
 | Tool | Description |
 |------|-------------|
 | `verify_backup(backup_id)` | Verify backup integrity (checksum + sqlite3 integrity_check) |
@@ -379,20 +382,11 @@ python -m autoinfo.cli output digest --domain {domain} --period day --dry-run
 
 ### 3.1 Prometheus Metrics Reference
 
-Existing metrics at `http://localhost:8741/metrics` (see `operations.md` §4.3 for full list):
-
-| Metric | Type | Key Alert Use |
-|--------|------|--------------|
-| `autoinfo_collections_total` | Counter | Cron failure (flat counter = missed schedule) |
-| `autoinfo_collection_duration_seconds` | Histogram | Source timeout/slowness |
-| `autoinfo_llm_tokens_total` | Counter | Cost overrun |
-| `autoinfo_llm_cost_total` | Counter | Budget threshold breach |
-| `autoinfo_deliveries_total{success="false"}` | Counter | Delivery failure rate |
-| `autoinfo_gate_failures_total` | Counter | Quality degradation |
-| `autoinfo_kb_entries_total` | Gauge | Unexpected data loss (sudden drop) |
-| `autoinfo_staleness_ratio` | Gauge | KB staleness above threshold |
+See `operations.md` §4.3 for the canonical Prometheus metrics reference (endpoint: `http://localhost:8741/metrics`).
 
 **Additional metrics needed** (spec'd, not implemented):
+
+> **Status 2026-08-04:** Prometheus endpoint shipped at `http://localhost:8741/metrics` (see operations.md §4.3). The additional metrics below remain spec-only.
 
 | Metric | Type | Purpose |
 |--------|------|---------|
@@ -1021,6 +1015,7 @@ Cron Scheduler → Enqueue "collect:medical-research:IVF" → Worker picks up �
 
 > **Implementation notes:**
 > - This entire document is a **spec**, not implemented. All procedures are designed for future execution.
+> - **Status 2026-08-04:** Partially implemented — SQLite backup (`scripts/backup-db.sh`), cron health (`autoinfo cron health`), and channel health (`get_channel_health`) are shipped; remaining items spec-only.
 > - Single-person operations team is assumed. Procedures are designed for minimal manual intervention.
 > - All bash scripts and config files should be committed to `scripts/operations/` and `monitoring/` respectively.
 > - PagerDuty is recommended but optional. Webhook fallback uses AutoInfo's own delivery channels.

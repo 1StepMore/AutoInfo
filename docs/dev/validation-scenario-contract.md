@@ -113,9 +113,9 @@ Every tool must disappear from the MISSING list. The audit counts `Tool(name=...
 declarations in `src/autoinfo/mcp/server.py` (141 tools) against `kind: mcp` steps in
 the scenario library.
 
-## Scenario inventory (as of 2026-08-03)
+## Scenario inventory (as of 2026-08-05)
 
-43 scenario files in `src/autoinfo/mcp/scenarios/`:
+47 scenario files in `src/autoinfo/mcp/scenarios/`:
 
 - **System/Discovery**: system-health, discovery, meta-validation
 - **Errors**: error-boundary
@@ -125,8 +125,8 @@ the scenario library.
   cron-schedules, collection-monitor
 - **KB**: kb-access, kb-draft, kb-versioning, kb-graph, kb-import-export,
   kb-lifecycle, kb-extraction
-- **Output**: output-digest-report, output-tutorial-presentation,
-  output-simplify-recommend, output-discovery
+- **Output**: output-digest-report, output-ebook, output-tutorial-presentation,
+  output-simplify-recommend, output-discovery, output-column
 - **Delivery/End-user/Cost**: delivery-channels, delivery-schedules,
   enduser-lifecycle, enduser-preferences, cost-budget, products-billing
 - **Privacy/Lifecycle/Observability**: data-privacy, observability,
@@ -134,8 +134,14 @@ the scenario library.
 - **LLM-gated**: llm-gated (classify_cefr, suggest_keywords, cefr_batch)
 - **CLI**: cli-core, cli-content, cli-ops, cli-extra, cli-llm
 - **REST**: rest-api
+- **M7 additions**: sources-gap-closure (3 new source-type registrations),
+  output-column (report_type=column, LLM-gated), sources-a6-keyed
+  (FRED/Finnhub, env-gated)
 
-Coverage: 141/141 MCP tools (100%), all 23 CLI command groups, 8 REST API endpoints,
+Coverage: 141/141 MCP tools (100%), all 28 CLI command groups, 8 REST API endpoints,
 plus collector platform reachability probes (collectors-e2e) and G4/G5 gate flags
 (processing, LLM-gated).
-Status profile (no LLM key): 36 passed / 0 failed / 7 unconfigured (LLM-gated).
+Status profile (no LLM key): 36 passed / 0 failed / 8 unconfigured (LLM-gated) at
+44 scenarios; the 3 M7 additions (sources-gap-closure passed, output-column +
+sources-a6-keyed unconfigured without keys) bring the full 47-scenario profile to
+37 passed / 0 failed / 10 unconfigured when no BYOK keys are set.

@@ -9,6 +9,8 @@
 
 > Consolidated data model schemas referenced across all spec files. Source truth for these schemas lives in `src/autoinfo/`.
 > **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — the CD catalog defines what each pipeline stage (A1-A7) needs to produce for each user type (B1/B2/B3). This spec provides the data model definitions that implement those needs.
+>
+> **Canonical home for data-model schemas.** This file is the single source of truth for schema definitions. `delivery.md`, `pipeline.md`, and `operations.md` reference schemas defined here rather than re-declaring them. When adding or modifying a shared data model, update this file first, then cross-reference from other specs.
 
 ---
 
@@ -68,7 +70,7 @@ consumes each entity. "spec only" marks models not yet implemented in code.
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # one of VALID_SOURCE_TYPES (26 types, single source of truth in src/autoinfo/config.py)
+    source_type: str                  # one of VALID_SOURCE_TYPES (29 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text
@@ -311,8 +313,7 @@ class ProductLifecycle:
 ### 4.7 Consumption Models
 
 > Cross-ref: CD-011 (Consumption Tracking), CD-018 (Consumption MCP Tools).
-> Entirely spec only — zero consumption tracking code exists,
-> no `ConsumptionEvent` model, no read receipt infrastructure.
+> ✅ **Implemented 2026-08-04**: `ConsumptionEvent` is auto-recorded on digest/report delivery (view/open/click). SQLite-backed store at `src/autoinfo/consumption.py`. The model below is aligned with the implementation. Read receipt infrastructure (per-channel open/read timestamps) is spec-only.
 
 <!-- schema: ConsumptionEvent -->
 <!-- schema: EngagementMetrics -->
@@ -325,7 +326,7 @@ class ConsumptionEvent:
     product_id: str                  # FK to ProductInstance
     user_id: str                     # FK to UserProfile
     event_type: str                  # "delivered" | "opened" | "clicked" | "purchased" (aligned with src/autoinfo/consumption.py)
-    channel: str                     # Channel through which consumed (e.g., "smtp", "telegram") — one of 12 canonical channels
+    channel: str                     # Channel through which consumed (e.g., "smtp", "telegram") — one of 13 canonical channels
     timestamp: datetime
     metadata: dict = field(default_factory=dict)  # user-agent, IP-geo, referrer, etc.
 
@@ -376,7 +377,7 @@ class NotificationTemplate:
     type: str                        # "welcome" | "trial_ending" | "digest_ready" | "cancellation" | "system_alert" | "budget_alert"
     subject_template: str            # Jinja2 template for subject line
     body_template: str               # Jinja2 template for body
-    channel: str                     # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "webhook" — one of 12 canonical channels
+    channel: str                     # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "webhook" — one of 13 canonical channels
     locale: str = "en"               # ISO language code
     variables_schema: dict = field(default_factory=dict)  # JSON Schema for template variables
 
@@ -602,7 +603,7 @@ class SubscriptionConfig:
 
 @dataclass
 class ChannelBinding:
-    channel_type: str                  # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "dingtalk" | "feishu" | "discord" | "webhook" | "rest_api" | "file_export" | "rss" | "social_publish" — 12 canonical channels
+    channel_type: str                  # "smtp" | "telegram" | "wechat_oa" | "wechat_work" | "dingtalk" | "feishu" | "discord" | "webhook" | "rest_api" | "file_export" | "rss" | "social_publish" | "push" — 13 canonical channels
     config: dict                       # Channel-specific config (e.g., {"chat_id": "..."} for Telegram)
     enabled: bool = True
 

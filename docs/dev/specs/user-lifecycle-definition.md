@@ -215,8 +215,8 @@ B1 modifies config
 
 The **B2 Direct User** is an AI agent that serves as the **primary operator** of the AutoInfo platform. B2:
 
-- Connects to AutoInfo via the MCP protocol (stdio or SSE)
-- Uses 114+ MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
+- Connects to AutoInfo via the MCP protocol (stdio; SSE is future work)
+- Uses 141 MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
 - Reads B1 subscription configs to determine what to collect, process, and deliver for each B1 user
 - Operates autonomously on a schedule — executing the full pipeline for all active subscriptions
 - Reports execution status and anomalies to B3 (Director) for oversight
@@ -237,27 +237,15 @@ B2 **does not**:
 | Stage | Trigger | Description | MCP/CLI Coverage |
 |-------|---------|-------------|-----------------|
 | **B2.1 Discover** | B2 connects to AutoInfo | B2 discovers available capabilities: MCP tool list, registered domains, available sources, output templates, LLM models. | ✅ `health_check`, `list_domains`, `list_available_platforms`, `list_available_models`, `list_output_templates` |
-| **B2.2 Connect** | Session establishment | B2 establishes MCP connection (stdio/SSE), authenticates (if applicable), verifies system health. | ✅ `diagnose_system`, MCP protocol auto-discovery |
-| **B2.3 Configure** | Initial setup or domain change | B2 configures sources, topics, extraction schemas, and schedules for each active domain. This is done once (or when domains change), not per-cycle. | ✅ (`add_source`, `add_topic`, `add_schedule`) but 🟡 `add_sources` batch lacks dry-run, `get_schedule_status` not in MCP |
-| **B2.4 Operate** | Scheduled pipeline execution | B2 reads all active B1 subscription configs, deduplicates domain/source requirements, runs collection → processing → KB → generation → delivery. This is the **core loop** — repeated on each schedule tick. | ✅ Core pipeline tools all exist. 🟡 7 MCP tools not registered (see §3.3). |
+| **B2.2 Connect** | Session establishment | B2 establishes MCP connection (stdio; SSE is future work), authenticates (if applicable), verifies system health. | ✅ `diagnose_system`, MCP protocol auto-discovery |
+| **B2.3 Configure** | Initial setup or domain change | B2 configures sources, topics, extraction schemas, and schedules for each active domain. This is done once (or when domains change), not per-cycle. | ✅ (`add_source`, `add_topic`, `add_schedule`, `get_schedule_status`) but 🟡 `add_sources` batch lacks dry-run |
+| **B2.4 Operate** | Scheduled pipeline execution | B2 reads all active B1 subscription configs, deduplicates domain/source requirements, runs collection → processing → KB → generation → delivery. This is the **core loop** — repeated on each schedule tick. | ✅ Core pipeline tools all exist. ✅ All 7 previously-gapped tools now registered (see §3.3). |
 | **B2.5 Monitor** | Ongoing oversight | B2 monitors: pipeline execution success/failure, source health, delivery SLA compliance, cost trends, anomaly detection. | 🟡 Some monitoring tools exist (`get_collection_progress`, `trace_item`). No unified monitoring dashboard. |
 | **B2.6 Report** | Periodic or on exception | B2 generates execution reports for B3 (Director): what was collected, what was delivered, errors encountered, cost summary, anomaly flags. B3 reviews these reports but does not change B2's runtime logic. | ❌ No structured reporting mechanism exists. This is a gap. |
 
 ### 3.3 B2 MCP Tool Gaps
 
-Tools spec'd but not fully registered or implemented:
-
-| Tool | Status | Gap |
-|------|--------|-----|
-| `compare_versions` | 🟡 Backend exists, MCP not registered | F50 gap |
-| `get_schedule_status` | 🟡 Backend exists, MCP not registered | CD-004, CD-023 |
-| `get_delivery_log` | 🟡 Backend exists, MCP not registered | CD-022 |
-| `send_to_enduser` | 🟡 Backend exists, MCP not registered (or incomplete) | CD-022 |
-| `activate_trial` | 🟡 Backend exists, MCP not registered | CD-022 |
-| `check_trial_expiry` | 🟡 Backend exists, MCP not registered | CD-022, CD-025 |
-| `update_preferences` | 🟡 Backend exists, MCP not registered | CD-022, CD-019 |
-
-> **Note**: "Not registered" means the backend function exists in Python code but has no MCP tool wrapper in `server.py`. These are quick wins — the implementation exists, only the MCP surface is missing.
+> ✅ **Resolved 2026-08-04** — all tools previously listed as "backend exists, MCP not registered" in this gap table are now registered (141/141 tools). This includes `compare_versions` (Knowledge Lifecycle), `get_schedule_status` (Cron), and the End User tools `get_delivery_log`, `send_to_enduser`, `activate_trial`, `check_trial_expiry`, `update_preferences`. No MCP surface gaps remain.
 
 ---
 
@@ -449,5 +437,5 @@ This document is the **root specification** for the AutoInfo user model. All oth
 | `operations.md` | This doc §4 (B3 lifecycle) | B3.1 Configure, B3.2 Monitor, B3.3 Intervene | B3 monitoring, intervention, and configuration. §7 (B3 Lifecycle Integration) creates unified config scope, dashboard spec, and incident response workflow. |
 | `data-models.md` | This doc §2.3 (Subscription Config Model), §2.1 (NL→Config pipeline) | B1.2 Subscribe, B1.3 Onboard, B1.5 Modify Config | Data model schemas: `SubscriptionConfig` (§4.9), `ReferralRecord`/`OnboardingRecord`/`ReactivationRecord`/`NLConfigAuditEntry` (§4.10-4.13). |
 | `quality-gates.md` | This doc §4.3 (Quality thresholds) | B3.1 Configure | Gate configuration by B3. Per-domain quality thresholds are part of B3 unified configuration. |
-| `docs/archive/comprehensive-gap-audit.md` | This doc (entire) | All B1/B2/B3 stages | Gap analysis against lifecycle stages (archived — superseded by `cross-dimensional-catalog.md`). Covers all 16 stages. |
+| `docs/dev/cross-dimensional-catalog.md` | This doc (entire) | All B1/B2/B3 stages | Keystone product matrix — B1/B2/B3 user rows mapped against A1-A7 pipeline stages (supersedes the archived comprehensive gap audit). Covers all lifecycle stages. |
 | `market-positioning.md` | This doc §2.1 (End user types) | B1 lifecycle (commercial context) | Market analysis — informational, not prescriptive. Provides WTP data and personas. |

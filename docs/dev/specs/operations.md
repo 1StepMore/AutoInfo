@@ -49,17 +49,17 @@ class CostLog:
 
 | Tool | Description |
 |------|-------------|
-| `get_cost_report(domain, period)` | Aggregate costs by category and domain for period |
+| `cost_dashboard(domain, period)` | Aggregate costs by category and domain for period |
 | `get_billing_summary(user_id, period)` | Per-user billing summary |
-| `set_budget_alert(domain, threshold_amount, period)` | Trigger alert when cost exceeds threshold |
-| `get_budget_alerts(domain)` | List active budget alerts for domain |
-| `get_cost_allocation(domain, period, strategy)` | Show cost breakdown by allocation strategy |
+| `set_budget_thresholds(domain, threshold_amount, period)` | Trigger alert when cost exceeds threshold |
+| `get_budget_thresholds(domain)` | List active budget thresholds for domain |
+| `cost_allocation(domain, period, strategy)` | Show cost breakdown by allocation strategy |
 
 **Budget alerts**: When a domain's cost exceeds configured threshold within a period, an alert is generated via the Alert Rules system. Auto-remediation actions can be configured (e.g., pause collection, switch to cheaper model).
 
 ### 1.5 Email Templates
 
-> **Cross-ref:** CD-009 (Email Templates). The SMTP sender (`email_sender.py`) exists and `send_email_digest` works, but no template engine covers user lifecycle events. This section specs the gap.
+> **Cross-ref:** CD-009 (Email Templates). Automated lifecycle notifications ship via `notifications.py` — trial-ending reminders (3-day window, `check_expiring_trials()`) and content-ready notifications (`notify_content_ready()`) — and `send_email_digest` works. A full Jinja2 template engine covering all four lifecycle email types below remains the spec gap.
 
 AutoInfo sends four lifecycle email types beyond the existing digest delivery. Each template is a Jinja2 file with structured variables, rendered through a shared engine before SMTP dispatch.
 
@@ -131,7 +131,7 @@ Rendering pipeline:
 | `render_email_template(template_name, context)` | Render template to HTML + text without sending |
 | `send_template_email(user_id, template_name, variables)` | Render and dispatch lifecycle email |
 
-**Status:** 🟡 Spec'd, not implemented. `email_sender.py` sends plain text/HTML but has no template engine integration. See CD-009 in `cross-dimensional-catalog.md`.
+**Status:** ✅ Implemented (CD-009). Automated notifications shipped — trial-ending reminders (3-day window) and content-ready notifications via `notifications.py`. The template-engine MCP tools above remain spec-only. See CD-009 in `cross-dimensional-catalog.md`.
 
 ---
 
@@ -156,6 +156,24 @@ class AuditLog:
 - **Hard delete** (GDPR): After 30-day soft-delete window, entries can be permanently removed (git filter-branch or new clone without the history).
 - **Audit log is append-only**: Immutable record of all data-modifying operations.
 
+#### Audit Log — GDPR Exemption (M1T15, user-approved append-only policy)
+
+Audit log rows are **exempt from GDPR purge**. This is a deliberate policy, not
+an oversight:
+
+- `delete_user_data(user_id, confirm)` MUST NOT delete or redact `audit_log` rows.
+- `soft_delete_entry(..., purge=True)` never touches `audit_log`.
+- `export_user_data(user_id)` MAY include audit rows (metadata only — actor,
+  action, tool, resource, result_code, trace_id; never tool inputs or response
+  payloads) so the user can see their footprint, but the export is read-only.
+- **Rationale**: the append-only invariant above makes the audit log the
+  immutable record of *who did what*. Purging it on request would destroy the
+  compliance trail the log exists to provide. The dispatch-level hook (M1T15)
+  writes only the six whitelisted fields, so audit rows contain no user content.
+- **Contrast with retention (§2.5)**: the per-tier audit retention figures are
+  *query-time filters only* — rows are never physically deleted. Every other
+  data class remains purgeable under GDPR; only `audit_log` is exempt.
+
 ### 2.2 Data Export (GDPR)
 
 `export_user_data(user_id)` gathers:
@@ -170,7 +188,7 @@ class AuditLog:
 |-----------|-----------|---------|
 | Soft-deleted entries | 30 days | Auto-permanent-delete after 30d |
 | Delivery logs | 90 days | Auto-purge after 90d |
-| Cost logs | 1 year | Archive after 1 year |
+| Cost logs | 90 days | Auto-purge after 90d |
 | Collection cache | 7 days | Auto-clean after 7d |
 | KB entries (active) | Indefinite | User-configurable TTL per domain |
 
@@ -194,11 +212,15 @@ Retention windows differ by subscription tier. Free users get short retention to
 
 | Tier | KB Entry Retention | Delivery Log Retention | Cost Log Retention | Audit Log Retention |
 |------|-------------------|----------------------|-------------------|-------------------|
-| **Free** | 30 days | 30 days | 90 days | 1 year |
-| **Pro** | 1 year | 1 year | 1 year | 3 years |
-| **Enterprise** | 7 years | 7 years | 7 years | 7 years |
+| **Free** | 30 days | 30 days | 90 days | 90 days |
+| **Premium** | 90 days | 90 days | 90 days | 90 days |
+| **Enterprise** | 180 days | 180 days | 180 days | 180 days |
 
-**Rationale:** Free tier retention aligns with the existing 30-day soft-delete window. Pro tier covers a full year of historical access. Enterprise tier meets common regulatory retention requirements (e.g., financial services 7-year rule).
+> **Note:** Per-tier retention enforcement is spec-only — no code enforces it today (kb.py default `ttl_days=90`). Retention windows (authoritative spec values from `delivery.md` §11.4): **Free 30 days / Premium 90 days / Enterprise 180 days**.
+>
+> **Note:** Audit Log rows are **exempt from GDPR purge** — see §2.1 (M1T15). The 90-day figures above for `Audit Log Retention` are query-time filters, not deletion deadlines; `audit_log` rows are never physically deleted.
+
+**Rationale:** Matches `delivery.md` §11.4 (authoritative retention windows). Free tier aligns with the existing 30-day soft-delete window. Premium covers a 90-day window. Enterprise gets compliance-grade 180-day retention.
 
 #### Enforcement Points
 
@@ -209,8 +231,8 @@ def enforce_retention(entries: list[KBEntry], user_tier: str) -> list[KBEntry]:
     """Filter entries based on user's subscription tier retention window."""
     retention_days = {
         "free": 30,
-        "pro": 365,
-        "enterprise": 2555,  # 7 years
+        "premium": 90,
+        "enterprise": 180,
     }
     cutoff = datetime.now() - timedelta(days=retention_days[user_tier])
     return [e for e in entries if e.collected_at >= cutoff]
@@ -233,11 +255,11 @@ def enforce_retention(entries: list[KBEntry], user_tier: str) -> list[KBEntry]:
 | `get_retention_report(domain, period)` | Retention metrics: active users by tier, entries within/outside retention window |
 | `get_user_retention(user_id)` | Show user's tier and effective retention window |
 
-**Status:** 🟡 Spec'd, not implemented. `UserProfile.tier` field exists but no retention enforcement at query time. See CD-012 in `cross-dimensional-catalog.md`.
+**Status:** ✅ Partially implemented (CD-012). Soft-delete, restore, GDPR export, and 30-day auto-cleanup are shipped (`soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data`). Per-tier retention **enforcement** is spec-only — no code enforces tier windows today (kb.py default `ttl_days=90`). The MCP tools above remain spec-only. See CD-012 in `cross-dimensional-catalog.md`.
 
 ### 2.6 Unified Notification Framework
 
-> **Cross-ref:** CD-006 (Unified Notification Framework), CD-038 (No Unified Notification Architecture). Budget alerts exist in `alerts.py` but are separate from user lifecycle notifications. System alerts don't exist. This section specs a unified notification bus.
+> **Cross-ref:** CD-006 (Unified Notification Framework), CD-038 (No Unified Notification Architecture). Config-based alert rules ship in `alerts.py` (YAML persistence, DeliveryChannel dispatch) and lifecycle notifications ship in `notifications.py`, but there is no unified bus. System alerts don't exist. This section specs a unified notification bus.
 
 AutoInfo currently handles notifications ad-hoc: budget alerts in `alerts.py`, delivery notifications in `delivery.py`, system notifications nowhere. The unified framework consolidates all notification types into a single bus with per-user preferences and per-type channel routing.
 
@@ -324,7 +346,7 @@ class NotificationPreferences:
 | `get_notification_preferences(user_id)` | Retrieve current preferences |
 | `publish_notification(type, subtype, severity, title, body, metadata)` | Internal: publish to bus (agent-callable for custom alerts) |
 
-**Status:** 🟡 Spec'd, not implemented. Budget alerts exist in `alerts.py` with YAML persistence and DeliveryChannel dispatch, but no unified bus. See CD-006 and CD-038 in `cross-dimensional-catalog.md`.
+**Status:** ✅ Partially implemented (CD-006). Config-based alert rules shipped in `alerts.py` with YAML persistence and DeliveryChannel dispatch (`add_alert_rule` / `get_alert_rules` / `remove_alert_rule`), plus automated lifecycle notifications in `notifications.py`. The unified notification bus and per-user preferences remain spec-only. See CD-006 and CD-038 in `cross-dimensional-catalog.md`.
 
 ---
 
@@ -395,7 +417,7 @@ When re-collecting a source that was previously collected:
 
 ### 3.6 Cron Reliability
 
-> **Cross-ref:** CD-004 (Cron Reliability & Backup). Cron scheduling exists (`add_schedule`, `run_schedules`) but there is no missed-schedule detection, no failure alerts, no backfill mechanism. This section specs reliability guarantees.
+> **Cross-ref:** CD-004 (Cron Reliability & Backup). Cron scheduling exists (`add_schedule`, `run_schedules`) and `autoinfo cron health` ships with heartbeat tracking and missed-schedule detection, but there is no execution history, no failure alerts, no backfill mechanism. This section specs reliability guarantees.
 
 Cron-driven collection is the backbone of scheduled knowledge base updates. When cron misses a beat, the knowledge base goes stale silently. This section specs three reliability mechanisms: missed-schedule detection, failure alerts, and backfill.
 
@@ -485,7 +507,7 @@ lifecycle:
 | `backfill_missed_schedules(domain, since)` | Re-run missed collections |
 | `get_cron_health()` | Cron daemon status, last watchdog check, missed schedule count |
 
-**Status:** 🟡 Spec'd, not implemented. `schedule.py` uses `croniter` + `subprocess` to install crontab entries. No execution tracking, no watchdog, no backfill. See CD-004 in `cross-dimensional-catalog.md`.
+**Status:** ✅ Partially implemented (CD-004). `autoinfo cron health` CLI shipped with heartbeat tracking and missed-schedule detection (`get_schedule_status` MCP tool). Execution-history tracking, watchdog, and backfill mechanisms remain spec-only. See CD-004 in `cross-dimensional-catalog.md`.
 
 ---
 
@@ -543,6 +565,8 @@ Available at `http://localhost:8741/metrics` (configurable port):
 | `autoinfo_kb_entries_total` | Gauge | domain, tier |
 | `autoinfo_staleness_ratio` | Gauge | domain |
 
+> **Canonical metrics reference** — `ops-runbook.md` §3.1 points here.
+
 ### 4.4 Diagnostics
 
 `diagnose_system()` MCP tool returns comprehensive health data:
@@ -568,7 +592,7 @@ class SystemHealth:
 | Tool | Description |
 |------|-------------|
 | `trace_item(trace_id)` | Full pipeline timeline for a single item |
-| `get_pipeline_logs(domain, event_type, level, since)` | Filtered pipeline log viewer |
+| `get_prometheus_metrics(metric_name, since)` | Raw Prometheus metrics dump |
 | `get_metrics(metric_name, domain, since)` | Query Prometheus metrics |
 | `diagnose_system()` | Comprehensive system health check |
 
@@ -746,7 +770,7 @@ class UserCostToServe:
 | `get_ltv_cac(period)` | LTV and CAC for period |
 | `get_churn_report(period)` | Churned users, churn reasons, churn rate trend |
 
-**Status:** 🟡 Spec'd, not implemented. Cost dashboard exists (`get_billing_summary`, `get_cost_report`). No revenue, MRR, churn, or LTV tracking. See CD-041 in `cross-dimensional-catalog.md`.
+**Status:** 🟡 Spec'd, not implemented. Cost dashboard exists (`get_billing_summary`, `cost_dashboard`). No revenue, MRR, churn, or LTV tracking. See CD-041 in `cross-dimensional-catalog.md`.
 
 ---
 
@@ -769,8 +793,8 @@ B3 configuration is currently scattered across multiple files and config points.
 | **Quality thresholds** | `docs/dev/specs/quality-gates.md` | Min source tier per domain, min relevance score, G0-G5 gate mode (hard vs soft) | ✅ Gate config system exists with per-domain configuration. |
 | **Delivery SLA** | `docs/dev/specs/delivery.md` §4 | Max delivery latency per priority (P0 ≤5min, P1 ≤30min, P2 ≤2hr) | ✅ SLA constants exist in delivery system. Not configurable by B3. |
 | **Data retention** | `operations.md` §2.5 | Soft-delete window per tier, auto-cleanup period | ✅ Existing retention constants. |
-| **Source ToS compliance** | `operations.md` §2.1 | Source access tier classification, per-tier output controls | ✅ G1 gate enforces source tiers. |
-| **Budget thresholds** | `operations.md` §1.5 | Absolute cost thresholds, rate-based thresholds, projected overrun | ✅ Budget alert system exists. |
+| **Source ToS compliance** | `docs/dev/specs/expectations.md` §F46 (source classification; enforced by `docs/dev/specs/quality-gates.md` §G1) | Source access tier classification, per-tier output controls | ✅ G1 gate enforces source tiers. |
+| **Budget thresholds** | `operations.md` §1.4 | Absolute cost thresholds, rate-based thresholds, projected overrun | ✅ Budget alert system exists. |
 
 **Unified config format** (target — not implemented):
 
@@ -826,7 +850,7 @@ B3 monitors B2 via dashboard and periodic reports. B3 does NOT proactively inter
 | **Collection Status** | `get_collection_stats()`, `get_collection_progress()` | `autoinfo status` (CLI) |
 | **Source Health** | `get_source_health()` per domain | `autoinfo sources list --health` (CLI) |
 | **Delivery Metrics** | `query_delivery_log()`, SLA compliance | None (MCP tools only) |
-| **Cost Trends** | `get_cost_report()` + budget alerts | `autoinfo cost dashboard` (CLI) |
+| **Cost Trends** | `cost_dashboard()` + budget alerts | `autoinfo cost dashboard` (CLI) |
 | **Active Users** | UserProfile + Subscription status | `autoinfo enduser list` (CLI) |
 | **Anomaly Feed** | Alert rules + budget alerts + cron health | None |
 

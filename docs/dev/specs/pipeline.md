@@ -11,7 +11,7 @@
 
 ### 1.1 Item Dataclass Schema
 
-> **Format scope note**: The current pipeline is **text-only**. Video and audio content are not supported as source formats. See [`cross-dimensional-catalog.md §CD-999`](../cross-dimensional-catalog.md) (archived `comprehensive-gap-audit.md §11.6`) for tracked gaps MG-1 (video format pipeline) and MG-2 (audio format expansion).
+> **Format scope note**: The pipeline collects **text content**. Video and audio sources (Spotify, YouTube, Bilibili, Apple Podcasts) are supported as metadata collectors — they ship titles, descriptions, and metadata, not media content. For full media format pipeline gaps, see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) (the keystone product matrix).
 
 Every collected source item is represented as an `Item`:
 
@@ -20,7 +20,7 @@ Every collected source item is represented as an `Item`:
 class Item:
     """A single collected item before KB storage."""
     source_url: str
-    source_type: str                  # one of VALID_SOURCE_TYPES (26 types, single source of truth in src/autoinfo/config.py)
+    source_type: str                  # one of VALID_SOURCE_TYPES (29 types, single source of truth in src/autoinfo/config.py)
     source_platform: str              # e.g. "pubmed", "arxiv", "hn"
     title: str
     content: str                      # main body text
@@ -65,7 +65,7 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 
 ### 1.4 Source Handler Implementations
 
-> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (26 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 27 handler modules below live in `src/autoinfo/collectors/`.
+> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (29 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 30 handler modules below live in `src/autoinfo/collectors/`.
 
 | Source | Implementation | Key behavior |
 |--------|---------------|--------------|
@@ -96,6 +96,9 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 | **Unpaywall/CORE** | Unpaywall + CORE APIs | Open-access paper lookup, full-text retrieval. |
 | **Yahoo Finance** | Yahoo Finance API | Market data, quotes, historical prices. |
 | **HTTP API** | Generic HTTP/REST adapter | Configurable endpoint, auth, pagination. Covers Quandl and other generic REST sources. |
+| **AKShare** | AKShare open library | Chinese + global market data via AKShare (no key) — **M2 (2026-08-05)** |
+| **SEC EDGAR** | SEC EDGAR full-text + filings | Ticker→CIK→filings via EDGAR APIs, UA + 10 req/s (no key) — **M2 (2026-08-05)** |
+| **edX sitemap** | edX course sitemap | Sitemap crawl gated by robots.txt RFC 9309 (no key) — **M2 (2026-08-05)** |
 
 ### 1.5 Incremental Collection Tracking
 
@@ -140,7 +143,7 @@ On `collect`, the handler requests **only items newer than** `last_collected_at`
 
 ### 2.2 Storage
 
-All tiers are stored as flat Markdown files with YAML frontmatter in `kb/{domain}/{tier}/`:
+All tiers are stored as flat Markdown files with YAML frontmatter in `knowledge/{domain}/{tier}/`:
 
 ```markdown
 ---
@@ -162,17 +165,17 @@ Body content extracted from source...
 ### 2.3 File Path Convention
 
 ```
-kb/{domain}/{tier}/{yyyy}/{mm}/{dd}/{slug}.md
+knowledge/{domain}/{tier}/{topic}/{YYYY-MM-DD}-{slug}.md
 ```
 
 Where `slug` is a sanitized version of the article title (lowercase, hyphens, max 80 chars). This enables natural browsing by date.
 
 ### 2.4 Git Backing
 
-The entire `kb/` directory is a git repository (separate from the AutoInfo source repo). Every KB write is a git commit:
+The entire `knowledge/` directory is a git repository (separate from the AutoInfo source repo). Every KB write is a git commit:
 
 ```bash
-git add kb/{domain}/{tier}/{yyyy}/{mm}/{dd}/{slug}.md
+git add knowledge/{domain}/{tier}/{topic}/{YYYY-MM-DD}-{slug}.md
 git commit -m "[{tier}] {domain}: {article title}"
 ```
 
@@ -321,7 +324,7 @@ llm:
 
 When the primary model fails (timeout, rate limit, server error), AutoInfo iterates through the fallback chain. Each fallback is tried once before escalating to the next.
 
-**Note**: As of v1.6, the fallback chain is parsed from config but the primary extraction path (`_call_llm`) retries the same model rather than iterating through fallbacks. This is a known low-effort gap — see §14.1 of `founder-expectations.md` for the fix plan.
+**Note**: As of the current implementation, the config system supports per-task model configuration and fallback chains. When the primary model fails (timeout, rate limit, server error), AutoInfo iterates through the configured `llm.fallback` chain. Each fallback is tried once before escalating to the next. See §3.3 for the full LLM configuration hierarchy.
 
 ---
 
@@ -342,7 +345,7 @@ Two MCP tools for ad-hoc extraction:
 query_collected(domain, query) → Answer with sources
 ```
 
-Uses FTS5 full-text search across `kb/{domain}/02-Draft/` to find relevant entries, then calls LLM to synthesize an answer with inline citations. The LLM prompt constrains the model to answer **only** from the retrieved entries — no external knowledge.
+Uses FTS5 full-text search across `knowledge/{domain}/02-Draft/` to find relevant entries, then calls LLM to synthesize an answer with inline citations. The LLM prompt constrains the model to answer **only** from the retrieved entries — no external knowledge.
 
 ---
 
@@ -441,7 +444,7 @@ This section maps each B2 lifecycle stage (from the root spec) to the pipeline s
 | Capability | Pipeline Section | MCP Tool(s) |
 |-----------|-----------------|-------------|
 | System health check | — | `health_check()`, `diagnose_system()` |
-| MCP session establishment | N/A (transport layer) | stdio/SSE connection — no pipeline involvement |
+| MCP session establishment | N/A (transport layer) | stdio connection (SSE is future work) — no pipeline involvement |
 | LLM connectivity | §3.1 (LLM Configuration) | `diagnose_system()` checks LLM key |
 
 ### 9.3 B2.3 Configure
@@ -486,7 +489,7 @@ B2.4 Operate reads the B1 subscription configs to determine:
 | Source health | `get_source_health()` | §1.4 (Source Handler) |
 | KB freshness decay | `calculate_freshness_score()` | operations.md §3 (Knowledge Lifecycle) |
 | Delivery SLA compliance | `query_delivery_log()` | delivery.md §4 (Delivery Reliability) |
-| LLM cost tracking | `get_cost_report()` | operations.md §1 (Cost Governance) |
+| LLM cost tracking | `cost_dashboard()` | operations.md §1 (Cost Governance) |
 | System diagnostics | `diagnose_system()` | operations.md §4 (Observability) |
 
 ### 9.6 B2.6 Report

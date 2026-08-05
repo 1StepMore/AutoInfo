@@ -2,28 +2,37 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
-## Unreleased (2026-08-04)
+## v1.9 (Unreleased, 2026-08-05) — M0-M7 consolidated wave summary
 
-### Fixed
-- **Bugfix: numeric and slash item IDs crashed collection caching** — `collect` now stringifies numeric and slash-containing item ids before writing the raw JSON cache, preventing `TypeError`/path errors. (f750019, closes #104)
-- **Bugfix: `autoinfo init` created runtime dirs inside `.autoinfo/`** — runtime dirs (`collections/`, `knowledge/`, `outputs/`) are now created at the project root (same layout KBStore resolves); `.autoinfo/` keeps only `config.yaml`. (79b188a, closes #106)
-- **Bugfix: real-API guard used the wrong import path** — collection tests now import the guard via `tests.conftest` so the `REAL_API_TESTS` env gate works regardless of invocation path. (09b09f6, closes #108)
-- **Bugfix: cross-domain report MCP test bypassed the LLM guard** — test now patches the centralized `LLM_NOT_CONFIGURED` dispatch so it passes without a configured key. (3517f96, closes #109)
-- **Bugfix: doctor LLM hint pointed at CLI instead of MCP** — the LLM-not-configured hint in `autoinfo doctor` now directs agents to the `configure_llm` MCP tool (BYOK), per agent-first operating model. (3f0c1e1, closes #110)
+### Breaking
+- **REST API success envelope (v1.9)** — All REST API success responses now return `{success: true, data: ...}` (was raw shapes); errors already used the canonical `{success: false, error: {code, message, actionable}}` envelope. FastAPI `response_model` changed to `dict[str, Any]` for list/get/create endpoints; a `RequestValidationError` handler returns 422 with the canonical envelope; Stripe webhook success path stays raw (integration contract). Migration guide: `docs/dev/migration-v1.9.md`; dashboard JS unwraps transparently.
 
 ### Added
+- **M0: optional-dependency + env gates (test infra)** — `tests/conftest.py` gains `HAVE_PIL`/`HAVE_STRIPE`/`HAVE_PYMUPDF`/`HAVE_WEASYPRINT`/`HAVE_FFMPEG` + `requires_optional_dep()` marker factory and `optional` marker; `pytest-cov>=4.1` added to dev extra; full-src ruff step (informational) + nightly full-suite workflow added to CI.
+- **M1: REST envelope EVERYTHING + dispatch hardening** — REST success envelope (breaking, see above); `except TypeError` → `VALIDATION_ERROR` at MCP dispatch (missing-required-arg no longer surfaces as InternalError); dispatch-level audit hook records every mutation + parameterized read (whitelisted fields actor/action/tool/resource/result_code/trace_id) into the append-only audit log.
+- **M2: 3 new source types (26→29) + 3 dedicated collectors** — `akshare` (AKShareHandler, `[akshare]` extra), `sec_edgar` (SecEdgarHandler, ticker→CIK→filings, UA + 10 req/s), `edx_sitemap` (EdxSitemapHandler, robots.txt RFC 9309 gate). `http_api` gains `json_path: "$"` root-array extension (Mastodon top-level array) + `$.field` prefix.
+- **M3: 4 new demo domains (9→13) + music→online-video** — general-news (15 sources incl. GDELT/Guardian/Google News/NYT/AP + Mastodon/Bluesky/知乎日报/Medium), gaming, b2b, retail; music sources (Apple Music RSS + Pitchfork/Billboard) folded into online-video; Finnhub added + SEC EDGAR rss→sec_edgar in financial-intelligence; wanfang merged into online-education (OUTCOME A: static-header auth verified, POST-only endpoint awaits http_api POST transport — documented, not implemented).
+- **M4: JSON-LD schema files + durable agent push outbox** — `docs/schemas/{knowledge-digest,knowledge-tutorial,knowledge-presentation,knowledge-base-export}-v1.json` (JSON Schema draft-07, `@context`/`@type` pinned via `const`); `agent_outbox` SQLite table enqueues `{event, payload, schema_version: 1, trace_id, product_id}` before delivery, drain thread with lock serialization, failed rows requeued at process start.
+- **M5: 2 new product templates (6→8)** — B24 column product (`report_type="column"` + premium ProductTemplate + G15 `check_access` gate + `column.md.j2`) and D11 magazine digest (`magazine-digest` ProductTemplate + per-title RSS clustering + `magazine-digest.md.j2`).
+- **M6: CLI/MCP parity (23→28 groups)** — topic-group, import-kb, query-collected, alert-rules, agent-callback + keywords suggest; global `--json` flag wired (status/sources/kb); parity matrix documented in `docs/dev/cli-mcp-rest-parity.md`.
+- **M7: 3 new validation scenarios (44→47)** — sources-gap-closure (3 new source-type registrations), output-column (report_type=column, LLM-gated), sources-a6-keyed (FRED/Finnhub, env-gated).
+
+### Fixed
+- **Bugfix: `import-kb` crashed on markdown frontmatter containing `domain:`** — `import_markdown` passed every frontmatter key through to the KB entry payload, so a source file whose YAML frontmatter included a `domain:` field collided with the importer's own `domain` argument and was written with the wrong (or a duplicated) domain. The frontmatter `domain` key is now excluded from passthrough, mirroring `title`/`language`/`tags`. (F3-caught; `src/autoinfo/importer.py`)
+
+## Unreleased (2026-08-04)
+
+### Added
+- **B23: Ebook/audiobook output (EPUB/MOBI/Audiobook)** — new `src/autoinfo/output/ebook.py`: `render_epub` (ebooklib EPUB3, markdown→XHTML via `output_format="xhtml"` for XML validity + `set_language` for CJK, TOC/spine/NCX/Nav/cover/DC metadata), `render_mobi` (calibre `ebook-convert --mobi-file-type=both` incl. KF8 for CJK, 300s timeout, clear install error when calibre missing), `render_audiobook` (per-chapter `_render_audio` TTS → chapter MP3s + ZIP bundle + single chaptered MP3 via mutagen ID3v2.3 CHAP/CTOC, graceful fallback to plain concatenation). Wired into `generate_digest`/`generate_report` (`format="epub"/"audiobook"`, chapters split from digest context / report sections) and `export_kb` (`format="epub"/"mobi"`, writes `exports/` mirroring `_export_pdf`). MCP server format enums/descriptions extended (3 tools) + base64 return branches (`application/epub+zip`, `audio/mpeg`). New `[ebook]` optional extra (`ebooklib>=0.20`, `mutagen>=1.47`); `all` includes it. Tests: `tests/output/test_output_ebook.py` (6 tests: roundtrip, CJK language, lxml well-formedness, empty-input, audiobook fallback, mobi missing-calibre error). B23 matrix ❌→✅; total coverage 83%→84% (83/99).
+
+- **Version unification awareness** — `src/autoinfo/_version.py` is unified at 1.8.1 while this changelog documents through v1.8.4. This known version drift (1.8.1 code vs 1.8.4 changelog) will be resolved at the next release.
+
 - **Dedicated HackerNews collector** — new `HackerNewsHandler` (src/autoinfo/collectors/hackernews.py) with two-step fetch (item metadata then content) against the official Firebase API; registered in `_build_handler`; `hackernews` added to `VALID_SOURCE_TYPES` (25 → 26 types, 26 → 27 handlers). (cd9f261, closes #105)
 - **`resolve_user_id` defaulting in billing tools** — billing/usage/invoice MCP tools and CLI now resolve the current user when `--user-id` is omitted; `get_billing_summary`/`get_subscription_status` `user_id`/`end_user_id` params are optional. (78b7cb0, closes #107)
 - **Single-source `__version__`** — version now derives from `_version.py` via dynamic module attribute, eliminating pyproject/`__init__`/health drift (unified at 1.8.1). (5518244, closes #112)
 
-### Docs
-- **README MCP server install guide** — new sections on bare-`python` importability, LLM key injection, and `${...}` placeholder semantics in editor configs. (b9e0f05, closes #111)
-- **AGENTS.md restructure** — worked MCP usage examples moved to `docs/dev/mcp-usage-examples.md`; AGENTS.md now links to it. (63f0c85, closes #113)
+- **Agent-native MCP validation toolset** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocesses and real REST HTTP requests): each step makes a real call and asserts on the `{success, data}` envelope. Env-gated steps report `unconfigured` when BYOK keys are missing (never silently skipped, never fake-passed). `llm_assert` steps run a real model call for semantic verification. **44 built-in scenarios** covering 141/141 MCP tools, all 23 CLI command groups, and 8 REST API endpoints. Tool count 139 → 141, 35 categories. Scenario contract: `docs/dev/validation-scenario-contract.md`.
 
-## Unreleased (2026-08-03)
-
-### Added
-- **Agent-native MCP validation toolset** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocesses and real REST HTTP requests): each step makes a real call and asserts on the `{success, data}` envelope. Env-gated steps report `unconfigured` when BYOK keys are missing (never silently skipped, never fake-passed). `llm_assert` steps run a real model call for semantic verification. **43 built-in scenarios** covering 141/141 MCP tools, all 23 CLI command groups, and 8 REST API endpoints. Tool count 139 → 141, 35 categories. Scenario contract: `docs/dev/validation-scenario-contract.md`.
 
 ### Changed
 - **Validation suite archived** — The shell-based validation plan v2 (15 part files + 24 YAML scenarios + runner) moved to `docs/archive/validation-suite/` (2026-08-03), superseded by the MCP-native validation tools.
@@ -33,6 +42,20 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **Bugfix: `llm_assert` judge did not pass api_key/api_base** — `_llm_judge` called `litellm.completion(model=...)` without the configured key/base_url, so every LLM-gated scenario failed with `AuthenticationError` even when the key was set. It now resolves full call config (model, api_key, api_base).
 - **Bugfix: `suggest_keywords` crashed on empty LLM content** — `json.loads('')` raised `JSONDecodeError` as a raw traceback. Now returns a graceful `EmptyResult` error envelope so validation can report it.
 - **Bugfix: CEFR prompt produced empty responses on some models** — added few-shot examples and relaxed the strict "only the level" instruction (some providers return empty content for overly constrained single-token prompts); raised `max_tokens` 10 → 50.
+
+
+### Fixed
+- **Bugfix: numeric and slash item IDs crashed collection caching** — `collect` now stringifies numeric and slash-containing item ids before writing the raw JSON cache, preventing `TypeError`/path errors. (f750019, closes #104)
+- **Bugfix: `autoinfo init` created runtime dirs inside `.autoinfo/`** — runtime dirs (`collections/`, `knowledge/`, `outputs/`) are now created at the project root (same layout KBStore resolves); `.autoinfo/` keeps only `config.yaml`. (79b188a, closes #106)
+- **Bugfix: real-API guard used the wrong import path** — collection tests now import the guard via `tests.conftest` so the `REAL_API_TESTS` env gate works regardless of invocation path. (09b09f6, closes #108)
+- **Bugfix: cross-domain report MCP test bypassed the LLM guard** — test now patches the centralized `LLM_NOT_CONFIGURED` dispatch so it passes without a configured key. (3517f96, closes #109)
+- **Bugfix: doctor LLM hint pointed at CLI instead of MCP** — the LLM-not-configured hint in `autoinfo doctor` now directs agents to the `configure_llm` MCP tool (BYOK), per agent-first operating model. (3f0c1e1, closes #110)
+
+
+### Docs
+- **README MCP server install guide** — new sections on bare-`python` importability, LLM key injection, and `${...}` placeholder semantics in editor configs. (b9e0f05, closes #111)
+- **AGENTS.md restructure** — worked MCP usage examples moved to `docs/dev/mcp-usage-examples.md`; AGENTS.md now links to it. (63f0c85, closes #113)
+
 
 ## v1.8.4 (2026-08-02)
 
@@ -65,6 +88,7 @@ All notable changes to the AutoInfo project will be documented in this file.
 ## v1.8.3 (2026-07-31)
 
 ### Added
+
 - **4 new ErrorCode values** — `LLM_NOT_CONFIGURED`, `NO_CACHED_ITEMS`, `EMPTY_RESULT`, `CONFIG_NOT_FOUND` added to the `ErrorCode` enum (23 → 27 values) in `src/autoinfo/mcp/errors.py`. `error_response()` canonicalized to the `{success: false, error: {code, message, actionable}}` envelope; `error_dict()` deprecated with `DeprecationWarning`.
 - **Centralized LLM_NOT_CONFIGURED guard** — `call_tool()` dispatch now checks LLM configuration before invoking any of the 13 LLM-required tools (`_LLM_REQUIRED_TOOLS` frozenset), returning `LLM_NOT_CONFIGURED` instead of raw auth errors. `suggest_keywords` no longer silently falls back when config is missing.
 - **Exception→ErrorCode mapping** — `_error_response()` now maps `FileNotFoundError`→`NOT_FOUND`, `ValueError`/`KeyError`→`VALIDATION_ERROR`, `ConnectionError`/`httpx.ConnectError`→`TIMEOUT`, `litellm.exceptions.AuthenticationError`→`LLM_NOT_CONFIGURED` (all other exceptions fall back to `INTERNAL_ERROR`).
@@ -81,18 +105,22 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **Required API Keys doc** — New `docs/dev/required-api-keys.md` cataloging every environment variable AutoInfo reads (28+ vars), linked from README and director-user-guide. Error messages in MCP and CLI now link to documentation where applicable.
 - **`AUTOINFO_LLM_API_KEY` env var in `.opencode/mcp.json`** — OpenCode MCP connection config now passes the LLM key env var (matching Cursor and Claude configs).
 
+
+- **#95 — End-user deliverable validation scenario**: New `docs/autoinfo-validation-master-plan/scenarios/enduser-deliverable.yaml` (7 steps) validating end-user output delivery end to end.
+- **Regression tests** — `tests/test_init.py`, `tests/test_output_templates.py`, `tests/test_web_handler.py::test_lxml_importable`, `tests/test_cron.py` (stale-schedule isolation), `tests/test_digest.py` (None-content guard).
+
+
 ### Fixed
+
 - **#98 — Output template path resolution**: `_TEMPLATES_DIR` and `TEMPLATE_PATH` in `output/__init__.py` now resolve from the module's actual location instead of the CWD. Templates (`digest.md.j2`, `report.md.j2`, etc.) are now found regardless of working directory.
 - **#96/#99 — None LLM content guard**: `_parse_json_response()` now accepts `content: str | None` and returns `{}` with a warning when the LLM returns `None` content (e.g. `response_format=json_object` rejected by the model). All 4 output call sites use `content or ""` so digest/report generation degrades gracefully instead of crashing.
 - **#100 — `autoinfo init` no longer creates standalone `.autoinfo/sources.yaml`**: Sources and topics are now embedded directly in `.autoinfo/config.yaml` under each domain — config.yaml is the single source of truth. The old `sources.yaml` copy (which only held the first demo domain) was misleading. `init_project` MCP tool dry-run output updated to match.
 - **#101 — Stale `.autoinfo/schedules.yaml` artifact removed**: A leftover schedules file from prior tests could cause false "duplicate schedule" errors in `autoinfo cron add-schedule`. The stale artifact is deleted and regression tests added (temporary-directory isolation for cron tests).
 - **#102 — `lxml` declared as a direct dependency**: `lxml` was only available transitively via `trafilatura`. It is now a direct dependency (`lxml>=5.0`) so Web collector works even with `pip --no-deps` or slim images.
 
-### Added
-- **#95 — End-user deliverable validation scenario**: New `docs/autoinfo-validation-master-plan/scenarios/enduser-deliverable.yaml` (7 steps) validating end-user output delivery end to end.
-- **Regression tests** — `tests/test_init.py`, `tests/test_output_templates.py`, `tests/test_web_handler.py::test_lxml_importable`, `tests/test_cron.py` (stale-schedule isolation), `tests/test_digest.py` (None-content guard).
 
 ### Infrastructure
+
 - `src/autoinfo/mcp/errors.py`: 4 new ErrorCodes (LLM_NOT_CONFIGURED, NO_CACHED_ITEMS, EMPTY_RESULT, CONFIG_NOT_FOUND); `ErrorResponse` canonical envelope `{success, error}`; `error_dict()` deprecated.
 - `src/autoinfo/mcp/server.py`: centralized LLM guard (`_LLM_REQUIRED_TOOLS`, `_is_llm_configured`); exception→ErrorCode mapping in `_error_response()`; `init_project` next_steps; `diagnose_system` health_score+phase; DOMAIN_NOT_FOUND remediation hints; `process_collection` noop; `configure_llm` CONFIG_NOT_FOUND; no-entry checks; KB list state distinction; collection exception handling (+380 lines).
 - `src/autoinfo/api/server.py`: `@app.exception_handler` for Exception/ValueError/KeyError/FileNotFoundError returning MCP-compatible envelope.
@@ -280,6 +308,34 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **docs/autoinfo-validation-master-plan/**: Part 03 (get_channel_health scenarios), Part 04 (consumption tracking, notifications, cron health scenarios), Part 11 (backup verification) updated.
 - **.opencode/skills/doc-manager-skill/SKILL.md**: Inventory, dependency map, and quantitative references updated for v1.7.
 
+## v1.6.4 (2026-07-27)
+
+### Added
+- **cross-dimensional-gap-catalog.md** — New document cataloging 42 gaps across 5 types (Consumer Output, Implementation, Pricing/Business, Quality Gate, Documentation/Knowledge) with a 119-cell cross-dimensional impact matrix and an implementation roadmap. Located at `docs/dev/cross-dimensional-gap-catalog.md`.
+- **multi-tenancy-auth.md** — New spec covering multi-tenancy architecture (domain isolation, tenant provisioning), auth system (OAuth2, SSO, session management), API rate limiting (token bucket, per-tenant quotas), and admin dashboard specification. Located at `docs/dev/specs/multi-tenancy-auth.md`.
+- **ops-runbook.md** — New spec covering backup/disaster recovery strategy (RPO/RTO targets, backup types, restore procedures), monitoring/alerting setup (Prometheus/Grafana, log aggregation, alert routing), and scaling strategy (horizontal scaling, caching, CDN, sharding). Located at `docs/dev/specs/ops-runbook.md`.
+- **expectations.md extended** — Added 7 new expectations (F58-F64) covering multi-tenancy (F58), auth system (F59), rate limiting (F60), admin dashboard (F61), backup/DR (F62), monitoring/alerting (F63), scaling strategy (F64). All 57 existing status markers verified and corrected. Located at `docs/dev/specs/expectations.md`.
+- **delivery.md extended** — Added product lifecycle management (status model, transition triggers), consumption tracking (view/click/download analytics), channel health monitoring (delivery success rate, latency metrics), and delivery preview capability. Located at `docs/dev/specs/delivery.md`.
+- **operations.md extended** — Added email template system (HTML/MJML templates, variable substitution, A/B testing), notification framework (event subscription model, delivery rules, mute/unsubscribe), cron reliability monitoring (missed runs, overruns, SLA), and business metrics (DAU/MAU, conversion funnel, retention cohorts). Located at `docs/dev/specs/operations.md`.
+- **data-models.md extended** — Added consolidated schemas for Product (status, lifecycle), Consumption (view/click/download events), Notification (templates, subscriptions, channels), and Auth (tenant, user, role, session). Located at `docs/dev/specs/data-models.md`.
+- **comprehensive-gap-audit.md extended** — Added cross-dimensional summary section, gap ID cross-reference table mapping 42 gaps to their location in 6 spec documents, and a color-coded heatmap visualizing gap density across dimensions. Located at `docs/dev/comprehensive-gap-audit.md`.
+- **consumer-output-gaps.md fixed** — G1 (Executive Alerts/Digest) and G11 (Integration Platform/Data API) corrected via CD cross-referencing. Added CD cross-references to all 10 gaps linking to implementation gap catalog entries. Located at `docs/dev/consumer-output-gaps.md`.
+
+### Changed
+- **README.md** — Status fixes for agent-native JSON and audio output rows. Added references to cross-dimensional-gap-catalog.md and new spec files to reference section.
+- **AGENTS.md** — Status table verified and aligned with README. Added references to cross-dimensional-gap-catalog.md, multi-tenancy-auth.md, ops-runbook.md in references section.
+
+### Infrastructure
+- `docs/dev/cross-dimensional-gap-catalog.md`: New document — 42-gap cross-dimensional catalog with 119-cell impact matrix and implementation roadmap
+- `docs/dev/specs/multi-tenancy-auth.md`: New spec — multi-tenancy, auth, rate limiting, admin dashboard
+- `docs/dev/specs/ops-runbook.md`: New spec — backup/DR, monitoring/alerting, scaling strategy
+- `docs/dev/specs/expectations.md`: Updated — F58-F64 added, all 57 status markers fixed
+- `docs/dev/specs/delivery.md`: Updated — product lifecycle, consumption, channel health, preview
+- `docs/dev/specs/operations.md`: Updated — email templates, notifications, cron reliability, business metrics
+- `docs/dev/specs/data-models.md`: Updated — product/consumption/notification/auth model schemas
+- `docs/dev/comprehensive-gap-audit.md`: Updated — cross-dimensional summary, gap ID cross-reference, heatmap
+- `docs/dev/consumer-output-gaps.md`: Updated — G1/G11 fixes, CD cross-references added
+
 ## v1.6.3 (2026-07-27)
 
 ### Added
@@ -319,34 +375,6 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `src/autoinfo/api/portal.py`: New module — web portal read-only dashboard (4 routes, 6 Jinja2 templates).
 - `tests/`: 120 new tests across Stripe, G3, G5, adapters, portal, billing.
 
-## v1.6.4 (2026-07-27)
-
-### Added
-- **cross-dimensional-gap-catalog.md** — New document cataloging 42 gaps across 5 types (Consumer Output, Implementation, Pricing/Business, Quality Gate, Documentation/Knowledge) with a 119-cell cross-dimensional impact matrix and an implementation roadmap. Located at `docs/dev/cross-dimensional-gap-catalog.md`.
-- **multi-tenancy-auth.md** — New spec covering multi-tenancy architecture (domain isolation, tenant provisioning), auth system (OAuth2, SSO, session management), API rate limiting (token bucket, per-tenant quotas), and admin dashboard specification. Located at `docs/dev/specs/multi-tenancy-auth.md`.
-- **ops-runbook.md** — New spec covering backup/disaster recovery strategy (RPO/RTO targets, backup types, restore procedures), monitoring/alerting setup (Prometheus/Grafana, log aggregation, alert routing), and scaling strategy (horizontal scaling, caching, CDN, sharding). Located at `docs/dev/specs/ops-runbook.md`.
-- **expectations.md extended** — Added 7 new expectations (F58-F64) covering multi-tenancy (F58), auth system (F59), rate limiting (F60), admin dashboard (F61), backup/DR (F62), monitoring/alerting (F63), scaling strategy (F64). All 57 existing status markers verified and corrected. Located at `docs/dev/specs/expectations.md`.
-- **delivery.md extended** — Added product lifecycle management (status model, transition triggers), consumption tracking (view/click/download analytics), channel health monitoring (delivery success rate, latency metrics), and delivery preview capability. Located at `docs/dev/specs/delivery.md`.
-- **operations.md extended** — Added email template system (HTML/MJML templates, variable substitution, A/B testing), notification framework (event subscription model, delivery rules, mute/unsubscribe), cron reliability monitoring (missed runs, overruns, SLA), and business metrics (DAU/MAU, conversion funnel, retention cohorts). Located at `docs/dev/specs/operations.md`.
-- **data-models.md extended** — Added consolidated schemas for Product (status, lifecycle), Consumption (view/click/download events), Notification (templates, subscriptions, channels), and Auth (tenant, user, role, session). Located at `docs/dev/specs/data-models.md`.
-- **comprehensive-gap-audit.md extended** — Added cross-dimensional summary section, gap ID cross-reference table mapping 42 gaps to their location in 6 spec documents, and a color-coded heatmap visualizing gap density across dimensions. Located at `docs/dev/comprehensive-gap-audit.md`.
-- **consumer-output-gaps.md fixed** — G1 (Executive Alerts/Digest) and G11 (Integration Platform/Data API) corrected via CD cross-referencing. Added CD cross-references to all 10 gaps linking to implementation gap catalog entries. Located at `docs/dev/consumer-output-gaps.md`.
-
-### Changed
-- **README.md** — Status fixes for agent-native JSON and audio output rows. Added references to cross-dimensional-gap-catalog.md and new spec files to reference section.
-- **AGENTS.md** — Status table verified and aligned with README. Added references to cross-dimensional-gap-catalog.md, multi-tenancy-auth.md, ops-runbook.md in references section.
-
-### Infrastructure
-- `docs/dev/cross-dimensional-gap-catalog.md`: New document — 42-gap cross-dimensional catalog with 119-cell impact matrix and implementation roadmap
-- `docs/dev/specs/multi-tenancy-auth.md`: New spec — multi-tenancy, auth, rate limiting, admin dashboard
-- `docs/dev/specs/ops-runbook.md`: New spec — backup/DR, monitoring/alerting, scaling strategy
-- `docs/dev/specs/expectations.md`: Updated — F58-F64 added, all 57 status markers fixed
-- `docs/dev/specs/delivery.md`: Updated — product lifecycle, consumption, channel health, preview
-- `docs/dev/specs/operations.md`: Updated — email templates, notifications, cron reliability, business metrics
-- `docs/dev/specs/data-models.md`: Updated — product/consumption/notification/auth model schemas
-- `docs/dev/comprehensive-gap-audit.md`: Updated — cross-dimensional summary, gap ID cross-reference, heatmap
-- `docs/dev/consumer-output-gaps.md`: Updated — G1/G11 fixes, CD cross-references added
-
 ## v1.6.2 (2026-07-26)
 
 ### Fixed
@@ -384,18 +412,8 @@ All notable changes to the AutoInfo project will be documented in this file.
 
 ## v1.6.1 (2026-07-25)
 
-### Fixed
-- **BLOCKING**: Added missing `UserProfile` and `Subscription` dataclasses to `models.py` (F36)
-- **BLOCKING**: Added missing `CostRatesConfig` dataclass to `config.py` (F41)
-- Fixed cascade import failure that broke all 22 CLI commands
-- `trace_item`, `get_metrics`, `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` MCP tools registered
-- `doctor --verbose` with health score (0-100), error rates, and latency percentiles (F56)
-- #34: MCP test tool count updated to 87
-- #35: `generate_presentation` mock test format param fixed
-- #37: `_slugify` max_len increased 80→255 to prevent entry_id truncation
-- #38: Standardized `--json` output format (6 CLIs now wrap lists in `{items, count}`)
-
 ### Added
+
 - LLM fallback chain support — `_call_llm()` now iterates through configured fallback models (F04)
 - `RELATION_TYPES` enum with 11 standard relationship types (F19)
 - Per-domain TTL with freshness scoring (F49)
@@ -407,7 +425,6 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `get_domain_decay` MCP tool
 - `merge_items` MCP tool
 
-### Added
 - **End User Profile & Subscription CRUD (F36)** — `EndUserProfile` and `Subscription` models with SQLite-backed store. MCP tools: `create_end_user`, `get_end_user`, `update_end_user`, `delete_end_user`, `list_end_users`. CLI: `autoinfo enduser create|get|update|delete|list`. Profile fields include delivery channel IDs (telegram, wechat, dingtalk, discord), locale, timezone, tier, and status.
 - **Multi-Channel Delivery (F37)** — 6 delivery adapters: Telegram Bot, WeChat Official Account, WeChat Work, DingTalk, FeiShu, Discord. Each adapter implements `DeliveryChannel` ABC with `send()` and `validate()` methods. Email remains mandatory fallback. Per-channel rate limiting and message format support.
 - **End User Lifecycle State Machine (F38)** — `trial → active → suspended → cancelled` with configurable trial period (default 14d), grace period (7d), and transition hooks (welcome/payment-reminder/goodbye messages). Re-activation within 90 days preserves full history.
@@ -431,6 +448,7 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **Metrics Export (F57)** — `autoinfo status --metrics` exports system health and usage indicators as structured JSON. Prometheus endpoint at `http://localhost:8741/metrics` (feature-gated). Standard metric names: `autoinfo_items_collected_total`, `autoinfo_llm_spend_usd`, etc.
 
 ### Changed
+
 - **CLI expanded from 17 to 22 command groups** — 5 new groups: `audit` (immutable audit log queries), `cost` (cost dashboard and allocation), `enduser` (end-user profile CRUD), `portal` (self-service delivery preferences and history), `trace` (per-item pipeline history). CLI `__init__.py` updated to register all new modules.
 - **MCP tool inventory**: 79 tools across 19 categories (same count as v1.5 — new EndUser/Audit/Trace MCP tools balanced against internal refactoring). See README for full listing.
 - **founder-expectations.md**: All F36-F57 expectations updated from ❌ to ✅ with completion markers. Version references updated from v1.5 to v1.6 throughout. Success metrics table revised.
@@ -439,11 +457,23 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **AGENTS.md** — Project structure updated with new modules (audit.py, cost.py, delivery_log.py, user_store.py, collectors/base.py). Status table updated. CLI count 17→22.
 
 ### Fixed
+
+- **BLOCKING**: Added missing `UserProfile` and `Subscription` dataclasses to `models.py` (F36)
+- **BLOCKING**: Added missing `CostRatesConfig` dataclass to `config.py` (F41)
+- Fixed cascade import failure that broke all 22 CLI commands
+- `trace_item`, `get_metrics`, `soft_delete_entry`, `restore_entry`, `export_user_data`, `delete_user_data` MCP tools registered
+- `doctor --verbose` with health score (0-100), error rates, and latency percentiles (F56)
+- #34: MCP test tool count updated to 87
+- #35: `generate_presentation` mock test format param fixed
+- #37: `_slugify` max_len increased 80→255 to prevent entry_id truncation
+- #38: Standardized `--json` output format (6 CLIs now wrap lists in `{items, count}`)
+
 - **#33 — KB count mismatch false warning**: Replaced `len(list_entries(domain, limit=1))` with `KBStore.count_entries(domain)` (backed by `SELECT COUNT(*)`) to prevent false-positive warnings on every multi-item processing run.
 - **#34 — Stale tool count assertions in `test_mcp_v2.py`**: Relaxed hardcoded `== 65` assertions to `>= 65` / `>= 70` to prevent false test failures as MCP tool inventory grows.
 - **#35 — Presentation mock missing `format` parameter**: Added `format="markdown"` to `test_generate_presentation` mock assertion to match actual `_handle_generate_presentation` call signature.
 
 ### Infrastructure
+
 - `src/autoinfo/audit.py`: New module — immutable append-only audit log with SQLite backend and MCP/CLI query support
 - `src/autoinfo/cost.py`: New module — cost metering, allocation, dashboard, and budget alerts
 - `src/autoinfo/delivery_log.py`: New module — per-subscription delivery reliability tracking with SLA monitoring
@@ -660,7 +690,7 @@ All notable changes to the AutoInfo project will be documented in this file.
 - `.omo/plans/autoinfo-v1.1.md`: Full execution plan
 - `.omo/notepads/autoinfo-v1.1/learnings.md`: Implementation learnings
 
-## [1.0.0-dev] — 2026-07-20
+## v1.0.0-dev (2026-07-20)
 
 ### Added
 

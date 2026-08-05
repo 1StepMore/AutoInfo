@@ -30,7 +30,7 @@ full tool catalog, see `docs/dev/specs/mcp-tools.md` (141 tools, 35 categories).
 ## Check system health
 
 ```
-1. diagnose_system() → comprehensive health (LLM key, sources, disk, DB) + health_score (0-100) + phase (init/collect/process/healthy/degraded)
+1. diagnose_system() → comprehensive health (LLM key, sources, disk, DB) + health_score (0-100) + phase (uninitialized / llm_unconfigured / no_sources / ready_to_collect / operational)
 ```
 
 Returns structured health with composite score. On degraded status, inspect
@@ -153,8 +153,22 @@ Agent can re-synthesize, cache, or combine with other data.
 ```
 1. set_agent_callback(url="https://my-agent.example.com/callback", events=["new_digest", "new_report"]) → register callback
 2. AutoInfo pushes structured JSON when a matching product is generated
-3. Agent receives {callback_event: "new_digest", product: {...}} via HTTP POST
+3. Agent receives {event, payload, schema_version: 1, trace_id, product_id} via HTTP POST
 ```
+
+Payload contract: every push is an HTTP POST with the canonical shape
+`{event, payload, schema_version: 1, trace_id, product_id}`. `event` is one of
+`new_digest`, `new_report`, `new_tutorial`. `payload` is the generated output
+(JSON-LD for `format="agent"`, markdown/HTML for other formats). `schema_version`
+is `1`. `trace_id` ties the push to the item trace, and `product_id` names the
+generated product when one exists.
+
+Delivery is fire-and-forget: no retry or backoff, and the push never blocks or
+fails the caller. Durability comes from the SQLite outbox (`agent_outbox`): the
+event row is persisted before any delivery attempt, then a background worker
+drains it (`pending` → `delivered` | `failed`). Rows survive process restarts;
+on startup, `failed` rows are requeued to `pending` and re-attempted. A failed
+delivery is counted in the `delivery_failures_total` metric.
 
 Agent subscription pattern: register once, receive pushes without polling.
 (requires AutoInfo ≥ v1.7)
@@ -250,7 +264,7 @@ targeting.
 ## Run MCP-native validation
 
 ```
-1. list_validation_scenarios() → returns available scenario names (43 built-in across all MCP categories, CLI, and REST API surfaces)
+1. list_validation_scenarios() → returns available scenario names (47 built-in across all MCP categories, CLI, and REST API surfaces)
 2. run_validation_scenario(scenario="system-health") → executes steps in-process (real tool calls, real subprocesses for CLI steps, real HTTP requests for REST steps), returns {success, data: {scenario, status: passed|failed|unconfigured, summary, steps}}
 3. Scenarios with requires_env (e.g. llm-gated needs AUTOINFO_LLM_API_KEY) return status "unconfigured" when env vars are missing — never silently skipped, never fake-passed. Director User must provide BYOK keys during onboarding.
 4. Steps may use llm_assert — a real LLM call judges the tool output against a natural-language assertion (semantic validation, not just structure checks)
@@ -280,3 +294,31 @@ Collection and processing return a `job_id` for progress polling:
 **Legacy**: `get_collection_progress(domain="medical")` and
 `get_processing_progress(domain="medical")` still work for simple single-domain
 usage without job_id.
+
+## CLI/MCP noop asymmetry (process_collection)
+
+Processing a domain with no cached collected items returns a *noop* — nothing
+was processed, this is not an error. The MCP and CLI surfaces report it
+differently, and this asymmetry is **intentional** (CLI is human-first; the
+exit code is unchanged):
+
+| Surface | Noop shape | Location |
+|---------|-----------|----------|
+| MCP `process_collection` | `{status: "noop", total_items: 0, message: "No cached items found for domain '<domain>'. Run collect_sources() first.", domain}` | `src/autoinfo/mcp/server.py:673-678` |
+| CLI `autoinfo process` (human) | `No cached items found for domain '<domain>'.` + **exit 0** | `src/autoinfo/cli/process.py:98` |
+| CLI `autoinfo process --json` | `{status: "noop", total_items: 0, message, domain}` — mirrors the MCP shape exactly | `src/autoinfo/cli/process.py:64-81` |
+
+Design notes:
+
+- **MCP is agent-facing**: agents branch on the structured `status` field.
+  A noop is a normal `{success: true}` response, never an error envelope.
+- **CLI is human-first**: plain text + exit 0 is the established behavior and
+  is **not a change** — noop is not a failure, so no non-zero exit.
+- **CLI `--json` noop parity**: `autoinfo process --json` on a noop run prints
+  the same `{status: "noop", ...}` object as the MCP tool, so script consumers
+  get identical structure from both surfaces.
+
+> **Parity matrix note (for task 49)**: the canonical parity matrix
+> `docs/dev/cli-mcp-rest-parity.md` must reference this asymmetry table
+> (cross-link here) when it is created. Do not move this content — it is the
+> source of truth; the matrix should point at it.

@@ -72,7 +72,7 @@ The system serves three distinct user roles. Unlike traditional multi-user syste
 | Role | Code | Description | Interface | Example | Lifecycle |
 |------|------|-------------|-----------|---------|-----------|
 | **End User** (最终用户 / 付费客户) | **B1** | **The paying customer.** Consumes curated knowledge products. Interacts in natural language; the B2 Agent (powered by LLM) translates NL into structured subscription config via the NL→Config pipeline. | Delivered products (email, Telegram, WeChat, API feeds); NL interaction with Agent for config changes; self-service portal | A pharmaceutical company subscribing to an "IVF Research Weekly" digest delivered via email + WeChat Work; a VC firm paying for "AI Competitive Intelligence" data feeds | B1.1 Discover → B1.2 Subscribe → B1.3 Onboard → B1.4 Consume → B1.5 Modify Config → B1.6 Churn → B1.7 Reactivate |
-| **Direct User** (直接执行者 / Agent) | **B2** | **The operator.** Executes automation commands via structured tools. **Agent-first**: all capabilities are MCP tools for AI agents. The agent is the primary execution layer. | MCP tools (141 across 35 categories — primary), CLI (23 command groups — fallback) | An AI agent calling `collect_sources()` and `generate_digest()`; a human running `autoinfo collect` for ad-hoc operations | B2.1 Discover → B2.2 Connect → B2.3 Configure → B2.4 Operate → B2.5 Monitor → B2.6 Report |
+| **Direct User** (直接执行者 / Agent) | **B2** | **The operator.** Executes automation commands via structured tools. **Agent-first**: all capabilities are MCP tools for AI agents. The agent is the primary execution layer. | MCP tools (141 across 35 categories — primary), CLI (28 command groups — fallback) | An AI agent calling `collect_sources()` and `generate_digest()`; a human running `autoinfo collect` for ad-hoc operations | B2.1 Discover → B2.2 Connect → B2.3 Configure → B2.4 Operate → B2.5 Monitor → B2.6 Report |
 | **Director User** (人类指挥者) | **B3** | **The commander.** Sets policy at deploy time, monitors passively, intervenes only on critical errors that B2 cannot self-heal. Never daily-operates the pipeline. | Dashboard + B2-generated reports; CLI for emergency intervention | "帮我追踪本周辅助生殖领域的重要论文，按创新程度排序，出一份简报" | B3.1 Configure → B3.2 Monitor → B3.3 Intervene |
 
 **Design principle**: Agent-oriented by default, human-capable by design. All system capabilities are exposed as structured MCP tools first (for B2 agent), with CLI as an accessible alternative. B3 communicates intent through B2, not through AutoInfo directly. B1's requirements for quality, reliability, and delivery channel flexibility are embedded as hard constraints in every subsystem — see F36-F40 plus F65-F72 for the full lifecycle specification.
@@ -145,7 +145,7 @@ The journey has 8 phases. Each phase has specific expectations documented in the
 
 ## 5. Core Value Propositions
 
-> **Content archived:** `docs/archive/reality-assessment.md` (§5)
+> **Content superseded by:** `docs/dev/cross-dimensional-catalog.md` (keystone product matrix)
 >
 > Assessment of 5 core value propositions: Universal Collector, LLM Extraction, KB as Asset, Agent Operations, Commercial-Grade Products.
 
@@ -169,7 +169,7 @@ The journey has 8 phases. Each phase has specific expectations documented in the
 
 ## 8. Code & Test Status
 
-> **Content moved to:** `specs/quality-gates.md (§7 Testing Strategy)`. Code module status tables archived in `docs/archive/reality-assessment.md (§9 Current Reality)`.
+> **Content moved to:** `docs/dev/specs/quality-gates.md` (§7 Testing Strategy). Code module status tables superseded by `docs/dev/cross-dimensional-catalog.md` (keystone product matrix).
 >
 > Verdict dataclasses, test types, and code module status tables have been moved to the respective spec files.
 
@@ -177,7 +177,7 @@ The journey has 8 phases. Each phase has specific expectations documented in the
 
 ## 9. Current Reality Assessment
 
-> **Content archived:** `docs/archive/reality-assessment.md` (§9)
+> **Content superseded by:** `docs/dev/cross-dimensional-catalog.md` (keystone product matrix)
 >
 > v1.6 reality status, What Works / What's Broken, gap table, metrics dashboard.
 
@@ -272,14 +272,14 @@ This is the standard. Everything else — tests, architecture, source curation �
 
 ---
 
-## 11. Current Status (v1.8 — 2026-07-28)
+## 11. Current Status (v1.8.1+ — 2026-08-04)
 
 | Component | Status |
 |-----------|--------|
 | Framework design | ✅ Documented (this file) |
 | Expectation catalog | ✅ 72 expectations across 16 phases — 55/72 implemented (✅), 6/72 partially implemented (🟡), 11/72 not implemented (❌). See `docs/dev/specs/user-lifecycle-definition.md` for the root lifecycle model. |
 | Quality gates | ✅ G1-G5 hard/soft split (G0/G4 hard with retry→block, G1-G3/G5 soft with configurable thresholds); production delivery gates D1-D3; per-domain gate configuration |
-| Demo domains | ✅ 5 defined with curated sources (7 total) |
+| Demo domains | ✅ 9 defined with curated sources |
 | Market positioning | ✅ Researched — whitespace confirmed |
 | Target user persona | ✅ Defined — information-intensive professionals |
 | Pricing reference | ✅ Drafted for v1 individual tier |
@@ -288,10 +288,10 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ ~2866 tests across 100+ test files (includes new collector tests) |
+| Tests | ✅ ~2942 tests across 100+ test files (includes new collector tests) |
 | MCP tools | ✅ 141 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
-| CLI commands | ✅ 23 command groups |
+| CLI commands | ✅ 28 command groups |
 
 ---
 
@@ -350,7 +350,7 @@ Doctor:              autoinfo doctor
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, ~2866 tests (includes new collector tests), and 141 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/57 expectations fully implemented (✅), F30/F42 partially implemented (🟡). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics.
+The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, ~2942 tests (includes new collector tests), and 141 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/72 expectations fully implemented (✅), 6/72 partially implemented (🟡), 11/72 not implemented (❌). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics.
 
 v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
 
@@ -416,13 +416,13 @@ Consumer requirements identified from global information payment research (5 rep
 | **Role-aware digest/report** | 🟡 Medium | Low | `target_audience` param already exists on tutorial/presentation but missing from digest/report. Consumer demand for persona-adapted content. |
 | **Stored preference profiles** | 🟢 Small | Low | `UserProfile.delivery_preferences` not linked to output personalization. `generate_digest(user_id=usr_xxx)` should auto-apply user's format/timezone/channel preferences. |
 
-> Full cross-reference (archived): `docs/archive/consumer-output-gaps.md` — 10 gaps across 5 dimensions with priority matrix. Superseded by `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036.
+> Full cross-reference: `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036 — 10 gaps across 5 dimensions with priority matrix.
 
 ### 🔵 Longer-Term (v2.0+)
 
 | Gap | Related Expectation | Effort |
 |-----|--------------------|--------|
-| Stripe / billing integration | F30 — Subscription & Billing | 🟡 Partially implemented (create_checkout_session coded; webhook endpoint pending) |
+| Stripe / billing integration | F30 — Subscription & Billing | ✅ Fully implemented (Stripe webhook endpoint with signature verification, stripe-mock dev setup, freemium gating, usage-based billing) |
 | Feature gating / usage metering | F30 — Subscription & Billing | 🟡 Partially implemented (check_access enforced in output.py; MCP layer gating pending) |
 | Delivery analytics dashboard | F39 — Delivery Reliability | Medium |
 | Collaboration / teams | §10.3 Explicit "No" | High |
@@ -435,17 +435,17 @@ Consumer requirements identified from global information payment research (5 rep
 
 | Metric | Value |
 |--------|-------|
-| Expectations documented | 72 F-expectations across 16 phases (F01-F57 original + F58-F64 blank spaces + F65-F72 lifecycle coverage) + consumer-facing output requirements (see `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036, superseding archived `docs/archive/consumer-output-gaps.md`) |
+| Expectations documented | 72 F-expectations across 16 phases (F01-F57 original + F58-F64 blank spaces + F65-F72 lifecycle coverage) + consumer-facing output requirements (see `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036) |
 | Value propositions fulfilled | 5/5 |
 | True Test passing | 13/13 |
 | MCP tools | 141 across 35 categories |
-| Source handlers | 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, Webhook, Email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, HackerNews, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, Yahoo Finance, HTTP API) + crontab installer |
+| Source handlers | 30 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, Webhook, Email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, HackerNews, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, Yahoo Finance, HTTP API, AKShare, SEC EDGAR, edX sitemap) + crontab installer |
 | Quality gates | All 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) |
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams) |
 | Delivery channels | 13 channels ✅ (SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push). Email as mandatory fallback. |
 | Subscription/billing | ✅ Fully implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
-| Tests | ~2866 (includes new collector tests) |
-| Demo domains | 5 with curated sources (7 total) |
+| Tests | ~2942 (includes new collector tests) |
+| Demo domains | 13 with curated sources |
 | **🔴 v1.6+ residual gaps** | **11 low-effort fixes** |
 | **🟢 Consumer-facing output gaps** | **6 items** (see §14 consumer gaps) |
 | **🔵 v2.0+ deferred** | **8 items** |
@@ -457,15 +457,15 @@ Consumer requirements identified from global information payment research (5 rep
 - This document — D3: Founder's expectations for AutoInfo v1 (index)
 - `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users — 42 capability cells. The "what" that derives from the "why" in this document.
 - `docs/archive/founder-expectations-pre-split.md` — Exact backup before splitting (2108 lines)
-- `docs/dev/specs/expectations.md` — Expectation Catalog F01-F57
+- `docs/dev/specs/expectations.md` — Expectation Catalog F01-F72
 - `docs/dev/specs/quality-gates.md` — G0-G5, D1-D3 gate catalog & configuration, testing strategy
 - `docs/dev/specs/pipeline.md` — Collection pipeline, KB pipeline, extraction, search, performance targets
 - `docs/dev/specs/delivery.md` — Output generation, delivery channels, error recovery, end user lifecycle
 - `docs/dev/specs/operations.md` — Cost governance, data privacy, knowledge lifecycle, observability
 - `docs/dev/specs/market-positioning.md` — Priority matrix, competitive landscape, pricing, personas
-- `docs/archive/reality-assessment.md` — Value propositions, current reality, metrics (archived)
 - `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (141 tools, 35 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/specs/user-lifecycle-definition.md` — **Root spec**: B1/B2/B3 user types and complete lifecycle definitions
+- `docs/dev/specs/multi-tenancy-auth.md` — Multi-tenancy, authentication, rate limiting, admin dashboard (architectural design; deferred until SSE transport)
+- `docs/dev/specs/ops-runbook.md` — Operations runbook: backup, disaster recovery, monitoring, scaling, agent quick reference with MCP tool mappings
 - `docs/dev/director-user-guide.md` — Human-Agent interaction lifecycle, communication patterns, escalation protocol
-- `docs/archive/validation-suite/plan-v2/README.md` — Comprehensive validation plan: 96 questions across 15 parts (archived 2026-08-03; superseded by MCP-native `list_validation_scenarios` / `run_validation_scenario` tools)

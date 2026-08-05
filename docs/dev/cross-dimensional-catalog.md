@@ -14,7 +14,7 @@
 >
 > **Cell status:** 🔴 = Never Designed (gap), 🟡 = Spec'd Not Impl / Partially Impl, 🟢 = Spec Outdated, 🟠 = Architecture Gap
 >
-> **Last updated:** 2026-08-02 (V1 completion audit — see "2026-08-02 V1 更新" section near end of document)
+> **Last updated:** 2026-08-05 (M0-M7 consolidated docs sweep; B24/D11/A7/A19/A20/A26/A27/D13 cells updated to implemented/部分覆盖 — see "2026-08-05 更新" section)
 
 ---
 
@@ -27,6 +27,8 @@
 5. [Implementation Roadmap](#section-5-implementation-roadmap)
 6. [2026-08-02 V1 更新](#2026-08-02-v1-更新)
 7. [2026-08-03 更新 — Agent-native validation toolset](#2026-08-03-更新--agent-native-validation-toolset)
+8. [Feasibility Verdicts (absorbed from enduser-coverage-matrix)](#feasibility-verdicts-absorbed-from-enduser-coverage-matrix-2026-08-02)
+9. [Appendix: Existing Gap ID Cross-Reference](#appendix-existing-gap-id-cross-reference)
 
 ---
 
@@ -102,7 +104,7 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B1.1 Discover | B1.2 Trial | B1.3 Subscribe | B1.4 Consume | B1.5 Renew | B1.6 Churn |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A4 Products** | 🔴 No product catalog / storefront | 🔴 No trial product preview | 🟢 6 templates with free/premium/enterprise tiers, `check_access` gates delivery | 🟡 Products deliver but lifecycle is not tracked | 🔴 No renewal product regeneration | 🔴 No product archive on churn |
+| **A4 Products** | 🔴 No product catalog / storefront | 🔴 No trial product preview | 🟢 8 templates with free/premium/enterprise tiers, `check_access` gates delivery (B24 column premium + D11 magazine-digest added 2026-08-05) | 🟡 Products deliver but lifecycle is not tracked | 🔴 No renewal product regeneration | 🔴 No product archive on churn |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Update |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -354,7 +356,7 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 Gaps where code exists but is incomplete, broken by design, or has significant missing pieces.
 
 #### CD-024: [PARTIALLY RESOLVED] Subscription → Product Gating
-- **Description:** Subscription gating IS implemented end-to-end. `check_access()` in `billing.py` gates by tier. ProductTemplate in `output/__init__.py:1768-1808` supports three tiers (free/premium/enterprise). 6 product templates defined: 4 free, 1 premium, 1 enterprise. Subscription model (`models.py:340`) has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit` fields. What's missing: no end-user-facing "upgrade" flow that seamlessly transitions from free to paid (Stripe checkout exists but isn't linked to template gating in a self-service UX). No consumption-based tier graduation.
+- **Description:** Subscription gating IS implemented end-to-end. `check_access()` in `billing.py` gates by tier. ProductTemplate in `output/__init__.py:1768-1808` supports three tiers (free/premium/enterprise). 8 product templates defined (was 6: 4 free + 1 premium + 1 enterprise; +column premium +magazine-digest free, M5, 2026-08-05). Subscription model (`models.py:340`) has `tier`, `channels`, `domains`, `products`, `platform_limit`, `domain_limit` fields. What's missing: no end-user-facing "upgrade" flow that seamlessly transitions from free to paid (Stripe checkout exists but isn't linked to template gating in a self-service UX). No consumption-based tier graduation.
 - **Affected Stages:** A4 (Products), A5 (Delivery)
 - **Affected Users:** B1 (End User — no self-service upgrade), B3 (Director — cannot configure tier graduation)
 - **Existing Cross-Ref:** AUD-01, A-01
@@ -406,7 +408,7 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 - **Evidence:** Mixed logging patterns across codebase. Some modules use `print()`, some use `logging`, some use structured JSON.
 
 #### CD-031: [MERGED INTO CD-024] Product Templates All Hardcoded to `free` (RESOLVED)
-- **Description:** Originally reported that all product templates had `access_level="free"`. Updated findings: there are 6 templates — 4 free + 1 premium + 1 enterprise (`output/__init__.py:1768-1808`). `check_access()` IS implemented and active at `billing.py:657`. The remaining gap (self-service upgrade UX) is tracked under CD-024.
+- **Description:** Originally reported that all product templates had `access_level="free"`. Updated findings: there are 8 templates — 5 free + 2 premium + 1 enterprise (`output/__init__.py:1768-1808`; was 6 with 4 free + 1 premium + 1 enterprise before M5 added column premium + magazine-digest free). `check_access()` IS implemented and active at `billing.py:657`. The remaining gap (self-service upgrade UX) is tracked under CD-024.
 - **Affected Stages:** A4 (Products)
 - **Affected Users:** B1 (End User — tiered product access works), B3 (Director — templates are tiered)
 - **Existing Cross-Ref:** AUD-01 (merged with CD-024)
@@ -524,9 +526,9 @@ Gaps that are not about missing features but about how the system is architected
 | CD-014 | 🔴 Never Designed | 🟢 Resolved | `backup-db.sh`, `restore-db.sh`, `make backup` all operational |
 | CD-018 | 🟡 Spec'd Not Impl | 🟢 Resolved | Core consumption tracking implemented (MCP query tool still pending P2) |
 | CD-023 | 🟡 Spec'd Not Impl | 🟢 Resolved | `get_schedule_status` IS registered |
-| CD-024 | 🟡 Partially Impl | 🟡 Partially Resolved | Templates tiered (4 free + 1 premium + 1 enterprise), Subscription has `channels`/`domains`/`products` fields; self-service upgrade UX missing |
+| CD-024 | 🟡 Partially Impl | 🟡 Partially Resolved | Templates tiered (5 free + 2 premium + 1 enterprise = 8 total; +column premium +magazine-digest free in M5 2026-08-05), Subscription has `channels`/`domains`/`products` fields; self-service upgrade UX missing |
 | CD-031 | 🟡 Partially Impl | 🔗 Merged → CD-024 | All templates no longer hardcoded to `free`, merged into CD-024 |
-| CD-031 (evidence) | — | 🟢 Resolved | 6 templates verified: 4 free + 1 premium + 1 enterprise |
+| CD-031 (evidence) | — | 🟢 Resolved | 8 templates verified (was 6: 4 free + 1 premium + 1 enterprise; +column premium +magazine-digest free, M5 2026-08-05) |
 | CD-032 | 🟢 Spec Outdated | ✅ Resolved | Audio output working, docs already updated |
 | CD-033 | 🟢 Spec Outdated | ✅ Resolved | Agent-native JSON working, docs already updated |
 | CD-035 | 🟢 Spec Outdated | ✅ Resolved | Source doc archived, no further action |
@@ -701,7 +703,7 @@ Priorities are assigned based on:
 
 | Step | Task | Effort | Outcome | Status |
 |------|------|--------|---------|--------|
-| 2.1 | Subscription model redesign: add `tier`, `channels`, `domains`, `products`, `platform_limit` fields; wire `check_access()` to real tier checks; create 1 premium template for demo | 2-3 days | Subscription model is correct by design; demo can show free vs premium access | 🟢 **Done** — Subscription model has `tier`/`channels`/`domains`/`products`/`platform_limit`/`domain_limit`/`raw_access`/`processed_access`; 6 templates tiered (4 free + 1 premium + 1 enterprise); `check_access()` gates delivery |
+| 2.1 | Subscription model redesign: add `tier`, `channels`, `domains`, `products`, `platform_limit` fields; wire `check_access()` to real tier checks; create 1 premium template for demo | 2-3 days | Subscription model is correct by design; demo can show free vs premium access | 🟢 **Done** — Subscription model has `tier`/`channels`/`domains`/`products`/`platform_limit`/`domain_limit`/`raw_access`/`processed_access`; 8 templates tiered (5 free + 2 premium + 1 enterprise; +column premium +magazine-digest free in M5 2026-08-05); `check_access()` gates delivery |
 | 2.2 | Cron reliability: monitoring, failure detection, missed-schedule backfill | 2-3 days | Collection is reliable; demo pipeline won't break silently | 🟢 **Done** — heartbeat tracking, missed-schedule detection, email alerts, `get_schedule_status` MCP, `cron health` CLI |
 
 ### Phase 3: P1 Implementation — V1 Demo Hardening (Weeks 6-10) ✅ COMPLETED
@@ -788,9 +790,121 @@ All open CD gaps (CD-001..CD-042 minus the 12 already resolved/merged) remain op
 
 ## 2026-08-03 更新 — Agent-native validation toolset
 
-Landed after the 2026-08-02 audit: `list_validation_scenarios` / `run_validation_scenario` MCP tools (src/autoinfo/mcp/server.py:9586,9594) backed by a standalone executor (src/autoinfo/mcp/validation.py). 43 scenario YAMLs in src/autoinfo/mcp/scenarios/ cover 141/141 MCP tools (141 MCP tools), all 23 CLI groups, and 8 REST endpoints (verified via scripts/coverage_audit.py — MISSING: 0). Scenarios execute through the MCP surface plus real CLI subprocess and REST HTTP steps; `llm_assert` steps run real model calls; env-gated steps report `unconfigured` (Director User BYOK obligation). Scenario authoring contract: docs/dev/validation-scenario-contract.md.
+Landed after the 2026-08-02 audit: `list_validation_scenarios` / `run_validation_scenario` MCP tools (src/autoinfo/mcp/server.py:9586,9594) backed by a standalone executor (src/autoinfo/mcp/validation.py). 47 scenario YAMLs in src/autoinfo/mcp/scenarios/ cover 141/141 MCP tools (141 MCP tools), all 28 CLI groups, and 8 REST endpoints (verified via scripts/coverage_audit.py — MISSING: 0). Scenarios execute through the MCP surface plus real CLI subprocess and REST HTTP steps; `llm_assert` steps run real model calls; env-gated steps report `unconfigured` (Director User BYOK obligation). Scenario authoring contract: docs/dev/validation-scenario-contract.md.
 
 **Cell-impact**: no matrix cell flips — validation is a B2/B3 operational capability strengthening A7 Operations (B2.5 Monitor) and the B2 lifecycle (validation of collection/extraction/delivery), not a new pipeline stage or user lifecycle transition. Tool count is now 141 (was 139 at the 08-02 audit).
+
+---
+
+## 2026-08-05 更新 — M2/M3/M5 波次落地（3 新 source types + 4 新 demo 域 + 2 新产品模板）
+
+Landed 2026-08-05 (M0-M7 merged plan waves). These add collectors, demo domains, and product templates that strengthen A1 Collection and A4 Products cells. Following the 2026-08-02 convention, where a feature strengthens a cell the cell status is noted without flips unless a gap actually closes.
+
+### New features landed
+
+| Feature | Code location | Summary |
+|---------|---------------|---------|
+| **A7 AKShare collector** | `collectors/akshare.py` (M2T19) | Chinese A-share/HK market data handler (`ak.stock_zh_a_hist` per-symbol + `stock_zh_a_spot_em` whole-market mode), `[akshare]` optional extra. |
+| **D13 SEC EDGAR collector** | `collectors/sec_edgar.py` (M2T20) | Company filings (ticker→CIK→submissions, 8-K/10-K/10-Q), UA + rate-limit compliant (10 req/s). Replaces the rss source in financial-intelligence (M3T30). |
+| **A27 edX sitemap collector** | `collectors/edx_sitemap.py` (M2T21) | Course discovery via `edx.org/sitemap.xml`, RFC 9309 robots.txt gate, per-page JSON-LD extraction. |
+| **4 new demo domains** | `src/autoinfo/data/domains/{general-news,gaming,b2b,retail}/` (M3T24) | D12 general-news (5→15 sources), D14 gaming, D15 b2b, D16 retail — 13 demo domains total. |
+| **B24 column product** | `output/__init__.py` `_REPORT_TYPE_PROMPTS` + `PRODUCT_TEMPLATES` (M5T40) | `report_type="column"` (premium template, G15 `check_access` gate) + `column.md.j2`. |
+| **D11 magazine-digest product** | `output/__init__.py` `PRODUCT_TEMPLATES` + `_resolve_digest_product_type` (M5T41) | `magazine-digest` free template + `magazine-digest.md.j2` per-title RSS clustering. Product templates 6→8. |
+| **M2T22 http_api `$` root-array** | `collectors/http_api.py` | `json_path: "$"` returns the whole response body as the item array (Mastodon); `$.field` prefix. |
+| **3 new validation scenarios** | `src/autoinfo/mcp/scenarios/{sources-gap-closure,output-column,sources-a6-keyed}.yaml` (M7T52) | Scenarios 44→47; covers the 3 new source-type registrations + column product + A6 keyed sources. |
+
+### Cell-impact statement
+
+- **A4 Products (B1.3 Subscribe, B2.3 Configure, B3.2 Configure):** `PRODUCT_TEMPLATES` grew 6→8 rows (column premium + magazine-digest free). The B1.3 cell text "6 templates with free/premium/enterprise tiers" updated to **8 templates**. Cells remain 🟡/🟢 as before — the product lifecycle state machine (CD-017/CD-022) is still 0% implemented.
+- **A1 Collection (B2.3 Configure, B3.2 Configure):** +3 handler types (akshare/sec_edgar/edx_sitemap, VALID_SOURCE_TYPES 26→29) and +4 demo domains (9→13). Cells remain 🟢 (source config already fully delivered).
+- **B2 lifecycle (B2.3 Configure):** CLI parity groups (topic-group, import-kb, query-collected, alert-rules, agent-callback) extend CLI/MCP parity — 23→28 CLI groups. Cells remain 🟢.
+
+### Open CD gaps unaffected
+
+All open CD gaps (CD-001..CD-042 minus resolved/merged) remain open. B24/D11 are product-template additions within the already-evaluated A4 Products stage — they do not close CD-017/CD-022 (product lifecycle state machine still 0%). The enduser-coverage-matrix's B24/D11 item rows were updated to ⚠️ (column premium / magazine digest) in its 第 11 次 note.
+
+---
+
+## Feasibility Verdicts (absorbed from enduser-coverage-matrix, 2026-08-02)
+
+> **Provenance:** This section was originally the H-section of `docs/dev/enduser-coverage-matrix.md` — the "AutoInfo v1.8.4 vs 综合报告-资讯付费与AI触达研究.md" coverage snapshot (2026-08-02, updated through 2026-08-04). Its live coverage data (99 items across 5 dimensions A-E, P0-P4 gap tables) is now duplicated by this catalog (CD-NNN gap IDs, §1 matrix) and the README/AGENTS status tables. The feasibility verdicts below — V1/V2/放弃 decisions with alternative paths for blocked sources — did not exist elsewhere in the catalog and are preserved here verbatim.
+
+### H. 可行性判定与实现路线图（2026-08-02 更新）
+
+> 基于 2026-08-02 外部核实（librarian 调研 GDELT / OpenBB / Unpaywall+CORE / RSSHub / NSSD / Listen Notes / edX / X API 定价 / Stripe 模式共存 / 免费行情层 / NewsAPI+Google News RSS / 公众号第三方 API 共 12 条绕过路径的 2026 存活状态），为全部未覆盖项标注可行性决策。
+>
+> **核心修正（对比 2026-08-02 上午分析）**：
+> - 🔴 X API Basic $200/月档 2026-02 关闭新注册（转 pay-per-use，6 月老用户强制迁移）→ **A20-X 放弃**
+> - 🟢 GDELT（免费无 key、3 个月窗口）、Unpaywall（10 万次/天）、CORE（免费注册）确认存活 → **A18/A25 零成本可做**
+> - 🟡 RSSHub 中文路由恶化（知乎需 cookie+无头浏览器、小红书 503、公众号 feeddd 挂掉）→ **A19 仅知乎可行且脆弱**
+> - 🟡 NSSD 存活但无 API（注册+登录才可下载）→ A26 仅爬虫路径，ROI 低
+> - 🟡 edX catalog API 为 beta + 人工审批（2U 重组后）→ A27 不可自助
+> - 🟢 Stripe `mode="payment"` 与订阅模式共存（API 层确认）→ E12 直接可做
+> - 🟡 OpenBB 为聚合壳（自带 key、AGPLv3）→ 不能替代 Bloomberg，仅归一化免费层数据
+> - 🟡 免费行情层收紧：Alpha Vantage 硬性 25 req/天、Twelve Data ~100 req/天、Finnhub 无基本面 → A7 主力靠 Wind 个人版积分
+> - 🟡 公众号官方 API 仅账号所有者授权（第三方须逐账号授权，权限集 7）→ 公众号全量采集无合法批量路径
+>
+> **覆盖率重定义**：99 项 − 6 项纯无解（B21/B22/C9/C12/C13/E13）= **93 项可覆盖集合**；零成本上限 86/93（**92%**），加小额付费（Wind 个人版、微博/抖音）约 88/93（**95%**）；真 100% 卡在 5 个死结（X 涨价、小红书、LinkedIn、Coursera、公众号全量）。
+
+### H1. 生产实现清单（V1 — 全部免费零成本）— ✅ 全部已完成（2026-08-02）
+
+| 项 | 功能 | 实现路径 | 核实依据 | 成本 | 状态 |
+|:--:|---|---|:---:|:---:|:---:|
+| **A23** | SSRN 社科工作论文 | RSS 接入（同 Substack 模式） | 有限 API/RSS 大部分免费 | 低 0.5-1d | ✅ 已完成 |
+| **A24** | Hugging Face / Kaggle | HF datasets-server 公开 API + Kaggle API | 公开免费 API | 中 2-3d | ✅ 已完成 |
+| **A25** | 学术付费库 OA 全文 | Unpaywall（10 万次/天）+ CORE 免费 OA 全文（元数据 OpenAlex 已有） | ✅ 核实免费可用 | 中 2-3d | ✅ 已完成（OA 子集） |
+| **A18** | 新闻头条级覆盖 | GDELT 免费（无 key、3 个月窗口）+ Google News RSS；高价值内容走机构授权（付费可选，独立决策） | ✅ 核实免费可用 | 低-中 1-2d | ✅ 已完成 |
+| **A29** | 中文播客 | Apple Podcasts/iTunes Search（A16）已隐式覆盖；Listen Notes 免费层 300 次/月可选补充 | ✅ 实测核实（2026-08-02: 3 例 country=CN curl 均返回 resultCount≥1，证据 `.omo/evidence/task-5-apple-podcast-cn.json`） | 低 0.5d 验证 | ✅ 已完成 |
+| **E12** | 单篇/Micro 订阅 | Stripe `mode="payment"`（与订阅共存） | ✅ 核实 | 低 1-2d | ✅ 已完成 |
+| **E14** | 内容简化 | LLM simplify 输出模式（新增 output mode） | — | 低 0.5-1d | ✅ 已完成 |
+| **E11** | RAW 产品三变体 | 拆分 api feed / webhook 流 / 批量导出（`variants` 字段） | 文档-代码一致性 | 中 1-2d | ✅ 已完成 |
+| **E9** | 来源可信度评分 | G1 分级 + 确定性 `source_score`（0-100，`SOURCE_TIER_SCORE_MAP`） | — | 低 0.5-1d | ✅ 已完成 |
+| **C11** | 播客目录发布 | B11 音频已有 + 标准播客 RSS 2.0 发布（`<enclosure>` + `itunes:*`） | — | 低-中 1-2d | ✅ 已完成 |
+
+### H2. 验证补齐清单（V1 — 免费测试凭证即可）— 3/5 已完成，2/5 待凭证
+
+| 项 | 功能 | 凭证方案 | 成本 | 状态 |
+|:--:|---|---|:---:|:---:|
+| A6 | FRED / Alpha Vantage E2E | 两者免费 key 注册即得（AV 25 req/天、FRED 免费）；场景已加 Part 1 Q2b.48（2026-08-02） | 0 | ➖ SKIPPED（待 key） |
+| B15 | PDF 导出验证 | ✅ 2026-08-02 完成：weasyprint 渲染超时配置化（`output.pdf_timeout`，默认 120s，Task 17），Part 4 Q34.1c 实测通过（需 weasyprint 环境） | 已完成 | ✅ 已完成 |
+| C6 | SMTP 渠道验证 | Mailtrap / Resend 免费层或 Gmail app password | 0 | ➖ SKIPPED（待凭证） |
+| E7 | cron 跨进程验证 | 本地跨进程定时测试 | ✅ 已完成 (2026-08-02, Part 9 Q54.5+Q55.10) | ✅ 已完成 |
+| E11 | RAW 变体验证 | 随 H1-E11 拆分一起验证 | 0 | ✅ 已完成 |
+
+> **2026-08-02（Task 18）**：C6 SMTP 渠道验证场景已就绪 —— Part 9 Q56a 新增 56a.4（`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` env-gated，无凭证 SKIPPED 不 FAIL）。当前无凭证 → SKIPPED 明确记录；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑即可转 ✅。无任何 src/ 代码修改。
+
+### H3. 推迟到 V2（依赖预算决策 / 审核流程 / 生态成熟）— 2026-08-05 修订：A7/A19 移出
+
+| 项 | 功能 | 路径 | 阻塞 |
+|:--:|---|---|------|
+| A7 | 机构金融数据 | ✅ 部分落地（2026-08-05）：`akshare` 专有 handler（`[akshare]` extra，A 股/港股 EOD+公告）+ cninfo 巨潮公告 + Wind Alice 个人版文档化（`sources-gap-closure` 场景覆盖类型注册）；tick/终端级仍无解 | Wind 账号注册（手机号实名）；tick/终端级无解 |
+| A20 | 微博 / 抖音 | ⚠️ 文档化路径（2026-08-05）：Bluesky/Mastodon 源已落地（general-news 域 http_api `json_path`），微博 RSSHub cookie 路由、抖音 hotsearch 为文档化待办 | 需预算决策 / 反爬维护 |
+| A28 | TikTok | Research API 学术审核 / Display API 资质 | 流程门槛 |
+| E15 | A2A 原生协议 | 代码实现（MCP 141 工具已覆盖 Agent 对接） | 生态未成熟 |
+| B23 | 电子书/音频书 | ✅ 已完成（2026-08-04）：`src/autoinfo/output/ebook.py` — EPUB3（ebooklib，xhtml+CJK `set_language`）+ MOBI（calibre `--mobi-file-type=both` KF8 承载中文）+ audiobook（`_render_audio` 分章 TTS→章节 MP3/ZIP/CHAP-CTOC） | 已从 V2 移出（用户指定要做，H6 第 1 批完成） |
+| A19-知乎 | 知乎采集 | ⚠️ 部分落地（2026-08-05）：知乎日报 JSON API（免鉴权）+ 得到 RSSHub `/dedao/*` + wewe-rss/wechat2rss（general-news 域源配置）；热榜/答案仍需 cookie 路由 | 热榜级维护成本高（日报级零维护） |
+| C10 | 移动 App | PWA + 微信小程序替代 App Store 分发 | 中-高成本 |
+
+### H4. 明确放弃（不划算 / 结构性无解）— 2026-08-05 修订：A26/A27/D13 移出（获替代路径落地）
+
+| 项 | 功能 | 原因 |
+|:--:|---|---|
+| A20-X | X/Twitter | pay-per-use 涨价（2026-02 关闭 $200 档），读写量大成本 > 价值；替代：Bluesky/Mastodon（已落地） |
+| A26 | 知网/万方/维普 | ⚠️ 已移出 H4（2026-08-05）：万方源已合并 online-education（OUTCOME A 静态头鉴权通过；元数据端点 POST-only → http_api POST 传输扩展待实施，文档化不当作已实现）；ncpssd/维普 OA 文档化；知网国内全文仍无解 |
+| A27 | Coursera/edX | ⚠️ 已移出 H4（2026-08-05）：`edx_sitemap` 专有 handler + Coursera 公开目录 API 源（online-education 域）；edX 官方 Catalog API 仍 beta 审批制 |
+| D13 | LinkedIn 本体 | ⚠️ 已移出 H4（2026-08-05）：`sec_edgar` handler（8-K/10-K/10-Q）+ BusinessWire/PRNewswire + 公司 newsroom RSS 组合替代公司级情报；LinkedIn 原生内容仍无解 |
+| A19-公众号 | 微信公众号全量 | 官方 API 仅账号所有者授权，无合法批量路径；替代：wewe-rss/wechat2rss 覆盖订阅的头部账号（文档化） |
+| A20-小红书 | 小红书笔记 | 内容 API 仅限电商类目 |
+| B21/B22/B25/C9/C12/C13/E13 | 产品形态/硬件/商业模式 | 结构性无解（见上方 P4 范围外） |
+
+### H5. 实现顺序建议 — ✅ 已执行（2026-08-02，V1 计划完成）
+
+```
+✅ 第 1 批（低垂果实，1-2 天）: E12 单篇订阅 → E14 内容简化 → E9 可信度评分（A29 验证确认已于 2026-08-02 完成 ✅）
+✅ 第 2 批（新 collector，2-3 天）: A23 SSRN → A18 GDELT → A24 HF/Kaggle → A25 Unpaywall/CORE
+✅ 第 3 批（中量，1-2 天）: E11 RAW 变体拆分 → C11 播客目录发布
+验证批次（并行）: B15 ✅ / E7 ✅ / E11 ✅ 已完成；A6 ➖ / C6 ➖ SKIPPED 待凭证回归
+```
 
 ---
 
@@ -822,4 +936,4 @@ Maps existing gap IDs from other (now archived) documents to CD-NNN. Kept for hi
 
 ---
 
-*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (12 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap. Last updated 2026-08-03 (2026-08-02 V1 completion audit + 2026-08-03 stale-item fix + Agent-native validation toolset). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (12 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-08-05 (V1 completion audit + stale-item fix + validation toolset + H-section fold-in + M0-M7 consolidated sweep: 3 new source types, 4 new demo domains, B24 column + D11 magazine-digest products). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

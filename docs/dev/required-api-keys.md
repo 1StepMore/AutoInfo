@@ -28,6 +28,12 @@ secret stays in your environment.
 | `AUTOINFO_LLM_API_KEY` | API key for the configured LLM provider (OpenRouter, OpenAI, DeepSeek, Ollama, Azure, etc.). Drives extraction, summarization, Q&A synthesis, CEFR classification, translation, and TTS rendering. | **Required** for collection processing, KB extraction, Q&A, and audio output. Optional only if you never run `process`, `qa`, `cefr`, or `format=audio`. | `src/autoinfo/llm.py`, `src/autoinfo/qa.py`, `src/autoinfo/doctor.py`, `src/autoinfo/config.py`, `src/autoinfo/cli/init.py`, `src/autoinfo/mcp/server.py`, `src/autoinfo/output/__init__.py` |
 | `OPENAI_API_KEY` | Fallback key for OpenAI Text-to-Speech when `AUTOINFO_LLM_API_KEY` is unset and `llm.api_key` is blank. Only consulted by the audio renderer. | Optional. Only needed for `format=audio` output via OpenAI TTS. | `src/autoinfo/output/__init__.py` (`_render_audio_openai`) |
 
+## Audit actor identity
+
+| Env Var | Purpose | Required? | Source |
+|---------|---------|-----------|--------|
+| `AUTOINFO_ACTOR` | Stable actor id recorded on dispatch-level audit rows. Set by launchers (cron wrapper, CLI shim) to identify the caller taxonomy (`agent:<session>`, `cli`, `cron`, `system`). Defaults to `agent:mcp` when unset. | Optional. Only needed when you want launcher-specific actor attribution in the audit log. | `src/autoinfo/mcp/server.py` (`_resolve_actor`), audit hook |
+
 ## Collectors
 
 | Env Var | Purpose | Required? | Source |
@@ -43,9 +49,12 @@ secret stays in your environment.
 | `AUTOINFO_S2_API_KEY` | Semantic Scholar API key for higher rate limits. The public endpoint works without it. | Optional. Recommended for bulk academic collection. | `src/autoinfo/collectors/semantic_scholar.py` |
 | `AUTOINFO_USPTO_API_KEY` | PatentsView API key for higher rate limits. The PatentsView REST API works without it; the RSS fallback needs no key at all. | Optional. | `src/autoinfo/collectors/uspto.py` |
 | `AUTOINFO_HTTP_API_KEY` | Generic bearer token for arbitrary REST API sources configured via the `http_api` handler. | Optional. Only used when the source's `settings` block does not supply `api_key`. | `src/autoinfo/collectors/http_api.py` |
+| `FINNHUB_API_KEY` | Finnhub API key for the Finnhub source in the financial-intelligence demo domain (quality-tiered `api` source; the key travels in the `token` query parameter). | **Required** for the Finnhub source (financial-intelligence demo domain). | `src/autoinfo/data/domains/financial-intelligence/sources.yaml` |
 | `AUTOINFO_EMAIL_PASSWORD` | IMAP password for the email collector. Falls back to `email.password` in config. | Optional. Only needed when collecting from an IMAP mailbox. | `src/autoinfo/collect.py` |
+| `KAGGLE_USERNAME` | Kaggle username for the HuggingFace/Kaggle collector (`provider="kaggle"`). | **Required** for the `kaggle` source type (paired with `KAGGLE_KEY`). | `src/autoinfo/collectors/huggingface.py` |
+| `KAGGLE_KEY` | Kaggle API key for the HuggingFace/Kaggle collector (`provider="kaggle"`). | **Required** for the `kaggle` source type (paired with `KAGGLE_USERNAME`). | `src/autoinfo/collectors/huggingface.py` |
 
-Collectors that need no key at all: `arxiv`, `crossref`, `dblp`, `openalex`, `rss`, `web`, `reddit`, `bilibili`, `apple_podcasts`, `pdf`, `webhook`.
+Collectors that need no key at all: `arxiv`, `crossref`, `dblp`, `openalex`, `rss`, `web`, `reddit`, `bilibili`, `apple_podcasts`, `pdf`, `webhook`, `akshare`, `sec_edgar`, `edx_sitemap`.
 
 ## Delivery channels
 
@@ -54,6 +63,7 @@ Collectors that need no key at all: `arxiv`, `crossref`, `dblp`, `openalex`, `rs
 | `AUTOINFO_SMTP_HOST` | SMTP server host for email delivery. Used by the channel health check. | Optional. Email delivery also reads `email.smtp_host` from config. | `src/autoinfo/delivery/__init__.py` |
 | `AUTOINFO_SMTP_PORT` | SMTP server port. | Optional. Same fallback as above. | `src/autoinfo/delivery/__init__.py` |
 | `AUTOINFO_SMTP_PASS` | SMTP password. Referenced in the default config template as `${AUTOINFO_SMTP_PASS}`. | Optional. Only when SMTP auth is enabled. | `src/autoinfo/data/default_config.yaml` |
+| `AUTOINFO_SMTP_USER` | SMTP username for authenticated email delivery. Used alongside `AUTOINFO_SMTP_HOST`/`AUTOINFO_SMTP_PORT`/`AUTOINFO_SMTP_PASS`. | Optional. Only when the SMTP server requires login. | `src/autoinfo/delivery/__init__.py` |
 | `AUTOINFO_WEBHOOK_URL` | Default webhook target URL for the webhook delivery channel health check. | Optional. Per-source webhooks use `set_domain_webhooks` instead. | `src/autoinfo/delivery/__init__.py` |
 | `AUTOINFO_REST_API_URL` | Default REST API target for the `rest_api` delivery channel health check. | Optional. | `src/autoinfo/delivery/__init__.py` |
 | `AUTOINFO_EXPORT_DIR` | Output directory for the `file_export` delivery channel. Defaults to the current working directory. | Optional. | `src/autoinfo/delivery/__init__.py` |

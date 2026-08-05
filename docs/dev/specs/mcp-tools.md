@@ -43,13 +43,13 @@
 | **Audit** | `query_audit_log` (immutable audit log query) |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
-| **Validation** | `list_validation_scenarios` (list available Agent-native scenarios; 43 built-in across all MCP categories, CLI, and REST API surfaces), `run_validation_scenario` (execute a scenario in-process: each step makes a real MCP/CLI/HTTP call and asserts on the `{success, data}` envelope; `llm_assert` steps run a real model call; env-gated steps report `unconfigured` when BYOK keys are missing — parameters: scenario (required), steps (optional, 1-based indices)). Scenarios in `src/autoinfo/mcp/scenarios/`; authoring contract in `docs/dev/validation-scenario-contract.md`. |
+| **Validation** | `list_validation_scenarios` (list available Agent-native scenarios; 47 built-in across all MCP categories, CLI, and REST API surfaces), `run_validation_scenario` (execute a scenario in-process: each step makes a real MCP/CLI/HTTP call and asserts on the `{success, data}` envelope; `llm_assert` steps run a real model call; env-gated steps report `unconfigured` when BYOK keys are missing — parameters: scenario (required), steps (optional, 1-based indices)). Scenarios in `src/autoinfo/mcp/scenarios/`; authoring contract in `docs/dev/validation-scenario-contract.md`. |
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 
-## Collector Handlers (27 total)
+## Collector Handlers (30 total)
 
-`list_available_platforms` advertises all 26 `VALID_SOURCE_TYPES`. The 27 collector handlers (in `src/autoinfo/collectors/`) cover:
+`list_available_platforms` advertises all 29 `VALID_SOURCE_TYPES`. The 30 collector handlers (in `src/autoinfo/collectors/`) cover:
 
 | Handler | Source Type(s) | Notes |
 |---------|---------------|-------|
@@ -80,3 +80,6 @@ All tools accept `domain` parameter where applicable. Pagination (`limit`/`offse
 | `hackernews.py` | `hackernews` | Hacker News official Firebase API (two-step fetch) — **v1.8.2** |
 | `huggingface.py` | `huggingface` / `kaggle` | HuggingFace Hub + Kaggle datasets (dual provider) — **v1.8.1** |
 | `unpaywall.py` | `unpaywall` / `core` | Unpaywall + CORE OA fulltext (dual provider) — **v1.8.1** |
+| `akshare.py` | `akshare` | AKShare open financial data (no key) — **M2 (2026-08-05)** |
+| `sec_edgar.py` | `sec_edgar` | SEC EDGAR filings (ticker→CIK→filings, no key) — **M2 (2026-08-05)** |
+| `edx_sitemap.py` | `edx_sitemap` | edX course sitemap crawl (robots.txt RFC 9309 gate, no key) — **M2 (2026-08-05)** |

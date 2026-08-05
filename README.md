@@ -15,13 +15,13 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Multi-source collection** — RSS, REST APIs (PubMed E-utilities), web pages (trafilatura + Playwright), webhook (HMAC), email (IMAP), PDF (PyMuPDF)
 - **Domain management** — Add, remove, list, activate/deactivate domains via CLI and MCP tools
 - **LLM-powered extraction** — TL;DR, key points, entity extraction, relevance scoring, custom field extraction
-- **Knowledge base (4-tier pipeline)** — 4-tier pipeline: Inbox → Raw → Draft → Wiki (Markdown + SQLite), with git versioning and `[[wiki links]]`
+- **Knowledge base (4-tier pipeline)** — 4-tier KB pipeline: 00-Inbox (deprecated) → 01-Raw (sole entry) → 02-Draft → 03-Wiki (Markdown + SQLite), with git versioning and `[[wiki links]]`
 - **KB import** — Import content from 4 formats (PDF, Markdown, HTML, JSON) directly into 01-Raw
 - **Hybrid search** — FTS5 keyword + sqlite-vec vector embeddings, faceted filtering
 - **REST API** — Full CRUD over HTTP (FastAPI, port 8741), no auth (localhost security)
 - **Web UI Dashboard** — Bootstrap 5, collection stats, KB search, source health overview
 - **CEFR classification** — LLM-based EN/ZH/JA reading level scoring for language learning
-- **Output formats** — Markdown, JSON, PDF, **HTML** (digest/report via Jinja2 + LLM, presentation via Reveal.js CDN)
+- **Output formats** — Markdown, JSON, PDF, **HTML**, **EPUB/MOBI** (ebooklib EPUB3 + calibre MOBI via `format="epub"/"mobi"`), **Audiobook** (chaptered MP3 via `format="audiobook"`, ID3v2.3 CHAP/CTOC + ZIP bundle) (digest/report via Jinja2 + LLM, presentation via Reveal.js CDN)
 - **Translation QA pipeline** — 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails, composite quality scoring
 - **Email sending** — SMTP-based digest delivery (manual and cron-scheduled)
 - **Webhook push** — Per-item webhook notification on collected content
@@ -60,7 +60,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Email config MCP tool** — `email_config` MCP tool for email configuration management
 - **Cache cleanup MCP tool** — `clean_cache` MCP tool for temporary artifact cleanup
 - **BYOK** — Bring your own LLM keys. Multi-provider via LiteLLM/OpenRouter.
-- **Domain-agnostic** — 9 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning, online video, financial news, online education, legal compliance). Any field with paying customers.
+- **Domain-agnostic** — 13 demo domains (medical, AI commercial, financial/business intelligence, tech/AI/developer, language learning, online video, financial news, online education, legal compliance, general news, gaming, B2B, retail). Any field with paying customers.
 - **Subscription-ready** — Stripe integration with webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, and usage metering
 - **Subscription tiers** — Free, Premium, and Enterprise tiers with per-tier channels, domains, products, and platform limits on the Subscription model
 - **Access control** — `check_access()` fast path gates content by tier (free always allowed, premium/enterprise require active paid subscription). Freemium gating (G15).
@@ -69,7 +69,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Channel health monitoring** — `get_channel_health` MCP tool checks all 13 delivery channels (smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push) with latency and error status
 - **Cron health monitoring** — `autoinfo cron health` CLI with heartbeat tracking and missed-schedule detection
 - **SQLite backup** — `make backup` target plus `scripts/backup-db.sh` and `scripts/restore-db.sh` for automated KB and user-store backups (keeps last 7)
-- **17 new collectors** — DBLP, NYT, OpenAlex, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, Semantic Scholar, USPTO, plus paid AP API and Reuters MCP handlers (v1.6), plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE (v1.8.1), plus HackerNews (v1.8.2). 27 total collector handlers across all source types.
+- **17 new collectors** — DBLP, NYT, OpenAlex, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, Semantic Scholar, USPTO, plus paid AP API and Reuters MCP handlers (v1.6), plus SSRN, GDELT, Yahoo Finance, Quandl, HuggingFace/Kaggle, Unpaywall/CORE (v1.8.4), plus HackerNews (Unreleased 2026-08-04), plus AKShare, SEC EDGAR, edX sitemap (2026-08-05). 30 total collector handlers across all source types.
 - **Bundle export** — `export_kb(format="bundle")` creates a ZIP archive containing JSON data, Markdown summary, YAML metadata, and a weasyprint-rendered PDF report (with graceful fallback)
 - **Cross-domain reports & digests** — `generate_report()` and `generate_digest()` accept a `domains` parameter for multi-domain synthesis. New MCP tool `generate_cross_domain_report` for cross-domain analysis.
 - **Specialized report types** — `report_type` parameter: `industry`, `competitive`, `trend`, `daily-briefing` — each with customized section structure and LLM prompts
@@ -79,7 +79,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Source credibility score (E9)** — Deterministic `source_score` (0-100) derived from quality tier, persisted on KBEntry, surfaced in search results and G1 gate details
 - **RAW product variants (E11)** — RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field distinguishing the three RAW delivery modes
 - **Podcast RSS publishing (C11)** — RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation; audio output auto-persists MP3 to disk
-- **Validated source types** — `VALID_SOURCE_TYPES` frozenset (26 types) as single source of truth for source type validation across MCP and CLI
+- **Validated source types** — `VALID_SOURCE_TYPES` frozenset (29 types) as single source of truth for source type validation across MCP and CLI
 - **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks
 
 ## Status
@@ -87,8 +87,8 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 23 command groups (init, doctor, collect, process, status, summaries, sources, topics, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace) |
-| Collection | ✅ 27 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews), scheduled via crond |
+| CLI | ✅ 28 command groups (init, doctor, collect, process, status, summaries, sources, topics, topic-group, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace, import-kb, query-collected, alert-rules, agent-callback) |
+| Collection | ✅ 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap), scheduled via crond |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 6 hard/soft (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) + per-domain config |
@@ -96,9 +96,9 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF), report (Markdown/JSON/HTML/Audio/Agent), tutorial (Markdown), presentation (Markdown) (Jinja2 + LLM, Reveal.js CDN) |
+| Output generation | ✅ Digest (Markdown/HTML/JSON/PDF/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB/MOBI) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI) |
 | Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
-| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) via `format='audio'` |
+| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) via `format='audio'`; `format='audiobook'` = chaptered MP3 + ZIP (ID3v2.3 CHAP/CTOC via mutagen) |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
@@ -156,9 +156,9 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Email config MCP | ✅ email_config MCP tool |
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
-| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance |
+| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
-| Test suite | ✅ ~2866 tests (approx; includes new collector + E12/E14/E9/C11 tests) |
+| Test suite | ✅ ~2942 tests (2906 passed + 34 skipped + 2 network-only; includes new collector + E12/E14/E9/C11 tests) |
 
 ## Quick Start
 
@@ -181,6 +181,29 @@ autoinfo kb search --query "embryo" --domain medical-research
 # Generate output
 autoinfo output digest --domain medical-research --period week
 autoinfo output export --domain medical-research --format json
+```
+
+## TLDR — Agent-User / Agent-Tester (5 Seconds)
+
+AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
+(Cursor / OpenCode / Claude Desktop configs are committed in-repo; or run
+`python -m autoinfo.mcp.server` manually), then:
+
+1. **Health** — `health_check()` → `{status, version, tools_count}`
+2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
+3. **Validate** — `list_validation_scenarios()` (47 scenarios) → `run_validation_scenario(scenario="system-health")`
+
+Validation is the fastest way to prove the system works: each scenario makes
+real MCP / CLI / REST calls and asserts on the `{success, data}` envelope.
+Env-gated steps report `unconfigured` (never silently skipped); `llm_assert`
+steps run a real model call. No LLM key yet? The 14 LLM-required tools return
+`LLM_NOT_CONFIGURED` — set `AUTOINFO_LLM_API_KEY` or call `configure_llm()`.
+
+Non-MCP testers can smoke-test over REST instead:
+
+```bash
+curl http://localhost:8741/health
+curl http://localhost:8741/api/v1/entries?limit=5
 ```
 
 ## Run the AutoInfo MCP server
@@ -289,7 +312,34 @@ Sources (RSS/API/Web)
          └── MCP server (141 tools)
 ```
 
-## CLI Commands (23 groups)
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Python ≥ 3.11 |
+| CLI | typer (28 command groups) |
+| REST API | FastAPI + uvicorn (port 8741) |
+| MCP server | mcp (Model Context Protocol) — 141 tools over stdio |
+| LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |
+| Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
+| KB files | Markdown + python-frontmatter, git-versioned |
+| Collection | httpx, feedparser (RSS), trafilatura + lxml + beautifulsoup4 (web), Playwright (browser, optional), PyMuPDF (PDF, optional) |
+| Output & templates | Jinja2, weasyprint (PDF, optional), edge-tts (TTS audio, optional), Reveal.js (presentations, CDN) |
+| Web UI | Bootstrap 5 (built-in dashboard) |
+| Billing | Stripe |
+| Scheduling | croniter + crond |
+| Config | PyYAML |
+| Language detection | langdetect |
+| Rate limiting | pyrate-limiter |
+| Utilities | python-dateutil |
+| Testing | pytest + pytest-asyncio + pytest-vcr + pytest-timeout |
+| Lint & type checking | ruff + mypy (strict) |
+
+Optional extras: `pip install "autoinfo[web]"` (Playwright),
+`"autoinfo[pdf]"` (PyMuPDF + weasyprint), `"autoinfo[tts]"` (edge-tts), or
+`"autoinfo[all]"` for everything.
+
+## CLI Commands (28 groups)
 
 ```bash
 autoinfo init --name <project>      # Initialize project
@@ -301,14 +351,15 @@ autoinfo status                      # Collection stats
 autoinfo summaries list|flag|show   # Browse summaries
 autoinfo sources add|list|remove|test  # Source management
 autoinfo topics add|list|remove     # Topic management
-autoinfo domain add|list|show|remove|activate|deactivate|import  # Domain management (import --from-demo supports all 9 demo domains)
+autoinfo topic-group add|remove     # Topic grouping (MCP topic_group_add/remove parity)
+autoinfo domain add|list|show|remove|activate|deactivate|import  # Domain management (import --from-demo supports all 13 demo domains)
 autoinfo audit query                # Query immutable audit log
 autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates  # report accepts --type --domains
 autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall|health  # health = heartbeat + missed-schedule detection
 autoinfo cefr classify|batch        # CEFR text classification
 autoinfo email send|config          # SMTP email sending
-autoinfo keywords add|remove|list   # Keyword management
+autoinfo keywords add|remove|list|suggest  # Keyword management
 autoinfo knowledge graph            # Knowledge graph export
 autoinfo clean                       # Clean temporary artifacts
 autoinfo cost dashboard|allocation  # Cost tracking & allocation
@@ -316,6 +367,10 @@ autoinfo billing summary|usage|invoice  # Billing & usage overview
 autoinfo enduser create|get|update|delete|list  # End-user profile management
 autoinfo portal preferences|history # End-user self-service portal
 autoinfo trace <trace_id>           # Per-item pipeline trace
+autoinfo import-kb --file <f>       # Import entries into 01-Raw (MCP import_kb parity)
+autoinfo query-collected <query>    # Q&A over collected content (MCP query_collected parity)
+autoinfo alert-rules add|list|remove  # Alert rule management (MCP parity)
+autoinfo agent-callback add|list|remove  # Agent push callbacks (MCP parity)
 ```
 
 ## MCP Tools (141)
@@ -371,6 +426,10 @@ autoinfo trace <trace_id>           # Per-item pipeline trace
 | **Financial News** | NYT, Alpha Vantage, FRED, SEC EDGAR, Twelve Data, World Bank Data | 🟡 P1 | ✅ Implemented (6 curated sources) |
 | **Online Education** | OpenAlex, Semantic Scholar, arXiv, DBLP, Stack Exchange, Project Gutenberg | 🟢 P2 | ✅ Implemented (6 curated sources) |
 | **Legal Compliance** | USPTO, Semantic Scholar, webhook, email (IMAP) | 🟢 P2 | ✅ Implemented (4 curated sources) |
+| **General News** | GDELT, Guardian Open Platform, Google News RSS, NYT, AP API, Mastodon, Bluesky, 知乎日报, Medium RSS, magazine feeds (The Atlantic/Wired/Time) | 🟢 P2 | ✅ Implemented (15 curated sources) |
+| **Gaming** | IGN RSS, Polygon, GamesIndustry.biz, 机核网 gcores, 游研社 (via Google News) | 🟢 P2 | ✅ Implemented (5 curated sources) |
+| **B2B / Enterprise** | ProductHunt, TechCrunch, Crunchbase News, a16z, HackerNews | 🟢 P2 | ✅ Implemented (5 curated sources) |
+| **Retail / E-commerce** | Retail Dive, Modern Retail, 亿邦 (via Google News), Shopify News, Digiday | 🟢 P2 | ✅ Implemented (5 curated sources) |
 
 ## Development
 
@@ -382,13 +441,12 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo v1.8.1 integrates **Phase 4 enhancements**: cross-domain reports, specialized report types, bundle export, delivery schedule automation, 17 new collectors, and the `recommend_content` MCP tool (141 total). v1.8 adds **agent-oriented enhancements**: 18 new MCP tools (133→141 including Phase 4), dynamic tool count via self-discovery, unified dual-format error responses, cross-domain search, domain-less collection, agent-native format for tutorial/presentation/export, persistent job state and agent callbacks (SQLite-backed), hard-delete purge flag, fine-grained process control flags, batch CEFR, audit log MCP, knowledge graph export, RSS feed MCP, cache cleanup, topic grouping, email config MCP, cost dashboard/allocation MCP tools, CLI help text fixes, and `<!-- agent: ... -->` metadata blocks on all spec docs. v1.7 added **subscription tier gating** (Free/Premium/Enterprise...). v1.6 added end-to-end commercial delivery (end user profiles, multi-channel delivery, delivery reliability with SLA tracking, self-service portal), cost governance (internal metering, allocation, dashboard, budget alerts), operational observability (structured pipeline logging, per-item traceability, enhanced diagnostics, Prometheus metrics), data privacy (source ToS compliance, soft-delete & GDPR retention, immutable audit logging), and knowledge lifecycle management (per-domain TTL, versioned re-collection, stale handling, decay metrics, cross-collection dedup & merge). v1.5 added commercial scope, product types, production-grade quality gates, and product architecture. v1.4 added user-defined domains, translation QA pipeline, HTML format output, KB import, webhook push, and cron-based email digest delivery. v1.3 added ErrorCode centralization, MCP schema hardening, and LLM extraction resilience. The following items remain explicitly deferred:
+AutoInfo has evolved through v1.3-v1.8.4 with major feature additions at each release. See [CHANGELOG.md](CHANGELOG.md) for the full version history. Notable v1.8.2-v1.8.4 additions: bundle export, delivery schedules, podcast RSS publishing (C11), HackerNews collector, MCP-native validation toolset (44→47 scenarios in 2026-08-05), B23 ebook/audiobook output, version unification at 1.8.1 (see `src/autoinfo/_version.py`). The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Config override system (~/.autoinfo/overrides/) | 📋 Planned | Per-project config layering |
 | Multi-user / collaboration (auth, teams) | 📋 Planned | user_id fields in place; full auth v2 |
-| Subscription-ready billing (G14-G16) | ✅ Implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
 
 > See `docs/dev/founder-expectations.md` §14 for the full deferred-items catalog.
 > Cross-dimensional catalog (keystone product matrix): `docs/dev/cross-dimensional-catalog.md` (42 cells, 5 gap types across A1-A7 Pipeline × B1/B2/B3 Users).

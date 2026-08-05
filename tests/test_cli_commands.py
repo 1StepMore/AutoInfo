@@ -445,3 +445,42 @@ class TestInitCommand:
         result = cli_runner.invoke(app, ["init", "--list-domains"])
         assert result.exit_code == 0
         assert "medical-research" in result.output
+
+    def test_init_creates_all_dirs_with_demo(
+        self, cli_runner: Any, tmp_path: Path
+    ) -> None:
+        """``autoinfo init --demo medical-research`` creates all REQUIRED_SUBDIRS."""
+        from autoinfo.cli.init import _REQUIRED_SUBDIRS
+
+        with patch.object(Path, "cwd", return_value=tmp_path):
+            result = cli_runner.invoke(app, ["init", "--demo", "medical-research"])
+
+        assert result.exit_code == 0, f"init failed: {result.output}"
+        assert "✅ AutoInfo initialized for 'medical-research'." in result.output
+
+        for sub in _REQUIRED_SUBDIRS:
+            d = tmp_path / sub
+            assert d.is_dir(), f"expected directory {d} to exist"
+
+    @pytest.mark.skip(reason="interactive init requires a real TTY; CliRunner provides a StringIO stdin")
+    def test_init_interactive_flow(
+        self, cli_runner: Any, tmp_path: Path
+    ) -> None:
+        """Interactive wizard creates directories and respects user choices."""
+        from autoinfo.cli.init import _REQUIRED_SUBDIRS
+
+        user_input = "3\nopenrouter\nsk-test-123\n"
+
+        with patch.object(Path, "cwd", return_value=tmp_path):
+            result = cli_runner.invoke(
+                app, ["init", "--interactive"], input=user_input
+            )
+
+        assert result.exit_code == 0, f"interactive init failed: {result.output}"
+        assert "✅ AutoInfo initialized for 'medical-research'." in result.output
+        assert "Using provider: openrouter" in result.output
+        assert "AUTOINFO_LLM_API_KEY set for this session." in result.output
+
+        for sub in _REQUIRED_SUBDIRS:
+            d = tmp_path / sub
+            assert d.is_dir(), f"expected directory {d} to exist"

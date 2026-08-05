@@ -383,6 +383,80 @@ def _step_assert(
 # ---------------------------------------------------------------------------
 
 
+def _validate_steps(
+    steps: list[Any],
+    file_name: str,
+    field: str,
+    require_non_empty: bool = True,
+    step_label: str = "step",
+) -> None:
+    """Validate a list of step mappings (shared by ``steps`` / ``cleanup_steps``).
+
+    Every step must be a mapping with ``name`` plus the dispatch target for
+    its kind (``tool`` for mcp, ``command`` for cli, ``method``/``url`` for
+    http).  Defaults for ``arguments`` and ``expect`` are set in place.
+
+    Parameters
+    ----------
+    steps:
+        The step list from a scenario YAML file.
+    file_name:
+        Scenario file name, used in error messages.
+    field:
+        The YAML key the steps came from (``steps`` or ``cleanup_steps``).
+    require_non_empty:
+        When ``True`` (default) an empty list raises.  ``cleanup_steps``
+        is allowed to be empty (treated as no cleanup).
+
+    Raises
+    ------
+    ValueError
+        If any step violates the schema.
+    """
+    if not isinstance(steps, list):
+        raise ValueError(
+            f"Scenario file {file_name}: '{field}' must be a list"
+        )
+    if require_non_empty and len(steps) == 0:
+        raise ValueError(
+            f"Scenario file {file_name}: '{field}' must be a non-empty list"
+        )
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            raise ValueError(
+                f"Scenario file {file_name}, {step_label}[{i}]: "
+                f"must be a mapping, got {type(step).__name__}"
+            )
+        if "name" not in step:
+            raise ValueError(
+                f"Scenario file {file_name}, {step_label}[{i}]: "
+                f"missing required field 'name'"
+            )
+        kind = step.get("kind", "mcp")
+        if kind == "cli":
+            if "command" not in step:
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}] (kind=cli): "
+                    f"missing required field 'command'"
+                )
+        elif kind == "http":
+            for req in ("method", "url"):
+                if req not in step:
+                    raise ValueError(
+                        f"Scenario file {file_name}, {step_label}[{i}] "
+                        f"(kind=http): missing required field '{req}'"
+                    )
+        else:
+            if "tool" not in step:
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}] (kind=mcp): "
+                    f"missing required field 'tool'"
+                )
+
+        step.setdefault("arguments", {})
+        step.setdefault("expect", {})
+
+
 def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
     """Load all ``*.yaml`` scenario files, sorted by filename.
 
@@ -432,50 +506,24 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
                     f"field: '{field}'"
                 )
 
-        steps = data["steps"]
-        if not isinstance(steps, list) or len(steps) == 0:
-            raise ValueError(
-                f"Scenario file {yaml_path.name}: 'steps' must be a non-empty list"
-            )
+        _validate_steps(data["steps"], yaml_path.name, "steps")
 
-        for i, step in enumerate(steps):
-            if not isinstance(step, dict):
+        cleanup_steps = data.get("cleanup_steps")
+        if cleanup_steps is not None:
+            if not isinstance(cleanup_steps, list):
                 raise ValueError(
-                    f"Scenario file {yaml_path.name}, step[{i}]: "
-                    f"must be a mapping, got {type(step).__name__}"
+                    f"Scenario file {yaml_path.name}: 'cleanup_steps' must be a list"
                 )
-            if "name" not in step:
-                raise ValueError(
-                    f"Scenario file {yaml_path.name}, step[{i}]: "
-                    f"missing required field 'name'"
-                )
-            kind = step.get("kind", "mcp")
-            if kind == "cli":
-                if "command" not in step:
-                    raise ValueError(
-                        f"Scenario file {yaml_path.name}, step[{i}] (kind=cli): "
-                        f"missing required field 'command'"
-                    )
-            elif kind == "http":
-                for field in ("method", "url"):
-                    if field not in step:
-                        raise ValueError(
-                            f"Scenario file {yaml_path.name}, step[{i}] "
-                            f"(kind=http): missing required field '{field}'"
-                        )
-            else:
-                if "tool" not in step:
-                    raise ValueError(
-                        f"Scenario file {yaml_path.name}, step[{i}] (kind=mcp): "
-                        f"missing required field 'tool'"
-                    )
+            _validate_steps(
+                cleanup_steps, yaml_path.name, "cleanup_steps",
+                require_non_empty=False, step_label="cleanup_step",
+            )
+        else:
+            data["cleanup_steps"] = []
 
         # Set defaults for optional fields
         data.setdefault("category", "general")
         data.setdefault("requires_env", [])
-        for step in steps:
-            step.setdefault("arguments", {})
-            step.setdefault("expect", {})
 
         scenarios.append(data)
 
@@ -507,6 +555,110 @@ def list_scenarios(scenarios_dir: Path | None = None) -> dict[str, Any]:
     }
 
 
+async def _execute_step(
+    step_def: dict[str, Any],
+    dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
+) -> dict[str, Any]:
+    """Execute a single scenario step (kind: mcp|cli|http) and return its result.
+
+    Runs the same real-execution path used by the main loop (never mocked),
+    including ``llm_assert`` judging when configured.  The caller derives
+    pass/fail/unconfigured counts and overall status from the result.
+    """
+    expect = step_def.get("expect", {})
+    kind = step_def.get("kind", "mcp")
+    tool_ref = step_def.get("tool") or step_def.get("command") or step_def.get("url", kind)
+
+    try:
+        if kind == "cli":
+            env = await asyncio.to_thread(_run_cli_step, step_def["command"])
+        elif kind == "http":
+            env = await asyncio.to_thread(
+                _run_http_step,
+                step_def.get("method", "GET"),
+                step_def["url"],
+                **step_def.get("http_options", {}),
+            )
+        else:
+            if dispatch is None:
+                raise RuntimeError(
+                    f"mcp step '{step_def['name']}' requires a dispatch callable"
+                )
+            env = await dispatch(step_def["tool"], step_def.get("arguments", {}))
+            if isinstance(env, dict):
+                env = _normalize_envelope(env)
+    except Exception as exc:
+        return {
+            "name": step_def["name"],
+            "tool": tool_ref,
+            "status": "failed",
+            "detail": f"dispatch exception: {exc}",
+        }
+
+    sr = _step_assert(
+        step_def["name"],
+        tool_ref,
+        env,
+        expect,
+    )
+
+    llm_assert = expect.get("llm_assert")
+    if sr["status"] == "passed" and llm_assert:
+        if not _is_llm_configured():
+            return {
+                "name": step_def["name"],
+                "tool": tool_ref,
+                "status": "unconfigured",
+                "detail": (
+                    "llm_assert requires a real LLM API key, but none is "
+                    "configured. Director User must run configure_llm() / "
+                    "set AUTOINFO_LLM_API_KEY during onboarding (BYOK)."
+                ),
+            }
+        try:
+            verdict = await asyncio.to_thread(
+                _llm_judge, llm_assert, env.get("data")
+            )
+            if verdict["verdict"] == "PASS":
+                return {
+                    "name": step_def["name"],
+                    "tool": tool_ref,
+                    "status": "passed",
+                    "detail": env,
+                    "llm_reason": verdict["reason"],
+                }
+            return {
+                "name": step_def["name"],
+                "tool": tool_ref,
+                "status": "failed",
+                "detail": (
+                    f"llm_assert FAILED: {verdict['reason']}. "
+                    f"Tool output: {json.dumps(env, ensure_ascii=False)[:2000]}"
+                ),
+                "llm_reason": verdict["reason"],
+            }
+        except Exception as exc:
+            return {
+                "name": step_def["name"],
+                "tool": tool_ref,
+                "status": "failed",
+                "detail": f"llm_assert error: {exc}",
+            }
+
+    return sr
+
+
+def _count_step_result(sr: dict[str, Any], counts: dict[str, int]) -> None:
+    """Increment the matching pass/fail/unconfigured counter for a step result."""
+    status = sr.get("status")
+    if status == "passed":
+        counts["passed"] += 1
+    elif status == "unconfigured":
+        counts["unconfigured"] += 1
+    else:
+        counts["failed"] += 1
+
+
 async def run_scenario(
     name: str,
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
@@ -536,7 +688,10 @@ async def run_scenario(
     -------
     dict
         ``{"scenario", "description", "category", "status", "summary",
-        "steps", ("unconfigured_reason")}``
+        "steps", ("cleanup"), ("unconfigured_reason")}``.  When the
+        scenario declares ``cleanup_steps``, they run after the main
+        steps regardless of outcome (best-effort) and are reported under
+        ``cleanup`` — they never influence ``status``.
 
     Raises
     ------
@@ -605,123 +760,59 @@ async def run_scenario(
         selected = [(i + 1, s) for i, s in enumerate(scenario["steps"])]
 
     step_results: list[dict[str, Any]] = []
-    passed = 0
-    failed = 0
-    unconfigured = 0
+    counts = {"passed": 0, "failed": 0, "unconfigured": 0}
 
     for step_idx, step_def in selected:
-        expect = step_def.get("expect", {})
-        kind = step_def.get("kind", "mcp")
-        label = step_def["name"]
-        tool_ref = step_def.get("tool") or step_def.get("command") or step_def.get("url", kind)
-
-        try:
-            if kind == "cli":
-                env = await asyncio.to_thread(
-                    _run_cli_step, step_def["command"]
-                )
-            elif kind == "http":
-                env = await asyncio.to_thread(
-                    _run_http_step,
-                    step_def.get("method", "GET"),
-                    step_def["url"],
-                    **step_def.get("http_options", {}),
-                )
-            else:
-                env = await dispatch(step_def["tool"], step_def.get("arguments", {}))
-                if isinstance(env, dict):
-                    env = _normalize_envelope(env)
-        except Exception as exc:
-            step_results.append({
-                "name": label,
-                "tool": tool_ref,
-                "status": "failed",
-                "detail": f"dispatch exception: {exc}",
-            })
-            failed += 1
-            continue
-
-        sr = _step_assert(
-            label,
-            tool_ref,
-            env,
-            expect,
-        )
-
-        llm_assert = expect.get("llm_assert")
-        if sr["status"] == "passed" and llm_assert:
-            if not _is_llm_configured():
-                sr = {
-                    "name": label,
-                    "tool": tool_ref,
-                    "status": "unconfigured",
-                    "detail": (
-                        "llm_assert requires a real LLM API key, but none is "
-                        "configured. Director User must run configure_llm() / "
-                        "set AUTOINFO_LLM_API_KEY during onboarding (BYOK)."
-                    ),
-                }
-                unconfigured += 1
-            else:
-                try:
-                    verdict = await asyncio.to_thread(
-                        _llm_judge, llm_assert, env.get("data")
-                    )
-                    if verdict["verdict"] == "PASS":
-                        sr = {
-                            "name": label,
-                            "tool": tool_ref,
-                            "status": "passed",
-                            "detail": env,
-                            "llm_reason": verdict["reason"],
-                        }
-                        passed += 1
-                    else:
-                        sr = {
-                            "name": label,
-                            "tool": tool_ref,
-                            "status": "failed",
-                            "detail": (
-                                f"llm_assert FAILED: {verdict['reason']}. "
-                                f"Tool output: {json.dumps(env, ensure_ascii=False)[:2000]}"
-                            ),
-                            "llm_reason": verdict["reason"],
-                        }
-                        failed += 1
-                except Exception as exc:
-                    sr = {
-                        "name": label,
-                        "tool": tool_ref,
-                        "status": "failed",
-                        "detail": f"llm_assert error: {exc}",
-                    }
-                    failed += 1
-        elif sr["status"] == "passed":
-            passed += 1
-        elif sr["status"] == "unconfigured":
-            unconfigured += 1
-        else:
-            failed += 1
-
+        sr = await _execute_step(step_def, dispatch)
+        _count_step_result(sr, counts)
         step_results.append(sr)
 
-    if failed > 0:
+    status: str
+    if counts["failed"] > 0:
         status = "failed"
-    elif unconfigured > 0:
+    elif counts["unconfigured"] > 0:
         status = "unconfigured"
     else:
         status = "passed"
 
-    return {
+    # --- cleanup_steps: always run after the main steps (best-effort) ----
+    # Cleanup is executed regardless of the main steps' outcome so that
+    # state-mutating scenarios can remove what they created even when a
+    # middle step failed.  Cleanup results are reported separately and do
+    # NOT influence the scenario status.  The unconfigured early-return
+    # above skips cleanup because no step ran and no state was created.
+    cleanup: dict[str, Any] | None = None
+    cleanup_defs = scenario.get("cleanup_steps", [])
+    if cleanup_defs:
+        cleanup_results: list[dict[str, Any]] = []
+        cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0}
+        for step_idx, step_def in enumerate(cleanup_defs, start=1):
+            sr = await _execute_step(step_def, dispatch)
+            _count_step_result(sr, cleanup_counts)
+            cleanup_results.append(sr)
+        cleanup = {
+            "summary": {
+                "passed": cleanup_counts["passed"],
+                "failed": cleanup_counts["failed"],
+                "unconfigured": cleanup_counts["unconfigured"],
+                "total": len(cleanup_results),
+            },
+            "steps": cleanup_results,
+        }
+
+    result: dict[str, Any] = {
         "scenario": name,
         "description": scenario["description"],
         "category": scenario.get("category", "general"),
         "status": status,
         "summary": {
-            "passed": passed,
-            "failed": failed,
-            "unconfigured": unconfigured,
+            "passed": counts["passed"],
+            "failed": counts["failed"],
+            "unconfigured": counts["unconfigured"],
             "total": len(step_results),
         },
         "steps": step_results,
     }
+    if cleanup is not None:
+        result["cleanup"] = cleanup
+    return result

@@ -71,7 +71,12 @@ CREATE TABLE IF NOT EXISTS agent_outbox (
 );
 """
 
-_VALID_EVENTS = {"new_digest", "new_report", "new_tutorial"}
+_VALID_EVENTS = {
+    "new_digest",
+    "new_report",
+    "new_tutorial",
+    "source_requires_key",
+}
 
 _SCHEMA_VERSION = 1
 
@@ -140,7 +145,8 @@ def register_agent_callback(agent_url: str, events: list[str]) -> str:
 
     Args:
         agent_url: Callback URL (must start with ``http://`` or ``https://``).
-        events: List of event names from {new_digest, new_report, new_tutorial}.
+        events: List of event names from {new_digest, new_report,
+            new_tutorial, source_requires_key}.
 
     Returns:
         A short callback ID string (8-char UUID prefix).
@@ -228,7 +234,8 @@ def notify_agent(event: str, payload: dict[str, Any]) -> int:
     Reads target callbacks from SQLite.
 
     Args:
-        event: One of ``new_digest``, ``new_report``, ``new_tutorial``.
+        event: One of ``new_digest``, ``new_report``, ``new_tutorial``,
+            ``source_requires_key``.
         payload: Arbitrary JSON-serialisable dict to POST.
 
     Returns:
@@ -238,6 +245,49 @@ def notify_agent(event: str, payload: dict[str, Any]) -> int:
         event=event,
         payload=payload,
         trace_id=str(uuid.uuid4()),
+        product_id="",
+    )
+
+
+def notify_source_requires_key(
+    source: str,
+    source_type: str,
+    key_ref: str,
+    domain: str,
+    trace_id: str | None = None,
+) -> int:
+    """Fire-and-forget push that a configured source lacks its required credential.
+
+    B3 escalation event (user-lifecycle-definition.md §4.1: "source API key
+    expired" is a B3 intervention case): delivered through the durable
+    outbox to every agent callback subscribed to ``source_requires_key``.
+
+    The payload carries the source name and the **environment variable
+    NAME** (``key_ref``) that must be set — never the key value.
+
+    Args:
+        source: Source name (e.g. ``"NYT"``).
+        source_type: Source type (e.g. ``"nyt"``).
+        key_ref: Env var name that supplies the credential, e.g.
+            ``"AUTOINFO_NYT_API_KEY"``. Never the value itself.
+        domain: Domain the source belongs to.
+        trace_id: Optional per-event trace identifier (generated when omitted).
+
+    Returns:
+        The outbox row id, or ``0`` if the event could not be enqueued.
+    """
+    payload = {
+        "source": source,
+        "source_type": source_type,
+        "key_ref": key_ref,
+        "domain": domain,
+        "severity": "critical",
+        "triggered_at": _now_utc(),
+    }
+    return enqueue_agent_notification(
+        event="source_requires_key",
+        payload=payload,
+        trace_id=trace_id or str(uuid.uuid4()),
         product_id="",
     )
 
@@ -268,7 +318,8 @@ def enqueue_agent_notification(
     blocks on delivery and never raises into the caller.
 
     Args:
-        event: One of ``new_digest``, ``new_report``, ``new_tutorial``.
+        event: One of ``new_digest``, ``new_report``, ``new_tutorial``,
+            ``source_requires_key``.
         payload: JSON-serialisable generated output (the product payload).
         trace_id: Per-event trace identifier (canonical payload key).
         product_id: Product identifier, e.g. ``"medical-research-week"``.

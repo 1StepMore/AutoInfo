@@ -307,14 +307,33 @@ def presentation(
 @app.command()
 def sitemap(
     domain: str = typer.Option("", "--domain", "-d", help="Domain to generate sitemap for"),
-    base_url: str = typer.Option("https://example.com", "--base-url", "-u", help="Base URL for sitemap"),
+    base_url: str = typer.Option(
+        "",
+        "--base-url",
+        "-u",
+        help="Base URL for sitemap (required, e.g. https://your-site.example)",
+    ),
     output_dir: str = typer.Option("", "--output", "-o", help="Output directory"),
 ) -> None:
     """Generate XML sitemap for KB entries with real entry URLs."""
     from autoinfo.output import export_kb
 
+    if not base_url:
+        typer.echo(
+            "Error: sitemap generation requires an explicit base URL. "
+            "Provide it with --base-url, e.g. "
+            "autoinfo output sitemap --domain medical-research "
+            "--base-url https://your-site.example",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     try:
-        result = export_kb(domain=domain if domain else None, format="sitemap")
+        result = export_kb(
+            domain=domain if domain else None,
+            format="sitemap",
+            base_url=base_url,
+        )
     except FileNotFoundError:
         # No config found — fall back to placeholder via seo module
         from autoinfo.output.seo import generate_sitemap

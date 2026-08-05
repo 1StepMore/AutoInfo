@@ -2,8 +2,17 @@
 # B23 (2026-08-04): export_kb format="epub" added (no LLM; needs [ebook] extra).
 # format="mobi" omitted — calibre ebook-convert absent in validation env; covered by
 # tests/output/test_output_ebook.py (mobi missing-calibre error path).
+#
+# Self-contained: the imported entry carries a scenario-owned marker source_url
+# (distinct from every other scenario) and a deterministic entry_id derived from
+# its title, so it can be uniquely identified.  cleanup_steps run after every
+# run (pass or fail) and remove exactly what this scenario created: the imported
+# 01-Raw entry and the export files under exports/.  Export files are
+# auto-named by timestamp, so cleanup only deletes files matching the domain
+# export pattern AND freshly written within the run window (30 min); anything
+# older is REFUSE-skipped so real user exports are never touched.
 name: kb-import-export
-description: "KB import (markdown) and export (JSON, EPUB) in real project context"
+description: "KB import (markdown) and export (JSON, EPUB) in real project context (self-contained, self-cleaning)"
 category: kb
 requires_env: []
 steps:
@@ -14,11 +23,12 @@ steps:
       format: markdown
       data: |
         ---
-        source_url: https://example.com/validation-import
+        source_url: https://example.com/kb-import-export-scenario
         source_type: web
         source_platform: web
+        title: KB Import Export Scenario Entry
         ---
-        # Validation Import Entry
+        # KB Import Export Scenario Entry
 
         This entry was imported by the kb-import-export validation scenario.
     expect:
@@ -40,3 +50,48 @@ steps:
       format: epub
     expect:
       success: true
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only the entry
+# whose source_url matches the scenario marker is purged, and export files are
+# only deleted when freshly created within the run window, so real user data
+# and real exports are never touched.
+cleanup_steps:
+  - name: "purge scenario-created import entry and export files"
+    kind: cli
+    command: |-
+      python3 -c "
+      import time
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      removed = []
+      eid = 'medical-research-general-kb-import-export-scenario-entry'
+      marker = 'https://example.com/kb-import-export-scenario'
+      meta = store.index.get_entry(eid)
+      if meta is not None:
+          if meta.get('source_url') != marker:
+              print('REFUSE ' + eid)
+          else:
+              res = store.delete_entry(eid)
+              removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-import-export-scenario-entry*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      cutoff = time.time() - 30 * 60
+      for pat in ('autoinfo-export-medical-research-*.json',
+                  'autoinfo-export-medical-research-*.epub'):
+          for p in Path('exports').glob(pat):
+              if not p.is_file():
+                  continue
+              if p.stat().st_mtime < cutoff:
+                  print('REFUSE export ' + str(p))
+                  continue
+              p.unlink(missing_ok=True)
+              removed.append(str(p))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

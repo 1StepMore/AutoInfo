@@ -29,6 +29,11 @@ category: <one of: system|discovery|source|topic|collection|kb|output|delivery|
 requires_env: []                    # optional list of env var names; if ANY missing
                                     # the WHOLE scenario reports status=unconfigured
                                     # (Director User BYOK obligation — never skipped)
+cleanup_steps:                      # optional list of steps (same schema as `steps`)
+                                    # run AFTER the main steps on pass AND on fail
+                                    # (best-effort); reported under `cleanup` and
+                                    # never influence the scenario status.  Use for
+                                    # removing state the scenario created.
 steps:
   - name: "human readable step name"   # required
     kind: mcp                         # optional: mcp (default) | cli | http
@@ -66,6 +71,16 @@ steps:
   `status: unconfigured` with per-step unconfigured results. This is the CORRECT
   behavior — the Director User must provide BYOK keys during onboarding. Never write
   scenarios that silently skip; use requires_env to surface unconfigured.
+- **`cleanup_steps`**: optional top-level list using the same step schema as
+  `steps`. The executor runs them after the main steps **regardless of the main
+  outcome** (pass or fail) — so scenario-created state is removed even when a
+  middle step failed. Each cleanup step is a real call (mcp/cli/http, same as
+  `steps`) and is asserted the same way, but cleanup results are reported under
+  `cleanup: {summary, steps}` in the result envelope and **never influence the
+  scenario status**. When `requires_env` is missing, nothing ran, so cleanup is
+  skipped. Scenarios that create persistent state MUST clean up after
+  themselves in `cleanup_steps` (verify-before-delete provenance checks are
+  strongly recommended so real user data is never touched).
 - **`llm_assert`**: when present and the step's structural assertions passed, the
   executor makes a REAL LiteLLM call (model from config) to judge the tool output
   against the NL assertion. If no LLM key → step reports `unconfigured`. Add
@@ -95,8 +110,14 @@ steps:
    `requires_env` (unconfigured is honest; a fabricated pass is not).
 4. **No destructive or state-corrupting side effects**: prefer idempotent reads
    (`list_*`, `get_*`, `search_*`). For mutating tools (`add_*`, `create_*`,
-   `enduser_create`), use clearly-safe test data and clean up within the same scenario
-   (e.g. `enduser_create` → `enduser_delete`, `add_source` → `remove_source`).
+   `enduser_create`), use clearly-safe test data and clean up within the same
+   scenario (e.g. `enduser_create` → `enduser_delete`, `add_source` →
+   `remove_source`). For state that must survive to the last step (e.g. a KB
+   entry created in step 1 and rejected in step 5), declare `cleanup_steps`
+   so the state is removed even when a middle step fails. The `kb-draft`
+   scenario is the reference pattern: fully self-contained steps operating
+   only on the scenario's own deterministic entry ids, plus a `cleanup_steps`
+   CLI step that verifies provenance markers before purging.
 5. **Coverage**: every implemented MCP tool must appear as a `kind: mcp` step in at
    least one scenario. Track coverage with the audit script (see below).
 6. **YAML validity**: scenarios must load via `load_scenarios()` with no errors.

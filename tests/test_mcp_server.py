@@ -36,6 +36,7 @@ from autoinfo.mcp.server import (
     _handle_get_kb_entry,
     _handle_get_processing_progress,
     _handle_health_check,
+    _handle_init_project,
     _handle_list_keywords,
     _handle_list_summaries,
     _handle_process_collection,
@@ -767,7 +768,7 @@ class TestGenerateOutput:
         assert "# Tutorial" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", format="markdown", custom_instructions=""
+            domain="medical-research", format="markdown", custom_instructions="", user_id=""
         )
 
     @patch("autoinfo.output.generate_tutorial")
@@ -790,7 +791,7 @@ class TestGenerateOutput:
         assert "# Slide 1" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", topic="IVF breakthroughs", slide_count=10, format="markdown", custom_instructions=""
+            domain="medical-research", topic="IVF breakthroughs", slide_count=10, format="markdown", custom_instructions="", user_id=""
         )
 
 
@@ -838,6 +839,158 @@ class TestTestSourceFields:
     def test_suggested_fields_default(self) -> None:
         result = _suggest_extract_fields("unknown")
         assert result == ["title", "description"]
+
+
+# ======================================================================
+# _handle_test_source - key requirement warning (D4)
+# ======================================================================
+
+
+class TestTestSourceKeyWarning:
+    @patch("autoinfo.mcp.server.httpx.get")
+    @patch("autoinfo.mcp.server.httpx.head")
+    def test_warns_when_required_key_missing(
+        self,
+        mock_head: MagicMock,
+        mock_get: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_NYT_API_KEY", raising=False)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "{}"
+        mock_response.content = b"{}"
+        mock_head.return_value = mock_response
+        mock_get.return_value = mock_response
+
+        result = _handle_test_source(
+            url="https://api.nytimes.com/svc",
+            type="nyt",
+        )
+        assert result["reachable"] is True
+        assert result["key_required"] is True
+        assert result["key_configured"] is False
+        assert "warning" in result
+        assert "AUTOINFO_NYT_API_KEY" in result["warning"]
+        assert "docs/dev/required-api-keys.md" in result["warning"]
+
+    @patch("autoinfo.mcp.server.httpx.get")
+    @patch("autoinfo.mcp.server.httpx.head")
+    def test_no_warning_when_key_configured(
+        self,
+        mock_head: MagicMock,
+        mock_get: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("AUTOINFO_NYT_API_KEY", "test-key-value")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "{}"
+        mock_response.content = b"{}"
+        mock_head.return_value = mock_response
+        mock_get.return_value = mock_response
+
+        result = _handle_test_source(
+            url="https://api.nytimes.com/svc",
+            type="nyt",
+        )
+        assert result["reachable"] is True
+        assert result["key_required"] is True
+        assert result["key_configured"] is True
+        assert "warning" not in result
+
+    @patch("autoinfo.mcp.server.httpx.get")
+    @patch("autoinfo.mcp.server.httpx.head")
+    def test_keyless_source_reports_no_requirement(
+        self,
+        mock_head: MagicMock,
+        mock_get: MagicMock,
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/xml"}
+        mock_response.text = "<rss><item>test</item></rss>"
+        mock_response.content = b"test"
+        mock_head.return_value = mock_response
+        mock_get.return_value = mock_response
+
+        result = _handle_test_source(
+            url="https://example.com/feed",
+            type="rss",
+        )
+        assert result["reachable"] is True
+        assert result["key_required"] is False
+        assert result["key_configured"] is True
+        assert "warning" not in result
+
+    def test_missing_key_never_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_NYT_API_KEY", raising=False)
+        with patch("autoinfo.mcp.server.httpx.get", side_effect=ConnectionError("refused")):
+            result = _handle_test_source(
+                url="https://api.nytimes.com/svc",
+                type="nyt",
+            )
+        assert result["reachable"] is False
+        assert "error_code" in result
+        assert "AUTOINFO_NYT_API_KEY" in result["message"]
+
+
+# ======================================================================
+# _handle_init_project - next_steps key detection (D4 / B-006)
+# ======================================================================
+
+
+class TestInitProjectNextSteps:
+    def test_next_steps_include_missing_key_steps(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        for var in (
+            "AUTOINFO_AP_API_KEY",
+            "AUTOINFO_REUTERS_API_KEY",
+            "AUTOINFO_YOUTUBE_API_KEY",
+            "AUTOINFO_NYT_API_KEY",
+            "AUTOINFO_SPOTIFY_CLIENT_ID",
+            "AUTOINFO_SPOTIFY_CLIENT_SECRET",
+            "AUTOINFO_QUANDL_API_KEY",
+            "AUTOINFO_UNPAYWALL_EMAIL",
+            "AUTOINFO_CORE_API_KEY",
+            "KAGGLE_USERNAME",
+            "KAGGLE_KEY",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+        result = _handle_init_project(domain="tech-ai-developer", dry_run=True)
+
+        assert result["status"] == "dry_run"
+        next_steps = result["next_steps"]
+        assert len(next_steps) > 3
+        assert next_steps[0].startswith("configure_llm")
+        assert next_steps[1] == "collect_sources(domain='tech-ai-developer')"
+        assert next_steps[2] == "process_collection(domain='tech-ai-developer')"
+        assert any("AUTOINFO_SPOTIFY_CLIENT_ID" in s for s in next_steps)
+        assert any("AUTOINFO_SPOTIFY_CLIENT_SECRET" in s for s in next_steps)
+        assert any("docs/dev/required-api-keys.md" in s for s in next_steps)
+
+    def test_next_steps_unchanged_for_keyless_domain(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        result = _handle_init_project(domain="medical-research", dry_run=True)
+
+        assert result["status"] == "dry_run"
+        next_steps = result["next_steps"]
+        assert len(next_steps) == 3
+        assert next_steps == [
+            "configure_llm(api_key='...', provider='...', model='...')",
+            "collect_sources(domain='medical-research')",
+            "process_collection(domain='medical-research')",
+        ]
 
 
 # ======================================================================

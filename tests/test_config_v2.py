@@ -24,6 +24,7 @@ from autoinfo.config import (
     TopicConfig,
     _dict_to_config,
     _resolve_task_llm_config,
+    config_to_dict,
     get_effective_llm_config,
     load_config,
     validate_config,
@@ -244,6 +245,109 @@ class TestDomainExtensions:
         config = _dict_to_config(minimal_dict)
         domain = config.domains[0]
         assert domain.extract_fields == []
+
+
+# ---------------------------------------------------------------------------
+# Parsing: source requires_key (D4 requirement awareness)
+# ---------------------------------------------------------------------------
+
+
+class TestSourceRequiresKey:
+    def test_requires_key_parsed_from_yaml(self) -> None:
+        raw = yaml.safe_load(
+            """
+            domains:
+              - name: d
+                active: true
+                sources:
+                  - name: ap
+                    type: ap_api
+                    url: https://api.example.com
+                    requires_key: true
+            """
+        )
+        config = _dict_to_config(raw)
+        assert config.domains[0].sources[0].requires_key is True
+
+    def test_requires_key_false_parsed(self) -> None:
+        raw = yaml.safe_load(
+            """
+            domains:
+              - name: d
+                active: true
+                sources:
+                  - name: rss
+                    type: rss
+                    url: https://example.com/feed
+                    requires_key: false
+            """
+        )
+        config = _dict_to_config(raw)
+        assert config.domains[0].sources[0].requires_key is False
+
+    def test_requires_key_defaults_false_when_absent(self, minimal_dict: dict[str, Any]) -> None:
+        config = _dict_to_config(minimal_dict)
+        assert config.domains[0].sources[0].requires_key is False
+
+    def test_requires_key_string_value_coerced(self) -> None:
+        raw = yaml.safe_load(
+            """
+            domains:
+              - name: d
+                active: true
+                sources:
+                  - name: ap
+                    type: ap_api
+                    url: https://api.example.com
+                    requires_key: "true"
+            """
+        )
+        config = _dict_to_config(raw)
+        assert config.domains[0].sources[0].requires_key is True
+
+    def test_requires_key_does_not_leak_into_settings(self) -> None:
+        raw = yaml.safe_load(
+            """
+            domains:
+              - name: d
+                active: true
+                sources:
+                  - name: ap
+                    type: ap_api
+                    url: https://api.example.com
+                    requires_key: true
+                    rate_limit: 10
+            """
+        )
+        config = _dict_to_config(raw)
+        source = config.domains[0].sources[0]
+        assert "requires_key" not in source.settings
+        assert source.settings["rate_limit"] == 10
+
+    def test_config_to_dict_round_trip_preserves_requires_key(self) -> None:
+        raw = yaml.safe_load(
+            """
+            domains:
+              - name: d
+                active: true
+                sources:
+                  - name: ap
+                    type: ap_api
+                    url: https://api.example.com
+                    requires_key: true
+                  - name: rss
+                    type: rss
+                    url: https://example.com/feed
+            """
+        )
+        config = _dict_to_config(raw)
+        dumped = config_to_dict(config)
+        dumped_sources = dumped["domains"][0]["sources"]
+        assert dumped_sources[0]["requires_key"] is True
+        assert "requires_key" not in dumped_sources[1]
+        restored = _dict_to_config(dumped)
+        assert restored.domains[0].sources[0].requires_key is True
+        assert restored.domains[0].sources[1].requires_key is False
 
 
 # ---------------------------------------------------------------------------

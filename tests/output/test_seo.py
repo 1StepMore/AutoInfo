@@ -33,9 +33,23 @@ class TestGenerateSitemap:
         assert "weekly" in xml
 
     def test_sitemap_handles_empty_entries(self):
-        xml = generate_sitemap(entries=[])
+        xml = generate_sitemap(entries=[], base_url="https://your-site.example")
         assert "<urlset" in xml
         assert "</urlset>" in xml
+
+    def test_sitemap_requires_base_url(self):
+        """generate_sitemap() without base_url raises an actionable error."""
+        with pytest.raises(ValueError, match="requires an explicit base_url"):
+            generate_sitemap()
+
+    def test_sitemap_index_loc_uses_base_url(self):
+        """Index page loc must be the provided base_url, never a placeholder."""
+        xml = generate_sitemap(
+            base_url="https://your-site.example",
+            entries=[],
+        )
+        assert "<loc>https://your-site.example</loc>" in xml
+        assert "example.com" not in xml
 
 
 class TestGenerateStructuredData:
@@ -133,7 +147,11 @@ class TestExportKbSitemap:
         """export_kb(format='sitemap') returns expected result dict."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
-            result = export_kb(domain="medical-research", format="sitemap")
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://your-site.example",
+            )
 
         assert result["format"] == "sitemap"
         assert result["success"] is True
@@ -147,7 +165,11 @@ class TestExportKbSitemap:
         """Generated sitemap.xml is valid XML with sitemaps.org namespace."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
-            result = export_kb(domain="medical-research", format="sitemap")
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://your-site.example",
+            )
 
         tree = ET.parse(result["path"])
         root = tree.getroot()
@@ -157,7 +179,11 @@ class TestExportKbSitemap:
         """Sitemap contains real entry URLs, not just the index page."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
-            result = export_kb(domain="medical-research", format="sitemap")
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://your-site.example",
+            )
 
         tree = ET.parse(result["path"])
         root = tree.getroot()
@@ -181,7 +207,11 @@ class TestExportKbSitemap:
 
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = config_path
-            result = export_kb(domain="medical-research", format="sitemap")
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://your-site.example",
+            )
 
         assert result["format"] == "sitemap"
         assert result["success"] is True
@@ -198,7 +228,11 @@ class TestExportKbSitemap:
         """Entry lastmod fields are derived from collected_at timestamps."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
-            result = export_kb(domain="medical-research", format="sitemap")
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://your-site.example",
+            )
 
         tree = ET.parse(result["path"])
         root = tree.getroot()
@@ -217,6 +251,36 @@ class TestExportKbSitemap:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
             with pytest.raises(ValueError, match="Unsupported export format"):
                 export_kb(domain="medical-research", format="invalid")
+
+    def test_sitemap_requires_base_url_in_export(self, project_dir: Path) -> None:
+        """export_kb(format='sitemap') without base_url raises an actionable error."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            with pytest.raises(
+                ValueError, match="requires an explicit base_url"
+            ) as exc_info:
+                export_kb(domain="medical-research", format="sitemap")
+
+        message = str(exc_info.value)
+        assert "base_url='https://your-site.example'" in message
+        assert "autoinfo output sitemap --base-url" in message
+
+    def test_sitemap_index_loc_uses_explicit_base_url(self, project_dir: Path) -> None:
+        """Sitemap index page uses the explicit base_url, never a placeholder."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://kb.your-site.example",
+            )
+
+        tree = ET.parse(result["path"])
+        root = tree.getroot()
+        ns = {"sm": "https://www.sitemaps.org/schemas/sitemap/0.9"}
+        urls = root.findall("sm:url", ns)
+        index_loc = urls[-1].find("sm:loc", ns).text
+        assert index_loc == "https://kb.your-site.example"
 
 
 # ---------------------------------------------------------------------------

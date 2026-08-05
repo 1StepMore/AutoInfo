@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.alerts import check_alerts
+from autoinfo.alerts import check_alerts, check_source_alerts, check_source_credentials
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
@@ -153,6 +153,30 @@ def run_collection(
                 check_alerts(_item, domain)
             except Exception:
                 logger.exception("Alert check failed for item '%s'", _item.id)
+
+    # -- B3 escalation: missing source credentials reach operators ----------
+    # A configured source that requires a key with no key configured is a
+    # blocking issue only the B3 human can resolve (user-lifecycle-definition
+    # §4.1). Push a `source_requires_key` agent-callback event and evaluate
+    # source_credential_missing alert rules through the delivery channels.
+    if not dry_run:
+        try:
+            missing = check_source_credentials(domain)
+            if missing:
+                from autoinfo.agent_callback import notify_source_requires_key
+
+                for cred in missing:
+                    notify_source_requires_key(
+                        source=cred["source"],
+                        source_type=cred["source_type"],
+                        key_ref=cred["key_ref"],
+                        domain=domain,
+                    )
+                check_source_alerts(domain, missing)
+        except Exception:
+            logger.exception(
+                "Source credential check failed for domain '%s'", domain
+            )
 
     return {
         "collection_id": collection_id,

@@ -62,6 +62,10 @@ class DeliverySchedule:
         List of recipient identifiers (email addresses, webhook URLs, …).
     period:
         Content period for the output: ``"daily"``, ``"weekly"``, ``"monthly"``.
+    user_id:
+        Optional end-user ID whose stored ``content_preference`` is
+        applied when generating the scheduled output.  Empty by default
+        (no preference lookup — pre-B-001 behavior).
     enabled:
         Whether this schedule is active.
     created_at:
@@ -80,6 +84,7 @@ class DeliverySchedule:
     channel: str = "email"
     recipients: list[str] = field(default_factory=list)
     period: str = "weekly"
+    user_id: str = ""
     enabled: bool = True
     created_at: str = ""
     last_run: str | None = None
@@ -149,6 +154,7 @@ class DeliveryScheduler:
                 channel=item.get("channel", "email"),
                 recipients=item.get("recipients", []),
                 period=item.get("period", "weekly"),
+                user_id=item.get("user_id", ""),
                 enabled=item.get("enabled", True),
                 created_at=item.get("created_at", ""),
                 last_run=item.get("last_run"),
@@ -172,6 +178,7 @@ class DeliveryScheduler:
                 "channel": sched.channel,
                 "recipients": sched.recipients,
                 "period": sched.period,
+                "user_id": sched.user_id,
                 "enabled": sched.enabled,
                 "created_at": sched.created_at,
                 "last_run": sched.last_run,
@@ -371,6 +378,7 @@ def run_delivery_schedules(
                 output_type=sched.output_type,
                 format=sched.format,
                 period=sched.period,
+                user_id=sched.user_id,
             )
         except Exception as exc:
             logger.exception(
@@ -421,6 +429,7 @@ def _generate_output(
     output_type: str,
     format: str,
     period: str,
+    user_id: str = "",
 ) -> object:
     """Generate output content for the given parameters.
 
@@ -434,6 +443,10 @@ def _generate_output(
         Output format string.
     period:
         Content period: ``"daily"``, ``"weekly"``, ``"monthly"``.
+    user_id:
+        Optional end-user ID forwarded to the output generator so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
 
     Returns
     -------
@@ -454,6 +467,7 @@ def _generate_output(
             domain=domain,
             period=period,
             format=format,
+            user_id=user_id,
         )
         if format in ("json", "agent"):
             return _json.loads(result) if isinstance(result, str) else result
@@ -466,6 +480,7 @@ def _generate_output(
             domain=domain,
             period=period,
             format=format,
+            user_id=user_id,
         )
         if format in ("json", "agent"):
             return _json.loads(result) if isinstance(result, str) else result

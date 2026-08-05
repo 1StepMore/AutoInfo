@@ -73,7 +73,8 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 | `docs/dev/specs/ops-runbook.md` | Operations runbook: backup, disaster recovery, monitoring, scaling, agent quick reference with MCP tool mappings (1027 lines) | 🟡 P1 — operations guide | When operations procedures change |
 | `docs/dev/specs/multi-tenancy-auth.md` | Multi-tenancy, authentication, rate limiting, admin dashboard — architectural design (deferred until SSE transport, 769 lines) | 🟠 P2 — deferred spec | When auth/multi-tenancy is implemented |
 | `docs/dev/new-domain-guide.md` | Guide for creating new domains: domain schema, source configuration, topic setup, demo domain import | 🟡 P1 — onboarding guide | When domain config/demo domains change |
-| `docs/dev/enduser-coverage-matrix.md` | End-user feature coverage matrix (99-dimension, updated 2026-08-04) — keystone reference like cross-dimensional-catalog | 🔴 P0 — keystone | When feature surface changes |
+ | `docs/dev/enduser-coverage-matrix.md` | End-user feature coverage matrix (99-dimension, updated 2026-08-04) — keystone reference like cross-dimensional-catalog | 🔴 P0 — keystone | When feature surface changes |
+ | `docs/dev/enduser-capabilities-guide.md` | End-user capabilities & how-to guide — raw-data gathering (30 collectors/29 source types/13 demo domains) + processed-data generation (digest/report/tutorial/presentation/export/translate/CEFR/simplify) with verified CLI + MCP workflows | 🟡 P1 — user guide | When CLI/MCP workflows or capabilities change |
 | `docs/dev/required-api-keys.md` | Full catalog of environment variables and API keys required by AutoInfo (referenced by AGENTS.md and README) | 🟡 P1 — reference | When env vars / API keys change |
 | `docs/dev/mcp-usage-examples.md` | Full worked MCP tool workflow examples — step-by-step patterns for all common operations (referenced by AGENTS.md) | 🟡 P1 — reference | When MCP workflows change |
 

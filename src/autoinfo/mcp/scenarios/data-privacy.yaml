@@ -1,31 +1,68 @@
 # Data privacy tools — soft-delete, restore, export, delete.
-# Uses the validation import entry for soft-delete/restore (non-destructive pair).
-# delete_user_data requires purge=True; we verify the guard rail.
+#
+# Self-contained: the scenario creates its own fixture entry (deterministic
+# entry_id, scenario-owned marker source_url) owned by a unique scenario-only
+# user_id, so soft-delete/restore/export_user_data/delete_user_data only ever
+# touch entries this scenario owns.  delete_user_data requires purge=True; we
+# verify the guard rail, then run it against the marker user — only the
+# fixture carries that user_id, so real user data is untouched.  cleanup_steps
+# run after every run (pass or fail) and hard-purge the fixture.
 name: data-privacy
-description: "Data privacy: soft-delete, restore, export, and GDPR delete guard"
+description: "Data privacy: soft-delete, restore, export, and GDPR delete guard (self-contained, self-cleaning)"
 category: privacy
 requires_env: []
 steps:
-  - name: "soft_delete_entry marks entry as deleted"
+  - name: "create scenario fixture entry owned by marker user"
+    kind: cli
+    command: |-
+      python3 -c "
+      from datetime import datetime, timezone
+      from uuid import uuid4
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      store = KBStore()
+      item = Item(
+          id=str(uuid4()),
+          source_name='web',
+          source_type='web',
+          source_url='https://example.com/data-privacy-scenario-entry',
+          source_platform='web',
+          title='Data Privacy Scenario Fixture Entry',
+          content='Fixture entry owned by the data-privacy validation scenario.',
+          domain='medical-research',
+          topic_tags=[],
+          collected_at=datetime.now(timezone.utc).isoformat(),
+          content_type='text',
+          quality_tier=1,
+      )
+      entry = store.store_entry(item=item, tier='01-Raw', user_id='validation-data-privacy-user')
+      print('ENTRY_ID ' + entry.entry_id)
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-general-data-privacy-scenario-fixture-entry"]
+
+  - name: "soft_delete_entry marks scenario entry as deleted"
     tool: soft_delete_entry
     arguments:
-      entry_id: medical-research-general-validation-import-entry
+      entry_id: medical-research-general-data-privacy-scenario-fixture-entry
     expect:
       success: true
       data_has: ["entry_id"]
 
-  - name: "restore_entry revives the soft-deleted entry"
+  - name: "restore_entry revives the soft-deleted scenario entry"
     tool: restore_entry
     arguments:
-      entry_id: medical-research-general-validation-import-entry
+      entry_id: medical-research-general-data-privacy-scenario-fixture-entry
     expect:
       success: true
       data_has: ["entry_id"]
 
-  - name: "export_user_data returns profile for a user"
+  - name: "export_user_data returns profile for the marker user"
     tool: export_user_data
     arguments:
-      user_id: test_user
+      user_id: validation-data-privacy-user
     expect:
       success: true
       data_has: ["user_id", "profile"]
@@ -33,7 +70,48 @@ steps:
   - name: "delete_user_data rejects call without purge=True"
     tool: delete_user_data
     arguments:
-      user_id: test_user
+      user_id: validation-data-privacy-user
     expect:
       success: false
       error_code: "ValidationError"
+
+  - name: "delete_user_data with purge=True soft-deletes scenario-owned entries"
+    tool: delete_user_data
+    arguments:
+      user_id: validation-data-privacy-user
+      purge: true
+    expect:
+      success: true
+      data_has: ["user_id", "deleted_count"]
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only the entry
+# whose source_url matches the scenario marker is hard-purged, so real user
+# data is never touched.
+cleanup_steps:
+  - name: "purge scenario-created privacy fixture entry"
+    kind: cli
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      eid = 'medical-research-general-data-privacy-scenario-fixture-entry'
+      marker = 'https://example.com/data-privacy-scenario-entry'
+      removed = []
+      meta = store.index.get_entry(eid)
+      if meta is not None:
+          if meta.get('source_url') != marker:
+              print('REFUSE ' + eid)
+          else:
+              res = store.delete_entry(eid)
+              removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*data-privacy-scenario-fixture-entry*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

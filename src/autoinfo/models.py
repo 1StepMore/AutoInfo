@@ -146,7 +146,17 @@ class DeliveryResult:
 
 @dataclass
 class AlertRule:
-    """Threshold-based alert rule for triggering notifications."""
+    """Threshold-based alert rule for triggering notifications.
+
+    ``kind`` discriminates the rule's trigger surface:
+
+    * ``"content"`` (default) — the legacy behavior: match collected items
+      by keyword + relevance threshold via :func:`alerts.check_alerts`.
+    * ``"source_credential_missing"`` — fires when a configured source
+      requires an API key/credential that is absent from the operator
+      environment (B3 escalation: only the B3 human can supply the key).
+      Evaluated by :func:`alerts.check_source_alerts`.
+    """
 
     id: str
     domain: str
@@ -154,6 +164,7 @@ class AlertRule:
     relevance_threshold: float = 0.0
     channel: Literal["email", "webhook"] = "email"
     enabled: bool = True
+    kind: str = "content"  # "content" | "source_credential_missing"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

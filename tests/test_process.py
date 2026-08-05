@@ -643,6 +643,35 @@ class TestProcessCli:
         assert data["is_complete"] is True
         assert data["kb_entries_created"] == 1
 
+    def test_process_help_shows_check_translation(self, cli_runner) -> None:
+        """``--help`` shows ``--check-translation`` parameter."""
+        from autoinfo.cli import app
+
+        result = cli_runner.invoke(app, ["process", "--help"])
+        assert result.exit_code == 0
+        assert "--check-translation" in result.stdout
+
+    def test_process_check_translation_passed_to_run(
+        self, cli_runner
+    ) -> None:
+        """``--check-translation`` flag is forwarded to ``run_processing``."""
+        from autoinfo.cli import app
+
+        with patch("autoinfo.cli.process.run_processing") as mock_proc:
+            mock_proc.return_value = ProcessResult(
+                domain="test-domain", total_items=0,
+                processed_count=0, remaining_count=0, is_complete=True,
+                passed_gates=0, kb_entries_created=0, duration_s=0.0,
+            )
+            result = cli_runner.invoke(app, [
+                "process", "--domain", "test-domain", "--check-translation",
+            ])
+
+        assert result.exit_code == 0
+        mock_proc.assert_called_once()
+        _, kwargs = mock_proc.call_args
+        assert kwargs.get("check_translation") is True
+
     def test_process_exit_code_on_errors(self, cli_runner) -> None:
         """Exit code 1 when processing has errors."""
         from autoinfo.cli import app

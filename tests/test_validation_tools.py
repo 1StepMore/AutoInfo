@@ -605,6 +605,239 @@ steps:
             load_scenarios(sd)
 
 
+class TestRunScenarioCleanupSteps:
+    """run_scenario tests for the cleanup_steps contract: always-run,
+    best-effort, verdict-neutral cleanup of scenario-created state."""
+
+    CLEANUP_SCENARIO_YAML = """\
+name: cleanup-scenario
+description: "Cleanup-steps scenario"
+category: test
+requires_env: []
+steps:
+  - name: "main pass step"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+cleanup_steps:
+  - name: "cleanup step"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+"""
+
+    FAILING_CLEANUP_SCENARIO_YAML = """\
+name: cleanup-fail-scenario
+description: "Cleanup-steps scenario with failing main step"
+category: test
+requires_env: []
+steps:
+  - name: "main fail step"
+    tool: fake_error
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+cleanup_steps:
+  - name: "cleanup step"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+"""
+
+    FAILING_CLEANUP_STEP_YAML = """\
+name: cleanup-bad-step-scenario
+description: "Cleanup-steps scenario with failing cleanup step"
+category: test
+requires_env: []
+steps:
+  - name: "main pass step"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+cleanup_steps:
+  - name: "cleanup fail step"
+    tool: fake_error
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+"""
+
+    ENV_GATED_CLEANUP_YAML = """\
+name: env-gated-cleanup
+description: "Env-gated scenario with cleanup"
+category: test
+requires_env: ["MISSING_VAR_XYZ"]
+steps:
+  - name: "should report unconfigured"
+    tool: health_check
+    arguments: {}
+cleanup_steps:
+  - name: "cleanup must not run"
+    tool: fake_tool
+    arguments: {}
+"""
+
+    @pytest.fixture
+    def cleanup_scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "cleanup-scenario.yaml").write_text(
+            self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "cleanup-fail-scenario.yaml").write_text(
+            self.FAILING_CLEANUP_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "cleanup-bad-step-scenario.yaml").write_text(
+            self.FAILING_CLEANUP_STEP_YAML, encoding="utf-8"
+        )
+        (sd / "env-gated-cleanup.yaml").write_text(
+            self.ENV_GATED_CLEANUP_YAML, encoding="utf-8"
+        )
+        return sd
+
+    @pytest.fixture
+    def cleanup_calls(self) -> list[str]:
+        return []
+
+    async def _fake_dispatch(self, name: str, arguments: dict) -> dict:
+        if name == "fake_tool":
+            return {"success": True, "data": {"result": "ok"}}
+        if name == "fake_error":
+            return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
+        return {"success": True, "data": {}}
+
+    async def _tracking_dispatch(
+        self, name: str, arguments: dict, cleanup_calls: list[str]
+    ) -> dict:
+        cleanup_calls.append(name)
+        return await self._fake_dispatch(name, arguments)
+
+    async def test_cleanup_runs_and_is_reported(
+        self, cleanup_scenario_dir: Path
+    ) -> None:
+        """Cleanup steps run after a passing scenario and are reported."""
+        result = await run_scenario(
+            "cleanup-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=cleanup_scenario_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["passed"] == 1
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["passed"] == 1
+        assert result["cleanup"]["summary"]["total"] == 1
+        assert result["cleanup"]["steps"][0]["status"] == "passed"
+
+    async def test_cleanup_runs_after_main_failure(
+        self, cleanup_scenario_dir: Path
+    ) -> None:
+        """Cleanup runs even when a main step failed (state may exist)."""
+        result = await run_scenario(
+            "cleanup-fail-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=cleanup_scenario_dir,
+        )
+        assert result["status"] == "failed"
+        assert result["summary"]["failed"] == 1
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["passed"] == 1
+
+    async def test_cleanup_failure_does_not_flip_status(
+        self, cleanup_scenario_dir: Path
+    ) -> None:
+        """A failing cleanup step is reported but never flips scenario status."""
+        result = await run_scenario(
+            "cleanup-bad-step-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=cleanup_scenario_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["failed"] == 0
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["failed"] == 1
+        assert result["cleanup"]["steps"][0]["status"] == "failed"
+
+    async def test_cleanup_runs_on_subset_run(
+        self, cleanup_scenario_dir: Path, cleanup_calls: list[str]
+    ) -> None:
+        """steps=[1] still triggers cleanup (partial runs create state too)."""
+        async def dispatch(name: str, arguments: dict) -> dict:
+            return await self._tracking_dispatch(name, arguments, cleanup_calls)
+
+        result = await run_scenario(
+            "cleanup-scenario",
+            dispatch=dispatch,
+            steps=[1],
+            scenarios_dir=cleanup_scenario_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["total"] == 1
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["total"] == 1
+        assert cleanup_calls.count("fake_tool") == 2  # main + cleanup
+
+    async def test_cleanup_skipped_when_unconfigured(
+        self, cleanup_scenario_dir: Path
+    ) -> None:
+        """Env-gated early return runs nothing, so cleanup must not run."""
+        env_before = os.environ.pop("MISSING_VAR_XYZ", None)
+        try:
+            result = await run_scenario(
+                "env-gated-cleanup",
+                dispatch=self._fake_dispatch,
+                scenarios_dir=cleanup_scenario_dir,
+            )
+            assert result["status"] == "unconfigured"
+            assert "cleanup" not in result
+        finally:
+            if env_before is not None:
+                os.environ["MISSING_VAR_XYZ"] = env_before
+
+    async def test_cleanup_step_missing_tool_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """cleanup_steps are schema-validated like steps."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "bad-cleanup.yaml").write_text(
+            "name: bad-cleanup\ndescription: T\nsteps:\n"
+            "  - name: s\n    tool: fake_tool\n"
+            "cleanup_steps:\n  - name: no-tool-step\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(
+            ValueError, match="cleanup_step\\[0\\].*'tool'"
+        ):
+            load_scenarios(sd)
+
+    async def test_cleanup_cli_step_validates_command(
+        self, tmp_path: Path
+    ) -> None:
+        """kind=cli cleanup steps require a command."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "bad-cli-cleanup.yaml").write_text(
+            "name: bad-cli-cleanup\ndescription: T\nsteps:\n"
+            "  - name: s\n    tool: fake_tool\n"
+            "cleanup_steps:\n  - name: no-command\n    kind: cli\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(
+            ValueError, match="cleanup_step\\[0\\].*kind=cli.*'command'"
+        ):
+            load_scenarios(sd)
+
+
 # ============================================================================
 # Integration tests: MCP server dispatch
 # ============================================================================

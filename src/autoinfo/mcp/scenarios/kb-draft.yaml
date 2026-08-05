@@ -1,6 +1,12 @@
-# KB Draft tools — verify draft lifecycle: Raw→Draft→reject/reindex.
+# KB Draft tools - verify the draft lifecycle: Raw -> Draft -> reject -> reindex.
+#
+# Self-contained: every step operates only on the entry this scenario creates
+# (deterministic entry_id derived from domain/topic/title), never on
+# pre-existing KB entries.  cleanup_steps purge exactly what the scenario
+# created (raw entry + draft + archived file + index rows) after every run,
+# regardless of pass/fail, so the real KB is left contaminant-free.
 name: kb-draft
-description: "KB draft creation, rejection, and reindex in real project context"
+description: "KB draft creation, rejection, and reindex in real project context (self-contained, self-cleaning)"
 category: kb
 requires_env: []
 steps:
@@ -16,27 +22,28 @@ steps:
       success: true
       data_has: ["entry_id", "tier"]
 
-  - name: "get_summary returns detail for an entry"
+  - name: "get_summary returns detail for the scenario entry"
     tool: get_summary
     arguments:
-      summary_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      summary_id: medical-research-general-kb-draft-scenario-test-entry
     expect:
       success: true
       data_has: ["entry_id", "title", "relevance_score"]
 
-  - name: "flag_for_knowledge_base flags a summary"
+  - name: "flag_for_knowledge_base flags the scenario entry"
     tool: flag_for_knowledge_base
     arguments:
-      summary_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      summary_id: medical-research-general-kb-draft-scenario-test-entry
+      tags: ["validation", "scenario"]
     expect:
       success: true
       data_has: ["flagged", "entry_id"]
 
-  - name: "create_kb_draft creates Draft from Raw"
+  - name: "create_kb_draft creates Draft from scenario Raw"
     tool: create_kb_draft
     arguments:
       raw_ids:
-        - medical-research-general-crispr-gene-editing-advances-in-2026
+        - medical-research-general-kb-draft-scenario-test-entry
       title: "KB Draft Scenario Draft"
       summary: "Draft created for kb-draft validation scenario."
       tags: ["validation", "scenario"]
@@ -61,3 +68,50 @@ steps:
     expect:
       success: true
       data_has: ["files_found", "fts5_indexed"]
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only entries
+# whose source_url matches the scenario marker are purged, so real user data
+# is never touched.
+cleanup_steps:
+  - name: "purge scenario-created KB entries and files"
+    kind: cli
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      markers = [('medical-research-general-kb-draft-scenario-test-entry',
+                  'https://example.com/kb-draft-scenario'),
+                 ('medical-research-draft-kb-draft-scenario-draft',
+                  'https://example.com/kb-draft-scenario')]
+      removed = []
+      for eid, url in markers:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          if meta.get('source_url') != url:
+              print('REFUSE ' + eid)
+              continue
+          res = store.delete_entry(eid)
+          removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-draft-scenario-test-entry*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('knowledge/medical-research/02-Draft').rglob('*kb-draft-scenario-draft*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('knowledge/_archive/medical-research').glob('*kb-draft-scenario-draft*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      with store.index._connect() as conn:
+          for row in conn.execute('SELECT rowid FROM entries_fts5 WHERE title LIKE ?',
+                                  ('%KB Draft Scenario%',)).fetchall():
+              conn.execute('DELETE FROM entries_fts5 WHERE rowid = ?', (row[0],))
+              removed.append('fts5:' + str(row[0]))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

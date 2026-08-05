@@ -16,20 +16,31 @@ logger = logging.getLogger(__name__)
 
 def generate_sitemap(
     domain: str = "",
-    base_url: str = "https://example.com",
+    base_url: str = "",
     entries: Optional[list[dict]] = None,
 ) -> str:
     """Generate an XML sitemap for KB entries.
 
     Args:
         domain: Domain name (for filtering)
-        base_url: Base URL for the sitemap
+        base_url: Base URL for the sitemap (required; no default is assumed)
         entries: List of entry dicts with keys: url, lastmod, changefreq, priority
                  If None, generates a placeholder sitemap
 
     Returns:
         XML string conforming to sitemaps.org schema
+
+    Raises:
+        ValueError: If ``base_url`` is not provided.
     """
+    if not base_url:
+        raise ValueError(
+            "Sitemap generation requires an explicit base_url (no default is "
+            "assumed). Pass base_url='https://your-site.example' to "
+            "generate_sitemap() or export_kb(format='sitemap', "
+            "base_url='https://your-site.example'), or use the CLI: "
+            "autoinfo output sitemap --base-url https://your-site.example"
+        )
     urlset = ET.Element("urlset")
     urlset.set("xmlns", "https://www.sitemaps.org/schemas/sitemap/0.9")
 

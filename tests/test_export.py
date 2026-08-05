@@ -14,11 +14,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import tarfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
+from jsonschema import Draft7Validator
 
 from autoinfo.kb import KBStore, SQLiteIndex
 from autoinfo.models import Item, KBEntry
@@ -403,3 +405,92 @@ class TestResultMetadata:
             result = export_kb(domain="medical-research", format="json")
 
         assert result["domain"] == "medical-research"
+
+
+# ---------------------------------------------------------------------------
+# Tests: agent-native JSON-LD export (B-004: tags as real JSON arrays)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentExport:
+    def test_tags_are_real_arrays(self, project_dir: Path) -> None:
+        """Agent export emits tags as JSON arrays, not JSON-encoded strings."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            result = export_kb(format="agent")
+
+        assert result["success"] is True
+        assert len(result["entries"]) == 3
+        for entry in result["entries"]:
+            assert isinstance(entry["tags"], list), (
+                f"tags must be a JSON array, got {type(entry['tags']).__name__}: {entry['tags']!r}"
+            )
+            assert all(isinstance(t, str) for t in entry["tags"])
+            assert entry["tags"] in (["IVF"], ["LLM"])
+
+    def test_json_export_tags_are_real_arrays(self, project_dir: Path) -> None:
+        """JSON export also emits tags as real arrays (not strings)."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            result = export_kb(format="json")
+
+        data = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
+        assert len(data) == 3
+        for entry in data:
+            assert isinstance(entry["tags"], list), (
+                f"tags must be a JSON array, got {type(entry['tags']).__name__}: {entry['tags']!r}"
+            )
+            assert all(isinstance(t, str) for t in entry["tags"])
+
+    def test_validates_against_kb_export_schema(self, project_dir: Path) -> None:
+        """Agent export validates against docs/schemas/knowledge-base-export-v1.json."""
+        schema_path = (
+            Path(__file__).resolve().parent.parent
+            / "docs"
+            / "schemas"
+            / "knowledge-base-export-v1.json"
+        )
+        assert schema_path.is_file(), f"schema file missing: {schema_path}"
+
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            result = export_kb(format="agent")
+
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        validator = Draft7Validator(schema)
+        errors = sorted(
+            (f"{'/'.join(str(p) for p in e.path)}: {e.message}" for e in validator.iter_errors(result)),
+        )
+        assert errors == [], "agent export failed schema validation:\n" + "\n".join(errors)
+
+
+# ---------------------------------------------------------------------------
+# Tests: sitemap export requires explicit base_url (B-002)
+# ---------------------------------------------------------------------------
+
+
+class TestSitemapBaseUrl:
+    def test_sitemap_requires_explicit_base_url(self, project_dir: Path) -> None:
+        """export_kb(format='sitemap') without base_url raises an actionable error."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            with pytest.raises(ValueError, match="requires an explicit base_url"):
+                export_kb(domain="medical-research", format="sitemap")
+
+    def test_sitemap_index_loc_uses_explicit_base_url(self, project_dir: Path) -> None:
+        """Sitemap index page uses the provided base_url, not a placeholder."""
+        with patch("autoinfo.output.get_config_path") as mock_cfg:
+            mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
+            result = export_kb(
+                domain="medical-research",
+                format="sitemap",
+                base_url="https://kb.your-site.example",
+            )
+
+        assert result["success"] is True
+        tree = ET.parse(result["path"])
+        root = tree.getroot()
+        ns = {"sm": "https://www.sitemaps.org/schemas/sitemap/0.9"}
+        urls = root.findall("sm:url", ns)
+        index_loc = urls[-1].find("sm:loc", ns).text
+        assert index_loc == "https://kb.your-site.example"

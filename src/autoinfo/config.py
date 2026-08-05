@@ -117,6 +117,7 @@ class SourceConfig:
     quality_tier: int = 1
     tos_classification: str = "open"
     fetch_depth: str = "abstract"
+    requires_key: bool = False
     settings: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -125,11 +126,15 @@ class SourceConfig:
         The heuristic: if the current value is ``"open"`` (the dataclass default)
         but the tier maps to something different, the caller did not provide an
         explicit value, so we derive from the tier.
+
+        ``requires_key`` is also coerced to a bool so string YAML values such as
+        ``"true"`` / ``"false"`` never leak through as truthy strings.
         """
         _TIER_TOS_MAP: dict[int, str] = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
         mapped = _TIER_TOS_MAP.get(self.quality_tier, "open")
         if self.tos_classification == "open" and mapped != "open":
             self.tos_classification = mapped
+        self.requires_key = _as_bool(self.requires_key)
 
 
 @dataclass
@@ -391,6 +396,22 @@ class Config:
 _ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
+def _as_bool(value: Any) -> bool:
+    """Coerce a YAML-ish value to a bool, tolerating strings.
+
+    PyYAML already parses ``true``/``false`` as Python bools, but a value
+    written as a quoted string (``"true"``) or an integer (``1``) would
+    otherwise be truthy in surprising ways.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _resolve_env_vars(value: str) -> str:
     """Replace ``${VAR_NAME}`` placeholders with environment variable values."""
     def _replace(match: re.Match[str]) -> str:
@@ -478,7 +499,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     domains = []
     for d in domains_raw:
         sources_raw: list[dict[str, Any]] = d.get("sources", []) or []
-        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth"})
+        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth", "requires_key"})
         _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
         sources = []
         for s in sources_raw:
@@ -499,6 +520,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                     quality_tier=tier,
                     tos_classification=tos,
                     fetch_depth=s.get("fetch_depth", "abstract"),
+                    requires_key=s.get("requires_key", False),
                     settings=raw_settings,
                 )
             )
@@ -979,6 +1001,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "quality_tier": s.quality_tier,
                     "tos_classification": s.tos_classification,
                     **({"fetch_depth": s.fetch_depth} if s.fetch_depth != "abstract" else {}),
+                    **({"requires_key": s.requires_key} if s.requires_key else {}),
                     **s.settings,
                 }
                 for s in domain.sources

@@ -1,9 +1,41 @@
 # KB Lifecycle — decay, staleness, freshness, merging, similarity, and extraction.
+#
+# Self-contained: mark_stale / calculate_freshness_score / merge_items /
+# get_extraction operate only on the two fixture entries this scenario creates
+# (deterministic entry_ids, marker source_urls owned by this scenario), never
+# on pre-existing KB entries.  merge_items only assembles an in-memory merged
+# dict — nothing is persisted by it.  cleanup_steps run after every run (pass
+# or fail) and purge exactly the two fixtures; SQLiteIndex.delete_entry
+# cascades to relations/entry_versions/entities/files, leaving zero residue.
 name: kb-lifecycle
-description: "KB lifecycle tools: decay, staleness, freshness, merge, similarity, extraction"
+description: "KB lifecycle tools: decay, staleness, freshness, merge, similarity, extraction (self-contained, self-cleaning)"
 category: lifecycle
 requires_env: []
 steps:
+  - name: "create_kb_entry writes fixture item A to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Lifecycle Scenario Item A"
+      content: "Fixture A for the kb-lifecycle validation scenario."
+      source_url: https://example.com/kb-lifecycle-scenario-item-a
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "create_kb_entry writes fixture item B to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Lifecycle Scenario Item B"
+      content: "Fixture B for the kb-lifecycle validation scenario."
+      source_url: https://example.com/kb-lifecycle-scenario-item-b
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
   - name: "get_domain_decay returns decay metrics"
     tool: get_domain_decay
     arguments:
@@ -12,28 +44,28 @@ steps:
       success: true
       data_has: ["decay_grade", "staleness_ratio"]
 
-  - name: "mark_stale marks an entry as stale"
+  - name: "mark_stale marks fixture A as stale"
     tool: mark_stale
     arguments:
-      entry_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      entry_id: medical-research-general-kb-lifecycle-scenario-item-a
     expect:
       success: true
 
   - name: "calculate_freshness_score returns freshness"
     tool: calculate_freshness_score
     arguments:
-      entry_id: medical-research-general-ai-powered-drug-discovery-in-2026
+      entry_id: medical-research-general-kb-lifecycle-scenario-item-b
       ttl_days: 90
     expect:
       success: true
       data_has: ["freshness_score", "ttl_days"]
 
-  - name: "merge_items merges two entries"
+  - name: "merge_items merges the two fixtures"
     tool: merge_items
     arguments:
       item_ids:
-        - medical-research-general-crispr-gene-editing-advances-in-2026
-        - medical-research-general-mrna-vaccine-platform-beyond-covid-19
+        - medical-research-general-kb-lifecycle-scenario-item-a
+        - medical-research-general-kb-lifecycle-scenario-item-b
       strategy: simple
     expect:
       success: true
@@ -42,7 +74,7 @@ steps:
   - name: "find_similar_items finds items by query"
     tool: find_similar_items
     arguments:
-      query: CRISPR gene editing technology
+      query: KB Lifecycle Scenario Item
       threshold: 0.3
     expect:
       success: true
@@ -51,7 +83,44 @@ steps:
   - name: "get_extraction reads stored extraction data"
     tool: get_extraction
     arguments:
-      content_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      content_id: medical-research-general-kb-lifecycle-scenario-item-a
     expect:
       success: true
       data_has: ["content_id", "extracted_fields"]
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only entries
+# whose source_url matches the scenario markers are purged, so real user data
+# is never touched.  merge_items persists nothing, so only the two fixtures
+# need purging; delete_entry cascades to relations/entities/versions/files.
+cleanup_steps:
+  - name: "purge scenario-created lifecycle fixture entries"
+    kind: cli
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      markers = [('medical-research-general-kb-lifecycle-scenario-item-a',
+                  'https://example.com/kb-lifecycle-scenario-item-a'),
+                 ('medical-research-general-kb-lifecycle-scenario-item-b',
+                  'https://example.com/kb-lifecycle-scenario-item-b')]
+      removed = []
+      for eid, url in markers:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          if meta.get('source_url') != url:
+              print('REFUSE ' + eid)
+              continue
+          res = store.delete_entry(eid)
+          removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-lifecycle-scenario-item-*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

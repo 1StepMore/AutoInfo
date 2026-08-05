@@ -24,6 +24,7 @@ app = typer.Typer(
 )
 
 _VALID_CHANNELS = ("email", "webhook")
+_VALID_KINDS = ("content", "source_credential_missing")
 
 
 def _fail(message: str) -> None:
@@ -51,11 +52,23 @@ def add(
     enabled: bool = typer.Option(
         True, "--enabled/--no-enabled", help="Whether the rule is active"
     ),
+    kind: str = typer.Option(
+        "content",
+        "--kind",
+        help="Rule kind: content (item matching) or source_credential_missing "
+        "(fires when a configured source requires an API key absent from the "
+        "operator environment)",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Create a new alert rule for a domain (mirrors MCP add_alert_rule)."""
     if channel not in _VALID_CHANNELS:
         _fail(f"Invalid channel '{channel}'. Valid channels: email, webhook")
+    if kind not in _VALID_KINDS:
+        _fail(
+            f"Invalid kind '{kind}'. Valid kinds: "
+            f"{', '.join(sorted(_VALID_KINDS))}"
+        )
 
     # Deferred import — mirrors the MCP handler
     from autoinfo.alerts import add_alert_rule
@@ -66,6 +79,7 @@ def add(
         relevance_threshold=relevance_threshold,
         channel=channel,  # type: ignore[arg-type]
         enabled=enabled,
+        kind=kind,
     )
 
     if json_output:
@@ -73,7 +87,8 @@ def add(
     else:
         typer.echo(
             f"Added alert rule '{rule.id}' for domain '{domain}' "
-            f"(channel={channel}, threshold={relevance_threshold}, enabled={enabled})"
+            f"(kind={kind}, channel={channel}, threshold={relevance_threshold}, "
+            f"enabled={enabled})"
         )
 
 
@@ -115,9 +130,9 @@ def list_cmd(
 
     for rule in rules:
         typer.echo(
-            f"{rule.id}  domain={rule.domain}  channel={rule.channel}  "
-            f"threshold={rule.relevance_threshold}  enabled={rule.enabled}  "
-            f"keywords={','.join(rule.topic_keywords) or '-'}"
+            f"{rule.id}  domain={rule.domain}  kind={rule.kind}  "
+            f"channel={rule.channel}  threshold={rule.relevance_threshold}  "
+            f"enabled={rule.enabled}  keywords={','.join(rule.topic_keywords) or '-'}"
         )
 
 

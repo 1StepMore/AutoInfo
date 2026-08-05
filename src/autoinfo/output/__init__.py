@@ -292,6 +292,7 @@ def export_kb(
     domain: str | None = None,
     format: str = "markdown",
     collection_id: str | None = None,  # reserved for future use
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Export knowledge base data to the requested format.
 
@@ -305,6 +306,10 @@ def export_kb(
         ``"bundle"``, ``"sitemap"``, ``"epub"``, or ``"mobi"``.
     collection_id:
         Reserved for future collection-scoped export (not yet implemented).
+    base_url:
+        Site base URL used for ``format="sitemap"`` (e.g.
+        ``"https://your-site.example"``).  Required for sitemap export;
+        ignored for other formats.
 
     Returns
     -------
@@ -318,7 +323,8 @@ def export_kb(
     FileNotFoundError
         If no configuration file is found (project not initialized).
     ValueError
-        If *format* is not one of the supported values.
+        If *format* is not one of the supported values, or if
+        *format* is ``"sitemap"`` and *base_url* is not provided.
     """
     if format not in (
         "markdown", "json", "sqlite", "pdf", "rss",
@@ -469,6 +475,7 @@ def export_kb(
             domain=domain,
             entries=entries,
             domain_label=domain_label,
+            base_url=base_url,
         )
     elif format == "epub":
         result = _export_epub(
@@ -505,6 +512,26 @@ def _list_domains_from_db(index: SQLiteIndex) -> list[str]:
         return [r[0] for r in rows]
     except Exception:
         return []
+
+
+def _parse_tags_list(raw: Any) -> list[str]:
+    """Coerce a ``tags`` value into a real list of strings.
+
+    Entries read from the SQLite index carry ``tags`` as a JSON-encoded
+    TEXT string (e.g. ``'["ivf", "embryo"]'``), but callers may also pass
+    an already-parsed list.  This mirrors the defensive parse used in the
+    digest and report renderers so every export format emits real JSON
+    arrays instead of JSON-encoded strings.
+    """
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else [raw] if raw else []
+        except (json.JSONDecodeError, TypeError):
+            return [raw] if raw else []
+    return []
 
 
 def _export_markdown(
@@ -570,7 +597,7 @@ def _export_json(
             "attribution": e.get("attribution", ""),
             "collected_at": e.get("collected_at"),
             "summary": e.get("summary"),
-            "tags": json.loads(e.get("tags", "[]")) if e.get("tags") else [],
+            "tags": _parse_tags_list(e.get("tags")),
             "relevance_score": e.get("relevance_score"),
             "dedup_status": e.get("dedup_status"),
             "file_path": file_path,
@@ -1018,6 +1045,7 @@ def _export_sitemap(
     domain: str | None,
     entries: list[dict[str, Any]],
     domain_label: str,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Export all entries as an XML sitemap (sitemaps.org protocol).
 
@@ -1026,13 +1054,40 @@ def _export_sitemap(
     An index page is always included via :func:`generate_sitemap`.
     Written to ``exports/<domain>/sitemap.xml``.
 
+    Parameters
+    ----------
+    export_dir:
+        Directory under which the ``<domain>/sitemap.xml`` file is written.
+    domain:
+        Domain filter; ``None`` means all domains.
+    entries:
+        KB entries to include in the sitemap.
+    domain_label:
+        Domain label used in the result dict (``"*"`` when no domain).
+    base_url:
+        Site base URL for the sitemap index page (e.g.
+        ``"https://your-site.example"``).  Required.
+
     Returns
     -------
     dict
         Standard export result dict with keys: ``format``, ``path``,
         ``entries_count``, ``domain``, ``success``.
+
+    Raises
+    ------
+    ValueError
+        If *base_url* is not provided.
     """
     from autoinfo.output.seo import generate_sitemap
+
+    if not base_url:
+        raise ValueError(
+            "Sitemap export requires an explicit base_url (no default is "
+            "assumed). Pass base_url='https://your-site.example' to "
+            "export_kb(format='sitemap', base_url='https://your-site.example'), "
+            "or use the CLI: autoinfo output sitemap --base-url https://your-site.example"
+        )
 
     # Create domain subdirectory under exports/
     domain_dir = export_dir / (domain if domain else "all")
@@ -1066,7 +1121,7 @@ def _export_sitemap(
 
     xml = generate_sitemap(
         domain=domain or "",
-        base_url="https://example.com",
+        base_url=base_url,
         entries=sitemap_entries,
     )
     out_path.write_text(xml, encoding="utf-8")
@@ -1256,7 +1311,7 @@ def _export_agent_json(
             "source_url": e.get("source_url", ""),
             "source_platform": e.get("source_platform", ""),
             "tier": e.get("tier", ""),
-            "tags": e.get("tags", []),
+            "tags": _parse_tags_list(e.get("tags")),
             "relevance_score": e.get("relevance_score"),
             "collected_at": e.get("collected_at", ""),
         })
@@ -1770,6 +1825,66 @@ def _compute_date_range(period: str) -> tuple[str, str]:
     date_from = (today - timedelta(days=days)).isoformat()
     date_to = today.isoformat()
     return date_from, date_to
+
+
+def _filter_entries_by_content_preference(
+    entries: list[dict[str, Any]],
+    content_preference: str,
+) -> list[dict[str, Any]]:
+    """Filter KB entries by the end-user ``content_preference`` tier policy.
+
+    - ``"raw_only"``: keep only 01-Raw tier entries.
+    - ``"processed_only"``: keep only 02-Draft and 03-Wiki tier entries.
+    - ``"both"`` (or any unknown value): return entries unchanged.
+
+    The input list is not mutated.
+    """
+    if content_preference == "raw_only":
+        return [e for e in entries if e.get("tier", "") == "01-Raw"]
+    if content_preference == "processed_only":
+        return [
+            e for e in entries if e.get("tier", "") in ("02-Draft", "03-Wiki")
+        ]
+    return entries
+
+
+def _resolve_content_preference(user_id: str) -> str:
+    """Resolve the end-user ``content_preference`` tier policy (B-001).
+
+    Lazy-loads stored preferences for *user_id* via
+    :func:`autoinfo.user_store.get_preferences` and resolves the effective
+    ``content_preference`` via
+    :func:`autoinfo.user_store.resolve_content_preference`.
+
+    Returns ``"both"`` when *user_id* is empty, the user has no stored
+    preferences, or the stored value is missing/invalid — so callers
+    without a user context keep the pre-B-001 behavior (no filtering).
+    """
+    if not user_id:
+        return "both"
+    try:
+        from autoinfo.user_store import (  # noqa: PLC0415
+            get_preferences,
+            resolve_content_preference,
+        )
+        prefs_result = get_preferences(user_id)
+        if "preferences" in prefs_result:
+            content_preference = resolve_content_preference(
+                prefs_result["preferences"]
+            )
+            logger.debug(
+                "Applied stored content_preference='%s' for user '%s'",
+                content_preference,
+                user_id,
+            )
+            return content_preference
+    except Exception:
+        logger.debug(
+            "Failed to load preferences for user '%s'",
+            user_id,
+            exc_info=True,
+        )
+    return "both"
 
 
 # ---------------------------------------------------------------------------
@@ -2413,9 +2528,12 @@ def generate_digest(
         digest_title_domain = domain
 
     # --- Auto-load preferences from user profile (G10) -----------------------
+    content_preference: str = _resolve_content_preference(user_id)
     if user_id:
         try:
-            from autoinfo.user_store import get_preferences  # noqa: PLC0415
+            from autoinfo.user_store import (  # noqa: PLC0415
+                get_preferences,
+            )
             prefs_result = get_preferences(user_id)
             if "preferences" in prefs_result:
                 stored_prefs: dict[str, Any] = prefs_result["preferences"]
@@ -2523,6 +2641,21 @@ def generate_digest(
                 entry["tags"] = [tags_raw] if tags_raw else []
         elif not isinstance(tags_raw, list):
             entry["tags"] = []
+
+    # --- Content-preference tier filtering (B-001) ---------------------------
+    if content_preference != "both":
+        filtered_entries = _filter_entries_by_content_preference(
+            entries, content_preference
+        )
+        if len(filtered_entries) != len(entries):
+            logger.info(
+                "Excluded %d entries from digest for domain '%s' "
+                "due to content_preference='%s'",
+                len(entries) - len(filtered_entries),
+                domain,
+                content_preference,
+            )
+        entries = filtered_entries
 
     # --- Stale filtering (F51) -----------------------------------------------
     excluded_stale_count = 0
@@ -2865,6 +2998,9 @@ def generate_report(
         report_domains = [domain]
         report_title_domain = domain
 
+    # --- Auto-load content_preference from user profile (B-001) --------------
+    content_preference: str = _resolve_content_preference(user_id)
+
     # --- Freemium access gating (G15) ----------------------------------------
     if user_id and product_template is not None:
         product_access = getattr(product_template, "access_level", "free")
@@ -2905,6 +3041,21 @@ def generate_report(
             entries.extend(domain_entries)
     else:
         entries = kb_store.list_entries(domain, limit=5000)
+
+    # --- Content-preference tier filtering (B-001) ---------------------------
+    if content_preference != "both":
+        filtered_entries = _filter_entries_by_content_preference(
+            entries, content_preference
+        )
+        if len(filtered_entries) != len(entries):
+            logger.info(
+                "Excluded %d entries from report for domain '%s' "
+                "due to content_preference='%s'",
+                len(entries) - len(filtered_entries),
+                domain,
+                content_preference,
+            )
+        entries = filtered_entries
 
     if not entries:
         rendered: str
@@ -4006,6 +4157,14 @@ def localize_content(
         prompt.  When empty in content-ID mode, the domain is inferred
         from the KB entry's metadata.
 
+    Notes
+    -----
+    Single-entry explicit lookup: the caller names the exact content ID
+    (or provides raw text), so the end-user ``content_preference`` tier
+    policy is **not applicable** here.  This is an operator tool, not a
+    personalized end-user output path — preference-based filtering
+    intentionally does not apply.
+
     Returns
     -------
     dict
@@ -4270,6 +4429,7 @@ def generate_tutorial(
     target_audience: str = "student",
     format: str = "markdown",
     custom_instructions: str = "",
+    user_id: str = "",
 ) -> str:
     """Generate a structured tutorial for *domain*, adapted to *target_audience*.
 
@@ -4294,6 +4454,12 @@ def generate_tutorial(
     custom_instructions : str, optional
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    user_id : str, optional
+        Optional end-user ID.  When non-empty, the user's stored
+        ``content_preference`` (from
+        :func:`autoinfo.user_store.get_preferences`) is auto-loaded and
+        KB entries are tier-filtered accordingly (B-001).  When empty
+        (default), behavior is unchanged and all tiers are included.
 
     Returns
     -------
@@ -4320,6 +4486,22 @@ def generate_tutorial(
     # -- Load KB entries --------------------------------------------------
     kb_store = KBStore()
     entries = kb_store.list_entries(domain, limit=5000)
+
+    # --- Content-preference tier filtering (B-001) ---------------------------
+    content_preference: str = _resolve_content_preference(user_id)
+    if content_preference != "both":
+        filtered_entries = _filter_entries_by_content_preference(
+            entries, content_preference
+        )
+        if len(filtered_entries) != len(entries):
+            logger.info(
+                "Excluded %d entries from tutorial for domain '%s' "
+                "due to content_preference='%s'",
+                len(entries) - len(filtered_entries),
+                domain,
+                content_preference,
+            )
+        entries = filtered_entries
 
     if not entries:
         return (
@@ -4534,6 +4716,7 @@ def generate_presentation(
     target_audience: str = "executive",
     format: str = "markdown",
     custom_instructions: str = "",
+    user_id: str = "",
 ) -> str:
     """Generate a slide-based presentation for *topic* within *domain*.
 
@@ -4566,6 +4749,12 @@ def generate_presentation(
     custom_instructions : str, optional
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
+    user_id : str, optional
+        Optional end-user ID.  When non-empty, the user's stored
+        ``content_preference`` (from
+        :func:`autoinfo.user_store.get_preferences`) is auto-loaded and
+        KB entries are tier-filtered accordingly (B-001).  When empty
+        (default), behavior is unchanged and all tiers are included.
 
     Returns
     -------
@@ -4594,6 +4783,22 @@ def generate_presentation(
     # -- Load KB entries related to topic --------------------------------
     kb_store = KBStore()
     entries = kb_store.list_entries(domain, limit=5000)
+
+    # --- Content-preference tier filtering (B-001) ---------------------------
+    content_preference: str = _resolve_content_preference(user_id)
+    if content_preference != "both":
+        filtered_entries = _filter_entries_by_content_preference(
+            entries, content_preference
+        )
+        if len(filtered_entries) != len(entries):
+            logger.info(
+                "Excluded %d entries from presentation for domain '%s' "
+                "due to content_preference='%s'",
+                len(entries) - len(filtered_entries),
+                domain,
+                content_preference,
+            )
+        entries = filtered_entries
 
     # Filter entries by topic relevance (title/summary contains topic terms)
     topic_terms = topic.lower().split()

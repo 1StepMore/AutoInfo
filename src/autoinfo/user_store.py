@@ -18,6 +18,13 @@ from autoinfo.models import Subscription, UserProfile
 
 logger = logging.getLogger(__name__)
 
+# Allowed values for the end-user ``content_preference`` preference
+# (B-001 launch blocker; spec: docs/dev/specs/user-lifecycle-definition.md §2.3).
+CONTENT_PREFERENCE_VALUES: frozenset[str] = frozenset(
+    {"raw_only", "processed_only", "both"}
+)
+CONTENT_PREFERENCE_DEFAULT: str = "both"
+
 _DB_PATH: Path | None = None
 
 
@@ -570,6 +577,19 @@ def check_trial_expiry(end_user_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def resolve_content_preference(preferences: dict[str, Any] | None) -> str:
+    """Return the effective ``content_preference`` from stored preferences.
+
+    Defaults to ``"both"`` when the key is missing or holds an invalid
+    value, so already-stored preference dicts that predate the field
+    (and callers that never set it) keep the pre-B-001 behavior.
+    """
+    raw = (preferences or {}).get("content_preference")
+    if raw in CONTENT_PREFERENCE_VALUES:
+        return raw
+    return CONTENT_PREFERENCE_DEFAULT
+
+
 def update_preferences(
     end_user_id: str,
     preferences: dict[str, Any],
@@ -579,6 +599,11 @@ def update_preferences(
     Deep-merges on top of existing preferences so callers only need
     to pass the keys they want to change (e.g. ``format``,
     ``delivery_channel``, ``timezone``, ``max_items``).
+
+    Validates ``content_preference`` when present: only ``"raw_only"``,
+    ``"processed_only"`` or ``"both"`` are accepted.  An invalid value
+    rejects the whole update with the standard error envelope and
+    nothing is persisted.
     """
     init_db()
     profile = get_profile(end_user_id)
@@ -588,6 +613,23 @@ def update_preferences(
             "message": f"End-user '{end_user_id}' not found",
             "actionable": True,
         }
+
+    invalid_cp = (
+        "content_preference" in preferences
+        and preferences["content_preference"] not in CONTENT_PREFERENCE_VALUES
+    )
+    if invalid_cp:
+        from autoinfo.mcp.errors import ErrorCode, error_response  # noqa: PLC0415
+
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=(
+                f"Invalid content_preference "
+                f"'{preferences['content_preference']}'. "
+                f"Must be one of: {', '.join(sorted(CONTENT_PREFERENCE_VALUES))}"
+            ),
+            actionable=True,
+        )
 
     existing = profile.preferences or {}
     merged = {**existing, **preferences}

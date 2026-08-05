@@ -834,6 +834,157 @@ PLATFORMS: list[dict[str, Any]] = [
     for source_type in sorted(VALID_SOURCE_TYPES)
 ]
 
+# ---------------------------------------------------------------------------
+# Source key requirements (D4: requirement awareness at onboarding)
+# ---------------------------------------------------------------------------
+
+# Canonical env vars per source type.  Mirrors the collector contract:
+# handlers with ``requires_key() -> True`` (ap_api, reuters_mcp, unpaywall,
+# youtube) plus the collect-time key guards (nyt, spotify, quandl, kaggle,
+# core).  Drives the missing-key detection behind ``init_project``
+# next_steps and the ``test_source`` key warning.
+_SOURCE_KEY_REQUIREMENTS: dict[str, list[str]] = {
+    "ap_api": ["AUTOINFO_AP_API_KEY"],
+    "reuters_mcp": ["AUTOINFO_REUTERS_API_KEY"],
+    "unpaywall": ["AUTOINFO_UNPAYWALL_EMAIL"],
+    "core": ["AUTOINFO_CORE_API_KEY"],
+    "youtube": ["AUTOINFO_YOUTUBE_API_KEY"],
+    "nyt": ["AUTOINFO_NYT_API_KEY"],
+    "spotify": ["AUTOINFO_SPOTIFY_CLIENT_ID", "AUTOINFO_SPOTIFY_CLIENT_SECRET"],
+    "quandl": ["AUTOINFO_QUANDL_API_KEY"],
+    "kaggle": ["KAGGLE_USERNAME", "KAGGLE_KEY"],
+}
+
+# Source settings keys that carry a credential directly, satisfying the
+# requirement without any env var.
+_SOURCE_SETTINGS_KEY_KEYS: frozenset[str] = frozenset(
+    {"api_key", "client_id", "client_secret", "token", "password", "secret"}
+)
+
+_REQUIRED_KEYS_DOCS_REF = "docs/dev/required-api-keys.md"
+
+
+def _source_key_status(source_type: str) -> dict[str, Any]:
+    """Report whether *source_type* needs an API key and whether it is configured.
+
+    Returns ``{"key_required", "key_configured", "env_vars", "missing_env_vars"}``.
+    Types without a known key contract report ``key_required: False``.
+    """
+    env_vars = list(_SOURCE_KEY_REQUIREMENTS.get(source_type, []))
+    if not env_vars:
+        return {"key_required": False, "key_configured": True, "env_vars": []}
+    missing = [v for v in env_vars if not os.environ.get(v)]
+    return {
+        "key_required": True,
+        "key_configured": not missing,
+        "env_vars": env_vars,
+        "missing_env_vars": missing,
+    }
+
+
+def _demo_sources_defs(domain: str) -> list[dict[str, Any]]:
+    """Load a demo domain's source definitions as plain dicts (pre-init).
+
+    Returns ``[{"name", "type", "requires_key", "settings"}]``.  Used by
+    ``_detect_missing_source_keys`` when no project config exists yet (the
+    ``init_project`` flow) so onboarding can still see key requirements.
+    """
+    from autoinfo.cli.init import _DEMO_DOMAINS_DIR
+
+    try:
+        import yaml as _yaml
+
+        demo_yaml = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
+        raw = _yaml.safe_load(demo_yaml.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return []
+    defs: list[dict[str, Any]] = []
+    for s in raw.get("sources", []) or []:
+        if not isinstance(s, dict):
+            continue
+        settings_raw = s.get("settings")
+        defs.append(
+            {
+                "name": str(s.get("name", "")),
+                "type": str(s.get("type", "api")),
+                "requires_key": bool(s.get("requires_key", False)),
+                "settings": dict(settings_raw) if isinstance(settings_raw, dict) else {},
+            }
+        )
+    return defs
+
+
+def _detect_missing_source_keys(
+    domain: str,
+    sources_yaml: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Detect sources in *domain* whose required API keys are unconfigured.
+
+    A source is flagged when at least one of its canonical env vars (see
+    ``_SOURCE_KEY_REQUIREMENTS``) is absent from the environment, or when the
+    source declares ``requires_key: true`` in YAML with no known env var to
+    point at.  A credential delivered in the source ``settings`` block
+    satisfies the requirement.  Returns ``[{"name", "type", "env_vars"}]``
+    where ``env_vars`` may be empty for YAML-declared requirements without a
+    canonical env var.
+    """
+    if sources_yaml is not None:
+        try:
+            import yaml as _yaml
+
+            raw = _yaml.safe_load(sources_yaml.read_text(encoding="utf-8")) or {}
+        except Exception:
+            raw = {}
+        source_defs: list[dict[str, Any]] = []
+        for s in raw.get("sources", []) or []:
+            if not isinstance(s, dict):
+                continue
+            settings_raw = s.get("settings")
+            source_defs.append(
+                {
+                    "name": str(s.get("name", "")),
+                    "type": str(s.get("type", "api")),
+                    "requires_key": bool(s.get("requires_key", False)),
+                    "settings": dict(settings_raw) if isinstance(settings_raw, dict) else {},
+                }
+            )
+    else:
+        source_defs = []
+        try:
+            config = _load_config()
+            domain_cfg = _find_domain(config, domain)
+            if domain_cfg is not None:
+                source_defs = [
+                    {
+                        "name": s.name,
+                        "type": s.type,
+                        "requires_key": bool(s.requires_key),
+                        "settings": dict(s.settings or {}),
+                    }
+                    for s in domain_cfg.sources
+                ]
+        except Exception:
+            source_defs = []
+        if not source_defs:
+            source_defs = _demo_sources_defs(domain)
+
+    missing: list[dict[str, Any]] = []
+    for sdef in source_defs:
+        name = str(sdef.get("name", ""))
+        stype = str(sdef.get("type", "api"))
+        settings_raw = sdef.get("settings")
+        settings = settings_raw if isinstance(settings_raw, dict) else {}
+        if any(k in settings for k in _SOURCE_SETTINGS_KEY_KEYS):
+            continue
+        env_vars = list(_SOURCE_KEY_REQUIREMENTS.get(stype, []))
+        if env_vars:
+            unconfigured = [v for v in env_vars if not os.environ.get(v)]
+            if unconfigured:
+                missing.append({"name": name, "type": stype, "env_vars": unconfigured})
+        elif sdef.get("requires_key"):
+            missing.append({"name": name, "type": stype, "env_vars": []})
+    return missing
+
 
 def _handle_list_available_platforms() -> dict[str, Any]:
     """List all supported source platform types with descriptions."""
@@ -944,6 +1095,7 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
             "url": s.url,
             "quality_tier": s.quality_tier,
             "tos_classification": s.tos_classification,
+            "requires_key": s.requires_key,
         }
         for s in domain_cfg.sources
     ]
@@ -1084,7 +1236,7 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
         }
 
     sources = [
-        {"name": s.name, "type": s.type, "url": s.url, "quality_tier": s.quality_tier, "tos_classification": s.tos_classification}
+        {"name": s.name, "type": s.type, "url": s.url, "quality_tier": s.quality_tier, "tos_classification": s.tos_classification, "requires_key": s.requires_key}
         for s in domain_cfg.sources
     ]
     topics = [
@@ -1434,6 +1586,13 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     url_error = _validate_url(url, source_type=type)
     if url_error:
         return {"reachable": False, "error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
+    key_status = _source_key_status(type)
+    key_missing_hint = ""
+    if key_status["key_required"] and not key_status["key_configured"]:
+        key_missing_hint = (
+            f" Source type '{type}' requires an API key ({', '.join(key_status['missing_env_vars'])}), "
+            f"which is not configured; collection may return no items. See {_REQUIRED_KEYS_DOCS_REF}."
+        )
     try:
         if type == "api":
             resp = httpx.get(url, timeout=10.0, follow_redirects=True)
@@ -1449,7 +1608,7 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
         # Suggested extract fields based on source type
         suggested_fields = _suggest_extract_fields(type)
 
-        return {
+        result: dict[str, Any] = {
             "reachable": resp.status_code < 500,
             "status_code": resp.status_code,
             "content_type": content_type_header,
@@ -1457,19 +1616,25 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
             "size_kb": round(size_kb, 1),
             "format": _infer_format(content_type_header, content_preview),
             "suggested_extract_fields": suggested_fields,
+            "key_required": key_status["key_required"],
+            "key_configured": key_status["key_configured"],
         }
+        if key_missing_hint:
+            result["warning"] = key_missing_hint.strip()
+        return result
     except httpx.TimeoutException:
         return {
             "reachable": False,
             "error_code": ErrorCode.TIMEOUT.value,
-            "message": f"Request to '{url}' timed out",
+            "message": f"Request to '{url}' timed out.{key_missing_hint}",
             "actionable": True,
         }
     except Exception as exc:
+        hint = f" {key_missing_hint.strip()}" if key_missing_hint else ""
         return {
             "reachable": False,
             "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
+            "message": f"{exc}{hint}",
             "actionable": True,
         }
 
@@ -1512,6 +1677,7 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
             "url": s.url,
             "quality_tier": s.quality_tier,
             "tos_classification": s.tos_classification,
+            "requires_key": s.requires_key,
         }
         for s in domain_cfg.sources
     ]
@@ -2531,12 +2697,20 @@ def _handle_generate_cross_domain_report(
     period: str = "month",
     target_audience: str = "",
     report_type: str = "standard",
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate a synthesis report across multiple domains.
 
     Delegates to :func:`autoinfo.output.generate_report` with the
     ``domains`` parameter, using the first domain as primary for
     backward-compatible metadata.
+
+    Parameters
+    ----------
+    user_id:
+        Optional end-user ID forwarded to ``generate_report`` so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
     """
     from autoinfo.output import generate_report as _generate_report
 
@@ -2580,6 +2754,7 @@ def _handle_generate_cross_domain_report(
             period=period,
             target_audience=target_audience,
             report_type=report_type,
+            user_id=user_id,
         )
         if format in ("json", "agent"):
             import json as _json
@@ -2644,15 +2819,23 @@ def _handle_generate_tutorial(
     topic: str | None = None,
     format: str = "markdown",
     custom_instructions: str = "",
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate a structured tutorial for *domain*.
 
     Thin wrapper around :func:`autoinfo.output.generate_tutorial`.
+
+    Parameters
+    ----------
+    user_id:
+        Optional end-user ID forwarded to ``generate_tutorial`` so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
     """
     from autoinfo.output import generate_tutorial as _generate_tutorial
 
     try:
-        result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions)
+        result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions, user_id=user_id)
         if format == "agent":
             import json as _json
             return {"success": True, "format": format, "domain": domain, "topic": topic, "content": _json.loads(result)}
@@ -2674,16 +2857,24 @@ def _handle_generate_presentation(
     slides: int = 10,
     format: str = "markdown",
     custom_instructions: str = "",
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate a slide-based presentation for *topic* within *domain*.
 
     Thin wrapper around :func:`autoinfo.output.generate_presentation`.
+
+    Parameters
+    ----------
+    user_id:
+        Optional end-user ID forwarded to ``generate_presentation`` so
+        the user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
     """
     from autoinfo.output import generate_presentation as _generate_presentation
 
     try:
         topic_str = topic or ""
-        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions)
+        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions, user_id=user_id)
         if format == "agent":
             import json as _json
             return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": _json.loads(result)}
@@ -2790,6 +2981,7 @@ def _handle_export_kb(
     scope: str = "domain",
     entry_ids: list[str] | None = None,
     output_path: str | None = None,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Export knowledge base entries to specified format.
 
@@ -2811,6 +3003,9 @@ def _handle_export_kb(
     output_path:
         Optional explicit output path.  When omitted, the file is written
         to the ``exports/`` directory with an auto-generated name.
+    base_url:
+        Site base URL required when ``format`` is ``"sitemap"`` (e.g.
+        ``"https://your-site.example"``).  Ignored for other formats.
 
     Returns
     -------
@@ -2826,7 +3021,12 @@ def _handle_export_kb(
         elif scope == "collection":
             collection_id = "__all__"
 
-        result = _export_kb(domain=domain, format=format, collection_id=collection_id)
+        result = _export_kb(
+            domain=domain,
+            format=format,
+            collection_id=collection_id,
+            base_url=base_url,
+        )
 
         file_path = result.get("path", "")
         if file_path and os.path.isfile(file_path):
@@ -3094,8 +3294,32 @@ def _handle_add_delivery_schedule(
     recipients: list[str] | None = None,
     output_format: str = "html",
     period: str = "weekly",
+    user_id: str = "",
 ) -> dict[str, Any]:
-    """Add a new delivery schedule for periodic output generation + delivery."""
+    """Add a new delivery schedule for periodic output generation + delivery.
+
+    Parameters
+    ----------
+    domain:
+        Domain to generate output for.
+    cron_expression:
+        Cron expression (e.g. ``"0 8 * * 1"`` for Monday 8 AM).
+    output_type:
+        Output type: ``"digest"`` or ``"report"``.
+    channel:
+        Delivery channel name (e.g. ``"email"``, ``"webhook"``).
+    recipients:
+        Recipient identifiers (emails, webhook URLs, …).
+    output_format:
+        Output format: ``"markdown"``, ``"html"``, ``"json"``, ``"agent"``,
+        ``"audio"``, ``"pdf"``.
+    period:
+        Content period: ``"daily"``, ``"weekly"``, ``"monthly"``.
+    user_id:
+        Optional end-user ID whose stored ``content_preference`` is
+        applied when the scheduled output is generated.  Empty by
+        default (no preference lookup).
+    """
     try:
         from autoinfo.delivery.scheduler import (
             VALID_CHANNELS,
@@ -3150,6 +3374,7 @@ def _handle_add_delivery_schedule(
             channel=channel,
             recipients=recipients or [],
             period=period,
+            user_id=user_id,
         )
         scheduler = DeliveryScheduler()
         scheduler.add_schedule(new_schedule)
@@ -3166,6 +3391,7 @@ def _handle_add_delivery_schedule(
                 "channel": new_schedule.channel,
                 "recipients": new_schedule.recipients,
                 "period": new_schedule.period,
+                "user_id": new_schedule.user_id,
                 "enabled": new_schedule.enabled,
                 "created_at": new_schedule.created_at,
             },
@@ -3382,6 +3608,26 @@ def _handle_init_project(
         }
 
     if dry_run:
+        missing_keys = _detect_missing_source_keys(domain, sources_yaml=demo_sources)
+        next_steps = [
+            "configure_llm(api_key='...', provider='...', model='...')",
+            f"collect_sources(domain='{domain}')",
+            f"process_collection(domain='{domain}')",
+        ]
+        for mk in missing_keys:
+            if mk["env_vars"]:
+                envs = ", ".join(mk["env_vars"])
+                next_steps.append(
+                    f"Set {envs} for source '{mk['name']}' (type: {mk['type']}) before collecting from it"
+                )
+            else:
+                next_steps.append(
+                    f"Configure an API key for source '{mk['name']}' (type: {mk['type']}) before collecting from it"
+                )
+        if missing_keys:
+            next_steps.append(
+                f"See {_REQUIRED_KEYS_DOCS_REF} for the full catalog of source API keys and environment variables"
+            )
         return {
             "status": "dry_run",
             "domain": domain,
@@ -3403,11 +3649,7 @@ def _handle_init_project(
                 ".autoinfo/config.yaml",
             ],
             "message": "Dry run — no files were created",
-            "next_steps": [
-                "configure_llm(api_key='...', provider='...', model='...')",
-                f"collect_sources(domain='{domain}')",
-                f"process_collection(domain='{domain}')",
-            ],
+            "next_steps": next_steps,
         }
 
     try:
@@ -3430,6 +3672,26 @@ def _handle_init_project(
                 with open(config_path, "w") as f:
                     yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
+        missing_keys = _detect_missing_source_keys(domain, sources_yaml=demo_sources)
+        next_steps = [
+            "configure_llm(api_key='...', provider='...', model='...')",
+            f"collect_sources(domain='{domain}')",
+            f"process_collection(domain='{domain}')",
+        ]
+        for mk in missing_keys:
+            if mk["env_vars"]:
+                envs = ", ".join(mk["env_vars"])
+                next_steps.append(
+                    f"Set {envs} for source '{mk['name']}' (type: {mk['type']}) before collecting from it"
+                )
+            else:
+                next_steps.append(
+                    f"Configure an API key for source '{mk['name']}' (type: {mk['type']}) before collecting from it"
+                )
+        if missing_keys:
+            next_steps.append(
+                f"See {_REQUIRED_KEYS_DOCS_REF} for the full catalog of source API keys and environment variables"
+            )
         return {
             "status": "success",
             "domain": domain,
@@ -3439,11 +3701,7 @@ def _handle_init_project(
             "llm_model": llm_model or "(default)",
             "llm_base_url": llm_base_url or "(default)",
             "message": f"AutoInfo initialized for '{domain}'",
-            "next_steps": [
-                "configure_llm(api_key='...', provider='...', model='...')",
-                f"collect_sources(domain='{domain}')",
-                f"process_collection(domain='{domain}')",
-            ],
+            "next_steps": next_steps,
             "docs": "See docs/dev/director-user-guide.md for the full human-agent interaction workflow.",
         }
     except Exception as exc:
@@ -4342,6 +4600,43 @@ def _handle_send_to_enduser(
             "actionable": True,
         }
 
+    # --- Content-preference tier guard (B-001) -------------------------------
+    # Block deliveries whose product kind conflicts with the user's stored
+    # content_preference instead of silently bypassing the preference gate.
+    from autoinfo.user_store import (  # noqa: PLC0415
+        resolve_content_preference as _resolve_cp,
+    )
+
+    effective_preference = _resolve_cp(profile.preferences)
+    product_kind = (
+        product_type.lower()
+        if product_type.lower() in ("raw", "processed")
+        else "processed"
+    )
+    preference_conflict: str | None = None
+    if effective_preference == "raw_only" and product_kind != "raw":
+        preference_conflict = (
+            f"User '{end_user_id}' has content_preference='raw_only' "
+            f"(wants only 01-Raw content), but product '{product_id}' "
+            f"is a '{product_kind}' product. "
+            "Use update_preferences() to switch content_preference to "
+            "'both' or 'processed_only', or deliver a raw product instead."
+        )
+    elif effective_preference == "processed_only" and product_kind != "processed":
+        preference_conflict = (
+            f"User '{end_user_id}' has content_preference='processed_only' "
+            f"(wants only 02-Draft/03-Wiki content), but product "
+            f"'{product_id}' is a '{product_kind}' product. "
+            "Use update_preferences() to switch content_preference to "
+            "'both' or 'raw_only', or deliver a processed product instead."
+        )
+    if preference_conflict is not None:
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=preference_conflict,
+            actionable=True,
+        )
+
     channel_name: str = (
         channel
         or profile.delivery_preferences.get("channel")
@@ -4435,6 +4730,7 @@ def _handle_add_alert_rule(
     relevance_threshold: float = 0.0,
     channel: Literal["email", "webhook"] = "email",
     enabled: bool = True,
+    kind: str = "content",
 ) -> dict[str, Any]:
     """Add a new alert rule for a domain."""
     from autoinfo.alerts import add_alert_rule
@@ -4446,6 +4742,7 @@ def _handle_add_alert_rule(
             relevance_threshold=relevance_threshold,
             channel=channel,
             enabled=enabled,
+            kind=kind,
         )
     except Exception as exc:
         return {
@@ -5211,7 +5508,22 @@ def _handle_update_preferences(
     preferences: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge preferences into stored preferences for an end-user."""
-    from autoinfo.user_store import update_preferences
+    from autoinfo.user_store import (  # noqa: PLC0415
+        CONTENT_PREFERENCE_VALUES,
+        update_preferences,
+    )
+
+    if "content_preference" in preferences:
+        cp = preferences["content_preference"]
+        if cp not in CONTENT_PREFERENCE_VALUES:
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=(
+                    f"Invalid content_preference '{cp}'. "
+                    f"Must be one of: {', '.join(sorted(CONTENT_PREFERENCE_VALUES))}"
+                ),
+                actionable=True,
+            )
 
     try:
         return update_preferences(end_user_id=end_user_id, preferences=preferences)
@@ -7662,6 +7974,11 @@ async def list_tools() -> list[Tool]:
                         "default": "standard",
                         "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
                     },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
+                        "default": "",
+                    },
                 },
                 "required": ["domains"],
             },
@@ -7693,6 +8010,11 @@ async def list_tools() -> list[Tool]:
                     "custom_instructions": {
                         "type": "string",
                         "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
                         "default": "",
                     },
                 },
@@ -7736,6 +8058,11 @@ async def list_tools() -> list[Tool]:
                     "custom_instructions": {
                         "type": "string",
                         "description": "Optional custom instructions to tailor the output content",
+                        "default": "",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
                         "default": "",
                     },
                 },
@@ -7839,6 +8166,13 @@ async def list_tools() -> list[Tool]:
                     "output_path": {
                         "type": "string",
                         "description": "Optional explicit output path. Auto-generated when omitted.",
+                    },
+                    "base_url": {
+                        "type": "string",
+                        "description": (
+                            "Site base URL required when format is 'sitemap' "
+                            "(e.g. https://your-site.example); ignored for other formats"
+                        ),
                     },
                 },
                 "required": ["domain", "format"],
@@ -8148,6 +8482,11 @@ async def list_tools() -> list[Tool]:
                         "description": "Content period: daily, weekly, monthly",
                         "default": "weekly",
                         "enum": ["daily", "weekly", "monthly"],
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional end-user ID whose stored content_preference (raw_only / processed_only / both) is applied when generating the scheduled output. Empty = no preference lookup.",
+                        "default": "",
                     },
                 },
                 "required": ["domain", "cron_expression"],
@@ -8711,7 +9050,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="add_alert_rule",
-            description="Create a new threshold-based alert rule for a domain. Triggers notifications when collected items match the configured keywords and relevance threshold",
+            description="Create a new threshold-based alert rule for a domain. Triggers notifications when collected items match the configured keywords and relevance threshold, or when a configured source is missing its required API key (kind=source_credential_missing)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -8740,6 +9079,12 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "Whether the rule is active",
                         "default": True,
+                    },
+                    "kind": {
+                        "type": "string",
+                        "description": "Rule kind: content (item matching) or source_credential_missing (fires when a configured source requires an API key absent from the operator environment)",
+                        "default": "content",
+                        "enum": ["content", "source_credential_missing"],
                     },
                 },
                 "required": ["domain"],

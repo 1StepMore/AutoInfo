@@ -1,31 +1,63 @@
 # KB Graph — verify entity linking, relation queries, and graph export.
+#
+# Self-contained: link_items links two fixture entries created by this
+# scenario (marker source_urls, deterministic entry_ids), never real entries.
+# query_knowledge_graph / knowledge_graph_export are envelope checks scoped to
+# the scenario marker.  cleanup_steps run after every run (pass or fail) and
+# purge the fixtures — SQLiteIndex.delete_entry cascades to the relations
+# table — plus the scenario-unique graph export file, so the relations table
+# and filesystem are left with zero residue.
 name: kb-graph
-description: "KB graph operations: link items, get relations, query graph, export"
+description: "KB graph operations: link items, get relations, query graph, export (self-contained, self-cleaning)"
 category: kb
 requires_env: []
 steps:
-  - name: "link_items creates relation between two entries"
+  - name: "create_kb_entry writes fixture item A to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Graph Scenario Item A"
+      content: "Fixture A for the kb-graph validation scenario."
+      source_url: https://example.com/kb-graph-scenario-item-a
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "create_kb_entry writes fixture item B to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Graph Scenario Item B"
+      content: "Fixture B for the kb-graph validation scenario."
+      source_url: https://example.com/kb-graph-scenario-item-b
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "link_items creates relation between the two fixtures"
     tool: link_items
     arguments:
-      item_a_id: medical-research-general-crispr-gene-editing-advances-in-2026
-      item_b_id: medical-research-general-mrna-vaccine-platform-beyond-covid-19
+      item_a_id: medical-research-general-kb-graph-scenario-item-a
+      item_b_id: medical-research-general-kb-graph-scenario-item-b
       relation_type: related
     expect:
       success: true
       data_has: ["relation_id"]
 
-  - name: "get_item_relations returns relations for an item"
+  - name: "get_item_relations returns relations for fixture A"
     tool: get_item_relations
     arguments:
-      item_id: medical-research-general-crispr-gene-editing-advances-in-2026
+      item_id: medical-research-general-kb-graph-scenario-item-a
     expect:
       success: true
       data_has: ["item_id", "relations", "count"]
 
-  - name: "query_knowledge_graph queries for entities"
+  - name: "query_knowledge_graph queries for scenario entity"
     tool: query_knowledge_graph
     arguments:
-      entity: embryo
+      entity: kb-graph-scenario
       relation: related_to
       domain: medical-research
     expect:
@@ -37,6 +69,47 @@ steps:
     arguments:
       domain: medical-research
       format: json
+      output: knowledge_graph_export_kb_graph_scenario.json
     expect:
       success: true
       data_has: ["domain", "entity_count", "relation_count"]
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only entries
+# whose source_url matches the scenario markers are purged; delete_entry
+# cascades to the relations table so the scenario's relation leaves zero
+# residue.  The scenario-unique graph export file is removed as well.
+cleanup_steps:
+  - name: "purge scenario-created graph fixture entries and export file"
+    kind: cli
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      markers = [('medical-research-general-kb-graph-scenario-item-a',
+                  'https://example.com/kb-graph-scenario-item-a'),
+                 ('medical-research-general-kb-graph-scenario-item-b',
+                  'https://example.com/kb-graph-scenario-item-b')]
+      removed = []
+      for eid, url in markers:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          if meta.get('source_url') != url:
+              print('REFUSE ' + eid)
+              continue
+          res = store.delete_entry(eid)
+          removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-graph-scenario-item-*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('.').glob('knowledge_graph_export_kb_graph_scenario.json*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

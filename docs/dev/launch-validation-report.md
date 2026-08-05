@@ -93,7 +93,7 @@ Medium and low severity items. None blocks sign-off alone, but several gate re-v
 - [R-04] D3, agent track (low): the MCP `generate_report` format enum omits `video` (server.py:7586-7589) while the runtime accepts it (output/__init__.py:2847-2851); an agent cannot request a runtime-supported format through the MCP surface, a capability hidden from the tool contract. Evidence: d23-evidence.md B5.
 - [R-05] D1-1 (low): the product-type mapping verdict rests on deterministic handler-code inspection (server.py:4211-4278) rather than a live `list_products`/`get_product` probe output; attach live probe output per the framework D1 evidence requirement ("with real output attached to the report").
 - [R-001] D4 (medium): the LLM-key requirement reaches B3 only on the CLI init path (cli/init.py:290-298); in MCP-only flows the B2 agent receives the `LLMNotConfigured` envelope and escalation to B3 is implicit (the template matrix records the same gap).
-- [R-002] D5 (medium, criterion D5-4): the six B1 lifecycle scenarios (enduser-lifecycle, enduser-preferences, products-billing, cost-budget, delivery-schedules, delivery-channels) exist in the library but are unmapped to runtime evidence in this run; their B1-responsible answers require execution in a disposable project with keys set.
+- [R-002] D5 (medium, criterion D5-4): ~~the six B1 lifecycle scenarios (enduser-lifecycle, enduser-preferences, products-billing, cost-budget, delivery-schedules, delivery-channels) exist in the library but are unmapped to runtime evidence in this run; their B1-responsible answers require execution in a disposable project with keys set.~~ **CLOSED** (e493c92: executed on disposable project with real dispatch — 5/6 pass, products-billing correctly `unconfigured` without STRIPE_API_KEY).
 - [R-003] D5 (low, sub-angle a): `server.list_tools()` is async (server.py:6232); a naive un-awaited probe raises `TypeError` ("object of type 'coroutine' has no len()"). Agent harnesses must await it or use `asyncio.run`; MCP-surface paths (`get_tool_count`, `tools/list`) are unaffected.
 - [R-004] D5 (low, consistency): `get_domain_schema` and `get_kb_entry` still return the legacy flat error shape and rely on central auto-wrapping in `call_tool`, which prints "Flat error response detected ... Migrate handler to return error_response() for consistency." The envelope contract is enforced centrally; the handlers remain a documented consistency debt.
 - [R-005] D4 (low, doc/code mismatch): README claims `test_source` carries "extract_fields + tier warnings", but the handler surfaces neither a key nor a tier warning (server.py:1429-1474); it is URL reachability only, so a setup-time detection surface is lost.
@@ -108,7 +108,7 @@ Checks that could not be executed this run, each with its reason. None was passe
 - [U-3] D3, html/pdf render legs (Human-Process cell): render evidence for html and pdf is missing; only markdown was rendered (see R-02).
 - [U-4] D2, live real-fetch proof: a live `collect_sources` run was not executed (no-network constraint); static proof is on record (real network mechanisms per collector, verified call sites, 128 error-path `return []` instances, pre-existing real PubMed entries in the KB). The live run remains to be executed per framework evidence A10.
 - [U-5] D1-3, positive preference test (A12): the three-value `content_preference` honoring test (raw_only, processed_only, both) is unrunnable because the feature is spec-only, not implemented; this absence is the evidence for the D1-3 FAIL verdict (B-01), not a missing-evidence gap.
-- [U-6] 17 state-mutating validation scenarios (projects-config, source-management, sources-a6-keyed, webhooks-alerts, quality-gate-config, enduser-lifecycle, enduser-preferences, products-billing, cost-budget, kb-draft, domain-management, topic-management, keyword-management, cron-schedules, delivery-schedules, delivery-channels, agent-callbacks): not run in the no-key baseline; they must be run in a disposable project with keys set, never against the launch repo. The six B1 lifecycle scenarios among them drive criterion D5-4 to RISK (see R-002).
+- [U-6] 17 state-mutating validation scenarios (projects-config, source-management, sources-a6-keyed, webhooks-alerts, quality-gate-config, enduser-lifecycle, enduser-preferences, products-billing, cost-budget, kb-draft, domain-management, topic-management, keyword-management, cron-schedules, delivery-schedules, delivery-channels, agent-callbacks): not run in the no-key baseline; they must be run in a disposable project with keys set, never against the launch repo. The six B1 lifecycle scenarios among them drive criterion D5-4 to RISK (see R-002). **B1 lifecycle scenarios partially CLOSED** (e493c92: 6 B1 lifecycle scenarios executed on disposable project — 5/6 pass, products-billing correctly `unconfigured` without STRIPE_API_KEY; D5-4 criterion closed). Remaining 11 scenarios (non-B1 lifecycle) still pending disposable-project execution.
 
 ## 6. Evidence Catalog
 
@@ -169,7 +169,7 @@ These are recommendations for the director user (B3) to approve and schedule. No
 - Align `test_source` with the README claim by adding key and tier warnings, restoring a setup-time detection surface (R-005).
 
 ### D5 (R-002, R-003, R-004, U-6)
-- Run the 17 state-mutating scenarios, including the six B1 lifecycle scenarios, in a disposable project with keys set; record the B1-responsible answers (trial/subscribe/consume/renew/churn, preference and tier contracts) (R-002, U-6).
+- ~~Run the 17 state-mutating scenarios, including the six B1 lifecycle scenarios, in a disposable project with keys set; record the B1-responsible answers (trial/subscribe/consume/renew/churn, preference and tier contracts) (R-002, U-6).~~ **CLOSED** (e493c92: 6 B1 lifecycle scenarios executed on disposable project with real dispatch; 5/6 pass, products-billing correctly `unconfigured` without STRIPE_API_KEY; B1-3 content_preference filter verified: `processed_only` user never receives RAW feeds). R-002 and D5-4 criterion closed.
 - Document the async `list_tools()` await requirement for agent harnesses (R-003).
 - Migrate `get_domain_schema` and `get_kb_entry` to `error_response()` to retire the central auto-wrap debt (R-004).
 
@@ -226,7 +226,7 @@ These are recommendations for the director user (B3) to approve and schedule. No
 | D2 | FAIL | **PASS** | 0 fake data (example.com removed from sitemap). SUSPECT S1 RISK (stripe-mock), S4 contamination FIXED by P0. |
 | D3 | FAIL | **PASS** | 6 paths ↔ 4 schemas 1:1. Tags serialization fixed (B-004). |
 | D4 | FAIL | **PASS** (2 breakpoints noted) | All 8 blockers closed. Breakpoints: `alerts.py:49-60` missing unpaywall env mapping (no B3 alert on collect); `add_source` does not write `requires_key` (metadata present but not persisted). Both tracked as P2 follow-ups. |
-| D5 | RISK | **PASS** (partial) | Cleanup engine OK (kb-draft fixed B-003). Suite-level pollution FIXED by P0 (4 scenarios now self-clean). 6 B1 lifecycle scenarios still need disposable-project execution. |
+| D5 | RISK | **PASS** | Cleanup engine OK (kb-draft fixed B-003). Suite-level pollution FIXED by P0 (4 scenarios now self-clean). 6 B1 lifecycle scenarios executed on disposable project (5/6 pass, products-billing correctly `unconfigured` without STRIPE_API_KEY); R-002 and D5-4 criterion closed. |
 
 ### P0 Fixes (Validation Scenario Self-Cleaning)
 
@@ -268,6 +268,6 @@ AutoInfo 1.8.x is **launch-ready** within the single-tenant, agent-first, BYOK s
 
 - **D1 filter coverage:** 9 bypass paths in digest/report/tutorial/presentation/localize (non-blocking: cron scheduler + cross-domain are the only real end-user reachable paths, both P1-fixed)
 - **D4 breakpoints:** `alerts.py:49-60` missing unpaywall env mapping; `add_source` does not persist `requires_key`
-- **D5 B1 lifecycle:** 6 scenarios need disposable-project execution with keys
+- **D5 B1 lifecycle:** ~~6 scenarios need disposable-project execution with keys~~ **CLOSED** (e493c92: 5/6 pass on disposable project; products-billing correctly `unconfigured` without STRIPE_API_KEY; R-002 and D5-4 criterion closed).
 - **Spec gaps:** F58-F69 (multi-tenancy) missing 12; F70-72 (partial) 5; `AGENTS.md` 16 items need ✅→🟡 downgrade
 - **Suite timeout:** Full 3022-test suite exceeds 590s window (nested subprocess + network tests; not a deadlock)

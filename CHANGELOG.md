@@ -19,6 +19,11 @@ All notable changes to the AutoInfo project will be documented in this file.
 
 ### Fixed
 - **Bugfix: `import-kb` crashed on markdown frontmatter containing `domain:`** — `import_markdown` passed every frontmatter key through to the KB entry payload, so a source file whose YAML frontmatter included a `domain:` field collided with the importer's own `domain` argument and was written with the wrong (or a duplicated) domain. The frontmatter `domain` key is now excluded from passthrough, mirroring `title`/`language`/`tags`. (F3-caught; `src/autoinfo/importer.py`)
+- **Content preference bypass closure (v1 launch blockers B-01/D1-3 closed)** — The remaining content_preference bypass corners are closed: SMTP delivery now forwards `user_id` from the payload to `send_digest` (`delivery/__init__.py`), the CLI `email send-digest` command gained a `--user-id` flag (`cli/email.py`), `Schedule` gained a persisted `user_id` field that is forwarded at generation time (`cli/cron.py`), and the REST portal surfaces typed preferences (content_preference, QuietHours, identity_anchor) by merging `profile.preferences` over legacy `delivery_preferences` (`api/portal.py`). (e493c92, closes the two 'partially ready' items from the launch review)
+- **B1 lifecycle validation scenarios hardened for self-containment** — 6 scenario YAMLs (`enduser-lifecycle`, `enduser-preferences`, `products-billing`, `cost-budget`, `delivery-schedules`, `delivery-channels`) now self-clean (`cleanup_steps`), gate env-dependent steps (`requires_env: [STRIPE_API_KEY]` on products-billing → correctly reports `unconfigured` without the key), and document their venv/init prerequisites. Verified: 163 targeted tests + 80 validation tests pass; 5/6 B1 scenarios pass on a disposable project via real dispatch. (e493c92)
+
+### Docs
+- **Agent-tester validation runbook** — new `docs/dev/agent-tester-validation.md` (663 lines): end-to-end runbook for an agent-tester to validate AutoInfo feature-by-feature through real MCP/CLI/REST calls, maintained alongside `validation-scenario-contract.md` (authoring) and `launch-validation-framework.md` (grading). (3758b06)
 
 ## Unreleased (2026-08-04)
 

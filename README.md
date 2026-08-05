@@ -30,7 +30,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Multi-channel delivery** — 13 delivery channels: SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push. Email as mandatory fallback. Per-channel rate limiting and message formatting.
 - **End user lifecycle management** — EndUserProfile + Subscription CRUD. Lifecycle state machine: trial → active → suspended → cancelled. Configurable trial and grace periods, transition hooks.
 - **Delivery reliability** — Per-subscription delivery log with SLA tracking (P0 ≤5min, P1 ≤30min, P2 ≤2hr). Retry chain with fallback. Never silently drop products.
-- **End user self-service portal** — CLI-based portal for delivery preference management, product archive access, delivery history browsing.
+- **End user self-service portal** — CLI portal for delivery preference management (show/update) and delivery history; REST API portal (`/portal/{user_id}/...`) surfaces typed preferences (content_preference, QuietHours, identity_anchor) merged over legacy, plus product archive access.
 - **Immutable audit logging** — Append-only audit log for all operations (MCP, CLI, pipeline). Queryable via MCP tool and CLI. Full actor/resource/action tracking.
 - **Structured pipeline logging** — JSON structured logging per pipeline event with daily rotation. Configurable log levels per stage. Filter and tail via CLI.
 - **Per-item traceability** — UUID trace_id propagated from collection through delivery. CLI displays full item journey: sources, gates, KB entries, delivery status.
@@ -114,7 +114,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Multi-channel delivery | ✅ 13 channels: SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push. Email as fallback. |
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled. |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain, fallback channels. |
-| End user portal | ✅ CLI-based self-service: preferences, history, product archive. |
+| End user portal | 🟡 CLI-based self-service: preferences (untyped JSON) + history; REST API portal surfaces typed preferences (content_preference, QuietHours, identity_anchor) via merge with legacy; no typed preference editor or product archive in portal CLI |
 | Immutable audit log | ✅ Append-only audit log for all operations. MCP + CLI query with full filters. |
 | Structured pipeline logging | ✅ JSON structured logging per pipeline event with daily rotation. |
 | Per-item traceability | ✅ UUID trace_id from collection through delivery. CLI trace command. |
@@ -358,7 +358,7 @@ autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates  # report accepts --type --domains
 autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall|health  # health = heartbeat + missed-schedule detection
 autoinfo cefr classify|batch        # CEFR text classification
-autoinfo email send|config          # SMTP email sending
+autoinfo email send-digest --user-id <id>|config  # SMTP email sending (--user-id for content_preference filtering)
 autoinfo keywords add|remove|list|suggest  # Keyword management
 autoinfo knowledge graph            # Knowledge graph export
 autoinfo clean                       # Clean temporary artifacts

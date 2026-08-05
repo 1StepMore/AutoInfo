@@ -402,3 +402,4 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
 - `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes archived gap-audit docs.
 - `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (keystone reference)
+- `docs/dev/agent-tester-validation.md` — End-to-end runbook for agent-testers validating AutoInfo feature-by-feature via real MCP/CLI/REST calls; maintained alongside `validation-scenario-contract.md` (authoring) and `launch-validation-framework.md` (grading)

@@ -45,3 +45,4 @@ backups/
 logs/
 reports/
 knowledge_graph_export.json
+autoinfo.db-wal

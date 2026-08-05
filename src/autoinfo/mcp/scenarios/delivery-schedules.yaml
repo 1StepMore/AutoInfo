@@ -1,9 +1,13 @@
 # Delivery schedule lifecycle — add, list, and remove.
-# NOTE: schedule IDs are random UUIDs so cross-step cleanup in static YAML
-# is not possible.  The remove step validates the error path for a
-# nonexistent schedule.
+# schedule IDs are server-generated random UUIDs and add_delivery_schedule
+# has no name/ID parameter, so cleanup uses a CLI step that lists schedules
+# and removes any that match the exact scenario signature this scenario
+# creates (domain + cron_expression + output_type + channel + format +
+# period).  Only that exact signature is ever removed — real user schedules
+# are never touched.  The cleanup is idempotent and also removes schedules
+# leaked by older scenario versions.
 name: delivery-schedules
-description: "Delivery schedule lifecycle: add, list, and remove (error path)"
+description: "Delivery schedule lifecycle: add, list, and remove (cleanup via CLI)"
 category: delivery
 requires_env: []
 steps:
@@ -35,3 +39,11 @@ steps:
     expect:
       success: false
       error_code: "ScheduleNotFound"
+
+  - name: "cleanup: remove delivery schedules created by this scenario"
+    kind: cli
+    tool: _cli_cleanup
+    command: "python3 -c \"from autoinfo.delivery.scheduler import DeliveryScheduler; s=DeliveryScheduler(); mk=lambda x: x.domain=='medical-research' and x.cron_expression=='0 6 * * 1' and x.output_type=='digest' and x.channel=='file_export' and x.format=='markdown' and x.period=='weekly'; [s.remove_schedule(x.id) for x in s.list_schedules() if mk(x)]; print('CLEANUP_DONE')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["CLEANUP_DONE"]

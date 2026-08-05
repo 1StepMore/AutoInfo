@@ -239,9 +239,146 @@ class TestCheckSourceCredentials:
         with patch("autoinfo.alerts.get_config_path", return_value=config_path):
             assert check_source_credentials("no-such-domain") == []
 
+    def test_unpaywall_missing_key_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """Unpaywall (requires_key collector, D4 gap) with the email env unset is flagged."""
+        monkeypatch.delenv("AUTOINFO_UNPAYWALL_EMAIL", raising=False)
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Unpaywall\n"
+                "        type: unpaywall\n"
+                "        url: https://api.unpaywall.org/v2\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+
+        assert len(missing) == 1
+        assert missing[0]["source"] == "Unpaywall"
+        assert missing[0]["source_type"] == "unpaywall"
+        assert missing[0]["key_ref"] == "AUTOINFO_UNPAYWALL_EMAIL"
+
+    def test_unpaywall_key_set_not_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """Unpaywall is NOT reported when AUTOINFO_UNPAYWALL_EMAIL holds a value."""
+        monkeypatch.setenv("AUTOINFO_UNPAYWALL_EMAIL", "researcher@example.com")
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Unpaywall\n"
+                "        type: unpaywall\n"
+                "        url: https://api.unpaywall.org/v2\n"
+            ),
+        )
+        try:
+            with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+                missing = check_source_credentials("medical-research")
+        finally:
+            monkeypatch.delenv("AUTOINFO_UNPAYWALL_EMAIL", raising=False)
+        assert missing == []
+
+    def test_requires_key_flag_generic_api_reported(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A generic api source with requires_key: true and no canonical env var is flagged."""
+        monkeypatch.delenv("ALPHA_VANTAGE_API_KEY", raising=False)
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Alpha Vantage\n"
+                "        type: api\n"
+                "        url: https://www.alphavantage.co/query\n"
+                "        requires_key: true\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+
+        assert len(missing) == 1
+        assert missing[0]["source"] == "Alpha Vantage"
+        assert missing[0]["source_type"] == "api"
+
+    def test_requires_key_flag_with_env_ref_reported(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """requires_key: true falls back to any unset ${ENV_VAR} ref in settings."""
+        monkeypatch.delenv("WANFANG_APP_KEY", raising=False)
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: wanfang\n"
+                "        type: api\n"
+                "        url: https://api.wanfangdata.com.cn/openwanfang/getQuery\n"
+                "        requires_key: true\n"
+                "        settings:\n"
+                "          headers:\n"
+                "            X-Ca-AppKey: ${WANFANG_APP_KEY}\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+
+        assert len(missing) == 1
+        assert missing[0]["key_ref"] == "WANFANG_APP_KEY"
+
+    def test_requires_key_flag_with_literal_credential_not_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """requires_key: true with a literal credential in settings is never flagged."""
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Alpha Vantage\n"
+                "        type: api\n"
+                "        url: https://www.alphavantage.co/query\n"
+                "        requires_key: true\n"
+                "        settings:\n"
+                "          api_key: abc123literal\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+        assert missing == []
+
 
 # ===================================================================
-# 3. Dispatch: check_source_alerts through the channel abstraction
+# 3. Map consolidation: alerts + mcp.server share ONE source of truth
+# ===================================================================
+
+
+class TestSourceKeyMapConsolidation:
+    """The D4 key map lives in config.py and both consumers use the same object."""
+
+    def test_both_consumers_import_the_same_map(self) -> None:
+        """alerts and mcp.server must reference the identical constant (no drift)."""
+        from autoinfo import alerts
+        from autoinfo.config import SOURCE_KEY_ENV_VARS
+        from autoinfo.mcp import server as mcp_server
+
+        assert alerts.SOURCE_KEY_ENV_VARS is SOURCE_KEY_ENV_VARS
+        assert mcp_server.SOURCE_KEY_ENV_VARS is SOURCE_KEY_ENV_VARS
+        assert len(SOURCE_KEY_ENV_VARS) == 11
+
+    def test_map_covers_all_requires_key_collectors(self) -> None:
+        """Every collector with requires_key()==True is present (unpaywall closed)."""
+        from autoinfo.config import SOURCE_KEY_ENV_VARS
+
+        for stype in ("ap_api", "reuters_mcp", "unpaywall", "youtube"):
+            assert stype in SOURCE_KEY_ENV_VARS
+        # collect-time guards retained
+        for stype in ("email", "email_imap", "nyt", "spotify", "quandl", "kaggle", "core"):
+            assert stype in SOURCE_KEY_ENV_VARS
+
+    def test_old_map_names_removed(self) -> None:
+        """Neither consumer still defines its own private key map."""
+        from autoinfo import alerts
+        from autoinfo.mcp import server as mcp_server
+
+        assert not hasattr(alerts, "_SOURCE_KEY_ENV")
+        assert not hasattr(mcp_server, "_SOURCE_KEY_REQUIREMENTS")
+
+
+# ===================================================================
+# 4. Dispatch: check_source_alerts through the channel abstraction
 # ===================================================================
 
 

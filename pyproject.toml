@@ -138,4 +138,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 # pytest-timeout: bound every test so the suite can never hang indefinitely.
 # Method auto-selects: signal on POSIX (interrupts subprocess waits), thread on Windows.
+# A stuck test fails with a clear "Timeout" message instead of hanging the run.
 timeout = 180
+markers = [
+    "slow: long-running tests (e.g. nested subprocess re-runs of older test files); included by default, CI may opt out with -m 'not slow'",
+]

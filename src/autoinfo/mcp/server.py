@@ -62,7 +62,7 @@ from mcp.types import TextContent, Tool
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
-from autoinfo.config import VALID_SOURCE_TYPES
+from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -838,22 +838,14 @@ PLATFORMS: list[dict[str, Any]] = [
 # Source key requirements (D4: requirement awareness at onboarding)
 # ---------------------------------------------------------------------------
 
-# Canonical env vars per source type.  Mirrors the collector contract:
+# Canonical env vars per source type live in
+# ``autoinfo.config.SOURCE_KEY_ENV_VARS`` — the single source of truth
+# shared with ``alerts.py`` (B3 credential-missing detection) so the two
+# key-maps can never drift apart.  Mirrors the collector contract:
 # handlers with ``requires_key() -> True`` (ap_api, reuters_mcp, unpaywall,
 # youtube) plus the collect-time key guards (nyt, spotify, quandl, kaggle,
-# core).  Drives the missing-key detection behind ``init_project``
-# next_steps and the ``test_source`` key warning.
-_SOURCE_KEY_REQUIREMENTS: dict[str, list[str]] = {
-    "ap_api": ["AUTOINFO_AP_API_KEY"],
-    "reuters_mcp": ["AUTOINFO_REUTERS_API_KEY"],
-    "unpaywall": ["AUTOINFO_UNPAYWALL_EMAIL"],
-    "core": ["AUTOINFO_CORE_API_KEY"],
-    "youtube": ["AUTOINFO_YOUTUBE_API_KEY"],
-    "nyt": ["AUTOINFO_NYT_API_KEY"],
-    "spotify": ["AUTOINFO_SPOTIFY_CLIENT_ID", "AUTOINFO_SPOTIFY_CLIENT_SECRET"],
-    "quandl": ["AUTOINFO_QUANDL_API_KEY"],
-    "kaggle": ["KAGGLE_USERNAME", "KAGGLE_KEY"],
-}
+# core, email, email_imap).  Drives the missing-key detection behind
+# ``init_project`` next_steps and the ``test_source`` key warning.
 
 # Source settings keys that carry a credential directly, satisfying the
 # requirement without any env var.
@@ -870,7 +862,7 @@ def _source_key_status(source_type: str) -> dict[str, Any]:
     Returns ``{"key_required", "key_configured", "env_vars", "missing_env_vars"}``.
     Types without a known key contract report ``key_required: False``.
     """
-    env_vars = list(_SOURCE_KEY_REQUIREMENTS.get(source_type, []))
+    env_vars = list(SOURCE_KEY_ENV_VARS.get(source_type, ()))
     if not env_vars:
         return {"key_required": False, "key_configured": True, "env_vars": []}
     missing = [v for v in env_vars if not os.environ.get(v)]
@@ -921,7 +913,7 @@ def _detect_missing_source_keys(
     """Detect sources in *domain* whose required API keys are unconfigured.
 
     A source is flagged when at least one of its canonical env vars (see
-    ``_SOURCE_KEY_REQUIREMENTS``) is absent from the environment, or when the
+    ``SOURCE_KEY_ENV_VARS``) is absent from the environment, or when the
     source declares ``requires_key: true`` in YAML with no known env var to
     point at.  A credential delivered in the source ``settings`` block
     satisfies the requirement.  Returns ``[{"name", "type", "env_vars"}]``
@@ -976,7 +968,7 @@ def _detect_missing_source_keys(
         settings = settings_raw if isinstance(settings_raw, dict) else {}
         if any(k in settings for k in _SOURCE_SETTINGS_KEY_KEYS):
             continue
-        env_vars = list(_SOURCE_KEY_REQUIREMENTS.get(stype, []))
+        env_vars = list(SOURCE_KEY_ENV_VARS.get(stype, ()))
         if env_vars:
             unconfigured = [v for v in env_vars if not os.environ.get(v)]
             if unconfigured:
@@ -1363,6 +1355,7 @@ def _handle_add_source(
     type: str = "api",
     domain: str = "",
     settings: dict[str, Any] | None = None,
+    requires_key: bool | None = None,
     imap_server: str | None = None,
     imap_port: int | None = None,
     imap_username: str | None = None,
@@ -1377,6 +1370,9 @@ def _handle_add_source(
       ``imap_password``, ``imap_mailbox``
     - *webhook*: ``webhook_secret`` (HMAC shared secret)
     - All types: ``settings`` dict for arbitrary configuration
+    - *requires_key*: whether the source needs a credential.  Defaults to
+      derived from the source type via ``SOURCE_KEY_ENV_VARS`` (a type with
+      canonical env vars is key-requiring).
     """
     # --- Validation -----------------------------------------------------------
     type_error = _validate_source_type(type)
@@ -1428,6 +1424,7 @@ def _handle_add_source(
                     "domain": domain,
                     "quality_tier": existing.quality_tier,
                     "tos_classification": existing.tos_classification,
+                    "requires_key": existing.requires_key,
                 },
                 "created": False,
                 "source_id": f"{domain}:{existing.name}",
@@ -1441,6 +1438,12 @@ def _handle_add_source(
     _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
     tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
 
+    # requires_key: explicit param wins; otherwise derive from the source
+    # type via the consolidated key map (a type with canonical env vars is
+    # key-requiring).
+    if requires_key is None:
+        requires_key = type in SOURCE_KEY_ENV_VARS
+
     from autoinfo.config import SourceConfig
 
     new_source = SourceConfig(
@@ -1449,6 +1452,7 @@ def _handle_add_source(
         url=url,
         quality_tier=quality_tier,
         tos_classification=tos_classification,
+        requires_key=requires_key,
         settings=merged_settings,
     )
     domain_cfg.sources.append(new_source)
@@ -1462,6 +1466,7 @@ def _handle_add_source(
             "domain": domain,
             "quality_tier": quality_tier,
             "tos_classification": tos_classification,
+            "requires_key": requires_key,
         },
         "created": True,
         "source_id": f"{domain}:{name}",
@@ -1490,6 +1495,8 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
                 url=src.get("url", ""),
                 type=src.get("type", "api"),
                 domain=src.get("domain", ""),
+                settings=src.get("settings"),
+                requires_key=src.get("requires_key"),
             )
             if "error_code" in result:
                 errored += 1
@@ -2893,6 +2900,7 @@ def _handle_generate_presentation(
 def _handle_send_email_digest(
     domain: str,
     period: str = "weekly",
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate and send a digest via SMTP email.
 
@@ -2906,6 +2914,10 @@ def _handle_send_email_digest(
     period:
         Digest period: ``"daily"``, ``"weekly"``, ``"monthly"``.
         Defaults to ``"weekly"``.
+    user_id:
+        Optional end-user ID forwarded to the email sender so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
 
     Returns
     -------
@@ -2932,7 +2944,7 @@ def _handle_send_email_digest(
         }
 
     try:
-        result = _send_email(domain=domain, period=period, config=config)
+        result = _send_email(domain=domain, period=period, config=config, user_id=user_id)
         return result
     except RuntimeError as exc:
         return {
@@ -6723,6 +6735,15 @@ async def list_tools() -> list[Tool]:
                         "type": "object",
                         "description": "Optional key-value configuration (stored in SourceConfig.settings)",
                     },
+                    "requires_key": {
+                        "type": "boolean",
+                        "description": (
+                            "Whether this source requires an API key/credential. "
+                            "Defaults to derived from the source type (true for "
+                            "known key-requiring types, e.g. nyt, ap_api, "
+                            "reuters_mcp, unpaywall, youtube)."
+                        ),
+                    },
                     "imap_server": {
                         "type": "string",
                         "description": "Email type only: IMAP server hostname (e.g. imap.gmail.com)",
@@ -6783,6 +6804,15 @@ async def list_tools() -> list[Tool]:
                                 "settings": {
                                     "type": "object",
                                     "description": "Optional key-value configuration (stored in SourceConfig.settings)",
+                                },
+                                "requires_key": {
+                                    "type": "boolean",
+                                    "description": (
+                                        "Whether this source requires an API key/credential. "
+                                        "Defaults to derived from the source type (true for "
+                                        "known key-requiring types, e.g. nyt, ap_api, "
+                                        "reuters_mcp, unpaywall, youtube)."
+                                    ),
                                 },
                                 "imap_server": {
                                     "type": "string",
@@ -8234,6 +8264,16 @@ async def list_tools() -> list[Tool]:
                         "description": "Digest period: daily, weekly, monthly",
                         "default": "weekly",
                         "enum": ["daily", "weekly", "monthly"],
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional end-user ID. When provided, the digest "
+                            "honors the user's stored content_preference "
+                            "(e.g. raw_only / processed_only / both). "
+                            "Empty by default (no preference lookup)."
+                        ),
+                        "default": "",
                     },
                 },
                 "required": ["domain"],

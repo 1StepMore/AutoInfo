@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 import yaml
 
-from autoinfo.config import SourceConfig, get_config_path, load_config
+from autoinfo.config import SOURCE_KEY_ENV_VARS, SourceConfig, get_config_path, load_config
 from autoinfo.delivery import get_channel
 from autoinfo.models import AlertRule, Item, Product, ProductType
 
@@ -41,24 +41,12 @@ ALERTS_FILENAME = "alerts.yaml"
 # (B3 escalation: only the B3 human can supply the key).
 SOURCE_ALERT_KINDS = ("source_credential_missing",)
 
-# Source type -> environment variable NAME that supplies its credential.
-# Derived from the collectors (required-api-keys.md catalog). Only types
-# that genuinely refuse to fetch without the credential are listed. The
+# Source type -> env var names supplying its credential.  Single source of
+# truth lives in ``autoinfo.config.SOURCE_KEY_ENV_VARS`` (shared with
+# ``mcp/server.py`` so the two key-maps can never drift apart).  Only types
+# that genuinely refuse to fetch without the credential are listed.  The
 # values are env var names; raw key values never appear in alerts or
 # callback payloads.
-_SOURCE_KEY_ENV: dict[str, str] = {
-    "ap_api": "AUTOINFO_AP_API_KEY",
-    "nyt": "AUTOINFO_NYT_API_KEY",
-    "quandl": "AUTOINFO_QUANDL_API_KEY",
-    "reuters_mcp": "AUTOINFO_REUTERS_API_KEY",
-    "youtube": "AUTOINFO_YOUTUBE_API_KEY",
-    "spotify": "AUTOINFO_SPOTIFY_CLIENT_ID",
-    "core": "AUTOINFO_CORE_API_KEY",
-    "kaggle": "KAGGLE_KEY",
-    "email": "AUTOINFO_EMAIL_PASSWORD",
-    "email_imap": "AUTOINFO_EMAIL_PASSWORD",
-}
-
 _ENV_REF_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
@@ -388,9 +376,10 @@ def check_source_credentials(domain: str) -> list[dict[str, str]]:
     Detection is deterministic and never touches key values: a source is
     reported missing when its raw (unresolved) ``settings`` carry an
     ``${ENV_VAR}`` reference whose variable is unset/empty, or when its
-    source type is a known key-requiring type (see ``_SOURCE_KEY_ENV``)
-    whose variable is unset/empty and no literal credential is configured
-    in settings.
+    source type is a known key-requiring type (see
+    ``SOURCE_KEY_ENV_VARS``) whose variable is unset/empty and no literal
+    credential is configured in settings, or when the source declares
+    ``requires_key: true`` without a configured credential.
 
     Returns
     -------
@@ -556,6 +545,33 @@ def _extract_key_ref(value: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _first_unset_env_ref(value: Any) -> str | None:
+    """Return the first unset ``${ENV_VAR}`` ref found in *value* (recursive).
+
+    Walks nested dicts/lists so refs buried in e.g. ``settings.headers``
+    are found.  Only full-string refs count (``_ENV_REF_PATTERN``
+    fullmatch); the env var NAME is returned, never a key value.
+    """
+    if isinstance(value, str):
+        ref = _extract_key_ref(value)
+        if ref is not None and not os.environ.get(ref, "").strip():
+            return ref
+        return None
+    if isinstance(value, dict):
+        for v in value.values():
+            found = _first_unset_env_ref(v)
+            if found is not None:
+                return found
+        return None
+    if isinstance(value, (list, tuple)):
+        for v in value:
+            found = _first_unset_env_ref(v)
+            if found is not None:
+                return found
+        return None
+    return None
+
+
 def _missing_credential_for(
     source: SourceConfig, raw_settings: dict[str, Any] | None = None
 ) -> dict[str, str] | None:
@@ -567,8 +583,12 @@ def _missing_credential_for(
        unset/empty. The raw settings are required because ``load_config``
        resolves references to empty strings when the variable is unset.
     2. A literal credential in the resolved settings.
-    3. A known key-requiring source type (``_SOURCE_KEY_ENV``) whose
-       variable is unset/empty.
+    3. A known key-requiring source type (``SOURCE_KEY_ENV_VARS``) with at
+       least one canonical env var unset/empty.
+    4. A source that explicitly declares ``requires_key: true`` (generic
+       ``api`` types have no canonical env var; the flag is the only
+       signal). Falls back to any unset ``${ENV_VAR}`` ref in the raw
+       settings, then to an empty ``key_ref``.
 
     ``key_ref`` is always the environment variable NAME; key values are
     never read into or returned from this function.
@@ -593,12 +613,26 @@ def _missing_credential_for(
         if isinstance(value, str) and value.strip():
             return None  # a literal credential is configured
 
-    env_name = _SOURCE_KEY_ENV.get(source.type)
-    if env_name is not None and not os.environ.get(env_name, "").strip():
+    for env_name in SOURCE_KEY_ENV_VARS.get(source.type, ()):
+        if not os.environ.get(env_name, "").strip():
+            return {
+                "source": source.name,
+                "source_type": source.type,
+                "key_ref": env_name,
+            }
+
+    if source.requires_key and not SOURCE_KEY_ENV_VARS.get(source.type):
+        ref = _first_unset_env_ref(raw)
+        if ref is not None:
+            return {
+                "source": source.name,
+                "source_type": source.type,
+                "key_ref": ref,
+            }
         return {
             "source": source.name,
             "source_type": source.type,
-            "key_ref": env_name,
+            "key_ref": "",
         }
     return None
 
@@ -875,6 +909,11 @@ def _build_source_alert_email_body(
         (
             f"Set the {cred['key_ref']} environment variable (the key value "
             "itself is never transmitted by AutoInfo)."
+            if cred["key_ref"]
+            else (
+                "No canonical environment variable is registered for this "
+                "source type; supply the credential in the source settings."
+            )
         ),
         "",
         "---",

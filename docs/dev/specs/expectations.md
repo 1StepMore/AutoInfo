@@ -35,7 +35,7 @@ Expectations are grouped by journey phase.
 > - **B2 Direct User (Agent Operator)**: An AI agent operates AutoInfo via MCP tools on behalf of the end user.
 > - **B3 Director User (Human Commander)**: A human operator defines domains, configures sources, and monitors the system.
 >
-> **Current status (as of 2026-07-27): 55/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 11/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).** Note: this is a historical snapshot — several items have since progressed (e.g., G14-G16 billing and subscription features, automated notifications, and rate limiting foundations have been implemented post-snapshot).
+> **Current status (as of 2026-07-27): 54/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 12/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).** Note: this is a historical snapshot — several items have since progressed (e.g., G14-G16 billing and subscription features, automated notifications, and rate limiting foundations have been implemented post-snapshot).
 
 ### 3.1 Phase 1: Setup
 
@@ -579,16 +579,16 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Agent-native PROCESSED delivery** | Agent generates PROCESSED products and delivers them directly in conversation via MCP tool output. User says "给我这周的AI商业情报摘要" → agent calls `generate_digest(domain="ai-commercial", period="week")` → returns structured digest as tool result. No separate email client or webhook needed. Agent also proactively pushes: "本周AI商业有新动态，需要我生成简报吗？" |
 | **Stored preference integration** | `UserProfile.delivery_preferences` (F36) feeds into PROCESSED generation: preferred format, timezone, quiet hours, max daily digests, channel priority. When generating for a specific end user, `generate_digest(user_id=usr_xxx)` reads preferences from the user profile and applies them automatically — no per-call `custom_instructions` or `format` needed. User preferences serve as defaults; per-call parameters override them. |
 
-#### F30 — Subscription & Billing Infrastructure 🟡
+#### F30 — Subscription & Billing Infrastructure ✅
 
 *This expectation covers B1.2 Subscribe lifecycle stage — the subscription record created at subscribe time contains the config fields defined in [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2.3. B1.5 Modify Config (config changes) is a separate lifecycle stage covered by F67.*
 
 | UX Detail | Specification |
 |-----------|---------------|
-| **Current status** | Partially implemented. Stripe integration (`create_checkout_session`, `handle_webhook`, subscription status), freemium access gating (`check_access()` in `billing.py`, enforced in `output.py`), and usage metering (CostMeter in `cost.py`) are coded. Stripe webhook REST endpoint and stripe-mock dev setup are pending. |
+| **Current status** | Implemented. Stripe integration (`create_checkout_session`, `handle_webhook`, subscription status), freemium access gating (`check_access()` in `billing.py`, enforced in `output.py`), usage metering (CostMeter in `cost.py`), the Stripe webhook REST endpoint, and stripe-mock dev setup are all coded. **Implemented (2026-08-05):** `POST /api/v1/webhook/stripe` at `src/autoinfo/api/server.py:453` (signature verification; dispatches `checkout.session.completed` / `customer.subscription.updated` / `invoice.paid` / `invoice.payment_failed` to `billing.py:handle_webhook()`); stripe-mock via `docker-compose.yml` + `make stripe-mock`. |
 | **Feature gating** | Partially implemented: `check_access()` enforces free/premium/enterprise tiers in `output.py` for `generate_digest`/`generate_report`. MCP tool layer does not enforce gating (user_id optional). |
 | **Usage metering** | Implemented: CostMeter tracks LLM tokens, storage, API calls per domain/user. `get_enduser_usage()` and `get_enduser_invoice()` map internal units to billable line items. |
-| **Billing integration** | Partially implemented: Stripe checkout sessions and webhook handling coded in `billing.py`. No Stripe webhook REST endpoint exists. stripe-mock dependency not set up for dev. CostMeter not wired to create actual Stripe invoices/charges. |
+| **Billing integration** | Implemented: Stripe checkout sessions and webhook handling coded in `billing.py`; webhook REST endpoint `POST /api/v1/webhook/stripe` in `api/server.py`; stripe-mock dev setup via Docker Compose (`docker-compose.yml`, `make stripe-mock`). Proactive Stripe invoice/charge creation from CostMeter remains future work. |
 | **Delivery tracking** | Implemented: DeliveryLog per subscription with SLA tracking, bounce handling, retry chain. |
 | **Customer portal** | CLI-based portal exists (`autoinfo portal preferences|history`). Web-based portal not implemented. |
 
@@ -705,7 +705,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **MCP tool** | `cost_dashboard(period)` — returns totals by domain, daily trend, top models/sources, and budget status. Agent queries to answer "what did medical research cost me this month?" |
 | **CLI** | `autoinfo cost --domain <domain> --period <period> --group-by <dimension>` — human-direct equivalent. |
 
-#### F42 — External Billing Model 🟡
+#### F42 — External Billing Model ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -714,8 +714,8 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Tier structure** | Free/trial → RAW Pro → PROCESSED Pro → Enterprise tiers specified. `check_access()` enforces in output generation. No subscription tier gating in MCP layer. |
 | **Conversion layer** | Partially implemented: CostMeter maps internal costs to product billing units. Conversion factors domain-configurable in `cost.py`. Not wired to Stripe pricing API. |
 | **Invoice structure** | Partially implemented: `get_enduser_invoice()` itemizes charges. No automated monthly invoice generation or Stripe Invoice API calls. |
-| **MCP tool** | `get_enduser_usage` and `get_enduser_invoice` exist. `get_billing_summary` not implemented. |
-| **CLI** | `autoinfo billing` command not implemented. `autoinfo cost dashboard` and `autoinfo cost allocation` provide cost views. |
+| **MCP tool** | `get_enduser_usage`, `get_enduser_invoice`, and `get_billing_summary` all exist. **Implemented (2026-08-05):** `get_billing_summary` registered at `src/autoinfo/mcp/server.py:9782`, dispatched at line 10560, handler `_handle_get_billing_summary` at line 5397. |
+| **CLI** | `autoinfo billing summary|usage|invoice` implemented; `autoinfo cost dashboard` and `autoinfo cost allocation` also provide cost views. **Implemented (2026-08-05):** `billing` CLI group added. |
 
 #### F43 — End-User Cost Dashboard ✅
 

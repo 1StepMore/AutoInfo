@@ -1,12 +1,24 @@
 # Keyword management tools — list, approve, reject.
-# approve_keyword and reject_keyword work with managed keywords from
-# knowledge/medical-research/_keywords.yaml.
+# approve_keyword and reject_keyword mutate
+# knowledge/medical-research/_keywords.yaml (state + updated_at), so the
+# scenario is self-cleaning: the first step snapshots the file bytes to a
+# temp backup and the final step restores them, leaving _keywords.yaml
+# byte-identical to its pre-run state.  The restore step is a no-op when no
+# backup exists (backup step failed — nothing was mutated).
 # suggest_keywords is LLM-required and covered by the llm-gated scenario.
 name: keyword-management
-description: "Keyword lifecycle: list, approve, reject"
+description: "Keyword lifecycle: list, approve, reject (self-cleaning via backup/restore)"
 category: topic
 requires_env: []
 steps:
+  - name: "backup _keywords.yaml before mutation"
+    kind: cli
+    tool: _cli_cleanup
+    command: "python3 -c \"import shutil; shutil.copyfile('knowledge/medical-research/_keywords.yaml', '/tmp/autoinfo-scenario-keywords-backup.yaml'); print('BACKUP_OK')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["BACKUP_OK"]
+
   - name: "list_keywords returns keywords for medical-research"
     tool: list_keywords
     arguments:
@@ -40,4 +52,10 @@ steps:
     expect:
       success: true
 
-
+  - name: "cleanup: restore _keywords.yaml from backup"
+    kind: cli
+    tool: _cli_cleanup
+    command: "python3 -c \"import os, shutil; b='/tmp/autoinfo-scenario-keywords-backup.yaml'; p='knowledge/medical-research/_keywords.yaml'; (shutil.copyfile(b, p), os.remove(b)) if os.path.isfile(b) else None; print('KEYWORDS_RESTORED')\""
+    expect:
+      exit_code: 0
+      stdout_has: ["KEYWORDS_RESTORED"]

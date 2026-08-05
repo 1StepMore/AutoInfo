@@ -248,6 +248,7 @@ class TestAllV01TestsPass:
         "tests/test_rss_handler.py",
     ]
 
+    @pytest.mark.slow
     def test_all_v01_tests_pass(self) -> None:
         """Run all v0.1 test files as a subprocess and verify exit code 0."""
         project_root = Path(__file__).resolve().parent.parent

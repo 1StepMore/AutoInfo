@@ -61,6 +61,11 @@ def digest(
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, html, json, agent)"
     ),
+    user_id: str = typer.Option(
+        "",
+        "--user-id",
+        help="End-user ID for content-preference filtering (default: all tiers)",
+    ),
 ) -> None:
     """Generate a digest of KB entries for a domain over a given period.
 
@@ -70,7 +75,9 @@ def digest(
     from autoinfo.output import generate_digest
 
     try:
-        result = generate_digest(domain=domain, period=period, format=format)
+        result = generate_digest(
+            domain=domain, period=period, format=format, user_id=user_id
+        )
         typer.echo(result)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -102,6 +109,11 @@ def report(
         "--domains",
         help="Domains for cross-domain report (repeatable, e.g. --domains X --domains Y)",
     ),
+    user_id: str = typer.Option(
+        "",
+        "--user-id",
+        help="End-user ID for content-preference filtering (default: all tiers)",
+    ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.
 
@@ -125,6 +137,7 @@ def report(
             "format": format,
             "target_audience": audience,
             "report_type": report_type,
+            "user_id": user_id,
         }
         if len(domains) >= 2:
             kwargs["domains"] = domains
@@ -239,6 +252,11 @@ def tutorial(
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, agent)"
     ),
+    user_id: str = typer.Option(
+        "",
+        "--user-id",
+        help="End-user ID for content-preference filtering (default: all tiers)",
+    ),
 ) -> None:
     """Generate a structured tutorial adapted to the target audience.
 
@@ -254,6 +272,7 @@ def tutorial(
             collection_id=collection_id,
             target_audience=target_audience,
             format=format,
+            user_id=user_id,
         )
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:
@@ -279,6 +298,11 @@ def presentation(
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, html, mkslides, agent)"
     ),
+    user_id: str = typer.Option(
+        "",
+        "--user-id",
+        help="End-user ID for content-preference filtering (default: all tiers)",
+    ),
 ) -> None:
     """Generate a slide-based presentation on a topic.
 
@@ -294,6 +318,7 @@ def presentation(
             slide_count=slide_count,
             target_audience=target_audience,
             format=format,
+            user_id=user_id,
         )
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:

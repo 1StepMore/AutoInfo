@@ -1,7 +1,18 @@
 # Processing + batch_run — LLM-required operations.  Without
-# AUTOINFO_LLM_API_KEY this scenario reports unconfigured: the Director
-# User is obligated to provide BYOK keys during onboarding.
+# AUTOINFO_LLM_API_KEY this scenario reports unconfigured (no steps run,
+# no state written): the Director User is obligated to provide BYOK keys
+# during onboarding.
 # check_factual/check_translation explicitly enable the G4/G5 quality gates.
+#
+# DISPOSABLE-PROJECT ONLY — NOT self-cleaning by design:
+# process_collection / batch_run consume cached collections/ and write
+# 01-Raw KB entries (Markdown files + SQLite rows + summaries).  Those
+# entries carry the real source_url of the collected items — no scenario
+# marker exists that could distinguish them from entries created by a
+# genuine processing run, so any cleanup attempt would risk deleting real
+# user data.  This scenario MUST only be run in a disposable / scratch
+# project.  In a clean project it is a no-op ('noop' status — no cached
+# items, nothing written).
 name: processing
 description: "LLM-gated processing, batch run, and G4/G5 quality gates"
 category: collection

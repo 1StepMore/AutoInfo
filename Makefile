@@ -11,6 +11,13 @@ dev-install:
 	pip install -e ".[dev]"
 
 test:
+	# Full suite (~3000 tests) can exceed 10 minutes: the single slowest test
+	# is test_backward_compat.py::TestAllV01TestsPass (nested subprocess re-run
+	# of 10 v0.1 test files, ~114s, marked "slow"). pytest-timeout (180s per
+	# test, pyproject.toml) bounds every test so a hang fails fast with a clear
+	# timeout message. Targeted runs are unaffected, e.g.:
+	#   pytest tests/test_cli_commands.py        # single file
+	#   pytest -m "not slow"                     # full suite minus nested re-run
 	pytest -v
 
 test-coverage:

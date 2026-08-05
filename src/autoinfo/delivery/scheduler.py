@@ -400,6 +400,7 @@ def run_delivery_schedules(
                 content=content,
                 recipients=sched.recipients,
                 format=sched.format,
+                user_id=sched.user_id,
             )
             scheduler.mark_run(sched.id)
             entry["ran"] = True
@@ -496,6 +497,7 @@ def _deliver_output(
     content: str | dict[str, Any] | object,
     recipients: list[str],
     format: str,
+    user_id: str = "",
 ) -> None:
     """Deliver generated content via the specified channel.
 
@@ -513,6 +515,10 @@ def _deliver_output(
         List of recipient identifiers.
     format:
         Output format string.
+    user_id:
+        Optional end-user ID forwarded to the email sender so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
 
     Raises
     ------
@@ -527,6 +533,7 @@ def _deliver_output(
             recipients=recipients,
             output_type=output_type,
             format=format,
+            user_id=user_id,
         )
         return
 
@@ -564,12 +571,19 @@ def _deliver_via_email(
     recipients: list[str],
     output_type: str,
     format: str,
+    user_id: str = "",
 ) -> None:
-    """Deliver generated content via SMTP email."""
+    """Deliver generated content via SMTP email.
+
+    For digests the email sender re-renders the digest (so the mail is
+    HTML-formatted), but the schedule's ``user_id`` is threaded through so
+    the user's stored ``content_preference`` is honored during that
+    regeneration — the preference filter is never silently bypassed.
+    """
     if output_type == "digest":
         from autoinfo.email_sender import send_digest as _send_email_digest  # noqa: PLC0415
 
-        _send_email_digest(domain=domain, period="daily", config=None)
+        _send_email_digest(domain=domain, period="daily", config=None, user_id=user_id)
         return
 
     # For report: render content as email body and send

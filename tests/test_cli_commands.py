@@ -484,3 +484,196 @@ class TestInitCommand:
         for sub in _REQUIRED_SUBDIRS:
             d = tmp_path / sub
             assert d.is_dir(), f"expected directory {d} to exist"
+
+
+# ---------------------------------------------------------------------------
+# autoinfo output --user-id forwarding
+# ---------------------------------------------------------------------------
+
+
+class TestOutputCommandUserID:
+    """``--user-id`` is forwarded to the underlying ``generate_*`` functions.
+
+    The output commands import the ``generate_*`` functions inside each
+    command body (``from autoinfo.output import generate_*``), so patching
+    the module attribute is sufficient — the import resolves at call time.
+    Omitting ``--user-id`` must preserve the previous behavior
+    (``user_id=""`` → no content-preference filtering).
+    """
+
+    @patch("autoinfo.output.generate_digest", return_value="# digest")
+    def test_digest_forwards_user_id(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """``output digest --user-id X`` passes user_id to generate_digest."""
+        result = cli_runner.invoke(
+            app,
+            ["output", "digest", "--domain", "medical-research", "--user-id", "user-123"],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            period="weekly",
+            format="markdown",
+            user_id="user-123",
+        )
+
+    @patch("autoinfo.output.generate_digest", return_value="# digest")
+    def test_digest_omitted_user_id_defaults_to_empty(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """Omitting ``--user-id`` keeps prior behavior (user_id="")."""
+        result = cli_runner.invoke(
+            app, ["output", "digest", "--domain", "medical-research"]
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            period="weekly",
+            format="markdown",
+            user_id="",
+        )
+
+    @patch("autoinfo.output.generate_report", return_value="# report")
+    def test_report_forwards_user_id(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """``output report --user-id X`` passes user_id to generate_report."""
+        result = cli_runner.invoke(
+            app,
+            ["output", "report", "--domain", "medical-research", "--user-id", "user-123"],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            collection_id=None,
+            format="markdown",
+            target_audience="",
+            report_type="standard",
+            user_id="user-123",
+        )
+
+    @patch("autoinfo.output.generate_report", return_value="# report")
+    def test_report_omitted_user_id_defaults_to_empty(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """Omitting ``--user-id`` keeps prior behavior (user_id="")."""
+        result = cli_runner.invoke(
+            app, ["output", "report", "--domain", "medical-research"]
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            collection_id=None,
+            format="markdown",
+            target_audience="",
+            report_type="standard",
+            user_id="",
+        )
+
+    @patch("autoinfo.output.generate_report", return_value="# report")
+    def test_report_cross_domain_keeps_user_id(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """Cross-domain ``--domains X --domains Y`` keeps user_id forwarding."""
+        result = cli_runner.invoke(
+            app,
+            [
+                "output", "report",
+                "--domains", "medical-research",
+                "--domains", "ai-commercial",
+                "--user-id", "user-123",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            collection_id=None,
+            format="markdown",
+            target_audience="",
+            report_type="standard",
+            user_id="user-123",
+            domains=["medical-research", "ai-commercial"],
+        )
+
+    @patch("autoinfo.output.generate_tutorial", return_value="# tutorial")
+    def test_tutorial_forwards_user_id(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """``output tutorial --user-id X`` passes user_id to generate_tutorial."""
+        result = cli_runner.invoke(
+            app,
+            ["output", "tutorial", "--domain", "medical-research", "--user-id", "user-123"],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            collection_id=None,
+            target_audience="student",
+            format="markdown",
+            user_id="user-123",
+        )
+
+    @patch("autoinfo.output.generate_tutorial", return_value="# tutorial")
+    def test_tutorial_omitted_user_id_defaults_to_empty(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """Omitting ``--user-id`` keeps prior behavior (user_id="")."""
+        result = cli_runner.invoke(
+            app, ["output", "tutorial", "--domain", "medical-research"]
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            collection_id=None,
+            target_audience="student",
+            format="markdown",
+            user_id="",
+        )
+
+    @patch("autoinfo.output.generate_presentation", return_value="# pres")
+    def test_presentation_forwards_user_id(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """``output presentation --user-id X`` passes user_id to generate_presentation."""
+        result = cli_runner.invoke(
+            app,
+            [
+                "output", "presentation",
+                "--domain", "medical-research",
+                "--topic", "IVF",
+                "--user-id", "user-123",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            topic="IVF",
+            slide_count=10,
+            target_audience="executive",
+            format="markdown",
+            user_id="user-123",
+        )
+
+    @patch("autoinfo.output.generate_presentation", return_value="# pres")
+    def test_presentation_omitted_user_id_defaults_to_empty(
+        self, mock_gen: MagicMock, cli_runner: Any
+    ) -> None:
+        """Omitting ``--user-id`` keeps prior behavior (user_id="")."""
+        result = cli_runner.invoke(
+            app,
+            [
+                "output", "presentation",
+                "--domain", "medical-research",
+                "--topic", "IVF",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_gen.assert_called_once_with(
+            domain="medical-research",
+            topic="IVF",
+            slide_count=10,
+            target_audience="executive",
+            format="markdown",
+            user_id="",
+        )

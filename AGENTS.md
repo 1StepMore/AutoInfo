@@ -330,7 +330,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Multi-channel delivery | ✅ 13 channels: smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push |
 | End user lifecycle | ✅ Profile + Subscription CRUD. State machine: trial→active→suspended→cancelled |
 | Delivery reliability | ✅ Per-subscription DeliveryLog with SLA tracking, retry chain |
-| End user portal | ✅ CLI-based self-service: preferences, history, product archive |
+| End user portal | 🟡 CLI-based self-service: preferences (untyped JSON) + history; no typed preferences (QuietHours/identity_anchor) and no product archive in portal CLI |
 | Immutable audit log | ✅ Append-only; dispatch-level MCP tool calls with whitelisted fields (actor/action/tool/resource/result_code/trace_id); read-probes (health_check, get_tool_count, list_*) excluded; GDPR-exempt (operations.md §2.1) |
 | Structured pipeline logging | ✅ JSON structured logging per pipeline event |
 | Per-item traceability | ✅ UUID trace_id from collection through delivery, CLI trace |
@@ -344,18 +344,18 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Versioned re-collection | ✅ Version tracking with structured diff between versions |
 | Stale content handling | ✅ Search demotion, digest exclusion, never deleted |
 | Domain decay metrics | ✅ Staleness ratio, avg TTL, decay grade (Green/Yellow/Red) |
-| Cross-collection dedup & merge | ✅ URL dedup, cross-source similarity, LLM-assisted merge |
+| Cross-collection dedup & merge | 🟡 URL dedup + cross-source similarity (find_similar_items); no LLM-assisted merge (merge_items in quality.py has only simple/title_first strategies) |
 | Enhanced diagnostics | ✅ `doctor --verbose` with health score, error rates, latency |
 | Prometheus metrics | ✅ `http://localhost:8741/metrics` endpoint (configurable) |
-| Multi-user foundation | ✅ user_id fields on entries (no auth/teams yet) |
+| Multi-user foundation | 🟡 Advisory user_id fields only (MultiUserConfig enabled=False); no auth/teams/RBAC |
 | Export | ✅ Markdown, JSON, SQLite, PDF, CSV, GraphML |
 | Schema versioning | ✅ DB schema version markers in SQLite |
 | Subscription tiers | ✅ Free/Premium/Enterprise tiers with per-tier channels, domains, products, platform limits |
 | Access control | ✅ `check_access()` fast path — free always allowed, premium/enterprise require active paid subscription (G15) |
-| Consumption tracking | ✅ `ConsumptionEvent` auto-record on digest/report delivery (view/open/click), SQLite-backed store |
-| Automated notifications | ✅ Trial-ending reminders (3-day window) + content-ready notifications to end users |
-| Channel health monitoring | ✅ `get_channel_health` MCP tool — health + latency for all 13 delivery channels |
-| Cron health monitoring | ✅ `autoinfo cron health` CLI — heartbeat tracking + missed-schedule detection |
+| Consumption tracking | 🟡 `ConsumptionEvent` auto-record on delivery (SQLite store) exists; no consumption feedback loop |
+| Automated notifications | 🟡 Trial-ending reminders + content-ready notifications; no unified notification bus (F63) |
+| Channel health monitoring | 🟡 `get_channel_health` MCP tool exists (health + latency); no auto-suspend of unhealthy channels |
+| Cron health monitoring | 🟡 Heartbeat tracking + missed-schedule detection (cli/cron.py); no backfill/execution history |
 | SQLite backup | ✅ `make backup` + `scripts/backup-db.sh` / `scripts/restore-db.sh` (keeps last 7 backups) |
 | Job state persistence | ✅ SQLite-backed collection/processing job state survives restarts |
 | Agent callback persistence | ✅ SQLite-backed callback registration survives restarts; pushes canonical `{event, payload, schema_version: 1, trace_id, product_id}` via durable outbox (fire-and-forget, `failed` rows requeued on restart) |

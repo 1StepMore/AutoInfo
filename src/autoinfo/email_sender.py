@@ -22,6 +22,7 @@ def send_digest(
     domain: str,
     period: str = "weekly",
     config: Config | None = None,
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Generate and send an email digest via SMTP.
 
@@ -34,6 +35,10 @@ def send_digest(
     config:
         Optional :class:`Config` override. Auto-detected from project when
         omitted.
+    user_id:
+        Optional end-user ID forwarded to :func:`generate_digest` so the
+        user's stored ``content_preference`` is honored.  Empty by
+        default (no preference lookup).
 
     Returns
     -------
@@ -73,7 +78,11 @@ def send_digest(
     # --- Generate digest content ---
     try:
         digest_md = generate_digest(
-            domain=domain, period=period, format="markdown", llm_config=config
+            domain=domain,
+            period=period,
+            format="markdown",
+            llm_config=config,
+            user_id=user_id,
         )
     except ValueError as exc:
         raise RuntimeError(f"Digest generation failed: {exc}") from exc

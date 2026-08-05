@@ -57,6 +57,30 @@ VALID_SOURCE_TYPES: frozenset[str] = frozenset({
     "youtube",
 })
 
+# Source type -> env var names that supply its credential(s).  Single source
+# of truth for source-key requirements (D4), consumed by ``alerts.py``
+# (B3 credential-missing detection) and ``mcp/server.py`` (key status,
+# ``init_project`` next_steps, ``add_source`` requires_key derivation).
+# Union of the two historical maps (``alerts._SOURCE_KEY_ENV`` and
+# ``mcp.server._SOURCE_KEY_REQUIREMENTS``): every collector whose
+# ``requires_key()`` is True (ap_api, reuters_mcp, unpaywall, youtube) plus
+# the collect-time key guards (nyt, spotify, quandl, kaggle, core) and the
+# email/email_imap guards.  Values are env var NAMES — raw key values never
+# appear here.
+SOURCE_KEY_ENV_VARS: dict[str, tuple[str, ...]] = {
+    "ap_api": ("AUTOINFO_AP_API_KEY",),
+    "nyt": ("AUTOINFO_NYT_API_KEY",),
+    "quandl": ("AUTOINFO_QUANDL_API_KEY",),
+    "reuters_mcp": ("AUTOINFO_REUTERS_API_KEY",),
+    "unpaywall": ("AUTOINFO_UNPAYWALL_EMAIL",),
+    "youtube": ("AUTOINFO_YOUTUBE_API_KEY",),
+    "spotify": ("AUTOINFO_SPOTIFY_CLIENT_ID", "AUTOINFO_SPOTIFY_CLIENT_SECRET"),
+    "core": ("AUTOINFO_CORE_API_KEY",),
+    "kaggle": ("KAGGLE_USERNAME", "KAGGLE_KEY"),
+    "email": ("AUTOINFO_EMAIL_PASSWORD",),
+    "email_imap": ("AUTOINFO_EMAIL_PASSWORD",),
+}
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------

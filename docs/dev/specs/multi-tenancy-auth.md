@@ -9,6 +9,7 @@
 > **Date:** 2026-07-27
 > **Version:** v1.0-draft (Never Designed — spec only, zero implementation)
 > **Status:** 🔴 Never Designed — Type 1 Gap. All content in this document is architectural specification for yet-to-be-built systems.
+> **Forward status:** Planned. F58-F69 (multi-tenancy, auth, rate limiting, admin dashboard, notification framework; see [`expectations.md`](./expectations.md)) are deliberately deferred, not merely un-designed: `user_id` fields exist as advisory foundation only. Full multi-tenancy/auth/RBAC is a roadmap item, not a current capability. Implementation remains gated on the SSE transport milestone.
 >
 > This spec covers four cross-cutting concerns that are entirely absent from the AutoInfo codebase:
 > multi-tenancy data isolation, end-user authentication, API rate limiting, and a web-based admin dashboard.

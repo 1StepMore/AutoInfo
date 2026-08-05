@@ -25,6 +25,7 @@ from autoinfo.mcp.server import (
     _error_response,
     _handle_activate_domain,
     _handle_add_source,
+    _handle_add_sources,
     _handle_collect_sources,
     _handle_deactivate_domain,
     _handle_diagnose_system,
@@ -33,6 +34,7 @@ from autoinfo.mcp.server import (
     _handle_get_collection_progress,
     _handle_get_collection_status,
     _handle_get_domain_config,
+    _handle_get_domain_schema,
     _handle_get_kb_entry,
     _handle_get_processing_progress,
     _handle_health_check,
@@ -1052,6 +1054,152 @@ class TestAddSourceQualityWarning:
         assert result["created"] is False
         assert "warning" in result
         assert "Quality tier 3+" in result["warning"]
+
+
+# ======================================================================
+# _handle_add_source / _handle_add_sources — requires_key derivation (D4)
+# ======================================================================
+
+
+class TestAddSourceRequiresKey:
+    """add_source/add_sources derive and persist requires_key from source type."""
+
+    def test_derives_true_for_key_requiring_type(self, tmp_path: Path) -> None:
+        """A known key-requiring type (nyt) gets requires_key=True without the param."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: news\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_source(
+                name="NYT",
+                url="https://api.nytimes.com/svc",
+                type="nyt",
+                domain="news",
+            )
+
+            assert result["created"] is True
+            assert result["source"]["requires_key"] is True
+
+            schema = _handle_get_domain_schema("news")
+            nyt_schema = next(s for s in schema["sources"] if s["name"] == "NYT")
+            assert nyt_schema["requires_key"] is True
+
+    def test_derives_false_for_keyless_type(self, tmp_path: Path) -> None:
+        """A keyless type (rss) defaults to requires_key=False."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: news\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_source(
+                name="feed",
+                url="https://example.com/feed",
+                type="rss",
+                domain="news",
+            )
+
+        assert result["created"] is True
+        assert result["source"]["requires_key"] is False
+
+    def test_explicit_param_overrides_derivation(self, tmp_path: Path) -> None:
+        """Generic api source with requires_key=True persists; get_domain_schema shows it."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: fin\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_source(
+                name="alpha-vantage",
+                url="https://www.alphavantage.co/query",
+                type="api",
+                domain="fin",
+                requires_key=True,
+            )
+
+            assert result["created"] is True
+            assert result["source"]["requires_key"] is True
+
+            schema = _handle_get_domain_schema("fin")
+            source_schema = next(
+                s for s in schema["sources"] if s["name"] == "alpha-vantage"
+            )
+            assert source_schema["requires_key"] is True
+
+    def test_add_sources_batch_forwards_settings_and_requires_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Batch add forwards per-source settings and requires_key to add_source."""
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: fin\n"
+            "    active: true\n"
+            "    sources: []\n"
+            "    topics: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = _handle_add_sources(
+                sources=[
+                    {
+                        "name": "nytimes",
+                        "url": "https://api.nytimes.com/svc",
+                        "type": "nyt",
+                        "domain": "fin",
+                    },
+                    {
+                        "name": "alpha",
+                        "url": "https://www.alphavantage.co/query",
+                        "type": "api",
+                        "domain": "fin",
+                        "requires_key": True,
+                        "settings": {"query_param": "function"},
+                    },
+                ]
+            )
+
+            assert result["total"] == 2
+            assert result["succeeded"] == 2
+
+            schema = _handle_get_domain_schema("fin")
+            by_name = {s["name"]: s for s in schema["sources"]}
+            assert by_name["nytimes"]["requires_key"] is True  # derived from type
+            assert by_name["alpha"]["requires_key"] is True  # explicit param
+            assert by_name["alpha"]["url"] == "https://www.alphavantage.co/query"
+
+            from autoinfo.config import load_config
+
+            config = load_config(config_path)
+            alpha = next(s for s in config.domains[0].sources if s.name == "alpha")
+            assert alpha.settings.get("query_param") == "function"
 
 
 # ======================================================================

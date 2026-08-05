@@ -1,0 +1,69 @@
+# M2 source-type gap closure — add_source accepts the three new registry
+# types (akshare, sec_edgar, edx_sitemap) end-to-end, then remove_source
+# cleans up. Structural only (no network): add-then-remove within the same
+# scenario leaves the project config exactly as found (source-management
+# pattern). The type values are validated against VALID_SOURCE_TYPES (29).
+name: sources-gap-closure
+description: "M2 — add/remove sources for the new registry types (akshare, sec_edgar, edx_sitemap)"
+category: source
+requires_env: []
+steps:
+  - name: "add_source accepts akshare type"
+    tool: add_source
+    arguments:
+      name: __val_akshare__
+      url: "https://akshare.akfamily.xyz/"
+      type: akshare
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "add_source accepts sec_edgar type"
+    tool: add_source
+    arguments:
+      name: __val_sec_edgar__
+      url: "https://www.sec.gov/edgar/browse/?action=getcompany"
+      type: sec_edgar
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "add_source accepts edx_sitemap type"
+    tool: add_source
+    arguments:
+      name: __val_edx_sitemap__
+      url: "https://www.edx.org/sitemap.xml"
+      type: edx_sitemap
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "remove_source cleans up akshare test source"
+    tool: remove_source
+    arguments:
+      source_id: "medical-research:__val_akshare__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]
+
+  - name: "remove_source cleans up sec_edgar test source"
+    tool: remove_source
+    arguments:
+      source_id: "medical-research:__val_sec_edgar__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]
+
+  - name: "remove_source cleans up edx_sitemap test source"
+    tool: remove_source
+    arguments:
+      source_id: "medical-research:__val_edx_sitemap__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]

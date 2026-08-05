@@ -124,6 +124,7 @@ def reject_draft(
 
 @app.command(name="list-tiers")
 def list_tiers(
+    ctx: typer.Context,
     domain: str = typer.Option(
         ..., "--domain", help="Domain to list tiers for"
     ),
@@ -132,6 +133,7 @@ def list_tiers(
     ),
 ) -> None:
     """List available KB tiers with entry counts for a domain."""
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     store = KBStore()
     tiers = ["01-Raw", "02-Draft", "03-Wiki"]
     tier_info = []
@@ -186,6 +188,7 @@ def wiki_links(
 
 @app.command()
 def decay(
+    ctx: typer.Context,
     domain: str = typer.Option(
         ..., "--domain", help="Domain to compute decay metrics for"
     ),
@@ -201,6 +204,7 @@ def decay(
     Shows staleness ratio, average TTL remaining, collection freshness,
     decay grade (🟢🟡🔴), and re-collection suggestions.
     """
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     store = KBStore()
     result = store.get_domain_decay(domain=domain, ttl_days=ttl_days)
 
@@ -247,6 +251,7 @@ def promote(
 
 @app.command()
 def history(
+    ctx: typer.Context,
     entry_id: str = typer.Argument(..., help="Entry ID to show version history for"),
     show_git: bool = typer.Option(
         False, "--show-git", help="Show git commit SHAs alongside version history"
@@ -256,6 +261,7 @@ def history(
     ),
 ) -> None:
     """Show version history for a KB entry."""
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     store = KBStore()
     versions = store.get_entry_history(entry_id=entry_id)
     if not versions:
@@ -282,6 +288,7 @@ def history(
 
 @app.command()
 def recommend(
+    ctx: typer.Context,
     query: str = typer.Option("", "--query", help="Recommendation query"),
     domain: str = typer.Option("", "--domain", help="Domain to recommend from"),
     limit: int = typer.Option(10, "--limit", min=1, help="Max recommendations"),
@@ -294,6 +301,7 @@ def recommend(
     When no query is given, returns recent items.
     Short queries (<3 chars) fall back to recent items.
     """
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     from autoinfo.recommend import ContentBasedEngine
 
     engine = ContentBasedEngine()

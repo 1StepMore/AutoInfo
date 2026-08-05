@@ -27,6 +27,7 @@ METRIC_NAMES: dict[str, str] = {
     "active_users": "Number of active (non-cancelled) end-user profiles",
     "storage_bytes": "Total bytes used by knowledge base Markdown files",
     "billing_stripe_sync_failures_total": "Total number of stripe_customer_id persistence failures in billing sync",
+    "delivery_failures_total": "Total number of failed agent callback deliveries (durable outbox)",
 }
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,9 @@ def get_metrics() -> dict[str, Any]:
     # --- billing_stripe_sync_failures_total --------------------------------
     billing_stripe_sync_failures_total = _count_stripe_sync_failures()
 
+    # --- delivery_failures_total -------------------------------------------
+    delivery_failures_total = _get_delivery_failures()
+
     return {
         "items_collected_total": items_collected_total,
         "items_processed_total": items_processed_total,
@@ -78,6 +82,7 @@ def get_metrics() -> dict[str, Any]:
         "active_users": active_users,
         "storage_bytes": storage_bytes,
         "billing_stripe_sync_failures_total": billing_stripe_sync_failures_total,
+        "delivery_failures_total": delivery_failures_total,
     }
 
 
@@ -247,5 +252,15 @@ def _count_stripe_sync_failures() -> int:
         from autoinfo.billing import _stripe_sync_failures
 
         return _stripe_sync_failures
+    except Exception:
+        return 0
+
+
+def _get_delivery_failures() -> int:
+    """Return the in-memory counter of failed agent callback deliveries."""
+    try:
+        from autoinfo.agent_callback import get_delivery_failures
+
+        return get_delivery_failures()
     except Exception:
         return 0

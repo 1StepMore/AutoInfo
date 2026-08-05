@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,15 @@ from autoinfo.output.video import (
 )
 
 pytest.importorskip("PIL")
+
+# TRIAGE (env-dep, plan M0T3): the whole module also needs the ffmpeg binary —
+# PIL gating (#114, line above) is partial. Complete it: skip the module when
+# ffmpeg is not on PATH (root cause: autoinfo/output/video.py uses _find_binary).
+if shutil.which("ffmpeg") is None:
+    pytest.skip(
+        "ffmpeg not installed — video rendering tests require ffmpeg on PATH",
+        allow_module_level=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -37,7 +37,7 @@ from autoinfo.process import run_processing
 def mock_litellm_with_custom() -> MagicMock:
     """Mock litellm that includes custom fields in the response."""
     m = MagicMock()
-    m.completion.return_value = MagicMock(
+    response = MagicMock(
         choices=[MagicMock(message=MagicMock(content=json.dumps({
             "tl_dr": (
                 "Time-lapse embryo imaging improves live birth rates "
@@ -55,6 +55,12 @@ def mock_litellm_with_custom() -> MagicMock:
             "findings": "Significant improvement in live birth rate",
         })))]
     )
+    # TRIAGE #63 (regression): cost-meter MagicMock binding
+    # (`process.py:690` → `cost.py:159`) — real int token counters.
+    response.usage.prompt_tokens = 100
+    response.usage.completion_tokens = 50
+    response.usage.total_tokens = 150
+    m.completion.return_value = response
     return m
 
 
@@ -62,7 +68,7 @@ def mock_litellm_with_custom() -> MagicMock:
 def mock_litellm_default_only() -> MagicMock:
     """Mock litellm that returns ONLY default fields (no custom)."""
     m = MagicMock()
-    m.completion.return_value = MagicMock(
+    response = MagicMock(
         choices=[MagicMock(message=MagicMock(content=json.dumps({
             "tl_dr": "Default extraction only.",
             "key_points": ["Point one", "Point two"],
@@ -70,6 +76,10 @@ def mock_litellm_default_only() -> MagicMock:
             "relevance_score": 50,
         })))]
     )
+    response.usage.prompt_tokens = 100
+    response.usage.completion_tokens = 50
+    response.usage.total_tokens = 150
+    m.completion.return_value = response
     return m
 
 

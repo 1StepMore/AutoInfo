@@ -46,6 +46,40 @@ sources:
     rate_limit: 10
     fetch_depth: abstract
 
+  - name: apple-music
+    type: api
+    url: https://rss.marketingtools.apple.com/api/v2/us/music/most-recent/25/explicit.json
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+    settings:
+      json_path: "$.feed.results"
+      field_mapping:
+        id: id
+        title: "artistName + name"
+        source_url: url
+        content: content
+
+  - name: pitchfork
+    type: rss
+    url: https://pitchfork.com/feed/feed-news/rss
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: billboard
+    type: rss
+    url: https://www.billboard.com/feed/
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
 topics:
   - name: "Streaming Platforms"
     keywords:

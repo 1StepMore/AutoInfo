@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Topics CLI — manage tracked topics.
 
 Usage::
@@ -7,8 +5,13 @@ Usage::
     autoinfo topics add --domain medical --name "IVF breakthroughs" --keywords IVF,embryo
     autoinfo topics list --domain medical
     autoinfo topics remove --domain medical --topic-id "IVF breakthroughs"
+    autoinfo topic-group add --domain medical --group fertility --topic IVF
+    autoinfo topic-group remove --domain medical --group fertility --topic IVF
 """
 
+from __future__ import annotations
+
+import builtins
 
 import typer
 
@@ -22,6 +25,11 @@ from autoinfo.config import (
 )
 
 app = typer.Typer(help="Manage tracked topics")
+
+_NO_CONFIG_MSG = (
+    "Error: No configuration file found. Run 'autoinfo init' first. "
+    "See docs/dev/required-api-keys.md for API key setup."
+)
 
 
 @app.command()
@@ -123,6 +131,148 @@ def remove(
 
     typer.echo(f"Error: Topic '{topic_id}' not found in domain '{domain}'", err=True)
     raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# topic-group subcommand (autoinfo topic-group add|remove)
+#
+# Mirrors the MCP tools topic_group_add / topic_group_remove
+# (src/autoinfo/mcp/server.py:_handle_topic_group_add / _handle_topic_group_remove).
+# Parameter mapping: domain -> --domain, group_name -> --group,
+# topic_names -> --topic (repeatable).  --domain defaults to the first
+# configured domain when omitted.
+# ---------------------------------------------------------------------------
+
+
+topic_group_app = typer.Typer(
+    help="Manage topic groups (mirrors MCP topic_group_add/topic_group_remove)"
+)
+app.add_typer(topic_group_app, name="topic-group")
+
+
+@topic_group_app.command("add")
+def topic_group_add(
+    domain: str | None = typer.Option(
+        None,
+        "--domain",
+        help="Domain the topics belong to (default: first configured domain)",
+    ),
+    group: str = typer.Option(..., "--group", help="Group name to assign (MCP group_name)"),
+    topic: builtins.list[str] = typer.Option(
+        ..., "--topic", help="Topic name to assign to the group (repeatable; MCP topic_names)"
+    ),
+) -> None:
+    """Assign a group to one or more topics (mirrors MCP topic_group_add)."""
+    ensure_config_exists()
+    config_path = get_config_path()
+    if config_path is None:
+        typer.echo(_NO_CONFIG_MSG, err=True)
+        raise typer.Exit(code=1)
+
+    config = load_config(config_path)
+    domain_cfg = _resolve_domain(config, domain)
+    if domain_cfg is None:
+        typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
+        raise typer.Exit(code=1)
+
+    assigned: builtins.list[str] = []
+    not_found: builtins.list[str] = []
+    for name in topic:
+        found = False
+        for t in domain_cfg.topics:
+            if t.name == name:
+                t.group = group
+                assigned.append(name)
+                found = True
+                break
+        if not found:
+            not_found.append(name)
+
+    if assigned:
+        save_config(config, config_path)
+
+    for name in assigned:
+        typer.echo(f"Assigned topic '{name}' to group '{group}' in domain '{domain_cfg.name}'")
+    for name in not_found:
+        typer.echo(f"Topic '{name}' not found in domain '{domain_cfg.name}' (skipped)")
+    if not assigned:
+        typer.echo(
+            f"No topics assigned to group '{group}' in domain '{domain_cfg.name}'"
+        )
+
+
+@topic_group_app.command("remove")
+def topic_group_remove(
+    domain: str | None = typer.Option(
+        None,
+        "--domain",
+        help="Domain the topics belong to (default: first configured domain)",
+    ),
+    group: str = typer.Option(..., "--group", help="Group name to clear (MCP group_name)"),
+    topic: builtins.list[str] = typer.Option(
+        [],
+        "--topic",
+        help=(
+            "Optional topic filter (repeatable). When omitted, clears the "
+            "group from every topic (MCP topic_group_remove behavior)"
+        ),
+    ),
+) -> None:
+    """Remove a group assignment from topics (mirrors MCP topic_group_remove)."""
+    ensure_config_exists()
+    config_path = get_config_path()
+    if config_path is None:
+        typer.echo(_NO_CONFIG_MSG, err=True)
+        raise typer.Exit(code=1)
+
+    config = load_config(config_path)
+    domain_cfg = _resolve_domain(config, domain)
+    if domain_cfg is None:
+        typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
+        raise typer.Exit(code=1)
+
+    cleared: builtins.list[str] = []
+    skipped: builtins.list[str] = []
+
+    if topic:
+        # Filtered remove: only clear the named topics, and only when they
+        # actually carry the group.
+        for name in topic:
+            target = None
+            for t in domain_cfg.topics:
+                if t.name == name:
+                    target = t
+                    break
+            if target is None:
+                skipped.append(f"topic '{name}' not found")
+            elif target.group != group:
+                skipped.append(f"topic '{name}' is not in group '{group}'")
+            else:
+                target.group = ""
+                cleared.append(name)
+    else:
+        # Unfiltered remove: clear the group from every topic carrying it.
+        for t in domain_cfg.topics:
+            if t.group == group:
+                t.group = ""
+                cleared.append(t.name)
+
+    if cleared:
+        save_config(config, config_path)
+
+    for name in cleared:
+        typer.echo(f"Removed group '{group}' from topic '{name}' in domain '{domain_cfg.name}'")
+    for note in skipped:
+        typer.echo(f"Skipped {note} in domain '{domain_cfg.name}'")
+    if not cleared:
+        if topic:
+            typer.echo(
+                f"No topics in group '{group}' were removed in domain '{domain_cfg.name}'"
+            )
+        else:
+            typer.echo(
+                f"No topics are assigned to group '{group}' in domain '{domain_cfg.name}'"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -246,4 +396,21 @@ def _find_domain(config: object, name: str) -> DomainConfig | None:
         for d in config.domains:
             if d.name == name:
                 return d
+    return None
+
+
+def _resolve_domain(config: object, name: str | None) -> DomainConfig | None:
+    """Return the domain config for *name*; when *name* is None, the first
+    configured domain; or ``None`` if no match/no domains."""
+    from autoinfo.config import Config
+
+    if not isinstance(config, Config):
+        return None
+    if name:
+        for d in config.domains:
+            if d.name == name:
+                return d
+        return None
+    if config.domains:
+        return config.domains[0]
     return None

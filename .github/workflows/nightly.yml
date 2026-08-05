@@ -1,0 +1,58 @@
+# Nightly full-suite run (M0T9).
+#
+# Runs the ENTIRE test suite (excluding `real_api`) on a schedule so slow,
+# env-sensitive, or order-dependent failures surface outside the push/PR CI.
+# SEQUENTIAL only: the CWD-fixture tests (test_bug_40 etc.) are not
+# xdist-safe, so no pytest-xdist / -n flags may be added here.
+#
+# Note on env keys: none required. Env-dependent tests are skip-gated
+# (requires_optional_dep / requires_llm_key in tests/conftest.py) or report
+# unconfigured, so this workflow runs with a bare runner environment.
+
+name: Nightly full suite
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: Full suite (sequential)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libpango-1.0-0
+
+      # FULL extra set so the nightly exercises the pdf/tts/video/ebook
+      # paths (skip-gates only kick in where deps are truly missing).
+      # NOTE: explicit extras, NOT `[all]` (all == this exact set anyway),
+      # and NOT `stripe` — stripe is a CORE dependency, not an extra
+      # (a nonexistent extra makes pip fail the install).
+      # akshare extra lands with M2T19 — add `,akshare` here when it exists
+      - name: Install package
+        run: pip install -e ".[dev,web,pdf,tts,video,ebook]"
+
+      - name: Run full test suite (sequential)
+        run: |
+          pytest -m "not real_api" -q --junitxml=nightly-junit.xml 2>&1 | tee nightly-pytest.log
+        # --timeout (180s) from pyproject applies; no xdist here by design.
+
+      - name: Upload triage artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-failure-triage
+          path: |
+            nightly-junit.xml
+            nightly-pytest.log
+            tests/TRIAGE.md
+          if-no-files-found: error

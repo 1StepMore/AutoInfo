@@ -1,0 +1,83 @@
+name: Drift Guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  grep-assert:
+    name: Doc drift guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # M7T55: grep-assert drift-guard. Scans docs/ + README.md + AGENTS.md for
+      # banned strings that must never reappear (counts/claims drifted from code
+      # and were cleaned by M7T54). Exits non-zero on any hit — the guard turns
+      # RED if a stale string is reintroduced.
+      #
+      # Whitelisted excludes (rationale):
+      #   docs/archive/      — historical snapshots legitimately preserve old
+      #                       strings (M7T17 documented the preserved "stdio or
+      #                       SSE" hit in founder-expectations-pre-split.md:146).
+      #   docs/dev/epics/    — dated point-in-time audit verdicts (e.g.
+      #                       issue-97-coverage-verdict.md, Audit date
+      #                       2026-08-04) record the state AS OF that audit;
+      #                       rewriting them would falsify history
+      #                       (doc-manager-skill §1.7). The only remaining
+      #                       "44 scenarios" hits live there, dated.
+      - name: Scan for banned strings
+        run: |
+          set -uo pipefail
+          EXCLUDE="--exclude-dir=archive --exclude-dir=epics"
+          FAILED=0
+
+          # --- Fixed-string banned patterns -------------------------------
+          # (aligned with plan M7T55 + M7T54 cleanup list)
+          mapfile -t BANNED < <(printf '%s\n' \
+            'get_cost_report' \
+            '114+ tools' \
+            '139 tools' \
+            '12 canonical' \
+            'kb/{domain}' \
+            'autoinfo configure' \
+            'stdio or SSE' \
+            'init/collect/process/healthy/degraded' \
+            '{callback_event, product}' \
+          )
+          for pat in "${BANNED[@]}"; do
+            if grep -rInF $EXCLUDE "$pat" docs/ README.md AGENTS.md; then
+              echo "::error::banned string found: $pat"
+              FAILED=1
+            fi
+          done
+
+          # --- (13) LLM-guard count context --------------------------------
+          # Stale "(13)" was the LLM-required-tools count in the dispatch-guard
+          # comment (server.py, M1T17 → "(14)"). Only flag "(13)" in LLM/tools
+          # proximity so an innocent "(13)" elsewhere doesn't false-positive.
+          if grep -rInE $EXCLUDE 'LLM[^)]*\(13\)|\(13\)[^)]*LLM' docs/ README.md AGENTS.md; then
+            echo "::error::banned string found: (13) LLM-guard count context"
+            FAILED=1
+          fi
+
+          # --- == 6 template-count residue in tests/test_mcp_v2.py ---------
+          # M4T42/M5T41 bumped template count 6 -> 8; `== 6` must not return.
+          if grep -rn "== 6" tests/test_mcp_v2.py; then
+            echo "::error::banned string found: == 6 template-count residue in test_mcp_v2"
+            FAILED=1
+          fi
+
+          # --- Stale count guard: "44 scenarios" must be 0 -----------------
+          # Validation scenarios 44 -> 47 (M7T52). Any current-state doc still
+          # saying "44 scenarios" is stale.
+          if grep -rInF $EXCLUDE "44 scenarios" docs/ README.md AGENTS.md; then
+            echo "::error::stale count found: '44 scenarios' (current: 47)"
+            FAILED=1
+          fi
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::drift guard: banned strings present — docs drifted from code"
+            exit 1
+          fi
+          echo "drift guard CLEAN"

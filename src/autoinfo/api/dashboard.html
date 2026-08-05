@@ -194,6 +194,13 @@
       ));
     }
 
+    // REST API wraps every success payload in {success: true, data: ...}
+    // (M1 envelope contract). Unwrap for backwards-compatible rendering.
+    function unwrap(data) {
+      if (data && typeof data === "object" && data.success === true && "data" in data) return data.data;
+      return data;
+    }
+
     function fmtDate(s) {
       if (!s) return "—";
       const d = new Date(s);
@@ -247,7 +254,7 @@
         const res = await fetch(`${API}/entries?${buildQuery().toString()}`, { headers: { "Accept": "application/json" } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        renderTable(data);
+        renderTable(unwrap(data));
       } catch (err) {
         els.body.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">
           <i class="bi bi-exclamation-triangle"></i> Failed to load entries: ${esc(err.message)}
@@ -301,7 +308,7 @@
         const res = await fetch(`${API}/entries/${encodeURIComponent(id)}`, { headers: { "Accept": "application/json" } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const e = await res.json();
-        renderDetail(e);
+        renderDetail(unwrap(e));
         els.modal.show();
       } catch (err) {
         alert("Failed to load entry: " + err.message);
@@ -351,7 +358,7 @@
         if (!res.ok) return;
         const data = await res.json();
         const seen = new Set();
-        for (const e of data) { if (e.domain) seen.add(e.domain); }
+        for (const e of unwrap(data)) { if (e.domain) seen.add(e.domain); }
         state.domains = [...seen].sort();
         els.domain.innerHTML = '<option value="">All domains</option>' +
           state.domains.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");

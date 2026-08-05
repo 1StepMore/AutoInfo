@@ -24,13 +24,43 @@ sources:
     requires_key: true
     rate_limit: 120  # requests per minute
 
+  - name: Finnhub
+    type: api
+    url: https://finnhub.io/api/v1/company-news?symbol=AAPL
+    quality_tier: 2
+    enabled: true
+    tos_classification: licensed
+    fetch_depth: abstract
+    frequency: daily
+    access: api_key
+    requires_key: true
+    settings:
+      api_key: "${FINNHUB_API_KEY}"  # env-ref, resolved at config load (config.py _resolve_env_vars)
+      auth_mode: query
+      params:
+        token: "${FINNHUB_API_KEY}"  # Finnhub contract: key travels in the `token` query param
+      query_param: symbol
+      json_path: "$"  # company-news returns a top-level JSON array
+      rate_limit: 1  # requests per second (~60/min free tier)
+      field_mapping:
+        id: id
+        title: headline
+        content: summary
+        source_url: url
+
   - name: SEC EDGAR
-    type: rss
-    url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=10-K&output=atom
+    type: sec_edgar
+    url: https://www.sec.gov/edgar/browse/?action=getcompany
     quality_tier: 1
+    enabled: true
+    tos_classification: open
+    fetch_depth: abstract
     frequency: daily
     access: free
-    rate_limit: 10  # requests per second
+    settings:
+      tickers: "AAPL,MSFT,GOOGL"  # comma-separated string — SecEdgarHandler contract (M2T20), NOT a YAML list
+      user_agent: "AutoInfoResearch/1.0 (contact: ops@autoinfo.ai)"  # SEC requires an identifying UA; override per install
+      rate_limit: 0.1  # seconds between requests — ≤10 req/s per SEC fair-access policy
 
   - name: Twelve Data
     type: api

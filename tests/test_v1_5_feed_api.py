@@ -34,9 +34,15 @@ class TestFeedAPI:
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "config.yaml"
+        # TRIAGE #58 (stale): de88d30 domain-precondition middleware
+        # (`src/autoinfo/api/routes.py:257`, `api/server.py:146-165`) 404s
+        # POST/GET with unregistered domains — register the test domains here.
         config_path.write_text(
             "rest_api:\n  port: 8741\n  host: 127.0.0.1\n"
             "llm:\n  provider: openai\n  model: gpt-4\n"
+            "domains:\n"
+            "  - name: medical-research\n    active: true\n"
+            "  - name: ai-commercial\n    active: true\n"
         )
 
         with patch("autoinfo.config.get_config_path", return_value=config_path):
@@ -49,7 +55,10 @@ class TestFeedAPI:
                       source_type: str = "api",
                       source_platform: str = "pubmed",
                       source_url: str = "") -> dict:
-        """Helper to create an entry via POST /api/v1/entries."""
+        """Helper to create an entry via POST /api/v1/entries.
+
+        Returns the unwrapped ``data`` dict from the success envelope.
+        """
         body: dict[str, Any] = {
             "title": title,
             "content": f"Content for {title}",
@@ -62,7 +71,14 @@ class TestFeedAPI:
             body["source_url"] = source_url
         resp = client.post("/api/v1/entries", json=body)
         assert resp.status_code == 201, f"Create failed: {resp.text}"
-        return resp.json()
+        return resp.json()["data"]
+
+    @staticmethod
+    def _ok(response) -> dict:
+        """Unwrap the success envelope and return ``data``."""
+        data = response.json()
+        assert data["success"] is True
+        return data["data"]
 
     # ------------------------------------------------------------------
     # Required domain parameter
@@ -86,7 +102,7 @@ class TestFeedAPI:
         """GET /api/v1/feeds returns empty items when no entries exist."""
         response = client.get("/api/v1/feeds?domain=medical-research")
         assert response.status_code == 200
-        data = response.json()
+        data = self._ok(response)
         assert data["items"] == []
         assert data["pagination"]["total"] == 0
         assert data["pagination"]["next"] is None
@@ -98,7 +114,7 @@ class TestFeedAPI:
 
         response = client.get("/api/v1/feeds?domain=medical-research")
         assert response.status_code == 200
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 2
         assert data["pagination"]["total"] == 2
 
@@ -107,7 +123,7 @@ class TestFeedAPI:
         self._create_entry(client, "Structure Test")
 
         response = client.get("/api/v1/feeds?domain=medical-research")
-        data = response.json()
+        data = self._ok(response)
         item = data["items"][0]
         assert "id" in item
         assert "title" in item
@@ -128,7 +144,7 @@ class TestFeedAPI:
             self._create_entry(client, f"Article {i}")
 
         response = client.get("/api/v1/feeds?domain=medical-research&limit=2")
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 2
         assert data["pagination"]["total"] == 5
         assert data["pagination"]["limit"] == 2
@@ -141,7 +157,7 @@ class TestFeedAPI:
 
         # Get page 2 (offset=2, limit=2)
         response = client.get("/api/v1/feeds?domain=medical-research&limit=2&offset=2")
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 2
         assert data["pagination"]["total"] == 5
         assert data["pagination"]["offset"] == 2
@@ -153,12 +169,12 @@ class TestFeedAPI:
 
         # First page: limit=2, has next
         r1 = client.get("/api/v1/feeds?domain=medical-research&limit=2&offset=0")
-        d1 = r1.json()
+        d1 = self._ok(r1)
         assert d1["pagination"]["next"] == 2  # offset=0+limit=2
 
         # Last page: limit=2, offset=2, no next
         r2 = client.get("/api/v1/feeds?domain=medical-research&limit=2&offset=2")
-        d2 = r2.json()
+        d2 = self._ok(r2)
         assert d2["pagination"]["next"] is None
 
     def test_feed_limit_max_200(self, client):
@@ -180,7 +196,7 @@ class TestFeedAPI:
         response = client.get(
             "/api/v1/feeds?domain=medical-research&source_type=rss"
         )
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 1
         assert data["items"][0]["source_type"] == "rss"
         assert data["pagination"]["total"] == 1
@@ -193,7 +209,7 @@ class TestFeedAPI:
         response = client.get(
             "/api/v1/feeds?domain=medical-research&topic=IVF"
         )
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 1
         assert data["pagination"]["total"] == 1
 
@@ -236,7 +252,7 @@ class TestFeedAPI:
         response = client.get(
             "/api/v1/feeds?domain=medical-research&since=2026-01-01"
         )
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "New Article"
 
@@ -261,7 +277,7 @@ class TestFeedAPI:
             "/api/v1/feeds?domain=medical-research"
             "&topic=IVF&source_type=api&since=2026-01-01"
         )
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "Match"
 
@@ -277,10 +293,10 @@ class TestFeedAPI:
                           domain="ai-commercial")
 
         resp_med = client.get("/api/v1/feeds?domain=medical-research")
-        assert len(resp_med.json()["items"]) == 1
+        assert len(self._ok(resp_med)["items"]) == 1
 
         resp_ai = client.get("/api/v1/feeds?domain=ai-commercial")
-        assert len(resp_ai.json()["items"]) == 1
+        assert len(self._ok(resp_ai)["items"]) == 1
 
     # ------------------------------------------------------------------
     # Entry ID / URL mapping
@@ -292,7 +308,7 @@ class TestFeedAPI:
                                      source_url="https://example.com/article")
 
         response = client.get("/api/v1/feeds?domain=medical-research")
-        item = response.json()["items"][0]
+        item = self._ok(response)["items"][0]
         assert item["id"] == created["entry_id"]
         assert item["url"] == "https://example.com/article"
 
@@ -323,7 +339,7 @@ class TestFeedAPI:
         self._seed_entry(store, "Newest", collected_at="2026-06-01T00:00:00Z")
 
         response = client.get("/api/v1/feeds?domain=medical-research")
-        data = response.json()
+        data = self._ok(response)
         titles = [item["title"] for item in data["items"]]
         assert titles == ["Newest", "Middle", "Oldest"]
 
@@ -340,7 +356,7 @@ class TestFeedAPI:
         # Should not crash — might return 0 entries if date parsing fails,
         # but the response should still be valid JSON with status 200
         assert response.status_code == 200
-        data = response.json()
+        data = self._ok(response)
         assert "items" in data
         assert "pagination" in data
 
@@ -352,7 +368,7 @@ class TestFeedAPI:
         """Entry with empty source_url still returns valid feed structure."""
         self._create_entry(client, "No URL Article", source_url="")
         response = client.get("/api/v1/feeds?domain=medical-research")
-        data = response.json()
+        data = self._ok(response)
         item = data["items"][0]
         assert item["title"] == "No URL Article"
         assert item["url"] == ""  # empty string, not None or crash
@@ -365,7 +381,7 @@ class TestFeedAPI:
         """Entries with Unicode and special characters are handled."""
         self._create_entry(client, "中文标题 — Café & Résumé")
         response = client.get("/api/v1/feeds?domain=medical-research")
-        data = response.json()
+        data = self._ok(response)
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "中文标题 — Café & Résumé"
 
@@ -379,6 +395,6 @@ class TestFeedAPI:
         response = client.get(
             "/api/v1/feeds?domain=medical-research&source_type=slack"
         )
-        data = response.json()
+        data = self._ok(response)
         assert data["items"] == []
         assert data["pagination"]["total"] == 0

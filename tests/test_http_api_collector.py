@@ -481,6 +481,104 @@ class TestHttpApiHandlerFetch:
         assert "questions" in url_arg, "URL must include /questions path"
         assert "site=stackoverflow" in url_arg, "URL must include site param"
 
+    @patch("autoinfo.collectors.http_api.httpx.get")
+    def test_fetch_json_path_root_array_returns_all_items(
+        self, mock_get: MagicMock
+    ) -> None:
+        """json_path: "$" treats the whole response body as the item array
+        (e.g. Mastodon public timeline returns a top-level JSON array)."""
+        config = SourceConfig(
+            name="Mastodon API",
+            type="api",
+            url="https://mastodon.example/api/v1/timelines/public",
+            settings={
+                "json_path": "$",
+                "field_mapping": {
+                    "id": "id",
+                    "title": "content",
+                    "content": "content",
+                    "source_url": "url",
+                },
+            },
+        )
+
+        response_body = [
+            {
+                "id": "1",
+                "content": "<p>First toot</p>",
+                "url": "https://mastodon.example/@alice/1",
+            },
+            {
+                "id": "2",
+                "content": "<p>Second toot</p>",
+                "url": "https://mastodon.example/@bob/2",
+            },
+            {
+                "id": "3",
+                "content": "<p>Third toot</p>",
+                "url": "https://mastodon.example/@carol/3",
+            },
+        ]
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.json.return_value = response_body
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        handler = HttpApiHandler(config)
+        items = handler.fetch(config.url, limit=10)
+
+        assert len(items) == 3
+        assert [item.id for item in items] == ["1", "2", "3"]
+        assert items[0].source_url == "https://mastodon.example/@alice/1"
+
+    @patch("autoinfo.collectors.http_api.httpx.get")
+    def test_fetch_json_path_dollar_nested_array(
+        self, mock_get: MagicMock
+    ) -> None:
+        """json_path: "$.field" still resolves an array under a dict key
+        (regression — Bluesky-style ``"$.posts"``)."""
+        config = SourceConfig(
+            name="Bluesky API",
+            type="api",
+            url="https://bsky.example/xrpc/app.bsky.feed.getTimeline",
+            settings={
+                "json_path": "$.posts",
+                "field_mapping": {
+                    "id": "cid",
+                    "title": "post.text",
+                    "content": "post.text",
+                    "source_url": "uri",
+                },
+            },
+        )
+
+        response_body = {
+            "cursor": "next-page",
+            "posts": [
+                {
+                    "cid": "cid-1",
+                    "uri": "at://did:plc:alice",
+                    "post": {"text": "First post"},
+                },
+                {
+                    "cid": "cid-2",
+                    "uri": "at://did:plc:bob",
+                    "post": {"text": "Second post"},
+                },
+            ],
+        }
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.json.return_value = response_body
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        handler = HttpApiHandler(config)
+        items = handler.fetch(config.url, limit=10)
+
+        assert len(items) == 2
+        assert [item.id for item in items] == ["cid-1", "cid-2"]
+        assert items[0].title == "First post"
+
 
 # ---------------------------------------------------------------------------
 # Tests: HTTP API dispatch in collect.py

@@ -263,17 +263,26 @@ def calculate_health_score(result: dict[str, Any]) -> int:
 
 
 def calculate_error_rates() -> dict[str, float]:
+    """Real error rates (0-100) per pipeline stage from logs + run records."""
+    from autoinfo.doctor import compute_error_rates
+
+    rates = compute_error_rates()
+    by_stage = rates.get("by_stage", {})
     return {
-        "overall": 0.0,
-        "collection": 0.0,
-        "processing": 0.0,
-        "delivery": 0.0,
+        "overall": float(rates.get("error_pct", 0.0)),
+        "collection": float(by_stage.get("collection", {}).get("error_pct", 0.0)),
+        "processing": float(by_stage.get("processing", {}).get("error_pct", 0.0)),
+        "delivery": float(by_stage.get("delivery", {}).get("error_pct", 0.0)),
     }
 
 
-def calculate_latency_percentiles() -> dict[str, int]:
+def calculate_latency_percentiles() -> dict[str, float]:
+    """Real latency percentiles (ms) from recorded duration_ms samples."""
+    from autoinfo.doctor import compute_latency_percentiles
+
+    lat = compute_latency_percentiles()
     return {
-        "p50_ms": 0,
-        "p95_ms": 0,
-        "p99_ms": 0,
+        "p50_ms": float(lat.get("p50_ms", 0.0)),
+        "p95_ms": float(lat.get("p95_ms", 0.0)),
+        "p99_ms": float(lat.get("p99_ms", 0.0)),
     }

@@ -1,0 +1,53 @@
+{# D11 — magazine-digest: magazine-styled digest of per-title RSS (flat legacy naming).
+   Groups entries into per-title clusters (by source_platform, the publication
+   the RSS feed belongs to — e.g. the-atlantic / wired / time) under a
+   cover-style masthead header. Free product (access_level "free"); no
+   full-issue delivery (licensing ceiling). #}
+# {{ title }}
+
+## {{ period_label }} Magazine Edition
+
+**{{ domain }}** · {{ date_from }} – {{ date_to }} · **{{ entries|length }} articles** from {{ (entries|groupby('source_platform', default='General'))|length }} publications
+
+{% if llm_synthesis and llm_synthesis.executive_summary %}
+> *{{ llm_synthesis.executive_summary }}*
+{% endif %}
+
+---
+
+## In This Issue
+
+{% for publication, items in entries|groupby('source_platform', default='General') %}
+- **{{ publication }}** — {{ items|length }} article{{ 's' if items|length != 1 else '' }}
+{% endfor %}
+
+---
+
+{% for publication, items in entries|groupby('source_platform', default='General') %}
+## {{ publication }}
+
+{% for entry in items %}
+### {{ entry.title }}
+
+{% if entry.summary %}
+> {{ entry.summary }}
+{% endif %}
+
+*{{ entry.source_platform or "—" }}* {% if entry.relevance_score is not none %}· relevance {{ entry.relevance_score }}/100{% endif %} {% if entry.collected_at %}· {{ entry.collected_at }}{% endif %}
+
+{% if entry.source_url %}
+[Read the full article]({{ entry.source_url }})
+{% endif %}
+
+{% if not loop.last %}
+---
+{% endif %}
+
+{% endfor %}
+{% else %}
+_No articles found for {{ domain }} in the {{ period_label }} period._
+{% endfor %}
+
+---
+
+*AutoInfo Magazine Digest · {{ domain }} · {{ generated_at }}*

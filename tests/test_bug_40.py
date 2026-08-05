@@ -17,6 +17,7 @@ Instead, we verify the annotations at the AST and type-hints level.
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 
 import pytest
 
@@ -68,7 +69,11 @@ def test_tags_annotation_is_list_of_str() -> None:
 
 def test_create_draft_source_has_subscript_annotations() -> None:
     """Verify ``list[str]`` appears literally in the AST for both params."""
-    with open("src/autoinfo/cli/kb.py", encoding="utf-8") as fh:
+    # TRIAGE #55 (stale): cwd-relative path broke when an earlier test leaked
+    # `os.chdir` (e.g. test_backward_compat chdir without restore). Resolve
+    # against this test file so it works from any cwd.
+    kb_path = Path(__file__).resolve().parent.parent / "src" / "autoinfo" / "cli" / "kb.py"
+    with open(kb_path, encoding="utf-8") as fh:
         tree = ast.parse(fh.read())
 
     for node in ast.walk(tree):

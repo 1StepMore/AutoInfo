@@ -104,10 +104,11 @@ def _row_to_audit_log(row: sqlite3.Row) -> AuditLog:
 def append_audit_log(
     actor: str,
     action: str,
-    resource_type: str,
+    resource_type: str = "",
     resource_id: str = "",
     details: dict[str, Any] | None = None,
     ip_address: str = "",
+    tool: str | None = None,
     db_path: Path | None = None,
 ) -> AuditLog:
     """Append one immutable entry to the audit log.
@@ -115,20 +116,34 @@ def append_audit_log(
     Parameters
     ----------
     actor:
-        Who performed the action (e.g. ``"system"``, ``"user:alice"``,
-        ``"agent:autoinfo"``).
+        Who performed the action.  Stable taxonomy ids:
+
+        * ``"agent:<session>"`` — interactive MCP agent client
+        * ``"cli"`` — command-line driven operation
+        * ``"cron"`` — scheduled job
+        * ``"system"`` — internal / server-originated operation
     action:
         What action was taken (e.g. ``"collect_sources"``,
-        ``"create_kb_draft"``).
+        ``"create_kb_draft"``, ``"tool_call"``).
     resource_type:
         The kind of resource affected (e.g. ``"domain"``, ``"source"``,
-        ``"kb_entry"``, ``"config"``).
+        ``"kb_entry"``, ``"config"``, ``"mcp_tool"``).
     resource_id:
-        Identifier of the affected resource (optional).
+        Identifier of the affected resource (optional).  For dispatch-level
+        entries this is a low-sensitivity identifier only (e.g. a domain or
+        topic name) — never URLs, credentials, or free-form content.
     details:
         Arbitrary JSON-serialisable payload capturing additional context.
+        Dispatch-level entries put only ``result_code`` and ``trace_id``
+        here — never tool inputs or response data.
     ip_address:
         Originating IP address (optional).
+    tool:
+        MCP tool name for dispatch-level entries.  When given and
+        *resource_type* is empty, the tool name is recorded in the
+        ``resource_type`` column (the tool being invoked is the resource
+        type of a tool call).  This keeps the schema append-only while
+        letting callers pass either a broad category or a tool name.
     db_path:
         Path to the SQLite database.  Defaults to ``autoinfo.db`` in CWD.
 
@@ -145,6 +160,7 @@ def append_audit_log(
     log_id = str(uuid.uuid4())
     timestamp = _now_utc()
     details_json = json.dumps(details or {}, ensure_ascii=False)
+    effective_resource_type = resource_type or tool or ""
 
     conn = _connect(db_path)
     try:
@@ -158,7 +174,7 @@ def append_audit_log(
                 timestamp,
                 actor,
                 action,
-                resource_type,
+                effective_resource_type,
                 resource_id,
                 details_json,
                 ip_address,

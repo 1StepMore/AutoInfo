@@ -251,12 +251,14 @@ def add_sources(
 
 @app.command(name="list")
 def list_sources(
+    ctx: typer.Context,
     domain: str = typer.Option(..., "--domain", help="Domain to list sources for"),
     json_output: bool = typer.Option(
         False, "--json", help="Output as JSON"
     ),
 ) -> None:
     """List sources for a domain."""
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     _, config = _load()
 
     domain_cfg = _find_domain(config, domain)
@@ -326,6 +328,7 @@ def remove(
 
 @app.command()
 def health(
+    ctx: typer.Context,
     source_id: str = typer.Option(
         ..., "--source-id", help="Source identifier in 'domain:name' format"
     ),
@@ -334,6 +337,7 @@ def health(
     ),
 ) -> None:
     """Check health status of a single source."""
+    json_output = json_output or bool((ctx.obj or {}).get("json"))
     try:
         result = get_source_health(source_id=source_id)
         if json_output:

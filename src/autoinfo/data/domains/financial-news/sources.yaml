@@ -49,6 +49,42 @@ sources:
     rate_limit: 10
     fetch_depth: abstract
 
+  - name: businesswire-technology
+    type: rss
+    url: https://feed.businesswire.com/mrss/home/?rss=industry/technology
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: prnewswire-financial-services
+    type: rss
+    url: https://www.prnewswire.com/rss/financial-services/
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: nvidia-newsroom
+    type: rss
+    url: https://nvidianews.nvidia.com/rss
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: microsoft-newsroom
+    type: rss
+    url: https://news.microsoft.com/source/feed/
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
 topics:
   - name: "Markets"
     keywords:

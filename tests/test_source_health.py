@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -67,9 +67,10 @@ def _make_runs(
 
 def _ts(days_ago: int = 0) -> str:
     """Return an ISO timestamp *days_ago* days from now."""
-    dt = datetime.now(timezone.utc)
-    if days_ago:
-        dt = dt.replace(day=dt.day - days_ago)
+    # TRIAGE #53-54 (stale): `dt.replace(day=dt.day - days_ago)` underflows
+    # on early month days (e.g. 2026-08-05 minus 9 days → day=-4 →
+    # ValueError). Use timedelta so day-rollover is handled correctly.
+    dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
     return dt.isoformat()
 
 

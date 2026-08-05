@@ -13,26 +13,39 @@ import yaml
 
 DEMO_DIR = Path(__file__).resolve().parents[1] / "src" / "autoinfo" / "data" / "domains"
 
+# TRIAGE #45-49 (stale): EXPECTED snapshot drifted from the current YAML —
+# voa-learning-english removed from language-learning, and the source counts
+# grew (medical-research 7, financial-intelligence 7, tech-ai-developer 8).
+# old = pre-existing sources, new = later additions; old+new totals the live
+# source list for each domain (`src/autoinfo/data/domains/*/sources.yaml`).
+# M3T30 added Finnhub to financial-intelligence (6→7, SEC EDGAR replaced 1:1).
 EXPECTED = {
     "medical-research": {
         "old": ["pubmed"],
-        "new": ["arXiv", "CrossRef"],
+        "new": ["semantic-scholar", "arXiv", "CrossRef", "dblp", "openalex", "uspto"],
     },
     "ai-commercial": {
         "old": ["techcrunch", "producthunt"],
         "new": ["Crunchbase", "36kr"],
     },
     "language-learning": {
-        "old": ["voa-learning-english", "project-gutenberg"],
+        "old": ["project-gutenberg"],
         "new": ["news-in-levels", "commonlit"],
     },
     "financial-intelligence": {
         "old": ["Alpha Vantage", "FRED"],
-        "new": ["SEC EDGAR", "Twelve Data", "World Bank Data"],
+        "new": ["Finnhub", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"],
     },
     "tech-ai-developer": {
         "old": ["GitHub Trending", "HackerNews API"],
-        "new": ["Stack Exchange", "ProductHunt", "Substack RSS (tech) — Pragmatic Engineer"],
+        "new": [
+            "Substack RSS (tech) — Pragmatic Engineer",
+            "Stack Exchange",
+            "ProductHunt",
+            "Reddit",
+            "Spotify AI Podcasts",
+            "Bilibili (B站)",
+        ],
     },
 }
 
@@ -45,11 +58,11 @@ def _load_sources(domain: str) -> list[dict]:
 
 
 @pytest.mark.parametrize("domain, old, new", [
-    ("medical-research", ["pubmed"], ["arXiv", "CrossRef"]),
+    ("medical-research", ["pubmed"], ["semantic-scholar", "arXiv", "CrossRef", "dblp", "openalex", "uspto"]),
     ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "36kr"]),
-    ("language-learning", ["voa-learning-english", "project-gutenberg"], ["news-in-levels", "commonlit"]),
-    ("financial-intelligence", ["Alpha Vantage", "FRED"], ["SEC EDGAR", "Twelve Data", "World Bank Data"]),
-    ("tech-ai-developer", ["GitHub Trending", "HackerNews API"], ["Stack Exchange", "ProductHunt", "Substack RSS (tech) — Pragmatic Engineer"]),
+    ("language-learning", ["project-gutenberg"], ["news-in-levels", "commonlit"]),
+    ("financial-intelligence", ["Alpha Vantage", "FRED"], ["Finnhub", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"]),
+    ("tech-ai-developer", ["GitHub Trending", "HackerNews API"], ["Substack RSS (tech) — Pragmatic Engineer", "Stack Exchange", "ProductHunt", "Reddit", "Spotify AI Podcasts", "Bilibili (B站)"]),
 ])
 class TestDemoSources:
     def test_old_sources_preserved(self, domain: str, old: list[str], new: list[str]) -> None:

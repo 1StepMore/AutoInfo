@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Keywords CLI — manage per-domain keyword lifecycle.
 
 Usage::
@@ -8,7 +6,14 @@ Usage::
     autoinfo keywords list --domain medical --status auto_added
     autoinfo keywords approve medical "IVF"
     autoinfo keywords reject medical "IVF"
+    autoinfo keywords suggest --domain medical --text "..." --limit 10
 """
+
+from __future__ import annotations
+
+import builtins
+import json
+import os
 
 import typer
 
@@ -73,6 +78,7 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
 def approve(
     domain: str = typer.Argument(..., help="Domain name"),
     keyword: str = typer.Argument(..., help="Keyword to approve"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Approve a keyword (move from auto_added → verified)."""
     kf = KeywordsFile()
@@ -83,6 +89,15 @@ def approve(
             err=True,
         )
         raise typer.Exit(code=1)
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"domain": domain, "keyword": keyword, "state": result.state.value},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
     typer.echo(f"Approved keyword '{keyword}' in domain '{domain}' (→ verified)")
 
 
@@ -90,6 +105,7 @@ def approve(
 def reject(
     domain: str = typer.Argument(..., help="Domain name"),
     keyword: str = typer.Argument(..., help="Keyword to reject"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Reject a keyword (move to deprecated)."""
     kf = KeywordsFile()
@@ -100,4 +116,147 @@ def reject(
             err=True,
         )
         raise typer.Exit(code=1)
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"domain": domain, "keyword": keyword, "state": result.state.value},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
     typer.echo(f"Rejected keyword '{keyword}' in domain '{domain}' (→ deprecated)")
+
+
+@app.command()
+def suggest(
+    domain: str = typer.Option(..., "--domain", help="Domain name for context"),
+    text: str | None = typer.Option(
+        None, "--text", help="Text to extract keywords from"
+    ),
+    limit: int = typer.Option(
+        10, "--limit", help="Maximum number of suggestions (default 10)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Suggest keywords from a text via the LLM (mirrors MCP suggest_keywords).
+
+    When ``--text`` is omitted the command returns a graceful empty result
+    instead of failing.
+    """
+    if not text:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {"domain": domain, "suggestions": [], "count": 0},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return
+        typer.echo(
+            "No text provided. Pass --text '<content>' to suggest keywords "
+            f"for domain '{domain}'."
+        )
+        return
+
+    # Same config resolution as the MCP suggest_keywords handler
+    from autoinfo.config import get_config_path, load_config
+
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+            model = config.llm.model or "deepseek/deepseek-chat"
+            api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
+            base_url = config.llm.base_url or None
+            json_mode = config.llm.json_mode
+        else:
+            model = "deepseek/deepseek-chat"
+            api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+            base_url = None
+            json_mode = False
+    except Exception:
+        model = "deepseek/deepseek-chat"
+        api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+        base_url = None
+        json_mode = True
+
+    if not api_key:
+        typer.echo(
+            "Error: LLM is not configured. Set AUTOINFO_LLM_API_KEY or run "
+            "'autoinfo init' with an LLM config. See "
+            "docs/dev/required-api-keys.md for the full list of API keys.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    import litellm  # deferred import — mirrors the MCP handler
+
+    system_prompt = (
+        "You are a keyword extraction assistant. Given a text, suggest "
+        f"up to {limit} relevant keywords or short phrases (2-5 words) "
+        "that capture the core topics. "
+        "Respond with valid JSON only: an array of strings. "
+        'Example: ["machine learning", "neural networks", "deep learning"]'
+    )
+    user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
+
+    try:
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            max_tokens=500,
+            temperature=0.3,
+            api_base=base_url,
+            api_key=api_key or None,
+        )
+        content: str = response.choices[0].message.content or ""
+    except Exception as exc:
+        typer.echo(f"Error: keyword suggestion failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        typer.echo(
+            "Error: keyword suggestion failed: LLM returned empty or "
+            "non-JSON content.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+
+    if isinstance(parsed, builtins.list):
+        suggestions = parsed
+    elif isinstance(parsed, dict):
+        for key in ("keywords", "suggestions", "tags", "items"):
+            if key in parsed and isinstance(parsed[key], builtins.list):
+                suggestions = parsed[key]
+                break
+        else:
+            suggestions = builtins.list(parsed.values()) if parsed else []
+    else:
+        suggestions = []
+
+    suggestions = [str(s).strip() for s in suggestions if s]
+    suggestions = suggestions[:limit]
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"domain": domain, "suggestions": suggestions, "count": len(suggestions)},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
+    if not suggestions:
+        typer.echo(f"No keywords suggested for domain '{domain}'.")
+        return
+    typer.echo(f"Suggested keywords for domain '{domain}':")
+    for i, s in enumerate(suggestions, 1):
+        typer.echo(f"{i:>2}. {s}")

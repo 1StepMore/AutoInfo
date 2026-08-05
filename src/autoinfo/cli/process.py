@@ -61,6 +61,24 @@ def process(
 
     # -- Output -------------------------------------------------------------
     if json_output:
+        if result.total_items == 0:
+            # Noop parity with MCP process_collection (server.py:673-678).
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "noop",
+                        "total_items": 0,
+                        "message": (
+                            f"No cached items found for domain '{result.domain}'. "
+                            "Run collect_sources() first."
+                        ),
+                        "domain": result.domain,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
         typer.echo(
             json.dumps(
                 {

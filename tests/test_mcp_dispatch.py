@@ -43,6 +43,45 @@ class TestInitProjectDispatch:
         assert body["data"]["status"] == "success"
         assert body["data"]["domain"] == "medical-research"
 
+    async def test_init_project_creates_exactly_one_domain(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A string domain must be treated as ONE domain, never split char-by-char.
+
+        Regression for M0T4: ``_handle_init_project`` passed the bare string to
+        ``_run_init`` (which expects ``list[str]``), so "medical-research" was
+        iterated into 16 single-char domains and the real domain was never
+        created. The MCP tool contract takes ``domain: str`` — one domain per
+        call.
+        """
+        monkeypatch.chdir(tmp_path)
+
+        init_result = await call_tool(
+            "init_project",
+            {"domain": "medical-research"},
+        )
+        init_body = json.loads(init_result[0].text)
+        assert init_body["success"] is True
+
+        # The generated config must contain exactly one domain: medical-research
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
+        import yaml
+
+        cfg = yaml.safe_load(config_path.read_text())
+        domain_names = [d["name"] for d in cfg["domains"]]
+        assert domain_names == ["medical-research"]
+        # No single-char domains from iterating the string
+        assert all(len(name) > 1 for name in domain_names)
+
+        # And get_domain_webhooks must succeed for the single real domain
+        hook_result = await call_tool(
+            "get_domain_webhooks",
+            {"domain": "medical-research"},
+        )
+        hook_body = json.loads(hook_result[0].text)
+        assert hook_body["success"] is True
+        assert hook_body["data"]["domain"] == "medical-research"
+
 
 class TestGetDomainWebhooksDispatch:
     """``call_tool("get_domain_webhooks", ...)`` must NOT be polluted by init_project."""

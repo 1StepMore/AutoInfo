@@ -95,7 +95,7 @@ def report(
         "", "--audience", help="Target audience: researcher, clinician, executive, student, investor",
     ),
     report_type: str = typer.Option(
-        "standard", "--type", help="Report type: standard, industry, competitive, trend, daily-briefing",
+        "standard", "--type", help="Report type: standard, industry, competitive, trend, daily-briefing, column",
     ),
     domains: list[str] = typer.Option(
         [],
@@ -145,7 +145,7 @@ def export(
         None, "--domain", help="Domain to export (default: all domains)"
     ),
     format: str = typer.Option(
-        "json", "--format", help="Export format (json, markdown, sqlite, pdf, bundle)"
+        "json", "--format", help="Export format (json, markdown, sqlite, pdf, bundle, agent)"
     ),
 ) -> None:
     """Export knowledge base data to a file.
@@ -237,7 +237,7 @@ def tutorial(
         None, "--collection-id", help="Optional collection ID to scope the tutorial",
     ),
     format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown only currently)"
+        "markdown", "--format", help="Output format (markdown, agent)"
     ),
 ) -> None:
     """Generate a structured tutorial adapted to the target audience.
@@ -277,7 +277,7 @@ def presentation(
         help="Target audience: researcher, clinician, executive, student",
     ),
     format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown only currently)"
+        "markdown", "--format", help="Output format (markdown, html, mkslides, agent)"
     ),
 ) -> None:
     """Generate a slide-based presentation on a topic.

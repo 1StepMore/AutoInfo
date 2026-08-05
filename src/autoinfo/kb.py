@@ -2318,6 +2318,7 @@ class KBStore:
             version=getattr(item, "version", 1),
             previous_version=getattr(item, "previous_version", 0),
             supersedes=getattr(item, "supersedes", ""),
+            trace_id=getattr(item, "trace_id", ""),
         )
 
         # --- write Markdown file ----------------------------------------------
@@ -3943,6 +3944,7 @@ def _build_frontmatter(
         "version": entry.version,
         "previous_version": entry.previous_version,
         "supersedes": entry.supersedes,
+        "trace_id": entry.trace_id,
     }
 
     # Expanded frontmatter fields (Draft+ tiers only — 01-Raw stays lean)

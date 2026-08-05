@@ -512,6 +512,21 @@ def _build_handler(source_config: SourceConfig) -> Any:
 
         return HackerNewsHandler(source_config)
 
+    if stype == "akshare":
+        from autoinfo.collectors.akshare import AKShareHandler
+
+        return AKShareHandler(config=source_config.settings or {})
+
+    if stype == "sec_edgar":
+        from autoinfo.collectors.sec_edgar import SecEdgarHandler
+
+        return SecEdgarHandler(config=source_config.settings or {})
+
+    if stype == "edx_sitemap":
+        from autoinfo.collectors.edx_sitemap import EdxSitemapHandler
+
+        return EdxSitemapHandler(config=source_config.settings or {})
+
     if stype == "api":
         from autoinfo.collectors.http_api import HttpApiHandler
 
@@ -687,6 +702,21 @@ def _fetch_items(
     if hasattr(handler, "fetch") and getattr(handler, "source_type", "") in ("huggingface", "kaggle"):
         search_query = topic if topic else ""
         items = handler.fetch(query=search_query, limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- AKShare handler path ------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "akshare":
+        items = [handler.to_item(i) for i in handler.fetch(limit=limit)]
+        return items
+
+    # -- edX Sitemap handler path ------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "edx_sitemap":
+        items = handler.fetch(limit=limit)
+        return [handler.to_item(item) for item in items]
+
+    # -- SEC EDGAR handler path -----------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "sec_edgar":
+        items = handler.fetch(limit=limit)
         return [handler.to_item(item) for item in items]
 
     # -- RSS / Web handler path --------------------------------------------

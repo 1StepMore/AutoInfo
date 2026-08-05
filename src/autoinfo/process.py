@@ -989,6 +989,10 @@ def run_processing(
                 item_log["detail"] = str(g2.details.get("matched_by", "unknown"))
 
             entry = kb_store.store_entry(item, extraction, quality_results)
+            # M1T14: keep in-memory entry trace_id in sync with item (store_entry
+            # already persists item.trace_id to KBEntry + frontmatter in kb.py)
+            if not entry.trace_id:
+                entry.trace_id = item.trace_id
             item_log["entry_id"] = entry.entry_id
             result.kb_entries_created += 1
 

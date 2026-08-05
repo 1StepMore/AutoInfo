@@ -7,10 +7,12 @@ PubMed response cache, LLM mock helpers, and API-key skip guards.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,20 +50,75 @@ Or on a class::
 """
 
 # ---------------------------------------------------------------------------
+# Optional dependency guards (extras: pdf, tts, video; system: ffmpeg)
+# ---------------------------------------------------------------------------
+
+HAVE_PIL: bool = importlib.util.find_spec("PIL") is not None
+"""``True`` when Pillow is installed (``video`` extra) — image/video tests can run."""
+
+HAVE_STRIPE: bool = importlib.util.find_spec("stripe") is not None
+"""``True`` when ``stripe`` is installed (core dependency) — billing tests can run."""
+
+HAVE_PYMUPDF: bool = importlib.util.find_spec("fitz") is not None
+"""``True`` when PyMuPDF is installed (``pdf`` extra) — PDF import tests can run."""
+
+HAVE_WEASYPRINT: bool = importlib.util.find_spec("weasyprint") is not None
+"""``True`` when weasyprint is installed (``pdf`` extra) — PDF-render tests can run."""
+
+HAVE_FFMPEG: bool = shutil.which("ffmpeg") is not None
+"""``True`` when the ``ffmpeg`` binary is on PATH — media-processing tests can run."""
+
+
+def requires_optional_dep(*deps: str):
+    """Return a skipif marker for tests that need one or more optional deps.
+
+    Mirrors :data:`requires_llm_key` for the optional-dependency gates above.
+    Each ``dep`` must be a key of :data:`_OPTIONAL_DEP_PRESENT`. Usage::
+
+        @requires_optional_dep("PIL")
+        def test_pillow_rendering():
+            ...
+
+        @requires_optional_dep("ffmpeg", "PIL")
+        def test_video_pipeline():
+            ...
+    """
+    missing = [dep for dep in deps if not _OPTIONAL_DEP_PRESENT[dep]]
+    return pytest.mark.skipif(
+        bool(missing),
+        reason=f"missing optional dep(s): {', '.join(missing)} — install '.[dev,stripe,pdf,tts,web,video]'",
+    )
+
+
+_OPTIONAL_DEP_PRESENT: dict[str, bool] = {
+    "PIL": HAVE_PIL,
+    "stripe": HAVE_STRIPE,
+    "fitz": HAVE_PYMUPDF,
+    "weasyprint": HAVE_WEASYPRINT,
+    "ffmpeg": HAVE_FFMPEG,
+}
+
+# ---------------------------------------------------------------------------
 # Pytest hooks
 # ---------------------------------------------------------------------------
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Register custom markers to suppress 'unknown marker' warnings."""
-    config.addinivalue_line(
-        "markers",
-        "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    )
-    config.addinivalue_line(
-        "markers",
-        "network: marks tests that make network requests (use VCR cassettes instead)",
-    )
+    """Register custom markers to suppress 'unknown marker' warnings.
+
+    Marker taxonomy (rationalized M0T7, 2026-08-05):
+    - ``slow`` / ``network`` **removed** — zero usages anywhere in tests/
+      (both as decorators and as module-level ``pytestmark``); dead registrations.
+    - ``v1_2`` kept — used as module-level ``pytestmark`` in
+      ``tests/test_v1_2_integration.py``.
+    - ``llm`` kept — used by ``TestRealLLM`` (``tests/test_real_api.py``).
+    - ``real_api`` kept — module-level ``pytestmark`` in
+      ``tests/test_real_api.py``.
+    - ``optional`` kept — added in M0T2; consumed by M0T3 env-dep skip gates.
+    - ``callback`` / ``envelope`` **added** — registered ahead of later waves
+      that will tag tests against the agent-callback surface (M4) and the
+      ``{success, data}`` / ``{success, error}`` response envelope (M1).
+    """
     config.addinivalue_line(
         "markers",
         "llm: marks tests that require LLM integration (mocked in CI)",
@@ -75,6 +132,76 @@ def pytest_configure(config: pytest.Config) -> None:
         "real_api: marks tests that call real external APIs (PubMed, RSS, LLM); "
         "skipped by default in CI",
     )
+    config.addinivalue_line(
+        "markers",
+        "optional: marks tests that need an optional dependency (PIL/stripe/"
+        "PyMuPDF/weasyprint/ffmpeg); skipped when the HAVE_* gate in conftest is False",
+    )
+    config.addinivalue_line(
+        "markers",
+        "callback: marks tests exercising the agent-callback delivery surface "
+        "(set_agent_callback / list_agent_callbacks / remove_agent_callback)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "envelope: marks tests asserting the {success, data} / {success, error} "
+        "response-envelope shape",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Skip-ceiling guard (M0T10, 2026-08-05)
+# ---------------------------------------------------------------------------
+# Only tests carrying ``@pytest.mark.optional`` that actually SKIP count
+# against the tagged-skip ceiling. Plain skips (typer-on-Py3.14, missing
+# VCR cassettes, module-level importorskip, no-LLM-key) are outside the
+# tagged-skip budget by design — see tests/TRIAGE.md §Skip-count ceiling.
+
+_OPTIONAL_SKIPPED: set[str] = set()
+"""Nodeids of ``@pytest.mark.optional`` tests that were skipped in this run."""
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call) -> Generator:  # noqa: N802 (pytest hook name)
+    """Accumulate optional-marked tests that skipped (setup or call phase).
+
+    Hookwrapper so the real ``TestReport`` is inspected after pytest's own
+    implementation built it. Dedup by nodeid — a skip can be reported at
+    both the setup and call phases, and must not be double-counted. Every
+    exception is swallowed: this guard is additive and must never break
+    collection or the run itself.
+    """
+    outcome = yield
+    try:
+        report = outcome.get_result()
+        if report.when in ("setup", "call") and report.skipped:
+            if item.get_closest_marker("optional") is not None:
+                _OPTIONAL_SKIPPED.add(item.nodeid)
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Assert the tagged-skip ceiling (25) at session end (M0T10 gate).
+
+    Ceiling 25 = 20 plan baseline + 14 M0T3-gated skips - 9 typer/Py3.14
+    pre-existing (which carry no ``optional`` marker and are never counted).
+    On breach, fail loudly so the gate run shows the excess immediately.
+    """
+    try:
+        count = len(_OPTIONAL_SKIPPED)
+        if count > 25:
+            raise AssertionError(
+                "SKIP CEILING EXCEEDED: %d optional-marked skips > 25. "
+                "Skip ceiling 25 — per-test justification in TRIAGE.md "
+                "§Ceiling update — M0T3. Optional-marked skipped tests:\n  - %s"
+                % (count, "\n  - ".join(sorted(_OPTIONAL_SKIPPED)))
+            )
+    except AssertionError:
+        raise
+    except Exception:
+        # Never let the guard itself break session teardown.
+        pass
 
 
 # ---------------------------------------------------------------------------

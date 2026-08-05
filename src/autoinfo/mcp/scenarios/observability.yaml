@@ -12,12 +12,12 @@ steps:
       success: true
       data_has: ["trace_id", "pipeline_events", "kb_entries"]
 
-  - name: "get_metrics surfaces pre-existing handler bug (domain kwarg)"
+  - name: "get_metrics returns collected system metrics"
     tool: get_metrics
     arguments: {}
     expect:
-      success: false
-      error_code: "InternalError"
+      success: true
+      data_has: ["items_collected_total"]
 
   - name: "get_prometheus_metrics returns exposition-format text"
     tool: get_prometheus_metrics

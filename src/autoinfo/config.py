@@ -26,12 +26,14 @@ import yaml
 # (T7-T10). Adding a type requires updating BOTH this set and ``_build_handler``
 # — enforced by the parity test in ``tests/test_source_dispatch.py``.
 VALID_SOURCE_TYPES: frozenset[str] = frozenset({
+    "akshare",
     "api",
     "ap_api",
     "apple_podcasts",
     "bilibili",
     "core",
     "dblp",
+    "edx_sitemap",
     "email",
     "email_imap",
     "gdelt",
@@ -45,6 +47,7 @@ VALID_SOURCE_TYPES: frozenset[str] = frozenset({
     "reddit",
     "reuters_mcp",
     "rss",
+    "sec_edgar",
     "spotify",
     "ssrn",
     "unpaywall",

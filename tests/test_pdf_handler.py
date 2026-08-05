@@ -14,6 +14,12 @@ import pytest
 
 from autoinfo.collectors.pdf import PDFHandler
 from autoinfo.models import Item
+from tests.conftest import requires_optional_dep
+
+# TRIAGE #2-14 (env-dep): PyMuPDF missing → src/autoinfo/collectors/pdf.py:34
+# (`fitz = None`) → `_check_deps()` raises at pdf.py:269-274. Gate on the
+# conftest HAVE_PYMUPDF check; install '.[pdf]' to run these tests.
+requires_fitz = requires_optional_dep("fitz")
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +87,8 @@ def handler() -> PDFHandler:
 class TestExtractFromFile:
     """Test text extraction from a local PDF file via ``extract()``."""
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_extract_returns_items(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -95,6 +103,8 @@ class TestExtractFromFile:
         assert len(items) == 1
         assert isinstance(items[0], Item)
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_small_pdf_single_item(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -108,6 +118,8 @@ class TestExtractFromFile:
 
         assert len(items) == 1
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_large_pdf_multiple_chunks(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -127,6 +139,8 @@ class TestExtractFromFile:
         assert "(pages 11-20)" in items[1].title
         assert "(pages 21-25)" in items[2].title
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_content_from_all_pages(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -144,6 +158,8 @@ class TestExtractFromFile:
         assert "Beta" in items[0].content
         assert "Gamma" in items[0].content
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_source_name_propagates(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -159,6 +175,8 @@ class TestExtractFromFile:
         assert len(items) == 1
         assert items[0].source_name == "my-pdf-source"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_file_not_found(self, handler: PDFHandler) -> None:
         """Non-existent file path raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
@@ -190,6 +208,8 @@ class TestExtractFromFile:
 class TestMetadataParsing:
     """Test PDF metadata is correctly mapped to Item fields."""
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_title_from_metadata(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -210,6 +230,8 @@ class TestMetadataParsing:
         assert len(items) == 1
         assert items[0].title == "Annual Report 2026"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_title_fallback_to_filename(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -224,6 +246,8 @@ class TestMetadataParsing:
         assert len(items) == 1
         assert items[0].title == "quarterly_report"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_author_and_subject_in_raw_data(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -246,6 +270,8 @@ class TestMetadataParsing:
         assert items[0].raw_data["subject"] == "Machine Learning"
         assert items[0].raw_data["keywords"] == "ML, AI"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_raw_data_has_page_info(
         self, handler: PDFHandler, tmp_path: Path
     ) -> None:
@@ -278,6 +304,8 @@ class TestUrlDownloadAndParse:
 
     PDF_URL = "https://example.com/doc.pdf"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_url_download_and_extract(
         self, handler: PDFHandler
     ) -> None:
@@ -308,6 +336,8 @@ class TestUrlDownloadAndParse:
         assert isinstance(call_arg, Path)
         assert call_arg.suffix == ".pdf"
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_fetch_method(
         self, handler: PDFHandler
     ) -> None:
@@ -340,6 +370,8 @@ class TestUrlDownloadAndParse:
 
         assert items == []
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_download_size_limit(
         self, handler: PDFHandler
     ) -> None:

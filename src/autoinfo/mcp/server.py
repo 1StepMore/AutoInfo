@@ -814,6 +814,9 @@ _PLATFORM_INFO: dict[str, dict[str, Any]] = {
     "kaggle": {"name": "Kaggle", "description": "Kaggle datasets and competitions", "output_formats": ["json"]},
     "unpaywall": {"name": "Unpaywall", "description": "Open-access scholarly full text via Unpaywall", "output_formats": ["json"]},
     "core": {"name": "CORE", "description": "CORE aggregator of open-access research papers", "output_formats": ["json"]},
+    "akshare": {"name": "AKShare", "description": "Chinese A-share market data via AKShare", "output_formats": ["json"]},
+    "sec_edgar": {"name": "SEC EDGAR", "description": "SEC EDGAR company filings (ticker → CIK → submissions)", "output_formats": ["json"]},
+    "edx_sitemap": {"name": "edX Sitemap", "description": "edX course catalog via sitemap index", "output_formats": ["xml", "json"]},
 }
 
 
@@ -2410,6 +2413,16 @@ def _handle_generate_digest(
                 "encoding": "base64",
                 "content": result,
             }
+        if format in ("epub", "audiobook"):
+            return {
+                "success": True,
+                "format": format,
+                "content_type": (
+                    "application/epub+zip" if format == "epub" else "audio/mpeg"
+                ),
+                "encoding": "base64",
+                "content": result,
+            }
         return {"success": True, "format": format, "content": result}
     except ValueError as exc:
         return {
@@ -2452,7 +2465,15 @@ def _handle_generate_report(
         })
 
     try:
-        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id, report_type=report_type)
+        product_template = None
+        if report_type == "column":
+            from autoinfo.output import PRODUCT_TEMPLATES
+
+            product_template = next(
+                (row["template"] for row in PRODUCT_TEMPLATES if row["name"] == "column"),
+                None,
+            )
+        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id, report_type=report_type, product_template=product_template)
         if format in ("json", "agent"):
             import json as _json
 
@@ -2471,6 +2492,18 @@ def _handle_generate_report(
                 "format": "audio",
                 "period": period,
                 "content_type": "audio/mp3",
+                "encoding": "base64",
+                "content": result,
+            }
+        if format in ("epub", "audiobook"):
+            return {
+                "success": True,
+                "domain": domain,
+                "format": format,
+                "period": period,
+                "content_type": (
+                    "application/epub+zip" if format == "epub" else "audio/mpeg"
+                ),
                 "encoding": "base64",
                 "content": result,
             }
@@ -2568,6 +2601,19 @@ def _handle_generate_cross_domain_report(
                 "format": "audio",
                 "period": period,
                 "content_type": "audio/mp3",
+                "encoding": "base64",
+                "content": result,
+            }
+        if format in ("epub", "audiobook"):
+            return {
+                "success": True,
+                "domain": domains[0],
+                "domains": domains,
+                "format": format,
+                "period": period,
+                "content_type": (
+                    "application/epub+zip" if format == "epub" else "audio/mpeg"
+                ),
                 "encoding": "base64",
                 "content": result,
             }
@@ -3366,7 +3412,8 @@ def _handle_init_project(
 
     try:
         _ensure_dir(autoinfo_dir)
-        _run_init(domain, autoinfo_dir, project_name=project_name)
+        # _run_init takes list[str]; a bare str would iterate char-by-char.
+        _run_init([domain], autoinfo_dir, project_name=project_name)
 
         if llm_provider or llm_model or llm_base_url:
             import yaml
@@ -4594,9 +4641,8 @@ def _handle_trace_item(name: str, arguments: dict) -> dict[str, Any]:
 
 
 def _handle_get_metrics(name: str, arguments: dict) -> dict[str, Any]:
-    domain = arguments.get("domain")
     from autoinfo.metrics import get_metrics as _get_metrics
-    return _get_metrics(domain=domain)
+    return _get_metrics()
 
 
 def _handle_get_prometheus_metrics(name: str, arguments: dict) -> dict[str, Any]:
@@ -6355,7 +6401,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Source type (api, rss, web, webhook, email, pdf)",
                         "default": "api",
-                        "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
+                        "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
                     },
                     "domain": {
                         "type": "string",
@@ -6416,7 +6462,7 @@ async def list_tools() -> list[Tool]:
                                     "type": "string",
                                     "default": "api",
                                     "description": "Source type (api, rss, web, webhook, email, pdf)",
-                                    "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
+                                    "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
                                 },
                                 "domain": {
                                     "type": "string",
@@ -6492,7 +6538,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Source type (api, rss, web, webhook, email, pdf)",
                         "default": "api",
-                        "enum": ["api", "rss", "web", "webhook", "email", "pdf"],
+                        "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
                     },
                 },
                 "required": ["url"],
@@ -7470,9 +7516,15 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, html, json, agent, audio",
+                        "description": (
+                            "Output format: markdown, html, json, agent, audio, epub, "
+                            "audiobook"
+                        ),
                         "default": "markdown",
-                        "enum": ["markdown", "html", "json", "agent", "audio"],
+                        "enum": [
+                            "markdown", "html", "json", "agent", "audio",
+                            "epub", "audiobook",
+                        ],
                     },
                     "custom_instructions": {
                         "type": "string",
@@ -7513,7 +7565,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Generate a structured report for a domain over a given "
                 "period (day, week, month).  Returns markdown by default; "
-                "also supports json, html, agent (JSON-LD), and audio.  "
+                "also supports json, html, agent (JSON-LD), audio, epub, "
+                "and audiobook.  "
                 "Accepts optional custom_instructions to tailor output."
             ),
             inputSchema={
@@ -7525,9 +7578,15 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, html, agent, audio",
+                        "description": (
+                            "Output format: markdown, json, html, agent, audio, epub, "
+                            "audiobook"
+                        ),
                         "default": "markdown",
-                        "enum": ["markdown", "json", "html", "agent", "audio"],
+                        "enum": [
+                            "markdown", "json", "html", "agent", "audio",
+                            "epub", "audiobook",
+                        ],
                     },
                     "period": {
                         "type": "string",
@@ -7552,9 +7611,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "report_type": {
                         "type": "string",
-                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing",
+                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
                         "default": "standard",
-                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing"],
+                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
                     },
                 },
                 "required": ["domain"],
@@ -7566,7 +7625,8 @@ async def list_tools() -> list[Tool]:
                 "Generate a synthesis report across multiple domains, "
                 "connecting findings and identifying cross-domain trends. "
                 "Returns markdown by default; also supports json, html, "
-                "agent (JSON-LD), and audio.  At least 2 domains are required."
+                "agent (JSON-LD), audio, epub, and audiobook.  "
+                "At least 2 domains are required."
             ),
             inputSchema={
                 "type": "object",
@@ -7578,9 +7638,12 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, html, agent, audio",
+                        "description": (
+                            "Output format: markdown, json, html, agent, audio, epub, "
+                            "audiobook"
+                        ),
                         "default": "markdown",
-                        "enum": ["markdown", "json", "html", "agent", "audio"],
+                        "enum": ["markdown", "json", "html", "agent", "audio", "epub", "audiobook"],
                     },
                     "period": {
                         "type": "string",
@@ -7595,9 +7658,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "report_type": {
                         "type": "string",
-                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing",
+                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
                         "default": "standard",
-                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing"],
+                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
                     },
                 },
                 "required": ["domains"],
@@ -7740,7 +7803,7 @@ async def list_tools() -> list[Tool]:
             name="export_kb",
             description=(
                 "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle, sitemap formats."
+                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle, sitemap, epub, mobi formats."
             ),
             inputSchema={
                 "type": "object",
@@ -7751,9 +7814,16 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "description": "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle (ZIP with PDF+JSON+MD+YAML)",
+                        "description": (
+                            "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, "
+                            "agent, bundle (ZIP with PDF+JSON+MD+YAML), epub, mobi"
+                        ),
                         "default": "markdown",
-                        "enum": ["markdown", "json", "sqlite", "csv", "pdf", "graphml", "rss", "agent", "bundle", "sitemap"],
+                        "enum": [
+                            "markdown", "json", "sqlite", "csv", "pdf",
+                            "graphml", "rss", "agent", "bundle", "sitemap",
+                            "epub", "mobi",
+                        ],
                     },
                     "scope": {
                         "type": "string",
@@ -9618,7 +9688,7 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
-# -- LLM-required tools (13) ------------------------------------------------
+# -- LLM-required tools (14) ------------------------------------------------
 # Tools in this set require LLM configuration to function.  When the LLM
 # is not configured (no api_key), call_tool will block them with a clear
 # error response before dispatching to the handler.
@@ -9662,9 +9732,124 @@ def _is_llm_configured() -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Dispatch-level audit hook (M1T15)
+#
+# Every MCP tool call is recorded in the append-only audit log with the
+# whitelisted fields ONLY: actor, action, tool, resource, result_code,
+# trace_id.  Tool inputs and response data are NEVER written here — the
+# privacy grep (`grep -rn "api_key\|arguments\|payload" server.py |
+# grep -i audit`) must stay empty.
+# ---------------------------------------------------------------------------
+
+# Explicit exclusion list (volume control): high-frequency read probes.
+#  * ``health_check``  — entry-point health probe
+#  * ``get_tool_count`` — static introspection
+#  * every ``list_*`` tool (list_domains, list_sources, list_topics,
+#    list_summaries, ...) — read-only discovery probes that fire in tight
+#    agent loops and would otherwise dominate the log.
+# All other tools (mutations + parameterised reads) are audited.
+_AUDIT_EXCLUDED_TOOLS: frozenset[str] = frozenset({
+    "health_check",
+    "get_tool_count",
+})
+
+_AUDIT_WRITE_FAILURES = 0  # in-process counter surfaced via pipeline logs
+
+
+def _audit_excluded(tool_name: str) -> bool:
+    """Return ``True`` when *tool_name* is on the audit exclusion list.
+
+    Exclusion list (documented, explicit):
+      * ``health_check``
+      * ``get_tool_count``
+      * every tool whose name starts with ``list_``
+    """
+    return (
+        tool_name in _AUDIT_EXCLUDED_TOOLS
+        or tool_name.startswith("list_")
+    )
+
+
+def _current_actor() -> str:
+    """Resolve a stable actor id for dispatch-level audit entries.
+
+    Taxonomy: ``"agent:<session>"`` (interactive MCP agent client),
+    ``"cli"`` (command-line driven), ``"cron"`` (scheduled job),
+    ``"system"`` (internal / server-originated).
+
+    The MCP dispatch does not carry caller identity in its handler
+    signature, so the actor is taken from the ``AUTOINFO_ACTOR``
+    environment variable when a launcher (cron wrapper, CLI shim) sets
+    it, defaulting to ``"agent:mcp"`` for the stdio/SSE agent surface.
+    """
+    return os.environ.get("AUTOINFO_ACTOR") or "agent:mcp"
+
+
+def _safe_resource(args: dict[str, Any]) -> str:
+    """Extract a single low-sensitivity resource identifier for audit rows.
+
+    Returns the ``domain`` (then ``topic``, then ``name``) argument when
+    present, else ``""``.  Only configuration-level identifiers (domain /
+    topic / entity names) are ever used — never URLs, credentials, or
+    free-form content — so the audit row's resource field cannot carry
+    secrets.
+    """
+    for key in ("domain", "topic", "name"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _audit_tool_call(tool_name: str, code: str, resource: str = "") -> None:
+    """Append one dispatch-level row to the audit log (fire-and-forget).
+
+    Writes exactly the whitelisted fields: ``actor``, ``action``,
+    ``tool``, ``resource``, ``result_code``, ``trace_id`` — nothing else
+    (no tool inputs, no response data).
+
+    Best-effort by design: the write is wrapped in try/except so an audit
+    failure can never fail the tool call itself; failures are logged and
+    counted (``_AUDIT_WRITE_FAILURES``) instead.
+    """
+    global _AUDIT_WRITE_FAILURES
+    if _audit_excluded(tool_name):
+        return
+    try:
+        from autoinfo.audit import append_audit_log
+
+        append_audit_log(
+            actor=_current_actor(),
+            action="tool_call",
+            tool=tool_name,
+            resource_id=resource,
+            details={
+                "result_code": code,
+                "trace_id": str(uuid.uuid4()),
+            },
+        )
+    except Exception:
+        _AUDIT_WRITE_FAILURES += 1
+        logger.warning(
+            "Audit write failed for tool '%s' (code=%s) — call result unaffected",
+            tool_name,
+            code,
+            exc_info=True,
+        )
+        from autoinfo.logging import get_pipeline_logger
+
+        get_pipeline_logger("mcp.dispatch").warning(
+            "Audit write failure",
+            extra={"tool": tool_name, "result_code": code,
+                   "failures": _AUDIT_WRITE_FAILURES},
+        )
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch tool calls to the appropriate implementation."""
+    _dispatch_audit: dict[str, str] = {"code": "success"}
     try:
         # -- health_check is exempted — keep flat for the entry-point tool
         if name == "health_check":
@@ -9673,6 +9858,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # -- LLM guard: block LLM-required tools when not configured ------
         if name in _LLM_REQUIRED_TOOLS and not _is_llm_configured():
+            _dispatch_audit["code"] = "blocked"
             return [
                 TextContent(
                     type="text",
@@ -9808,7 +9994,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # -- Audit (1) -------------------------------------------------------
         elif name == "query_audit_log":
-            result = _handle_query_audit_log(**arguments)
+            qa_kwargs = arguments
+            result = _handle_query_audit_log(**qa_kwargs)
 
         # -- CEFR Classification (1) ----------------------------------------
         elif name == "classify_cefr":
@@ -10057,6 +10244,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = await _handle_run_validation_scenario(**arguments)
 
         else:
+            _dispatch_audit["code"] = "unknown_tool"
             return [
                 TextContent(
                     type="text",
@@ -10098,6 +10286,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps(wrapped))]
     except NotImplementedError:
         # Stub tools return a graceful error response using canonical envelope
+        _dispatch_audit["code"] = "not_implemented"
         return [
             TextContent(
                 type="text",
@@ -10108,9 +10297,26 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 )),
             )
         ]
+    except TypeError as exc:
+        # Missing required arguments — client-side call error, not a server bug
+        _dispatch_audit["code"] = "validation_error"
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(error_response(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message=str(exc),
+                    actionable=True,
+                )),
+            )
+        ]
     except Exception as exc:
+        _dispatch_audit["code"] = "error"
         logger.exception("Tool '%s' failed", name)
         return _error_response(exc)
+    finally:
+        resource = _safe_resource(arguments)
+        _audit_tool_call(name, _dispatch_audit["code"], resource)
 
 
 # ---------------------------------------------------------------------------

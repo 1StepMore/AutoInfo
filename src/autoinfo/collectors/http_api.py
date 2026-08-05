@@ -52,6 +52,11 @@ class HttpApiHandler(BaseHandler):
     |                      | If empty, the entire response is treated as a     |
     |                      | single item wrapped in a list.                    |
     +----------------------+---------------------------------------------------+
+    | ``json_path: "$"``   | The entire HTTP response body IS the array of     |
+    |                      | items (e.g. a Mastodon public timeline returns a  |
+    |                      | top-level JSON array).  ``"$.field"`` selects an  |
+    |                      | array nested under a key (Bluesky ``"$.posts"``). |
+    +----------------------+---------------------------------------------------+
     | ``field_mapping``    | Dict mapping :class:`Item` field names to JSON    |
     |                      | paths in each raw item.  Supported item fields:   |
     |                      | ``id``, ``title``, ``content``, ``source_url``.   |
@@ -262,16 +267,41 @@ class HttpApiHandler(BaseHandler):
     # JSON extraction
     # ------------------------------------------------------------------
 
-    def _extract_items_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+    def _extract_items_list(self, data: Any) -> list[dict[str, Any]]:
         """Extract the array of raw items from the API response.
 
-        Uses ``json_path`` from settings to traverse the response dict.
-        If no ``json_path`` is configured, returns ``[data]`` (treats
-        the entire response as a single item).
+        Uses ``json_path`` from settings to locate the item array:
+
+        * ``"$"`` — the entire HTTP response body IS the array of items
+          (e.g. a Mastodon public timeline returns a top-level JSON
+          array).
+        * ``"$.field"`` — the array lives under ``field`` of the
+          response object (Bluesky-style ``"$.posts"``).
+        * ``"a.b.c"`` — existing dot-path semantics on a dict response
+          (e.g. CrossRef ``"message.items"``); unchanged.
+        * empty — the entire response is treated as a single item
+          wrapped in a list.
         """
         json_path = self._settings.get("json_path", "")
+
+        # "$" — the response body itself is the item array.
+        if json_path == "$":
+            if isinstance(data, list):
+                return data
+            if not data:
+                return []
+            logger.warning(
+                "json_path '$' but response for source '%s' is not a JSON array",
+                self.source_name,
+            )
+            return []
+
         if not json_path:
             return [data] if data else []
+
+        # "$.field" — array under a key, same semantics as "field".
+        if json_path.startswith("$."):
+            json_path = json_path[2:]
 
         result = _traverse_json(data, json_path)
         if result is None:
@@ -316,15 +346,21 @@ class HttpApiHandler(BaseHandler):
                             scraped = _scrape_doi_page(doi_url, timeout=10)
                             if scraped:
                                 content = scraped
-                                content_type = "text"
                         except Exception as scrape_exc:
-                            logger.debug("CrossRef scrape fallback failed for %s: %s", doi_url, scrape_exc)
+                            logger.debug(
+                                "CrossRef scrape fallback failed for %s: %s",
+                                doi_url,
+                                scrape_exc,
+                            )
 
                 item = Item(
                     id=_get_field(raw, field_mapping.get("id", "")) or _make_stable_id(raw, i),
                     source_name=self.source_name,
                     source_type="api",
-                    source_url=_get_field(raw, field_mapping.get("source_url", "")) or self.source_config.url,
+                    source_url=(
+                        _get_field(raw, field_mapping.get("source_url", ""))
+                        or self.source_config.url
+                    ),
                     title=_get_field(raw, field_mapping.get("title", "")) or "",
                     content=content,
                     content_type=_get_field(raw, field_mapping.get("content_type", "")) or "text",

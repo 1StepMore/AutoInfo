@@ -30,13 +30,17 @@ from autoinfo.config import SourceConfig, VALID_SOURCE_TYPES
 
 DEMO_DIR = Path(__file__).resolve().parents[1] / "src" / "autoinfo" / "data" / "domains"
 
-# All 5 demo domains
+# All 9 demo domains (5 legacy + 4 added by M3T24)
 DOMAINS: list[str] = [
     "medical-research",
     "ai-commercial",
     "financial-intelligence",
     "tech-ai-developer",
     "language-learning",
+    "general-news",
+    "gaming",
+    "b2b",
+    "retail",
 ]
 
 # Expected dispatch results
@@ -45,9 +49,14 @@ DOMAINS: list[str] = [
 EXPECTED_PASS: dict[str, list[str]] = {
     "medical-research": ["pubmed", "arXiv", "CrossRef", "dblp", "openalex", "semantic-scholar", "uspto"],
     "ai-commercial": ["techcrunch", "producthunt", "Crunchbase", "36kr"],
-    "financial-intelligence": ["Alpha Vantage", "FRED", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"],
+    "financial-intelligence": ["Alpha Vantage", "FRED", "Finnhub", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"],
     "tech-ai-developer": ["Substack RSS (tech) — Pragmatic Engineer", "GitHub Trending", "HackerNews API", "Stack Exchange", "ProductHunt", "Reddit", "Spotify AI Podcasts", "Bilibili (B站)"],
     "language-learning": ["project-gutenberg", "news-in-levels", "commonlit"],
+    # M3T24 demo domains (D12/D14/D15/D16) — all sources dispatch cleanly
+    "general-news": ["gdelt", "guardian-open-platform", "google-news-rss", "nyt", "ap-api", "zhihu-daily", "mastodon", "bluesky", "wechat2rss", "medium-user", "medium-publication", "medium-tag", "the-atlantic", "wired", "time-magazine"],
+    "gaming": ["ign-rss", "polygon-rss", "gamesindustry-biz", "gcores-rss", "yystv-via-google-news"],
+    "b2b": ["producthunt", "techcrunch", "crunchbase-news", "a16z", "hackernews"],
+    "retail": ["retail-dive", "modern-retail", "ebrun-via-google-news", "shopify-news", "digiday"],
 }
 
 EXPECTED_FAIL: dict[str, list[str]] = {
@@ -56,6 +65,10 @@ EXPECTED_FAIL: dict[str, list[str]] = {
     "financial-intelligence": [],
     "tech-ai-developer": [],
     "language-learning": [],
+    "general-news": [],
+    "gaming": [],
+    "b2b": [],
+    "retail": [],
 }
 
 # Flattened expected names for quick membership checks
@@ -155,10 +168,10 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-        # 3. Grand totals: 28 pass, 0 fail
-        assert len(all_pass) == 28, f"Expected 28 PASS, got {len(all_pass)}"
+        # 3. Grand totals: 59 pass, 0 fail (29 legacy incl. M3T30 Finnhub + 30 M3T24)
+        assert len(all_pass) == 59, f"Expected 59 PASS, got {len(all_pass)}"
         assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-        assert total == 28, f"Expected 28 total sources, got {total}"
+        assert total == 59, f"Expected 59 total sources, got {total}"
 
 
 # ---------------------------------------------------------------------------

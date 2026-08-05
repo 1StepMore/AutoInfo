@@ -1,0 +1,74 @@
+# {{ title }}
+
+**Domain**: {{ domain }}  
+**Generated**: {{ generated_at }}  
+{% if collection_id %}**Collection**: {{ collection_id }}  
+{% endif %}**Sections**: {{ sections|length }}  
+**References**: {{ references|length }}  
+**Cadence**: Weekly column
+
+---
+
+## The Big Idea
+
+{{ executive_summary }}
+
+---
+
+## Deep Dive
+
+{% for section in sections %}
+### {{ section.title }}
+
+{{ section.content }}
+
+{% if section.entries %}
+| # | Title | Summary |
+|---|-------|---------|
+{% for entry in section.entries %}
+| {{ loop.index }} | {{ entry.title }} | {{ entry.summary }} |
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+---
+
+## What Changed This Week
+
+{% for ref in references %}
+- **{{ ref.title }}**{% if ref.source_url %} — {{ ref.source_url }}{% endif %}{% if ref.source_platform %} ({{ ref.source_platform }}){% endif %}
+{% else %}
+_No developments this week._
+{% endfor %}
+
+---
+
+## Implications & Outlook
+
+{% for section in sections %}
+- **{{ section.title }}** — {{ section.content }}
+{% endfor %}
+
+## Reader Takeaways
+
+1. Revisit the Deep Dive sections for the full analysis.
+2. Track the What Changed This Week list for week-over-week signals.
+3. Follow the referenced sources for primary evidence.
+
+{% if appendices %}
+---
+
+## Appendices
+
+{% for appendix in appendices %}
+### {{ appendix.title }}
+
+{{ appendix.content }}
+
+{% endfor %}
+{% endif %}
+
+---
+
+*AutoInfo Column · {{ domain }} · {{ generated_at }}*

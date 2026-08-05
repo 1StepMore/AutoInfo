@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
+  "title": "AutoInfo Knowledge Presentation (agent-native JSON-LD)",
+  "description": "Agent-native JSON-LD payload emitted by generate_presentation with format=\"agent\" (renderer: _render_presentation_agent_json in src/autoinfo/output/__init__.py). @type: KnowledgePresentation. The schema is a LOCAL file under docs/schemas/ — the @context/@type identifiers are stable contract strings, not hosting URLs.",
+  "type": "object",
+  "required": ["@context", "@type", "uuid", "title", "topic", "domain", "target_audience", "description", "theme", "slides", "sources", "generated_at", "metadata"],
+  "properties": {
+    "@context": {
+      "const": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
+      "description": "Stable identifier for this payload kind. Must equal _JSONLD_PRESENTATION[\"@context\"]."
+    },
+    "@type": {
+      "const": "KnowledgePresentation",
+      "description": "Must equal _JSONLD_PRESENTATION[\"@type\"]."
+    },
+    "uuid": { "type": "string", "description": "Per-render presentation identifier (uuid4)." },
+    "title": { "type": "string", "description": "LLM title; falls back to '<topic> — Presentation'." },
+    "topic": { "type": "string" },
+    "domain": { "type": "string" },
+    "target_audience": { "type": "string" },
+    "description": { "type": "string" },
+    "theme": { "type": "string", "description": "Currently always the literal 'default'." },
+    "slides": {
+      "type": "array",
+      "description": "LLM-generated slides.",
+      "items": { "$ref": "#/definitions/slide" }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Up to 50 KB entries the presentation is derived from.",
+      "items": { "$ref": "#/definitions/source" }
+    },
+    "generated_at": { "type": "string", "description": "ISO-8601 timestamp of generation." },
+    "metadata": {
+      "type": "object",
+      "required": ["slide_count", "source_count"],
+      "properties": {
+        "slide_count": { "type": "integer", "minimum": 0 },
+        "source_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "slide": {
+      "type": "object",
+      "required": ["title", "content", "bullets"],
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "bullets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": { "type": ["string", "null"], "description": "Speaker notes; null when absent." }
+      },
+      "additionalProperties": true
+    },
+    "source": {
+      "type": "object",
+      "required": ["entry_id", "title", "source_url"],
+      "properties": {
+        "entry_id": { "type": "string" },
+        "title": { "type": "string" },
+        "source_url": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

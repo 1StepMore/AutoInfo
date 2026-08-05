@@ -476,7 +476,7 @@ class TestRemoveTopic:
 class TestListOutputTemplates:
     def test_returns_templates(self) -> None:
         result = _handle_list_output_templates(domain="medical-research")
-        assert result["count"] == 6
+        assert result["count"] == 8
         template_names = {t["name"] for t in result["templates"]}
         assert "digest" in template_names
         assert "report" in template_names
@@ -487,18 +487,23 @@ class TestListOutputTemplates:
 
     def test_works_without_domain(self) -> None:
         result = _handle_list_output_templates()
-        assert result["count"] == 6
+        assert result["count"] == 8
 
 
 class TestSearchKnowledgeBaseStub:
-    def test_returns_result_not_stub(self) -> None:
+    # TRIAGE #71 (regression): `_handle_search_knowledge_base` short-circuits
+    # on `_detect_kb_status()` (`server.py:2068-2079`) — the "empty" branch
+    # returns a `count` key, not the legacy `total_count`. Stub the status so
+    # the test is hermetic (CI has no `knowledge/` dir → "uninitialized").
+    @patch("autoinfo.mcp.server._detect_kb_status", return_value="empty")
+    def test_returns_result_not_stub(self, mock_status: MagicMock) -> None:
         from autoinfo.mcp.server import _handle_search_knowledge_base
 
         result = _handle_search_knowledge_base(
             query="test", domain="medical-research"
         )
         assert "entries" in result
-        assert "total_count" in result
+        assert "count" in result
 
 
 class TestFlagForKnowledgeBaseStub:
@@ -626,7 +631,7 @@ class TestNewToolDispatch:
         result = await handler(request)
         data = json.loads(result.root.content[0].text)
         assert data["success"] is True
-        assert data["data"]["count"] == 6
+        assert data["data"]["count"] == 8
 
     @pytest.mark.asyncio
     async def test_unknown_tool_returns_error(self) -> None:
@@ -642,7 +647,11 @@ class TestNewToolDispatch:
         assert data["error"]["actionable"] is False
 
     @pytest.mark.asyncio
-    async def test_implemented_tool_returns_result(self) -> None:
+    # TRIAGE #72 (regression): same `count` vs `total_count` shape drift as
+    # #71 (`server.py:2074-2078`) — stub `_detect_kb_status` to "empty" so
+    # the dispatch path returns the deterministic short-circuit shape.
+    @patch("autoinfo.mcp.server._detect_kb_status", return_value="empty")
+    async def test_implemented_tool_returns_result(self, mock_status: MagicMock) -> None:
         """search_knowledge_base is now implemented, not a stub."""
         handler = mcp_server.app.request_handlers[CallToolRequest]
         request = CallToolRequest(
@@ -656,7 +665,7 @@ class TestNewToolDispatch:
         data = json.loads(result.root.content[0].text)
         assert data["success"] is True
         assert "entries" in data["data"]
-        assert "total_count" in data["data"]
+        assert "count" in data["data"]
 
 # ======================================================================
 # Error response format verification
@@ -665,6 +674,9 @@ class TestNewToolDispatch:
 
 class TestErrorResponseV2:
     def test_error_includes_required_fields(self) -> None:
+        # TRIAGE #73 (regression): 51dbc69 maps ValueError → VALIDATION_ERROR
+        # at server.py:6173-6174 — missing/required params are a client-side
+        # validation error, not an internal one. Test asserted the legacy code.
         exc = ValueError("Test error")
         result = _error_response(exc)
 
@@ -676,7 +688,7 @@ class TestErrorResponseV2:
         # Envelope shape
         assert data["success"] is False
         assert "error" in data
-        assert data["error"]["code"] == "InternalError"
+        assert data["error"]["code"] == "ValidationError"
         assert "message" in data["error"]
         assert "actionable" in data["error"]
 

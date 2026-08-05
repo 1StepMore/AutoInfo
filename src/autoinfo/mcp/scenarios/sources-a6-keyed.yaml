@@ -1,0 +1,63 @@
+# A6 keyed sources (M3T30) — FRED + Finnhub add/remove lifecycle in
+# financial-intelligence. Both are API-key sources: when FRED_API_KEY or
+# FINNHUB_API_KEY is unset the WHOLE scenario reports unconfigured (BYOK
+# obligation — never a silent skip, never a fabricated pass). Settings
+# mirror the demo sources.yaml contract: Finnhub's key travels in the
+# `token` query param via ${FINNHUB_API_KEY} env-refs (resolved at config
+# load, not at add time). Structural only: no network calls.
+name: sources-a6-keyed
+description: "A6 — FRED + Finnhub keyed source lifecycle (financial-intelligence)"
+category: source
+requires_env: ["FRED_API_KEY", "FINNHUB_API_KEY"]
+steps:
+  - name: "add_source FRED keyed api source"
+    tool: add_source
+    arguments:
+      name: __val_fred__
+      url: "https://api.stlouisfed.org/fred/series?series_id=GDP"
+      type: api
+      domain: financial-intelligence
+      settings:
+        auth_mode: query
+        params:
+          file_type: json
+          series_id: GDP
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "add_source Finnhub keyed api source"
+    tool: add_source
+    arguments:
+      name: __val_finnhub__
+      url: "https://finnhub.io/api/v1/company-news?symbol=AAPL"
+      type: api
+      domain: financial-intelligence
+      settings:
+        api_key: "${FINNHUB_API_KEY}"
+        auth_mode: query
+        params:
+          token: "${FINNHUB_API_KEY}"
+        query_param: symbol
+        json_path: "$"
+    expect:
+      success: true
+      data_has: ["source", "created", "source_id"]
+
+  - name: "remove_source cleans up FRED test source"
+    tool: remove_source
+    arguments:
+      source_id: "financial-intelligence:__val_fred__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]
+
+  - name: "remove_source cleans up Finnhub test source"
+    tool: remove_source
+    arguments:
+      source_id: "financial-intelligence:__val_finnhub__"
+      confirm: true
+    expect:
+      success: true
+      data_has: ["removed", "source_id"]

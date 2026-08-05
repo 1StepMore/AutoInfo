@@ -189,9 +189,11 @@ class TestProductCatalog:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["count"] == 2
-        assert len(data["products"]) == 2
-        ids = {p["id"] for p in data["products"]}
+        assert data["success"] is True
+        inner = data["data"]
+        assert inner["count"] == 2
+        assert len(inner["products"]) == 2
+        ids = {p["id"] for p in inner["products"]}
         assert "medical-research-raw" in ids
         assert "medical-research-processed" in ids
 
@@ -293,9 +295,11 @@ class TestProductDetail:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["product"]["id"] == "medical-research-processed"
-        assert data["product"]["access_level"] == "premium"
-        assert data["access"]["allowed"] is True
+        assert data["success"] is True
+        inner = data["data"]
+        assert inner["product"]["id"] == "medical-research-processed"
+        assert inner["product"]["access_level"] == "premium"
+        assert inner["access"]["allowed"] is True
 
     def test_detail_missing_product_returns_404_html(self, client: TestClient):
         with _mock_get_product(None):
@@ -313,8 +317,9 @@ class TestProductDetail:
 
         assert response.status_code == 404
         data = response.json()
-        assert data["error_code"] == "NotFound"
-        assert "not found" in data["message"].lower()
+        assert data["success"] is False
+        assert data["error"]["code"] == "NotFound"
+        assert "not found" in data["error"]["message"].lower()
 
     def test_detail_with_user_id_grants_access_for_free(
         self,
@@ -423,11 +428,13 @@ class TestCreateSubscription:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["subscription_id"] == sub.subscription_id
-        assert data["user_id"] == "user-001"
-        assert data["product_id"] == "medical-research-processed"
-        assert data["status"] == "active"
-        assert data["tier"] == "premium"
+        assert data["success"] is True
+        inner = data["data"]
+        assert inner["subscription_id"] == sub.subscription_id
+        assert inner["user_id"] == "user-001"
+        assert inner["product_id"] == "medical-research-processed"
+        assert inner["status"] == "active"
+        assert inner["tier"] == "premium"
 
     def test_create_subscription_raw_product_sets_raw_access(
         self,
@@ -456,7 +463,7 @@ class TestCreateSubscription:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["tier"] == "free"
+        assert data["data"]["tier"] == "free"
 
     def test_create_subscription_missing_product_returns_404(
         self, client: TestClient
@@ -472,8 +479,9 @@ class TestCreateSubscription:
 
         assert response.status_code == 404
         data = response.json()
-        assert data["error_code"] == "NotFound"
-        assert "not found" in data["message"].lower()
+        assert data["success"] is False
+        assert data["error"]["code"] == "NotFound"
+        assert "not found" in data["error"]["message"].lower()
 
     def test_create_subscription_missing_user_id_returns_422(
         self, client: TestClient, sample_product_detail: dict[str, Any]
@@ -535,8 +543,8 @@ class TestCreateSubscription:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["tier"] == "enterprise"
-        assert data["auto_renew"] is False
+        assert data["data"]["tier"] == "enterprise"
+        assert data["data"]["auto_renew"] is False
 
 
 # ---------------------------------------------------------------------------

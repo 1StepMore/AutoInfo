@@ -170,7 +170,7 @@ def _mock_list_entries(
 
 
 class TestGenerateDigest:
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")  # TRIAGE #32-34: patch target must be the name used inside generate_digest (hoisted at src/autoinfo/output/__init__.py:49)
     @patch("autoinfo.output._call_llm_for_digest")
     def test_markdown_output_includes_entries_and_synthesis(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -190,7 +190,7 @@ class TestGenerateDigest:
         assert "IVF outcomes with time-lapse" in result
         assert "AI-driven embryo selection" in result
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_json_output_valid_structure(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -213,7 +213,7 @@ class TestGenerateDigest:
         assert len(parsed["entries"]) == 2
         assert parsed["llm_synthesis"]["executive_summary"] != ""
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_html_output_no_css(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -233,7 +233,7 @@ class TestGenerateDigest:
         assert "<h" in result or "<p>" in result
         assert "Weekly Digest" in result
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_empty_domain_shows_no_entries_message(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -248,7 +248,7 @@ class TestGenerateDigest:
         assert "No entries found" in result
         assert "empty-domain" in result
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_json_empty_domain_zero_entries(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -266,7 +266,7 @@ class TestGenerateDigest:
         assert parsed["entry_count"] == 0
         assert parsed["entries"] == []
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     def test_llm_failure_still_renders_entries(
         self, mock_kb: MagicMock
     ) -> None:
@@ -293,7 +293,7 @@ class TestGenerateDigest:
         with pytest.raises(ValueError, match="Invalid format"):
             generate_digest(domain="test", period="weekly", format="pdf")
 
-    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_daily_and_monthly_periods(
         self, mock_llm: MagicMock, mock_kb: MagicMock
@@ -319,9 +319,28 @@ class TestGenerateDigest:
 class TestMcpHandler:
     """Tests the _handle_generate_digest MCP handler directly."""
 
+    @pytest.fixture
+    def kb_store_with_entries(self):
+        """Stub KBStore entries so the handler reaches generate_digest.
+
+        TRIAGE #38-41 — ``_handle_generate_digest`` has an intentional no-entry
+        pre-check (src/autoinfo/mcp/server.py:2380-2386, added e497e11) that
+        short-circuits with ``{status: "noop"}`` before the mocked
+        ``generate_digest`` runs. The handler resolves KBStore via a
+        function-local ``from autoinfo.kb import KBStore`` (server.py:2374),
+        so this fixture patches that seam to return a non-empty preview.
+        These tests exercise the handler's rendering/envelope paths, not the
+        noop behavior — stubbing entries (preferred over asserting the noop
+        envelope) keeps them testing what they claim to test.
+        """
+        mock_store = MagicMock()
+        mock_store.list_entries.return_value = _SAMPLE_ENTRIES
+        with patch("autoinfo.kb.KBStore", return_value=mock_store):
+            yield
+
     @patch("autoinfo.mcp.server.logger")
     def test_handler_returns_success_with_content(
-        self, mock_logger: MagicMock
+        self, mock_logger: MagicMock, kb_store_with_entries
     ) -> None:
         """Handler returns success dict with rendered content."""
         from autoinfo.mcp.server import _handle_generate_digest
@@ -340,7 +359,7 @@ class TestMcpHandler:
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_json_format_parses_content(
-        self, mock_logger: MagicMock
+        self, mock_logger: MagicMock, kb_store_with_entries
     ) -> None:
         """Handler parses JSON string into dict for JSON format response."""
         from autoinfo.mcp.server import _handle_generate_digest
@@ -363,7 +382,7 @@ class TestMcpHandler:
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_propagates_validation_error(
-        self, mock_logger: MagicMock
+        self, mock_logger: MagicMock, kb_store_with_entries
     ) -> None:
         """Handler returns error dict for ValueError from generate_digest."""
         from autoinfo.mcp.server import _handle_generate_digest
@@ -379,7 +398,7 @@ class TestMcpHandler:
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_returns_error_for_exception(
-        self, mock_logger: MagicMock
+        self, mock_logger: MagicMock, kb_store_with_entries
     ) -> None:
         """Handler returns error dict for generic exceptions."""
         from autoinfo.mcp.server import _handle_generate_digest

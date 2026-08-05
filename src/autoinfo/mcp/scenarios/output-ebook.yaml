@@ -1,0 +1,48 @@
+# B23 ebook/audiobook output — digest/report EPUB + audiobook formats.
+# LLM-required (same BYOK obligation as output-digest-report): without
+# AUTOINFO_LLM_API_KEY this scenario reports unconfigured, never skipped.
+# format="epub" requires the [ebook] extra (ebooklib); format="audiobook"
+# renders per-chapter TTS via the same BYOK key.  export_kb epub/mobi is
+# covered in kb-import-export.yaml (epub) — mobi needs calibre, omitted.
+name: output-ebook
+description: "B23 — digest/report EPUB and audiobook output formats"
+category: output
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+steps:
+  - name: "generate_digest epub format"
+    tool: generate_digest
+    arguments:
+      domain: medical-research
+      period: daily
+      format: epub
+    expect:
+      success: true
+
+  - name: "generate_digest audiobook format"
+    tool: generate_digest
+    arguments:
+      domain: medical-research
+      period: daily
+      format: audiobook
+    expect:
+      success: true
+
+  - name: "generate_report industry type epub"
+    tool: generate_report
+    arguments:
+      domain: medical-research
+      format: epub
+      period: monthly
+      report_type: industry
+    expect:
+      success: true
+
+  - name: "generate_report industry type audiobook"
+    tool: generate_report
+    arguments:
+      domain: medical-research
+      format: audiobook
+      period: monthly
+      report_type: industry
+    expect:
+      success: true

@@ -20,7 +20,6 @@ E2E: The complete ``init → collect → process → summaries`` pipeline
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -179,7 +178,7 @@ def _write_config(root: Path, config: dict[str, Any] | None = None) -> Path:
     return config_path
 
 
-def _prepare_project(tmp_path: Path) -> Path:
+def _prepare_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Create a fully initialised project directory skeleton.
 
     * Writes ``.autoinfo/config.yaml`` with the standard test config.
@@ -188,7 +187,8 @@ def _prepare_project(tmp_path: Path) -> Path:
 
     Returns *tmp_path*.
     """
-    os.chdir(tmp_path)
+    # M0T10: restore cwd via monkeypatch (order-independent)
+    monkeypatch.chdir(tmp_path)
     _write_config(tmp_path)
     # Create directories that the pipeline expects
     (tmp_path / "collections").mkdir(exist_ok=True)
@@ -235,6 +235,12 @@ def _mock_litellm_completion(*args: object, **kwargs: object) -> MagicMock:
         "entities": result.entities,
         "relevance_score": result.relevance_score,
     })
+    # TRIAGE #65-68 (regression): cost-meter MagicMock binding
+    # (`process.py:690` → `cost.py:159`) — real int token counters so
+    # `CostMeter().log_llm_tokens` binds ints, not MagicMocks.
+    response.usage.prompt_tokens = 100
+    response.usage.completion_tokens = 50
+    response.usage.total_tokens = 150
     return response
 
 
@@ -250,10 +256,13 @@ class TestTrueTest:
     # T1: init creates config
     # ------------------------------------------------------------------
 
-    def test_t1_init_creates_config(self, tmp_path: Path) -> None:
+    def test_t1_init_creates_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """``autoinfo init --demo medical-research`` creates ``.autoinfo/config.yaml``
         and the required sub-directories."""
-        os.chdir(tmp_path)
+        # M0T10: restore cwd via monkeypatch (order-independent)
+        monkeypatch.chdir(tmp_path)
 
         from typer.testing import CliRunner
         from autoinfo.cli import app
@@ -267,9 +276,11 @@ class TestTrueTest:
         assert config_path.is_file(), "config.yaml was not created"
 
         # -- Required sub-directories exist --
-        assert (tmp_path / ".autoinfo" / "knowledge" / "01-Raw").is_dir()
-        assert (tmp_path / ".autoinfo" / "collections").is_dir()
-        assert (tmp_path / ".autoinfo" / "outputs").is_dir()
+        # TRIAGE #64 (regression): #106 (79b188a) moved runtime dirs from
+        # `.autoinfo/knowledge/...` to project root (`src/autoinfo/cli/init.py:135-140`).
+        assert (tmp_path / "knowledge" / "01-Raw").is_dir()
+        assert (tmp_path / "collections").is_dir()
+        assert (tmp_path / "outputs").is_dir()
 
         # -- Config parses as valid YAML --
         with open(config_path, encoding="utf-8") as fh:
@@ -283,9 +294,12 @@ class TestTrueTest:
     # T2: LLM key placeholder
     # ------------------------------------------------------------------
 
-    def test_t2_config_has_llm_key(self, tmp_path: Path) -> None:
+    def test_t2_config_has_llm_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Config YAML has ``${AUTOINFO_LLM_API_KEY}`` as the API key value."""
-        os.chdir(tmp_path)
+        # M0T10: restore cwd via monkeypatch (order-independent)
+        monkeypatch.chdir(tmp_path)
 
         from typer.testing import CliRunner
         from autoinfo.cli import app
@@ -313,10 +327,12 @@ class TestTrueTest:
     # T3: collection → 01-Raw files with frontmatter
     # ------------------------------------------------------------------
 
-    def test_t3_collection_stores_items(self, tmp_path: Path) -> None:
+    def test_t3_collection_stores_items(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Collection followed by processing produces 01-Raw Markdown files
         with all required frontmatter fields."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         # -- Step 1: Collect (mocked fetch, no real API) --
         with patch("autoinfo.collect._fetch_items", return_value=SAMPLE_RAW_ITEMS):
@@ -402,9 +418,11 @@ class TestTrueTest:
     # T4: quality scores present
     # ------------------------------------------------------------------
 
-    def test_t4_quality_scores_present(self, tmp_path: Path) -> None:
+    def test_t4_quality_scores_present(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Processing output includes per-item quality scores (G3 relevance)."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         # Collect
         with patch("autoinfo.collect._fetch_items", return_value=SAMPLE_RAW_ITEMS):
@@ -452,9 +470,11 @@ class TestTrueTest:
     # T5: summaries list has TL;DR
     # ------------------------------------------------------------------
 
-    def test_t5_summaries_list_has_tldr(self, tmp_path: Path) -> None:
+    def test_t5_summaries_list_has_tldr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """``KBStore.list_entries()`` returns entries with TL;DR summary."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         # Collect
         with patch("autoinfo.collect._fetch_items", return_value=SAMPLE_RAW_ITEMS):
@@ -495,13 +515,16 @@ class TestTrueTest:
     # E2E: Complete pipeline
     # ------------------------------------------------------------------
 
-    def test_end_to_end(self, tmp_path: Path) -> None:
+    def test_end_to_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Complete pipeline: init → collect → process → summaries.
 
         Verifies that the output of each stage is consistent with the
         previous one and that no real API calls are made.
         """
-        os.chdir(tmp_path)
+        # M0T10: restore cwd via monkeypatch (order-independent)
+        monkeypatch.chdir(tmp_path)
 
         # -- Stage 1: init ---------------------------------------------------
         from typer.testing import CliRunner
@@ -521,7 +544,7 @@ class TestTrueTest:
 
         # Verify init created .autoinfo/ structure
         assert (tmp_path / ".autoinfo" / "config.yaml").is_file()
-        assert (tmp_path / ".autoinfo" / "knowledge" / "01-Raw").is_dir()
+        assert (tmp_path / "knowledge" / "01-Raw").is_dir()
 
         # -- Stage 2: collect (mocked fetch, no real API) --------------------
         with patch("autoinfo.collect._fetch_items", return_value=SAMPLE_RAW_ITEMS):
@@ -598,28 +621,34 @@ class TestTrueTest:
     # Edge cases
     # ------------------------------------------------------------------
 
-    def test_empty_domain_returns_no_results(self, tmp_path: Path) -> None:
+    def test_empty_domain_returns_no_results(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Pipeline on an empty/unknown domain returns gracefully."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         from autoinfo.collect import run_collection
 
         with pytest.raises(ValueError, match="not found in configuration"):
             run_collection(domain="unknown-domain", dry_run=True)
 
-    def test_no_cached_items_process_returns_empty(self, tmp_path: Path) -> None:
+    def test_no_cached_items_process_returns_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Processing with no cached items returns zero counts."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         result = run_processing(domain=DOMAIN)
         assert result.total_items == 0
         assert result.kb_entries_created == 0
         assert result.passed_gates == 0
 
-    def test_config_loaded_from_env_has_placeholder(self, tmp_path: Path) -> None:
+    def test_config_loaded_from_env_has_placeholder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Verify the config file can be loaded by Config and the placeholder
         survives env-var resolution."""
-        _prepare_project(tmp_path)
+        _prepare_project(tmp_path, monkeypatch)
 
         from autoinfo.config import load_config
 

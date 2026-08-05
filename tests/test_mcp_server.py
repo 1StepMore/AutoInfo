@@ -290,9 +290,10 @@ class TestToolRegistration:
         assert "required" not in by_name["health_check"].inputSchema or \
                by_name["health_check"].inputSchema["required"] is None
 
-        # Collect requires domain
+        # TRIAGE #56 (stale): collect_sources domain is now intentionally
+        # optional (domain-less collection) — schema has required: []
         schema = by_name["collect_sources"].inputSchema
-        assert "domain" in schema.get("required", [])
+        assert "domain" not in schema.get("required", [])
 
         # Process requires domain
         schema = by_name["process_collection"].inputSchema
@@ -491,8 +492,13 @@ class TestGetProcessingProgress:
 
 
 class TestListSummaries:
+    # TRIAGE #70 (regression): `_handle_list_summaries` short-circuits on
+    # `_detect_kb_status()` (server.py:720-732) before reaching the mocked
+    # `KBStore.list_entries`. Stub the status to "operational" so the store
+    # is actually exercised hermetically (no dependency on cwd knowledge/).
+    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
     @patch("autoinfo.kb.KBStore")
-    def test_dispatches_to_kb_store(self, mock_kb: MagicMock) -> None:
+    def test_dispatches_to_kb_store(self, mock_kb: MagicMock, mock_status: MagicMock) -> None:
         mock_instance = mock_kb.return_value
         mock_instance.list_entries.return_value = [
             {"entry_id": "e1", "title": "Entry 1"},

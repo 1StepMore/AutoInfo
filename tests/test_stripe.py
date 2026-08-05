@@ -217,7 +217,7 @@ class TestWebhookSignatureVerification:
 
     @patch("autoinfo.api.server.os.environ.get")
     def test_invalid_signature_returns_400(self, mock_env_get: MagicMock) -> None:
-        """Invalid Stripe-Signature -> 400 with ``invalid_signature`` error."""
+        """Invalid Stripe-Signature -> 400 with canonical error envelope."""
         mock_env_get.return_value = "whsec_test_secret"
         payload = json.dumps({"type": "checkout.session.completed"})
 
@@ -236,8 +236,9 @@ class TestWebhookSignatureVerification:
 
         assert resp.status_code == 400
         data = resp.json()
-        assert data["error"] == "invalid_signature"
-        assert "Signature does not match" in data["detail"]
+        assert data["success"] is False
+        assert data["error"]["code"] == "ValidationError"
+        assert "Signature does not match" in data["error"]["message"]
 
     # ------------------------------------------------------------------
     # Dev mode (no secret configured)
@@ -278,7 +279,7 @@ class TestWebhookSignatureVerification:
     def test_invalid_json_payload_returns_400(
         self, mock_env_get: MagicMock,
     ) -> None:
-        """Invalid JSON body in dev mode -> 400."""
+        """Invalid JSON body in dev mode -> 400 with canonical error envelope."""
         mock_env_get.return_value = ""  # dev mode
         client = TestClient(app)
         resp = client.post(
@@ -287,7 +288,9 @@ class TestWebhookSignatureVerification:
             headers={"Stripe-Signature": "t=123,v1=whatever"},
         )
         assert resp.status_code == 400
-        assert resp.json()["error"] == "invalid_payload"
+        data = resp.json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "ValidationError"
 
 
 # ===================================================================

@@ -352,7 +352,11 @@ class TestProductTemplate:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        # TRIAGE #35 — retarget from autoinfo.kb.KBStore: f83bd8d hoisted
+        # `from autoinfo.kb import KBStore` to module level at
+        # src/autoinfo/output/__init__.py:49, so generate_digest resolves the
+        # name as autoinfo.output.KBStore (used at output/__init__.py:2402).
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         # Prevent actual LLM calls during testing
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
@@ -400,7 +404,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
             lambda prompt=None, config=None: {},
@@ -429,7 +433,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         # Return empty LLM synthesis — all D1 sections will be empty/missing
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
@@ -492,7 +496,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
             lambda prompt=None, config=None: {},
@@ -539,7 +543,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
             lambda prompt=None, config=None: {},
@@ -567,7 +571,10 @@ class TestDigestDeliveryGates:
         """generate_report without delivery_gate_configs returns str."""
 
         class _MockStore:
-            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+            # TRIAGE #35 — generate_report calls list_entries positionally
+            # (output/__init__.py:2808: kb_store.list_entries(domain, limit=5000)),
+            # so the mock signature must accept positional domain/limit too.
+            def list_entries(self, domain=None, limit=20, **kwargs: object) -> list[dict[str, object]]:
                 return [
                     {
                         "entry_id": "e1",
@@ -582,7 +589,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         # Mock LLM calls used by _group_by_theme and _generate_executive_summary
         monkeypatch.setattr(
             "autoinfo.output._llm_json_extract",
@@ -602,7 +609,9 @@ class TestDigestDeliveryGates:
         """generate_report with delivery_gate_configs returns DeliveryOutput with gate results."""
 
         class _MockStore:
-            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+            # TRIAGE #35 — same positional list_entries signature as the
+            # other report-path mock (generate_report, output/__init__.py:2808).
+            def list_entries(self, domain=None, limit=20, **kwargs: object) -> list[dict[str, object]]:
                 return [
                     {
                         "entry_id": "e1",
@@ -619,7 +628,7 @@ class TestDigestDeliveryGates:
                     }
                 ]
 
-        monkeypatch.setattr("autoinfo.kb.KBStore", lambda: _MockStore())
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._llm_json_extract",
             lambda extractor, prompt, field: (

@@ -192,11 +192,27 @@ def _entry_to_response(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Response envelope helpers (M1 contract — mirror mcp/errors.py)
+# ---------------------------------------------------------------------------
+
+
+def success_envelope(data: Any) -> dict[str, Any]:
+    """Build the canonical success envelope ``{success: True, data: ...}``.
+
+    Mirrors :func:`autoinfo.mcp.errors.success_response`.  Every non-health
+    REST success payload is wrapped in this envelope; error paths use the
+    ``{success: False, error: {code, message, actionable}}`` counterpart
+    (see ``autoinfo.api.server._error_envelope``).
+    """
+    return {"success": True, "data": data}
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
 
-@router.get("/entries", response_model=list[EntryResponse])
+@router.get("/entries", response_model=dict[str, Any])
 async def list_entries(
     skip: int = Query(0, ge=0, description="Number of entries to skip"),
     limit: int = Query(20, ge=1, le=200, description="Max entries to return"),
@@ -204,7 +220,7 @@ async def list_entries(
     tier: str | None = Query(None, description="Optional tier filter (01-Raw, 02-Draft, 03-Wiki)"),
     q: str | None = Query(None, description="Full-text search query"),
     date_from: str | None = Query(None, description="ISO date filter (collected_at >=)"),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """List entries with optional search, filters, and pagination."""
     store = _get_store()
 
@@ -218,7 +234,7 @@ async def list_entries(
             mode="fts5",
         )
         raw_entries: list[dict[str, Any]] = result.get("entries", [])
-        return [_entry_to_response(e) for e in raw_entries]
+        return success_envelope([_entry_to_response(e) for e in raw_entries])
 
     # Otherwise, list all entries with optional filters
     raw = store.list_all_entries(
@@ -228,20 +244,20 @@ async def list_entries(
         limit=limit,
         offset=skip,
     )
-    return [_entry_to_response(e) for e in raw]
+    return success_envelope([_entry_to_response(e) for e in raw])
 
 
-@router.get("/entries/{entry_id}", response_model=EntryResponse)
+@router.get("/entries/{entry_id}", response_model=dict[str, Any])
 async def get_entry(entry_id: str) -> dict[str, Any]:
     """Return a single entry with full content."""
     store = _get_store()
     entry = store.get_entry(entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found")
-    return _entry_to_response(entry)
+    return success_envelope(_entry_to_response(entry))
 
 
-@router.post("/entries", response_model=EntryResponse, status_code=201)
+@router.post("/entries", response_model=dict[str, Any], status_code=201)
 async def create_entry(body: EntryCreate) -> dict[str, Any]:
     """Create a new KB entry from the provided fields."""
     # Validate that the domain exists (skip validation for "default")
@@ -285,7 +301,7 @@ async def create_entry(body: EntryCreate) -> dict[str, Any]:
 
     # Fetch the full entry with content to return
     full = store.get_entry(entry.entry_id) or entry.to_dict()
-    return _entry_to_response(full)
+    return success_envelope(_entry_to_response(full))
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
@@ -345,7 +361,7 @@ async def search_entries(
 
     # Normalise entries in the result
     result["entries"] = [_entry_to_response(e) for e in result.get("entries", [])]
-    return result
+    return success_envelope(result)
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +477,7 @@ async def list_feeds(
         rss_content = ET.tostring(rss, encoding="unicode", xml_declaration=True)
         return Response(content=rss_content, media_type="application/rss+xml")
 
-    return {
+    return success_envelope({
         "items": items,
         "pagination": {
             "total": total,
@@ -469,7 +485,7 @@ async def list_feeds(
             "offset": offset,
             "next": next_offset,
         },
-    }
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -492,14 +508,14 @@ async def get_portal_preferences(
     if profile is None:
         raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
 
-    return {
+    return success_envelope({
         "user_id": profile.user_id,
         "name": profile.name,
         "email": profile.email,
         "delivery_prefs": profile.delivery_prefs,
         "tier": profile.tier,
         "status": profile.status,
-    }
+    })
 
 
 class PreferencesUpdate(BaseModel):
@@ -539,14 +555,14 @@ async def update_portal_preferences(
     if updated is None:
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
-    return {
+    return success_envelope({
         "user_id": updated.user_id,
         "name": updated.name,
         "email": updated.email,
         "delivery_prefs": updated.delivery_prefs,
         "tier": updated.tier,
         "status": updated.status,
-    }
+    })
 
 
 @router.get("/portal/delivery-history", response_model=dict[str, Any])
@@ -577,14 +593,14 @@ async def get_portal_delivery_history(
     sub_ids = [s.subscription_id for s in subscriptions if s.subscription_id]
 
     if not sub_ids:
-        return {
+        return success_envelope({
             "user_id": user_id,
             "subscriptions": [],
             "entries": [],
             "total": 0,
             "limit": limit,
             "offset": offset,
-        }
+        })
 
     # Query the delivery log for each subscription
     all_entries: list[dict[str, Any]] = []
@@ -608,11 +624,11 @@ async def get_portal_delivery_history(
     # Apply pagination slice
     page = all_entries[offset: offset + limit]
 
-    return {
+    return success_envelope({
         "user_id": user_id,
         "subscriptions": [s.to_dict() for s in subscriptions],
         "entries": page,
         "total": total,
         "limit": limit,
         "offset": offset,
-    }
+    })

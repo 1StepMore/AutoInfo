@@ -21,6 +21,7 @@ from typing import Any
 import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
@@ -192,6 +193,47 @@ def _error_envelope(
                 "actionable": actionable,
             },
         },
+    )
+
+
+def _success_envelope(data: Any) -> dict[str, Any]:
+    """Build the canonical success envelope ``{success: True, data: ...}``.
+
+    Mirrors :func:`autoinfo.mcp.errors.success_response` — the REST-side
+    counterpart of the MCP envelope.  Pairs with :func:`_error_envelope`
+    which returns the error counterpart.  ``/health`` is the single
+    documented exemption (flat ops probe, mirrors MCP ``health_check``).
+    """
+    return {"success": True, "data": data}
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Map FastAPI ``RequestValidationError`` → 422 with canonical envelope.
+
+    FastAPI's default 422 body is a bare ``{detail: [...]}`` list; the M1
+    contract requires every REST error to carry the canonical
+    ``{success: False, error: {code, message, actionable}}`` envelope.
+    The first validation error is summarized into a readable message
+    (e.g. ``body.title: Field required``).
+    """
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    loc = ".".join(str(part) for part in first.get("loc", []))
+    msg = str(first.get("msg", "Request validation failed"))
+    message = f"{loc}: {msg}" if loc else msg
+    logger.warning(
+        "RequestValidationError in %s %s (422): %s",
+        request.method,
+        request.url.path,
+        message,
+    )
+    return _error_envelope(
+        status_code=422,
+        error_code=ErrorCode.VALIDATION_ERROR,
+        message=message,
     )
 
 
@@ -447,15 +489,17 @@ async def stripe_webhook(request: Request) -> JSONResponse:
             event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except ValueError as exc:
             logger.warning("Stripe webhook: invalid payload: %s", exc)
-            return JSONResponse(
+            return _error_envelope(
                 status_code=400,
-                content={"error": "invalid_signature", "detail": str(exc)},
+                error_code=ErrorCode.VALIDATION_ERROR,
+                message=f"invalid_signature: {exc}",
             )
         except stripe.error.SignatureVerificationError as exc:
             logger.warning("Stripe webhook: signature verification failed: %s", exc)
-            return JSONResponse(
+            return _error_envelope(
                 status_code=400,
-                content={"error": "invalid_signature", "detail": str(exc)},
+                error_code=ErrorCode.VALIDATION_ERROR,
+                message=f"invalid_signature: {exc}",
             )
     else:
         # Dev mode: no secret configured — parse raw JSON
@@ -466,9 +510,10 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         try:
             event = json.loads(payload)
         except json.JSONDecodeError as exc:
-            return JSONResponse(
+            return _error_envelope(
                 status_code=400,
-                content={"error": "invalid_payload", "detail": str(exc)},
+                error_code=ErrorCode.VALIDATION_ERROR,
+                message=f"invalid_payload: {exc}",
             )
 
     # --- Dispatch to billing handler -------------------------------------------

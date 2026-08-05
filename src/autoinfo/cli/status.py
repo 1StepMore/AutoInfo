@@ -17,6 +17,7 @@ app = typer.Typer()
 
 @app.callback(invoke_without_command=True)
 def status(
+    ctx: typer.Context,
     domain: str = typer.Option(None, "--domain", help="Domain filter"),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
     metrics: bool = typer.Option(
@@ -49,7 +50,7 @@ def status(
         typer.echo(f"Error: status module not available: {exc}", err=True)
         raise typer.Exit(code=1)
 
-    if json_output:
+    if json_output or bool((ctx.obj or {}).get("json")):
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         _print_human(result)

@@ -118,6 +118,26 @@ def sample_item() -> Item:
     )
 
 
+def _litellm_stub(**attrs: MagicMock) -> MagicMock:
+    """Build a stand-in for the ``litellm`` module (TRIAGE #25-31).
+
+    The .venv litellm 1.93.0 install is a namespace package missing
+    ``litellm/__init__.py`` (its lazy-import design needs ``__getattr__`` in
+    the ``__init__.py``), so reading ``litellm.completion`` /
+    ``litellm.embedding`` raises AttributeError — which makes
+    ``patch("litellm.completion", ...)`` fail at patch time.
+
+    ``autoinfo.cefr.classify_text`` (src/autoinfo/cefr.py:97,103) and
+    ``autoinfo.embeddings.generate_embedding`` (src/autoinfo/embeddings.py:145,
+    147) resolve litellm via a *deferred ``import litellm``* inside the
+    function. Injecting a stub into ``sys.modules`` retargets the mock to that
+    production seam — the exact resolution point the broken install breaks —
+    making these tests independent of the install state without touching src/
+    (M0T3 still owns the install repair; this is the robust complement).
+    """
+    return MagicMock(**attrs)
+
+
 # ======================================================================
 # 1. Vector search — hybrid mode, graceful degradation
 # ======================================================================
@@ -185,7 +205,13 @@ class TestVectorSearch:
 
     def test_generate_embedding_fallback_on_exception(self):
         """generate_embedding returns zero-vector when litellm raises."""
-        with patch("litellm.embedding", side_effect=Exception("API down")):
+        # TRIAGE #31 — retargeted from patch("litellm.embedding") (AttributeError
+        # on the broken namespace install) to the deferred-import seam in
+        # src/autoinfo/embeddings.py:145-147 via sys.modules injection.
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(embedding=MagicMock(side_effect=Exception("API down")))},
+        ):
             from autoinfo.embeddings import generate_embedding
             result = generate_embedding("test text")
             assert result == [0.0] * 1536
@@ -240,6 +266,12 @@ class TestRestAPI:
         store = _get_store()
         store.base_path = tmp_project / "knowledge"
         store.base_path.mkdir(parents=True, exist_ok=True)
+        # Rebuild the SQLite index next to the tmp base_path so tests never
+        # read/write the repo-root autoinfo.db (hermetic isolation).
+        from autoinfo.kb import SQLiteIndex
+
+        store.index = SQLiteIndex(store.base_path.parent / "autoinfo.db")
+        store.index.init_db()
 
         with patch(
             "autoinfo.config.get_config_path",
@@ -259,7 +291,7 @@ class TestRestAPI:
         assert "uptime_s" in data
 
     def test_create_entry(self, client):
-        """POST /entries creates a new entry and returns 201."""
+        """POST /entries creates a new entry and returns 201 with success envelope."""
         response = client.post(
             "/api/v1/entries",
             json={
@@ -271,9 +303,11 @@ class TestRestAPI:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["title"] == "Test Entry"
-        assert data["domain"] == "medical-research"
-        assert "entry_id" in data
+        assert data["success"] is True
+        entry = data["data"]
+        assert entry["title"] == "Test Entry"
+        assert entry["domain"] == "medical-research"
+        assert "entry_id" in entry
 
     def test_create_entry_empty_title_returns_422(self, client):
         """POST /entries with empty title returns 422 validation error."""
@@ -284,21 +318,25 @@ class TestRestAPI:
         assert response.status_code == 422
 
     def test_get_entry(self, client):
-        """GET /entries/{id} returns the created entry."""
+        """GET /entries/{id} returns the created entry in success envelope."""
         created = client.post(
             "/api/v1/entries",
             json={"title": "Get Test", "domain": "medical-research"},
         ).json()
-        entry_id = created["entry_id"]
+        entry_id = created["data"]["entry_id"]
         response = client.get(f"/api/v1/entries/{entry_id}")
         assert response.status_code == 200
-        assert response.json()["entry_id"] == entry_id
+        data = response.json()
+        assert data["success"] is True
+        assert data["data"]["entry_id"] == entry_id
 
     def test_get_entry_not_found_returns_404(self, client):
-        """GET /entries/{id} for unknown id returns 404."""
+        """GET /entries/{id} for unknown id returns 404 with error envelope."""
         response = client.get("/api/v1/entries/nonexistent-id")
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        data = response.json()
+        assert data["success"] is False
+        assert "not found" in data["error"]["message"].lower()
 
     def test_delete_entry(self, client):
         """DELETE /entries/{id} returns 204 and removes the entry."""
@@ -306,7 +344,7 @@ class TestRestAPI:
             "/api/v1/entries",
             json={"title": "Delete Me", "domain": "medical-research"},
         ).json()
-        entry_id = created["entry_id"]
+        entry_id = created["data"]["entry_id"]
         response = client.delete(f"/api/v1/entries/{entry_id}")
         assert response.status_code == 204
         # Verify it's gone
@@ -319,16 +357,17 @@ class TestRestAPI:
         assert response.status_code == 404
 
     def test_list_entries(self, client):
-        """GET /entries returns a list of entries."""
+        """GET /entries returns a list in success envelope."""
         client.post("/api/v1/entries", json={"title": "Entry A", "domain": "medical-research"})
         client.post("/api/v1/entries", json={"title": "Entry B", "domain": "medical-research"})
         response = client.get("/api/v1/entries")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) >= 2
+        assert data["success"] is True
+        assert len(data["data"]) >= 2
 
     def test_search_endpoint(self, client):
-        """GET /search returns results matching the query."""
+        """GET /search returns results in success envelope matching the query."""
         client.post(
             "/api/v1/entries",
             json={
@@ -344,14 +383,22 @@ class TestRestAPI:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "entries" in data
-        assert data["query"] == "IVF"
+        assert data["success"] is True
+        inner = data["data"]
+        assert "entries" in inner
+        assert inner["query"] == "IVF"
 
     def test_list_entries_empty_domain_returns_empty(self, client):
-        """GET /entries with unknown domain returns empty list."""
+        """GET /entries: unknown domain → 404; configured domain → empty list."""
+        # TRIAGE #57 (stale): de88d30 domain-precondition middleware
+        # (`src/autoinfo/api/routes.py:257`) makes unknown-domain GET 404;
+        # use a configured domain for the 200-empty case.
         response = client.get("/api/v1/entries", params={"domain": "nonexistent-domain"})
+        assert response.status_code == 404
+
+        response = client.get("/api/v1/entries", params={"domain": "medical-research"})
         assert response.status_code == 200
-        assert response.json() == []
+        assert response.json()["data"] == []
 
 
 # ======================================================================
@@ -367,7 +414,13 @@ class TestCEFRClassification:
         from autoinfo.cefr import classify_text
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "B2"
-        with patch("litellm.completion", return_value=mock_response):
+        # TRIAGE #25 — retargeted from patch("litellm.completion") (AttributeError
+        # on broken namespace install) to the deferred-import seam at
+        # src/autoinfo/cefr.py:97,103 via sys.modules injection.
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        ):
             result = classify_text("This is a moderately complex English text for classification.")
         assert result["cefr_level"] in ("A1", "A2", "B1", "B2", "C1", "C2")
         assert result["confidence"] > 0.0
@@ -375,16 +428,22 @@ class TestCEFRClassification:
     def test_classify_text_unknown_on_empty(self):
         """classify_text returns unknown for empty text without calling LLM."""
         from autoinfo.cefr import classify_text
-        with patch("litellm.completion") as mock:
+        # TRIAGE #26 — same seam retarget as #25.
+        completion = MagicMock()
+        with patch.dict("sys.modules", {"litellm": _litellm_stub(completion=completion)}):
             result = classify_text("")
-            mock.assert_not_called()
+        completion.assert_not_called()
         assert result["cefr_level"] == "unknown"
         assert result["confidence"] == 0.0
 
     def test_classify_text_unknown_on_llm_failure(self):
         """classify_text returns unknown when litellm raises."""
         from autoinfo.cefr import classify_text
-        with patch("litellm.completion", side_effect=Exception("LLM error")):
+        # TRIAGE #27 — same seam retarget as #25.
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(completion=MagicMock(side_effect=Exception("LLM error")))},
+        ):
             result = classify_text("Some text here")
         assert result["cefr_level"] == "unknown"
         assert result["confidence"] == 0.0
@@ -394,7 +453,11 @@ class TestCEFRClassification:
         from autoinfo.cefr import classify_text
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "A2"
-        with patch("litellm.completion", return_value=mock_response):
+        # TRIAGE #28 — same seam retarget as #25.
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        ):
             result = classify_text("今天天气很好", lang="zh")
         assert result["cefr_level"] == "A2"
 
@@ -430,7 +493,12 @@ class TestCEFRClassification:
         from autoinfo.cli import app
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "A1"
-        with patch("litellm.completion", return_value=mock_response):
+        # TRIAGE #29 — same seam retarget as #25 (CLI routes through
+        # autoinfo.cli.cefr.classify_text → src/autoinfo/cefr.py:97,103).
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        ):
             result = cli_runner.invoke(app, ["cefr", "classify", "Hello world", "--lang", "en"])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
@@ -442,7 +510,12 @@ class TestCEFRClassification:
         from autoinfo.mcp.server import _handle_classify_cefr
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "B1"
-        with patch("litellm.completion", return_value=mock_response):
+        # TRIAGE #30 — same seam retarget as #25 (handler dispatches to
+        # autoinfo.cefr.classify_text at src/autoinfo/mcp/server.py:3258).
+        with patch.dict(
+            "sys.modules",
+            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        ):
             result = _handle_classify_cefr(text="A moderate text", lang="en")
         assert result["cefr_level"] == "B1"
         assert result["confidence"] > 0.0

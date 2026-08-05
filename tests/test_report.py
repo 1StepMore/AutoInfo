@@ -94,7 +94,12 @@ def _make_grouping_result() -> ExtractionResult:
 
 
 def _make_grouping_result_extra() -> ExtractionResult:
-    """Return grouping with an extra theme to validate catch-all handling."""
+    """Return grouping with an extra theme to validate catch-all handling.
+
+    Two groups so the anti-collapse retry (`output/__init__.py:3243-3272`) is
+    not triggered; the second theme references an unknown entry id and is
+    dropped after mapping, leaving entry-002/003 ungrouped.
+    """
     return ExtractionResult(
         item_id="_report_llm_call",
         title="Groups",
@@ -104,6 +109,11 @@ def _make_grouping_result_extra() -> ExtractionResult:
                     "theme": "IVF & Reproductive Medicine",
                     "description": "IVF treatment outcomes.",
                     "entry_ids": ["entry-001"],
+                },
+                {
+                    "theme": "Follow-up Research",
+                    "description": "Theme whose entries are unknown to the KB.",
+                    "entry_ids": ["entry-999"],
                 },
             ],
         },
@@ -223,7 +233,7 @@ class TestGenerateReport:
     def test_llm_grouping_failure_falls_back_to_single_group(
         self, sample_entries: list[dict]
     ) -> None:
-        """When LLM grouping fails, all entries go into a single 'General' group."""
+        """When LLM grouping fails, entries fall back to source-type groups."""
         mock_extract = MagicMock(
             side_effect=[
                 _make_empty_extraction(),  # grouping fails → no custom fields
@@ -243,8 +253,14 @@ class TestGenerateReport:
 
             report = _call_report("medical-research")
 
-        # Falls back to a single "General" section
-        assert "### General" in report
+        # TRIAGE #50 (stale): the grouping fallback (f83bd8d,
+        # `output/__init__.py:3275-3317`) now splits by domain/source_type
+        # instead of lumping everything under "General". All sample entries
+        # have no domain key → single "Unknown" domain → source_type split
+        # (api ×2, rss ×1).
+        assert "### General" not in report
+        assert "### API" in report
+        assert "### RSS" in report
         # All three entries appear
         assert "Improved IVF outcomes" in report
         assert "Neuroplasticity in early childhood" in report
@@ -253,7 +269,7 @@ class TestGenerateReport:
     def test_llm_grouping_exception_falls_back(
         self, sample_entries: list[dict]
     ) -> None:
-        """When LLM grouping raises, all entries go into a single 'General' group."""
+        """When LLM grouping raises, entries fall back to source-type groups."""
         mock_extract = MagicMock(
             side_effect=[
                 Exception("LLM unavailable"),
@@ -273,7 +289,9 @@ class TestGenerateReport:
 
             report = _call_report("medical-research")
 
-        assert "### General" in report
+        # TRIAGE #51 (stale): same source_type-split fallback as #50.
+        assert "### API" in report
+        assert "### RSS" in report
         assert "Improved IVF outcomes" in report
 
     def test_executive_summary_failure_falls_back(

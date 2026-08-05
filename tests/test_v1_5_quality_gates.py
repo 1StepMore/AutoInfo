@@ -38,6 +38,13 @@ from autoinfo.quality import (
     run_quality_gates,
 )
 from autoinfo.llm import LLMExtractor
+from tests.conftest import requires_optional_dep
+
+# TRIAGE #15 (env-dep): PyMuPDF missing → `import fitz` fails inside
+# D2FormatIntegrity pdf check at src/autoinfo/quality.py:2106-2119 → passed=False,
+# score=0.0 vs the asserts below. Gate on the conftest HAVE_PYMUPDF check;
+# install '.[pdf]' to run this test.
+requires_fitz = requires_optional_dep("fitz")
 
 
 # ===================================================================
@@ -537,6 +544,8 @@ class TestD2FormatIntegrity:
         assert result.passed is True
         assert "Unknown format" in result.details["note"]
 
+    @pytest.mark.optional
+    @requires_fitz
     def test_valid_pdf_passes(self) -> None:
         """Valid PDF parsed with fitz → passes with metadata."""
         pdf_path = Path(__file__).parent / "fixtures" / "sample.pdf"

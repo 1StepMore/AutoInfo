@@ -83,12 +83,11 @@ _MINIMAL_CONFIG = {
     "project": {"name": "Test", "created_at": "2026-07-01"},
     "llm": {"provider": "openai", "model": "gpt-4o-mini", "api_key": ""},
     "domains": [
-        {
-            "name": "test-domain",
-            "active": True,
-            "sources": [],
-            "topics": [],
-        }
+        # TRIAGE #36-37 — both domains must exist in config for the
+        # _handle_collect_sources domain pre-check at
+        # src/autoinfo/mcp/server.py:512-518 (DOMAIN_NOT_FOUND for unconfigured).
+        {"name": "test-domain", "active": True, "sources": [], "topics": []},
+        {"name": "test-progress", "active": True, "sources": [], "topics": []},
     ],
 }
 
@@ -510,7 +509,11 @@ class TestJobId:
     """job_id is generated and returned by collect_sources / process_collection."""
 
     def test_collect_sources_returns_job_id(self) -> None:
-        with patch("autoinfo.collect.run_collection") as mock_collect:
+        # TRIAGE #36 — _handle_collect_sources validates the domain against
+        # config first (server.py:512-518 DOMAIN_NOT_FOUND pre-check); the
+        # fixture config must declare 'test-domain' so the mocked
+        # run_collection is reached.
+        with _mock_load_config(), patch("autoinfo.collect.run_collection") as mock_collect:
             mock_collect.return_value = {"total_new": 3, "total_found": 5, "errors": 0}
             result = mcp_server._handle_collect_sources(domain="test-domain")
         assert "job_id" in result
@@ -530,7 +533,9 @@ class TestJobId:
 
     def test_get_collection_progress_by_job_id(self) -> None:
         """After collect_sources, get_collection_progress with job_id returns state."""
-        with patch("autoinfo.collect.run_collection") as mock_collect:
+        # TRIAGE #37 — same domain-validation pre-check as #36 (server.py:512-518);
+        # 'test-progress' is declared in _MINIMAL_CONFIG for this test.
+        with _mock_load_config(), patch("autoinfo.collect.run_collection") as mock_collect:
             mock_collect.return_value = {"total_new": 3, "total_found": 5, "errors": 0}
             result = mcp_server._handle_collect_sources(domain="test-progress")
         job_id = result["job_id"]

@@ -29,6 +29,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from autoinfo.api.routes import success_envelope
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -183,6 +185,22 @@ def _render_error(
     )
 
 
+def _error_envelope_json(
+    status_code: int,
+    code: str,
+    message: str,
+    actionable: bool = True,
+) -> JSONResponse:
+    """Build a JSONResponse with the canonical error envelope."""
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "success": False,
+            "error": {"code": code, "message": message, "actionable": actionable},
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pydantic schemas
 # ---------------------------------------------------------------------------
@@ -229,10 +247,12 @@ async def product_catalog(
     if format.lower() == "json":
         return JSONResponse(
             content=jsonable_encoder(
-                {
-                    "products": products,
-                    "count": len(products),
-                }
+                success_envelope(
+                    {
+                        "products": products,
+                        "count": len(products),
+                    }
+                )
             )
         )
 
@@ -267,12 +287,10 @@ async def product_detail(
     product = _get_product(product_id)
     if product is None:
         if format.lower() == "json":
-            return JSONResponse(
+            return _error_envelope_json(
                 status_code=404,
-                content={
-                    "error_code": "NotFound",
-                    "message": f"Product '{product_id}' not found",
-                },
+                code="NotFound",
+                message=f"Product '{product_id}' not found",
             )
         return _render_error(
             request, f"Product '{product_id}' not found.", status_code=404
@@ -303,10 +321,12 @@ async def product_detail(
     if format.lower() == "json":
         return JSONResponse(
             content=jsonable_encoder(
-                {
-                    "product": product,
-                    "access": access,
-                }
+                success_envelope(
+                    {
+                        "product": product,
+                        "access": access,
+                    }
+                )
             )
         )
 
@@ -332,13 +352,10 @@ async def create_subscription(
     """
     product = _get_product(body.product_id)
     if product is None:
-        return JSONResponse(
+        return _error_envelope_json(
             status_code=404,
-            content={
-                "error_code": "NotFound",
-                "message": f"Product '{body.product_id}' not found",
-                "actionable": True,
-            },
+            code="NotFound",
+            message=f"Product '{body.product_id}' not found",
         )
 
     # Derive subscription parameters from the product
@@ -364,26 +381,26 @@ async def create_subscription(
         )
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning("Subscription creation failed: %s", exc, exc_info=True)
-        return JSONResponse(
+        return _error_envelope_json(
             status_code=500,
-            content={
-                "error_code": "InternalError",
-                "message": f"Failed to create subscription: {exc}",
-                "actionable": False,
-            },
+            code="InternalError",
+            message=f"Failed to create subscription: {exc}",
+            actionable=False,
         )
 
     return JSONResponse(
         status_code=201,
         content=jsonable_encoder(
-            {
-                "subscription_id": sub.subscription_id,
-                "user_id": sub.user_id,
-                "product_id": body.product_id,
-                "plan": sub.plan,
-                "tier": sub.tier,
-                "status": sub.status,
-                "auto_renew": sub.auto_renew,
-            }
+            success_envelope(
+                {
+                    "subscription_id": sub.subscription_id,
+                    "user_id": sub.user_id,
+                    "product_id": body.product_id,
+                    "plan": sub.plan,
+                    "tier": sub.tier,
+                    "status": sub.status,
+                    "auto_renew": sub.auto_renew,
+                }
+            )
         ),
     )

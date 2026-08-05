@@ -696,3 +696,45 @@ class TestKBStore:
         # Listing scoped per-domain
         assert len(store.list_entries("medical-research")) == 1
         assert len(store.list_entries("ai-commercial")) == 1
+
+
+# ===================================================================
+# import-kb — frontmatter `domain:` collision (Final QA F3 regression)
+# ===================================================================
+
+
+def test_import_kb_markdown_frontmatter_domain_does_not_collide(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Import a Markdown file whose frontmatter includes ``domain:``.
+
+    Regression for the F3 rejection: frontmatter ``domain:`` collided with the
+    explicit ``domain`` parameter of ``_build_entry()`` → TypeError. The
+    explicit ``--domain`` value must win and the entry must land in 01-Raw.
+    """
+    from autoinfo.importer import import_kb
+
+    md = (
+        "---\n"
+        "title: Domain frontmatter import test\n"
+        "source_url: https://example.com/domain-frontmatter\n"
+        "source_type: web\n"
+        "source_platform: example\n"
+        "domain: medical-research\n"
+        "tags: [import, test]\n"
+        "---\n"
+        "\n"
+        "Body of the imported article.\n"
+    )
+
+    monkeypatch.chdir(tmp_path)  # KBStore() writes to ./knowledge
+
+    result = import_kb(domain="medical-research", format="markdown", data=md)
+
+    assert result["entries_imported"] == 1, f"import failed: {result}"
+    assert result["errors"] == []
+
+    # Entry landed in 01-Raw under the explicit domain
+    raw_dir = tmp_path / "knowledge" / "medical-research" / "01-Raw"
+    assert raw_dir.is_dir()
+    assert list(raw_dir.rglob("*.md")), "no 01-Raw markdown entry written"

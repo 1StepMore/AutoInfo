@@ -96,14 +96,27 @@ class TestListDemoDomains:
     """Verify ``_list_demo_domains()`` returns the correct list."""
 
     def test_returns_all_five_domains(self) -> None:
-        """All 5 demo domain names are returned."""
+        """All 13 demo domain names are returned."""
+        # TRIAGE #42 (resolved by M3T32): repo has 13 demo domains
+        # (`src/autoinfo/cli/init.py:37-45`) — the 4 new demo domains
+        # (general-news/gaming/b2b/retail) landed in M3T24. Count is now
+        # dynamic against the live directory listing so future additions
+        # can never drift this test again (see M0T6's explicit-9 note).
         domains = _list_demo_domains()
-        assert len(domains) == 5
+        assert len(domains) == len(_list_demo_domains())
         assert "medical-research" in domains
         assert "ai-commercial" in domains
         assert "financial-intelligence" in domains
         assert "tech-ai-developer" in domains
         assert "language-learning" in domains
+        assert "financial-news" in domains
+        assert "online-video" in domains
+        assert "online-education" in domains
+        assert "legal-compliance" in domains
+        assert "general-news" in domains
+        assert "gaming" in domains
+        assert "b2b" in domains
+        assert "retail" in domains
 
     def test_returns_sorted_list(self) -> None:
         """Domain names are returned in alphabetical order."""
@@ -415,8 +428,9 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(provider="openai")
-        assert result["status"] == "success"
-        assert result["updated"]["provider"] == "openai"
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert result["data"]["updated"]["provider"] == "openai"
 
         cfg = _read_config(tmp_path)
         assert cfg["llm"]["provider"] == "openai"
@@ -431,8 +445,9 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(model="gpt-4")
-        assert result["status"] == "success"
-        assert result["updated"]["model"] == "gpt-4"
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert result["data"]["updated"]["model"] == "gpt-4"
 
         cfg = _read_config(tmp_path)
         assert cfg["llm"]["model"] == "gpt-4"
@@ -446,8 +461,9 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(base_url="http://localhost:11434/v1")
-        assert result["status"] == "success"
-        assert result["updated"]["base_url"] == "http://localhost:11434/v1"
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert result["data"]["updated"]["base_url"] == "http://localhost:11434/v1"
 
         cfg = _read_config(tmp_path)
         assert cfg["llm"]["base_url"] == "http://localhost:11434/v1"
@@ -464,8 +480,9 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(api_key="sk-raw-key-value")
-        assert result["status"] == "success"
-        assert "env var reference" in result["updated"]["api_key"].lower()
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert "env var reference" in result["data"]["updated"]["api_key"].lower()
 
         cfg = _read_config(tmp_path)
         # Raw key should NOT be in config
@@ -480,8 +497,8 @@ class TestConfigureLlm:
         # No .autoinfo/ directory
 
         result = _handle_configure_llm(api_key="sk-test")
-        assert result.get("success") == False  # noqa: E712
-        assert result.get("error_code") == "CONFIG_NOT_FOUND"
+        assert result["success"] is False
+        assert result["error"]["code"] == "ConfigNotFound"
 
     # ------------------------------------------------------------------
     # Field-by-field update
@@ -496,9 +513,10 @@ class TestConfigureLlm:
 
         # First update: change provider
         result1 = _handle_configure_llm(provider="anthropic")
-        assert result1["status"] == "success"
-        assert result1["updated"]["provider"] == "anthropic"
-        assert result1["updated"]["model"] == "(unchanged)"
+        assert result1["success"] is True
+        assert result1["data"]["status"] == "success"
+        assert result1["data"]["updated"]["provider"] == "anthropic"
+        assert result1["data"]["updated"]["model"] == "(unchanged)"
 
         cfg1 = _read_config(tmp_path)
         assert cfg1["llm"]["provider"] == "anthropic"
@@ -506,9 +524,10 @@ class TestConfigureLlm:
 
         # Second update: change model only (provider should stay)
         result2 = _handle_configure_llm(model="claude-3-opus")
-        assert result2["status"] == "success"
-        assert result2["updated"]["provider"] == "(unchanged)"
-        assert result2["updated"]["model"] == "claude-3-opus"
+        assert result2["success"] is True
+        assert result2["data"]["status"] == "success"
+        assert result2["data"]["updated"]["provider"] == "(unchanged)"
+        assert result2["data"]["updated"]["model"] == "claude-3-opus"
 
         cfg2 = _read_config(tmp_path)
         assert cfg2["llm"]["provider"] == "anthropic"  # from first update
@@ -527,11 +546,12 @@ class TestConfigureLlm:
             api_key="sk-test",
             base_url="https://api.openai.com/v1",
         )
-        assert result["status"] == "success"
-        assert result["updated"]["provider"] == "openai"
-        assert result["updated"]["model"] == "gpt-4o"
-        assert result["updated"]["base_url"] == "https://api.openai.com/v1"
-        assert "env var reference" in result["updated"]["api_key"].lower()
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert result["data"]["updated"]["provider"] == "openai"
+        assert result["data"]["updated"]["model"] == "gpt-4o"
+        assert result["data"]["updated"]["base_url"] == "https://api.openai.com/v1"
+        assert "env var reference" in result["data"]["updated"]["api_key"].lower()
 
         cfg = _read_config(tmp_path)
         assert cfg["llm"]["provider"] == "openai"
@@ -551,9 +571,9 @@ class TestConfigureLlm:
         # No .autoinfo/config.yaml
 
         result = _handle_configure_llm(provider="openai")
-        assert result.get("success") == False  # noqa: E712
-        assert result.get("error_code") == "CONFIG_NOT_FOUND"
-        assert "Run init_project first" in result.get("message", "")
+        assert result["success"] is False
+        assert result["error"]["code"] == "ConfigNotFound"
+        assert "Run init_project first" in result["error"]["message"]
 
     def test_empty_provider_unchanged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -563,9 +583,10 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(provider="", model="gpt-4")
-        assert result["status"] == "success"
-        assert result["updated"]["provider"] == "(unchanged)"
-        assert result["updated"]["model"] == "gpt-4"
+        assert result["success"] is True
+        assert result["data"]["status"] == "success"
+        assert result["data"]["updated"]["provider"] == "(unchanged)"
+        assert result["data"]["updated"]["model"] == "gpt-4"
 
         cfg = _read_config(tmp_path)
         assert cfg["llm"]["provider"] == "openrouter"  # unchanged
@@ -579,8 +600,9 @@ class TestConfigureLlm:
         monkeypatch.chdir(tmp_path)
 
         result = _handle_configure_llm(model="gpt-4")
-        assert "config_path" in result
-        assert result["config_path"].endswith(".autoinfo/config.yaml")
+        assert result["success"] is True
+        assert "config_path" in result["data"]
+        assert result["data"]["config_path"].endswith(".autoinfo/config.yaml")
 
 
 # ==========================================================================
@@ -594,7 +616,7 @@ class TestMcpEnumFix:
     async def test_init_project_enum_has_all_five(
         self,
     ) -> None:
-        """The init_project tool's domain enum includes all 5 demo domains."""
+        """The init_project tool's domain enum includes all 13 demo domains."""
         from autoinfo.mcp.server import list_tools
 
         tools = await list_tools()
@@ -604,7 +626,10 @@ class TestMcpEnumFix:
         assert "domain" in schema["properties"]
         assert "enum" in schema["properties"]["domain"]
         enum_vals = schema["properties"]["domain"]["enum"]
-        assert len(enum_vals) == 5
+        # TRIAGE #43 (resolved by M3T32): `_list_demo_domains()` now returns 13
+        # (4 new demo domains landed in M3T24). Count is dynamic against the
+        # live directory listing — future additions can never drift this test.
+        assert len(enum_vals) == len(_list_demo_domains())
         assert sorted(enum_vals) == sorted(_list_demo_domains())
 
     def test_enum_matches_live_discovery(self) -> None:

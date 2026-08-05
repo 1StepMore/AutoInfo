@@ -97,6 +97,30 @@ def _assert_error_envelope(
         )
 
 
+def _assert_success_envelope(
+    response, status_code: int = 200, *, data_check=None,
+) -> dict:
+    """Assert *response* has the canonical ``{success: True, data: ...}`` envelope.
+
+    Returns the unwrapped ``data`` value for further assertions.
+    """
+    assert response.status_code == status_code, (
+        f"Expected status {status_code}, got {response.status_code}: {response.text[:200]}"
+    )
+    try:
+        data = response.json()
+    except Exception:
+        pytest.fail(f"Response body is not valid JSON: {response.text[:200]}")
+
+    assert data.get("success") is True, (
+        f"Expected success=True, got {data}"
+    )
+    assert "data" in data, f"Expected 'data' key in response: {data}"
+    if data_check is not None:
+        data_check(data["data"])
+    return data["data"]
+
+
 # ===================================================================
 # Tests
 # ===================================================================
@@ -224,46 +248,29 @@ class TestHTTPException:
 
 
 class TestMissingParams:
-    """Pydantic validation → 422 (FastAPI default format, not our envelope)."""
+    """Pydantic validation → 422 with canonical error envelope."""
 
     def test_missing_title_returns_422(self, client: TestClient) -> None:
         """POST without the required ``title`` field returns 422 with a
-        ``detail`` list.
+        canonical error envelope and ``ValidationError`` code.
         """
         resp = client.post("/api/v1/entries", json={})
-
-        assert resp.status_code == 422
-        data = resp.json()
-        assert "detail" in data
-        assert any(
-            err.get("loc") == ["body", "title"] for err in data["detail"]
-        ), f"Expected title validation error in detail, got {data}"
+        _assert_error_envelope(resp, 422, "ValidationError", actionable=True)
 
     def test_empty_title_returns_422(self, client: TestClient) -> None:
-        """POST with an empty ``title`` returns 422."""
+        """POST with an empty ``title`` returns 422 envelope."""
         resp = client.post("/api/v1/entries", json={"title": ""})
-
-        assert resp.status_code == 422
-        data = resp.json()
-        assert any(
-            err.get("loc") == ["body", "title"] for err in data["detail"]
-        ), f"Expected title validation error, got {data}"
+        _assert_error_envelope(resp, 422, "ValidationError", actionable=True)
 
     def test_invalid_limit_returns_422(self, client: TestClient) -> None:
-        """GET with ``limit`` outside the allowed range returns 422."""
+        """GET with ``limit`` outside the allowed range returns 422 envelope."""
         resp = client.get("/api/v1/search?q=test&limit=999")
-
-        assert resp.status_code == 422
-        data = resp.json()
-        assert "detail" in data
+        _assert_error_envelope(resp, 422, "ValidationError", actionable=True)
 
     def test_search_without_query_returns_422(self, client: TestClient) -> None:
-        """GET ``/api/v1/search`` without ``q`` returns 422."""
+        """GET ``/api/v1/search`` without ``q`` returns 422 envelope."""
         resp = client.get("/api/v1/search")
-
-        assert resp.status_code == 422
-        data = resp.json()
-        assert "detail" in data
+        _assert_error_envelope(resp, 422, "ValidationError", actionable=True)
 
 
 class TestDomainNotFound:

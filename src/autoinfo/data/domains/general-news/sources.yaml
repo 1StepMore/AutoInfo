@@ -1,0 +1,230 @@
+# AutoInfo demo domain: General News
+# Tracks global breaking news, world events, politics, and top headlines
+# Source inventory: 5 BASE (gdelt/guardian-open-platform/google-news-rss/nyt/ap-api)
+# + 10 batch additions (zhihu-daily/mastodon/bluesky/wechat2rss/medium-*/magazines).
+name: general-news
+description: "General news intelligence — global headlines, world events, politics, breaking news"
+
+sources:
+  - name: gdelt
+    type: gdelt
+    url: https://api.gdeltproject.org/api/v2/doc/doc
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 1
+    fetch_depth: abstract  # GDELT DOC 2.0 returns headline-level data only
+    settings:
+      query: ""
+      timespan: "7d"
+      maxrecords: 25
+
+  - name: guardian-open-platform
+    type: api  # generic HTTP JSON API (HttpApiHandler) — 'http_api' is not a valid source type
+    url: https://content.guardianapis.com/search
+    quality_tier: 1
+    enabled: true
+    tos_classification: open
+    requires_key: true
+    rate_limit: 5
+    fetch_depth: abstract
+    settings:
+      query_param: q
+      json_path: response.results
+      page_size: 20
+      max_pages: 1
+      field_mapping:
+        id: id
+        title: webTitle
+        content: fields.bodyText
+        source_url: webUrl
+        published_date: webPublicationDate
+
+  - name: google-news-rss
+    type: rss
+    url: https://news.google.com/rss
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: nyt
+    type: nyt
+    url: https://api.nytimes.com/svc/search/v2/articlesearch.json
+    quality_tier: 1
+    enabled: true
+    tos_classification: licensed
+    requires_key: true
+    rate_limit: 10  # free tier: 10 requests/minute
+    fetch_depth: abstract
+    settings:
+      query: ""
+      sort: newest
+
+  - name: ap-api
+    type: ap_api
+    url: https://api.ap.org/v2/
+    quality_tier: 1
+    enabled: true
+    tos_classification: licensed
+    requires_key: true
+    rate_limit: 20  # paid tier: 20 req/s
+    fetch_depth: fulltext  # AP Content API returns full article body
+
+  # ---- A19/A20/A22 sources: social & aggregator feeds ----
+
+  - name: zhihu-daily
+    type: api  # generic HTTP JSON API (HttpApiHandler) — 'http_api' is not a valid source type
+    url: https://news-at.zhihu.com/api/4/news/latest
+    quality_tier: 1  # 知乎日报 is a top Chinese news platform; feed is no-auth
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract  # latest feed is headline-level; full body requires per-story GET /api/4/news/{id}
+    settings:
+      json_path: stories
+      field_mapping:
+        id: id
+        title: title
+        source_url: url  # feed provides the story API URL; canonical web page = https://daily.zhihu.com/story/{id}
+        # content: no body in the latest feed (headline-only) — fetch_depth: abstract
+
+  - name: mastodon
+    type: api
+    url: https://mastodon.social/api/v1/timelines/public
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 1  # mastodon.social public API: ~300 req/5min (1 req/s sustained)
+    fetch_depth: abstract
+    settings:
+      json_path: "$"  # top-level array — M2T22 root-array extension
+      field_mapping:
+        id: id
+        content: content  # HTML-rendered toot body
+        source_url: url
+        published_date: created_at
+
+  - name: bluesky
+    type: api
+    url: https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+    settings:
+      query_param: q  # topic injected at collect time (collect.py:598 → http_api query_param) — replaces a literal ?q={topic} in the URL
+      json_path: posts
+      field_mapping:
+        id: cid  # post content hash — unique per post
+        content: record.text  # nested dot-path: app.bsky.feed.post record body
+        source_url: uri
+        published_date: indexedAt
+
+  - name: wechat2rss
+    type: rss
+    url: https://wechat2rss.xlab.app/feed/{id}.xml  # {id} = target 公众号 feed id — substitute before enabling collection
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    requires_key: false
+    rate_limit: 10
+    fetch_depth: abstract
+    settings:
+      instance: "wechat2rss.xlab.app — public third-party RSS service for WeChat official accounts (公众号)"
+      feed_id: "<replace-me>"
+    # third-party RSS proxy for WeChat 公众号 articles — uptime/content depends on the
+    # wechat2rss service (not on WeChat itself); verify https://wechat2rss.xlab.app/feed/{id}.xml
+    # resolves before relying on this source.
+
+  - name: medium-user
+    type: rss
+    url: https://medium.com/feed/@user  # replace @user with a target Medium username
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: medium-publication
+    type: rss
+    url: https://medium.com/feed/@towardsdatascience  # publication profile feed (swap slug as needed)
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: medium-tag
+    type: rss
+    url: https://medium.com/feed/tag/artificial-intelligence  # topic tag feed (swap tag slug as needed)
+    quality_tier: 2
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  # ---- D11 magazine feeds (T28) ----
+
+  - name: the-atlantic
+    type: rss
+    url: https://www.theatlantic.com/feed/all/
+    quality_tier: 1
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: wired
+    type: rss
+    url: https://www.wired.com/feed/rss
+    quality_tier: 1
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+  - name: time-magazine
+    type: rss
+    url: https://time.com/feed/
+    quality_tier: 1
+    enabled: true
+    tos_classification: open
+    rate_limit: 10
+    fetch_depth: abstract
+
+topics:
+  - name: "World News"
+    keywords:
+      - world news
+      - international
+      - global
+      - geopolitics
+      - foreign affairs
+      - United Nations
+      - summit
+      - diplomatic
+
+  - name: "Politics"
+    keywords:
+      - politics
+      - election
+      - government
+      - parliament
+      - congress
+      - policy
+      - legislation
+      - administration
+
+  - name: "Breaking News"
+    keywords:
+      - breaking
+      - update
+      - live
+      - developing story
+      - emergency
+      - crisis
+      - latest
+      - just in

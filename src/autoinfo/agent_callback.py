@@ -9,11 +9,18 @@ Callbacks survive MCP server restarts because they are stored in the
 same ``autoinfo.db`` SQLite database used by the KB pipeline (shared
 connection pattern, ``CREATE TABLE IF NOT EXISTS``).
 
+Notifications are delivered through a **durable outbox** (SQLite): the
+event row is persisted BEFORE any delivery attempt, and a background
+worker drains the outbox asynchronously. Rows survive process restarts —
+on startup, undelivered rows are requeued and the worker re-attempts
+them. Fire-and-forget: no retry/backoff, and the callback path never
+blocks or fails the caller.
+
 Usage::
 
     cid = register_agent_callback("https://agent.example.com/hook",
                                   ["new_digest", "new_report"])
-    await notify_agent("new_digest", {"title": "Weekly Digest", ...})
+    notify_agent("new_digest", {"title": "Weekly Digest", ...})
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,7 +52,38 @@ CREATE TABLE IF NOT EXISTS agent_callbacks (
 );
 """
 
+# Durable outbox: one row per notification event. The row is the source of
+# truth — written BEFORE any delivery attempt. Status transitions:
+#   pending → delivered | failed
+#   failed  → pending  (only via requeue_undelivered() at process start)
+_AGENT_OUTBOX_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS agent_outbox (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event           TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    schema_version  INTEGER NOT NULL DEFAULT 1,
+    trace_id        TEXT NOT NULL,
+    product_id      TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL,
+    delivered_at    TEXT NOT NULL DEFAULT '',
+    last_error      TEXT NOT NULL DEFAULT ''
+);
+"""
+
 _VALID_EVENTS = {"new_digest", "new_report", "new_tutorial"}
+
+_SCHEMA_VERSION = 1
+
+_OUTBOX_STATUS_PENDING = "pending"
+_OUTBOX_STATUS_DELIVERED = "delivered"
+_OUTBOX_STATUS_FAILED = "failed"
+
+# In-process counters (same pattern as billing._stripe_sync_failures).
+_delivery_failures_total = 0
+_delivery_failures_lock = threading.Lock()
+# Serializes outbox drains so concurrent drains never double-deliver.
+_drain_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +108,7 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     _ = conn.execute("PRAGMA journal_mode=WAL")
     _ = conn.execute("PRAGMA synchronous=NORMAL")
     _ = conn.executescript(_AGENT_CALLBACK_TABLE_DDL)
+    _ = conn.executescript(_AGENT_OUTBOX_TABLE_DDL)
     return conn
 
 
@@ -176,55 +216,279 @@ def remove_agent_callback(callback_id: str) -> bool:
     return removed
 
 
-async def notify_agent(event: str, payload: dict[str, Any]) -> None:
-    """POST a JSON payload to every agent URL registered for *event*.
+def notify_agent(event: str, payload: dict[str, Any]) -> int:
+    """Fire-and-forget POST of *payload* to every agent URL registered for *event*.
 
-    Fire-and-forget — individual failures are logged but do not propagate.
-    Simple POST only; no retry / backoff.
+    Sync-safe entry point backed by the durable outbox: the event row is
+    persisted to SQLite BEFORE any delivery attempt, and the actual HTTP
+    POST happens on a background worker thread. Individual delivery
+    failures are logged and counted (``delivery_failures_total``) but
+    never propagate. No retry / backoff.
 
     Reads target callbacks from SQLite.
 
     Args:
         event: One of ``new_digest``, ``new_report``, ``new_tutorial``.
         payload: Arbitrary JSON-serialisable dict to POST.
+
+    Returns:
+        The outbox row id, or ``0`` if the event could not be enqueued.
+    """
+    return enqueue_agent_notification(
+        event=event,
+        payload=payload,
+        trace_id=str(uuid.uuid4()),
+        product_id="",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Durable outbox — rows survive process restarts; a worker drains async
+# ---------------------------------------------------------------------------
+
+
+def get_delivery_failures() -> int:
+    """Return the in-process count of failed agent callback deliveries."""
+    with _delivery_failures_lock:
+        return _delivery_failures_total
+
+
+def enqueue_agent_notification(
+    event: str,
+    payload: Any,
+    trace_id: str,
+    product_id: str = "",
+) -> int:
+    """Durably enqueue an agent notification into the SQLite outbox.
+
+    The outbox row is the source of truth: it is inserted BEFORE any
+    delivery attempt, so the event survives process restarts (a crashed
+    process cannot lose it). After the insert, a daemon worker is
+    scheduled to drain the outbox asynchronously — this function never
+    blocks on delivery and never raises into the caller.
+
+    Args:
+        event: One of ``new_digest``, ``new_report``, ``new_tutorial``.
+        payload: JSON-serialisable generated output (the product payload).
+        trace_id: Per-event trace identifier (canonical payload key).
+        product_id: Product identifier, e.g. ``"medical-research-week"``.
+
+    Returns:
+        The outbox row id, or ``0`` if the event could not be persisted.
     """
     if event not in _VALID_EVENTS:
         logger.warning("Unknown event %r — skipping notification", event)
-        return
+        return 0
+    try:
+        payload_json = json.dumps(payload, default=str)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Payload for event %r is not JSON-serialisable", event, exc_info=True
+        )
+        return 0
 
+    now = _now_utc()
+    row_id = 0
+    try:
+        with _connect() as conn:
+            cursor = conn.execute(
+                (
+                    "INSERT INTO agent_outbox "
+                    "(event, payload, schema_version, trace_id, product_id, "
+                    " status, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)"
+                ),
+                (
+                    event, payload_json, _SCHEMA_VERSION, trace_id, product_id,
+                    _OUTBOX_STATUS_PENDING, now,
+                ),
+            )
+            conn.commit()
+            row_id = int(cursor.lastrowid or 0)
+    except Exception:
+        logger.warning(
+            "Failed to persist outbox row for event %r", event, exc_info=True
+        )
+        return 0
+
+    _schedule_drain()
+    return row_id
+
+
+def requeue_undelivered() -> int:
+    """Requeue undelivered outbox rows after a process restart.
+
+    Flips ``failed`` rows back to ``pending`` so the next worker drain
+    re-attempts delivery. ``pending`` rows are untouched (they were never
+    attempted). Returns the number of requeued rows.
+    """
+    try:
+        with _connect() as conn:
+            cursor = conn.execute(
+                "UPDATE agent_outbox SET status = ? WHERE status = ?",
+                (_OUTBOX_STATUS_PENDING, _OUTBOX_STATUS_FAILED),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+    except Exception:
+        logger.warning(
+            "Failed to requeue undelivered outbox rows", exc_info=True
+        )
+        return 0
+
+
+def list_outbox(limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent outbox rows (newest first) for inspection/QA."""
     with _connect() as conn:
         rows = conn.execute(
             (
-                "SELECT callback_id, agent_url, events "
-                "FROM agent_callbacks"
-            )
+                "SELECT id, event, schema_version, trace_id, product_id, "
+                "status, created_at, delivered_at, last_error "
+                "FROM agent_outbox ORDER BY id DESC LIMIT ?"
+            ),
+            (limit,),
         ).fetchall()
+    return [dict(row) for row in rows]
 
-    # Filter in Python — SQLite stores events as JSON text
-    targets = [
-        _row_to_dict(row)
-        for row in rows
-        if event in json.loads(row["events"])
-    ]
-    if not targets:
+
+def _schedule_drain() -> None:
+    """Start a daemon worker thread that drains the outbox."""
+    thread = threading.Thread(
+        target=_drain_outbox,
+        name="agent-outbox-drain",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _update_outbox_status(
+    row_id: int,
+    status: str,
+    delivered_at: str = "",
+    last_error: str = "",
+) -> None:
+    """Persist a new outbox status for *row_id* (best-effort)."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE agent_outbox SET status = ?, delivered_at = ?, "
+                "last_error = ? WHERE id = ?",
+                (status, delivered_at, last_error, row_id),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning(
+            "Failed to update outbox row %s", row_id, exc_info=True
+        )
+
+
+def _drain_outbox() -> None:
+    """Deliver all pending outbox rows to their registered agent URLs.
+
+    Serialized by ``_drain_lock`` so concurrent drains never double-deliver.
+    No retry / backoff (fire-and-forget by design): a failed attempt marks
+    the row ``failed`` and counts ``delivery_failures_total``; the row is
+    re-attempted only by ``requeue_undelivered()`` after a process restart.
+    """
+    if not _drain_lock.acquire(blocking=False):
         return
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT id, event, payload, schema_version, trace_id, product_id "
+                "FROM agent_outbox WHERE status = ? ORDER BY id",
+                (_OUTBOX_STATUS_PENDING,),
+            ).fetchall()
+        if not rows:
+            return
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for cb in targets:
-            try:
-                resp = await client.post(
-                    cb["agent_url"],
-                    json={"event": event, "payload": payload},
-                    headers={"Content-Type": "application/json"},
+        with _connect() as conn:
+            cb_rows = conn.execute(
+                "SELECT callback_id, agent_url, events FROM agent_callbacks"
+            ).fetchall()
+        target_by_event: dict[str, list[tuple[str, str]]] = {}
+        for cb in cb_rows:
+            for ev in json.loads(cb["events"]):
+                target_by_event.setdefault(ev, []).append(
+                    (cb["callback_id"], cb["agent_url"])
                 )
-                _ = resp.raise_for_status()
-                logger.info(
-                    "Notified agent %s for event %s: HTTP %s",
-                    cb["callback_id"], event, resp.status_code,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to notify agent %s at %s",
-                    cb["callback_id"], cb["agent_url"],
-                    exc_info=True,
-                )
+
+        with httpx.Client(timeout=10.0) as client:
+            for row in rows:
+                body = {
+                    "event": row["event"],
+                    "payload": json.loads(row["payload"]),
+                    "schema_version": row["schema_version"],
+                    "trace_id": row["trace_id"],
+                    "product_id": row["product_id"],
+                }
+                subs = target_by_event.get(row["event"], [])
+                if not subs:
+                    _update_outbox_status(
+                        row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc()
+                    )
+                    continue
+                delivered = True
+                for callback_id, agent_url in subs:
+                    try:
+                        resp = client.post(
+                            agent_url,
+                            json=body,
+                            headers={"Content-Type": "application/json"},
+                        )
+                        _ = resp.raise_for_status()
+                        logger.info(
+                            "Notified agent %s for event %s: HTTP %s",
+                            callback_id, row["event"], resp.status_code,
+                        )
+                    except Exception:
+                        delivered = False
+                        logger.warning(
+                            "Failed to notify agent %s at %s (outbox row %s)",
+                            callback_id, agent_url, row["id"],
+                            exc_info=True,
+                        )
+                if delivered:
+                    _update_outbox_status(
+                        row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc()
+                    )
+                else:
+                    _update_outbox_status(
+                        row["id"], _OUTBOX_STATUS_FAILED,
+                        last_error="delivery failed",
+                    )
+                    global _delivery_failures_total
+                    with _delivery_failures_lock:
+                        _delivery_failures_total += 1
+    finally:
+        _drain_lock.release()
+
+
+def _startup_requeue() -> None:
+    """At process start: requeue undelivered rows and schedule a drain.
+
+    Import-time hook so events enqueued before a crash/exit are
+    re-attempted by the new process. Guarded — the module import must
+    never fail because of outbox state.
+    """
+    requeued = requeue_undelivered()
+    undelivered = 0
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM agent_outbox WHERE status != ?",
+                (_OUTBOX_STATUS_DELIVERED,),
+            ).fetchone()
+        undelivered = int(row["n"]) if row else 0
+    except Exception:
+        pass
+    if requeued or undelivered:
+        logger.info(
+            "Startup: %d requeued, %d undelivered agent outbox row(s); "
+            "scheduling drain",
+            requeued, undelivered,
+        )
+        _schedule_drain()
+
+
+_startup_requeue()

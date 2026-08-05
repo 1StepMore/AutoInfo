@@ -428,8 +428,14 @@ class TestParseResponseFallback:
 class TestConfigHandling:
     """``LLMExtractor`` configuration — default and custom config."""
 
-    def test_default_config_no_file(self) -> None:
+    def test_default_config_no_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Extractor can be created without a config file."""
+        # TRIAGE #16 (env-dep): the repo-root gitignored runtime .autoinfo/config.yaml
+        # (created 2026-08-03) is picked up by get_config_path() →
+        # LLMExtractor()._model != documented default (root cause src/autoinfo/llm.py:88-102).
+        # Real fix: stub the path lookup so the default-config path is taken
+        # regardless of cwd/env state.
+        monkeypatch.setattr("autoinfo.llm.get_config_path", lambda: None)
         extractor = LLMExtractor()
         assert extractor._model == "openrouter/deepseek/deepseek-chat"
 

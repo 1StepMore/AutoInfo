@@ -1,6 +1,9 @@
-# KB Import/Export — verify markdown import and JSON export of knowledge base entries.
+# KB Import/Export — verify markdown import and JSON/EPUB export of knowledge base entries.
+# B23 (2026-08-04): export_kb format="epub" added (no LLM; needs [ebook] extra).
+# format="mobi" omitted — calibre ebook-convert absent in validation env; covered by
+# tests/output/test_output_ebook.py (mobi missing-calibre error path).
 name: kb-import-export
-description: "KB import (markdown) and export (JSON) in real project context"
+description: "KB import (markdown) and export (JSON, EPUB) in real project context"
 category: kb
 requires_env: []
 steps:
@@ -27,5 +30,13 @@ steps:
     arguments:
       domain: medical-research
       format: json
+    expect:
+      success: true
+
+  - name: "export_kb exports domain as EPUB"
+    tool: export_kb
+    arguments:
+      domain: medical-research
+      format: epub
     expect:
       success: true

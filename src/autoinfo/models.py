@@ -197,6 +197,7 @@ class KBEntry:
     version: int = 1
     previous_version: int = 0
     supersedes: str = ""
+    trace_id: str = ""  # Per-item pipeline traceability — UUID from collection, resolvable via trace_item
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -185,7 +185,7 @@ def import_markdown(domain: str, data: str) -> dict[str, Any]:
             collected_at=frontmatter.get("collected_at"),
             language=frontmatter.get("language", ""),
             tags=frontmatter.get("tags"),
-            **{k: v for k, v in frontmatter.items() if k not in MANDATORY_FIELDS_MD and k not in ("title", "language", "tags")},
+            **{k: v for k, v in frontmatter.items() if k not in MANDATORY_FIELDS_MD and k not in ("title", "language", "tags", "domain")},
         )
 
         store = KBStore()

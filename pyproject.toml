@@ -74,11 +74,14 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=4.1",
+    "pytest-mock>=3.14",
     "pytest-vcr>=1.0.2",
     "pytest-timeout>=2.3",
     "ruff>=0.5",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    "jsonschema>=4.23",
 ]
 web = [
     "playwright>=1.45",
@@ -93,7 +96,14 @@ tts = [
 video = [
     "pillow>=10.0",
 ]
-all = ["autoinfo[dev,web,pdf,tts,video]"]
+ebook = [
+    "ebooklib>=0.20",
+    "mutagen>=1.47",
+]
+akshare = [
+    "akshare>=1.12",
+]
+all = ["autoinfo[dev,web,pdf,tts,video,ebook,akshare]"]
 
 [project.urls]
 Homepage = "https://github.com/your-org/autoinfo"

@@ -51,6 +51,59 @@ from autoinfo.kb import KBStore, SQLiteIndex
 logger = logging.getLogger(__name__)
 
 
+def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
+    """Fire a fire-and-forget agent callback for a just-generated product.
+
+    The event is persisted to the durable outbox (SQLite) BEFORE any
+    delivery attempt; a background worker performs the HTTP POST. This
+    hook NEVER raises — generation success is inviolable. Failures are
+    logged and counted via the ``delivery_failures_total`` metric.
+    """
+    try:
+        from autoinfo.agent_callback import enqueue_agent_notification
+
+        enqueue_agent_notification(
+            event=event,
+            payload=output,
+            trace_id=str(uuid.uuid4()),
+            product_id=product_id,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to enqueue agent notification for event %r (product %s)",
+            event, product_id, exc_info=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Agent-native JSON-LD constants (single source of truth)
+# ---------------------------------------------------------------------------
+# One @context/@type pair per agent-native payload kind, defined once so the
+# identifiers cannot drift between producers. Producers MUST spread the
+# constant FIRST (before "uuid") to keep @context/@type/uuid as the leading
+# keys — that key order is part of the serialized output contract.
+
+_JSONLD_DIGEST: dict[str, str] = {
+    "@context": "https://autoinfo.ai/schemas/knowledge-digest-v1",
+    "@type": "KnowledgeDigest",
+}
+
+_JSONLD_TUTORIAL: dict[str, str] = {
+    "@context": "https://autoinfo.ai/schemas/knowledge-tutorial-v1",
+    "@type": "KnowledgeTutorial",
+}
+
+_JSONLD_PRESENTATION: dict[str, str] = {
+    "@context": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
+    "@type": "KnowledgePresentation",
+}
+
+_JSONLD_BASE_EXPORT: dict[str, str] = {
+    "@context": "https://autoinfo.ai/schemas/knowledge-base-export-v1",
+    "@type": "KnowledgeBaseExport",
+}
+
+
 # ---------------------------------------------------------------------------
 # Delivery gate output container
 # ---------------------------------------------------------------------------
@@ -249,7 +302,7 @@ def export_kb(
     format:
         Output format: ``"markdown"`` (default), ``"json"``, ``"sqlite"``,
         ``"pdf"``, ``"rss"``, ``"csv"``, ``"graphml"``, ``"agent"``,
-        ``"bundle"``, or ``"sitemap"``.
+        ``"bundle"``, ``"sitemap"``, ``"epub"``, or ``"mobi"``.
     collection_id:
         Reserved for future collection-scoped export (not yet implemented).
 
@@ -270,11 +323,12 @@ def export_kb(
     if format not in (
         "markdown", "json", "sqlite", "pdf", "rss",
         "csv", "graphml", "agent", "bundle", "sitemap",
+        "epub", "mobi",
     ):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
             f"Supported: markdown, json, sqlite, pdf, rss, csv, graphml, "
-            f"agent, bundle, sitemap"
+            f"agent, bundle, sitemap, epub, mobi"
         )
 
     # --- Locate project root & KB paths ------------------------------------
@@ -414,6 +468,20 @@ def export_kb(
             export_dir=export_dir,
             domain=domain,
             entries=entries,
+            domain_label=domain_label,
+        )
+    elif format == "epub":
+        result = _export_epub(
+            export_dir=export_dir,
+            entries=entries,
+            timestamp=timestamp,
+            domain_label=domain_label,
+        )
+    elif format == "mobi":
+        result = _export_mobi(
+            export_dir=export_dir,
+            entries=entries,
+            timestamp=timestamp,
             domain_label=domain_label,
         )
     else:
@@ -738,6 +806,124 @@ def _export_pdf(
         "entries_count": len(entries),
         "domain": domain_label,
         "success": True,
+    }
+
+
+def _export_epub(
+    export_dir: Path,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as an EPUB3 ebook.
+
+    Builds a Markdown book from the entries (one chapter per entry) and
+    renders it via :func:`autoinfo.output.ebook.render_epub`.  The file is
+    written to ``exports/autoinfo-export-<domain>-<timestamp>.epub``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``, plus ``data_b64``
+        (base64-encoded EPUB bytes).
+    """
+    from autoinfo.output.ebook import render_epub  # noqa: PLC0415
+
+    chapters: list[tuple[str, str]] = []
+    for e in entries:
+        title = e.get("title", "Untitled")
+        file_path = e.get("file_path") or ""
+        content = ""
+        if file_path and Path(file_path).is_file():
+            raw = Path(file_path).read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end_idx = raw.find("---", 3)
+                content = raw[end_idx + 3 :].strip() if end_idx != -1 else raw
+            else:
+                content = raw
+        summary = e.get("summary", "") or ""
+        body = f"{summary}\n\n{content}".strip() if summary else content
+        chapters.append((title, body))
+
+    result = render_epub(
+        title=f"{domain_label} \u2014 Export",
+        author="AutoInfo",
+        lang="en",
+        chapters=chapters,
+    )
+
+    out_name = f"autoinfo-export-{domain_label}-{timestamp}.epub"
+    out_path = export_dir / out_name
+    out_path.write_bytes(base64.b64decode(result["data_b64"]))
+
+    return {
+        "format": "epub",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+        "data_b64": result["data_b64"],
+    }
+
+
+def _export_mobi(
+    export_dir: Path,
+    entries: list[dict[str, Any]],
+    timestamp: str,
+    domain_label: str,
+) -> dict[str, Any]:
+    """Export all entries as a Kindle MOBI file.
+
+    Renders an EPUB in memory (same book as :func:`_export_epub`) and
+    converts it via calibre's ``ebook-convert``
+    (:func:`autoinfo.output.ebook.render_mobi`).  The file is written to
+    ``exports/autoinfo-export-<domain>-<timestamp>.mobi``.
+
+    Returns
+    -------
+    dict
+        Standard export result dict with keys: ``format``, ``path``,
+        ``entries_count``, ``domain``, ``success``, plus ``data_b64``
+        (base64-encoded MOBI bytes).
+    """
+    from autoinfo.output.ebook import render_epub, render_mobi  # noqa: PLC0415
+
+    chapters: list[tuple[str, str]] = []
+    for e in entries:
+        title = e.get("title", "Untitled")
+        file_path = e.get("file_path") or ""
+        content = ""
+        if file_path and Path(file_path).is_file():
+            raw = Path(file_path).read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end_idx = raw.find("---", 3)
+                content = raw[end_idx + 3 :].strip() if end_idx != -1 else raw
+            else:
+                content = raw
+        summary = e.get("summary", "") or ""
+        body = f"{summary}\n\n{content}".strip() if summary else content
+        chapters.append((title, body))
+
+    epub_result = render_epub(
+        title=f"{domain_label} \u2014 Export",
+        author="AutoInfo",
+        lang="en",
+        chapters=chapters,
+    )
+    result = render_mobi(epub_result["data_b64"])
+
+    out_name = f"autoinfo-export-{domain_label}-{timestamp}.mobi"
+    out_path = export_dir / out_name
+    out_path.write_bytes(base64.b64decode(result["data_b64"]))
+
+    return {
+        "format": "mobi",
+        "path": str(out_path),
+        "entries_count": len(entries),
+        "domain": domain_label,
+        "success": True,
+        "data_b64": result["data_b64"],
     }
 
 
@@ -1076,8 +1262,7 @@ def _export_agent_json(
         })
 
     output: dict[str, Any] = {
-        "@context": "https://autoinfo.ai/schemas/knowledge-base-export-v1",
-        "@type": "KnowledgeBaseExport",
+        **_JSONLD_BASE_EXPORT,
         "uuid": str(uuid.uuid4()),
         "domain": domain_label,
         "entries": agent_entries,
@@ -1799,12 +1984,50 @@ PRODUCT_TEMPLATES: list[dict[str, Any]] = [
         "template": ProductTemplate(domain="*", access_level="premium"),
     },
     {
+        "name": "column",
+        "description": "Paid deep-dive column",
+        "access_level": "premium",
+        "template": ProductTemplate(domain="*", access_level="premium"),
+    },
+    {
+        "name": "magazine-digest",
+        "description": "Magazine-styled digest of per-title RSS",
+        "access_level": "free",
+        "template": ProductTemplate(domain="*", access_level="free"),
+    },
+    {
         "name": "enterprise-briefing",
         "description": "Enterprise briefings with custom data, white-labeling, and priority support",
         "access_level": "enterprise",
         "template": ProductTemplate(domain="*", access_level="enterprise"),
     },
 ]
+
+
+def _resolve_digest_product_type(template: ProductTemplate, variant: str) -> str:
+    """Map a ProductTemplate instance back to its digest template family.
+
+    ``generate_digest``'s *product_template* parameter is expected to be a
+    row's ``template`` from :data:`PRODUCT_TEMPLATES`. Rows whose name has
+    a flat template file of its own (e.g. ``magazine-digest`` →
+    ``magazine-digest.md.j2``) render through their own family; every other
+    row — and any non-registry template — keeps the default ``digest``
+    family, so the base ``digest`` row (and report-family rows, should one
+    ever be passed) still render ``digest.md.j2`` unchanged.
+
+    This mirrors how ``generate_report`` derives ``product_type`` for the
+    ``column`` template (T40): the render site selects the family, and the
+    identity lookup is guarded by an on-disk existence check so a registry
+    name can never point at a template that does not exist (FileNotFoundError
+    trap from the T40 premium-briefing/enterprise-briefing rows).
+    """
+    for row in PRODUCT_TEMPLATES:
+        if row["template"] is template:
+            name = row["name"]
+            if (_TEMPLATES_DIR / f"{name}.{variant}.j2").is_file():
+                return name
+            return "digest"
+    return "digest"
 
 
 def list_output_templates(domain: str = "") -> dict[str, Any]:
@@ -2167,14 +2390,14 @@ def generate_digest(
     ValueError
         If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
         or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
-        ``"agent"``.
+        ``"agent"``, ``"epub"``, ``"audiobook"``.
     """
     # --- Validate parameters ------------------------------------------------
     if period not in PERIOD_DAYS:
         raise ValueError(
             f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
         )
-    valid_formats = {"markdown", "html", "json", "agent", "audio"}
+    valid_formats = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
     if format not in valid_formats:
         raise ValueError(
             f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
@@ -2374,7 +2597,8 @@ def generate_digest(
     # --- Render --------------------------------------------------------------
     if product_template is not None:
         variant = FORMAT_TO_VARIANT.get(format, format)
-        rendered = product_template.render("digest", variant, context)
+        product_type = _resolve_digest_product_type(product_template, variant)
+        rendered = product_template.render(product_type, variant, context)
     elif format == "json":
         rendered = _render_json(context)
     elif format == "html":
@@ -2385,6 +2609,20 @@ def generate_digest(
         markdown_text = _render_markdown(context)
         mp3_bytes = _render_audio(markdown_text)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
+    elif format in ("epub", "audiobook"):
+        from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
+
+        ebook_chapters = _digest_chapters(context)
+        if format == "epub":
+            ebook_result = render_epub(
+                title=str(context.get("title", "AutoInfo Digest")),
+                author="AutoInfo",
+                lang="en",
+                chapters=ebook_chapters,
+            )
+        else:
+            ebook_result = render_audiobook(ebook_chapters)
+        rendered = ebook_result["data_b64"]
     elif format == "video":
         rendered = _render_video_scaffold(context, digest_title_domain, sections=None)
     else:
@@ -2467,6 +2705,11 @@ def generate_digest(
                 product_type="digest",
                 title=f"{period_label} Digest \u2014 {digest_title_domain}",
             )
+        _fire_agent_notification(
+            "new_digest",
+            result.output if isinstance(result, DeliveryOutput) else rendered,
+            product_id=f"{digest_title_domain}-{period}",
+        )
         return result
 
     if user_id:
@@ -2475,6 +2718,9 @@ def generate_digest(
             product_type="digest",
             title=f"{period_label} Digest \u2014 {digest_title_domain}",
         )
+    _fire_agent_notification(
+        "new_digest", rendered, product_id=f"{digest_title_domain}-{period}"
+    )
     return rendered
 
 
@@ -2540,9 +2786,9 @@ def generate_report(
         are included.
     format : str, optional
         Output format (default ``"markdown"``).  Supports ``"markdown"``,
-        ``"json"``, ``"html"``, ``"audio"``, ``"agent"``.  The ``"agent"``
-        format returns JSON-LD (``@type: KnowledgeDigest``) optimized for
-        LLM re-consumption.
+        ``"json"``, ``"html"``, ``"audio"``, ``"agent"``, ``"epub"``,
+        ``"audiobook"``.  The ``"agent"`` format returns JSON-LD
+        (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
     period : str, optional
         Report period label (default ``"month"``).  Used for metadata
         in JSON output.
@@ -2598,10 +2844,10 @@ def generate_report(
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
-    if format not in ("markdown", "json", "html", "audio", "agent", "video"):
+    if format not in ("markdown", "json", "html", "audio", "agent", "video", "epub", "audiobook"):
         raise ValueError(
             f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, json, html, audio, agent, video"
+            f"Supported: markdown, json, html, audio, agent, video, epub, audiobook"
         )
 
     if report_type not in _VALID_REPORT_TYPES:
@@ -2676,8 +2922,8 @@ def generate_report(
                 },
             }
             if format == "agent":
-                empty_data["@context"] = "https://autoinfo.ai/schemas/knowledge-digest-v1"
-                empty_data["@type"] = "KnowledgeDigest"
+                empty_data["@context"] = _JSONLD_DIGEST["@context"]
+                empty_data["@type"] = _JSONLD_DIGEST["@type"]
                 empty_data["uuid"] = str(uuid.uuid4())
                 empty_data["trends"] = []
             rendered = json.dumps(empty_data, indent=2, ensure_ascii=False, default=str)
@@ -2687,6 +2933,25 @@ def generate_report(
             empty_md = _render_empty_report(report_title_domain)
             mp3_bytes = _render_audio(empty_md)
             rendered = base64.b64encode(mp3_bytes).decode("ascii")
+        elif format in ("epub", "audiobook"):
+            from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
+
+            empty_chapters = [
+                (
+                    f"{report_title_domain} \u2014 Report",
+                    _render_empty_report(report_title_domain),
+                )
+            ]
+            if format == "epub":
+                ebook_result = render_epub(
+                    title=f"{report_title_domain} \u2014 Report",
+                    author="AutoInfo",
+                    lang="en",
+                    chapters=empty_chapters,
+                )
+            else:
+                ebook_result = render_audiobook(empty_chapters)
+            rendered = ebook_result["data_b64"]
         elif format == "video":
             rendered = _render_video_scaffold({}, report_title_domain, sections=None)
         else:
@@ -2782,7 +3047,10 @@ def generate_report(
     if product_template is not None:
         variant = FORMAT_TO_VARIANT.get(format, format)
         pt_context = _report_data_to_dict(report_data)
-        rendered = product_template.render("report", variant, pt_context)
+        # The "column" product renders through its own template family
+        # (column.md.j2); every other product type keeps the report family.
+        product_type = "column" if report_type == "column" else "report"
+        rendered = product_template.render(product_type, variant, pt_context)
     elif format == "json":
         rendered = _render_report_json(report_data, period=period)
     elif format == "html":
@@ -2791,6 +3059,25 @@ def generate_report(
         markdown_text = _render_report_template(report_data)
         mp3_bytes = _render_audio(markdown_text)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
+    elif format in ("epub", "audiobook"):
+        from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
+
+        report_chapters = _report_chapters(report_data)
+        if not report_chapters:
+            # Degenerate report (no summary/sections/references): render the
+            # full template as a single chapter so the book is still valid.
+            report_chapters = [(report_data.title, _render_report_template(report_data))]
+        if format == "epub":
+            ebook_result = render_epub(
+                title=report_data.title,
+                author="AutoInfo",
+                lang="en",
+                chapters=report_chapters,
+                summary=report_data.executive_summary,
+            )
+        else:
+            ebook_result = render_audiobook(report_chapters)
+        rendered = ebook_result["data_b64"]
     elif format == "video":
         report_sections: list[dict[str, str]] = []
         for section in report_data.sections:
@@ -2914,6 +3201,11 @@ def generate_report(
                 product_type="report",
                 title=f"{report_title_domain} \u2014 Report",
             )
+        _fire_agent_notification(
+            "new_report",
+            result.output if isinstance(result, DeliveryOutput) else rendered,
+            product_id=f"{report_title_domain}-{period}",
+        )
         return result
 
     if user_id:
@@ -2922,6 +3214,9 @@ def generate_report(
             product_type="report",
             title=f"{report_title_domain} \u2014 Report",
         )
+    _fire_agent_notification(
+        "new_report", rendered, product_id=f"{report_title_domain}-{period}"
+    )
     return rendered
 
 
@@ -3363,6 +3658,38 @@ def _render_report_json(report_data: ReportData, period: str = "month") -> str:
         },
     }
     return json.dumps(output, indent=2, ensure_ascii=False, default=str)
+
+
+def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
+    """Split report data into ``(heading, markdown_body)`` chapters.
+
+    Executive summary → "Executive Summary"; each themed section → its own
+    chapter (content plus an item table when items exist); references →
+    a "References" appendix.  Used by the ``epub`` and ``audiobook``
+    report formats.
+    """
+    chapters: list[tuple[str, str]] = []
+    if report_data.executive_summary:
+        chapters.append(("Executive Summary", report_data.executive_summary))
+    for idx, section in enumerate(report_data.sections, 1):
+        body = section.content or ""
+        if section.items:
+            rows = ["| # | Title | Summary |", "|---|-------|---------|"]
+            for i, item in enumerate(section.items, 1):
+                rows.append(
+                    f"| {i} | {item.get('title', '')} | {item.get('summary', '')} |"
+                )
+            body = f"{body}\n\n{chr(10).join(rows)}".strip()
+        chapters.append((section.title or f"Section {idx}", body))
+    if report_data.references:
+        ref_lines = []
+        for ref in report_data.references:
+            line = f"- **{ref.get('title', '')}**"
+            if ref.get("source_url"):
+                line += f" \u2014 {ref['source_url']}"
+            ref_lines.append(line)
+        chapters.append(("References", "\n".join(ref_lines)))
+    return chapters
 
 
 def _render_report_template(report_data: ReportData) -> str:
@@ -3906,6 +4233,15 @@ _REPORT_TYPE_PROMPTS: dict[str, str] = {
         "Briefing Summary (3 bullet points max). Be concise. Prioritize "
         "high-relevance items (relevance_score > 50)."
     ),
+    "column": (
+        "Structure this column with sections: The Big Idea (single-theme "
+        "thesis in an expert persona voice), Deep Dive (longer-form analysis "
+        "with evidence, sources, and nuance), What Changed This Week (weekly "
+        "cadence — timeline of developments in the period), Implications & "
+        "Outlook, Reader Takeaways. Write in a confident expert persona with "
+        "analytical depth; this is a longer-form premium column, not a "
+        "briefing. Prioritize high-relevance items (relevance_score > 50)."
+    ),
 }
 
 _VALID_REPORT_TYPES: list[str] = list(_REPORT_TYPE_PROMPTS.keys())
@@ -4051,10 +4387,20 @@ def generate_tutorial(
 
     # -- Agent-native JSON-LD format ----------------------------------------
     if format == "agent":
-        return _render_tutorial_agent_json(llm_result, domain, target_audience, generated_at, entries)
+        rendered_agent = _render_tutorial_agent_json(
+            llm_result, domain, target_audience, generated_at, entries
+        )
+        _fire_agent_notification(
+            "new_tutorial", rendered_agent, product_id=f"{domain}-tutorial"
+        )
+        return rendered_agent
 
     # -- Render via Jinja2 template ---------------------------------------
-    return _render_tutorial_template(context)
+    rendered_tutorial = _render_tutorial_template(context)
+    _fire_agent_notification(
+        "new_tutorial", rendered_tutorial, product_id=f"{domain}-tutorial"
+    )
+    return rendered_tutorial
 
 
 def _render_tutorial_agent_json(
@@ -4098,8 +4444,7 @@ def _render_tutorial_agent_json(
         })
 
     output: dict[str, Any] = {
-        "@context": "https://autoinfo.ai/schemas/knowledge-tutorial-v1",
-        "@type": "KnowledgeTutorial",
+        **_JSONLD_TUTORIAL,
         "uuid": str(uuid.uuid4()),
         "title": llm_result.get("title", f"{domain} — Tutorial"),
         "domain": domain,
@@ -4344,8 +4689,7 @@ def _render_presentation_agent_json(
         })
 
     output: dict[str, Any] = {
-        "@context": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
-        "@type": "KnowledgePresentation",
+        **_JSONLD_PRESENTATION,
         "uuid": str(uuid.uuid4()),
         "title": llm_result.get("title", f"{topic} — Presentation"),
         "topic": topic,
@@ -4955,6 +5299,37 @@ def _render_markdown(context: dict[str, Any]) -> str:
     return template.render(**context)
 
 
+def _digest_chapters(context: dict[str, Any]) -> list[tuple[str, str]]:
+    """Split digest context into ``(heading, markdown_body)`` chapters.
+
+    Chapter 1 is front matter (title + metadata + executive summary); each
+    KB entry becomes its own chapter.  Used by the ``epub`` and
+    ``audiobook`` digest formats.
+    """
+    front_matter = [
+        f"# {context.get('title', 'AutoInfo Digest')}",
+        "",
+        f"**Domain**: {context.get('domain', '')}",
+        f"**Period**: {context.get('period_label', '')}",
+        f"**Generated**: {context.get('generated_at', '')}",
+    ]
+    llm_synthesis = context.get("llm_synthesis") or {}
+    if llm_synthesis.get("executive_summary"):
+        front_matter.extend([
+            "",
+            "## Executive Summary",
+            "",
+            str(llm_synthesis["executive_summary"]),
+        ])
+    chapters: list[tuple[str, str]] = [("Front Matter", "\n".join(front_matter))]
+    for entry in context.get("entries") or []:
+        chapters.append((
+            str(entry.get("title", "Untitled")),
+            str(entry.get("summary", "") or ""),
+        ))
+    return chapters
+
+
 def _render_html(markdown_text: str) -> str:
     """Convert Markdown to plain HTML (no CSS styling).
 
@@ -5181,8 +5556,7 @@ def _render_agent_json(
 
     # --- Assemble JSON-LD payload ---------------------------------------------
     output: dict[str, Any] = {
-        "@context": "https://autoinfo.ai/schemas/knowledge-digest-v1",
-        "@type": "KnowledgeDigest",
+        **_JSONLD_DIGEST,
         "uuid": str(uuid.uuid4()),
         "generated_at": generated_at,
         "domain": domain,

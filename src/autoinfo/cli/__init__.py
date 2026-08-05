@@ -5,6 +5,8 @@ from __future__ import annotations
 import typer
 
 from . import (
+    agent_callback,
+    alert_rules,
     audit,
     billing,
     cefr,
@@ -16,12 +18,14 @@ from . import (
     domain,
     email,
     enduser,
+    import_kb,
     kb,
     keywords,
     knowledge,
     output,
     portal,
     process,
+    query_collected,
     sources,
     status,
     summaries,
@@ -56,6 +60,7 @@ app.add_typer(process.app, name="process", help="Process collected items with LL
 app.add_typer(status.app, name="status", help="Show collection and processing status overview")
 app.add_typer(sources.app, name="sources", help="Manage source configurations for domains")
 app.add_typer(topics.app, name="topics", help="Manage topics and keywords for domains")
+app.add_typer(topics.topic_group_app, name="topic-group", help="Manage topic groups (MCP topic_group_add/remove parity)")
 app.add_typer(domain.app, name="domain", help="Manage domains (add, remove, list, activate, deactivate)")
 app.add_typer(audit.app, name="audit")
 app.add_typer(billing.app, name="billing")
@@ -72,6 +77,26 @@ app.add_typer(cost.app, name="cost")
 app.add_typer(enduser.app, name="enduser")
 app.add_typer(portal.app, name="portal")
 app.add_typer(trace.app, name="trace")
+app.add_typer(
+    import_kb.app,
+    name="import-kb",
+    help="Import entries into the KB (01-Raw) — mirrors MCP import_kb",
+)
+app.add_typer(
+    query_collected.app,
+    name="query-collected",
+    help="Q&A over collected content (FTS5 + LLM) — mirrors MCP query_collected",
+)
+app.add_typer(
+    alert_rules.app,
+    name="alert-rules",
+    help="Manage alert rules — mirrors MCP add/get/remove_alert_rule",
+)
+app.add_typer(
+    agent_callback.app,
+    name="agent-callback",
+    help="Manage agent push callbacks — mirrors MCP set/list/remove_agent_callback",
+)
 
 if __name__ == "__main__":
     app()

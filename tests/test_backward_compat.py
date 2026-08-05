@@ -406,28 +406,32 @@ class TestMcpNewTools:
 class TestInitIntegration:
     """``autoinfo init --demo medical-research`` produces a loadable config."""
 
-    def test_init_exit_code_zero(self, tmp_path: Path) -> None:
+    def test_init_exit_code_zero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """``autoinfo init --demo medical-research`` exits 0."""
         from typer.testing import CliRunner
         from autoinfo.cli import app
 
-        os.chdir(tmp_path)
+        # TRIAGE #60 (regression) + cwd-leak fix: #106 (79b188a) moved the
+        # runtime dirs from `.autoinfo/knowledge/...` to project root
+        # (`src/autoinfo/cli/init.py:135-140`). monkeypatch.chdir restores
+        # cwd after the test (leaked chdir broke test_bug_40).
+        monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(app, ["init", "--demo", "medical-research"])
         assert result.exit_code == 0, f"init failed: {result.output}"
 
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         assert config_path.is_file(), "config.yaml was not created"
-        assert (tmp_path / ".autoinfo" / "knowledge" / "01-Raw").is_dir()
-        assert (tmp_path / ".autoinfo" / "collections").is_dir()
-        assert (tmp_path / ".autoinfo" / "outputs").is_dir()
+        assert (tmp_path / "knowledge" / "01-Raw").is_dir()
+        assert (tmp_path / "collections").is_dir()
+        assert (tmp_path / "outputs").is_dir()
 
-    def test_init_config_loads_with_new_schema(self, tmp_path: Path) -> None:
+    def test_init_config_loads_with_new_schema(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Generated config loads with new schema (tasks/fallback have defaults)."""
         from typer.testing import CliRunner
         from autoinfo.cli import app
 
-        os.chdir(tmp_path)
+        monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(app, ["init", "--demo", "medical-research"])
         assert result.exit_code == 0, f"init failed: {result.output}"
@@ -452,13 +456,16 @@ class TestInitIntegration:
         assert len(cfg.domains) == 1
         assert cfg.domains[0].name == "medical-research"
 
-    def test_init_config_validates(self, tmp_path: Path) -> None:
+    def test_init_config_validates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Generated config passes validation."""
         from autoinfo.cli.init import init
         from autoinfo.config import validate_config
 
-        os.chdir(tmp_path)
-        init(demo="medical-research")
+        # TRIAGE #61 (regression): direct `init(demo=...)` call leaves the
+        # `--list-domains` OptionInfo object truthy (`src/autoinfo/cli/init.py:194-198`)
+        # → prints usage and creates nothing. Pass the flag explicitly.
+        monkeypatch.chdir(tmp_path)
+        init(demo=["medical-research"], list_domains=False, name="")
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         cfg = load_config(config_path)
         errors = validate_config(cfg)
@@ -498,16 +505,16 @@ class TestCollectProcessPipeline:
         },
     ]
 
-    def _prepare_project(self, tmp_path: Path) -> None:
+    def _prepare_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Create project with v0.1.1 config (with tasks/fallback)."""
-        os.chdir(tmp_path)
+        monkeypatch.chdir(tmp_path)
         _write_config(tmp_path, V011_CONFIG)
         (tmp_path / "collections").mkdir(exist_ok=True)
         (tmp_path / "knowledge").mkdir(exist_ok=True)
 
-    def test_collect_smoke(self, tmp_path: Path) -> None:
+    def test_collect_smoke(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Collection runs without error with new config."""
-        self._prepare_project(tmp_path)
+        self._prepare_project(tmp_path, monkeypatch)
 
         from autoinfo.collect import run_collection
         from autoinfo.models import Item
@@ -527,9 +534,9 @@ class TestCollectProcessPipeline:
         assert result["domain"] == self.DOMAIN
         assert result["dry_run"] is False
 
-    def test_process_smoke(self, tmp_path: Path) -> None:
+    def test_process_smoke(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Processing runs without error with new config."""
-        self._prepare_project(tmp_path)
+        self._prepare_project(tmp_path, monkeypatch)
 
         from autoinfo.collect import run_collection
         from autoinfo.models import Item
@@ -551,6 +558,12 @@ class TestCollectProcessPipeline:
             "entities": [],
             "relevance_score": 85.0,
         })
+        # TRIAGE #62 (regression): cost-meter MagicMock binding
+        # (`process.py:690` → `cost.py:159`) — real int token counters so
+        # `CostMeter().log_llm_tokens` gets ints, not MagicMocks.
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 50
+        mock_response.usage.total_tokens = 150
         mock_llm.completion.return_value = mock_response
 
         from autoinfo.llm import LLMExtractor
@@ -562,9 +575,9 @@ class TestCollectProcessPipeline:
         assert proc_result.kb_entries_created >= 1
         assert proc_result.errors == []
 
-    def test_collect_dry_run_still_works(self, tmp_path: Path) -> None:
+    def test_collect_dry_run_still_works(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Dry-run collection works with new config."""
-        self._prepare_project(tmp_path)
+        self._prepare_project(tmp_path, monkeypatch)
 
         from autoinfo.collect import run_collection
         from autoinfo.models import Item

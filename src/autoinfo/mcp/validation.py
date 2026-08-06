@@ -708,7 +708,7 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
     if not sd.is_dir():
         return scenarios
 
-    for yaml_path in sorted(sd.glob("*.yaml")):
+    for yaml_path in sorted(sd.rglob("*.yaml")):
         try:
             with open(yaml_path, "r", encoding="utf-8") as fh:
                 data = yaml.safe_load(fh)
@@ -1172,7 +1172,7 @@ async def run_scenario(
             )
             for idx, s in enumerate(all_steps, start=1)
         ]
-        return {
+        _result: dict[str, Any] = {
             "scenario": name,
             "description": scenario["description"],
             "category": scenario.get("category", "general"),
@@ -1192,6 +1192,10 @@ async def run_scenario(
             "steps": unconfigured_steps,
             "trace_id": trace_id,
         }
+        for _key in ("regression", "regression_issue"):
+            if _key in scenario:
+                _result[_key] = scenario[_key]
+        return _result
 
     # Precondition check: scenarios may declare required domains (fixes #120).
     # If the project config does not have one of the required domains, the
@@ -1224,7 +1228,7 @@ async def run_scenario(
                 )
                 for idx, s in enumerate(all_steps, start=1)
             ]
-            return {
+            _result: dict[str, Any] = {
                 "scenario": name,
                 "description": scenario["description"],
                 "category": scenario.get("category", "general"),
@@ -1244,6 +1248,10 @@ async def run_scenario(
                 "steps": unconfigured_steps,
                 "trace_id": trace_id,
             }
+            for _key in ("regression", "regression_issue"):
+                if _key in scenario:
+                    _result[_key] = scenario[_key]
+            return _result
 
     # Determine which steps to run
     if steps is not None:
@@ -1371,5 +1379,8 @@ async def run_scenario(
         result["cleanup"] = cleanup
     if artifacts is not None:
         result["artifacts"] = artifacts
+    for _key in ("regression", "regression_issue"):
+        if _key in scenario:
+            result[_key] = scenario[_key]
 
     return result

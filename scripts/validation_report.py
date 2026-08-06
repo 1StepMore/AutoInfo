@@ -114,17 +114,50 @@ def generate(version: str, run_id: str) -> Path:
     lines.append("|----------|--------|---|")
     for sc in sorted(scenarios, key=lambda x: x.get("scenario", "")):
         summary = sc.get("summary", {})
-        lines.append(f"| {sc.get('scenario', '?')} | {sc.get('status', '?')} "
+        status_str = sc.get("status", "?")
+        if sc.get("regression"):
+            status_str = f"{status_str} (regression)"
+        lines.append(f"| {sc.get('scenario', '?')} | {status_str} "
                      f"| {summary.get('passed', 0)}/{summary.get('total', 0)} |")
     lines.append("")
     lines.append("## Executive summary")
     lines.append("")
+    regression_failed = sum(
+        1 for sc in scenarios
+        if sc.get("regression") and sc.get("status") == "failed"
+    )
     if failed or unconfigured:
         lines.append(f"{failed} scenario(s) failed and {unconfigured} were unconfigured; "
                      f"{passed} passed. See the per-scenario status table and the evidence "
                      f"files under `{run_dir}` for details.")
+        if regression_failed:
+            lines.append(f"Includes {regression_failed} regression failure(s) "
+                         f"(see Regression failures section).")
     else:
         lines.append(f"All {passed} scenario(s) passed. Evidence available under `{run_dir}`.")
+    lines.append("")
+
+    # --- Regression failures section (issue #140 P1-3) -----------------------
+    regression_failures = [
+        sc for sc in scenarios
+        if sc.get("regression") and sc.get("status") == "failed"
+    ]
+    lines.append("## Regression failures")
+    lines.append("")
+    if not regression_failures:
+        lines.append("(no regression failures in this run)")
+    else:
+        for sc in regression_failures:
+            sc_name = sc.get("scenario", "?")
+            issue_ref = sc.get("regression_issue", "?")
+            issue_paren = f"({issue_ref})" if issue_ref.startswith("#") else f"(#{issue_ref})"
+            summary = sc.get("summary", {})
+            lines.append(
+                f"- `REG RGRESSION {sc_name} {issue_paren}` — "
+                f"failed {summary.get('passed', 0)}/{summary.get('total', 0)} passed "
+                f"({summary.get('failed', 0)} failed, "
+                f"{summary.get('unconfigured', 0)} unconfigured)"
+            )
     lines.append("")
     lines.append("## Blockers")
     lines.append("")

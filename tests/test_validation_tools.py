@@ -2037,3 +2037,109 @@ class TestLLMJudgeObservability:
         assert verdict["verdict"] == "PASS"
         assert verdict["tokens"] is None
         assert verdict["model"] == "test-model"
+
+
+# ============================================================================
+# Issue #140: regression scenario fields
+# ============================================================================
+
+
+class TestRegressionScenarios:
+    """Regression scenarios carry regression / regression_issue fields."""
+
+    def test_loads_regression_scenarios(self) -> None:
+        """load_scenarios picks up regression/ subdir scenarios with new fields."""
+        scs = load_scenarios()
+        regr = [s for s in scs if s.get("regression")]
+        assert len(regr) >= 5, f"Expected ≥5 regression scenarios, got {len(regr)}"
+        for s in regr:
+            assert s["regression"] is True
+            assert "regression_issue" in s
+            assert s["regression_issue"].startswith("#")
+        func = [s for s in scs if not s.get("regression")]
+        for s in func:
+            assert "regression" not in s
+            assert "regression_issue" not in s
+
+    @pytest.fixture
+    def regression_scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "regression").mkdir()
+        (sd / "regression" / "fake-regression.yaml").write_text(
+            "name: fake-regression\n"
+            "description: \"Regression test\"\n"
+            "category: regression\n"
+            "regression: true\n"
+            "regression_issue: \"#999\"\n"
+            "requires_env: []\n"
+            "steps:\n"
+            "  - name: step1\n"
+            "    tool: fake_tool\n"
+            "    arguments: {}\n"
+            "    expect:\n"
+            "      success: true\n"
+            "      data_has: [result]\n",
+            encoding="utf-8",
+        )
+        (sd / "functional.yaml").write_text(
+            "name: functional\n"
+            "description: \"Functional test\"\n"
+            "requires_env: []\n"
+            "steps:\n"
+            "  - name: step1\n"
+            "    tool: fake_tool\n"
+            "    arguments: {}\n"
+            "    expect:\n"
+            "      success: true\n",
+            encoding="utf-8",
+        )
+        return sd
+
+    async def test_run_scenario_carry_regression_fields(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        async def dispatch(name: str, args: dict) -> dict:
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "fake-regression", dispatch, scenarios_dir=regression_scenario_dir
+        )
+        assert result["regression"] is True
+        assert result["regression_issue"] == "#999"
+        assert result["status"] == "passed"
+
+    async def test_run_scenario_no_regression_fields_on_functional(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        async def dispatch(name: str, args: dict) -> dict:
+            return {"success": True, "data": {}}
+
+        result = await run_scenario(
+            "functional", dispatch, scenarios_dir=regression_scenario_dir
+        )
+        assert "regression" not in result
+        assert "regression_issue" not in result
+
+    async def test_regression_env_unconfigured_carries_fields(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        """Env-gated regression scenario: unconfigured result carries regression fields."""
+        (regression_scenario_dir / "regression" / "env-gated-reg.yaml").write_text(
+            "name: env-gated-reg\n"
+            "description: \"Env gated regression\"\n"
+            "category: regression\n"
+            "regression: true\n"
+            "regression_issue: \"#888\"\n"
+            "requires_env: [MISSING_VAR_XYZ_888]\n"
+            "steps:\n"
+            "  - name: gated\n"
+            "    tool: health_check\n",
+            encoding="utf-8",
+        )
+        result = await run_scenario(
+            "env-gated-reg", dispatch=None, scenarios_dir=regression_scenario_dir
+        )
+        assert result["status"] == "unconfigured"
+        assert result["regression"] is True
+        assert result["regression_issue"] == "#888"

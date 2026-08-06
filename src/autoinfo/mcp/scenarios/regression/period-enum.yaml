@@ -1,0 +1,36 @@
+# Regression #126: generate_digest / generate_report period enums
+# inconsistent — _handle_generate_report defaulted to "month" (invalid) while
+# generate_digest only accepts daily/weekly/monthly.  Calling generate_report
+# without period crashed with ValueError when entries existed.
+# Fix: default changed from "month" to "monthly"; both functions now share
+# the same period enum (daily, weekly, monthly).
+# This scenario verifies the default via both MCP noop path and CLI inspection.
+name: regression-period-enum
+description: "Regression #126: generate_report default period is monthly; digest/report enums aligned"
+category: regression
+regression: true
+regression_issue: "#126"
+requires_env: []
+steps:
+  - name: "generate_report without period succeeds (default monthly)"
+    tool: generate_report
+    arguments:
+      domain: regression-126-noop-domain
+    expect:
+      success: true
+      data_has: ["domain", "format", "period", "content"]
+  - name: "handler default period is monthly (not month)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import inspect
+      from autoinfo.mcp import server
+      default = inspect.signature(server._handle_generate_report).parameters["period"].default
+      print("REPORT_DEFAULT_PERIOD " + str(default))
+      assert default == "monthly", "Expected monthly, got " + str(default)
+      print("PERIOD_ENUM_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REPORT_DEFAULT_PERIOD monthly", "PERIOD_ENUM_OK"]

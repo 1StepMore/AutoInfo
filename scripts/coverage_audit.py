@@ -55,7 +55,7 @@ def compute_coverage(server_src: str, scenarios_dir: Path) -> dict[str, Any]:
 
     scenario_used: set[str] = set()
     scenario_names: list[str] = []
-    for yf in sorted(scenarios_dir.glob("*.yaml")):
+    for yf in sorted(scenarios_dir.rglob("*.yaml")):
         data = yaml.safe_load(yf.read_text())
         scenario_names.append(data.get("name"))
         for step in data.get("steps", []):
@@ -86,6 +86,17 @@ def main() -> None:
     print(f"Phantom scenario tools (not declared; informational): {len(cov['phantom'])}")
     for t in cov["phantom"]:
         print(f"  - {t}")
+
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(ROOT / "src"))
+        from autoinfo.mcp.validation import load_scenarios as _load_scenarios
+        _all_scenarios = _load_scenarios()
+        _regr = [s for s in _all_scenarios if s.get("regression")]
+        _regr_issues = [s.get("regression_issue", "?") for s in _regr]
+        print(f"Regression scenarios: {len(_regr)} (issues: {', '.join(_regr_issues)})")
+    except Exception:
+        print("Regression scenarios: (unable to load)")
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out_dir = ROOT / "validation-runs" / "coverage"

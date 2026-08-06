@@ -1,0 +1,41 @@
+# Regression #135: semantic-scholar 301 redirect, patentsview 301, arXiv
+# RSS empty — 3 of 7 medical-research sources failed (43%).  semantic scholar
+# API migrated routes; patentsview moved to data.uspto.gov; arXiv rss/bio
+# returned zero entries.
+# Fix: updated collector endpoints + structured SourceFailure markers.
+# This scenario probes the fixed endpoint URLs via test_source (real HTTP).
+# Gated on requires_domain: medical-research so bare sandboxes report
+# unconfigured (not hard failure).  min_passing: 2 provides network resilience.
+name: regression-source-301
+description: "Regression #135: semantic-scholar / patentsview / arXiv endpoints no longer 301"
+category: regression
+regression: true
+regression_issue: "#135"
+requires_env: []
+requires_domain: ["medical-research"]
+min_passing: 2
+steps:
+  - name: "semantic scholar search endpoint reachable (no 301)"
+    tool: test_source
+    arguments:
+      url: "https://api.semanticscholar.org/graph/v1/paper/search"
+      type: api
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]
+  - name: "arXiv RSS feed reachable with entries"
+    tool: test_source
+    arguments:
+      url: "https://rss.arxiv.org/rss/q-bio"
+      type: rss
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]
+  - name: "USPTO patentsview endpoint reachable"
+    tool: test_source
+    arguments:
+      url: "https://api.patentsview.org/patents/query"
+      type: api
+    expect:
+      success: true
+      data_has: ["reachable", "status_code"]

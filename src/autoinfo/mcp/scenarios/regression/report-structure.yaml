@@ -1,0 +1,37 @@
+# Regression #121: _handle_generate_report markdown/default branch returned
+# a flat {status, message} dict missing domain/format/period/content keys,
+# while json/audio/epub branches returned the full contract.  8 tests failed.
+# Fix: all format branches now return consistent {success, domain, format,
+# period, content} (noop path returns content: "").
+# This scenario uses the MCP generate_report tool with a nonexistent domain
+# (noop path) — deterministic, no LLM or KB content needed.
+name: regression-report-structure
+description: "Regression #121: generate_report markdown branch returns domain/format/period/content keys"
+category: regression
+regression: true
+regression_issue: "#121"
+requires_env: []
+steps:
+  - name: "markdown report carries full contract keys on noop path"
+    tool: generate_report
+    arguments:
+      domain: regression-121-noop-domain
+      format: markdown
+    expect:
+      success: true
+      data_has: ["domain", "format", "period", "content"]
+  - name: "json report carries full contract keys on noop path"
+    tool: generate_report
+    arguments:
+      domain: regression-121-noop-domain
+      format: json
+    expect:
+      success: true
+      data_has: ["domain", "format", "period", "content"]
+  - name: "report without explicit format defaults to markdown with full keys"
+    tool: generate_report
+    arguments:
+      domain: regression-121-noop-domain
+    expect:
+      success: true
+      data_has: ["domain", "format", "period", "content"]

@@ -217,3 +217,36 @@ def test_live_audit_prints_full_coverage():
     assert result.stdout.index("MISSING tools (0):") < result.stdout.index(
         "definitely_not_a_real_tool"
     )
+
+
+def test_live_audit_prints_regression_scenarios():
+    """The real coverage_audit.py must print 'Regression scenarios: N (issues: ...)'."""
+    result = subprocess.run(
+        [sys.executable, str(AUDIT_SCRIPT)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Regression scenarios:" in result.stdout
+    lines = [l for l in result.stdout.splitlines() if l.startswith("Regression scenarios:")]
+    assert len(lines) == 1
+    line = lines[0]
+    assert "#104" in line
+    assert "#119" in line
+    assert "#121" in line
+    assert "#126" in line
+    assert "#135" in line
+
+
+def test_compute_coverage_includes_regression_subdir(coverage_audit, tmp_path):
+    """compute_coverage with rglob scans regression/ subdirectory for tool coverage."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    _write_scenario(tmp_path, "top-level", ["alpha_tool"])
+    reg_dir = tmp_path / "regression"
+    reg_dir.mkdir()
+    _write_scenario(reg_dir, "reg-sub", ["beta_tool"])
+    cov = coverage_audit.compute_coverage(SERVER_SNIPPET, tmp_path)
+    assert cov["covered"] == ["alpha_tool", "beta_tool"]
+    assert "reg-sub" in cov["scenario_names"]

@@ -167,7 +167,10 @@ def suggest(
         config_path = get_config_path()
         if config_path:
             config = load_config(config_path)
-            model = config.llm.model or "deepseek/deepseek-chat"
+            model = config.llm.resolve_model() or (
+                f"{config.llm.provider or 'openrouter'}/"
+                f"{config.llm.model or 'deepseek/deepseek-chat'}"
+            )
             api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = config.llm.base_url or None
             json_mode = config.llm.json_mode

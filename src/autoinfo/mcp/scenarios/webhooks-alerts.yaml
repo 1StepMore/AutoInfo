@@ -5,6 +5,7 @@ name: webhooks-alerts
 description: "Webhooks and alert rules: read, mutate, verify, restore"
 category: system
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "get_domain_webhooks reads current webhooks"
     tool: get_domain_webhooks

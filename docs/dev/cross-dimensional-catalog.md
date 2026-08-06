@@ -393,8 +393,8 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 - **Existing Cross-Ref:** None (new)
 - **Evidence:** Agent constraint rule: "Agent may deprecate (tag `status: deprecated`) upon explicit human command." Implementation unclear.
 
-#### CD-029: 03-Wiki Guarding — Only Partial
-- **Description:** The spec says "Only human can promote Draft→Wiki" and "Agent cannot write to 03-Wiki". This is enforced at the agent instruction level (AGENTS.md) but not at the code level — the CLI `kb promote` command could be called by an agent if it had shell access.
+#### CD-029: 03-Wiki Guarding — Only Partial (RESOLVED)
+- **Description:** The spec says "Only human can promote Draft→Wiki" and "Agent cannot write to 03-Wiki". This is enforced at the agent instruction level (AGENTS.md) but not at the code level — the CLI `kb promote` command could be called by an agent if it had shell access. **Resolved 2026-08-06**: the `promote_kb_draft` MCP tool (`src/autoinfo/mcp/server.py`) exposes promotion through the agent-facing MCP surface with the KB-tier guard enforced by `KBStore.promote_kb_draft` (validates 02-Draft tier, stamps `human_promoted`, moves to 03-Wiki). Agents reach 03-Wiki only via this path.
 - **Affected Stages:** A3 (KB)
 - **Affected Users:** B2 (Direct Agent — constraint depends on self-policing), B3 (Director — relies on agent compliance)
 - **Existing Cross-Ref:** None (new)
@@ -573,7 +573,7 @@ Each gap maps to one or more documents that need updating. This enables targeted
 | CD-026 | `specs/pipeline.md` | Remove O(n) claim; note remaining auto-lifecycle gap |
 | CD-027 | `specs/pipeline.md` | Note partial impl (basic concat, no LLM merge) |
 | CD-028 | `specs/expectations.md`, `AGENTS.md` | Clarify rule |
-| CD-029 | `AGENTS.md` | Clarify enforcement |
+| CD-029 | *(resolved — `promote_kb_draft` MCP tool enforces promotion at code level)* | — |
 | CD-030 | `specs/operations.md` | Note gap |
 | CD-031 | *(merged into CD-024)* | — |
 | CD-032 | — *(resolved — audio working, docs updated)* | — |
@@ -648,7 +648,7 @@ Priorities are assigned based on:
 | CD-019 | Quiet hours | Spec not implemented | 2-3 days |
 | CD-021 | Identity anchor | No cross-platform identity | 3-5 days |
 | CD-027 | merge_items partial | Basic concatenation, no LLM conflict resolution | 2-3 days |
-| CD-029 | 03-Wiki guarding (code-level) | Rule is agent-instruction only | 1 day |
+| CD-029 | *(resolved — `promote_kb_draft` MCP tool, 2026-08-06)* | Code-level human-only promotion via MCP | — |
 | CD-037 | Feature flags | No gradual rollout capability | 3-5 days |
 | CD-039 | Delivery schema enforcement | No format validation | 3-5 days |
 | CD-041 | Business metrics | No revenue/engagement visibility | 5-10 days |

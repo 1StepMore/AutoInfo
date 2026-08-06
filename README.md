@@ -40,7 +40,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 141 MCP tools across 35 categories. Agent operates, human directs.
+- **Agent-native** — 142 MCP tools across 35 categories. Agent operates, human directs.
 - **Self-discovering tool count** — `get_tool_count` MCP tool returns dynamic tool count, no more hardcoded numbers
 - **LLM configuration tool** — `configure_llm` MCP tool for agent-oriented BYOK setup (provider, model, api_key, base_url)
 - **Agent-oriented error responses** — Unified dual-format error responses (flat + envelope) for backward-compatible consumer migration
@@ -103,7 +103,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 141 tools across 35 categories |
+| MCP server | ✅ 142 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -179,7 +179,7 @@ autoinfo process --domain medical-research
 autoinfo kb search --query "embryo" --domain medical-research
 
 # Generate output
-autoinfo output digest --domain medical-research --period week
+autoinfo output digest --domain medical-research --period weekly
 autoinfo output export --domain medical-research --format json
 ```
 
@@ -209,7 +209,7 @@ curl http://localhost:8741/api/v1/entries?limit=5
 ## Run the AutoInfo MCP server
 
 AutoInfo ships an MCP server (`python -m autoinfo.mcp.server`) that exposes
-141 tools over stdio. Editor configs are already committed for Cursor
+142 tools over stdio. Editor configs are already committed for Cursor
 (`.cursor/mcp.json`), OpenCode (`.opencode/mcp.json`), and Claude Desktop
 (`.claude/claude_desktop_config.json`). They all run
 `python -m autoinfo.mcp.server` and pass `AUTOINFO_LLM_API_KEY` through from
@@ -309,7 +309,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (141 tools)
+         └── MCP server (142 tools)
 ```
 
 ## Tech Stack
@@ -319,7 +319,7 @@ Sources (RSS/API/Web)
 | Language | Python ≥ 3.11 |
 | CLI | typer (28 command groups) |
 | REST API | FastAPI + uvicorn (port 8741) |
-| MCP server | mcp (Model Context Protocol) — 141 tools over stdio |
+| MCP server | mcp (Model Context Protocol) — 142 tools over stdio |
 | LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |
 | Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
 | KB files | Markdown + python-frontmatter, git-versioned |
@@ -373,7 +373,7 @@ autoinfo alert-rules add|list|remove  # Alert rule management (MCP parity)
 autoinfo agent-callback add|list|remove  # Agent push callbacks (MCP parity)
 ```
 
-## MCP Tools (141)
+## MCP Tools (142)
 
 | Category | Tools |
 |----------|-------|
@@ -383,7 +383,7 @@ autoinfo agent-callback add|list|remove  # Agent push callbacks (MCP parity)
 | **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
 | **Topic** | add_topic, remove_topic, list_topics, topic_group_add, topic_group_remove, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
 | **Collection** | collect_sources (with dry_run, domain-less), get_collection_progress, get_collection_status, process_collection (with batch, check_factual, check_translation), get_processing_progress, batch_run, clean_cache |
-| **KB** | search_knowledge_base (hybrid, cross-domain), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, list_kb_tier, reindex_kb, flag_for_knowledge_base |
+| **KB** | search_knowledge_base (hybrid, cross-domain), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (human-only Draft→Wiki), list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |
 | **KB Relations** | link_items, get_item_relations |
 | **KB Versioning** | get_entry_history, restore_entry_version |
 | **KB Monitor** | get_collection_stats, get_collection_diff |

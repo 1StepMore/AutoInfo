@@ -162,7 +162,7 @@ the scenario library.
 Coverage: 141/141 MCP tools (100%), all 28 CLI command groups, 8 REST API endpoints,
 plus collector platform reachability probes (collectors-e2e) and G4/G5 gate flags
 (processing, LLM-gated).
-Status profile (no LLM key): 36 passed / 0 failed / 8 unconfigured (LLM-gated) at
-44 scenarios; the 3 M7 additions (sources-gap-closure passed, output-column +
-sources-a6-keyed unconfigured without keys) bring the full 47-scenario profile to
+Status profile (no LLM key, pre-M7 baseline): 36 passed / 0 failed / 8 unconfigured
+(LLM-gated). After the 3 M7 additions (sources-gap-closure passed, output-column +
+sources-a6-keyed unconfigured without keys), the full 47-scenario profile shows
 37 passed / 0 failed / 10 unconfigured when no BYOK keys are set.

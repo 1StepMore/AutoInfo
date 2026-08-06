@@ -2891,7 +2891,7 @@ def generate_report(
     domain: str,
     collection_id: str | None = None,
     format: str = "markdown",
-    period: str = "month",
+    period: str = "weekly",
     custom_instructions: str = "",
     target_audience: str = "",
     product_template: ProductTemplate | None = None,
@@ -2923,8 +2923,9 @@ def generate_report(
         ``"audiobook"``.  The ``"agent"`` format returns JSON-LD
         (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
     period : str, optional
-        Report period label (default ``"month"``).  Used for metadata
-        in JSON output.
+        Report period label (default ``"weekly"``).  One of ``"daily"``,
+        ``"weekly"``, ``"monthly"``.  Used for metadata in JSON output.
+        Unknown values raise :class:`ValueError`.
     custom_instructions : str, optional
         Optional string of additional instructions to append to the LLM
         generation prompt.  Ignored when empty/absent.
@@ -2973,7 +2974,8 @@ def generate_report(
     Raises
     ------
     ValueError
-        If *format* is unsupported, or if *report_type* is unknown.
+        If *format* is unsupported, if *period* is not one of ``"daily"``,
+        ``"weekly"``, ``"monthly"``, or if *report_type* is unknown.
     FileNotFoundError
         If the Jinja2 template file is not found.
     """
@@ -2987,6 +2989,11 @@ def generate_report(
         raise ValueError(
             f"Unknown report type: {report_type!r}. "
             f"Supported: {', '.join(_VALID_REPORT_TYPES)}"
+        )
+
+    if period not in PERIOD_DAYS:
+        raise ValueError(
+            f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
         )
 
     # --- Determine cross-domain mode -----------------------------------------
@@ -3757,7 +3764,7 @@ def _report_data_to_dict(report_data: ReportData) -> dict[str, Any]:
     }
 
 
-def _render_report_json(report_data: ReportData, period: str = "month") -> str:
+def _render_report_json(report_data: ReportData, period: str = "weekly") -> str:
     """Render the report data as a JSON string.
 
     The JSON structure includes ``title``, ``summary``, a flat ``entries``
@@ -3896,7 +3903,7 @@ def _render_empty_report_html(domain: str) -> str:
     )
 
 
-def _render_report_html(report_data: ReportData, period: str = "month") -> str:
+def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
     """Render the report as a self-contained HTML5 document.
 
     Maps :class:`ReportData` to the variable contract expected by

@@ -2,6 +2,7 @@ name: rest-api
 description: REST API endpoints via real HTTP requests
 category: http
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
 - name: GET /health
   kind: http

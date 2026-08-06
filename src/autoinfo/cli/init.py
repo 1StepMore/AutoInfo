@@ -84,8 +84,51 @@ def _generate_config(
     Returns True if the file was written, False if skipped (already exists).
     """
     if dst.exists():
-        typer.echo(f"  SKIP  {dst}  (already exists)")
-        return False
+        # Config already exists: merge in any missing demo domains instead of
+        # skipping wholesale. This makes `init --demo <new-domain>` on an
+        # existing project add the domain (fixes #118 — previously the second
+        # init silently skipped and the new domain was never registered).
+        with open(dst, "r") as f:
+            config = yaml.safe_load(f) or {}
+
+        existing = {d.get("name") for d in config.get("domains", [])}
+        added: list[str] = []
+        for domain_name in domain_names:
+            if domain_name in existing:
+                continue
+            demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
+            if demo_sources_path.is_file():
+                with open(demo_sources_path) as f:
+                    domain_data = yaml.safe_load(f)
+                config.setdefault("domains", []).append({
+                    "name": domain_name,
+                    "active": True,
+                    "sources": domain_data.get("sources", []),
+                    "topics": domain_data.get("topics", []),
+                })
+            else:
+                config.setdefault("domains", []).append({
+                    "name": domain_name,
+                    "active": True,
+                    "sources": [],
+                    "topics": [],
+                })
+            added.append(domain_name)
+
+        if project_name:
+            proj = config.setdefault("project", {})
+            proj["name"] = project_name
+            proj["project_name"] = project_name
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with open(dst, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        if added:
+            typer.echo(f"  MERGE  {dst}  (added domains: {', '.join(added)})")
+        else:
+            typer.echo(f"  SKIP  {dst}  (already exists, no new domains to add)")
+        return bool(added)
 
     if not _DEFAULT_CONFIG.is_file():
         typer.echo(f"  ERROR  default config template missing: {_DEFAULT_CONFIG}", err=True)

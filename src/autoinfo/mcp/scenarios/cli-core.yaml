@@ -2,6 +2,7 @@ name: cli-core
 description: 'Core CLI groups: init, doctor, collect, process, status'
 category: cli
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
 - name: status --json
   kind: cli

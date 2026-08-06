@@ -4,6 +4,7 @@ name: collection
 description: "Collection execution, progress, status, processing progress, and cache cleanup"
 category: collection
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "collect_sources dry_run for medical-research"
     tool: collect_sources

@@ -7,6 +7,7 @@ Covers:
 - Fallback grouping when LLM call fails
 - Fallback executive summary when LLM call fails
 - Unsupported format raises ``ValueError``
+- Invalid period raises ``ValueError``
 - CLI wiring — ``autoinfo output report --domain X`` invokes ``generate_report``
 - Report types — ``standard``, ``industry``, ``competitive``, ``trend``, ``daily-briefing``
 - Invalid report type raises ``ValueError``
@@ -564,6 +565,13 @@ class TestReportTypes:
 
             with pytest.raises(ValueError, match="Unknown report type"):
                 _call_report("test-domain", report_type="nonexistent")
+
+    def test_invalid_period_raises_value_error(self) -> None:
+        """Invalid period raises ValueError."""
+        from autoinfo.output import generate_report
+
+        with pytest.raises(ValueError, match="Invalid period"):
+            generate_report(domain="test", period="yearly")
 
     def test_type_prompt_injected_into_executive_summary(
         self, sample_entries: list[dict]

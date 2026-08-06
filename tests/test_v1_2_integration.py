@@ -1322,17 +1322,21 @@ class TestMCPGenerateReport:
         from autoinfo.mcp.server import _handle_generate_report
         with patch("autoinfo.output.generate_report") as mock_gen:
             mock_gen.side_effect = ValueError("No entries found for domain ''")
-            result = _handle_generate_report(domain="", format="markdown", period="month")
+            result = _handle_generate_report(domain="", format="markdown", period="monthly")
         assert "error_code" in result or "success" in result
 
     def test_handle_generate_report_success(self):
         """_handle_generate_report returns success with content."""
         from autoinfo.mcp.server import _handle_generate_report
-        with patch("autoinfo.output.generate_report", return_value="# Report\n\nContent"):
+        # KB must have at least one entry for the handler to reach the
+        # generate_report call (otherwise it returns the noop early-exit).
+        fake_entry = {"id": "x", "title": "t", "content": "c"}
+        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
+             patch("autoinfo.output.generate_report", return_value="# Report\n\nContent"):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
-                period="month",
+                period="monthly",
             )
         assert result["success"] is True
         assert result["domain"] == "medical-research"
@@ -1343,11 +1347,13 @@ class TestMCPGenerateReport:
         """_handle_generate_report with json format returns success."""
         from autoinfo.mcp.server import _handle_generate_report
         json_report = json.dumps({"title": "Report", "entries": [], "metadata": {"format": "json"}})
-        with patch("autoinfo.output.generate_report", return_value=json_report):
+        fake_entry = {"id": "x", "title": "t", "content": "c"}
+        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
+             patch("autoinfo.output.generate_report", return_value=json_report):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="json",
-                period="month",
+                period="monthly",
             )
         assert result["success"] is True
         assert result["format"] == "json"
@@ -1355,11 +1361,13 @@ class TestMCPGenerateReport:
     def test_handle_generate_report_exception(self):
         """_handle_generate_report catches unexpected exceptions."""
         from autoinfo.mcp.server import _handle_generate_report
-        with patch("autoinfo.output.generate_report", side_effect=RuntimeError("Unexpected error")):
+        fake_entry = {"id": "x", "title": "t", "content": "c"}
+        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
+             patch("autoinfo.output.generate_report", side_effect=RuntimeError("Unexpected error")):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
-                period="month",
+                period="monthly",
             )
         assert "error_code" in result
 

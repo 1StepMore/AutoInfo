@@ -6,6 +6,7 @@ name: output-column
 description: "B24 — generate_report with report_type column (markdown)"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
 steps:
   - name: "generate_report column type markdown"
     tool: generate_report

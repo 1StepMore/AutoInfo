@@ -341,7 +341,7 @@ class TestJsonLdInjection:
             references=[],
         )
 
-        html = _render_report_html(report_data, period="month")
+        html = _render_report_html(report_data, period="monthly")
 
         assert '<script type="application/ld+json">' in html, (
             "Report HTML must contain JSON-LD script block"

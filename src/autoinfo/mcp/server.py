@@ -2023,7 +2023,10 @@ def _handle_suggest_keywords(
         config_path = get_config_path()
         if config_path:
             config = load_config(config_path)
-            model = config.llm.model or "deepseek/deepseek-chat"
+            model = config.llm.resolve_model() or (
+                f"{config.llm.provider or 'openrouter'}/"
+                f"{config.llm.model or 'deepseek/deepseek-chat'}"
+            )
             api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = config.llm.base_url or None
             json_mode = config.llm.json_mode
@@ -2494,6 +2497,38 @@ def _handle_list_kb_tier(
     }
 
 
+def _handle_promote_kb_draft(
+    entry_id: str,
+    user_id: str = "",
+) -> dict[str, Any]:
+    """Promote a Draft KB entry to the 03-Wiki tier.
+
+    Human-only operation per KB rules. The draft must be in 02-Draft tier.
+    Returns the promoted entry path and metadata.
+    """
+    from autoinfo.kb import KBStore
+
+    try:
+        store = KBStore()
+        result = store.promote_kb_draft(draft_id=entry_id)
+        return result
+    except FileNotFoundError as exc:
+        return {
+            "error_code": ErrorCode.NOT_FOUND.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except PermissionError as exc:
+        return {
+            "error_code": ErrorCode.VALIDATION_ERROR.value,
+            "message": str(exc),
+            "actionable": True,
+        }
+    except Exception as exc:
+        logger.exception("promote_kb_draft failed for '%s'", entry_id)
+        return _error_dict(exc)
+
+
 def _handle_reindex_kb(domain: str) -> dict[str, Any]:
     """Rebuild SQLite index from disk frontmatter.
 
@@ -2556,10 +2591,15 @@ def _handle_generate_digest(
     _store = KBStore()
     _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
     if not _preview:
-        return success_response({
+        return {
+            "success": True,
+            "domain": domain,
+            "format": format,
+            "period": period,
             "status": "noop",
+            "content": "",
             "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        })
+        }
 
     try:
         result = _generate_digest(
@@ -2611,7 +2651,7 @@ def _handle_generate_digest(
 def _handle_generate_report(
     domain: str,
     format: str = "markdown",
-    period: str = "month",
+    period: str = "monthly",
     custom_instructions: str = "",
     target_audience: str = "",
     user_id: str = "",
@@ -2632,10 +2672,15 @@ def _handle_generate_report(
     _store = KBStore()
     _preview = _store.list_entries(domain=domain, date_from=_date_from, limit=1)
     if not _preview:
-        return success_response({
+        return {
+            "success": True,
+            "domain": domain,
+            "format": format,
+            "period": period,
             "status": "noop",
+            "content": "",
             "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        })
+        }
 
     try:
         product_template = None
@@ -2701,7 +2746,7 @@ def _handle_generate_report(
 def _handle_generate_cross_domain_report(
     domains: list[str],
     format: str = "markdown",
-    period: str = "month",
+    period: str = "monthly",
     target_audience: str = "",
     report_type: str = "standard",
     user_id: str = "",
@@ -7648,7 +7693,7 @@ async def list_tools() -> list[Tool]:
                 "required": ["domain"],
             },
         ),
-        # -- KB: Draft tools (3) ------------------------------------------
+        # -- KB: Draft tools (4) ------------------------------------------
         Tool(
             name="create_kb_draft",
             description=(
@@ -7714,7 +7759,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_kb_tier",
             description=(
-                "List all entries in a specific KB tier (01-Raw, 02-Draft) "
+                "List all entries in a specific KB tier (01-Raw, 02-Draft, 03-Wiki) "
                 "for a domain."
             ),
             inputSchema={
@@ -7726,8 +7771,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "tier": {
                         "type": "string",
-                        "description": "Tier to list (01-Raw, 02-Draft)",
-                        "enum": ["01-Raw", "02-Draft"],
+                        "description": "Tier to list (01-Raw, 02-Draft, 03-Wiki)",
+                        "enum": ["01-Raw", "02-Draft", "03-Wiki"],
                     },
                     "limit": {
                         "type": "integer",
@@ -7745,6 +7790,29 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["domain", "tier"],
+            },
+        ),
+        Tool(
+            name="promote_kb_draft",
+            description=(
+                "Promote a Draft KB entry (02-Draft) to the 03-Wiki tier. "
+                "Human-only operation: once promoted, entries are append-only "
+                "and cannot be demoted. The entry must already exist in 02-Draft."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {
+                        "type": "string",
+                        "description": "ID of the Draft KB entry to promote (e.g. medical-research-draft-some-title)",
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "description": "Optional user ID for audit trail",
+                        "default": "",
+                    },
+                },
+                "required": ["entry_id"],
             },
         ),
         Tool(
@@ -7906,7 +7974,7 @@ async def list_tools() -> list[Tool]:
             name="generate_report",
             description=(
                 "Generate a structured report for a domain over a given "
-                "period (day, week, month).  Returns markdown by default; "
+                "period (daily, weekly, monthly).  Returns markdown by default; "
                 "also supports json, html, agent (JSON-LD), audio, epub, "
                 "and audiobook.  "
                 "Accepts optional custom_instructions to tailor output."
@@ -7932,9 +8000,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "period": {
                         "type": "string",
-                        "description": "Report period: day, week, month",
-                        "default": "month",
-                        "enum": ["day", "week", "month"],
+                        "description": "Report period: daily, weekly, monthly",
+                        "default": "monthly",
+                        "enum": ["daily", "weekly", "monthly"],
                     },
                     "custom_instructions": {
                         "type": "string",
@@ -7968,7 +8036,7 @@ async def list_tools() -> list[Tool]:
                 "connecting findings and identifying cross-domain trends. "
                 "Returns markdown by default; also supports json, html, "
                 "agent (JSON-LD), audio, epub, and audiobook.  "
-                "At least 2 domains are required."
+                "At least 2 domains are required.  Period: daily, weekly, monthly."
             ),
             inputSchema={
                 "type": "object",
@@ -7989,9 +8057,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "period": {
                         "type": "string",
-                        "description": "Report period: day, week, month",
-                        "default": "month",
-                        "enum": ["day", "week", "month"],
+                        "description": "Report period: daily, weekly, monthly",
+                        "default": "monthly",
+                        "enum": ["daily", "weekly", "monthly"],
                     },
                     "target_audience": {
                         "type": "string",
@@ -10365,13 +10433,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "get_domain_decay":
             result = _handle_get_domain_decay(**arguments)
 
-        # -- KB: Draft tools (3) ------------------------------------------
+        # -- KB: Draft tools (4) ------------------------------------------
         elif name == "create_kb_draft":
             result = _handle_create_kb_draft(**arguments)
         elif name == "reject_kb_draft":
             result = _handle_reject_kb_draft(**arguments)
         elif name == "list_kb_tier":
             result = _handle_list_kb_tier(**arguments)
+        elif name == "promote_kb_draft":
+            result = _handle_promote_kb_draft(**arguments)
         elif name == "reindex_kb":
             result = _handle_reindex_kb(**arguments)
         elif name == "create_kb_entry":

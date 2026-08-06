@@ -417,7 +417,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Command | Status | Purpose |
 |---------|--------|---------|
-| `kb promote` | CLI-only | Promote Draft→Wiki — **human-only, append-only** (no MCP tool by design) |
+| `kb promote` | ✓ CLI+MCP | Promote Draft→Wiki — **human-only, append-only** (→ `promote_kb_draft`; kept here for completeness) |
 | `kb wiki-links` | CLI-only | Rebuild `[[wiki links]]` across the KB |
 | `kb decay` | ✓ CLI+MCP | Decay metrics (listed above; kept here for completeness) |
 | `output sitemap` | CLI-only | Generate XML sitemap for KB entries |

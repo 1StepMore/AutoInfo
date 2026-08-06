@@ -4,6 +4,7 @@ name: source-management
 description: "Source lifecycle: test, add (single+batch), health, feeds, rate, remove"
 category: source
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "test_source verifies example.com reachability"
     tool: test_source

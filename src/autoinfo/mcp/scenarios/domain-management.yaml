@@ -4,6 +4,7 @@ name: domain-management
 description: "Domain lifecycle: add, configure, activate, deactivate, remove"
 category: domain
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "add a temporary test domain"
     tool: add_domain

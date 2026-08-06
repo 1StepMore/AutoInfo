@@ -328,7 +328,7 @@ class TestSchedulerUserID:
                 domain="test-domain",
                 output_type="report",
                 format="markdown",
-                period="month",
+                period="monthly",
                 user_id="u-2",
             )
 

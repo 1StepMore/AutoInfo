@@ -2,6 +2,7 @@ name: cli-content
 description: 'CLI content commands: sources, topics, summaries, keywords, kb, output'
 category: cli
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
 - name: sources list
   kind: cli

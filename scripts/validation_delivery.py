@@ -196,9 +196,20 @@ async def main() -> None:
     if not artifacts:
         print("No artifacts collected (scenarios produced no data files).", file=sys.stderr)
         # still write a report-only zip so the user sees what ran
+
+    # #129 P0-3: persist results for cross-run regression; best-effort,
+    # never blocks delivery even if persistence fails.
+    try:
+        from autoinfo.mcp.validation import save_scenario_results
+        save_scenario_results(results)
+    except Exception as e:  # noqa: BLE001
+        print(f"WARN: could not persist scenario results: {e}", file=sys.stderr)
+
+    # #129 P1-4: fixed archive location validation-deliveries/<date>/.
     out = args.out
-    out.mkdir(parents=True, exist_ok=True)
-    zip_path = _package(artifacts, results, out)
+    dated_out = out / datetime.datetime.now().strftime("%Y-%m-%d")
+    dated_out.mkdir(parents=True, exist_ok=True)
+    zip_path = _package(artifacts, results, dated_out)
     print(f"DELIVERY: {zip_path}")
     print(f"scenarios={len(results)} artifacts={len(artifacts)}")
 

@@ -18,9 +18,13 @@ from mcp.types import CallToolRequest, CallToolRequestParams
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.validation import (
     _normalize_envelope,
+    diff_scenario_runs,
     list_scenarios,
+    list_validation_runs,
+    load_scenario_results,
     load_scenarios,
     run_scenario,
+    save_scenario_results,
 )
 
 # ============================================================================
@@ -938,3 +942,61 @@ class TestValidationToolsDispatch:
         assert data["success"] is False
         assert data["error"]["code"] == "ValidationError"
         assert "nonexistent-scenario-xyz" in data["error"]["message"]
+
+
+# ============================================================================
+# Unit tests: validation run persistence + cross-run diff (fixes #129 P0-3)
+# ============================================================================
+
+
+class TestValidationRunPersistence:
+    """save_scenario_results / list_validation_runs / load_scenario_results /
+    diff_scenario_runs regression coverage."""
+
+    def _result(self, status: str, total: int = 1) -> dict:
+        passed = 1 if status == "passed" else 0
+        return {"scenario": "unused", "status": status,
+                "summary": {"passed": passed, "failed": total - passed,
+                            "unconfigured": 0, "total": total}}
+
+    def test_save_writes_scenarios_json_and_latest_pointer(self, tmp_path) -> None:
+        run_dir = save_scenario_results(
+            [{"scenario": "a", "status": "passed", "summary": {}}], runs_dir=tmp_path
+        )
+        assert run_dir.is_dir()
+        assert (run_dir / "scenarios.json").exists()
+        assert (tmp_path / "latest.txt").read_text().strip() == run_dir.name
+
+    def test_list_returns_newest_first(self, tmp_path) -> None:
+        save_scenario_results([self._result("passed")], runs_dir=tmp_path)
+        save_scenario_results([self._result("failed")], runs_dir=tmp_path)
+        runs = list_validation_runs(tmp_path)
+        assert len(runs) == 2
+        # latest.txt points at the most recent run, and list is newest-first.
+        assert (tmp_path / "latest.txt").read_text().strip() == runs[0].name
+
+    def test_load_roundtrip(self, tmp_path) -> None:
+        run_dir = save_scenario_results(
+            [{"scenario": "a", "status": "passed", "summary": {"passed": 2, "total": 2}}],
+            runs_dir=tmp_path,
+        )
+        loaded = load_scenario_results(run_dir)
+        assert loaded is not None
+        assert loaded["scenarios"][0]["scenario"] == "a"
+
+    def test_diff_detects_regression_and_new_pass(self, tmp_path) -> None:
+        base = save_scenario_results([
+            {"scenario": "a", "status": "passed", "summary": {}},
+            {"scenario": "b", "status": "failed", "summary": {}},
+            {"scenario": "c", "status": "passed", "summary": {}},
+        ], runs_dir=tmp_path)
+        head = save_scenario_results([
+            {"scenario": "a", "status": "passed", "summary": {}},
+            {"scenario": "b", "status": "passed", "summary": {}},
+            {"scenario": "c", "status": "failed", "summary": {}},
+        ], runs_dir=tmp_path)
+        diff = diff_scenario_runs(base, head)
+        assert sorted(diff["regressed"]) == ["c"]
+        assert sorted(diff["new_passes"]) == ["b"]
+        assert diff["head_passed"] == 2
+        assert diff["head_failed"] == 1

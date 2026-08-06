@@ -813,6 +813,36 @@ async def _execute_step(
     return sr
 
 
+async def _execute_step_timed(
+    step_def: dict[str, Any],
+    dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
+    timeout: float,
+) -> dict[str, Any]:
+    """Execute a step under a per-step timeout (issue #134).
+
+    On ``asyncio.TimeoutError`` the step is reported as failed with the
+    same result shape ``_execute_step`` uses, so callers' status
+    derivation (fail if any step failed) applies unchanged.
+    """
+    try:
+        return await asyncio.wait_for(
+            _execute_step(step_def, dispatch), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        kind = step_def.get("kind", "mcp")
+        tool_ref = (
+            step_def.get("tool")
+            or step_def.get("command")
+            or step_def.get("url", kind)
+        )
+        return {
+            "name": step_def["name"],
+            "tool": tool_ref,
+            "status": "failed",
+            "detail": f"timed out after {timeout}s",
+        }
+
+
 def _count_step_result(sr: dict[str, Any], counts: dict[str, int]) -> None:
     """Increment the matching pass/fail/unconfigured counter for a step result."""
     status = sr.get("status")
@@ -829,6 +859,7 @@ async def run_scenario(
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
     steps: list[int] | None = None,
     scenarios_dir: Path | None = None,
+    timeout: float = 180.0,
 ) -> dict[str, Any]:
     """Execute a named validation scenario against the given dispatch function.
 
@@ -848,6 +879,12 @@ async def run_scenario(
     scenarios_dir:
         Directory to load scenarios from.  Defaults to the built-in
         ``scenarios/`` directory.
+    timeout:
+        Per-step timeout in seconds (default 180).  Each step — including
+        each cleanup step — may run for at most this long before it is
+        reported as failed with a ``timed out after <timeout>s`` detail.
+        Applied per step, not as a whole-scenario budget: a scenario with
+        N steps can run up to ~N×timeout.
 
     Returns
     -------
@@ -972,7 +1009,7 @@ async def run_scenario(
     counts = {"passed": 0, "failed": 0, "unconfigured": 0}
 
     for step_idx, step_def in selected:
-        sr = await _execute_step(step_def, dispatch)
+        sr = await _execute_step_timed(step_def, dispatch, timeout)
         _count_step_result(sr, counts)
         step_results.append(sr)
 
@@ -1016,7 +1053,7 @@ async def run_scenario(
         cleanup_results: list[dict[str, Any]] = []
         cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0}
         for step_idx, step_def in enumerate(cleanup_defs, start=1):
-            sr = await _execute_step(step_def, dispatch)
+            sr = await _execute_step_timed(step_def, dispatch, timeout)
             _count_step_result(sr, cleanup_counts)
             cleanup_results.append(sr)
         cleanup = {

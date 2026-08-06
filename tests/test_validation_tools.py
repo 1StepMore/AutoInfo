@@ -7,6 +7,7 @@ and ``run_validation_scenario``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -1000,3 +1001,144 @@ class TestValidationRunPersistence:
         assert sorted(diff["new_passes"]) == ["b"]
         assert diff["head_passed"] == 2
         assert diff["head_failed"] == 1
+
+
+# ============================================================================
+# Unit tests: run_scenario per-step timeout (issue #134, engine part)
+# ============================================================================
+
+
+class TestRunScenarioTimeout:
+    """Per-step timeout enforcement in run_scenario (issue #134)."""
+
+    SCENARIO_YAML = """\
+name: timeout-scenario
+description: "Scenario with a hang-prone step"
+category: test
+requires_env: []
+steps:
+  - name: "fast step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "slow step"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "post-hang step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    CLEANUP_SCENARIO_YAML = """\
+name: timeout-cleanup-scenario
+description: "Scenario whose cleanup step hangs"
+category: test
+requires_env: []
+steps:
+  - name: "fast step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+cleanup_steps:
+  - name: "slow cleanup step"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    @pytest.fixture
+    def scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "timeout-scenario.yaml").write_text(
+            self.SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "timeout-cleanup-scenario.yaml").write_text(
+            self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
+        )
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict) -> dict:
+        """Hang far beyond the 0.1s test timeout for slow_tool; pass otherwise."""
+        if name == "slow_tool":
+            await asyncio.sleep(5)
+        return {"success": True, "data": {"result": "ok"}}
+
+    async def test_hanging_step_times_out_and_fails_scenario(
+        self, scenario_dir: Path
+    ) -> None:
+        """A step exceeding the per-step timeout reports failed with 'timed out'."""
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        assert result["summary"]["failed"] == 1
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert "0.1" in step["detail"]
+
+    async def test_cleanup_timeout_reported_but_does_not_flip_status(
+        self, scenario_dir: Path
+    ) -> None:
+        """A timed-out cleanup step is reported but never flips scenario status."""
+        result = await run_scenario(
+            "timeout-cleanup-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["failed"] == 0
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["failed"] == 1
+        cleanup_step = result["cleanup"]["steps"][0]
+        assert cleanup_step["status"] == "failed"
+        assert "timed out" in cleanup_step["detail"]
+
+    async def test_default_timeout_backward_compatible(self, scenario_dir: Path) -> None:
+        """Without a timeout arg, a fast step passes as before."""
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=scenario_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["steps"][0]["status"] == "passed"
+
+    async def test_hang_on_middle_step_loop_continues(self, scenario_dir: Path) -> None:
+        """Timeout is per-step: a hang on step 2 fails it but steps 1 and 3 still run."""
+        calls: list[str] = []
+
+        async def tracking_dispatch(name: str, arguments: dict) -> dict:
+            calls.append(name)
+            if name == "slow_tool":
+                await asyncio.sleep(5)
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=tracking_dispatch,
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        assert calls == ["fast_tool", "slow_tool", "fast_tool"]
+        assert result["steps"][0]["status"] == "passed"
+        assert result["steps"][1]["status"] == "failed"
+        assert "timed out" in result["steps"][1]["detail"]
+        assert result["steps"][2]["status"] == "passed"

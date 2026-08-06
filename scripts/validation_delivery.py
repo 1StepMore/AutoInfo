@@ -7,9 +7,10 @@ Runs after validation scenarios that declare collect_artifacts. Builds:
     ├── 01-RAW/          # real collected data (cached items, 01-Raw entries)
     ├── 02-PROCESSED/    # produced products (digest/report/tutorial...)
     ├── 03-KB/           # KB entries by tier (02-Draft, 03-Wiki)
+    ├── 04-MATRIX/       # E8 end-user coverage matrix (matrix-report.md + coverage-gaps.json)
     ├── 06-REJECTED/     # artifacts that failed delivery gates (E7)
-    ├── validation-report.md  # scenario statuses + artifact manifest
-    └── manifest.json    # per-file source/type/size + gates/quality/rejected
+    ├── validation-report.md  # scenario statuses + artifact manifest + COVERAGE_GAP summary
+    └── manifest.json    # per-file source/type/size + gates/quality/rejected + 04-MATRIX files
 
 Usage:
     python3 scripts/validation_delivery.py [--scenarios-dir ...] [--out ...]
@@ -409,13 +410,149 @@ def _failure_reason(gates: dict[str, Any]) -> str:
     return "; ".join(reasons) or "quality gate failure"
 
 
-def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out: Path) -> Path:
+# ---------------------------------------------------------------------------
+# E8 (#131): end-user coverage matrix — the 04-MATRIX section of the package
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_MATRIX_DIR_NAME = "04-MATRIX"
+_DEFAULT_MATRIX_SPEC = _REPO_ROOT / "docs" / "dev" / "specs" / "end-user-matrix.yaml"
+
+_COVERAGE_MATRIX_MODULE: Any = None
+
+
+def _coverage_matrix() -> Any:
+    """Import scripts/coverage_matrix.py (E8) as a module (lazy, cached)."""
+    global _COVERAGE_MATRIX_MODULE
+    if _COVERAGE_MATRIX_MODULE is None:
+        import importlib.util
+
+        script = Path(__file__).resolve().parent / "coverage_matrix.py"
+        spec = importlib.util.spec_from_file_location("coverage_matrix", script)
+        if spec is None or spec.loader is None:  # pragma: no cover — repo invariant
+            raise ImportError(f"cannot load E8 matrix generator: {script}")
+        _COVERAGE_MATRIX_MODULE = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_COVERAGE_MATRIX_MODULE)
+    return _COVERAGE_MATRIX_MODULE
+
+
+def _matrix_llm_available() -> bool:
+    """LLM availability for the E8 matrix (project config key or env var).
+
+    Oracle R8: when the LLM is unavailable the matrix must be rendered with
+    ``llm_available=False`` so required LLM-gated cells classify as
+    ``未配置unconfigured`` — never ``空gap``.
+    """
+    import os
+
+    cm = _coverage_matrix()
+    if cm.detect_llm_available(_REPO_ROOT / ".autoinfo" / "config.yaml"):
+        return True
+    return bool(os.environ.get("AUTOINFO_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+
+
+def _build_matrix_section(
+    stage: Path,
+    *,
+    spec_path: Path | None,
+    evidence_dir: Path | None,
+    llm_available: bool | None,
+) -> dict[str, Any] | None:
+    """Render the E8 coverage matrix into ``<stage>/04-MATRIX/`` (E8, #131).
+
+    Evidence = the staged package itself — its ``manifest.json`` carries the
+    original ``outputs/**`` sources of delivered artifacts — plus an optional
+    extra *evidence_dir* (e.g. the repo ``outputs/`` in the CLI flow). The gap
+    cells come from the same classification that rendered the report and are
+    emitted as ``coverage-gaps.json`` (every entry's ``cell_state`` is
+    ``空gap``; required LLM-gated cells without a key land in ``unconfigured``
+    instead — Oracle R8). Returns the matrix metadata for the validation
+    report + manifest, or ``None`` when the spec file is missing (delivery
+    continues without the section — the matrix never blocks the package).
+    """
+    import yaml
+
+    cm = _coverage_matrix()
+    spec_path = spec_path or _DEFAULT_MATRIX_SPEC
+    if not spec_path.is_file():
+        print(f"WARN: E8 matrix spec not found: {spec_path} — skipping 04-MATRIX", file=sys.stderr)
+        return None
+
+    spec = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
+    produced: set[tuple[str, str, str]] = set(cm.scan_evidence(stage))
+    if evidence_dir is not None:
+        produced |= set(cm.scan_evidence(evidence_dir))
+    if llm_available is None:
+        llm_available = _matrix_llm_available()
+
+    report = cm.render_report(
+        spec,
+        produced,
+        llm_available,
+        spec_path=str(spec_path),
+        evidence_dir=str(stage),
+    )
+    cells = cm.classify_grid(spec, produced, llm_available)
+    gaps = sorted(
+        (c for c, s in cells.items() if s == cm.GAP),
+        key=lambda c: (c[0], c[1], c[2]),
+    )
+    unconfigured = sorted(
+        (c for c, s in cells.items() if s == cm.UNCONFIGURED),
+        key=lambda c: (c[0], c[1], c[2]),
+    )
+
+    matrix_dir = stage / _MATRIX_DIR_NAME
+    matrix_dir.mkdir(exist_ok=True)
+    (matrix_dir / "matrix-report.md").write_text(report, encoding="utf-8")
+    meta: dict[str, Any] = {
+        "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "spec": str(spec_path),
+        "llm_available": llm_available,
+        "summary": {
+            "required": len(cm.required_cells_set(spec)),
+            "produced": sum(1 for s in cells.values() if s == cm.PRODUCED),
+            "gap": len(gaps),
+            "unconfigured": len(unconfigured),
+            "not_applicable": sum(1 for s in cells.values() if s == cm.NOT_APPLICABLE),
+        },
+        "gaps": [
+            {"domain": d, "product": p, "format": f, "cell_state": cm.GAP}
+            for d, p, f in gaps
+        ],
+        "unconfigured": [
+            {"domain": d, "product": p, "format": f, "cell_state": cm.UNCONFIGURED}
+            for d, p, f in unconfigured
+        ],
+    }
+    (matrix_dir / "coverage-gaps.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(
+        f"MATRIX: {matrix_dir / 'matrix-report.md'} "
+        f"(produced={meta['summary']['produced']}, gap={meta['summary']['gap']}, "
+        f"unconfigured={meta['summary']['unconfigured']})"
+    )
+    return meta
+
+
+def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out: Path,
+             *,
+             spec_path: Path | None = None,
+             evidence_dir: Path | None = None,
+             llm_available: bool | None = None) -> Path:
     """Copy artifact files into a staged dir, write report, zip it.
 
     E7 (#131): every artifact is checked with :func:`run_delivery_gates`
     (D1-D3 + authenticity). Failed artifacts are moved to ``06-REJECTED/``
     and listed (with reasons) in the manifest's ``rejected`` summary instead
     of being delivered.
+
+    E8 (#131): the end-user coverage matrix is rendered into ``04-MATRIX/``
+    (``matrix-report.md`` + ``coverage-gaps.json``) from the staged package's
+    own manifest plus an optional *evidence_dir*; the generated files are
+    registered in the manifest's ``files`` list and summarized in the report.
     """
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     stage = out / f"validation-delivery-{stamp}"
@@ -507,6 +644,59 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
         for rj in rejected:
             report.append(f"- `{rj['file']}` — {rj['reason']} (from {rj['source']})")
     report.append("")
+
+    # E8 (#131): base manifest first — the staged package's own manifest is
+    # the primary evidence for the coverage matrix scan.
+    (stage / "manifest.json").write_text(
+        json.dumps(
+            {"files": manifest, "rejected": rejected},
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
+
+    matrix_meta = _build_matrix_section(
+        stage,
+        spec_path=spec_path,
+        evidence_dir=evidence_dir,
+        llm_available=llm_available,
+    )
+    if matrix_meta is not None:
+        for name in ("matrix-report.md", "coverage-gaps.json"):
+            matrix_file = stage / _MATRIX_DIR_NAME / name
+            manifest.append({
+                "file": f"{_MATRIX_DIR_NAME}/{name}",
+                "kind": "MATRIX",
+                "source": "generated:coverage_matrix.py (E8)",
+                "size": matrix_file.stat().st_size,
+                "quality": "PASS",
+            })
+        report.append("## Coverage Matrix (E8)")
+        report.append("")
+        msum = matrix_meta["summary"]
+        report.append("- Matrix report: `04-MATRIX/matrix-report.md`")
+        report.append(
+            f"- Cells: required={msum['required']}, produced={msum['produced']}, "
+            f"gap={msum['gap']}, unconfigured={msum['unconfigured']}, "
+            f"not-applicable={msum['not_applicable']}"
+        )
+        report.append(
+            f"- LLM available: {'yes' if matrix_meta['llm_available'] else 'no'}"
+        )
+        report.append("")
+        report.append("### COVERAGE_GAP (required cells with no evidence)")
+        report.append("")
+        if matrix_meta["gaps"]:
+            for g in matrix_meta["gaps"]:
+                report.append(f"- `{g['domain']} × {g['product']} × {g['format']}`")
+        else:
+            report.append(
+                "- None — every required cell is 有produced or 未配置unconfigured."
+            )
+        report.append("")
+
     (stage / "validation-report.md").write_text("\n".join(report), encoding="utf-8")
     (stage / "manifest.json").write_text(
         json.dumps(
@@ -570,7 +760,13 @@ async def main() -> None:
     out = args.out
     dated_out = out / datetime.datetime.now().strftime("%Y-%m-%d")
     dated_out.mkdir(parents=True, exist_ok=True)
-    zip_path = _package(artifacts, results, dated_out)
+    repo_outputs = _REPO_ROOT / "outputs"
+    zip_path = _package(
+        artifacts,
+        results,
+        dated_out,
+        evidence_dir=repo_outputs if repo_outputs.is_dir() else None,
+    )
     print(f"DELIVERY: {zip_path}")
     print(f"scenarios={len(results)} artifacts={len(artifacts)}")
 

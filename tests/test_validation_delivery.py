@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -389,7 +390,7 @@ def test_package_includes_gates_in_manifest(tmp_path: Path, monkeypatch):
 
     manifest = _zip_manifest(zip_path)
     assert manifest["files"], "expected at least one delivered file"
-    entry = manifest["files"][0]
+    entry = next(e for e in manifest["files"] if e["kind"] != "MATRIX")
     assert entry["file"].startswith("02-PROCESSED/") and entry["file"].endswith("/digest.md")
     assert entry["quality"] == "PASS"
     assert set(entry["gates"]) == {"D1", "D2", "D3", "authenticity"}
@@ -424,7 +425,7 @@ def test_package_rejects_failed(tmp_path: Path, monkeypatch):
     assert not any(n.startswith("02-PROCESSED/") and n.endswith("/bad.json") for n in names)
 
     manifest = _zip_manifest(zip_path)
-    assert len(manifest["files"]) == 1
+    assert len([e for e in manifest["files"] if e["kind"] != "MATRIX"]) == 1
     assert len(manifest["rejected"]) == 1
     rejected = manifest["rejected"][0]
     assert rejected["file"].startswith("06-REJECTED/") and rejected["file"].endswith("/bad.json")
@@ -448,7 +449,7 @@ def test_package_rejects_d_gate_failure(tmp_path: Path, monkeypatch):
 
     zip_path = _package_with(tmp_path, [digest], monkeypatch, _d1_fails)
     manifest = _zip_manifest(zip_path)
-    assert manifest["files"] == []
+    assert [e for e in manifest["files"] if e["kind"] != "MATRIX"] == []
     assert len(manifest["rejected"]) == 1
     assert manifest["rejected"][0]["reason"].startswith("D1:")
     assert "missing sections" in manifest["rejected"][0]["reason"]
@@ -465,8 +466,8 @@ def test_package_kb_raw_artifacts_pass_gates(tmp_path: Path, monkeypatch):
     )
     zip_path = _package_with(tmp_path, [kb_entry], monkeypatch, _all_pass_gates)
     manifest = _zip_manifest(zip_path)
-    assert len(manifest["files"]) == 1
-    entry = manifest["files"][0]
+    assert len([e for e in manifest["files"] if e["kind"] != "MATRIX"]) == 1
+    entry = next(e for e in manifest["files"] if e["kind"] != "MATRIX")
     assert entry["kind"] == "KB"
     assert entry["quality"] == "PASS"
     assert entry["gates"]["D1"]["passed"] is True
@@ -478,5 +479,102 @@ def test_package_skips_missing_files(tmp_path: Path, monkeypatch):
     ghost = tmp_path / "ghost.md"
     zip_path = _package_with(tmp_path, [ghost], monkeypatch, _all_pass_gates)
     manifest = _zip_manifest(zip_path)
-    assert manifest["files"] == []
+    assert [e for e in manifest["files"] if e["kind"] != "MATRIX"] == []
     assert manifest["rejected"] == []
+
+
+# ---------------------------------------------------------------------------
+# _package — E8 (#131) 04-MATRIX coverage section
+# ---------------------------------------------------------------------------
+
+
+def _required_cells() -> set[tuple[str, str, str]]:
+    """The spec's required domain x product x format cells (Oracle R8)."""
+    spec = yaml.safe_load(
+        (ROOT / "docs" / "dev" / "specs" / "end-user-matrix.yaml").read_text(encoding="utf-8")
+    )
+    return {(c["domain"], c["product"], c["format"]) for c in spec["required_cells"]}
+
+
+def _zip_matrix_meta(zip_path: Path) -> dict[str, Any]:
+    with zipfile.ZipFile(zip_path) as zf:
+        return json.loads(zf.read("04-MATRIX/coverage-gaps.json").decode("utf-8"))
+
+
+def test_package_matrix_section_with_gaps(tmp_path: Path, monkeypatch):
+    """04-MATRIX/ ships in the zip: matrix-report.md rendered from the
+    package's own artifact manifest, coverage-gaps.json listing every
+    remaining 空gap required cell (one required cell produced as evidence)."""
+    artifact = tmp_path / "outputs" / "medical-research" / "digest-json-20260806-120000.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(
+        json.dumps({"summary": "s", "key_findings": ["k1"], "recommendations": ["r1"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vd, "_quality_run_delivery_gates", _all_pass_gates)
+    monkeypatch.setattr(vd, "_matrix_llm_available", lambda: True)
+
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    zip_path = vd._package([{"path": str(artifact)}], [], out)
+
+    names = _zip_names(zip_path)
+    assert "04-MATRIX/matrix-report.md" in names
+    assert "04-MATRIX/coverage-gaps.json" in names
+
+    with zipfile.ZipFile(zip_path) as zf:
+        report = zf.read("04-MATRIX/matrix-report.md").decode("utf-8")
+        gap_meta = _zip_matrix_meta(zip_path)
+        manifest = _zip_manifest(zip_path)
+        vreport = zf.read("validation-report.md").decode("utf-8")
+
+    assert report.startswith("# End-User Coverage Matrix (E8")
+    assert "## COVERAGE_GAP" in report
+    assert "| digest | 有produced |" in report  # medical-research column shows evidence
+
+    expected_gaps = _required_cells() - {("medical-research", "digest", "json")}
+    gap_cells = {(g["domain"], g["product"], g["format"]) for g in gap_meta["gaps"]}
+    assert gap_cells == expected_gaps
+    assert all(g["cell_state"] == "空gap" for g in gap_meta["gaps"])
+    assert gap_meta["llm_available"] is True
+
+    matrix_files = [e for e in manifest["files"] if e["kind"] == "MATRIX"]
+    assert {e["file"] for e in matrix_files} == {
+        "04-MATRIX/matrix-report.md",
+        "04-MATRIX/coverage-gaps.json",
+    }
+    assert all(e["quality"] == "PASS" for e in matrix_files)
+    assert "## Coverage Matrix (E8)" in vreport
+    assert "### COVERAGE_GAP (required cells with no evidence)" in vreport
+    assert "`medical-research × report × json`" in vreport
+
+
+def test_package_matrix_llm_absent_marks_gated_unconfigured(tmp_path: Path, monkeypatch):
+    """Oracle R8 in the delivery package: with no LLM key, required cells of
+    LLM-gated products (tutorial/presentation) are 未配置unconfigured in
+    coverage-gaps.json and the report — never 空gap."""
+    monkeypatch.setattr(vd, "_quality_run_delivery_gates", _all_pass_gates)
+    monkeypatch.setattr(vd, "_matrix_llm_available", lambda: False)
+
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    zip_path = vd._package([], [], out)
+
+    with zipfile.ZipFile(zip_path) as zf:
+        gap_meta = _zip_matrix_meta(zip_path)
+        report = zf.read("04-MATRIX/matrix-report.md").decode("utf-8")
+
+    assert gap_meta["llm_available"] is False
+    unconf = {(u["domain"], u["product"], u["format"]) for u in gap_meta["unconfigured"]}
+    assert ("medical-research", "tutorial", "markdown") in unconf
+    assert ("tech-ai-developer", "presentation", "markdown") in unconf
+    assert all(u["cell_state"] == "未配置unconfigured" for u in gap_meta["unconfigured"])
+
+    assert all(g["product"] not in ("tutorial", "presentation") for g in gap_meta["gaps"])
+    assert {(g["domain"], g["product"], g["format"]) for g in gap_meta["gaps"]} == (
+        _required_cells() - unconf
+    )
+
+    assert "未配置unconfigured" in report
+    assert "| tutorial | 空gap |" not in report
+    assert "| tutorial | 未配置unconfigured |" in report

@@ -1,0 +1,34 @@
+# Failure-recovery (issue #138): an LLM-required step fails when no API key
+# is configured (dispatch returns LLM_NOT_CONFIGURED) and the primary's
+# success:true assertion fails; the recovery step runs a deterministic
+# fallback (no LLM, no network). With a key configured the primary succeeds
+# and recovery is skipped — either way min_passing (2) is satisfied, so the
+# scenario passes on partial success. Never requires_env-gated: the failure
+# path is what this scenario exists to exercise.
+name: llm-failure-recovery
+description: "LLM-required step failure recovers via a deterministic fallback step (issue #138)"
+category: llm
+requires_env: []
+min_passing: 2
+steps:
+  - name: "llm-required classification fails without key"
+    tool: classify_cefr
+    arguments:
+      text: "The mitochondria is the powerhouse of the cell."
+      lang: "en"
+    expect:
+      success: true
+    recovery_steps:
+      - name: "fallback to deterministic classification"
+        kind: cli
+        command: "echo llm-fallback-ok"
+        expect:
+          success: true
+          exit_code: 0
+          stdout_has: ["llm-fallback-ok"]
+
+  - name: "health check passes"
+    tool: health_check
+    arguments: {}
+    expect:
+      success: true

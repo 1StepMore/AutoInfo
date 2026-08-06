@@ -117,26 +117,42 @@ def diff_scenario_runs(
     -------
     dict
         ``{"base": run_id, "head": run_id, "new_passes": [...],
-        "new_failures": [...], "recovered": [...], "regressed": [...],
-        "unchanged": N, "head_passed": N, "head_failed": N}``.
+        "new_failures": [...], "recovered": [...], "recovered_steps": {...},
+        "regressed": [...], "unchanged": N, "head_passed": N,
+        "head_failed": N}``.
     """
     base_data = load_scenario_results(base) or {"scenarios": []}
     head_data = load_scenario_results(head) or {"scenarios": []}
     base_status = {r.get("scenario"): r.get("status") for r in base_data["scenarios"]}
     head_status = {r.get("scenario"): r.get("status") for r in head_data["scenarios"]}
+    head_by_name = {r.get("scenario"): r for r in head_data["scenarios"]}
 
     new_passes, new_failures = [], []
     recovered, regressed = [], []
+    recovered_steps: dict[str, list[str]] = {}
     unchanged = 0
     for name, head_st in head_status.items():
         base_st = base_status.get(name)
+        # Issue #138: a step that was failed in base but passed-with-recovery
+        # in head surfaces in the `recovered` bucket (per-scenario step names
+        # land in `recovered_steps`).  Such scenarios are reported as
+        # recovered, never double-counted in new_passes/new_failures.
+        head_rec_steps = [
+            s.get("name", "")
+            for s in head_by_name.get(name, {}).get("steps", [])
+            if s.get("recovered")
+        ]
+        recovered_case = bool(head_rec_steps) and base_st == "failed"
+        if recovered_case:
+            recovered.append(name)
+            recovered_steps[name] = head_rec_steps
         if head_st == "passed":
-            if base_st != "passed":
+            if base_st != "passed" and not recovered_case:
                 new_passes.append(name)
         elif head_st == "failed":
             if base_st == "passed":
                 regressed.append(name)
-            else:
+            elif not recovered_case:
                 new_failures.append(name)
         else:  # unconfigured / skipped / error
             if base_st == "passed":
@@ -152,6 +168,7 @@ def diff_scenario_runs(
         "new_passes": new_passes,
         "new_failures": new_failures,
         "recovered": recovered,
+        "recovered_steps": recovered_steps,
         "regressed": regressed,
         "unchanged": unchanged,
         "head_passed": sum(1 for s in head_status.values() if s == "passed"),
@@ -620,6 +637,25 @@ def _validate_steps(
         step.setdefault("arguments", {})
         step.setdefault("expect", {})
 
+        # Issue #138: per-step recovery steps.  Same shape as ``steps`` —
+        # executed only when the primary step fails (assertion mismatch,
+        # dispatch exception, or timeout).  Empty lists are allowed (treated
+        # as no recovery); defaults for nested steps are set in place.
+        recovery_steps = step.get("recovery_steps")
+        if recovery_steps is not None:
+            if not isinstance(recovery_steps, list):
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}]: "
+                    f"'recovery_steps' must be a list"
+                )
+            _validate_steps(
+                recovery_steps,
+                file_name,
+                "recovery_steps",
+                require_non_empty=False,
+                step_label=f"{step_label}[{i}].recovery_steps",
+            )
+
 
 def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
     """Load all ``*.yaml`` scenario files, sorted by filename.
@@ -689,6 +725,25 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
         data.setdefault("category", "general")
         data.setdefault("requires_env", [])
         data.setdefault("requires_domain", [])
+
+        # Issue #138: partial-pass policy validation.  Both keys are optional;
+        # when absent the scenario keeps ALL-or-nothing semantics.
+        min_passing = data.get("min_passing")
+        if min_passing is not None and (
+            not isinstance(min_passing, int) or min_passing <= 0
+        ):
+            raise ValueError(
+                f"Scenario file {yaml_path.name}: 'min_passing' must be a "
+                f"positive integer, got {min_passing!r}"
+            )
+        pass_ratio = data.get("pass_ratio")
+        if pass_ratio is not None and (
+            not isinstance(pass_ratio, float) or not (0 < pass_ratio <= 1)
+        ):
+            raise ValueError(
+                f"Scenario file {yaml_path.name}: 'pass_ratio' must be a "
+                f"float in (0, 1], got {pass_ratio!r}"
+            )
 
         scenarios.append(data)
 
@@ -844,14 +899,56 @@ async def _execute_step_timed(
 
 
 def _count_step_result(sr: dict[str, Any], counts: dict[str, int]) -> None:
-    """Increment the matching pass/fail/unconfigured counter for a step result."""
+    """Increment the matching pass/fail/unconfigured counter for a step result.
+
+    A step whose primary failed but whose recovery_steps succeeded is counted
+    as ``recovered`` — never as a plain failure (issue #138).
+    """
     status = sr.get("status")
     if status == "passed":
         counts["passed"] += 1
     elif status == "unconfigured":
         counts["unconfigured"] += 1
+    elif sr.get("recovered"):
+        counts["recovered"] += 1
     else:
         counts["failed"] += 1
+
+
+async def _execute_step_with_recovery(
+    step_def: dict[str, Any],
+    dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
+    timeout: float,
+) -> dict[str, Any]:
+    """Execute a step and, on failure, its ``recovery_steps`` (issue #138).
+
+    When the primary step fails — assertion mismatch, dispatch exception, or
+    per-step timeout — every declared recovery step runs in order, each with
+    the same per-step timeout and its own ``expect`` assertions.  The primary
+    result keeps its ``failed`` status (its own assertion did fail) and gains:
+
+    - ``recovery``: the list of recovery step results (with statuses),
+    - ``recovery_status``: ``"passed"`` if any recovery step passed,
+    - ``recovered``: ``True`` iff ``recovery_status == "passed"``.
+
+    Non-failed primary steps (``passed``/``unconfigured``) never trigger
+    recovery and return unchanged.
+    """
+    sr = await _execute_step_timed(step_def, dispatch, timeout)
+    if sr["status"] != "failed":
+        return sr
+    recovery_defs = step_def.get("recovery_steps")
+    if not recovery_defs:
+        return sr
+    recovery_results = [
+        await _execute_step_timed(rdef, dispatch, timeout) for rdef in recovery_defs
+    ]
+    recovered = any(r["status"] == "passed" for r in recovery_results)
+    sr = dict(sr)
+    sr["recovery"] = recovery_results
+    sr["recovery_status"] = "passed" if recovered else "failed"
+    sr["recovered"] = recovered
+    return sr
 
 
 async def run_scenario(
@@ -894,6 +991,15 @@ async def run_scenario(
         scenario declares ``cleanup_steps``, they run after the main
         steps regardless of outcome (best-effort) and are reported under
         ``cleanup`` — they never influence ``status``.
+
+        Steps that declare ``recovery_steps`` (issue #138) run them after
+        a primary failure; the step keeps its ``failed`` status and gains
+        ``recovery`` / ``recovery_status`` / ``recovered``.  ``summary``
+        reports ``recovered`` (failed primaries that a recovery step
+        fixed) separately from ``failed``.  Status stays ALL-or-nothing
+        unless the scenario declares ``min_passing`` (int) or
+        ``pass_ratio`` (float), in which case it passes as soon as that
+        many primary steps succeeded (passed or recovered).
 
     Raises
     ------
@@ -941,6 +1047,7 @@ async def run_scenario(
                 "passed": 0,
                 "failed": 0,
                 "unconfigured": len(unconfigured_steps),
+                "recovered": 0,
                 "total": len(unconfigured_steps),
             },
             "steps": unconfigured_steps,
@@ -985,6 +1092,7 @@ async def run_scenario(
                     "passed": 0,
                     "failed": 0,
                     "unconfigured": len(unconfigured_steps),
+                    "recovered": 0,
                     "total": len(unconfigured_steps),
                 },
                 "steps": unconfigured_steps,
@@ -1006,20 +1114,46 @@ async def run_scenario(
         selected = [(i + 1, s) for i, s in enumerate(scenario["steps"])]
 
     step_results: list[dict[str, Any]] = []
-    counts = {"passed": 0, "failed": 0, "unconfigured": 0}
+    counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
 
     for step_idx, step_def in selected:
-        sr = await _execute_step_timed(step_def, dispatch, timeout)
+        sr = await _execute_step_with_recovery(step_def, dispatch, timeout)
         _count_step_result(sr, counts)
         step_results.append(sr)
 
+    # Status derivation (issue #138):
+    # - Default (no threshold): ALL-or-nothing — any unrecovered step failure
+    #   fails the scenario.  Steps that failed then recovered are counted as
+    #   ``recovered``, not ``failed``, so a fully-recovered scenario passes.
+    #   Existing scenarios declare no recovery_steps, so this branch is
+    #   byte-for-byte the historic behavior for them.
+    # - Partial policy: when ``min_passing`` (int) or ``pass_ratio`` (float)
+    #   is declared, the scenario passes as soon as enough primary steps
+    #   *succeeded* (passed or recovered) — e.g. 3/7 sources OK is a partial
+    #   pass, not an overall failure.
     status: str
-    if counts["failed"] > 0:
-        status = "failed"
-    elif counts["unconfigured"] > 0:
-        status = "unconfigured"
+    min_passing = scenario.get("min_passing")
+    pass_ratio = scenario.get("pass_ratio")
+    if min_passing is None and pass_ratio is None:
+        if counts["failed"] > 0:
+            status = "failed"
+        elif counts["unconfigured"] > 0:
+            status = "unconfigured"
+        else:
+            status = "passed"
     else:
-        status = "passed"
+        if counts["unconfigured"] > 0:
+            status = "unconfigured"
+        else:
+            succeeded = counts["passed"] + counts["recovered"]
+            total = (
+                counts["passed"] + counts["failed"]
+                + counts["recovered"] + counts["unconfigured"]
+            )
+            threshold_met = min_passing is not None and succeeded >= min_passing
+            if not threshold_met and pass_ratio is not None:
+                threshold_met = total > 0 and (succeeded / total) >= pass_ratio
+            status = "passed" if threshold_met else "failed"
 
     # --- collect_artifacts: gather real data files produced by the scenario ---
     # (fixes #123, #125). Scenarios may declare glob patterns; matching files
@@ -1051,9 +1185,9 @@ async def run_scenario(
     cleanup_defs = scenario.get("cleanup_steps", [])
     if cleanup_defs:
         cleanup_results: list[dict[str, Any]] = []
-        cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0}
+        cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
         for step_idx, step_def in enumerate(cleanup_defs, start=1):
-            sr = await _execute_step_timed(step_def, dispatch, timeout)
+            sr = await _execute_step_with_recovery(step_def, dispatch, timeout)
             _count_step_result(sr, cleanup_counts)
             cleanup_results.append(sr)
         cleanup = {
@@ -1061,6 +1195,7 @@ async def run_scenario(
                 "passed": cleanup_counts["passed"],
                 "failed": cleanup_counts["failed"],
                 "unconfigured": cleanup_counts["unconfigured"],
+                "recovered": cleanup_counts["recovered"],
                 "total": len(cleanup_results),
             },
             "steps": cleanup_results,
@@ -1075,6 +1210,7 @@ async def run_scenario(
             "passed": counts["passed"],
             "failed": counts["failed"],
             "unconfigured": counts["unconfigured"],
+            "recovered": counts["recovered"],
             "total": len(step_results),
         },
         "steps": step_results,

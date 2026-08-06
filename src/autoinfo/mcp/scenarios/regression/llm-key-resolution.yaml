@@ -1,0 +1,54 @@
+# Regression #119: LLM key resolution inconsistency — llm.py previously
+# ignored AUTOINFO_LLM_API_KEY env and did not expand ${ENV} placeholders,
+# contradicting _is_llm_configured() / _resolve_llm_config() in validation.py.
+# Fix: unified resolution chain in LLMClient.__init__:
+#   1. config.llm.api_key if non-empty and not ${ENV} placeholder → use it
+#   2. if ${ENV} placeholder → os.environ.get(var_name)
+#   3. fall back to AUTOINFO_LLM_API_KEY env var
+# This scenario verifies all three resolution paths via a deterministic CLI step.
+name: regression-llm-key-resolution
+description: "Regression #119: llm.py resolves AUTOINFO_LLM_API_KEY / ${ENV} placeholder consistently"
+category: regression
+regression: true
+regression_issue: "#119"
+requires_env: []
+steps:
+  - name: "key resolution: env fallback, placeholder expansion, literal precedence"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os
+      from autoinfo.config import Config, LLMConfig
+      from autoinfo.llm import LLMClient
+
+      def build(k):
+          c = Config()
+          c.llm = LLMConfig(provider="openai", model="gpt-4o-mini", api_key=k)
+          return c
+
+      # 1) config key empty -> falls back to AUTOINFO_LLM_API_KEY env
+      os.environ.pop("OPENAI_API_KEY", None)
+      os.environ["AUTOINFO_LLM_API_KEY"] = "env-key-abc123"
+      LLMClient(build(""))
+      assert os.environ.get("OPENAI_API_KEY") == "env-key-abc123", (
+          "ENV: got " + str(os.environ.get("OPENAI_API_KEY")))
+      print("ENVKEY_RESOLVED")
+
+      # 2) ${ENV} placeholder -> expanded from env
+      os.environ.pop("OPENAI_API_KEY", None)
+      LLMClient(build("${AUTOINFO_LLM_API_KEY}"))
+      assert os.environ.get("OPENAI_API_KEY") == "env-key-abc123", (
+          "PLACEHOLDER: got " + str(os.environ.get("OPENAI_API_KEY")))
+      print("PLACEHOLDER_RESOLVED")
+
+      # 3) literal key takes precedence (no fallback needed)
+      os.environ.pop("OPENAI_API_KEY", None)
+      LLMClient(build("literal-key-xyz"))
+      assert os.environ.get("OPENAI_API_KEY") == "literal-key-xyz", (
+          "LITERAL: got " + str(os.environ.get("OPENAI_API_KEY")))
+      print("LITERAL_RESOLVED")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENVKEY_RESOLVED", "PLACEHOLDER_RESOLVED", "LITERAL_RESOLVED"]

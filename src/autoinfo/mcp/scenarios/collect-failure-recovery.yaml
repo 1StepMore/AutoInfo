@@ -1,0 +1,35 @@
+# Failure-recovery (issue #138): a collect probe against an unreachable
+# source fails deterministically (127.0.0.1:9 is connection-refused with no
+# network traffic); the recovery step fails over to a deterministic local
+# fallback. min_passing keeps the scenario PASSING on partial success
+# (1 recovered + 1 passed >= 2) — the recovered step is accounted separately
+# from failed, so this is a partial pass, not an overall failure.
+name: collect-failure-recovery
+description: "Collect failure against an unreachable source recovers via a fallback step (issue #138)"
+category: collection
+requires_env: []
+min_passing: 2
+steps:
+  - name: "collect probe of unreachable source fails"
+    tool: test_source
+    arguments:
+      url: "http://127.0.0.1:9/unreachable"
+      type: web
+    expect:
+      success: true
+      data_has: ["reachable"]
+    recovery_steps:
+      - name: "failover to local archive fallback"
+        kind: cli
+        command: "echo archive-failover-ok"
+        expect:
+          success: true
+          exit_code: 0
+          stdout_has: ["archive-failover-ok"]
+
+  - name: "platform health probe passes"
+    tool: get_tool_count
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["tools_count"]

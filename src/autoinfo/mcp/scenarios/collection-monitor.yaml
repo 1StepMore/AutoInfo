@@ -5,6 +5,10 @@ name: collection-monitor
 description: "Collection stats and diff across domains"
 category: collection
 requires_env: []
+collect_artifacts:
+  - "collections/**/*.json"
+  - "logs/**/*.log"
+  - "validation-runs/**/*.json"
 steps:
   - name: "get_collection_stats daily"
     tool: get_collection_stats

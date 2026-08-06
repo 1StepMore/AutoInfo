@@ -395,13 +395,13 @@ class TestRunProcessing:
         mock_extraction: ExtractionResult,
     ) -> None:
         """When one item fails, the pipeline continues with the next."""
-        # First call succeeds, second raises
-        mock_ext = MagicMock(
-            side_effect=[
-                mock_extraction,
-                Exception("LLM failed for item 2"),
-            ]
-        )
+        # Item-002 fails extraction (deterministic under parallel processing)
+        def fail_item_two(item: Item, schema=None) -> ExtractionResult:
+            if item.id == "item-002":
+                raise Exception("LLM failed for item 2")
+            return mock_extraction
+
+        mock_ext = MagicMock(side_effect=fail_item_two)
 
         mock_quality = MagicMock(return_value=_make_quality_results_all_pass())
         mock_entry = KBEntry(entry_id="test", title="test", domain="test")
@@ -431,18 +431,17 @@ class TestRunProcessing:
         self,
         sample_items: list[Item],
         mock_extraction: ExtractionResult,
-        mock_extraction_second: ExtractionResult,
     ) -> None:
         """Duplicate items (G2 fails) are still stored but logged."""
-        mock_ext = MagicMock(side_effect=[mock_extraction, mock_extraction_second])
+        mock_ext = MagicMock(side_effect=lambda item, schema=None: mock_extraction)
 
-        # First item passes all gates, second is a duplicate
-        mock_quality = MagicMock(
-            side_effect=[
-                _make_quality_results_all_pass(),
-                _make_quality_results_duplicate(),
-            ]
-        )
+        # Item-002 is a duplicate (deterministic under parallel processing)
+        def quality_for_item(item: Item, context=None, gate_config=None, **kwargs):
+            if item.id == "item-002":
+                return _make_quality_results_duplicate()
+            return _make_quality_results_all_pass()
+
+        mock_quality = MagicMock(side_effect=quality_for_item)
 
         mock_entry = KBEntry(entry_id="test", title="test", domain="test")
         mock_store = MagicMock(spec=KBStore)

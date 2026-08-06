@@ -9,6 +9,11 @@ description: "B23 — digest/report EPUB and audiobook output formats"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
+collect_artifacts:
+  - "outputs/**/*.md"
+  - "outputs/**/*.json"
+  - "outputs/**/*.html"
+  - "outputs/**/*.mp3"
 steps:
   - name: "generate_digest epub format"
     tool: generate_digest
@@ -16,6 +21,7 @@ steps:
       domain: medical-research
       period: daily
       format: epub
+      persist: true
     expect:
       success: true
 
@@ -25,6 +31,7 @@ steps:
       domain: medical-research
       period: daily
       format: audiobook
+      persist: true
     expect:
       success: true
 
@@ -35,6 +42,7 @@ steps:
       format: epub
       period: monthly
       report_type: industry
+      persist: true
     expect:
       success: true
 
@@ -45,5 +53,6 @@ steps:
       format: audiobook
       period: monthly
       report_type: industry
+      persist: true
     expect:
       success: true

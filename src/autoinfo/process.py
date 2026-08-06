@@ -14,8 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -48,6 +52,42 @@ _STOP_WORDS: frozenset[str] = frozenset({
     "however", "conclusion", "background", "objective", "aim",
 })
 _STOP_PHRASES: frozenset[str] = frozenset({"", "  ", "   "})
+
+# Parallel processing (issue #136): LLM extraction dominates per-item latency,
+# so items are processed concurrently in a bounded thread pool.  Default 5
+# workers; override with AUTOINFO_PROCESS_WORKERS (clamped to 1..8).
+_DEFAULT_PROCESS_WORKERS = 5
+_PROCESS_WORKER_CAP = 8
+
+# Serializes SQLite / markdown KB writes (store_entry, store_entities, CEFR
+# frontmatter updates) so concurrent workers never contend on the same file.
+_STORAGE_LOCK = threading.Lock()
+
+
+def _resolve_process_workers() -> int:
+    """Resolve the processing thread-pool size from ``AUTOINFO_PROCESS_WORKERS``."""
+    try:
+        raw = int(os.environ.get("AUTOINFO_PROCESS_WORKERS", _DEFAULT_PROCESS_WORKERS))
+    except (TypeError, ValueError):
+        raw = _DEFAULT_PROCESS_WORKERS
+    return max(1, min(raw, _PROCESS_WORKER_CAP))
+
+
+def _progress_enabled() -> bool:
+    """Return ``True`` when per-item progress lines should be printed.
+
+    Enabled for interactive terminals, or explicitly via
+    ``AUTOINFO_PROCESS_PROGRESS`` (any value except ``0``/``false``/``off``).
+    Disabled by default when stdout is piped — the MCP server speaks
+    JSON-RPC over stdio and CLI ``--json`` output must stay parseable.
+    """
+    raw = os.environ.get("AUTOINFO_PROCESS_PROGRESS")
+    if raw is not None:
+        return raw.strip().lower() not in ("0", "false", "off", "")
+    try:
+        return bool(sys.stdout.isatty())
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +374,8 @@ def _classify_entry_cefr(
             model_config["api_key"] = config.llm.api_key
         if config.llm.base_url:
             model_config["base_url"] = config.llm.base_url
+        if config.llm.timeout:
+            model_config["timeout"] = config.llm.timeout
 
         # Classify the text (title + content, truncated)
         text_for_classification = f"{item.title}\n\n{item.content}"[:3000]
@@ -641,13 +683,42 @@ def run_processing(
     collections_path = Path("collections")
     failed_dir = collections_path / domain / "_failed"
 
+    # -- Parallel processing setup (issue #136) ------------------------------
+    llm_timeout: float | None = None
+    if proc_config is not None and proc_config.llm is not None:
+        llm_timeout = proc_config.llm.timeout
+
+    worker_count = _resolve_process_workers()
+    progress_enabled = _progress_enabled()
+
     # -- Process each item --------------------------------------------------
-    for item in items_slice:
+    def _process_item(item: Item) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Process one item end-to-end; returns (item_log, stats).
+
+        Runs inside a worker thread: LLM extraction, quality gates and KB
+        storage.  ``stats`` carries the deltas the caller aggregates into
+        :class:`ProcessResult` on the main thread (no shared-state races).
+        All per-item exceptions are caught here so a single failure never
+        aborts the run.
+        """
         item_start = time.time()
         item_log: dict[str, Any] = {
             "item_id": item.id,
             "title": item.title,
             "status": "ok",
+        }
+        stats: dict[str, Any] = {
+            "token_usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "items_with_usage": 0,
+            },
+            "kb_entries_created": 0,
+            "passed_gates": 0,
+            "errors": [],
+            "discovered": [],
+            "logged": True,
         }
 
         try:
@@ -673,7 +744,8 @@ def run_processing(
                     "G0 blocked item %s — skipping extraction and storage",
                     item.id,
                 )
-                continue
+                stats["logged"] = False
+                return item_log, stats
 
             # Step a: LLM extraction (with custom schema if configured)
             extraction = extractor.extract(item, schema=extract_fields)
@@ -682,8 +754,8 @@ def run_processing(
             # real data to query after processing completes.
             if extraction.usage:
                 for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                    result.token_usage[k] += extraction.usage.get(k, 0)
-                result.token_usage["items_with_usage"] += 1
+                    stats["token_usage"][k] += extraction.usage.get(k, 0)
+                stats["token_usage"]["items_with_usage"] += 1
 
                 from autoinfo.cost import CostMeter  # noqa: PLC0415
 
@@ -725,6 +797,7 @@ def run_processing(
                     "topic_keywords": topic_keywords,
                 },
                 gate_config=gate_config if gate_config else None,
+                llm_timeout=llm_timeout,
             )
 
             # Step b2: Optional G4 factual consistency gate
@@ -742,7 +815,7 @@ def run_processing(
                     )
                     g4_model = f"{g4_provider}/{g4_model_name}"
                     g4_gate_config = gate_config.get("G4-SummaryFactual") if gate_config else None
-                    g4 = G4FactualConsistency(model=g4_model, json_mode=proc_config.llm.json_mode if proc_config else False)
+                    g4 = G4FactualConsistency(model=g4_model, json_mode=proc_config.llm.json_mode if proc_config else False, timeout=llm_timeout)
                     g4_result = g4.check(item, extraction, gate_config=g4_gate_config)
                     quality_results["G4-SummaryFactual"] = g4_result
 
@@ -754,7 +827,8 @@ def run_processing(
                             "G4 blocked item %s — skipping storage",
                             item.id,
                         )
-                        continue
+                        stats["logged"] = False
+                        return item_log, stats
                 except Exception as exc:
                     logger.warning(
                         "G4 factual check failed for item %s: %s", item.id, exc
@@ -872,6 +946,7 @@ def run_processing(
                                 source_lang, target_lang,
                                 model=g5_model,
                                 json_mode=proc_config.llm.json_mode if proc_config else False,
+                                timeout=llm_timeout,
                             )
 
                             composite = calculate_quality_score(
@@ -922,7 +997,7 @@ def run_processing(
                         )
                         # Fallback: single-LLM-check path (existing behavior)
                         try:
-                            g5 = G5TranslationAccuracy(model=g5_model)
+                            g5 = G5TranslationAccuracy(model=g5_model, timeout=llm_timeout)
                             g5_result = g5.check(item, extraction)
                         except Exception as single_exc:
                             logger.warning(
@@ -988,29 +1063,34 @@ def run_processing(
                 item_log["status"] = "duplicate"
                 item_log["detail"] = str(g2.details.get("matched_by", "unknown"))
 
-            entry = kb_store.store_entry(item, extraction, quality_results)
+            with _STORAGE_LOCK:
+                entry = kb_store.store_entry(item, extraction, quality_results)
             # M1T14: keep in-memory entry trace_id in sync with item (store_entry
             # already persists item.trace_id to KBEntry + frontmatter in kb.py)
             if not entry.trace_id:
                 entry.trace_id = item.trace_id
             item_log["entry_id"] = entry.entry_id
-            result.kb_entries_created += 1
+            stats["kb_entries_created"] += 1
 
             # Step c2: CEFR classification (non-blocking — only when enabled)
             if config is not None and config.cefr.enabled:
-                _classify_entry_cefr(entry, item, config)
+                with _STORAGE_LOCK:
+                    _classify_entry_cefr(entry, item, config)
 
             # Step d: Knowledge graph — store entities & discover relations
             if extraction and extraction.entities:
-                kg_result = kb_store.store_entities(
-                    entry_id=entry.entry_id,
-                    domain=domain,
-                    entities=extraction.entities,
-                )
+                with _STORAGE_LOCK:
+                    kg_result = kb_store.store_entities(
+                        entry_id=entry.entry_id,
+                        domain=domain,
+                        entities=extraction.entities,
+                    )
                 item_log["entities_indexed"] = kg_result["entities_indexed"]
                 item_log["relations_discovered"] = kg_result["relations_discovered"]
 
-            # Step e: Keyword auto-discovery — extract new keywords from LLM response
+            # Step e: Keyword auto-discovery — extract new keywords from LLM
+            # response.  The YAML writes are deferred to the caller (main
+            # thread) because KeywordsFile is not thread-safe.
             discovered: list[str] = []
             if extraction:
                 # Collect entity names as keyword candidates
@@ -1034,35 +1114,104 @@ def run_processing(
                                 discovered.append(p)
 
             if discovered:
-                kf = KeywordsFile()
-                # Deduplicate and add
+                # Deduplicate and defer the writes
                 seen: set[str] = set()
+                pending: list[tuple[str, str]] = []
                 for kw in discovered:
                     if kw not in seen:
                         seen.add(kw)
-                        try:
-                            kf.add_keyword(
-                                domain=domain,
-                                keyword=kw,
-                                state=KeywordState.AUTO_ADDED,
-                                source=f"auto-discovery:{item.source_name}",
-                            )
-                        except Exception:
-                            logger.debug("Failed to add discovered keyword '%s':", kw, exc_info=True)
+                        pending.append((kw, item.source_name))
+                stats["discovered"] = pending
                 item_log["keywords_discovered"] = len(seen)
 
             # Track items that passed all gates
             if gates_passed == 3:
-                result.passed_gates += 1
+                stats["passed_gates"] += 1
 
         except Exception as exc:
             logger.error("Processing failed for item %s: %s", item.id, exc)
             item_log["status"] = "error"
             item_log["error"] = str(exc)
-            result.errors.append({"item_id": item.id, "error": str(exc)})
+            stats["errors"].append({"item_id": item.id, "error": str(exc)})
 
         item_log["duration_s"] = round(time.time() - item_start, 3)
-        result.per_item_logs.append(item_log)
+        return item_log, stats
+
+    # -- Dispatch items to the worker pool -----------------------------------
+    total_to_process = len(items_slice)
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="process") as pool:
+        futures = {
+            pool.submit(_process_item, item): idx
+            for idx, item in enumerate(items_slice)
+        }
+        logs_by_index: dict[int, dict[str, Any]] = {}
+        logged_by_index: dict[int, bool] = {}
+        completed = 0
+        kf = KeywordsFile()
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                item_log, stats = future.result()
+            except Exception as exc:  # safety net — _process_item catches all
+                logger.error(
+                    "Unexpected worker failure for item index %d: %s", idx, exc
+                )
+                item_log = {
+                    "item_id": str(idx),
+                    "title": "unknown",
+                    "status": "error",
+                    "error": str(exc),
+                }
+                stats = {
+                    "token_usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "items_with_usage": 0,
+                    },
+                    "kb_entries_created": 0,
+                    "passed_gates": 0,
+                    "errors": [{"item_id": str(idx), "error": str(exc)}],
+                    "discovered": [],
+                    "logged": True,
+                }
+            logs_by_index[idx] = item_log
+            logged_by_index[idx] = bool(stats.get("logged", True))
+            completed += 1
+
+            # -- Aggregate per-item stats on the main thread (no races) ------
+            for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                result.token_usage[k] += stats["token_usage"][k]
+            result.token_usage["items_with_usage"] += stats["token_usage"]["items_with_usage"]
+            result.kb_entries_created += stats["kb_entries_created"]
+            result.passed_gates += stats["passed_gates"]
+            result.errors.extend(stats["errors"])
+
+            # Keyword auto-discovery writes (single-threaded — file I/O)
+            for kw, source_name in stats["discovered"]:
+                try:
+                    kf.add_keyword(
+                        domain=domain,
+                        keyword=kw,
+                        state=KeywordState.AUTO_ADDED,
+                        source=f"auto-discovery:{source_name}",
+                    )
+                except Exception:
+                    logger.debug("Failed to add discovered keyword '%s':", kw, exc_info=True)
+
+            # Per-item progress output — flushed so it survives a killed run
+            if progress_enabled:
+                title = str(item_log.get("title") or "untitled")[:60]
+                dur = item_log.get("duration_s", 0.0)
+                print(f"[{completed}/{total_to_process}] processed '{title}' ({dur}s)", flush=True)
+
+        # Preserve input order; g0/g4-blocked items are excluded (matching
+        # the historical sequential loop where ``continue`` skipped the log).
+        result.per_item_logs = [
+            logs_by_index[i]
+            for i in range(total_to_process)
+            if logged_by_index.get(i, True)
+        ]
 
     # -- Persist progress (batch mode only) ---------------------------------
     if batch_size > 0:

@@ -335,7 +335,7 @@ python -m autoinfo.cli doctor --verbose
 
 # 5. Smoke test: search, Q&A, digest generation
 python -m autoinfo.cli kb search --query "test" --domain {domain}
-python -m autoinfo.cli output digest --domain {domain} --period day --dry-run
+python -m autoinfo.cli output digest --domain {domain} --period daily --dry-run
 ```
 
 **Automated post-restore validation script** (`autoinfo validate-restore`): Runs steps 1-5 and returns pass/fail with diagnostic output. Must pass before declaring recovery complete.
@@ -634,7 +634,7 @@ Each runbook follows a standard format: Detection → Triage → Resolution → 
 - **Collection failed (error in log):** Fix root cause (source down, API key expired, disk full), then re-run
 
 **Verification (5 min):**
-1. Manually trigger: `python -m autoinfo.cli cron run --domain <domain>`
+1. Manually trigger: `python -m autoinfo.cli cron run --name <schedule>`
 2. Verify items collected: `python -m autoinfo.cli status --domain <domain>`
 3. Verify `autoinfo_cron_last_success_timestamp` updated
 4. Resolve alert in PagerDuty / monitoring
@@ -676,13 +676,13 @@ Each runbook follows a standard format: Detection → Triage → Resolution → 
 
 **Triage (5 min):**
 1. Identify affected channel from alert labels
-2. Check delivery log for recent failures: `python -m autoinfo.cli enduser delivery-log --channel <channel> --since 1h`
+2. Check delivery log for recent failures: `query_delivery_log` MCP tool (channel=`<channel>`, `since=1h`)
 3. Check channel API status: external status page (Telegram, WeChat, DingTalk, Discord)
 4. Check if channel credentials expired: review config files, test API key
 
 **Resolution (15 min):**
 - **Channel API down (external):** No action possible. Delivery will retry with exponential backoff. After 3 retries, fall back to email. Alert auto-resolves when channel recovers.
-- **Credentials expired:** Update API key/token in config, run `python -m autoinfo.cli sources test --channel <channel>`
+- **Credentials expired:** Update API key/token in config, run `python -m autoinfo.cli sources test --url <source-url> --type <type>`
 - **Rate limited:** Reduce delivery frequency or batch deliveries. Check channel rate limit documentation.
 - **Message formatting error:** Check adapter implementation against channel API docs. Fix and redeploy.
 
@@ -708,7 +708,7 @@ All subsequent deliveries for this channel → routed to email until channel rec
 1. Check LLM provider status page (OpenAI, OpenRouter, DeepSeek, etc.)
 2. Check API key validity: `curl -H "Authorization: Bearer $KEY" https://api.openai.com/v1/models`
 3. Check rate limits: review provider dashboard for usage/rate limit hits
-4. Check if fallback model is configured: `python -m autoinfo.cli config show llm`
+4. Check if fallback model is configured: review the `llm` section of `.autoinfo/config.yaml` (or `python -m autoinfo.cli doctor --verbose`)
 
 **Resolution (15 min):**
 - **Provider outage:** Swap to fallback model. AutoInfo's LLM config supports fallback chains:
@@ -721,12 +721,12 @@ All subsequent deliveries for this channel → routed to email until channel rec
       - model: anthropic/claude-3-haiku
         provider: anthropic
   ```
-  Run: `python -m autoinfo.cli config set llm.model openai/gpt-4o-mini`
+  Run: set `llm.model: openai/gpt-4o-mini` in `.autoinfo/config.yaml` (or via the `configure_llm` MCP tool) and restart the service
 - **API key expired/invalid:** Rotate key, update `AUTOINFO_LLM_API_KEY` env var, restart service
 - **Rate limited:** Wait for rate limit window to reset. Reduce batch size in `process_collection`.
 
 **Verification (5 min):**
-1. Run test extraction: `python -m autoinfo.cli process --domain <domain> --limit 1`
+1. Run test extraction: `python -m autoinfo.cli process --domain <domain> --batch-size 1`
 2. Verify extraction succeeds with fallback model
 3. Monitor `autoinfo_llm_tokens_total` metric for recovery
 4. Switch back to primary model when provider recovers

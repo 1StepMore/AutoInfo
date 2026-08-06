@@ -110,6 +110,7 @@ def back_translate(
     source_lang: str,
     target_lang: str,
     model_pool: list[str] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Translate *translated_text* back to *source_lang* using a DIFFERENT model.
 
@@ -165,6 +166,8 @@ def back_translate(
             "forward_model": forward_model,
             "success": False,
         }
+    if timeout is None:
+        timeout = _resolve_timeout()
 
     prompt = (
         f"Translate the following text from {target_lang} back to {source_lang}. "
@@ -189,6 +192,7 @@ def back_translate(
             ],
             max_tokens=4000,
             temperature=0.1,
+            **(dict(timeout=timeout) if timeout is not None else {}),
         )
 
         back_text: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -229,6 +233,7 @@ def llm_judge_translation(
     source_lang: str,
     model: str | None = None,
     json_mode: bool = False,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Compare original source with back-translated text and score faithfulness.
 
@@ -256,6 +261,8 @@ def llm_judge_translation(
 
     if model is None:
         model = _resolve_default_model()
+    if timeout is None:
+        timeout = _resolve_timeout()
 
     system_prompt = (
         "You are a translation quality evaluator. Compare the ORIGINAL source text "
@@ -289,6 +296,7 @@ def llm_judge_translation(
             **(dict(response_format={"type": "json_object"}) if json_mode else {}),
             max_tokens=1000,
             temperature=0.1,
+            **(dict(timeout=timeout) if timeout is not None else {}),
         )
 
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -335,6 +343,7 @@ def run_back_translation_pipeline(
     target_lang: str,
     model_pool: list[str] | None = None,
     enable_back_translation: bool = True,
+    timeout: float | None = None,
 ) -> dict[str, Any] | None:
     """Run the full back-translation verification pipeline.
 
@@ -386,6 +395,7 @@ def run_back_translation_pipeline(
         source_lang=source_lang,
         target_lang=target_lang,
         model_pool=model_pool,
+        timeout=timeout,
     )
 
     if not bt_result["success"] or not bt_result["back_translated_text"].strip():
@@ -408,6 +418,7 @@ def run_back_translation_pipeline(
         back_translated_text=bt_result["back_translated_text"],
         source_lang=source_lang,
         model=judge_model,
+        timeout=timeout,
     )
 
     faithfulness = judge_result.get("faithfulness_score", 0.0)
@@ -452,6 +463,25 @@ def _get_litellm() -> Any:
         return litellm
     except (ImportError, ModuleNotFoundError):
         logger.error("litellm is not installed — run 'pip install litellm'")
+        return None
+
+
+def _resolve_timeout() -> float | None:
+    """Resolve the per-call LLM timeout (seconds) from config.
+
+    Reads ``llm.timeout`` from the autoinfo config; returns ``None`` when
+    no config can be loaded so callers fall back to litellm's default.
+    """
+    from autoinfo.config import Config, get_config_path, load_config  # noqa: PLC0415
+
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+        else:
+            config = Config()
+        return float(config.llm.timeout)
+    except Exception:
         return None
 
 
@@ -528,6 +558,7 @@ def refine_translation(
     target_lang: str,
     judge_feedback: list[dict[str, str]],
     model: str | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Refine a translation based on judge feedback.
 
@@ -566,6 +597,8 @@ def refine_translation(
     if _litellm is None:
         logger.error("refine_translation: litellm is not available")
         return {"translation": initial_translation, "model_used": model}
+    if timeout is None:
+        timeout = _resolve_timeout()
 
     # Format issues into a readable bullet list for the prompt
     issues_lines: list[str] = []
@@ -610,6 +643,7 @@ def refine_translation(
             ],
             max_tokens=4000,
             temperature=0.1,
+            **(dict(timeout=timeout) if timeout is not None else {}),
         )
 
         translation: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -678,6 +712,7 @@ def run_refinement_pipeline(
     model_pool: list[str] | None = None,
     threshold: float = 70.0,
     max_rounds: int = 2,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Run the multi-round translation refinement pipeline.
 
@@ -747,6 +782,7 @@ def run_refinement_pipeline(
         source_lang=source_lang,
         target_lang=target_lang,
         model_pool=model_pool,
+        timeout=timeout,
     )
     candidates[0] = (initial_translation, primary_model, eval_result)
 
@@ -790,6 +826,7 @@ def run_refinement_pipeline(
             target_lang=target_lang,
             judge_feedback=all_issues,
             model=refine_model,
+            timeout=timeout,
         )
 
         # --- Re-evaluate ---
@@ -799,6 +836,7 @@ def run_refinement_pipeline(
             source_lang=source_lang,
             target_lang=target_lang,
             model_pool=model_pool,
+            timeout=timeout,
         )
 
         candidates.append((refined["translation"], refine_model, new_result))

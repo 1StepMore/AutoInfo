@@ -80,6 +80,7 @@ class CollectionResult:
     items_found: int = 0
     items_new: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
+    source_failed: bool = False
     duration_s: float = 0.0
     estimated_duration_s: float = 0.0
 

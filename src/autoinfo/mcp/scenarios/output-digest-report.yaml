@@ -6,6 +6,11 @@ description: "Digest, report, and cross-domain report generation"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
+collect_artifacts:
+  - "outputs/**/*.md"
+  - "outputs/**/*.json"
+  - "outputs/**/*.html"
+  - "outputs/**/*.mp3"
 steps:
   - name: "generate_digest json format"
     tool: generate_digest
@@ -13,6 +18,7 @@ steps:
       domain: medical-research
       period: daily
       format: json
+      persist: true
     expect:
       success: true
 
@@ -23,6 +29,7 @@ steps:
       format: json
       period: monthly
       report_type: industry
+      persist: true
     expect:
       success: true
 
@@ -35,5 +42,6 @@ steps:
       format: json
       period: monthly
       report_type: trend
+      persist: true
     expect:
       success: true

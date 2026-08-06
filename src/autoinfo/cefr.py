@@ -40,6 +40,7 @@ def classify_text(
     text: str,
     lang: str = "en",
     model_config: dict[str, Any] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Classify *text* into a CEFR level (A1-C2) using LLM.
 
@@ -66,6 +67,8 @@ def classify_text(
 
     lang_name = _LANG_NAMES.get(lang, "English")
     model, api_key, base_url = _resolve_model_config(model_config)
+    if timeout is None:
+        timeout = _resolve_timeout(model_config)
 
     # --- Build prompts -------------------------------------------------------
     system_prompt = (
@@ -110,6 +113,7 @@ def classify_text(
             temperature=0.1,
             api_base=base_url or None,
             api_key=api_key or None,
+            **(dict(timeout=timeout) if timeout is not None else {}),
         )
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
         return _parse_level(content)
@@ -162,6 +166,31 @@ def _resolve_model_config(
         logger.debug("Could not load autoinfo config for CEFR", exc_info=True)
 
     return "openrouter/deepseek/deepseek-chat", "", ""
+
+
+def _resolve_timeout(model_config: dict[str, Any] | None) -> float | None:
+    """Resolve the per-call LLM timeout for CEFR classification.
+
+    Priority: explicit ``timeout`` key in *model_config* → ``llm.timeout``
+    from the autoinfo config → ``None`` (litellm default applies).
+    """
+    if model_config is not None and model_config.get("timeout") is not None:
+        try:
+            return float(model_config["timeout"])
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        from autoinfo.config import get_config_path, load_config
+
+        config_path = get_config_path()
+        if config_path is not None:
+            config = load_config(config_path)
+            return float(config.llm.timeout)
+    except Exception:
+        logger.debug("Could not load autoinfo config for CEFR timeout", exc_info=True)
+
+    return None
 
 
 def _parse_level(raw: str) -> dict[str, Any]:

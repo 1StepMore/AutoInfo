@@ -7,6 +7,11 @@ description: "B24 — generate_report with report_type column (markdown)"
 category: output
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
+collect_artifacts:
+  - "outputs/**/*.md"
+  - "outputs/**/*.json"
+  - "outputs/**/*.html"
+  - "outputs/**/*.mp3"
 steps:
   - name: "generate_report column type markdown"
     tool: generate_report
@@ -15,6 +20,7 @@ steps:
       format: markdown
       period: monthly
       report_type: column
+      persist: true
     expect:
       success: true
 
@@ -25,5 +31,6 @@ steps:
       format: markdown
       period: weekly
       report_type: column
+      persist: true
     expect:
       success: true

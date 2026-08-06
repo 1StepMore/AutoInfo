@@ -1,0 +1,33 @@
+# End-user journey — the PRODUCT surface end users actually consume:
+# a generated digest (what lands in their inbox) and KB search (what they
+# query the knowledge base with).  generate_digest is LLM-required, so
+# without AUTOINFO_LLM_API_KEY this scenario reports unconfigured (BYOK
+# obligation) — never silently skipped.  search_knowledge_base is not
+# LLM-gated (FTS5/hybrid over the local KB).  UX metrics in the validation
+# delivery package (issue #141) derive completion_rate/UX_OK from this
+# scenario's step results.
+name: enduser-journey
+description: "End-user product surface: generate a digest (inbox product) and search the KB (self-serve query)"
+category: enduser
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
+steps:
+  - name: "generate_digest markdown for the end-user inbox"
+    tool: generate_digest
+    arguments:
+      domain: medical-research
+      period: daily
+      format: markdown
+      persist: false
+    expect:
+      success: true
+
+  - name: "search_knowledge_base returns entries for the journey query"
+    tool: search_knowledge_base
+    arguments:
+      domain: medical-research
+      query: crispr
+      limit: 5
+    expect:
+      success: true
+      data_has: ["entries", "total_count"]

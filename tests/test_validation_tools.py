@@ -7,6 +7,7 @@ and ``run_validation_scenario``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.mcp import server as mcp_server
+from autoinfo.mcp import validation as validation_mod
 from autoinfo.mcp.validation import (
     _normalize_envelope,
     diff_scenario_runs,
@@ -842,6 +844,525 @@ cleanup_steps:
             load_scenarios(sd)
 
 
+class TestRunScenarioRecovery:
+    """Issue #138: per-step recovery_steps + scenario-level partial policy.
+
+    A failed primary step (assertion mismatch, dispatch exception, or
+    timeout) runs its recovery_steps; a recovery success is counted as
+    ``recovered`` (never a plain failure), and ``min_passing``/``pass_ratio``
+    turn partial success into a scenario pass.
+    """
+
+    RECOVERY_SCENARIO_YAML = """\
+name: recovery-scenario
+description: "Recovery-steps scenario"
+category: test
+requires_env: []
+steps:
+  - name: "primary fails, recovery succeeds"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+    recovery_steps:
+      - name: "recovery pass step"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+          data_has: ["result"]
+
+  - name: "primary fails, recovery also fails"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+    recovery_steps:
+      - name: "recovery fail step"
+        tool: fake_error
+        arguments: {}
+        expect:
+          success: true
+          data_has: ["result"]
+
+  - name: "passing step never triggers recovery"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+    recovery_steps:
+      - name: "recovery must not run"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+"""
+
+    PARTIAL_SCENARIO_YAML = """\
+name: partial-recovery-scenario
+description: "Partial-pass policy scenario"
+category: test
+requires_env: []
+min_passing: 2
+steps:
+  - name: "primary fails, recovery succeeds"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+    recovery_steps:
+      - name: "recovery pass"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+
+  - name: "plain pass"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+
+  - name: "unrecovered failure"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    STRICT_PARTIAL_SCENARIO_YAML = """\
+name: strict-partial-recovery-scenario
+description: "Strict partial-pass policy scenario"
+category: test
+requires_env: []
+min_passing: 3
+steps:
+  - name: "primary fails, recovery succeeds"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+    recovery_steps:
+      - name: "recovery pass"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+
+  - name: "plain pass"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+
+  - name: "unrecovered failure"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    RATIO_SCENARIO_YAML = """\
+name: ratio-recovery-scenario
+description: "Pass-ratio policy scenario"
+category: test
+requires_env: []
+pass_ratio: 0.5
+steps:
+  - name: "primary fails, recovery succeeds"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+    recovery_steps:
+      - name: "recovery pass"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+
+  - name: "unrecovered failure"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    RATIO_STRICT_SCENARIO_YAML = """\
+name: ratio-strict-recovery-scenario
+description: "Strict pass-ratio policy scenario"
+category: test
+requires_env: []
+pass_ratio: 0.9
+steps:
+  - name: "primary fails, recovery succeeds"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+    recovery_steps:
+      - name: "recovery pass"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+
+  - name: "unrecovered failure"
+    tool: flaky_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    TIMEOUT_RECOVERY_SCENARIO_YAML = """\
+name: timeout-recovery-scenario
+description: "Timeout-triggered recovery scenario"
+category: test
+requires_env: []
+steps:
+  - name: "hanging primary triggers recovery"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+    recovery_steps:
+      - name: "recovery after timeout"
+        tool: fake_tool
+        arguments: {}
+        expect:
+          success: true
+          data_has: ["result"]
+"""
+
+    @pytest.fixture
+    def recovery_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        files = {
+            "recovery-scenario.yaml": self.RECOVERY_SCENARIO_YAML,
+            "partial-recovery-scenario.yaml": self.PARTIAL_SCENARIO_YAML,
+            "strict-partial-recovery-scenario.yaml": self.STRICT_PARTIAL_SCENARIO_YAML,
+            "ratio-recovery-scenario.yaml": self.RATIO_SCENARIO_YAML,
+            "ratio-strict-recovery-scenario.yaml": self.RATIO_STRICT_SCENARIO_YAML,
+            "timeout-recovery-scenario.yaml": self.TIMEOUT_RECOVERY_SCENARIO_YAML,
+        }
+        for name, content in files.items():
+            (sd / name).write_text(content, encoding="utf-8")
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict) -> dict:
+        if name == "fake_tool":
+            return {"success": True, "data": {"result": "ok"}}
+        if name == "fake_error":
+            return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
+        if name == "flaky_tool":
+            return {"success": False, "error": {"code": "SourceUnreachable", "message": "boom"}}
+        if name == "slow_tool":
+            await asyncio.sleep(5)
+            return {"success": True, "data": {}}
+        return {"success": True, "data": {}}
+
+    async def test_recovery_step_runs_and_expect_is_evaluated(
+        self, recovery_dir: Path
+    ) -> None:
+        """A failed primary runs its recovery step; the recovery step's own
+        expect assertions are evaluated (data_has on fake_tool passes)."""
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=recovery_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"  # primary's own assertion failed
+        assert step["recovered"] is True
+        assert step["recovery_status"] == "passed"
+        assert len(step["recovery"]) == 1
+        assert step["recovery"][0]["status"] == "passed"
+        assert step["recovery"][0]["name"] == "recovery pass step"
+        # Recovery is counted separately from failed.
+        assert result["summary"]["recovered"] == 1
+        assert result["summary"]["failed"] == 0
+        # No unrecovered failure → default all-or-nothing still passes.
+        assert result["status"] == "passed"
+
+    async def test_recovery_failure_fails_scenario(self, recovery_dir: Path) -> None:
+        """When the recovery step's own expect fails, the primary stays a
+        plain failure and the scenario fails."""
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=recovery_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert step["recovered"] is False
+        assert step["recovery_status"] == "failed"
+        assert step["recovery"][0]["status"] == "failed"
+        # The recovery step's own expect was evaluated and failed on success.
+        assert "expected success=True, got success=False" in step["recovery"][0].get("detail", "")
+        assert result["summary"]["failed"] == 1
+        assert result["summary"]["recovered"] == 0
+        assert result["status"] == "failed"
+
+    async def test_recovery_skipped_when_primary_passes(self, recovery_dir: Path) -> None:
+        """A passing primary never runs its recovery steps."""
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[3],
+            scenarios_dir=recovery_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "passed"
+        assert "recovered" not in step
+        assert "recovery" not in step
+        assert result["summary"]["recovered"] == 0
+        assert result["status"] == "passed"
+
+    async def test_mixed_scenario_counts_recovered_not_failed(
+        self, recovery_dir: Path
+    ) -> None:
+        """Recovered + failed mix: summary separates them; one unrecovered
+        failure still fails the default all-or-nothing policy."""
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1, 2],
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"]["recovered"] == 1
+        assert result["summary"]["failed"] == 1
+        assert result["status"] == "failed"
+
+    async def test_partial_policy_min_passing_satisfied(self, recovery_dir: Path) -> None:
+        """min_passing satisfied → scenario passes even with an unrecovered
+        failure (3/7-sources-OK style partial success is not an overall fail)."""
+        result = await run_scenario(
+            "partial-recovery-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"] == {
+            "passed": 1, "failed": 1, "unconfigured": 0,
+            "recovered": 1, "total": 3,
+        }
+        assert result["status"] == "passed"
+
+    async def test_partial_policy_min_passing_not_met(self, recovery_dir: Path) -> None:
+        """min_passing not met → scenario fails."""
+        result = await run_scenario(
+            "strict-partial-recovery-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"]["recovered"] == 1
+        assert result["summary"]["passed"] == 1
+        assert result["summary"]["failed"] == 1
+        assert result["status"] == "failed"
+
+    async def test_partial_policy_pass_ratio(self, recovery_dir: Path) -> None:
+        """pass_ratio 0.5 with 1 recovered of 2 → pass; 0.9 → fail."""
+        result = await run_scenario(
+            "ratio-recovery-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"]["recovered"] == 1
+        assert result["status"] == "passed"
+
+        strict = await run_scenario(
+            "ratio-strict-recovery-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert strict["status"] == "failed"
+
+    async def test_recovery_triggered_by_timeout(self, recovery_dir: Path) -> None:
+        """A per-step timeout (simulated outage) triggers recovery too."""
+        result = await run_scenario(
+            "timeout-recovery-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+            timeout=0.1,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert step["recovered"] is True
+        assert step["recovery"][0]["status"] == "passed"
+        assert result["summary"]["recovered"] == 1
+        assert result["status"] == "passed"
+
+    async def test_recovery_schema_validation(self, tmp_path: Path) -> None:
+        """recovery_steps must be a list of valid steps (same schema)."""
+        bad_cases = {
+            "bad-recovery-list.yaml": (
+                "name: bad-recovery-list\ndescription: T\nsteps:\n"
+                "  - name: s\n    tool: fake_tool\n"
+                "    recovery_steps: {}\n",
+                "recovery_steps.*must be a list",
+            ),
+            "bad-recovery-tool.yaml": (
+                "name: bad-recovery-tool\ndescription: T\nsteps:\n"
+                "  - name: s\n    tool: fake_tool\n"
+                "    recovery_steps:\n      - name: no-tool-step\n",
+                r"recovery_steps\[0\].*'tool'",
+            ),
+            "bad-min-passing.yaml": (
+                "name: bad-min-passing\ndescription: T\nmin_passing: 0\n"
+                "steps:\n  - name: s\n    tool: fake_tool\n",
+                "min_passing.*positive integer",
+            ),
+            "bad-pass-ratio.yaml": (
+                "name: bad-pass-ratio\ndescription: T\npass_ratio: 2.5\n"
+                "steps:\n  - name: s\n    tool: fake_tool\n",
+                "pass_ratio.*\\(0, 1\\]",
+            ),
+        }
+        for i, (file_name, (content, pattern)) in enumerate(bad_cases.items()):
+            sd = tmp_path / f"scenarios{i}"
+            sd.mkdir()
+            (sd / file_name).write_text(content, encoding="utf-8")
+            with pytest.raises(ValueError, match=pattern):
+                load_scenarios(sd)
+
+    def test_diff_populates_recovered_bucket(self, tmp_path) -> None:
+        """A step failed in base but passing-with-recovery in head shows up
+        in the recovered bucket — the previously-dead wiring (issue #138)."""
+        def result(status: str, steps: list[dict]) -> dict:
+            return {
+                "scenario": "rec", "status": status,
+                "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
+                            "recovered": 0, "total": 1},
+                "steps": steps,
+            }
+
+        base = save_scenario_results(
+            [result("failed", [{"name": "collect", "tool": "test_source",
+                                "status": "failed"}])],
+            runs_dir=tmp_path,
+        )
+        head = save_scenario_results(
+            [result("passed", [{"name": "collect", "tool": "test_source",
+                                "status": "failed", "recovered": True,
+                                "recovery_status": "passed",
+                                "recovery": [{"name": "fallback", "tool": "echo",
+                                              "status": "passed"}]}])],
+            runs_dir=tmp_path,
+        )
+        diff = diff_scenario_runs(base, head)
+        assert diff["recovered"] == ["rec"]
+        assert diff["recovered_steps"] == {"rec": ["collect"]}
+        # Not double-counted as a new pass.
+        assert diff["new_passes"] == []
+        assert diff["head_passed"] == 1
+
+    def test_diff_recovered_requires_base_failure(self, tmp_path) -> None:
+        """Head-passed-with-recovery against a base that was not failed is a
+        new pass, not a recovery."""
+        def result(status: str, steps: list[dict]) -> dict:
+            return {
+                "scenario": "rec", "status": status,
+                "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
+                            "recovered": 0, "total": 1},
+                "steps": steps,
+            }
+
+        base = save_scenario_results([result("passed", [])], runs_dir=tmp_path)
+        head = save_scenario_results(
+            [result("passed", [{"name": "collect", "status": "failed",
+                                "recovered": True}])],
+            runs_dir=tmp_path,
+        )
+        diff = diff_scenario_runs(base, head)
+        assert diff["recovered"] == []
+        assert diff["new_passes"] == []
+
+    def test_diff_without_recovery_data_unchanged(self, tmp_path) -> None:
+        """Diff of runs without recovery metadata behaves as before."""
+        base = save_scenario_results([
+            {"scenario": "a", "status": "passed",
+             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
+                         "recovered": 0, "total": 1}},
+            {"scenario": "b", "status": "failed",
+             "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
+                         "recovered": 0, "total": 1}},
+        ], runs_dir=tmp_path)
+        head = save_scenario_results([
+            {"scenario": "a", "status": "passed",
+             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
+                         "recovered": 0, "total": 1}},
+            {"scenario": "b", "status": "passed",
+             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
+                         "recovered": 0, "total": 1}},
+        ], runs_dir=tmp_path)
+        diff = diff_scenario_runs(base, head)
+        assert sorted(diff["new_passes"]) == ["b"]
+        assert diff["recovered"] == []
+        assert diff["recovered_steps"] == {}
+        assert diff["unchanged"] == 1
+
+
+class TestRunScenarioRecoveryPackaged:
+    """Issue #138: the packaged recovery scenarios execute end-to-end via the
+    real MCP dispatch and pass on partial/recovered accounting."""
+
+    @pytest.mark.asyncio
+    async def test_collect_failure_recovery_via_dispatch(self) -> None:
+        """The packaged collect-failure-recovery scenario passes with
+        recovered accounting via the MCP dispatch handler."""
+        handler = mcp_server.app.request_handlers[CallToolRequest]
+        request = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="run_validation_scenario",
+                arguments={"scenario": "collect-failure-recovery"},
+            ),
+        )
+        result = await handler(request)
+        call_result = result.root
+        data = json.loads(call_result.content[0].text)
+
+        assert data["success"] is True
+        assert data["data"]["status"] == "passed"
+        assert data["data"]["summary"]["recovered"] == 1
+        assert data["data"]["summary"]["failed"] == 0
+        primary = data["data"]["steps"][0]
+        assert primary["recovered"] is True
+        assert primary["recovery_status"] == "passed"
+        assert primary["recovery"][0]["status"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_recovery_via_dispatch(self) -> None:
+        """The packaged llm-failure-recovery scenario passes whether or not an
+        LLM key is present: without a key the LLM-required primary fails and
+        the fallback recovery recovers it (min_passing 2 still met)."""
+        handler = mcp_server.app.request_handlers[CallToolRequest]
+        request = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="run_validation_scenario",
+                arguments={"scenario": "llm-failure-recovery"},
+            ),
+        )
+        result = await handler(request)
+        call_result = result.root
+        data = json.loads(call_result.content[0].text)
+
+        assert data["success"] is True
+        assert data["data"]["status"] == "passed"
+        # Without a key: 1 recovered + 1 passed.  With a key: 2 passed.
+        assert data["data"]["summary"]["recovered"] + data["data"]["summary"]["passed"] == 2
+        assert data["data"]["summary"]["failed"] == 0
+
+
 # ============================================================================
 # Integration tests: MCP server dispatch
 # ============================================================================
@@ -1000,3 +1521,625 @@ class TestValidationRunPersistence:
         assert sorted(diff["new_passes"]) == ["b"]
         assert diff["head_passed"] == 2
         assert diff["head_failed"] == 1
+
+
+# ============================================================================
+# Unit tests: run_scenario per-step timeout (issue #134, engine part)
+# ============================================================================
+
+
+class TestRunScenarioTimeout:
+    """Per-step timeout enforcement in run_scenario (issue #134)."""
+
+    SCENARIO_YAML = """\
+name: timeout-scenario
+description: "Scenario with a hang-prone step"
+category: test
+requires_env: []
+steps:
+  - name: "fast step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "slow step"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "post-hang step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    CLEANUP_SCENARIO_YAML = """\
+name: timeout-cleanup-scenario
+description: "Scenario whose cleanup step hangs"
+category: test
+requires_env: []
+steps:
+  - name: "fast step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+cleanup_steps:
+  - name: "slow cleanup step"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    @pytest.fixture
+    def scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "timeout-scenario.yaml").write_text(
+            self.SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "timeout-cleanup-scenario.yaml").write_text(
+            self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
+        )
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict) -> dict:
+        """Hang far beyond the 0.1s test timeout for slow_tool; pass otherwise."""
+        if name == "slow_tool":
+            await asyncio.sleep(5)
+        return {"success": True, "data": {"result": "ok"}}
+
+    async def test_hanging_step_times_out_and_fails_scenario(
+        self, scenario_dir: Path
+    ) -> None:
+        """A step exceeding the per-step timeout reports failed with 'timed out'."""
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        assert result["summary"]["failed"] == 1
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert "0.1" in step["detail"]
+
+    async def test_cleanup_timeout_reported_but_does_not_flip_status(
+        self, scenario_dir: Path
+    ) -> None:
+        """A timed-out cleanup step is reported but never flips scenario status."""
+        result = await run_scenario(
+            "timeout-cleanup-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["failed"] == 0
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["failed"] == 1
+        cleanup_step = result["cleanup"]["steps"][0]
+        assert cleanup_step["status"] == "failed"
+        assert "timed out" in cleanup_step["detail"]
+
+    async def test_default_timeout_backward_compatible(self, scenario_dir: Path) -> None:
+        """Without a timeout arg, a fast step passes as before."""
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=scenario_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["steps"][0]["status"] == "passed"
+
+    async def test_hang_on_middle_step_loop_continues(self, scenario_dir: Path) -> None:
+        """Timeout is per-step: a hang on step 2 fails it but steps 1 and 3 still run."""
+        calls: list[str] = []
+
+        async def tracking_dispatch(name: str, arguments: dict) -> dict:
+            calls.append(name)
+            if name == "slow_tool":
+                await asyncio.sleep(5)
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "timeout-scenario",
+            dispatch=tracking_dispatch,
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        assert calls == ["fast_tool", "slow_tool", "fast_tool"]
+        assert result["steps"][0]["status"] == "passed"
+        assert result["steps"][1]["status"] == "failed"
+        assert "timed out" in result["steps"][1]["detail"]
+        assert result["steps"][2]["status"] == "passed"
+
+
+class TestMCPRunValidationScenarioTimeout:
+    """E4: MCP run_validation_scenario handler passes timeout to run_scenario."""
+
+    @staticmethod
+    def _mock_result() -> dict[str, Any]:
+        return {
+            "status": "passed",
+            "steps": [],
+            "counts": {"passed": 0, "failed": 0, "unconfigured": 0},
+        }
+
+    @pytest.mark.asyncio
+    async def test_handler_passes_timeout_to_run_scenario(self) -> None:
+        """timeout param forwarded to run_scenario."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "autoinfo.mcp.validation.run_scenario",
+            new_callable=AsyncMock,
+            return_value=self._mock_result(),
+        ) as mock_rs:
+            from autoinfo.mcp.server import _handle_run_validation_scenario
+
+            result = await _handle_run_validation_scenario(
+                scenario="test-scene", timeout=60.0
+            )
+            mock_rs.assert_called_once()
+            call_kwargs = mock_rs.call_args.kwargs
+            assert call_kwargs.get("timeout") == 60.0
+            assert result["status"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_handler_default_timeout(self) -> None:
+        """Default timeout is 180.0."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "autoinfo.mcp.validation.run_scenario",
+            new_callable=AsyncMock,
+            return_value=self._mock_result(),
+        ) as mock_rs:
+            from autoinfo.mcp.server import _handle_run_validation_scenario
+
+            result = await _handle_run_validation_scenario(scenario="test-scene")
+            mock_rs.assert_called_once()
+            call_kwargs = mock_rs.call_args.kwargs
+            assert call_kwargs.get("timeout") == 180.0
+            assert result["status"] == "passed"
+
+
+# ============================================================================
+# Unit tests: per-step execution trace (issue #139)
+# ============================================================================
+
+
+class TestStepExecutionTrace:
+    """Issue #139: every step result carries step_index / duration /
+    arguments / trace_id, and llm_assert steps embed judge observability
+    (llm_meta) while keeping the top-level llm_reason."""
+
+    TRACE_SCENARIO_YAML = """\
+name: trace-scenario
+description: "Trace-field scenario"
+category: test
+requires_env: []
+steps:
+  - name: "pass with args"
+    tool: fake_tool
+    arguments: {limit: 5, q: "alpha"}
+    expect:
+      success: true
+      data_has: ["result"]
+
+  - name: "failing step"
+    tool: fake_error
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    LLM_TRACE_SCENARIO_YAML = """\
+name: llm-trace-scenario
+description: "LLM trace-field scenario"
+category: test
+requires_env: []
+steps:
+  - name: "llm pass with meta"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      llm_assert: "Is the result ok?"
+
+  - name: "llm fail with meta"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      llm_assert: "Is the result bad?"
+"""
+
+    @pytest.fixture
+    def trace_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "trace-scenario.yaml").write_text(
+            self.TRACE_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "llm-trace-scenario.yaml").write_text(
+            self.LLM_TRACE_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "env-gated.yaml").write_text(
+            "name: env-gated\ndescription: T\ncategory: test\n"
+            "requires_env: [MISSING_VAR_XYZ]\n"
+            "steps:\n  - name: gated\n    tool: health_check\n    arguments: {}\n",
+            encoding="utf-8",
+        )
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "fake_tool":
+            return {"success": True, "data": {"result": "ok"}}
+        if name == "fake_error":
+            return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
+        return {"success": True, "data": {}}
+
+    async def test_steps_carry_trace_fields(self, trace_dir: Path) -> None:
+        """Every step result carries step_index/duration/arguments/trace_id."""
+        result = await run_scenario(
+            "trace-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=trace_dir,
+        )
+        assert result["status"] == "failed"  # step 2 fails
+        trace_id = result["trace_id"]
+        assert len(trace_id) == 36  # uuid4 string form
+        assert len(result["steps"]) == 2
+        for i, step in enumerate(result["steps"], start=1):
+            assert step["step_index"] == i
+            assert isinstance(step["duration"], float)
+            assert step["duration"] >= 0.0
+            assert step["trace_id"] == trace_id
+            # Pre-existing keys are preserved alongside the new fields.
+            assert step["name"]
+            assert step["tool"]
+            assert step["status"]
+            assert "detail" in step
+        assert result["steps"][0]["arguments"] == {"limit": 5, "q": "alpha"}
+        assert result["steps"][1]["arguments"] == {}
+
+    async def test_trace_id_shared_across_steps(self, trace_dir: Path) -> None:
+        """One uuid per run, shared by every step and the top-level result."""
+        result = await run_scenario(
+            "trace-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=trace_dir,
+        )
+        ids = {step["trace_id"] for step in result["steps"]}
+        assert ids == {result["trace_id"]}
+
+    async def test_llm_meta_embedded_on_llm_assert_pass(
+        self, trace_dir: Path, monkeypatch
+    ) -> None:
+        """llm_assert PASS path embeds llm_meta while keeping llm_reason."""
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._is_llm_configured", lambda: True
+        )
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._llm_judge",
+            lambda assertion, output: {
+                "verdict": "PASS",
+                "reason": "result is ok",
+                "model": "test-model",
+                "tokens": {"prompt_tokens": 10, "total_tokens": 20},
+                "duration": 0.5,
+            },
+        )
+        result = await run_scenario(
+            "llm-trace-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=trace_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "passed"
+        assert step["llm_reason"] == "result is ok"
+        assert step["llm_meta"] == {
+            "model": "test-model",
+            "tokens": {"prompt_tokens": 10, "total_tokens": 20},
+            "duration": 0.5,
+        }
+        assert step["step_index"] == 1
+        assert step["trace_id"] == result["trace_id"]
+
+    async def test_llm_meta_embedded_on_llm_assert_fail(
+        self, trace_dir: Path, monkeypatch
+    ) -> None:
+        """llm_assert FAIL path embeds llm_meta alongside llm_reason."""
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._is_llm_configured", lambda: True
+        )
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._llm_judge",
+            lambda assertion, output: {
+                "verdict": "FAIL",
+                "reason": "output is bad",
+                "model": "test-model",
+                "tokens": {"prompt_tokens": 3, "total_tokens": 9},
+                "duration": 0.25,
+            },
+        )
+        result = await run_scenario(
+            "llm-trace-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=trace_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert step["llm_reason"] == "output is bad"
+        assert step["llm_meta"]["model"] == "test-model"
+        assert step["llm_meta"]["duration"] == 0.25
+        assert step["trace_id"] == result["trace_id"]
+
+    async def test_unconfigured_early_return_carries_trace_fields(
+        self, trace_dir: Path
+    ) -> None:
+        """Env-gated early return decorates its steps with trace fields."""
+        env_before = os.environ.pop("MISSING_VAR_XYZ", None)
+        try:
+            result = await run_scenario(
+                "env-gated",
+                dispatch=self._fake_dispatch,
+                scenarios_dir=trace_dir,
+            )
+            assert result["status"] == "unconfigured"
+            assert result["trace_id"]
+            step = result["steps"][0]
+            assert step["step_index"] == 1
+            assert step["duration"] == 0.0
+            assert step["arguments"] == {}
+            assert step["trace_id"] == result["trace_id"]
+        finally:
+            if env_before is not None:
+                os.environ["MISSING_VAR_XYZ"] = env_before
+
+    async def test_recovery_steps_carry_trace_fields(self, tmp_path: Path) -> None:
+        """Recovery step results carry the primary's step_index + run trace_id,
+        and the primary duration includes the recovery execution."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "rec-trace.yaml").write_text(
+            "name: rec-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "steps:\n"
+            "  - name: flaky primary\n    tool: flaky_tool\n    arguments: {retry: 2}\n"
+            "    expect:\n      success: true\n"
+            "    recovery_steps:\n"
+            "      - name: recovery pass\n        tool: fake_tool\n        arguments: {}\n"
+            "        expect:\n          success: true\n",
+            encoding="utf-8",
+        )
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            if name == "flaky_tool":
+                return {"success": False, "error": {"code": "X", "message": "boom"}}
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "rec-trace",
+            dispatch=dispatch,
+            scenarios_dir=sd,
+        )
+        step = result["steps"][0]
+        assert step["recovered"] is True
+        assert step["step_index"] == 1
+        assert step["arguments"] == {"retry": 2}
+        assert step["trace_id"] == result["trace_id"]
+        rec = step["recovery"][0]
+        assert rec["step_index"] == 1
+        assert rec["trace_id"] == result["trace_id"]
+        assert rec["arguments"] == {}
+        assert isinstance(rec["duration"], float)
+        # Primary duration covers the recovery execution too.
+        assert step["duration"] >= rec["duration"]
+
+    async def test_timeout_step_carries_trace_fields(self, tmp_path: Path) -> None:
+        """A timed-out step still carries the per-step trace fields."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "slow-trace.yaml").write_text(
+            "name: slow-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "steps:\n  - name: hang\n    tool: slow_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n",
+            encoding="utf-8",
+        )
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            await asyncio.sleep(5)
+            return {"success": True, "data": {}}
+
+        result = await run_scenario(
+            "slow-trace",
+            dispatch=dispatch,
+            scenarios_dir=sd,
+            timeout=0.1,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert step["step_index"] == 1
+        assert isinstance(step["duration"], float)
+        assert step["duration"] >= 0.1
+        assert step["arguments"] == {}
+        assert step["trace_id"] == result["trace_id"]
+
+
+class TestLLMJudgeObservability:
+    """Issue #139: _llm_judge captures model / tokens / duration."""
+
+    @staticmethod
+    def _patch_litellm(monkeypatch, *, with_usage: bool = True) -> dict[str, Any]:
+        """Install a fake litellm module returning a canned completion."""
+        import sys
+        import types
+
+        class _FakeUsage:
+            prompt_tokens = 10
+            total_tokens = 25
+
+        class _FakeMessage:
+            content = '{"verdict": "PASS", "reason": "looks good"}'
+
+        class _FakeChoice:
+            message = _FakeMessage()
+
+        class _FakeResponse:
+            def __init__(self) -> None:
+                self.usage = _FakeUsage() if with_usage else None
+                self.choices = [_FakeChoice()]
+
+        calls: dict[str, Any] = {}
+
+        def fake_completion(**kwargs: Any) -> _FakeResponse:
+            calls["model"] = kwargs["model"]
+            return _FakeResponse()
+
+        fake_litellm = types.SimpleNamespace(completion=fake_completion)
+        monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._resolve_llm_config",
+            lambda: {"model": "test-model", "api_key": "k", "api_base": None},
+        )
+        return calls
+
+    def test_llm_judge_returns_model_tokens_duration(self, monkeypatch) -> None:
+        """Judge result carries model, usage tokens, and wall-clock duration."""
+        calls = self._patch_litellm(monkeypatch)
+        verdict = validation_mod._llm_judge("assertion", {"data": 1})
+        assert verdict["verdict"] == "PASS"
+        assert verdict["reason"] == "looks good"
+        assert verdict["model"] == "test-model"
+        assert verdict["tokens"] == {"prompt_tokens": 10, "total_tokens": 25}
+        assert isinstance(verdict["duration"], float)
+        assert verdict["duration"] >= 0.0
+        assert calls["model"] == "test-model"
+
+    def test_llm_judge_tokens_none_without_usage(self, monkeypatch) -> None:
+        """Without usage info the tokens field is None (not a crash)."""
+        self._patch_litellm(monkeypatch, with_usage=False)
+        verdict = validation_mod._llm_judge("assertion", {"data": 1})
+        assert verdict["verdict"] == "PASS"
+        assert verdict["tokens"] is None
+        assert verdict["model"] == "test-model"
+
+
+# ============================================================================
+# Issue #140: regression scenario fields
+# ============================================================================
+
+
+class TestRegressionScenarios:
+    """Regression scenarios carry regression / regression_issue fields."""
+
+    def test_loads_regression_scenarios(self) -> None:
+        """load_scenarios picks up regression/ subdir scenarios with new fields."""
+        scs = load_scenarios()
+        regr = [s for s in scs if s.get("regression")]
+        assert len(regr) >= 5, f"Expected ≥5 regression scenarios, got {len(regr)}"
+        for s in regr:
+            assert s["regression"] is True
+            assert "regression_issue" in s
+            assert s["regression_issue"].startswith("#")
+        func = [s for s in scs if not s.get("regression")]
+        for s in func:
+            assert "regression" not in s
+            assert "regression_issue" not in s
+
+    @pytest.fixture
+    def regression_scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "regression").mkdir()
+        (sd / "regression" / "fake-regression.yaml").write_text(
+            "name: fake-regression\n"
+            "description: \"Regression test\"\n"
+            "category: regression\n"
+            "regression: true\n"
+            "regression_issue: \"#999\"\n"
+            "requires_env: []\n"
+            "steps:\n"
+            "  - name: step1\n"
+            "    tool: fake_tool\n"
+            "    arguments: {}\n"
+            "    expect:\n"
+            "      success: true\n"
+            "      data_has: [result]\n",
+            encoding="utf-8",
+        )
+        (sd / "functional.yaml").write_text(
+            "name: functional\n"
+            "description: \"Functional test\"\n"
+            "requires_env: []\n"
+            "steps:\n"
+            "  - name: step1\n"
+            "    tool: fake_tool\n"
+            "    arguments: {}\n"
+            "    expect:\n"
+            "      success: true\n",
+            encoding="utf-8",
+        )
+        return sd
+
+    async def test_run_scenario_carry_regression_fields(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        async def dispatch(name: str, args: dict) -> dict:
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "fake-regression", dispatch, scenarios_dir=regression_scenario_dir
+        )
+        assert result["regression"] is True
+        assert result["regression_issue"] == "#999"
+        assert result["status"] == "passed"
+
+    async def test_run_scenario_no_regression_fields_on_functional(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        async def dispatch(name: str, args: dict) -> dict:
+            return {"success": True, "data": {}}
+
+        result = await run_scenario(
+            "functional", dispatch, scenarios_dir=regression_scenario_dir
+        )
+        assert "regression" not in result
+        assert "regression_issue" not in result
+
+    async def test_regression_env_unconfigured_carries_fields(
+        self, regression_scenario_dir: Path
+    ) -> None:
+        """Env-gated regression scenario: unconfigured result carries regression fields."""
+        (regression_scenario_dir / "regression" / "env-gated-reg.yaml").write_text(
+            "name: env-gated-reg\n"
+            "description: \"Env gated regression\"\n"
+            "category: regression\n"
+            "regression: true\n"
+            "regression_issue: \"#888\"\n"
+            "requires_env: [MISSING_VAR_XYZ_888]\n"
+            "steps:\n"
+            "  - name: gated\n"
+            "    tool: health_check\n",
+            encoding="utf-8",
+        )
+        result = await run_scenario(
+            "env-gated-reg", dispatch=None, scenarios_dir=regression_scenario_dir
+        )
+        assert result["status"] == "unconfigured"
+        assert result["regression"] is True
+        assert result["regression_issue"] == "#888"

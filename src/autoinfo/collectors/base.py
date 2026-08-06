@@ -13,6 +13,23 @@ from typing import Any
 from autoinfo.models import Item
 
 
+class SourceFailure(Exception):  # noqa: N818 - deliberately not "*Error": the name matches the
+    # "dead source detection" feature terminology (per-source status="error"
+    # + source_failed marker) used across collectors, collect.py, and docs.
+    """Raised by collector handlers to signal an explicit source failure.
+
+    Unlike a silent empty result, a ``SourceFailure`` carries a structured
+    ``reason`` that the collection pipeline surfaces in per-source results
+    (``status="error"`` + ``source_failed`` marker) and logs, so dead,
+    retired, or unreachable sources are detectable instead of looking like
+    a legitimate "0 items found".
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class BaseHandler(ABC):
     """Abstract base class for all source handlers.
 

@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from autoinfo.collect import _build_handler
+from autoinfo.collectors.base import SourceFailure
 from autoinfo.collectors.http_api import HttpApiHandler, _get_field, _traverse_json
 from autoinfo.config import SourceConfig
 
@@ -349,18 +350,17 @@ class TestHttpApiHandlerFetch:
         assert len(items) == 3
 
     @patch("autoinfo.collectors.http_api.httpx.get")
-    def test_fetch_network_error_returns_empty(
+    def test_fetch_network_error_raises_source_failure(
         self, mock_get: MagicMock, crossref_config: SourceConfig
     ) -> None:
         mock_get.side_effect = httpx.NetworkError("Connection refused")
 
         handler = HttpApiHandler(crossref_config)
-        items = handler.fetch(crossref_config.url, query="test", limit=5)
-
-        assert items == []
+        with pytest.raises(SourceFailure):
+            handler.fetch(crossref_config.url, query="test", limit=5)
 
     @patch("autoinfo.collectors.http_api.httpx.get")
-    def test_fetch_http_error_returns_empty(
+    def test_fetch_http_error_raises_source_failure(
         self, mock_get: MagicMock, crossref_config: SourceConfig
     ) -> None:
         mock_response = MagicMock(spec=httpx.Response)
@@ -370,12 +370,11 @@ class TestHttpApiHandlerFetch:
         mock_get.return_value = mock_response
 
         handler = HttpApiHandler(crossref_config)
-        items = handler.fetch(crossref_config.url, query="test", limit=5)
-
-        assert items == []
+        with pytest.raises(SourceFailure):
+            handler.fetch(crossref_config.url, query="test", limit=5)
 
     @patch("autoinfo.collectors.http_api.httpx.get")
-    def test_fetch_malformed_json_returns_empty(
+    def test_fetch_malformed_json_raises_source_failure(
         self, mock_get: MagicMock, crossref_config: SourceConfig
     ) -> None:
         mock_response = MagicMock(spec=httpx.Response)
@@ -384,9 +383,8 @@ class TestHttpApiHandlerFetch:
         mock_get.return_value = mock_response
 
         handler = HttpApiHandler(crossref_config)
-        items = handler.fetch(crossref_config.url, query="test", limit=5)
-
-        assert items == []
+        with pytest.raises(SourceFailure):
+            handler.fetch(crossref_config.url, query="test", limit=5)
 
     @patch("autoinfo.collectors.http_api.httpx.get")
     def test_fetch_skips_malformed_items(

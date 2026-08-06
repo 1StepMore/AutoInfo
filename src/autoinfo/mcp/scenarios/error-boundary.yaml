@@ -1,5 +1,11 @@
 # Error boundary — verify graceful error handling for unknown tools,
 # nonexistent domains, and missing entries.
+#
+# Every error step asserts the canonical error envelope from
+# src/autoinfo/mcp/errors.py: ``{success: false, error: {code, message,
+# actionable}}``.  ``error_code`` pins the code; ``error_actionable``
+# (issue #141) additionally verifies the ``actionable`` boolean field is
+# present on the error envelope — the hint agents use to remediate.
 name: error-boundary
 description: "Error boundary testing for unknown tools and nonexistent resources"
 category: errors
@@ -11,6 +17,7 @@ steps:
     expect:
       success: false
       error_code: "UnknownTool"
+      error_actionable: true
 
   - name: "nonexistent domain schema returns DomainNotFound"
     tool: get_domain_schema
@@ -19,6 +26,7 @@ steps:
     expect:
       success: false
       error_code: "DomainNotFound"
+      error_actionable: true
 
   - name: "nonexistent kb entry returns NotFound"
     tool: get_kb_entry
@@ -27,3 +35,4 @@ steps:
     expect:
       success: false
       error_code: "NotFound"
+      error_actionable: true

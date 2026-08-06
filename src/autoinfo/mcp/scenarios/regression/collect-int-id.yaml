@@ -1,0 +1,41 @@
+# Regression #104: _cache_items crashed on int item.id (GitHub Trending source).
+# _cache_items assumed item.id was str and called .replace() directly; GitHub
+# Trending returned int ids causing AttributeError.  Fix: type guard
+# ``safe_id = str(item.id).replace("/", "_") if item.id else item.id``.
+# This scenario exercises the fixed _cache_items directly via a CLI step
+# constructing Item objects with int and str-with-slash ids — deterministic,
+# no network or env gating needed.
+name: regression-collect-int-id
+description: "Regression #104: _cache_items survives int item ids (GitHub Trending)"
+category: regression
+regression: true
+regression_issue: "#104"
+requires_env: []
+steps:
+  - name: "cache items with int id and str id containing slash"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, tempfile
+      from pathlib import Path
+      from autoinfo.collect import _cache_items
+      from autoinfo.models import Item
+
+      def mk(i, url):
+          return Item(id=i, source_name="regression-104", source_type="web",
+                      source_url=url, title="t", content="c")
+
+      tmp = tempfile.mkdtemp(prefix="regression-104-")
+      os.chdir(tmp)
+      _cache_items(
+          [mk(12345, "https://x.dev/1"), mk("a/b", "https://x.dev/2")],
+          "regression-104", "int-id-source")
+      files = sorted(str(p.relative_to(tmp)) for p in Path("collections").rglob("*.json"))
+      assert any(f.endswith("12345.json") for f in files), files
+      assert any(f.endswith("a_b.json") for f in files), files
+      print("CACHE_ITEMS_INT_ID_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CACHE_ITEMS_INT_ID_OK"]

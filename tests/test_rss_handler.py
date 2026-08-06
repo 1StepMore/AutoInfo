@@ -125,21 +125,26 @@ class TestAtomParsing:
 
 
 class TestErrorHandling:
-    """Verify the handler fails gracefully under various error conditions."""
+    """Verify the handler raises explicit SourceFailure under error conditions."""
 
-    def test_invalid_url_returns_empty_list(self, handler: RSSHandler) -> None:
-        """An unreachable URL should return an empty list (no crash)."""
-        items = handler.fetch("https://invalid.example.com/nonexistent-feed.xml")
-        assert items == []
+    def test_invalid_url_raises_source_failure(self, handler: RSSHandler) -> None:
+        """An unreachable URL raises SourceFailure (not a silent empty list)."""
+        from autoinfo.collectors.base import SourceFailure
 
-    def test_malformed_feed_returns_empty_list(self, handler: RSSHandler) -> None:
-        """A valid URL returning non-XML should return an empty list."""
-        # Use a URL that returns a 200 response but non-XML body
-        items = handler.fetch("https://httpstat.us/200")
-        assert items == []
+        with pytest.raises(SourceFailure):
+            handler.fetch("https://invalid.example.com/nonexistent-feed.xml")
 
-    def test_handler_never_raises(self, handler: RSSHandler) -> None:
-        """Calling ``fetch`` should never raise, regardless of input."""
+    def test_malformed_feed_raises_source_failure(self, handler: RSSHandler) -> None:
+        """A valid URL returning non-XML raises SourceFailure."""
+        from autoinfo.collectors.base import SourceFailure
+
+        with pytest.raises(SourceFailure):
+            handler.fetch("https://httpstat.us/200")
+
+    def test_handler_raises_source_failure_for_bad_inputs(self, handler: RSSHandler) -> None:
+        """Unfetchable inputs raise SourceFailure instead of returning []."""
+        from autoinfo.collectors.base import SourceFailure
+
         bad_inputs = [
             "",
             "not-a-url",
@@ -147,8 +152,8 @@ class TestErrorHandling:
             "ftp://invalid-protocol.com/feed.xml",
         ]
         for url in bad_inputs:
-            items = handler.fetch(url)
-            assert items == [], f"Expected empty list for URL: {url!r}"
+            with pytest.raises(SourceFailure):
+                handler.fetch(url)
 
     def test_feed_with_zero_entries(self, handler: RSSHandler) -> None:
         """A feed with zero entries returns an empty list."""
@@ -163,9 +168,11 @@ class TestErrorHandling:
 
         parsed = feedparser.parse(empty_feed)
         assert len(parsed.entries) == 0
-        # Verify handler path would also work — bozo but no entries → []
-        # (this mimics what handler does internally)
-        assert handler.fetch("https://empty-feed.example.com") == []
+        # Zero-entry feed → explicit SourceFailure, never a silent "0 found"
+        from autoinfo.collectors.base import SourceFailure
+
+        with pytest.raises(SourceFailure):
+            handler.fetch("https://empty-feed.example.com")
 
 
 # ---------------------------------------------------------------------------

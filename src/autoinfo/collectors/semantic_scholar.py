@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, SourceFailure
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_URL = "https://api.semanticscholar.org/graph/v1"
+# Paper search endpoint of the Semantic Scholar Academic Graph API (issue
+# #135).  The bare API root (https://api.semanticscholar.org/graph/v1) 301-
+# redirects to the API documentation — never use it as a fetch target.
+SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 DEFAULT_TIMEOUT = 30  # seconds
 MAX_RETRIES = 3
 RETRY_DELAYS = [2, 4, 8]  # exponential backoff in seconds
@@ -144,7 +147,7 @@ class SemanticScholarHandler(BaseHandler):
         """
         limit = max(1, min(limit, 100))
         url = (
-            f"{BASE_URL}/paper/search"
+            f"{SEARCH_URL}"
             f"?query={quote(query)}&limit={limit}"
             f"&fields={DEFAULT_FIELDS}"
         )
@@ -153,7 +156,15 @@ class SemanticScholarHandler(BaseHandler):
         if self.api_key:
             headers["x-api-key"] = self.api_key
 
-        resp = self._request(url, headers=headers)
+        try:
+            resp = self._request(url, headers=headers)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                raise SourceFailure(
+                    "Semantic Scholar API rate-limited (HTTP 429) without an "
+                    "API key — set AUTOINFO_S2_API_KEY for a higher rate limit"
+                ) from exc
+            raise
         data = resp.json()
         papers = data.get("data", [])
 

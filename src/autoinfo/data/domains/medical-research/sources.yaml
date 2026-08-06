@@ -25,7 +25,7 @@ sources:
 
   - name: arXiv
     type: rss
-    url: https://rss.arxiv.org/rss/bio
+    url: https://rss.arxiv.org/rss/q-bio
     quality_tier: 2
     enabled: true
     rate_limit: 10

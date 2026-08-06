@@ -1,0 +1,81 @@
+# End-User Coverage Matrix (E8, issue #131)
+#
+# Sparse matrix spec: 13 demo domains x 8 products x 7 formats.
+# The generator scripts/coverage_matrix.py renders matrix-report.md from
+# this spec plus real evidence (outputs/** persisted artifacts and the
+# validation_delivery manifest), marking every cell as:
+#
+#   有produced             evidence found for this domain x product x format
+#   空gap                  required cell with no evidence and the LLM is
+#                          configured (or the product is not LLM-gated)
+#   不适用not-applicable   non-required cell with no evidence
+#   未配置unconfigured     required cell whose product is LLM-gated and the
+#                          LLM key is unavailable (Oracle R8: NOT a gap)
+#
+# required_cells (13, Oracle R8): digest/report in json+html, tutorial and
+# presentation in markdown, across medical-research and tech-ai-developer,
+# plus one audio cell (medical-research digest audio).
+version: 1
+
+products:
+  - digest
+  - report
+  - tutorial
+  - presentation
+  - premium-briefing
+  - column
+  - magazine-digest
+  - enterprise-briefing
+
+formats:
+  - markdown
+  - html
+  - json
+  - agent
+  - audio
+  - epub
+  - audiobook
+
+domains:
+  - medical-research
+  - ai-commercial
+  - financial-intelligence
+  - tech-ai-developer
+  - language-learning
+  - online-video
+  - financial-news
+  - online-education
+  - legal-compliance
+  - general-news
+  - gaming
+  - b2b
+  - retail
+
+# Oracle R8: the 13 cells that MUST be produced by validation scenarios.
+required_cells:
+  # medical-research — digest + report (json/html), tutorial/presentation (md), audio
+  - {domain: medical-research, product: digest, format: json}
+  - {domain: medical-research, product: digest, format: html}
+  - {domain: medical-research, product: report, format: json}
+  - {domain: medical-research, product: report, format: html}
+  - {domain: medical-research, product: tutorial, format: markdown}
+  - {domain: medical-research, product: presentation, format: markdown}
+  - {domain: medical-research, product: digest, format: audio}
+  # tech-ai-developer — digest + report (json/html), tutorial/presentation (md)
+  - {domain: tech-ai-developer, product: digest, format: json}
+  - {domain: tech-ai-developer, product: digest, format: html}
+  - {domain: tech-ai-developer, product: report, format: json}
+  - {domain: tech-ai-developer, product: report, format: html}
+  - {domain: tech-ai-developer, product: tutorial, format: markdown}
+  - {domain: tech-ai-developer, product: presentation, format: markdown}
+
+# Products whose generation requires an LLM key. When the LLM is unavailable,
+# an empty required cell for one of these is 未配置unconfigured — never 空gap
+# (Oracle R8 CRITICAL: absence is a configuration obligation, not a product gap).
+llm_gated_products:
+  - premium-briefing
+  - column
+  - magazine-digest
+  - enterprise-briefing
+  - tutorial
+  - presentation

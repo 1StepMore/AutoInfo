@@ -6,8 +6,12 @@ Reads the persisted scenario results from ``validation-runs/<run>/scenarios.json
 ``docs/dev/validation-reports/launch-validation-<version>-<runid>.md``.
 
 The report uses the framework ``§6`` executive-summary skeleton: verdict counts,
-scenario status table, artifact manifest, and an appendix pointer back to the
-framework template and evidence catalog.
+scenario status table, and an appendix pointer back to the framework template
+and evidence catalog.  Since issue #139 it also renders a root-cause
+``## Blockers`` section — every failing step of every failed scenario, with its
+``llm_reason`` / ``llm_meta`` when present — and a ``## Per-step trace``
+appendix with the full per-step trace table (scenario | step_index | name |
+tool | status | duration | trace_id).
 
 Usage:
     python3 scripts/validation_report.py [--version VERSION] [--run RUN_ID]
@@ -42,6 +46,45 @@ def _status_counts(scenarios: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def _truncate_detail(detail: Any, limit: int = 200) -> str:
+    """Render a step detail for the blockers list, truncated to ~*limit* chars.
+
+    Non-string details (e.g. the envelope dict on passed steps) are
+    serialised to JSON first so the truncation applies to the text.
+    """
+    if not isinstance(detail, str):
+        detail = json.dumps(detail, ensure_ascii=False)
+    if len(detail) > limit:
+        return detail[:limit] + "…"
+    return detail
+
+
+def _escape_cell(value: str) -> str:
+    """Escape pipe/newline characters so a value fits a markdown table cell."""
+    return value.replace("|", "\\|").replace("\n", " ")
+
+
+def _iter_steps(
+    scenarios: list[dict[str, Any]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten every step of every scenario for the per-step trace table.
+
+    Yields ``(scenario_name, step)`` pairs covering the main steps, their
+    nested recovery steps (issue #138), and the cleanup steps — in that
+    order — so the appendix renders the full execution trace of the run.
+    """
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for sc in scenarios:
+        sc_name = sc.get("scenario", "?")
+        for step in sc.get("steps", []):
+            rows.append((sc_name, step))
+            for rec in step.get("recovery", []):
+                rows.append((sc_name, rec))
+        for step in sc.get("cleanup", {}).get("steps", []):
+            rows.append((sc_name, step))
+    return rows
+
+
 def generate(version: str, run_id: str) -> Path:
     run_dir = RUNS / run_id
     payload_path = run_dir / "scenarios.json"
@@ -71,22 +114,94 @@ def generate(version: str, run_id: str) -> Path:
     lines.append("|----------|--------|---|")
     for sc in sorted(scenarios, key=lambda x: x.get("scenario", "")):
         summary = sc.get("summary", {})
-        lines.append(f"| {sc.get('scenario', '?')} | {sc.get('status', '?')} "
+        status_str = sc.get("status", "?")
+        if sc.get("regression"):
+            status_str = f"{status_str} (regression)"
+        lines.append(f"| {sc.get('scenario', '?')} | {status_str} "
                      f"| {summary.get('passed', 0)}/{summary.get('total', 0)} |")
     lines.append("")
     lines.append("## Executive summary")
     lines.append("")
+    regression_failed = sum(
+        1 for sc in scenarios
+        if sc.get("regression") and sc.get("status") == "failed"
+    )
     if failed or unconfigured:
         lines.append(f"{failed} scenario(s) failed and {unconfigured} were unconfigured; "
                      f"{passed} passed. See the per-scenario status table and the evidence "
                      f"files under `{run_dir}` for details.")
+        if regression_failed:
+            lines.append(f"Includes {regression_failed} regression failure(s) "
+                         f"(see Regression failures section).")
     else:
         lines.append(f"All {passed} scenario(s) passed. Evidence available under `{run_dir}`.")
     lines.append("")
+
+    # --- Regression failures section (issue #140 P1-3) -----------------------
+    regression_failures = [
+        sc for sc in scenarios
+        if sc.get("regression") and sc.get("status") == "failed"
+    ]
+    lines.append("## Regression failures")
+    lines.append("")
+    if not regression_failures:
+        lines.append("(no regression failures in this run)")
+    else:
+        for sc in regression_failures:
+            sc_name = sc.get("scenario", "?")
+            issue_ref = sc.get("regression_issue", "?")
+            issue_paren = f"({issue_ref})" if issue_ref.startswith("#") else f"(#{issue_ref})"
+            summary = sc.get("summary", {})
+            lines.append(
+                f"- `REG RGRESSION {sc_name} {issue_paren}` — "
+                f"failed {summary.get('passed', 0)}/{summary.get('total', 0)} passed "
+                f"({summary.get('failed', 0)} failed, "
+                f"{summary.get('unconfigured', 0)} unconfigured)"
+            )
+    lines.append("")
     lines.append("## Blockers")
     lines.append("")
-    lines.append("Findings only; B3 (director) disposes. See the `§6` blocker format in the "
-                 "framework template.")
+    failed_scenarios = [sc for sc in scenarios if sc.get("status") == "failed"]
+    if not failed_scenarios:
+        lines.append("(no failing scenarios in this run)")
+    else:
+        for sc in failed_scenarios:
+            sc_name = sc.get("scenario", "?")
+            for step in sc.get("steps", []):
+                if step.get("status") != "failed":
+                    continue
+                lines.append(
+                    f"- `{sc_name}` step {step.get('step_index', '?')} "
+                    f"{step.get('name', '?')} ({step.get('tool', '?')}) — "
+                    f"{_truncate_detail(step.get('detail'))}"
+                )
+                reason = step.get("llm_reason")
+                if reason:
+                    lines.append(f"  - llm_reason: {reason}")
+                llm_meta = step.get("llm_meta")
+                if llm_meta:
+                    lines.append(
+                        f"  - llm_meta: {json.dumps(llm_meta, ensure_ascii=False)}"
+                    )
+    lines.append("")
+    lines.append("## Per-step trace")
+    lines.append("")
+    lines.append("Full per-step execution trace for every scenario — "
+                 "step_index (1-based), duration (wall-clock seconds, incl. "
+                 "recovery), and the run trace_id (issue #139).")
+    lines.append("")
+    lines.append("| Scenario | Step | Name | Tool | Status | Duration (s) | Trace ID |")
+    lines.append("|----------|------|------|------|--------|--------------|----------|")
+    for sc_name, step in _iter_steps(scenarios):
+        dur = step.get("duration")
+        dur_cell = f"{dur:.3f}" if isinstance(dur, (int, float)) else "-"
+        lines.append(
+            f"| {_escape_cell(sc_name)} | {step.get('step_index', '-')} "
+            f"| {_escape_cell(str(step.get('name', '?')))} "
+            f"| {_escape_cell(str(step.get('tool', '?')))} "
+            f"| {step.get('status', '?')} | {dur_cell} "
+            f"| {step.get('trace_id', '-')} |"
+        )
     lines.append("")
     lines.append("## Appendix pointer")
     lines.append("")

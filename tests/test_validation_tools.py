@@ -1142,3 +1142,53 @@ cleanup_steps:
         assert result["steps"][1]["status"] == "failed"
         assert "timed out" in result["steps"][1]["detail"]
         assert result["steps"][2]["status"] == "passed"
+
+
+class TestMCPRunValidationScenarioTimeout:
+    """E4: MCP run_validation_scenario handler passes timeout to run_scenario."""
+
+    @staticmethod
+    def _mock_result() -> dict[str, Any]:
+        return {
+            "status": "passed",
+            "steps": [],
+            "counts": {"passed": 0, "failed": 0, "unconfigured": 0},
+        }
+
+    @pytest.mark.asyncio
+    async def test_handler_passes_timeout_to_run_scenario(self) -> None:
+        """timeout param forwarded to run_scenario."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "autoinfo.mcp.validation.run_scenario",
+            new_callable=AsyncMock,
+            return_value=self._mock_result(),
+        ) as mock_rs:
+            from autoinfo.mcp.server import _handle_run_validation_scenario
+
+            result = await _handle_run_validation_scenario(
+                scenario="test-scene", timeout=60.0
+            )
+            mock_rs.assert_called_once()
+            call_kwargs = mock_rs.call_args.kwargs
+            assert call_kwargs.get("timeout") == 60.0
+            assert result["status"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_handler_default_timeout(self) -> None:
+        """Default timeout is 180.0."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "autoinfo.mcp.validation.run_scenario",
+            new_callable=AsyncMock,
+            return_value=self._mock_result(),
+        ) as mock_rs:
+            from autoinfo.mcp.server import _handle_run_validation_scenario
+
+            result = await _handle_run_validation_scenario(scenario="test-scene")
+            mock_rs.assert_called_once()
+            call_kwargs = mock_rs.call_args.kwargs
+            assert call_kwargs.get("timeout") == 180.0
+            assert result["status"] == "passed"

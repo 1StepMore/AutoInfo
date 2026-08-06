@@ -5991,6 +5991,7 @@ async def _handle_run_validation_scenario(
     scenario: str,
     steps: list[int] | None = None,
     save_results: bool = False,
+    timeout: float = 180.0,
 ) -> dict[str, Any]:
     """Handle run_validation_scenario MCP tool."""
     from autoinfo.mcp.validation import run_scenario, save_scenario_results
@@ -6004,6 +6005,7 @@ async def _handle_run_validation_scenario(
             scenario,
             dispatch=_validation_dispatch,
             steps=steps,
+            timeout=timeout,
         )
         if save_results:
             run_dir = save_scenario_results([result])
@@ -10306,6 +10308,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Persist this run's result to validation-runs/<date>/"
                             " (scenarios.json + latest.txt) for cross-run regression"
+                        ),
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "default": 180.0,
+                        "description": (
+                            "Per-step timeout in seconds (default 180). "
+                            "Each step may run for at most this long."
                         ),
                     },
                 },

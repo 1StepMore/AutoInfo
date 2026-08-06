@@ -484,6 +484,189 @@ def test_package_skips_missing_files(tmp_path: Path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _package — E9 (#141) end-user journey UX metrics
+# ---------------------------------------------------------------------------
+
+_UX_SCENARIO = "enduser-journey"
+
+
+def _journey_result(*, passed: int, total: int, status: str = "passed",
+                    steps: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+    """A run_scenario-shaped enduser-journey result (name-keyed, the shape
+    _run_all_scenarios hands to _package; run_scenario itself uses the
+    ``scenario`` key — covered by test_ux_metrics_matches_scenario_key)."""
+    if steps is None:
+        steps = [("generate_digest", "passed" if i < passed else "failed") for i in range(total)]
+    return {
+        "name": _UX_SCENARIO,
+        "status": status,
+        "summary": {"passed": passed, "failed": total - passed,
+                    "unconfigured": 0, "recovered": 0, "total": total},
+        "steps": [{"name": n, "status": s, "detail": {}} for n, s in steps],
+    }
+
+
+def _package_with_results(tmp_path: Path, results: list[dict[str, Any]], monkeypatch,
+                          artifacts: list[Path] | None = None) -> Path:
+    monkeypatch.setattr(vd, "_quality_run_delivery_gates", _all_pass_gates)
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    return vd._package([{"path": str(p)} for p in (artifacts or [])], results, out)
+
+
+def _zip_report(zip_path: Path) -> str:
+    with zipfile.ZipFile(zip_path) as zf:
+        return zf.read("validation-report.md").decode("utf-8")
+
+
+def test_package_ux_metrics_ok_when_journey_passes(tmp_path: Path, monkeypatch):
+    """A fully-passing enduser-journey yields UX_OK=True and
+    completion_rate >= 0.8 in both validation-report.md and manifest.json."""
+    results = [
+        {"name": "some-other-scenario", "status": "passed", "summary": {"passed": 3, "total": 3}},
+        _journey_result(
+            passed=2, total=2,
+            steps=[("generate_digest markdown for the end-user inbox", "passed"),
+                   ("search_knowledge_base returns entries for the journey query", "passed")],
+        ),
+    ]
+    zip_path = _package_with_results(tmp_path, results, monkeypatch)
+
+    report = _zip_report(zip_path)
+    assert "## UX Metrics (issue #141)" in report
+    assert "UX_OK: True" in report
+    assert "completion_rate=1.0" in report
+    assert "threshold 0.8" in report
+    assert "generate_digest markdown for the end-user inbox — passed" in report
+
+    manifest = _zip_manifest(zip_path)
+    assert manifest["ux"]["ux_ok"] is True
+    assert manifest["ux"]["completion_rate"] >= 0.8
+    assert manifest["ux"]["threshold"] == 0.8
+    assert manifest["ux"]["scenario_status"] == "passed"
+    assert {s["status"] for s in manifest["ux"]["steps"]} == {"passed"}
+
+
+def test_package_ux_metrics_fail_when_journey_below_threshold(tmp_path: Path, monkeypatch):
+    """A journey with 1/2 steps passing (completion_rate 0.5 < 0.8) yields
+    UX_OK=False and the metric is still reported (advisory, never blocking)."""
+    results = [
+        _journey_result(
+            passed=1, total=2, status="failed",
+            steps=[("generate_digest markdown for the end-user inbox", "passed"),
+                   ("search_knowledge_base returns entries for the journey query", "failed")],
+        ),
+    ]
+    zip_path = _package_with_results(tmp_path, results, monkeypatch)
+
+    report = _zip_report(zip_path)
+    assert "UX_OK: False" in report
+    assert "completion_rate=0.5" in report
+    assert "search_knowledge_base returns entries for the journey query — failed" in report
+
+    manifest = _zip_manifest(zip_path)
+    assert manifest["ux"]["ux_ok"] is False
+    assert manifest["ux"]["completion_rate"] < 0.8
+    assert manifest["ux"]["scenario_status"] == "failed"
+    # the package still built — advisory metrics never block delivery
+    assert [e for e in manifest["files"] if e["kind"] != "MATRIX"] == []
+
+
+def test_package_ux_metrics_absent_without_journey(tmp_path: Path, monkeypatch):
+    """When the enduser-journey scenario did not run (e.g. skipped smoke
+    run), the report and manifest omit the UX block entirely."""
+    results = [{"name": "error-boundary", "status": "passed", "summary": {"passed": 3, "total": 3}}]
+    zip_path = _package_with_results(tmp_path, results, monkeypatch)
+
+    report = _zip_report(zip_path)
+    assert "UX Metrics" not in report
+    manifest = _zip_manifest(zip_path)
+    assert manifest.get("ux") is None
+
+
+def test_ux_metrics_matches_scenario_key_and_step_fallback():
+    """_ux_metrics also matches the run_scenario-shaped result (``scenario``
+    key, as persisted in validation-runs/<date>/scenarios.json) and falls
+    back to per-step statuses when summary counts are missing."""
+    raw = {
+        "scenario": _UX_SCENARIO,
+        "status": "passed",
+        "summary": {},
+        "steps": [
+            {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
+            {"name": "search_knowledge_base returns entries for the journey query", "status": "passed"},
+            {"name": "some-other-step", "status": "passed"},
+            {"name": "some-other-step-2", "status": "passed"},
+            {"name": "some-other-step-3", "status": "failed"},
+        ],
+    }
+    metrics = vd._ux_metrics([raw])
+    assert metrics is not None
+    assert metrics["ux_ok"] is True  # 4/5 == 0.8 threshold
+    assert metrics["completion_rate"] == pytest.approx(0.8)
+    assert metrics["passed"] == 4 and metrics["total"] == 5
+
+    below = {
+        "scenario": _UX_SCENARIO,
+        "status": "failed",
+        "summary": {},
+        "steps": [
+            {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
+            {"name": "search_knowledge_base returns entries for the journey query", "status": "passed"},
+            {"name": "some-other-step", "status": "passed"},
+            {"name": "some-other-step-3", "status": "failed"},
+        ],
+    }
+    assert vd._ux_metrics([below])["ux_ok"] is False  # 3/4 = 0.75 < 0.8
+
+    assert vd._ux_metrics([{"name": "other", "status": "passed"}]) is None
+    assert vd._ux_metrics([]) is None
+
+
+# ---------------------------------------------------------------------------
+# error-boundary.yaml — error envelope asserts the actionable boolean (#141)
+# ---------------------------------------------------------------------------
+
+
+def test_error_boundary_asserts_actionable_on_error_envelope():
+    """error-boundary.yaml expect blocks reference ``error.actionable``
+    (error_actionable) for every error-envelope step, verifying the
+    canonical {code, message, actionable} shape from errors.py."""
+    yaml_path = ROOT / "src" / "autoinfo" / "mcp" / "scenarios" / "error-boundary.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    assert data["name"] == "error-boundary"
+    error_steps = [s for s in data["steps"] if s["expect"].get("success") is False]
+    assert error_steps, "expected error-envelope steps"
+    for step in error_steps:
+        assert step["expect"].get("error_actionable") is True, (
+            f"step '{step['name']}' must assert error.actionable"
+        )
+        assert step["expect"]["error_code"], f"step '{step['name']}' keeps error_code"
+
+
+def test_enduser_journey_scenario_loads():
+    """enduser-journey.yaml passes load_scenarios() validation and exercises
+    the end-user product surface: generate_digest + search_knowledge_base."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from autoinfo.mcp.validation import load_scenarios
+    finally:
+        sys.path.remove(str(ROOT / "src"))
+    scenarios = {s["name"]: s for s in load_scenarios()}
+    journey = scenarios.get("enduser-journey")
+    assert journey is not None, "enduser-journey.yaml must load"
+    assert journey["category"] == "enduser"
+    assert journey["requires_env"] == ["AUTOINFO_LLM_API_KEY"]
+    assert journey["requires_domain"] == ["medical-research"]
+    tools = [s["tool"] for s in journey["steps"]]
+    assert tools == ["generate_digest", "search_knowledge_base"]
+    assert journey["steps"][0]["arguments"]["format"] == "markdown"
+    assert "query" in journey["steps"][1]["arguments"]
+
+
+# ---------------------------------------------------------------------------
 # _package — E8 (#131) 04-MATRIX coverage section
 # ---------------------------------------------------------------------------
 

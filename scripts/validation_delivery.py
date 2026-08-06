@@ -537,6 +537,58 @@ def _build_matrix_section(
     return meta
 
 
+# ---------------------------------------------------------------------------
+# E9 (#141): end-user journey UX metrics — advisory section of the package
+# ---------------------------------------------------------------------------
+
+_UX_JOURNEY_SCENARIO = "enduser-journey"
+_UX_THRESHOLD = 0.8
+
+
+def _ux_metrics(results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """UX metrics from the enduser-journey scenario result (issue #141).
+
+    Finds the journey result by its ``name`` (the shape ``_run_all_scenarios``
+    produces) or ``scenario`` key (the raw ``run_scenario`` shape persisted in
+    ``validation-runs/<date>/scenarios.json``).  completion_rate is the
+    fraction of journey steps that passed (passed/total of the summary,
+    falling back to per-step statuses when the summary lacks counts);
+    UX_OK = completion_rate >= 0.8.  Returns ``None`` when the journey did
+    not run (e.g. skipped in a --skip-llm-scenarios smoke run) so the
+    report/manifest simply omit the UX block — advisory, never blocking.
+    """
+    journey = next(
+        (r for r in results
+         if r.get("name") == _UX_JOURNEY_SCENARIO or r.get("scenario") == _UX_JOURNEY_SCENARIO),
+        None,
+    )
+    if journey is None:
+        return None
+    summary = journey.get("summary") or {}
+    passed, total = summary.get("passed"), summary.get("total")
+    if not isinstance(total, int) or total <= 0:
+        steps = journey.get("steps") or []
+        if not steps:
+            return None
+        passed = sum(1 for s in steps if s.get("status") == "passed")
+        total = len(steps)
+    if not isinstance(total, int) or total <= 0:
+        return None
+    completion_rate = (passed or 0) / total
+    return {
+        "ux_ok": completion_rate >= _UX_THRESHOLD,
+        "completion_rate": round(completion_rate, 4),
+        "threshold": _UX_THRESHOLD,
+        "scenario_status": journey.get("status"),
+        "passed": passed or 0,
+        "total": total,
+        "steps": [
+            {"name": s.get("name"), "status": s.get("status")}
+            for s in (journey.get("steps") or [])
+        ],
+    }
+
+
 def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out: Path,
              *,
              spec_path: Path | None = None,
@@ -553,6 +605,11 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
     (``matrix-report.md`` + ``coverage-gaps.json``) from the staged package's
     own manifest plus an optional *evidence_dir*; the generated files are
     registered in the manifest's ``files`` list and summarized in the report.
+
+    E9 (#141): UX metrics (issue #141) — UX_OK / completion_rate from the
+    enduser-journey scenario are emitted as a "UX metrics" report section
+    and registered in the manifest under ``ux``. Advisory only: like
+    04-MATRIX, metrics never block the package.
     """
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     stage = out / f"validation-delivery-{stamp}"
@@ -562,6 +619,8 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
     rej_dir = stage / "06-REJECTED"
     for d in (raw_dir, proc_dir, kb_dir, rej_dir):
         d.mkdir(parents=True, exist_ok=True)
+
+    ux_metrics = _ux_metrics(results)
 
     bucket_dirs = {"RAW": raw_dir, "KB": kb_dir, "PROCESSED": proc_dir}
     manifest = []
@@ -697,10 +756,25 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             )
         report.append("")
 
+    # E9 (#141): UX metrics — advisory report section (never blocks).
+    if ux_metrics is not None:
+        report.append("## UX Metrics (issue #141)")
+        report.append("")
+        report.append(
+            f"- UX_OK: {'True' if ux_metrics['ux_ok'] else 'False'} "
+            f"(completion_rate={ux_metrics['completion_rate']} >= "
+            f"threshold {ux_metrics['threshold']})"
+        )
+        report.append(f"- Journey: `{_UX_JOURNEY_SCENARIO}` (status: {ux_metrics['scenario_status']})")
+        report.append("- Steps:")
+        for step in ux_metrics["steps"]:
+            report.append(f"  - {step['name']} — {step['status']}")
+        report.append("")
+
     (stage / "validation-report.md").write_text("\n".join(report), encoding="utf-8")
     (stage / "manifest.json").write_text(
         json.dumps(
-            {"files": manifest, "rejected": rejected},
+            {"files": manifest, "rejected": rejected, "ux": ux_metrics},
             ensure_ascii=False,
             indent=2,
             default=str,

@@ -1,0 +1,121 @@
+# KB Promote tools - verify the full Raw -> Draft -> Wiki promotion lifecycle.
+#
+# Self-contained: every step operates only on the entry this scenario creates
+# (deterministic entry_id derived from domain/topic/title), never on
+# pre-existing KB entries.  cleanup_steps purge exactly what the scenario
+# created after every run (the 01-Raw entry AND the 03-Wiki entry promoted
+# from the draft — promotion moves the file from 02-Draft to 03-Wiki but the
+# entry_id stays the draft's), regardless of pass/fail, so the real KB is
+# left contaminant-free.
+name: kb-promote
+description: "Promote a KB entry from 01-Raw through 02-Draft to 03-Wiki, then clean up"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+collect_artifacts:
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
+steps:
+  - name: "create_kb_entry writes to 01-Raw"
+    tool: create_kb_entry
+    arguments:
+      domain: medical-research
+      title: "KB Promote Scenario Test Entry"
+      content: "This is a test entry created by the kb-promote validation scenario."
+      source_url: https://kb-promote.autoinfo.dev/promote-test
+      source_type: web
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "create_kb_draft creates Draft from scenario Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-kb-promote-scenario-test-entry
+      title: "KB Promote Scenario Draft"
+      summary: "Draft created for kb-promote validation scenario."
+      tags: ["validation", "scenario"]
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "promote_kb_draft promotes Draft to 03-Wiki"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-kb-promote-scenario-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "verify wiki entry exists via cli python check"
+    kind: cli
+    command: |-
+      python3 -c "
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry('medical-research-draft-kb-promote-scenario-draft')
+      if meta is None:
+          print('WIKI_ENTRY missing')
+          raise SystemExit(1)
+      if meta.get('tier') != '03-Wiki':
+          print('WIKI_ENTRY wrong tier: ' + str(meta.get('tier')))
+          raise SystemExit(1)
+      print('WIKI_ENTRY ' + meta.get('tier', '') + ' ' + str(meta.get('source_url', '')))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["WIKI_ENTRY", "03-Wiki"]
+
+# Always-run best-effort cleanup (engine executes these after the main steps,
+# on pass or fail; results never affect the scenario status).  Only entries
+# whose source_url matches the scenario marker are purged, so real user data
+# is never touched.  Promotion moves the Draft file to 03-Wiki (same
+# entry_id), so BOTH the original 01-Raw entry and the promoted 03-Wiki
+# entry are removed.
+cleanup_steps:
+  - name: "cleanup promoted wiki entry + raw entry"
+    kind: cli
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      markers = [('medical-research-general-kb-promote-scenario-test-entry',
+                  'https://kb-promote.autoinfo.dev/promote-test'),
+                 ('medical-research-draft-kb-promote-scenario-draft',
+                  'https://kb-promote.autoinfo.dev/promote-test')]
+      removed = []
+      for eid, url in markers:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          if meta.get('source_url') != url:
+              print('REFUSE ' + eid)
+              continue
+          res = store.delete_entry(eid)
+          removed.append(eid + ':' + str(res.get('deleted')))
+      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-promote-scenario-test-entry*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('knowledge/medical-research/02-Draft').rglob('*kb-promote-scenario-draft*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('knowledge/medical-research/03-Wiki').rglob('*kb-promote-scenario-draft*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(Path('knowledge/_archive/medical-research').glob('*kb-promote-scenario-draft*')):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      with store.index._connect() as conn:
+          for row in conn.execute('SELECT rowid FROM entries_fts5 WHERE title LIKE ?',
+                                  ('%KB Promote Scenario%',)).fetchall():
+              conn.execute('DELETE FROM entries_fts5 WHERE rowid = ?', (row[0],))
+              removed.append('fts5:' + str(row[0]))
+      print('CLEANED ' + str(removed))
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

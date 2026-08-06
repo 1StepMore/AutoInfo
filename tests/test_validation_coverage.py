@@ -20,9 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS_DIR = ROOT / "src" / "autoinfo" / "mcp" / "scenarios"
@@ -230,7 +229,7 @@ def test_live_audit_prints_regression_scenarios():
     )
     assert result.returncode == 0, result.stderr
     assert "Regression scenarios:" in result.stdout
-    lines = [l for l in result.stdout.splitlines() if l.startswith("Regression scenarios:")]
+    lines = [ln for ln in result.stdout.splitlines() if ln.startswith("Regression scenarios:")]
     assert len(lines) == 1
     line = lines[0]
     assert "#104" in line

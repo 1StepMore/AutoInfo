@@ -72,7 +72,8 @@ def regression_run_dir(tmp_path: Path) -> Path:
             "trace_id": tid,
             "steps": [
                 _step("ss probe", "test_source", "failed", "reachable false", 1, tid, 0.1),
-                _step("arxiv probe", "test_source", "passed", {"success": True, "data": {}}, 2, tid, 0.2),
+                _step("arxiv probe", "test_source", "passed",
+                      {"success": True, "data": {}}, 2, tid, 0.2),
                 _step("uspto probe", "test_source", "failed", "timeout", 3, tid, 0.3),
             ],
         },
@@ -173,7 +174,7 @@ class TestCoverageAuditRegressionMetric:
             timeout=120,
         )
         assert result.returncode == 0, result.stderr
-        lines = [l for l in result.stdout.splitlines() if l.startswith("Regression scenarios:")]
+        lines = [ln for ln in result.stdout.splitlines() if ln.startswith("Regression scenarios:")]
         assert len(lines) == 1
         assert "#104" in lines[0]
         assert "#135" in lines[0]

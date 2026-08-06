@@ -60,7 +60,9 @@ def _requires_llm_key(scenario_path: Path) -> bool:
     )
 
 
-async def _run_all_scenarios(scenarios_dir: Path, skip_llm: bool = False) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+async def _run_all_scenarios(
+    scenarios_dir: Path, skip_llm: bool = False
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Run every scenario via the real engine; return (results, artifacts)."""
     from autoinfo.mcp.server import _handle_run_validation_scenario
 
@@ -677,7 +679,10 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
         "# AutoInfo Validation Delivery Report",
         "",
         f"- Date: {stamp}",
-        f"- Scenarios: {len(results)} (passed={passed}, failed={failed}, unconfigured={unconf}, skipped={skipped})",
+        (
+            f"- Scenarios: {len(results)} "
+            f"(passed={passed}, failed={failed}, unconfigured={unconf}, skipped={skipped})"
+        ),
         f"- Artifacts: {len(manifest)} delivered, {len(rejected)} rejected",
         f"- Domains: {', '.join(_configured_domains()) or '(none)'}",
         "",
@@ -765,7 +770,10 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             f"(completion_rate={ux_metrics['completion_rate']} >= "
             f"threshold {ux_metrics['threshold']})"
         )
-        report.append(f"- Journey: `{_UX_JOURNEY_SCENARIO}` (status: {ux_metrics['scenario_status']})")
+        report.append(
+            f"- Journey: `{_UX_JOURNEY_SCENARIO}` "
+            f"(status: {ux_metrics['scenario_status']})"
+        )
         report.append("- Steps:")
         for step in ux_metrics["steps"]:
             report.append(f"  - {step['name']} — {step['status']}")

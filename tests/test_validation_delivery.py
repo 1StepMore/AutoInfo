@@ -594,7 +594,8 @@ def test_ux_metrics_matches_scenario_key_and_step_fallback():
         "summary": {},
         "steps": [
             {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
-            {"name": "search_knowledge_base returns entries for the journey query", "status": "passed"},
+            {"name": "search_knowledge_base returns entries for the journey query",
+             "status": "passed"},
             {"name": "some-other-step", "status": "passed"},
             {"name": "some-other-step-2", "status": "passed"},
             {"name": "some-other-step-3", "status": "failed"},
@@ -612,7 +613,8 @@ def test_ux_metrics_matches_scenario_key_and_step_fallback():
         "summary": {},
         "steps": [
             {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
-            {"name": "search_knowledge_base returns entries for the journey query", "status": "passed"},
+            {"name": "search_knowledge_base returns entries for the journey query",
+             "status": "passed"},
             {"name": "some-other-step", "status": "passed"},
             {"name": "some-other-step-3", "status": "failed"},
         ],

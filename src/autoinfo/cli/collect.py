@@ -10,7 +10,7 @@ Usage::
 
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 import typer
 
@@ -69,6 +69,10 @@ def collect(
     try:
         from autoinfo.collect import run_collection
 
+        # Live per-source progress lines (human-facing only). Skipped for
+        # --json so the output stays pure JSON.
+        progress_cb = None if json_output else _make_progress_printer()
+
         if all_domains:
             # -- Multi-domain collection -----------------------------------
             from autoinfo.config import get_config_path, load_config
@@ -97,6 +101,7 @@ def collect(
                     sources=sources,
                     limit=limit,
                     dry_run=dry_run,
+                    progress_cb=progress_cb,
                 )
                 if force_full:
                     run_kwargs["force_full"] = True
@@ -138,6 +143,7 @@ def collect(
                 sources=sources,
                 limit=limit,
                 dry_run=dry_run,
+                progress_cb=progress_cb,
             )
             if force_full:
                 run_kwargs["force_full"] = True
@@ -177,6 +183,31 @@ def collect(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _make_progress_printer() -> Callable[[Any], None]:
+    """Return a callback printing a live per-source progress line.
+
+    Called by ``run_collection`` as each source finishes, so the human sees
+    progress during the run instead of only the final summary. Uses
+    ``print(..., flush=True)`` so lines appear immediately.
+    """
+    icons = {
+        "success": "✓",
+        "partial": "⚠",
+        "error": "✗",
+        "skipped": "–",
+    }
+
+    def _on_source_done(src_result: Any) -> None:
+        icon = icons.get(src_result.status, "?")
+        print(
+            f"  {icon} {src_result.source}: {src_result.items_new} new / "
+            f"{src_result.items_found} found ({src_result.duration_s:.1f}s)",
+            flush=True,
+        )
+
+    return _on_source_done
 
 
 def _print_human(result: dict[str, Any]) -> None:

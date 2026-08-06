@@ -16,11 +16,12 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
 from autoinfo.alerts import check_alerts, check_source_alerts, check_source_credentials
+from autoinfo.collectors.base import SourceFailure
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
@@ -44,6 +45,7 @@ def run_collection(
     limit: int = 20,
     dry_run: bool = False,
     force_full: bool = False,
+    progress_cb: Callable[[CollectionResult], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a full collection run for a domain.
 
@@ -61,6 +63,11 @@ def run_collection(
     dry_run : bool
         When ``True``, return estimated counts without any storage
         operations (default ``False``).
+    progress_cb : Callable[[CollectionResult], None] | None
+        Optional callback invoked with each per-source ``CollectionResult``
+        as soon as that source finishes. CLI-only, human-facing progress
+        reporting — the MCP surface never passes one (its results are
+        polled asynchronously; see docs/dev/cli-mcp-rest-parity.md).
 
     Returns
     -------
@@ -136,6 +143,8 @@ def run_collection(
             force_full=force_full,
         )
         per_source.append(src_result)
+        if progress_cb is not None:
+            progress_cb(src_result)
 
     # -- Aggregate totals --------------------------------------------------
     total_found = sum(r.items_found for r in per_source)
@@ -275,13 +284,18 @@ def _collect_from_source(
     # -- Fetch items -------------------------------------------------------
     try:
         items = _fetch_items(handler, source_config, topic, limit)
-    except Exception as exc:
+    except SourceFailure as exc:
         plog.error(
-            "Fetch failed for source",
+            "Source failed",
             source_type=source_config.type,
-            extra={"source_name": source_config.name, "error": str(exc)},
+            extra={"source_name": source_config.name, "reason": exc.reason},
         )
         error_duration = round(time.time() - src_start, 3)
+        error_dict = {
+            "message": str(exc),
+            "source_failed": True,
+            "reason": exc.reason,
+        }
         _log_run(
             domain=domain,
             source_name=source_config.name,
@@ -289,7 +303,7 @@ def _collect_from_source(
             items_found=0,
             items_new=0,
             status="error",
-            errors=[{"message": f"Fetch failed: {exc}"}],
+            errors=[error_dict],
             duration_s=error_duration,
         )
         return CollectionResult(
@@ -299,7 +313,41 @@ def _collect_from_source(
             status="error",
             items_found=0,
             items_new=0,
-            errors=[{"message": f"Fetch failed: {exc}"}],
+            errors=[error_dict],
+            source_failed=True,
+            duration_s=error_duration,
+        )
+    except Exception as exc:
+        plog.error(
+            "Fetch failed for source",
+            source_type=source_config.type,
+            extra={"source_name": source_config.name, "error": str(exc)},
+        )
+        error_duration = round(time.time() - src_start, 3)
+        error_dict = {
+            "message": f"Fetch failed: {exc}",
+            "source_failed": True,
+            "reason": str(exc),
+        }
+        _log_run(
+            domain=domain,
+            source_name=source_config.name,
+            collection_id=collection_id,
+            items_found=0,
+            items_new=0,
+            status="error",
+            errors=[error_dict],
+            duration_s=error_duration,
+        )
+        return CollectionResult(
+            collection_id=collection_id,
+            domain=domain,
+            source=source_config.name,
+            status="error",
+            items_found=0,
+            items_new=0,
+            errors=[error_dict],
+            source_failed=True,
             duration_s=error_duration,
         )
 
@@ -424,6 +472,16 @@ def _build_handler(source_config: SourceConfig) -> Any:
         from autoinfo.collectors.pubmed import PubMedHandler
 
         return PubMedHandler(source_config=source_config)
+
+    if stype == "api" and "semantic" in name:
+        from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+
+        return SemanticScholarHandler(source_config=source_config)
+
+    if stype == "api" and "uspto" in name:
+        from autoinfo.collectors.uspto import USPTOHandler
+
+        return USPTOHandler(source_config=source_config)
 
     if stype == "dblp":
         from autoinfo.collectors.dblp import DBLPHandler
@@ -742,6 +800,18 @@ def _fetch_items(
     if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "sec_edgar":
         items = handler.fetch(limit=limit)
         return [handler.to_item(item) for item in items]
+
+    # -- Semantic Scholar handler path --------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "semantic_scholar":
+        query = topic if topic else ""
+        papers = handler.fetch(query, limit=limit)
+        return [handler.to_item(p) for p in papers]
+
+    # -- USPTO handler path --------------------------------------------------
+    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "uspto":
+        query = topic if topic else ""
+        patents = handler.fetch(query, limit=limit)
+        return [handler.to_item(p) for p in patents]
 
     # -- RSS / Web handler path --------------------------------------------
     if hasattr(handler, "fetch"):

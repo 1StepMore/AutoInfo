@@ -12,7 +12,7 @@ from typing import Any
 
 import feedparser
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, SourceFailure
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -54,14 +54,26 @@ class RSSHandler(BaseHandler):
         Returns
         -------
         list[Item]
-            Parsed items.  Returns an empty list on any error (network
-            failure, malformed XML, etc.) — this method **never** raises.
+            Parsed items.
+
+        Raises
+        ------
+        SourceFailure
+            On network failure, malformed XML, an HTTP error status, or a
+            zero-entry feed — so a dead feed surfaces as an explicit
+            structured failure instead of a silent empty list (issue #135).
         """
         try:
             parsed = feedparser.parse(url, agent="AutoInfo/1.8 (autoinfo@example.com)")
         except Exception as exc:
             logger.error("RSS fetch failed for %s: %s", url, exc)
-            return []
+            raise SourceFailure(f"RSS fetch failed for {url}: {exc}") from exc
+
+        # -- HTTP error status: dead or misconfigured feed ------------------
+        feed_status = getattr(parsed, "status", None)
+        if feed_status is not None and feed_status >= 400:
+            logger.error("RSS feed returned HTTP %s for %s", feed_status, url)
+            raise SourceFailure(f"RSS feed returned HTTP {feed_status} for {url}")
 
         # -- bozo bit: feedparser could not fully parse the feed ----------
         if parsed.bozo and not parsed.entries:
@@ -71,12 +83,14 @@ class RSSHandler(BaseHandler):
                 url,
                 bozo_exception or "unknown",
             )
-            return []
+            raise SourceFailure(
+                f"RSS parse error for {url} (bozo): {bozo_exception or 'unknown'}"
+            )
 
         # -- Ensure we have entries ---------------------------------------
         if not parsed.entries:
             logger.warning("RSS feed returned zero entries: %s", url)
-            return []
+            raise SourceFailure(f"RSS feed returned zero entries: {url}")
 
         items: list[Item] = []
         for i, entry in enumerate(parsed.entries):

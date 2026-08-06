@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 import yaml
@@ -359,6 +359,76 @@ class TestRunCollection:
 
     @patch("autoinfo.collect.get_config_path")
     @patch("autoinfo.collect.load_config")
+    def test_progress_cb_called_per_source(
+        self,
+        mock_load_config,
+        mock_get_config_path,
+        with_config,
+    ):
+        """``progress_cb`` fires once per source, in order, with its result."""
+        from autoinfo.collect import run_collection
+        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+
+        config = Config(
+            project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
+            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    active=True,
+                    sources=[
+                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
+                        SourceConfig(name="nature-rss", type="rss", url="https://feeds.nature.com/nature/rss/current"),
+                    ],
+                    topics=[],
+                ),
+            ],
+        )
+        mock_get_config_path.return_value = with_config / ".autoinfo" / "config.yaml"
+        mock_load_config.return_value = config
+
+        seen: list[str] = []
+        with patch("autoinfo.collect._fetch_items", return_value=[]):
+            run_collection(
+                domain="medical-research",
+                dry_run=True,
+                progress_cb=lambda r: seen.append(r.source),
+            )
+
+        assert seen == ["pubmed", "nature-rss"]
+
+    @patch("autoinfo.collect.get_config_path")
+    @patch("autoinfo.collect.load_config")
+    def test_progress_cb_optional_when_none(self, mock_load_config, mock_get_config_path, with_config):
+        """``progress_cb`` defaults to ``None`` — collection works unchanged."""
+        from autoinfo.collect import run_collection
+        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+
+        config = Config(
+            project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
+            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    active=True,
+                    sources=[
+                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
+                    ],
+                    topics=[],
+                ),
+            ],
+        )
+        mock_get_config_path.return_value = with_config / ".autoinfo" / "config.yaml"
+        mock_load_config.return_value = config
+
+        with patch("autoinfo.collect._fetch_items", return_value=[]):
+            result = run_collection(domain="medical-research", dry_run=True)
+
+        assert result["total_found"] == 0
+        assert len(result["per_source"]) == 1
+
+    @patch("autoinfo.collect.get_config_path")
+    @patch("autoinfo.collect.load_config")
     def test_dry_run_returns_estimates_without_storage(
         self,
         mock_load_config,
@@ -696,6 +766,7 @@ class TestCollectCli:
             sources=None,
             limit=10,
             dry_run=False,
+            progress_cb=ANY,
         )
 
     @patch("autoinfo.collect.run_collection")
@@ -725,6 +796,7 @@ class TestCollectCli:
             sources=None,
             limit=20,
             dry_run=True,
+            progress_cb=ANY,
         )
 
     @patch("autoinfo.collect.run_collection")
@@ -788,6 +860,7 @@ class TestCollectCli:
             sources=["pubmed"],
             limit=20,
             dry_run=False,
+            progress_cb=ANY,
         )
 
     def test_cli_no_config_error(self, cli_runner):

@@ -12,7 +12,7 @@ steps:
   - name: "rss platform reachable (arXiv)"
     tool: test_source
     arguments:
-      url: "https://rss.arxiv.org/rss/bio"
+      url: "https://rss.arxiv.org/rss/q-bio"
       type: rss
     expect:
       success: true

@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, SourceFailure
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,21 @@ class USPTOHandler(BaseHandler):
 
         try:
             return self._fetch_patentsview(query, limit)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (301, 302, 307, 308):
+                # PatentsView was retired by USPTO (issue #135): the endpoint
+                # 301-redirects to a data.uspto.gov transition guide, not to a
+                # working API.  Surface an explicit structured failure instead
+                # of silently returning [].
+                raise SourceFailure(
+                    "PatentsView API retired by USPTO (HTTP 301; migrated to "
+                    "data.uspto.gov) — no keyless patent search API available"
+                ) from exc
+            logger.warning(
+                "PatentsView API unavailable, falling back to RSS feed",
+                exc_info=True,
+            )
+            return self._fetch_rss(query, limit)
         except Exception:
             logger.warning(
                 "PatentsView API unavailable, falling back to RSS feed",
@@ -278,7 +293,13 @@ class USPTOHandler(BaseHandler):
 
         # Build RSS URL with optional category filter from query
         url = USPTO_RSS_URL
-        resp = self._request(url)
+        try:
+            resp = self._request(url)
+        except httpx.HTTPStatusError as exc:
+            raise SourceFailure(
+                f"USPTO RSS feed unavailable (HTTP {exc.response.status_code}): "
+                f"{USPTO_RSS_URL}"
+            ) from exc
         root = ET.fromstring(resp.text)
 
         # RSS 2.0 namespace

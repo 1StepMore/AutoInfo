@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import trafilatura
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, SourceFailure
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
@@ -172,8 +172,14 @@ class HttpApiHandler(BaseHandler):
         Returns
         -------
         list[Item]
-            Collected items.  May be empty on any error — this method
-            **never** raises.
+            Collected items.
+
+        Raises
+        ------
+        SourceFailure
+            On any HTTP/network/parse failure, so a dead source surfaces
+            as an explicit structured failure instead of a silent empty
+            list (issue #135).
         """
         timeout = float(self._settings.get("timeout", 30))
 
@@ -211,7 +217,9 @@ class HttpApiHandler(BaseHandler):
                 self.source_name,
                 exc,
             )
-            return []
+            raise SourceFailure(
+                f"HTTP API fetch failed for {url} (source: {self.source_name}): {exc}"
+            ) from exc
 
         return self._map_to_items(all_items[:limit])
 

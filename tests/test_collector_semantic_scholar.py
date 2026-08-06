@@ -447,7 +447,9 @@ class TestSemanticScholarErrorHandling:
                 handler.fetch("test", limit=1)
 
     def test_http_429_too_many_requests(self) -> None:
-        """429 is an HTTP status error — not retried unless explicitly coded."""
+        """429 without an API key raises an explicit SourceFailure (issue #135)."""
+        from autoinfo.collectors.base import SourceFailure
+
         handler = SemanticScholarHandler()
 
         resp = httpx.Response(
@@ -456,8 +458,11 @@ class TestSemanticScholarErrorHandling:
         )
 
         with patch("httpx.get", return_value=resp):
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(SourceFailure) as exc_info:
                 handler.fetch("test", limit=1)
+
+        assert "429" in exc_info.value.reason
+        assert "AUTOINFO_S2_API_KEY" in exc_info.value.reason
 
 
 # ---------------------------------------------------------------------------

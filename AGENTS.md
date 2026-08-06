@@ -43,6 +43,30 @@ automatically via project-level configuration.
 python -m autoinfo.mcp.server
 ```
 
+## Running the CLI
+
+The CLI is the human-facing entry point — same capabilities as MCP, with
+`--domain X --topic Y` flags mapping 1:1 to tool parameters. Two equivalent
+invocations run the same Typer app (`src/autoinfo/cli/__init__.py`):
+
+| Entry | Command | How it's wired |
+|-------|---------|----------------|
+| **Console script (primary)** | `autoinfo <cmd>` | `pip install -e .` / `make install` creates it from `pyproject.toml` `[project.scripts] autoinfo = "autoinfo.cli:app"` |
+| **Module entry (equivalent)** | `python -m autoinfo.cli <cmd>` | Runs the same app via `src/autoinfo/cli/__main__.py` |
+
+Do **not** confuse the CLI with the MCP server: `python -m autoinfo.mcp.server`
+starts the MCP stdio server (agent-facing, protocol over stdio — never use it
+interactively). The CLI prints human output; the MCP server speaks JSON-RPC.
+
+First commands:
+
+```bash
+autoinfo --help                              # or: python -m autoinfo.cli --help
+autoinfo init --demo medical-research        # scaffold a demo domain
+autoinfo collect --domain medical-research   # fetch items (live per-source progress lines)
+autoinfo process --domain medical-research   # LLM extraction + quality gates
+```
+
 ## Project Structure
 
 ```

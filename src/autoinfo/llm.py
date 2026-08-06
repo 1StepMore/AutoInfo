@@ -96,6 +96,7 @@ class LLMExtractor:
         self._config = config
         self._json_mode = config.llm.json_mode
         self._reasoning_model = config.llm.reasoning_model
+        self._timeout = float(config.llm.timeout or 120.0)
 
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL
@@ -344,6 +345,7 @@ class LLMExtractor:
                     max_tokens=2000,
                     temperature=0.1,
                     api_base=base_url or None,
+                    timeout=self._timeout,
                 )
 
                 if model_name != self._model:

@@ -101,6 +101,8 @@ class LLMConfig:
     base_url: str = ""
     json_mode: bool = False
     reasoning_model: bool = False
+    # Seconds per litellm call; overrides litellm's 600s default (config.yaml ``llm.timeout``).
+    timeout: float = 120.0
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
@@ -503,6 +505,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             base_url=str(f.get("base_url", "")),
             json_mode=bool(f.get("json_mode", False)),
             reasoning_model=bool(f.get("reasoning_model", False)),
+            timeout=float(f.get("timeout", 120.0)),
         )
         for f in fallback_raw
     ]
@@ -679,6 +682,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             base_url=str(llm_raw.get("base_url", "")),
             json_mode=bool(llm_raw.get("json_mode", False)),
             reasoning_model=bool(llm_raw.get("reasoning_model", False)),
+            timeout=float(llm_raw.get("timeout", 120.0)),
             fallback=fallback,
             tasks=tasks,
         ),
@@ -897,6 +901,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             "api_key": config.llm.api_key,
             "json_mode": config.llm.json_mode,
             "reasoning_model": config.llm.reasoning_model,
+            "timeout": config.llm.timeout,
         },
         "domains": [],
     }
@@ -906,7 +911,13 @@ def config_to_dict(config: Config) -> dict[str, Any]:
     # Serialize llm.fallback
     if config.llm.fallback:
         raw["llm"]["fallback"] = [
-            {"provider": fb.provider, "model": fb.model, "json_mode": fb.json_mode, "reasoning_model": fb.reasoning_model}
+            {
+                "provider": fb.provider,
+                "model": fb.model,
+                "json_mode": fb.json_mode,
+                "reasoning_model": fb.reasoning_model,
+                "timeout": fb.timeout,
+            }
             for fb in config.llm.fallback
         ]
     # Serialize llm.tasks
@@ -1114,6 +1125,7 @@ def _resolve_task_llm_config(config: Config, task_name: str = "") -> LLMConfig:
         base_url=base.base_url,
         json_mode=base.json_mode,
         reasoning_model=base.reasoning_model,
+        timeout=base.timeout,
         fallback=base.fallback,
         tasks=base.tasks,
     )

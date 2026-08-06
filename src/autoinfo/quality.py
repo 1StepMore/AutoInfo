@@ -703,8 +703,10 @@ class G3RelevanceScoring:
     def __init__(
         self,
         model: str = "openrouter/deepseek/deepseek-chat",
+        timeout: float | None = None,
     ) -> None:
         self._model = model
+        self._timeout = timeout
         # Mockable LLM call function for CI tests.
         # When set, this callable is used instead of litellm.completion.
         # Tests can assign a MagicMock here to avoid real API calls.
@@ -920,6 +922,7 @@ class G3RelevanceScoring:
                         ],
                         max_tokens=10,
                         temperature=0.0,
+                        **(dict(timeout=self._timeout) if self._timeout is not None else {}),
                     )
                     raw = response.choices[0].message.content
 
@@ -1057,10 +1060,12 @@ class G4FactualConsistency:
         model: str = "openrouter/deepseek/deepseek-chat",
         collections_path: str | Path = "collections",
         json_mode: bool = False,
+        timeout: float | None = None,
     ) -> None:
         self._model = model
         self._collections_path = Path(collections_path)
         self._json_mode = json_mode
+        self._timeout = timeout
 
     # ------------------------------------------------------------------
     # Public API
@@ -1161,6 +1166,7 @@ class G4FactualConsistency:
                     **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
                     max_tokens=500,
                     temperature=0.0,
+                    **(dict(timeout=self._timeout) if self._timeout is not None else {}),
                 )
 
                 raw_content: str = response.choices[0].message.content
@@ -1353,9 +1359,15 @@ class G5TranslationAccuracy:
         'Answer ONLY with JSON: {"faithful": bool, "explanation": str, "issues": [str]}'
     )
 
-    def __init__(self, model: str = "openrouter/deepseek/deepseek-chat", json_mode: bool = False) -> None:
+    def __init__(
+        self,
+        model: str = "openrouter/deepseek/deepseek-chat",
+        json_mode: bool = False,
+        timeout: float | None = None,
+    ) -> None:
         self._model = model
         self._json_mode = json_mode
+        self._timeout = timeout
 
     # ------------------------------------------------------------------
     # Public API
@@ -1425,6 +1437,7 @@ class G5TranslationAccuracy:
                 **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
                 max_tokens=500,
                 temperature=0.0,
+                **(dict(timeout=self._timeout) if self._timeout is not None else {}),
             )
 
             content: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -2578,6 +2591,7 @@ def llm_judge(
     target_lang: str,
     model: str | None = None,
     json_mode: bool = False,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Gate 5: LLM-based quality eval (faithfulness, terminology, style, readability 0-100)."""
     try:
@@ -2590,6 +2604,8 @@ def llm_judge(
     _lm: Any = _lm_mod
     if model is None:
         model = _resolve_llm_model()
+    if timeout is None:
+        timeout = _resolve_llm_timeout()
 
     prompt = (
         f"Evaluate translation {source_lang}->{target_lang}.\n"
@@ -2601,7 +2617,8 @@ def llm_judge(
 
     try:
         resp = _lm.completion(model=model, messages=[{"role": "user", "content": prompt}],
-                              **(dict(response_format={"type": "json_object"}) if json_mode else {}), max_tokens=1000, temperature=0.0)
+                              **(dict(response_format={"type": "json_object"}) if json_mode else {}), max_tokens=1000, temperature=0.0,
+                              **(dict(timeout=timeout) if timeout is not None else {}))
         parsed = json.loads(resp.choices[0].message.content)
     except Exception as e:
         logger.warning("llm_judge failed: %s", e)
@@ -2634,6 +2651,25 @@ def _resolve_llm_model() -> str:
     return model
 
 
+def _resolve_llm_timeout() -> float | None:
+    """Resolve the per-call LLM timeout from config (``llm.timeout``).
+
+    Returns ``None`` when no config can be loaded — the caller then omits
+    the ``timeout`` kwarg and litellm's default (600s) applies.
+    """
+    from autoinfo.config import Config, get_config_path, load_config  # noqa: PLC0415
+
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+        else:
+            config = Config()
+        return float(config.llm.timeout)
+    except Exception:
+        return None
+
+
 def run_translation_quality_gates(
     source: str,
     target: str,
@@ -2641,6 +2677,7 @@ def run_translation_quality_gates(
     target_lang: str,
     terminology_dict: dict[str, Any] | None = None,
     model: str | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Run all 5 translation quality gates and compute composite score.
 
@@ -2660,7 +2697,7 @@ def run_translation_quality_gates(
     g2 = check_terminology(source, target, terminology_dict or {})
     g3 = check_length_ratio(source, target)
     g4 = check_source_copy(source, target)
-    g5 = llm_judge(source, target, source_lang, target_lang, model)
+    g5 = llm_judge(source, target, source_lang, target_lang, model, timeout=timeout)
 
     composite = calculate_quality_score(
         faithfulness=float(g5["faithfulness"]),
@@ -2690,6 +2727,7 @@ def run_quality_gates(
     item: Item,
     context: dict[str, Any] | None = None,
     gate_config: dict[str, QualityGateConfig] | None = None,
+    llm_timeout: float | None = None,
 ) -> dict[str, QualityResult]:
     """Run all quality gates (G0, G1, G1-ToS, G2, G3) on *item*.
 
@@ -2713,6 +2751,9 @@ def run_quality_gates(
         If provided, per-gate values (retries, action, threshold) are
         applied to matching gates.  When ``None`` or missing keys,
         defaults are used (backward compatible).
+    llm_timeout:
+        Optional per-call LLM timeout (seconds) forwarded to the G3
+        LLM scorer.  ``None`` keeps litellm's default.
 
     Returns
     -------
@@ -2748,7 +2789,7 @@ def run_quality_gates(
     g1 = G1SourceAuthority()
     g1tos = G1TosCompliance()
     g2 = G2Dedup()
-    g3 = G3RelevanceScoring()
+    g3 = G3RelevanceScoring(timeout=llm_timeout)
 
     results: dict[str, QualityResult] = {}
 

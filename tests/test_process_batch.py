@@ -218,7 +218,8 @@ class TestBatchProcessing:
         assert r1.processed_count == 2
         assert r1.remaining_count == 1
         assert r1.is_complete is False
-        assert processed_ids == ["item-001", "item-002"]
+        # Parallel processing does not guarantee extraction call order
+        assert sorted(processed_ids) == ["item-001", "item-002"]
         first_batch_ids = list(processed_ids)
         processed_ids.clear()
 
@@ -229,7 +230,7 @@ class TestBatchProcessing:
         assert r2.processed_count == 1
         assert r2.remaining_count == 0
         assert r2.is_complete is True
-        assert processed_ids == ["item-003"]
+        assert sorted(processed_ids) == ["item-003"]
 
         # Verify no overlap
         all_ids = first_batch_ids + processed_ids
@@ -267,8 +268,8 @@ class TestBatchProcessing:
         # Cache changed => reset to start_index=0, re-process from start
         assert result.total_items == 2
         assert result.processed_count == 2
-        # All items reprocessed when cache size changes
-        assert processed_ids == ["item-001", "item-002"]
+        # All items reprocessed when cache size changes (order not guaranteed)
+        assert sorted(processed_ids) == ["item-001", "item-002"]
 
     def test_cache_change_resets_progress(
         self, three_items: list[Item]

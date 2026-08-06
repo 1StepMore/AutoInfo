@@ -2021,6 +2021,7 @@ def _handle_suggest_keywords(
 
     from autoinfo.config import get_config_path, load_config
 
+    timeout: float | None = None
     try:
         config_path = get_config_path()
         if config_path:
@@ -2032,6 +2033,7 @@ def _handle_suggest_keywords(
             api_key = config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY", "")
             base_url = config.llm.base_url or None
             json_mode = config.llm.json_mode
+            timeout = config.llm.timeout
         else:
             model = "deepseek/deepseek-chat"
             api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
@@ -2072,6 +2074,7 @@ def _handle_suggest_keywords(
             temperature=0.3,
             api_base=base_url,
             api_key=api_key or None,
+            **(dict(timeout=timeout) if timeout is not None else {}),
         )
         content: str = response.choices[0].message.content or ""  # type: ignore[union-attr]
 
@@ -10569,14 +10572,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_suggest_keywords(**arguments)
 
         # -- Collection / Processing (5) ----------------------------------
+        # collect/process/batch_run are long-running sync handlers; offload
+        # them so the asyncio event loop stays responsive and the progress
+        # tools (get_collection_progress / get_processing_progress) keep
+        # answering while a run is in flight (issue #136).
         elif name == "collect_sources":
-            result = _handle_collect_sources(**arguments)
+            result = await asyncio.to_thread(_handle_collect_sources, **arguments)
         elif name == "get_collection_progress":
             result = _handle_get_collection_progress(**arguments)
         elif name == "get_collection_status":
             result = _handle_get_collection_status(**arguments)
         elif name == "process_collection":
-            result = _handle_process_collection(**arguments)
+            result = await asyncio.to_thread(_handle_process_collection, **arguments)
         elif name == "get_processing_progress":
             result = _handle_get_processing_progress(**arguments)
 
@@ -10723,7 +10730,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "archive_project":
             result = _handle_archive_project(**arguments)
         elif name == "batch_run":
-            result = _handle_batch_run(**arguments)
+            result = await asyncio.to_thread(_handle_batch_run, **arguments)
         elif name == "get_feeds":
             result = _handle_get_feeds(**arguments)
         elif name == "list_active_collections":

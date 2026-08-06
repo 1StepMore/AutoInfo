@@ -6,6 +6,7 @@ Runs after validation scenarios that declare collect_artifacts. Builds:
     validation-delivery-<timestamp>.zip
     ├── 01-RAW/          # real collected data (cached items, 01-Raw entries)
     ├── 02-PROCESSED/    # produced products (digest/report/tutorial...)
+    ├── 03-KB/           # KB entries by tier (02-Draft, 03-Wiki)
     ├── validation-report.md  # scenario statuses + artifact manifest
     └── manifest.json    # per-file source/type/size
 
@@ -22,6 +23,7 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -38,7 +40,21 @@ def _configured_domains() -> list[str]:
         return []
 
 
-async def _run_all_scenarios(scenarios_dir: Path) -> tuple[list[dict], list[dict]]:
+def _requires_llm_key(scenario_path: Path) -> bool:
+    """True if the scenario declares an LLM API key in ``requires_env``."""
+    import yaml
+
+    try:
+        data = yaml.safe_load(scenario_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    envs = data.get("requires_env") or []
+    return any(
+        "LLM" in e or "OPENAI" in e or "OPENROUTER" in e for e in envs
+    )
+
+
+async def _run_all_scenarios(scenarios_dir: Path, skip_llm: bool = False) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Run every scenario via the real engine; return (results, artifacts)."""
     from autoinfo.mcp.server import _handle_run_validation_scenario
 
@@ -46,6 +62,9 @@ async def _run_all_scenarios(scenarios_dir: Path) -> tuple[list[dict], list[dict
     artifacts = []
     for sc in sorted(scenarios_dir.glob("*.yaml")):
         name = sc.stem
+        if skip_llm and _requires_llm_key(sc):
+            results.append({"name": name, "status": "skipped", "summary": {}})
+            continue
         try:
             res = await _handle_run_validation_scenario(scenario=name)
         except Exception as e:  # noqa: BLE001
@@ -62,27 +81,43 @@ async def _run_all_scenarios(scenarios_dir: Path) -> tuple[list[dict], list[dict
     return results, artifacts
 
 
-def _package(artifacts: list[dict], results: list[dict], out: Path) -> Path:
+def _tier_subpath(src: Path) -> Path:
+    """Path below '<root>/<domain>/' so nested structure survives the copy.
+
+    E.g. ``knowledge/medical-research/01-Raw/crispr/2026-08-05-x.md`` maps to
+    ``01-Raw/crispr/2026-08-05-x.md``; shallow paths fall back to the bare name.
+    """
+    parts = src.parts
+    return Path(*parts[2:]) if len(parts) >= 3 else Path(src.name)
+
+
+def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out: Path) -> Path:
     """Copy artifact files into a staged dir, write report, zip it."""
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     stage = out / f"validation-delivery-{stamp}"
     raw_dir = stage / "01-RAW"
     proc_dir = stage / "02-PROCESSED"
+    kb_dir = stage / "03-KB"
     raw_dir.mkdir(parents=True, exist_ok=True)
     proc_dir.mkdir(parents=True, exist_ok=True)
+    kb_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = []
     for a in artifacts:
         src = Path(a["path"])
         if not src.exists():
             continue
-        rel = str(src)
-        if "collections/" in rel or "01-Raw" in rel:
-            dest = raw_dir / src.name
+        rel = src.as_posix()  # normalize separators so '/01-Raw/' checks hold
+        if "/01-Raw/" in rel or "collections/" in rel:
+            dest = raw_dir / _tier_subpath(src)
             kind = "RAW"
+        elif "/02-Draft/" in rel or "/03-Wiki/" in rel:
+            dest = kb_dir / _tier_subpath(src)
+            kind = "KB"
         else:
-            dest = proc_dir / src.name
+            dest = proc_dir / _tier_subpath(src)
             kind = "PROCESSED"
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
         manifest.append({
             "file": str(dest.relative_to(stage)),
@@ -95,11 +130,12 @@ def _package(artifacts: list[dict], results: list[dict], out: Path) -> Path:
     passed = sum(1 for r in results if r["status"] == "passed")
     failed = sum(1 for r in results if r["status"] == "failed")
     unconf = sum(1 for r in results if r["status"] == "unconfigured")
+    skipped = sum(1 for r in results if r["status"] == "skipped")
     report = [
         "# AutoInfo Validation Delivery Report",
         "",
         f"- Date: {stamp}",
-        f"- Scenarios: {len(results)} (passed={passed}, failed={failed}, unconfigured={unconf})",
+        f"- Scenarios: {len(results)} (passed={passed}, failed={failed}, unconfigured={unconf}, skipped={skipped})",
         f"- Artifacts: {len(manifest)}",
         f"- Domains: {', '.join(_configured_domains()) or '(none)'}",
         "",
@@ -154,7 +190,9 @@ async def main() -> None:
         os.environ["OPENAI_API_KEY"] = key
         os.environ["AUTOINFO_LLM_API_KEY"] = key
 
-    results, artifacts = await _run_all_scenarios(args.scenarios_dir)
+    results, artifacts = await _run_all_scenarios(
+        args.scenarios_dir, skip_llm=args.skip_llm_scenarios
+    )
     if not artifacts:
         print("No artifacts collected (scenarios produced no data files).", file=sys.stderr)
         # still write a report-only zip so the user sees what ran

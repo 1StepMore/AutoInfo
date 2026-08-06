@@ -420,7 +420,7 @@ class TestReportAgentSchema:
                         result = generate_report(
                             domain="medical-research",
                             format="agent",
-                            period="month",
+                            period="monthly",
                         )
 
         assert isinstance(result, str)
@@ -454,7 +454,7 @@ class TestReportAgentSchema:
                         result = generate_report(
                             domain="medical-research",
                             format="agent",
-                            period="month",
+                            period="monthly",
                         )
 
         data = json.loads(result)

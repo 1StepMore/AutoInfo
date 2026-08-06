@@ -10,10 +10,12 @@
 # asserts the cache is written, runs a real process_collection, asserts a KB
 # entry exists, then runs extract_fields against the produced entry.
 #
-# SAFETY: cleanup_steps remove the cached items and the KB entries this
-# scenario created, so a disposable project stays clean and a shared project
-# is not polluted. The scenario is self-contained: it needs medical-research
-# configured (requires_domain) and an LLM key (requires_env).
+# SAFETY: cleanup_steps remove the cached collection items this scenario
+# created so a shared project is not polluted. The KB entries are intentionally
+# retained (collect_artifacts captures them before cleanup; delivery packages
+# them into the 03-KB tier bucket — fixes #125/#128). The scenario is
+# self-contained: it needs medical-research configured (requires_domain) and an
+# LLM key (requires_env).
 name: data-lifecycle-e2e
 description: "Real production loop: collect (no dry-run) -> cache -> process -> KB write -> LLM extraction"
 category: collection
@@ -21,7 +23,9 @@ requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
 collect_artifacts:
   - "collections/medical-research/**/*.json"
-  - "knowledge/medical-research/01-Raw/*.md"
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
+  - "knowledge/medical-research/03-Wiki/**/*.md"
 steps:
   - name: "collect_sources REAL run for medical-research (limit 2, no dry_run)"
     tool: collect_sources
@@ -69,14 +73,8 @@ cleanup_steps:
   - name: "clean_cache removes scenario-created cached items"
     tool: clean_cache
     arguments:
-      domain: medical-research
+      collections: true
       dry_run: false
     expect:
       success: true
 
-  - name: "remove scenario-produced KB entries"
-    kind: cli
-    command: "find knowledge/medical-research/01-Raw -name '*.md' -mmin -30 -delete 2>/dev/null; echo done"
-    expect:
-      exit_code: 0
-      stdout_has: ["done"]

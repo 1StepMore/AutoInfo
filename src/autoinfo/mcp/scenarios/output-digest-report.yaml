@@ -33,7 +33,7 @@ steps:
         - medical-research
         - tech-ai-developer
       format: json
-      period: month
+      period: monthly
       report_type: trend
     expect:
       success: true

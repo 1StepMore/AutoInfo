@@ -847,6 +847,26 @@ async def run_scenario(
     else:
         status = "passed"
 
+    # --- collect_artifacts: gather real data files produced by the scenario ---
+    # (fixes #123, #125). Scenarios may declare glob patterns; matching files
+    # are collected BEFORE cleanup so they still exist on disk (self-cleaning
+    # scenarios delete their own state, which would empty artifact globs).
+    # Artifacts give the delivery layer real RAW/PROCESSED/KB data to package
+    # for end-user quality review.
+    artifacts: list[dict[str, Any]] | None = None
+    collect_patterns = scenario.get("collect_artifacts", [])
+    if collect_patterns:
+        artifacts = []
+        for pattern in collect_patterns:
+            for path in sorted(Path.cwd().glob(pattern)):
+                if path.is_file():
+                    artifacts.append({
+                        "pattern": pattern,
+                        "path": str(path),
+                        "size": path.stat().st_size,
+                        "name": path.name,
+                    })
+
     # --- cleanup_steps: always run after the main steps (best-effort) ----
     # Cleanup is executed regardless of the main steps' outcome so that
     # state-mutating scenarios can remove what they created even when a
@@ -887,24 +907,7 @@ async def run_scenario(
     }
     if cleanup is not None:
         result["cleanup"] = cleanup
-
-    # --- collect_artifacts: gather real data files produced by the scenario ---
-    # (fixes #123). Scenarios may declare glob patterns; matching files are
-    # collected AFTER cleanup so they exist on disk (cleanup first removed
-    # scenario state). Artifacts give the delivery layer real RAW/PROCESSED
-    # data to package for end-user quality review.
-    collect_patterns = scenario.get("collect_artifacts", [])
-    if collect_patterns:
-        artifacts: list[dict[str, Any]] = []
-        for pattern in collect_patterns:
-            for path in sorted(Path.cwd().glob(pattern)):
-                if path.is_file():
-                    artifacts.append({
-                        "pattern": pattern,
-                        "path": str(path),
-                        "size": path.stat().st_size,
-                        "name": path.name,
-                    })
+    if artifacts is not None:
         result["artifacts"] = artifacts
 
     return result

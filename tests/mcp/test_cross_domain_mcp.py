@@ -130,7 +130,7 @@ class TestDelegation:
                 result = _handle_generate_cross_domain_report(
                     domains=["medical-research", "ai-commercial"],
                     format="markdown",
-                    period="month",
+                    period="monthly",
                     target_audience="researchers",
                     report_type="trend",
                 )
@@ -140,7 +140,7 @@ class TestDelegation:
             domain="medical-research",
             domains=["medical-research", "ai-commercial"],
             format="markdown",
-            period="month",
+            period="monthly",
             target_audience="researchers",
             report_type="trend",
             user_id="",
@@ -151,7 +151,7 @@ class TestDelegation:
         assert result["domain"] == "medical-research"
         assert result["domains"] == ["medical-research", "ai-commercial"]
         assert result["format"] == "markdown"
-        assert result["period"] == "month"
+        assert result["period"] == "monthly"
         assert result["content"] == mock_gen.return_value
 
     async def test_dispatches_via_call_tool(

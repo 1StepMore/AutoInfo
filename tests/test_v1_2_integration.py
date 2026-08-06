@@ -1322,7 +1322,7 @@ class TestMCPGenerateReport:
         from autoinfo.mcp.server import _handle_generate_report
         with patch("autoinfo.output.generate_report") as mock_gen:
             mock_gen.side_effect = ValueError("No entries found for domain ''")
-            result = _handle_generate_report(domain="", format="markdown", period="month")
+            result = _handle_generate_report(domain="", format="markdown", period="monthly")
         assert "error_code" in result or "success" in result
 
     def test_handle_generate_report_success(self):
@@ -1336,7 +1336,7 @@ class TestMCPGenerateReport:
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
-                period="month",
+                period="monthly",
             )
         assert result["success"] is True
         assert result["domain"] == "medical-research"
@@ -1353,7 +1353,7 @@ class TestMCPGenerateReport:
             result = _handle_generate_report(
                 domain="medical-research",
                 format="json",
-                period="month",
+                period="monthly",
             )
         assert result["success"] is True
         assert result["format"] == "json"
@@ -1367,7 +1367,7 @@ class TestMCPGenerateReport:
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
-                period="month",
+                period="monthly",
             )
         assert "error_code" in result
 

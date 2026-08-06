@@ -3,6 +3,10 @@ name: output-discovery
 description: "Output and config tool discovery in real project context"
 category: output
 requires_env: []
+collect_artifacts:
+  - "outputs/**/*"
+  - "exports/**/*.json"
+  - "validation-runs/**/*.json"
 steps:
   - name: "list_output_templates returns templates"
     tool: list_output_templates

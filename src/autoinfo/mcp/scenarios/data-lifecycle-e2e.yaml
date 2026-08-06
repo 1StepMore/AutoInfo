@@ -20,17 +20,29 @@ name: data-lifecycle-e2e
 description: "Real production loop: collect (no dry-run) -> cache -> process -> KB write -> LLM extraction"
 category: collection
 requires_env: ["AUTOINFO_LLM_API_KEY"]
-requires_domain: ["medical-research"]
+requires_domain: ["medical-research", "tech-ai-developer"]
 collect_artifacts:
   - "collections/medical-research/**/*.json"
   - "knowledge/medical-research/01-Raw/**/*.md"
   - "knowledge/medical-research/02-Draft/**/*.md"
   - "knowledge/medical-research/03-Wiki/**/*.md"
+  - "collections/tech-ai-developer/**/*.json"
+  - "knowledge/tech-ai-developer/01-Raw/**/*.md"
 steps:
   - name: "collect_sources REAL run for medical-research (limit 2, no dry_run)"
     tool: collect_sources
     arguments:
       domain: medical-research
+      limit: 2
+      dry_run: false
+    expect:
+      success: true
+      data_has: ["job_id", "total_new", "total_found"]
+
+  - name: "collect_sources REAL run for tech-ai-developer (limit 2, no dry_run)"
+    tool: collect_sources
+    arguments:
+      domain: tech-ai-developer
       limit: 2
       dry_run: false
     expect:

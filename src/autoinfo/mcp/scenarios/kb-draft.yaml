@@ -9,6 +9,9 @@ name: kb-draft
 description: "KB draft creation, rejection, and reindex in real project context (self-contained, self-cleaning)"
 category: kb
 requires_env: []
+collect_artifacts:
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
 steps:
   - name: "create_kb_entry writes to 01-Raw"
     tool: create_kb_entry
@@ -16,7 +19,7 @@ steps:
       domain: medical-research
       title: "KB Draft Scenario Test Entry"
       content: "This is a test entry created by the kb-draft validation scenario."
-      source_url: https://example.com/kb-draft-scenario
+      source_url: https://kb-draft.autoinfo.dev/kb-draft-scenario
       source_type: web
     expect:
       success: true
@@ -82,9 +85,9 @@ cleanup_steps:
       from autoinfo.kb import KBStore
       store = KBStore()
       markers = [('medical-research-general-kb-draft-scenario-test-entry',
-                  'https://example.com/kb-draft-scenario'),
+                  'https://kb-draft.autoinfo.dev/kb-draft-scenario'),
                  ('medical-research-draft-kb-draft-scenario-draft',
-                  'https://example.com/kb-draft-scenario')]
+                  'https://kb-draft.autoinfo.dev/kb-draft-scenario')]
       removed = []
       for eid, url in markers:
           meta = store.index.get_entry(eid)

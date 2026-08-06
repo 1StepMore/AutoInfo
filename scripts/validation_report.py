@@ -6,8 +6,12 @@ Reads the persisted scenario results from ``validation-runs/<run>/scenarios.json
 ``docs/dev/validation-reports/launch-validation-<version>-<runid>.md``.
 
 The report uses the framework ``§6`` executive-summary skeleton: verdict counts,
-scenario status table, artifact manifest, and an appendix pointer back to the
-framework template and evidence catalog.
+scenario status table, and an appendix pointer back to the framework template
+and evidence catalog.  Since issue #139 it also renders a root-cause
+``## Blockers`` section — every failing step of every failed scenario, with its
+``llm_reason`` / ``llm_meta`` when present — and a ``## Per-step trace``
+appendix with the full per-step trace table (scenario | step_index | name |
+tool | status | duration | trace_id).
 
 Usage:
     python3 scripts/validation_report.py [--version VERSION] [--run RUN_ID]
@@ -40,6 +44,45 @@ def _status_counts(scenarios: list[dict[str, Any]]) -> dict[str, int]:
         status = sc.get("status", "unknown")
         counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+def _truncate_detail(detail: Any, limit: int = 200) -> str:
+    """Render a step detail for the blockers list, truncated to ~*limit* chars.
+
+    Non-string details (e.g. the envelope dict on passed steps) are
+    serialised to JSON first so the truncation applies to the text.
+    """
+    if not isinstance(detail, str):
+        detail = json.dumps(detail, ensure_ascii=False)
+    if len(detail) > limit:
+        return detail[:limit] + "…"
+    return detail
+
+
+def _escape_cell(value: str) -> str:
+    """Escape pipe/newline characters so a value fits a markdown table cell."""
+    return value.replace("|", "\\|").replace("\n", " ")
+
+
+def _iter_steps(
+    scenarios: list[dict[str, Any]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten every step of every scenario for the per-step trace table.
+
+    Yields ``(scenario_name, step)`` pairs covering the main steps, their
+    nested recovery steps (issue #138), and the cleanup steps — in that
+    order — so the appendix renders the full execution trace of the run.
+    """
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for sc in scenarios:
+        sc_name = sc.get("scenario", "?")
+        for step in sc.get("steps", []):
+            rows.append((sc_name, step))
+            for rec in step.get("recovery", []):
+                rows.append((sc_name, rec))
+        for step in sc.get("cleanup", {}).get("steps", []):
+            rows.append((sc_name, step))
+    return rows
 
 
 def generate(version: str, run_id: str) -> Path:
@@ -85,8 +128,47 @@ def generate(version: str, run_id: str) -> Path:
     lines.append("")
     lines.append("## Blockers")
     lines.append("")
-    lines.append("Findings only; B3 (director) disposes. See the `§6` blocker format in the "
-                 "framework template.")
+    failed_scenarios = [sc for sc in scenarios if sc.get("status") == "failed"]
+    if not failed_scenarios:
+        lines.append("(no failing scenarios in this run)")
+    else:
+        for sc in failed_scenarios:
+            sc_name = sc.get("scenario", "?")
+            for step in sc.get("steps", []):
+                if step.get("status") != "failed":
+                    continue
+                lines.append(
+                    f"- `{sc_name}` step {step.get('step_index', '?')} "
+                    f"{step.get('name', '?')} ({step.get('tool', '?')}) — "
+                    f"{_truncate_detail(step.get('detail'))}"
+                )
+                reason = step.get("llm_reason")
+                if reason:
+                    lines.append(f"  - llm_reason: {reason}")
+                llm_meta = step.get("llm_meta")
+                if llm_meta:
+                    lines.append(
+                        f"  - llm_meta: {json.dumps(llm_meta, ensure_ascii=False)}"
+                    )
+    lines.append("")
+    lines.append("## Per-step trace")
+    lines.append("")
+    lines.append("Full per-step execution trace for every scenario — "
+                 "step_index (1-based), duration (wall-clock seconds, incl. "
+                 "recovery), and the run trace_id (issue #139).")
+    lines.append("")
+    lines.append("| Scenario | Step | Name | Tool | Status | Duration (s) | Trace ID |")
+    lines.append("|----------|------|------|------|--------|--------------|----------|")
+    for sc_name, step in _iter_steps(scenarios):
+        dur = step.get("duration")
+        dur_cell = f"{dur:.3f}" if isinstance(dur, (int, float)) else "-"
+        lines.append(
+            f"| {_escape_cell(sc_name)} | {step.get('step_index', '-')} "
+            f"| {_escape_cell(str(step.get('name', '?')))} "
+            f"| {_escape_cell(str(step.get('tool', '?')))} "
+            f"| {step.get('status', '?')} | {dur_cell} "
+            f"| {step.get('trace_id', '-')} |"
+        )
     lines.append("")
     lines.append("## Appendix pointer")
     lines.append("")

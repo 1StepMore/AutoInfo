@@ -16,6 +16,8 @@ import json
 import os
 import re
 import subprocess
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -345,7 +347,12 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
     """Judge tool output against a natural-language assertion using a real
     LLM call (LiteLLM completion — the same path G4/G5 use).
 
-    Returns ``{"verdict": "PASS"|"FAIL", "reason": str}``.
+    Returns ``{"verdict": "PASS"|"FAIL", "reason": str, "model": str,
+    "tokens": {"prompt_tokens": int|None, "total_tokens": int|None} | None,
+    "duration": float}``.  ``model`` is the resolved LLM model that served
+    the call; ``tokens`` carries the usage counters from the response when
+    the provider reports them (``None`` otherwise); ``duration`` is the
+    wall-clock seconds of the completion call itself (``time.monotonic``).
 
     Raises
     ------
@@ -365,6 +372,7 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
         'Reply with JSON exactly: {"verdict": "PASS" or "FAIL", '
         '"reason": "one-sentence justification"}'
     )
+    start = time.monotonic()
     response = litellm.completion(
         model=llm_cfg["model"],
         messages=[{"role": "user", "content": prompt}],
@@ -373,8 +381,23 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
         api_base=llm_cfg["api_base"],
         api_key=llm_cfg["api_key"] or None,
     )
+    duration = time.monotonic() - start
     content = response.choices[0].message.content  # type: ignore[union-attr]
-    return _parse_llm_verdict(content)
+    parsed = _parse_llm_verdict(content)
+    usage = getattr(response, "usage", None)
+    tokens: dict[str, Any] | None = None
+    if usage is not None:
+        tokens = {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
+    return {
+        "verdict": parsed["verdict"],
+        "reason": parsed["reason"],
+        "model": llm_cfg["model"],
+        "tokens": tokens,
+        "duration": duration,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -775,16 +798,53 @@ def list_scenarios(scenarios_dir: Path | None = None) -> dict[str, Any]:
     }
 
 
+def _decorate_step_result(
+    sr: dict[str, Any],
+    step_def: dict[str, Any],
+    step_index: int,
+    trace_id: str,
+    duration: float,
+) -> dict[str, Any]:
+    """Attach the per-step execution trace fields to a step result.
+
+    Adds ``step_index`` (1-based position of the step in its scenario),
+    ``duration`` (wall-clock seconds of the execution, including any
+    recovery steps, measured with ``time.monotonic``), ``arguments`` (the
+    step's own arguments dict as invoked), and ``trace_id`` (the scenario-
+    run UUID shared by every step of that run).  All pre-existing keys on
+    *sr* (``name`` / ``tool`` / ``status`` / ``detail`` / ``llm_reason`` /
+    ``recovery`` / ...) are preserved unchanged.
+    """
+    decorated = dict(sr)
+    decorated["step_index"] = step_index
+    decorated["duration"] = duration
+    decorated["arguments"] = step_def.get("arguments", {})
+    decorated["trace_id"] = trace_id
+    return decorated
+
+
 async def _execute_step(
     step_def: dict[str, Any],
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
+    step_index: int,
+    trace_id: str,
 ) -> dict[str, Any]:
     """Execute a single scenario step (kind: mcp|cli|http) and return its result.
+
+    The returned result carries the per-step execution trace fields
+    ``step_index`` (1-based), ``duration`` (wall-clock seconds as a float),
+    ``arguments`` (the step's own arguments dict as invoked) and
+    ``trace_id`` (the scenario-run UUID) alongside the pre-existing
+    ``name`` / ``tool`` / ``status`` / ``detail`` keys.  On the
+    ``llm_assert`` path the judge observability is embedded as an
+    ``llm_meta`` sub-dict (``model`` / ``tokens`` / ``duration``) while the
+    top-level ``llm_reason`` key is preserved.
 
     Runs the same real-execution path used by the main loop (never mocked),
     including ``llm_assert`` judging when configured.  The caller derives
     pass/fail/unconfigured counts and overall status from the result.
     """
+    start = time.monotonic()
     expect = step_def.get("expect", {})
     kind = step_def.get("kind", "mcp")
     tool_ref = step_def.get("tool") or step_def.get("command") or step_def.get("url", kind)
@@ -808,12 +868,18 @@ async def _execute_step(
             if isinstance(env, dict):
                 env = _normalize_envelope(env)
     except Exception as exc:
-        return {
-            "name": step_def["name"],
-            "tool": tool_ref,
-            "status": "failed",
-            "detail": f"dispatch exception: {exc}",
-        }
+        return _decorate_step_result(
+            {
+                "name": step_def["name"],
+                "tool": tool_ref,
+                "status": "failed",
+                "detail": f"dispatch exception: {exc}",
+            },
+            step_def,
+            step_index,
+            trace_id,
+            time.monotonic() - start,
+        )
 
     sr = _step_assert(
         step_def["name"],
@@ -825,63 +891,105 @@ async def _execute_step(
     llm_assert = expect.get("llm_assert")
     if sr["status"] == "passed" and llm_assert:
         if not _is_llm_configured():
-            return {
-                "name": step_def["name"],
-                "tool": tool_ref,
-                "status": "unconfigured",
-                "detail": (
-                    "llm_assert requires a real LLM API key, but none is "
-                    "configured. Director User must run configure_llm() / "
-                    "set AUTOINFO_LLM_API_KEY during onboarding (BYOK)."
-                ),
-            }
+            return _decorate_step_result(
+                {
+                    "name": step_def["name"],
+                    "tool": tool_ref,
+                    "status": "unconfigured",
+                    "detail": (
+                        "llm_assert requires a real LLM API key, but none is "
+                        "configured. Director User must run configure_llm() / "
+                        "set AUTOINFO_LLM_API_KEY during onboarding (BYOK)."
+                    ),
+                },
+                step_def,
+                step_index,
+                trace_id,
+                time.monotonic() - start,
+            )
         try:
             verdict = await asyncio.to_thread(
                 _llm_judge, llm_assert, env.get("data")
             )
+            llm_meta = {
+                "model": verdict.get("model"),
+                "tokens": verdict.get("tokens"),
+                "duration": verdict.get("duration"),
+            }
             if verdict["verdict"] == "PASS":
-                return {
+                return _decorate_step_result(
+                    {
+                        "name": step_def["name"],
+                        "tool": tool_ref,
+                        "status": "passed",
+                        "detail": env,
+                        "llm_reason": verdict["reason"],
+                        "llm_meta": llm_meta,
+                    },
+                    step_def,
+                    step_index,
+                    trace_id,
+                    time.monotonic() - start,
+                )
+            return _decorate_step_result(
+                {
                     "name": step_def["name"],
                     "tool": tool_ref,
-                    "status": "passed",
-                    "detail": env,
+                    "status": "failed",
+                    "detail": (
+                        f"llm_assert FAILED: {verdict['reason']}. "
+                        f"Tool output: {json.dumps(env, ensure_ascii=False)[:2000]}"
+                    ),
                     "llm_reason": verdict["reason"],
-                }
-            return {
-                "name": step_def["name"],
-                "tool": tool_ref,
-                "status": "failed",
-                "detail": (
-                    f"llm_assert FAILED: {verdict['reason']}. "
-                    f"Tool output: {json.dumps(env, ensure_ascii=False)[:2000]}"
-                ),
-                "llm_reason": verdict["reason"],
-            }
+                    "llm_meta": llm_meta,
+                },
+                step_def,
+                step_index,
+                trace_id,
+                time.monotonic() - start,
+            )
         except Exception as exc:
-            return {
-                "name": step_def["name"],
-                "tool": tool_ref,
-                "status": "failed",
-                "detail": f"llm_assert error: {exc}",
-            }
+            return _decorate_step_result(
+                {
+                    "name": step_def["name"],
+                    "tool": tool_ref,
+                    "status": "failed",
+                    "detail": f"llm_assert error: {exc}",
+                },
+                step_def,
+                step_index,
+                trace_id,
+                time.monotonic() - start,
+            )
 
-    return sr
+    return _decorate_step_result(
+        sr,
+        step_def,
+        step_index,
+        trace_id,
+        time.monotonic() - start,
+    )
 
 
 async def _execute_step_timed(
     step_def: dict[str, Any],
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
     timeout: float,
+    step_index: int,
+    trace_id: str,
 ) -> dict[str, Any]:
     """Execute a step under a per-step timeout (issue #134).
 
     On ``asyncio.TimeoutError`` the step is reported as failed with the
-    same result shape ``_execute_step`` uses, so callers' status
-    derivation (fail if any step failed) applies unchanged.
+    same result shape ``_execute_step`` uses (including the per-step trace
+    fields), so callers' status derivation (fail if any step failed)
+    applies unchanged.
     """
+    start = time.monotonic()
     try:
         return await asyncio.wait_for(
-            _execute_step(step_def, dispatch), timeout=timeout
+            _execute_step(step_def, dispatch, step_index, trace_id),
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         kind = step_def.get("kind", "mcp")
@@ -890,12 +998,18 @@ async def _execute_step_timed(
             or step_def.get("command")
             or step_def.get("url", kind)
         )
-        return {
-            "name": step_def["name"],
-            "tool": tool_ref,
-            "status": "failed",
-            "detail": f"timed out after {timeout}s",
-        }
+        return _decorate_step_result(
+            {
+                "name": step_def["name"],
+                "tool": tool_ref,
+                "status": "failed",
+                "detail": f"timed out after {timeout}s",
+            },
+            step_def,
+            step_index,
+            trace_id,
+            time.monotonic() - start,
+        )
 
 
 def _count_step_result(sr: dict[str, Any], counts: dict[str, int]) -> None:
@@ -919,6 +1033,8 @@ async def _execute_step_with_recovery(
     step_def: dict[str, Any],
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
     timeout: float,
+    step_index: int,
+    trace_id: str,
 ) -> dict[str, Any]:
     """Execute a step and, on failure, its ``recovery_steps`` (issue #138).
 
@@ -931,23 +1047,30 @@ async def _execute_step_with_recovery(
     - ``recovery_status``: ``"passed"`` if any recovery step passed,
     - ``recovered``: ``True`` iff ``recovery_status == "passed"``.
 
+    The primary result's ``duration`` covers the whole wall-clock execution
+    including the recovery steps; recovery results carry the primary's
+    ``step_index`` and the run's ``trace_id``.
+
     Non-failed primary steps (``passed``/``unconfigured``) never trigger
     recovery and return unchanged.
     """
-    sr = await _execute_step_timed(step_def, dispatch, timeout)
+    start = time.monotonic()
+    sr = await _execute_step_timed(step_def, dispatch, timeout, step_index, trace_id)
     if sr["status"] != "failed":
         return sr
     recovery_defs = step_def.get("recovery_steps")
     if not recovery_defs:
         return sr
     recovery_results = [
-        await _execute_step_timed(rdef, dispatch, timeout) for rdef in recovery_defs
+        await _execute_step_timed(rdef, dispatch, timeout, step_index, trace_id)
+        for rdef in recovery_defs
     ]
     recovered = any(r["status"] == "passed" for r in recovery_results)
     sr = dict(sr)
     sr["recovery"] = recovery_results
     sr["recovery_status"] = "passed" if recovered else "failed"
     sr["recovered"] = recovered
+    sr["duration"] = time.monotonic() - start
     return sr
 
 
@@ -987,10 +1110,19 @@ async def run_scenario(
     -------
     dict
         ``{"scenario", "description", "category", "status", "summary",
-        "steps", ("cleanup"), ("unconfigured_reason")}``.  When the
-        scenario declares ``cleanup_steps``, they run after the main
+        "steps", "trace_id", ("cleanup"), ("unconfigured_reason")}``.  When
+        the scenario declares ``cleanup_steps``, they run after the main
         steps regardless of outcome (best-effort) and are reported under
         ``cleanup`` — they never influence ``status``.
+
+        Every step result carries the per-step execution trace fields
+        ``step_index`` (1-based), ``duration`` (wall-clock seconds as a
+        float, including recovery execution), ``arguments`` (the step's own
+        arguments dict as invoked), and ``trace_id`` — one UUID per
+        scenario run, shared by all steps of that run and surfaced on the
+        top-level result under ``trace_id``.  ``llm_assert`` steps embed the
+        judge observability (``model`` / ``tokens`` / ``duration``) in an
+        ``llm_meta`` sub-dict while keeping the top-level ``llm_reason``.
 
         Steps that declare ``recovery_steps`` (issue #138) run them after
         a primary failure; the step keeps its ``failed`` status and gains
@@ -1007,6 +1139,7 @@ async def run_scenario(
         If *name* does not match any loaded scenario, or if a *steps* index
         is out of range.
     """
+    trace_id = str(uuid.uuid4())
     scs = load_scenarios(scenarios_dir)
     scenario = next((sc for sc in scs if sc["name"] == name), None)
 
@@ -1021,17 +1154,23 @@ async def run_scenario(
     if missing_env:
         all_steps = scenario["steps"]
         unconfigured_steps = [
-            {
-                "name": s["name"],
-                "tool": s.get("tool") or s.get("command") or s.get("url", ""),
-                "status": "unconfigured",
-                "detail": (
-                    f"missing required env var(s): {', '.join(missing_env)}. "
-                    "Director User must configure these during onboarding "
-                    "(BYOK — see docs/dev/required-api-keys.md)."
-                ),
-            }
-            for s in all_steps
+            _decorate_step_result(
+                {
+                    "name": s["name"],
+                    "tool": s.get("tool") or s.get("command") or s.get("url", ""),
+                    "status": "unconfigured",
+                    "detail": (
+                        f"missing required env var(s): {', '.join(missing_env)}. "
+                        "Director User must configure these during onboarding "
+                        "(BYOK — see docs/dev/required-api-keys.md)."
+                    ),
+                },
+                s,
+                idx,
+                trace_id,
+                0.0,
+            )
+            for idx, s in enumerate(all_steps, start=1)
         ]
         return {
             "scenario": name,
@@ -1051,6 +1190,7 @@ async def run_scenario(
                 "total": len(unconfigured_steps),
             },
             "steps": unconfigured_steps,
+            "trace_id": trace_id,
         }
 
     # Precondition check: scenarios may declare required domains (fixes #120).
@@ -1066,17 +1206,23 @@ async def run_scenario(
         if missing_domains:
             all_steps = scenario["steps"]
             unconfigured_steps = [
-                {
-                    "name": s["name"],
-                    "tool": s.get("tool") or s.get("command") or s.get("url", ""),
-                    "status": "unconfigured",
-                    "detail": (
-                        f"missing required domain(s): {', '.join(missing_domains)}. "
-                        "Run `autoinfo init --demo <domain>` or add_domain() to "
-                        "configure them before running this scenario."
-                    ),
-                }
-                for s in all_steps
+                _decorate_step_result(
+                    {
+                        "name": s["name"],
+                        "tool": s.get("tool") or s.get("command") or s.get("url", ""),
+                        "status": "unconfigured",
+                        "detail": (
+                            f"missing required domain(s): {', '.join(missing_domains)}. "
+                            "Run `autoinfo init --demo <domain>` or add_domain() to "
+                            "configure them before running this scenario."
+                        ),
+                    },
+                    s,
+                    idx,
+                    trace_id,
+                    0.0,
+                )
+                for idx, s in enumerate(all_steps, start=1)
             ]
             return {
                 "scenario": name,
@@ -1096,6 +1242,7 @@ async def run_scenario(
                     "total": len(unconfigured_steps),
                 },
                 "steps": unconfigured_steps,
+                "trace_id": trace_id,
             }
 
     # Determine which steps to run
@@ -1117,7 +1264,9 @@ async def run_scenario(
     counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
 
     for step_idx, step_def in selected:
-        sr = await _execute_step_with_recovery(step_def, dispatch, timeout)
+        sr = await _execute_step_with_recovery(
+            step_def, dispatch, timeout, step_idx, trace_id
+        )
         _count_step_result(sr, counts)
         step_results.append(sr)
 
@@ -1187,7 +1336,9 @@ async def run_scenario(
         cleanup_results: list[dict[str, Any]] = []
         cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
         for step_idx, step_def in enumerate(cleanup_defs, start=1):
-            sr = await _execute_step_with_recovery(step_def, dispatch, timeout)
+            sr = await _execute_step_with_recovery(
+                step_def, dispatch, timeout, step_idx, trace_id
+            )
             _count_step_result(sr, cleanup_counts)
             cleanup_results.append(sr)
         cleanup = {
@@ -1214,6 +1365,7 @@ async def run_scenario(
             "total": len(step_results),
         },
         "steps": step_results,
+        "trace_id": trace_id,
     }
     if cleanup is not None:
         result["cleanup"] = cleanup

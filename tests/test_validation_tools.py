@@ -17,6 +17,7 @@ import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.mcp import server as mcp_server
+from autoinfo.mcp import validation as validation_mod
 from autoinfo.mcp.validation import (
     _normalize_envelope,
     diff_scenario_runs,
@@ -1711,3 +1712,328 @@ class TestMCPRunValidationScenarioTimeout:
             call_kwargs = mock_rs.call_args.kwargs
             assert call_kwargs.get("timeout") == 180.0
             assert result["status"] == "passed"
+
+
+# ============================================================================
+# Unit tests: per-step execution trace (issue #139)
+# ============================================================================
+
+
+class TestStepExecutionTrace:
+    """Issue #139: every step result carries step_index / duration /
+    arguments / trace_id, and llm_assert steps embed judge observability
+    (llm_meta) while keeping the top-level llm_reason."""
+
+    TRACE_SCENARIO_YAML = """\
+name: trace-scenario
+description: "Trace-field scenario"
+category: test
+requires_env: []
+steps:
+  - name: "pass with args"
+    tool: fake_tool
+    arguments: {limit: 5, q: "alpha"}
+    expect:
+      success: true
+      data_has: ["result"]
+
+  - name: "failing step"
+    tool: fake_error
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    LLM_TRACE_SCENARIO_YAML = """\
+name: llm-trace-scenario
+description: "LLM trace-field scenario"
+category: test
+requires_env: []
+steps:
+  - name: "llm pass with meta"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      llm_assert: "Is the result ok?"
+
+  - name: "llm fail with meta"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      llm_assert: "Is the result bad?"
+"""
+
+    @pytest.fixture
+    def trace_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "trace-scenario.yaml").write_text(
+            self.TRACE_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "llm-trace-scenario.yaml").write_text(
+            self.LLM_TRACE_SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "env-gated.yaml").write_text(
+            "name: env-gated\ndescription: T\ncategory: test\n"
+            "requires_env: [MISSING_VAR_XYZ]\n"
+            "steps:\n  - name: gated\n    tool: health_check\n    arguments: {}\n",
+            encoding="utf-8",
+        )
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "fake_tool":
+            return {"success": True, "data": {"result": "ok"}}
+        if name == "fake_error":
+            return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
+        return {"success": True, "data": {}}
+
+    async def test_steps_carry_trace_fields(self, trace_dir: Path) -> None:
+        """Every step result carries step_index/duration/arguments/trace_id."""
+        result = await run_scenario(
+            "trace-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=trace_dir,
+        )
+        assert result["status"] == "failed"  # step 2 fails
+        trace_id = result["trace_id"]
+        assert len(trace_id) == 36  # uuid4 string form
+        assert len(result["steps"]) == 2
+        for i, step in enumerate(result["steps"], start=1):
+            assert step["step_index"] == i
+            assert isinstance(step["duration"], float)
+            assert step["duration"] >= 0.0
+            assert step["trace_id"] == trace_id
+            # Pre-existing keys are preserved alongside the new fields.
+            assert step["name"]
+            assert step["tool"]
+            assert step["status"]
+            assert "detail" in step
+        assert result["steps"][0]["arguments"] == {"limit": 5, "q": "alpha"}
+        assert result["steps"][1]["arguments"] == {}
+
+    async def test_trace_id_shared_across_steps(self, trace_dir: Path) -> None:
+        """One uuid per run, shared by every step and the top-level result."""
+        result = await run_scenario(
+            "trace-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=trace_dir,
+        )
+        ids = {step["trace_id"] for step in result["steps"]}
+        assert ids == {result["trace_id"]}
+
+    async def test_llm_meta_embedded_on_llm_assert_pass(
+        self, trace_dir: Path, monkeypatch
+    ) -> None:
+        """llm_assert PASS path embeds llm_meta while keeping llm_reason."""
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._is_llm_configured", lambda: True
+        )
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._llm_judge",
+            lambda assertion, output: {
+                "verdict": "PASS",
+                "reason": "result is ok",
+                "model": "test-model",
+                "tokens": {"prompt_tokens": 10, "total_tokens": 20},
+                "duration": 0.5,
+            },
+        )
+        result = await run_scenario(
+            "llm-trace-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=trace_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "passed"
+        assert step["llm_reason"] == "result is ok"
+        assert step["llm_meta"] == {
+            "model": "test-model",
+            "tokens": {"prompt_tokens": 10, "total_tokens": 20},
+            "duration": 0.5,
+        }
+        assert step["step_index"] == 1
+        assert step["trace_id"] == result["trace_id"]
+
+    async def test_llm_meta_embedded_on_llm_assert_fail(
+        self, trace_dir: Path, monkeypatch
+    ) -> None:
+        """llm_assert FAIL path embeds llm_meta alongside llm_reason."""
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._is_llm_configured", lambda: True
+        )
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._llm_judge",
+            lambda assertion, output: {
+                "verdict": "FAIL",
+                "reason": "output is bad",
+                "model": "test-model",
+                "tokens": {"prompt_tokens": 3, "total_tokens": 9},
+                "duration": 0.25,
+            },
+        )
+        result = await run_scenario(
+            "llm-trace-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=trace_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert step["llm_reason"] == "output is bad"
+        assert step["llm_meta"]["model"] == "test-model"
+        assert step["llm_meta"]["duration"] == 0.25
+        assert step["trace_id"] == result["trace_id"]
+
+    async def test_unconfigured_early_return_carries_trace_fields(
+        self, trace_dir: Path
+    ) -> None:
+        """Env-gated early return decorates its steps with trace fields."""
+        env_before = os.environ.pop("MISSING_VAR_XYZ", None)
+        try:
+            result = await run_scenario(
+                "env-gated",
+                dispatch=self._fake_dispatch,
+                scenarios_dir=trace_dir,
+            )
+            assert result["status"] == "unconfigured"
+            assert result["trace_id"]
+            step = result["steps"][0]
+            assert step["step_index"] == 1
+            assert step["duration"] == 0.0
+            assert step["arguments"] == {}
+            assert step["trace_id"] == result["trace_id"]
+        finally:
+            if env_before is not None:
+                os.environ["MISSING_VAR_XYZ"] = env_before
+
+    async def test_recovery_steps_carry_trace_fields(self, tmp_path: Path) -> None:
+        """Recovery step results carry the primary's step_index + run trace_id,
+        and the primary duration includes the recovery execution."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "rec-trace.yaml").write_text(
+            "name: rec-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "steps:\n"
+            "  - name: flaky primary\n    tool: flaky_tool\n    arguments: {retry: 2}\n"
+            "    expect:\n      success: true\n"
+            "    recovery_steps:\n"
+            "      - name: recovery pass\n        tool: fake_tool\n        arguments: {}\n"
+            "        expect:\n          success: true\n",
+            encoding="utf-8",
+        )
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            if name == "flaky_tool":
+                return {"success": False, "error": {"code": "X", "message": "boom"}}
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario(
+            "rec-trace",
+            dispatch=dispatch,
+            scenarios_dir=sd,
+        )
+        step = result["steps"][0]
+        assert step["recovered"] is True
+        assert step["step_index"] == 1
+        assert step["arguments"] == {"retry": 2}
+        assert step["trace_id"] == result["trace_id"]
+        rec = step["recovery"][0]
+        assert rec["step_index"] == 1
+        assert rec["trace_id"] == result["trace_id"]
+        assert rec["arguments"] == {}
+        assert isinstance(rec["duration"], float)
+        # Primary duration covers the recovery execution too.
+        assert step["duration"] >= rec["duration"]
+
+    async def test_timeout_step_carries_trace_fields(self, tmp_path: Path) -> None:
+        """A timed-out step still carries the per-step trace fields."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "slow-trace.yaml").write_text(
+            "name: slow-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "steps:\n  - name: hang\n    tool: slow_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n",
+            encoding="utf-8",
+        )
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            await asyncio.sleep(5)
+            return {"success": True, "data": {}}
+
+        result = await run_scenario(
+            "slow-trace",
+            dispatch=dispatch,
+            scenarios_dir=sd,
+            timeout=0.1,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert step["step_index"] == 1
+        assert isinstance(step["duration"], float)
+        assert step["duration"] >= 0.1
+        assert step["arguments"] == {}
+        assert step["trace_id"] == result["trace_id"]
+
+
+class TestLLMJudgeObservability:
+    """Issue #139: _llm_judge captures model / tokens / duration."""
+
+    @staticmethod
+    def _patch_litellm(monkeypatch, *, with_usage: bool = True) -> dict[str, Any]:
+        """Install a fake litellm module returning a canned completion."""
+        import sys
+        import types
+
+        class _FakeUsage:
+            prompt_tokens = 10
+            total_tokens = 25
+
+        class _FakeMessage:
+            content = '{"verdict": "PASS", "reason": "looks good"}'
+
+        class _FakeChoice:
+            message = _FakeMessage()
+
+        class _FakeResponse:
+            def __init__(self) -> None:
+                self.usage = _FakeUsage() if with_usage else None
+                self.choices = [_FakeChoice()]
+
+        calls: dict[str, Any] = {}
+
+        def fake_completion(**kwargs: Any) -> _FakeResponse:
+            calls["model"] = kwargs["model"]
+            return _FakeResponse()
+
+        fake_litellm = types.SimpleNamespace(completion=fake_completion)
+        monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._resolve_llm_config",
+            lambda: {"model": "test-model", "api_key": "k", "api_base": None},
+        )
+        return calls
+
+    def test_llm_judge_returns_model_tokens_duration(self, monkeypatch) -> None:
+        """Judge result carries model, usage tokens, and wall-clock duration."""
+        calls = self._patch_litellm(monkeypatch)
+        verdict = validation_mod._llm_judge("assertion", {"data": 1})
+        assert verdict["verdict"] == "PASS"
+        assert verdict["reason"] == "looks good"
+        assert verdict["model"] == "test-model"
+        assert verdict["tokens"] == {"prompt_tokens": 10, "total_tokens": 25}
+        assert isinstance(verdict["duration"], float)
+        assert verdict["duration"] >= 0.0
+        assert calls["model"] == "test-model"
+
+    def test_llm_judge_tokens_none_without_usage(self, monkeypatch) -> None:
+        """Without usage info the tokens field is None (not a crash)."""
+        self._patch_litellm(monkeypatch, with_usage=False)
+        verdict = validation_mod._llm_judge("assertion", {"data": 1})
+        assert verdict["verdict"] == "PASS"
+        assert verdict["tokens"] is None
+        assert verdict["model"] == "test-model"

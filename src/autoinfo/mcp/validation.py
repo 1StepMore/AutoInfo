@@ -11,6 +11,7 @@ to avoid circular dependencies.  Dispatch is injected as a callable.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import os
 import re
@@ -21,6 +22,142 @@ from typing import Any, Awaitable, Callable
 import yaml
 
 SCENARIOS_DIR: Path = Path(__file__).resolve().parent / "scenarios"
+
+# ---------------------------------------------------------------------------
+# Versioned run persistence (fixes #129 P0-3).
+# Scenario results are saved under validation-runs/<date>/ and can be diffed
+# across runs to expose pass/fail regression trends.
+# ---------------------------------------------------------------------------
+
+VALIDATION_RUNS_DIR: Path = Path(__file__).resolve().parents[3] / "validation-runs"
+
+
+def _runs_dir(runs_dir: Path | None = None) -> Path:
+    """Resolve the base runs directory (default: repo-root ``validation-runs``)."""
+    return runs_dir or VALIDATION_RUNS_DIR
+
+
+def _run_stamp(dt: datetime.datetime | None = None) -> str:
+    """Run timestamp used for the run directory: ``YYYY-MM-DD_HHMMSS_ffffff``.
+
+    Microsecond resolution guarantees two runs in the same wall-clock second
+    (fast local runs, script loops) never collide on the run directory name.
+    """
+    return (dt or datetime.datetime.now()).strftime("%Y-%m-%d_%H%M%S_%f")
+
+
+def save_scenario_results(
+    results: list[dict[str, Any]],
+    runs_dir: Path | None = None,
+) -> Path:
+    """Persist scenario results to ``validation-runs/<date>/scenarios.json``.
+
+    Each run gets its own directory keyed by timestamp, so successive runs
+    never overwrite each other.  The single-run view (``latest.json``) is
+    refreshed so tooling can find the newest run without globbing.
+
+    Parameters
+    ----------
+    results:
+        List of scenario result envelopes (as returned by ``run_scenario``).
+    runs_dir:
+        Base directory; defaults to repo-root ``validation-runs``.
+
+    Returns
+    -------
+    Path
+        The run directory that was written.
+    """
+    run_dir = _runs_dir(runs_dir) / _run_stamp()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "run_id": run_dir.name,
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "scenarios": results,
+    }
+    (run_dir / "scenarios.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    # Refresh the pointer to the newest run.
+    (run_dir.parent / "latest.txt").write_text(run_dir.name, encoding="utf-8")
+    return run_dir
+
+
+def list_validation_runs(runs_dir: Path | None = None) -> list[Path]:
+    """Return run directories sorted newest-first (``validation-runs/<date>``)."""
+    base = _runs_dir(runs_dir)
+    if not base.is_dir():
+        return []
+    return sorted(
+        (p for p in base.iterdir() if p.is_dir() and (p / "scenarios.json").exists()),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+
+
+def load_scenario_results(run_dir: Path) -> dict[str, Any] | None:
+    """Load ``scenarios.json`` from a run directory, or ``None`` if absent."""
+    payload_path = run_dir / "scenarios.json"
+    if not payload_path.exists():
+        return None
+    try:
+        return json.loads(payload_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def diff_scenario_runs(
+    base: Path,
+    head: Path,
+) -> dict[str, Any]:
+    """Compare the scenario statuses of two runs (base = older, head = newer).
+
+    Returns
+    -------
+    dict
+        ``{"base": run_id, "head": run_id, "new_passes": [...],
+        "new_failures": [...], "recovered": [...], "regressed": [...],
+        "unchanged": N, "head_passed": N, "head_failed": N}``.
+    """
+    base_data = load_scenario_results(base) or {"scenarios": []}
+    head_data = load_scenario_results(head) or {"scenarios": []}
+    base_status = {r.get("scenario"): r.get("status") for r in base_data["scenarios"]}
+    head_status = {r.get("scenario"): r.get("status") for r in head_data["scenarios"]}
+
+    new_passes, new_failures = [], []
+    recovered, regressed = [], []
+    unchanged = 0
+    for name, head_st in head_status.items():
+        base_st = base_status.get(name)
+        if head_st == "passed":
+            if base_st != "passed":
+                new_passes.append(name)
+        elif head_st == "failed":
+            if base_st == "passed":
+                regressed.append(name)
+            else:
+                new_failures.append(name)
+        else:  # unconfigured / skipped / error
+            if base_st == "passed":
+                regressed.append(name)
+            elif base_st in (None, "failed", "unconfigured", "skipped", "error"):
+                unchanged += 1
+        if base_st == head_st:
+            unchanged += 1
+
+    return {
+        "base": base.name,
+        "head": head.name,
+        "new_passes": new_passes,
+        "new_failures": new_failures,
+        "recovered": recovered,
+        "regressed": regressed,
+        "unchanged": unchanged,
+        "head_passed": sum(1 for s in head_status.values() if s == "passed"),
+        "head_failed": sum(1 for s in head_status.values() if s == "failed"),
+        "head_total": len(head_status),
+    }
 
 
 def _run_cli_step(command: str, timeout: float = 180.0) -> dict[str, Any]:

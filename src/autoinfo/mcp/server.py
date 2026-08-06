@@ -5854,20 +5854,25 @@ def _handle_list_validation_scenarios() -> dict[str, Any]:
 async def _handle_run_validation_scenario(
     scenario: str,
     steps: list[int] | None = None,
+    save_results: bool = False,
 ) -> dict[str, Any]:
     """Handle run_validation_scenario MCP tool."""
-    from autoinfo.mcp.validation import run_scenario
+    from autoinfo.mcp.validation import run_scenario, save_scenario_results
 
     async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         texts = await call_tool(name, arguments)
         return json.loads(texts[0].text)
 
     try:
-        return await run_scenario(
+        result = await run_scenario(
             scenario,
             dispatch=_validation_dispatch,
             steps=steps,
         )
+        if save_results:
+            run_dir = save_scenario_results([result])
+            result["saved_run"] = str(run_dir)
+        return result
     except ValueError as exc:
         return error_response(
             code=ErrorCode.VALIDATION_ERROR,
@@ -10134,6 +10139,13 @@ async def list_tools() -> list[Tool]:
                         "type": "array",
                         "items": {"type": "integer"},
                         "description": "1-based step indices to run only a subset",
+                    },
+                    "save_results": {
+                        "type": "boolean",
+                        "description": (
+                            "Persist this run's result to validation-runs/<date>/"
+                            " (scenarios.json + latest.txt) for cross-run regression"
+                        ),
                     },
                 },
                 "required": ["scenario"],

@@ -45,12 +45,14 @@ The server listens on stdio (JSON-RPC 2.0) and responds to
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import sqlite3
 import uuid
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Literal, TypeVar
 
@@ -2565,6 +2567,86 @@ def _handle_list_output_templates(domain: str = "", user_id: str | None = None) 
     return result
 
 
+OUTPUTS_DIR = Path("outputs")
+
+_PERSIST_EXT_BY_FORMAT: dict[str, str] = {
+    "json": ".json",
+    "agent": ".json",
+    "markdown": ".md",
+    "html": ".html",
+    "audio": ".mp3",
+    "epub": ".epub",
+    "audiobook": ".zip",
+}
+
+
+def _persist_output(
+    domain: str,
+    product: str,
+    format: str,
+    content: Any,
+) -> str:
+    """Write *content* under ``OUTPUTS_DIR/<domain>``; return the relative path.
+
+    Filename: ``<product>-<format>-<YYYYmmdd-HHMMSS>.<ext>`` where the
+    extension is derived from *format* (json/agent → ``.json``, markdown →
+    ``.md``, html → ``.html``, audio → ``.mp3``, epub → ``.epub``,
+    audiobook → ``.zip``).
+
+    Content handling:
+
+    - json/agent: pretty-printed JSON (``ensure_ascii=False, indent=2``).
+      *content* may be a dict (re-dumped for pretty JSON) or a str that is
+      parsed first; unparseable strings are written raw.
+    - audio/epub/audiobook: *content* is a base64 string in the envelope —
+      decoded and written as bytes.
+    - everything else (markdown/html): written as text as-is.
+    """
+    _stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    _ext = _PERSIST_EXT_BY_FORMAT.get(format, ".txt")
+    _dir = OUTPUTS_DIR / domain
+    os.makedirs(_dir, exist_ok=True)
+    _path = _dir / f"{product}-{format}-{_stamp}{_ext}"
+    if format in ("json", "agent"):
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except (ValueError, TypeError):
+                pass
+        if isinstance(content, (dict, list)):
+            _path.write_text(
+                json.dumps(content, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        else:
+            _path.write_text(str(content), encoding="utf-8")
+    elif format in ("audio", "epub", "audiobook"):
+        _path.write_bytes(base64.b64decode(content))
+    else:
+        _path.write_text(str(content), encoding="utf-8")
+    return str(OUTPUTS_DIR / domain / _path.name)
+
+
+def _maybe_persist_output(
+    envelope: dict[str, Any],
+    persist: bool,
+    domain: str,
+    product: str,
+    format: str,
+    content: Any,
+) -> dict[str, Any]:
+    """Add ``persisted_path`` to *envelope* when *persist* is true.
+
+    With ``persist=False`` (the default) the envelope is returned
+    unchanged — byte-identical to the pre-persistence behavior.
+    """
+    if persist:
+        envelope["persisted_path"] = _persist_output(
+            domain, product, format, content
+        )
+    return envelope
+
+
 def _handle_generate_digest(
     domain: str,
     period: str = "weekly",
@@ -2575,6 +2657,7 @@ def _handle_generate_digest(
     recipients: list[str] | None = None,
     user_id: str = "",
     max_items: int = 0,
+    persist: bool = False,
 ) -> dict[str, Any]:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -2617,26 +2700,39 @@ def _handle_generate_digest(
             # Parse JSON string back to dict for structured MCP response
             import json as _json
 
-            return {"success": True, "format": format, "content": _json.loads(result)}
+            _parsed = _json.loads(result)
+            return _maybe_persist_output(
+                {"success": True, "format": format, "content": _parsed},
+                persist, domain, "digest", format, _parsed,
+            )
         if format == "audio":
-            return {
-                "success": True,
-                "format": "audio",
-                "content_type": "audio/mp3",
-                "encoding": "base64",
-                "content": result,
-            }
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "format": "audio",
+                    "content_type": "audio/mp3",
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domain, "digest", "audio", result,
+            )
         if format in ("epub", "audiobook"):
-            return {
-                "success": True,
-                "format": format,
-                "content_type": (
-                    "application/epub+zip" if format == "epub" else "audio/mpeg"
-                ),
-                "encoding": "base64",
-                "content": result,
-            }
-        return {"success": True, "format": format, "content": result}
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "format": format,
+                    "content_type": (
+                        "application/epub+zip" if format == "epub" else "audio/mpeg"
+                    ),
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domain, "digest", format, result,
+            )
+        return _maybe_persist_output(
+            {"success": True, "format": format, "content": result},
+            persist, domain, "digest", format, result,
+        )
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -2656,6 +2752,7 @@ def _handle_generate_report(
     target_audience: str = "",
     user_id: str = "",
     report_type: str = "standard",
+    persist: bool = False,
 ) -> dict[str, Any]:
     """Generate a structured report for *domain* over the given *period*.
 
@@ -2696,42 +2793,54 @@ def _handle_generate_report(
             import json as _json
 
             parsed = _json.loads(result)
-            return {
-                "success": True,
-                "domain": domain,
-                "format": format,
-                "period": period,
-                "content": parsed,
-            }
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domain,
+                    "format": format,
+                    "period": period,
+                    "content": parsed,
+                },
+                persist, domain, "report", format, parsed,
+            )
         if format == "audio":
-            return {
-                "success": True,
-                "domain": domain,
-                "format": "audio",
-                "period": period,
-                "content_type": "audio/mp3",
-                "encoding": "base64",
-                "content": result,
-            }
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domain,
+                    "format": "audio",
+                    "period": period,
+                    "content_type": "audio/mp3",
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domain, "report", "audio", result,
+            )
         if format in ("epub", "audiobook"):
-            return {
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domain,
+                    "format": format,
+                    "period": period,
+                    "content_type": (
+                        "application/epub+zip" if format == "epub" else "audio/mpeg"
+                    ),
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domain, "report", format, result,
+            )
+        return _maybe_persist_output(
+            {
                 "success": True,
                 "domain": domain,
                 "format": format,
                 "period": period,
-                "content_type": (
-                    "application/epub+zip" if format == "epub" else "audio/mpeg"
-                ),
-                "encoding": "base64",
                 "content": result,
-            }
-        return {
-            "success": True,
-            "domain": domain,
-            "format": format,
-            "period": period,
-            "content": result,
-        }
+            },
+            persist, domain, "report", format, result,
+        )
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -2750,6 +2859,7 @@ def _handle_generate_cross_domain_report(
     target_audience: str = "",
     report_type: str = "standard",
     user_id: str = "",
+    persist: bool = False,
 ) -> dict[str, Any]:
     """Generate a synthesis report across multiple domains.
 
@@ -2812,46 +2922,58 @@ def _handle_generate_cross_domain_report(
             import json as _json
 
             parsed = _json.loads(result)
-            return {
-                "success": True,
-                "domain": domains[0],
-                "domains": domains,
-                "format": format,
-                "period": period,
-                "content": parsed,
-            }
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domains[0],
+                    "domains": domains,
+                    "format": format,
+                    "period": period,
+                    "content": parsed,
+                },
+                persist, domains[0], "report", format, parsed,
+            )
         if format == "audio":
-            return {
-                "success": True,
-                "domain": domains[0],
-                "domains": domains,
-                "format": "audio",
-                "period": period,
-                "content_type": "audio/mp3",
-                "encoding": "base64",
-                "content": result,
-            }
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domains[0],
+                    "domains": domains,
+                    "format": "audio",
+                    "period": period,
+                    "content_type": "audio/mp3",
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domains[0], "report", "audio", result,
+            )
         if format in ("epub", "audiobook"):
-            return {
+            return _maybe_persist_output(
+                {
+                    "success": True,
+                    "domain": domains[0],
+                    "domains": domains,
+                    "format": format,
+                    "period": period,
+                    "content_type": (
+                        "application/epub+zip" if format == "epub" else "audio/mpeg"
+                    ),
+                    "encoding": "base64",
+                    "content": result,
+                },
+                persist, domains[0], "report", format, result,
+            )
+        return _maybe_persist_output(
+            {
                 "success": True,
                 "domain": domains[0],
                 "domains": domains,
                 "format": format,
                 "period": period,
-                "content_type": (
-                    "application/epub+zip" if format == "epub" else "audio/mpeg"
-                ),
-                "encoding": "base64",
                 "content": result,
-            }
-        return {
-            "success": True,
-            "domain": domains[0],
-            "domains": domains,
-            "format": format,
-            "period": period,
-            "content": result,
-        }
+            },
+            persist, domains[0], "report", format, result,
+        )
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -2872,6 +2994,7 @@ def _handle_generate_tutorial(
     format: str = "markdown",
     custom_instructions: str = "",
     user_id: str = "",
+    persist: bool = False,
 ) -> dict[str, Any]:
     """Generate a structured tutorial for *domain*.
 
@@ -2890,8 +3013,14 @@ def _handle_generate_tutorial(
         result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions, user_id=user_id)
         if format == "agent":
             import json as _json
-            return {"success": True, "format": format, "domain": domain, "topic": topic, "content": _json.loads(result)}
-        return {"success": True, "format": format, "domain": domain, "topic": topic, "content": result}
+            return _maybe_persist_output(
+                {"success": True, "format": format, "domain": domain, "topic": topic, "content": _json.loads(result)},
+                persist, domain, "tutorial", format, _json.loads(result),
+            )
+        return _maybe_persist_output(
+            {"success": True, "format": format, "domain": domain, "topic": topic, "content": result},
+            persist, domain, "tutorial", format, result,
+        )
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -2910,6 +3039,7 @@ def _handle_generate_presentation(
     format: str = "markdown",
     custom_instructions: str = "",
     user_id: str = "",
+    persist: bool = False,
 ) -> dict[str, Any]:
     """Generate a slide-based presentation for *topic* within *domain*.
 
@@ -2929,8 +3059,14 @@ def _handle_generate_presentation(
         result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions, user_id=user_id)
         if format == "agent":
             import json as _json
-            return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": _json.loads(result)}
-        return {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": result}
+            return _maybe_persist_output(
+                {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": _json.loads(result)},
+                persist, domain, "presentation", format, _json.loads(result),
+            )
+        return _maybe_persist_output(
+            {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": result},
+            persist, domain, "presentation", format, result,
+        )
     except ValueError as exc:
         return {
             "error_code": ErrorCode.VALIDATION_ERROR.value,
@@ -7971,6 +8107,11 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional maximum number of KB entries to include (default: 0 = use built-in limit of 200). Can be auto-set from stored user preferences when user_id is provided.",
                         "default": 0,
                     },
+                    "persist": {
+                        "type": "boolean",
+                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                        "default": False,
+                    },
                 },
                 "required": ["domain"],
             },
@@ -8030,6 +8171,11 @@ async def list_tools() -> list[Tool]:
                         "default": "standard",
                         "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
                     },
+                    "persist": {
+                        "type": "boolean",
+                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                        "default": False,
+                    },
                 },
                 "required": ["domain"],
             },
@@ -8082,6 +8228,11 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
                         "default": "",
                     },
+                    "persist": {
+                        "type": "boolean",
+                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                        "default": False,
+                    },
                 },
                 "required": ["domains"],
             },
@@ -8119,6 +8270,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
                         "default": "",
+                    },
+                    "persist": {
+                        "type": "boolean",
+                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                        "default": False,
                     },
                 },
                 "required": ["domain"],
@@ -8167,6 +8323,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
                         "default": "",
+                    },
+                    "persist": {
+                        "type": "boolean",
+                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                        "default": False,
                     },
                 },
                 "required": ["domain", "topic"],

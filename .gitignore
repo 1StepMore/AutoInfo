@@ -50,3 +50,4 @@ reports/
 knowledge_graph_export.json
 autoinfo.db-wal
 autoinfo.db-shm
+validation-runs/

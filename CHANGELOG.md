@@ -25,6 +25,28 @@ All notable changes to the AutoInfo project will be documented in this file.
 ### Docs
 - **Agent-tester validation runbook** — new `docs/dev/agent-tester-validation.md` (663 lines): end-to-end runbook for an agent-tester to validate AutoInfo feature-by-feature through real MCP/CLI/REST calls, maintained alongside `validation-scenario-contract.md` (authoring) and `launch-validation-framework.md` (grading). (3758b06)
 
+### Added (validation wave E1-E9, #131-#141)
+- **Per-scenario step timeout (#134)** — every scenario step accepts `timeout_seconds`; a step that exceeds its budget fails fast instead of hanging the whole run. (8aec3ed, closes #134)
+- **Persist + `collect_artifacts` + multi-domain data-lifecycle (#133)** — output scenarios persist generated artifacts via `collect_artifacts` for post-run inspection; a multi-domain data-lifecycle scenario covers collect → process → KB → export across domains. (19ee7d0, 08031bf, f401158, closes #133)
+- **LLM timeout threading + kb-promote scenario (#134)** — `LLMConfig.timeout` (default 120.0) threaded through every LLM call site; new `kb-promote` scenario exercises Draft→Wiki promotion end to end. (eeea76f, 3517f79, closes #134)
+- **Per-artifact authenticity + D1-D3 delivery gates (#132)** — validation delivery packaging attests per-artifact authenticity and enforces the D1-D3 delivery gates on packaged outputs. (0abb2a8, closes #132)
+- **End-user coverage matrix generator (E8, #131)** — new `scripts/coverage_matrix.py` generates the end-user feature coverage matrix from `docs/dev/specs/end-user-matrix.yaml`; surfaced as the 04-MATRIX section (with coverage-gaps.json) in validation delivery and as Oracle R8 unconfigured-vs-gap analysis. (a94fe72, closes #131)
+- **Dead-source detection + CLI module entry + progress (#135/#137)** — Semantic Scholar HTTP 429 now surfaces as `SourceFailure` (fail-fast, no partial results); arXiv medical-research source moved from rss/bio (dead) to rss/q-bio; `python -m autoinfo.cli` runs the same Typer app as the console script; `collect` prints live per-source progress lines. (63b15d4, closes #135, closes #137)
+- **LLM timeout + parallel processing (#136)** — `LLMConfig.timeout` (default 120.0) applied across all LLM calls; processing uses a `ThreadPoolExecutor` sized by `AUTOINFO_PROCESS_WORKERS`; MCP handlers offload blocking work via `asyncio.to_thread`. (8de433d, closes #136)
+- **Per-step recovery + partial-pass policy (#138)** — a failed step may declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float). (7aee0f9, closes #138)
+- **Per-step execution trace + root-cause report (#139)** — `run_validation_scenario` results carry a per-step trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `scripts/validation_report.py` emits Verdicts / Executive summary / Regression failures / Blockers / Per-step trace / Appendix sections. (0188581, closes #139)
+- **UX metrics + end-user journey scenario (#141)** — new `enduser-journey.yaml` scenario drives the full B1 lifecycle; validation packaging measures UX metrics (UX_OK/completion_rate ≥ 0.8); the error-boundary scenario asserts the `actionable` field. (81e4b30, closes #141)
+- **Regression-test flywheel (#140)** — `scenarios/regression/` subdirectory (5 regression scenarios: regression-collect-int-id #104, regression-llm-key-resolution #119, regression-period-enum #126, regression-report-structure #121, regression-source-301 #135) auto-loads via recursive glob with a REGRESSION marker; `coverage_audit.py` prints "Regression scenarios: N (issues: ...)"; `.github/ISSUE_TEMPLATE/bug_report.md` gains a mandatory 回归场景 (regression scenario) field. (938fb6b, closes #140)
+- **Scenario library 47 → 57** — the E1-E9 wave grows the scenario library to 57 total (52 functional + 5 regression), with per-scenario timeouts, recovery/partial-pass, per-step tracing, and root-cause reporting. (938fb6b, closes #140)
+
+### Fixed
+- **Dead-source detection** — Semantic Scholar rate-limit 429 is now raised as `SourceFailure` (fail-fast, no partial results) instead of a silent partial fetch. (63b15d4, closes #135)
+- **arXiv bio feed fix** — medical-research arXiv source moved from `rss/bio` (dead feed) to `rss/q-bio`. (63b15d4, closes #137)
+- **LLM timeout threading** — LLM calls now honor `LLMConfig.timeout` (default 120.0); previously several call sites passed no timeout, so a hung provider could block a validation step indefinitely. (8de433d, closes #136)
+
+### Docs
+- **Validation wave docs (E1-E9)** — README.md, AGENTS.md, `docs/dev/validation-scenario-contract.md`, and the doc-manager-skill updated for the E1-E9 wave: scenario count 47 → 57 (52 functional + 5 regression), test count → ~3239, new schema fields (`timeout_seconds`, `recovery_steps`, `min_passing`/`pass_ratio`, `regression`/`regression_issue`), regression/ subdirectory convention, and report output sections. (938fb6b, closes #140)
+
 ## Unreleased (2026-08-04)
 
 ### Added

@@ -34,9 +34,36 @@ cleanup_steps:                      # optional list of steps (same schema as `st
                                     # (best-effort); reported under `cleanup` and
                                     # never influence the scenario status.  Use for
                                     # removing state the scenario created.
+min_passing: 5                      # optional int: minimum number of main steps that
+                                    # must pass for the scenario to be `passed`; lets
+                                    # a scenario degrade gracefully when a subset of
+                                    # steps legitimately cannot all run (partial-pass).
+pass_ratio: 0.8                     # optional float (0.0-1.0): alternative partial-pass
+                                    # policy — fraction of main steps that must pass.
+                                    # Only one of min_passing / pass_ratio should be
+                                    # set; when neither is set, ALL steps must pass.
+regression: true                    # optional bool: marks this scenario as a
+                                    # regression scenario.  True for files placed in
+                                    # the scenarios/regression/ subdirectory (auto-
+                                    # loaded via recursive glob).  Regression
+                                    # scenarios are reported with a "(regression)"
+                                    # suffix in verdicts and a dedicated
+                                    # `## Regression failures` report section.
+regression_issue: "#NNN"            # optional (required when regression: true): the
+                                    # issue/PR number this scenario guards against
+                                    # regressing, e.g. "#119".
 steps:
   - name: "human readable step name"   # required
     kind: mcp                         # optional: mcp (default) | cli | http
+    timeout_seconds: 30               # optional int: per-step wall-clock budget; a
+                                      # step exceeding it fails fast instead of
+                                      # hanging the whole run (default: no timeout).
+    recovery_steps:                   # optional list of steps (same schema as this
+                                      # step); run AFTER this step's primary failure
+                                      # in an attempt to recover, then re-evaluate.
+    collect_artifacts:                # optional list of output artifacts to persist
+                                      # for post-run inspection (e.g. file paths the
+                                      # step wrote); used on output scenarios.
     # --- for kind=mcp ---
     tool: add_source                  # required: real MCP tool name
     arguments: {...}                  # required: real args the handler accepts
@@ -81,6 +108,33 @@ steps:
   skipped. Scenarios that create persistent state MUST clean up after
   themselves in `cleanup_steps` (verify-before-delete provenance checks are
   strongly recommended so real user data is never touched).
+- **`timeout_seconds`** (per step, optional): a wall-clock budget in seconds. A
+  step that exceeds its budget is marked failed with a timeout reason and the
+  executor moves on — a runaway step can no longer hang the whole scenario run.
+- **`recovery_steps`** (per step, optional): a list of steps using the same step
+  schema, run **after the primary step fails** in an attempt to recover. Each
+  recovery step is a real call and is asserted the same way as a regular step.
+  If the recovery steps pass, the step is reported as recovered (the failure is
+  still recorded in the per-step trace); if they fail, the step fails. Recovery
+  results are reported under the step's `recovery` key in the per-step trace and
+  never inflate the pass count on their own.
+- **`min_passing` / `pass_ratio`** (top-level, optional): partial-pass policy.
+  `min_passing` (int) declares the minimum number of main steps that must pass;
+  `pass_ratio` (float 0.0-1.0) declares the fraction of main steps that must
+  pass. Set at most one. When neither is set, ALL main steps must pass. A
+  scenario whose passed count meets the policy is `passed` even when some steps
+  failed; failed steps still surface in the report. Use for scenarios where a
+  subset of steps is legitimately environment-dependent.
+- **`regression` / `regression_issue`** (top-level, optional): marks a
+  regression scenario guarding a specific bug. `regression: true` requires
+  `regression_issue: "#NNN"`. Files in the `scenarios/regression/` subdirectory
+  are auto-loaded via recursive glob and conventionally set both fields. In
+  reports, regression scenarios appear with a "(regression)" suffix in the
+  verdicts table and a dedicated `## Regression failures` section lists any
+  regression scenario that failed (root cause + the guarded issue).
+- **`collect_artifacts`** (per step, optional): a list of artifact references the
+  step produced (e.g. written file paths). Output scenarios use it so generated
+  digests/reports/exports persist for post-run inspection in validation delivery.
 - **`llm_assert`**: when present and the step's structural assertions passed, the
   executor makes a REAL LiteLLM call (model from config) to judge the tool output
   against the NL assertion. If no LLM key → step reports `unconfigured`. Add
@@ -93,8 +147,26 @@ steps:
 ## Status aggregation
 
 - scenario status: `passed` (no failed), `unconfigured` (any step unconfigured, none
-  failed), `failed` (any step failed).
+  failed), `failed` (any step failed). With a partial-pass policy (`min_passing` /
+  `pass_ratio`), `passed` also applies when the passed-step count meets the policy
+  despite some failed steps.
 - summary: `{passed, failed, unconfigured, total}`.
+
+## Per-step trace and report sections
+
+- Every executed step is recorded with `step_index`, `duration`, `arguments`,
+  `trace_id`, and (for LLM steps) `llm_meta` (model, tokens, duration), so a
+  failing run can be reconstructed exactly.
+- The validation report (`scripts/validation_report.py`) emits:
+  - **Verdicts** — per-scenario result table (regression scenarios carry a
+    "(regression)" suffix).
+  - **Executive summary** — aggregate pass/fail/unconfigured counts.
+  - **`## Regression failures`** — every failed regression scenario with its
+    guarded issue number.
+  - **`## Blockers`** — root-cause analysis for each failed scenario, including
+    the failing step's details from the per-step trace.
+  - **`## Per-step trace`** — full step-by-step execution trace.
+  - **Appendix pointer** — link to the raw results.
 
 ## Authoring rules (MANDATORY)
 
@@ -131,12 +203,15 @@ Run after writing scenarios:
 python3 scripts/coverage_audit.py   # reports covered/missing MCP tools
 ```
 Every tool must disappear from the MISSING list. The audit counts `Tool(name=...)`
-declarations in `src/autoinfo/mcp/server.py` (141 tools) against `kind: mcp` steps in
-the scenario library.
+declarations in `src/autoinfo/mcp/server.py` (142 tools) against `kind: mcp` steps in
+the scenario library. The audit also prints a `Regression scenarios: N (issues: ...)`
+metric — every scenario in `scenarios/regression/` must carry `regression: true` and
+a `regression_issue`, and the audit lists any that don't.
 
 ## Scenario inventory (as of 2026-08-05)
 
-47 scenario files in `src/autoinfo/mcp/scenarios/`:
+57 scenario files in `src/autoinfo/mcp/scenarios/` (52 functional flat in `scenarios/`
++ 5 regression in `scenarios/regression/`):
 
 - **System/Discovery**: system-health, discovery, meta-validation
 - **Errors**: error-boundary
@@ -145,11 +220,12 @@ the scenario library.
 - **Collection/Processing/Cron**: collection, collectors-e2e, processing,
   cron-schedules, collection-monitor
 - **KB**: kb-access, kb-draft, kb-versioning, kb-graph, kb-import-export,
-  kb-lifecycle, kb-extraction
+  kb-lifecycle, kb-extraction, kb-promote (E8: Draft→Wiki promotion end to end)
 - **Output**: output-digest-report, output-ebook, output-tutorial-presentation,
   output-simplify-recommend, output-discovery, output-column
 - **Delivery/End-user/Cost**: delivery-channels, delivery-schedules,
-  enduser-lifecycle, enduser-preferences, cost-budget, products-billing
+  enduser-lifecycle, enduser-preferences, cost-budget, products-billing,
+  enduser-journey (E8: full B1 lifecycle with UX metrics)
 - **Privacy/Lifecycle/Observability**: data-privacy, observability,
   agent-callbacks, webhooks-alerts, quality-gate-config, projects-config
 - **LLM-gated**: llm-gated (classify_cefr, suggest_keywords, cefr_batch)
@@ -158,11 +234,18 @@ the scenario library.
 - **M7 additions**: sources-gap-closure (3 new source-type registrations),
   output-column (report_type=column, LLM-gated), sources-a6-keyed
   (FRED/Finnhub, env-gated)
+- **Regression (scenarios/regression/)**: regression-collect-int-id (#104),
+  regression-llm-key-resolution (#119), regression-period-enum (#126),
+  regression-report-structure (#121), regression-source-301 (#135). Each carries
+  `regression: true` + `regression_issue`, is auto-loaded via recursive glob, and
+  appears with a "(regression)" suffix in verdicts plus a `## Regression failures`
+  report section.
 
-Coverage: 141/141 MCP tools (100%), all 28 CLI command groups, 8 REST API endpoints,
+Coverage: 142/142 MCP tools (100%), all 28 CLI command groups, 8 REST API endpoints,
 plus collector platform reachability probes (collectors-e2e) and G4/G5 gate flags
 (processing, LLM-gated).
-Status profile (no LLM key, pre-M7 baseline): 36 passed / 0 failed / 8 unconfigured
-(LLM-gated). After the 3 M7 additions (sources-gap-closure passed, output-column +
-sources-a6-keyed unconfigured without keys), the full 47-scenario profile shows
-37 passed / 0 failed / 10 unconfigured when no BYOK keys are set.
+Status profile depends on BYOK keys: LLM-gated and env-gated scenarios
+(requires_env) report `unconfigured` without the keys (never silently skipped);
+partial-pass scenarios (`min_passing`/`pass_ratio`) can pass with a degraded step
+set. Run `run_validation_scenario` per scenario or `scripts/coverage_audit.py` for
+the aggregate regression metric.

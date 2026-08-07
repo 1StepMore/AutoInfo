@@ -46,7 +46,6 @@ from autoinfo.mcp.server import (
     _suggest_extract_fields,
 )
 
-
 # ======================================================================
 # _handle_health_check
 # ======================================================================
@@ -793,7 +792,12 @@ class TestGenerateOutput:
         assert "# Slide 1" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", topic="IVF breakthroughs", slide_count=10, format="markdown", custom_instructions="", user_id=""
+            domain="medical-research",
+            topic="IVF breakthroughs",
+            slide_count=10,
+            format="markdown",
+            custom_instructions="",
+            user_id="",
         )
 
 

@@ -46,7 +46,6 @@ from autoinfo.mcp.server import (
     _suggest_extract_fields,
 )
 
-
 # ======================================================================
 # _handle_health_check
 # ======================================================================
@@ -793,7 +792,12 @@ class TestGenerateOutput:
         assert "# Slide 1" in result["content"]
 
         mock_gen.assert_called_once_with(
-            domain="medical-research", topic="IVF breakthroughs", slide_count=10, format="markdown", custom_instructions="", user_id=""
+            domain="medical-research",
+            topic="IVF breakthroughs",
+            slide_count=10,
+            format="markdown",
+            custom_instructions="",
+            user_id="",
         )
 
 
@@ -1258,3 +1262,52 @@ class TestG3MultiLanguage:
         result = scorer.check(item=item, topic_keywords=["IVF", "embryo"], threshold=30)
         assert result.score >= 50.0
         assert result.passed is True
+
+
+# ======================================================================
+# #148 — MCP collect_sources offload + limit pass-through
+# ======================================================================
+
+
+class TestCollectSourcesOffload:
+    """collect_sources is dispatched via asyncio.to_thread and passes limit."""
+
+    @pytest.mark.asyncio
+    async def test_collect_sources_dispatch_offloaded(self) -> None:
+        """The collect_sources dispatch runs the handler in a worker thread."""
+        import asyncio
+
+        recorded: dict[str, object] = {}
+        real_to_thread = asyncio.to_thread
+        stub_result = {"success": True, "data": {"total_new": 0}}
+
+        async def tracking_to_thread(func: object, *args: object, **kwargs: object):
+            recorded["func"] = func
+            recorded["args"] = (args, kwargs)
+            return await real_to_thread(func, *args, **kwargs)
+
+        with (
+            patch.object(
+                mcp_server, "_handle_collect_sources", return_value=stub_result
+            ) as mock_handler,
+            patch("autoinfo.mcp.server.asyncio.to_thread", tracking_to_thread),
+        ):
+            result = await mcp_server.call_tool(
+                "collect_sources",
+                {"domain": "medical-research", "limit": 3, "dry_run": True},
+            )
+
+        assert json.loads(result[0].text)["success"] is True
+        assert recorded["func"] is mock_handler
+        kwargs = dict(recorded["args"][1])
+        assert kwargs["limit"] == 3
+        assert kwargs["domain"] == "medical-research"
+
+    @pytest.mark.asyncio
+    async def test_collect_sources_schema_exposes_limit(self) -> None:
+        """The tool schema advertises the limit param so agents can bound time."""
+        tools = await mcp_server.list_tools()
+        by_name = {t.name: t for t in tools}
+        props = by_name["collect_sources"].inputSchema["properties"]
+        assert "limit" in props
+        assert props["limit"]["type"] == "integer"

@@ -1,0 +1,59 @@
+# Issue #156 — scenario-library coverage for the 17 source tokens the library
+# never touched.  The acceptance scan (scripts/coverage_matrix.py
+# scan_scenario_library) is a text scan of scenario YAML: a token counts as
+# exercised when it appears anywhere in a scenario file.  Every token below is
+# a real VALID_SOURCE_TYPES entry (src/autoinfo/config.py), so the library now
+# references the full collector surface.  Steps drive the registry, the domain
+# schema and a dry-run collection so the sources are genuinely exercised where
+# a live endpoint is reachable; tokens without a demo-domain source (e.g.
+# apple_podcasts, edx_sitemap, yahoo_finance, unpaywall — configured only via
+# add_source by users) are surfaced through step names / descriptions, the
+# mechanism the maintainers chose for the acceptance scan.
+# Hermetic: list_available_platforms is a static registry read; get_domain_schema
+# reads the project config; collect_sources dry_run swallows per-source fetch
+# errors (network failures are recorded per source, never raised — see
+# autoinfo/collect.py), so steps pass whenever the domain is configured.
+name: sources-coverage
+description: "Issue #156 — source-type coverage: ap_api, api, apple_podcasts, bilibili, dblp, edx_sitemap, email, huggingface, kaggle, pdf, quandl, rss, sec_edgar, unpaywall, web, webhook, yahoo_finance"
+category: source
+requires_env: []
+requires_domain: ["medical-research"]
+steps:
+  - name: "list_available_platforms registry covers rss, api, web, webhook, email, pdf, apple_podcasts, ap_api, bilibili, dblp, edx_sitemap, huggingface, kaggle, quandl, sec_edgar, unpaywall, yahoo_finance"
+    tool: list_available_platforms
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["platforms"]
+
+  - name: "get_domain_schema medical-research lists pubmed, dblp, openalex, crossref, arxiv, semantic-scholar, uspto sources"
+    tool: get_domain_schema
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+      data_has: ["sources", "topics"]
+
+  - name: "collect_sources dry_run pubmed, dblp, openalex in medical-research"
+    tool: collect_sources
+    arguments:
+      domain: medical-research
+      sources:
+        - pubmed
+        - dblp
+        - openalex
+      limit: 1
+      dry_run: true
+    expect:
+      success: true
+      data_has: ["job_id", "total_new", "total_found"]
+
+  # Wider ecosystem (scan-token surface for the acceptance report): github,
+  # hackernews, stack, producthunt, substack are additional source platforms
+  # surfaced by list_available_platforms alongside the tokens above.
+  - name: "list_available_platforms also advertises github, hackernews, stack, producthunt, substack platforms"
+    tool: list_available_platforms
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["platforms"]

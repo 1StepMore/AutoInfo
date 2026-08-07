@@ -350,17 +350,27 @@ def scan_kb_tier_evidence(evidence_dir: str | Path) -> set[tuple[str, str]]:
 # never touches is invisible to acceptance even when the code implements it.
 # ---------------------------------------------------------------------------
 
-def scan_scenario_library(scenarios_dir: str | Path) -> dict[str, set[str]]:
+def scan_scenario_library(
+    scenarios_dir: str | Path, source_tokens: set[str] | None = None
+) -> dict[str, set[str]]:
     """Scan validation scenario YAMLs for products, formats and source names.
 
     Returns ``{"products", "formats", "sources"}`` — the union of every
     product/format/source token the scenario library mentions, so the report
     can show which implemented capabilities validation actually exercises.
+
+    *source_tokens* (optional) extends the built-in ``SCENARIO_SOURCES``
+    token set with the spec's own ``source_platforms`` names — the scan must
+    look for the same spellings the spec declares (e.g. ``apple_podcasts``,
+    ``sec_edgar``, ``yahoo_finance``), otherwise a token the library mentions
+    is wrongly reported as missing.
     """
     root = Path(scenarios_dir)
     out: dict[str, set[str]] = {"products": set(), "formats": set(), "sources": set()}
     if not root.is_dir():
         return out
+
+    source_tokens = SCENARIO_SOURCES | (source_tokens or set())
 
     for yf in root.glob("*.yaml"):
         text = yf.read_text(encoding="utf-8")
@@ -371,7 +381,7 @@ def scan_scenario_library(scenarios_dir: str | Path) -> dict[str, set[str]]:
         for f in SCENARIO_FORMATS:
             if f in low:
                 out["formats"].add(f)
-        for s in SCENARIO_SOURCES:
+        for s in source_tokens:
             if s in low:
                 out["sources"].add(s)
     return out
@@ -538,12 +548,18 @@ def render_report(
         "A capability the library never touches is invisible to acceptance:"
     )
     lines.append("")
-    sc = scan_scenario_library(scenarios_dir) if scenarios_dir else {
-        "products": set(), "formats": set(), "sources": set(),
-    }
+    spec_sources = set(spec.get("source_platforms", []))
+    sc = (
+        scan_scenario_library(scenarios_dir, source_tokens=spec_sources)
+        if scenarios_dir
+        else {
+            "products": set(),
+            "formats": set(),
+            "sources": set(),
+        }
+    )
     spec_products = set(spec.get("products", []))
     spec_formats = set(spec.get("formats", []))
-    spec_sources = set(spec.get("source_platforms", []))
     miss_products = sorted(spec_products - sc["products"])
     miss_formats = sorted(spec_formats - sc["formats"])
     lines.append(

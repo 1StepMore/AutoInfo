@@ -81,6 +81,31 @@ SOURCE_KEY_ENV_VARS: dict[str, tuple[str, ...]] = {
     "email_imap": ("AUTOINFO_EMAIL_PASSWORD",),
 }
 
+# quality_tier -> tos_classification mapping (source of truth for
+# ``SourceConfig.__post_init__`` tier auto-mapping and YAML parsing).
+TIER_TOS_MAP: dict[int, str] = {
+    1: "open",
+    2: "licensed",
+    3: "restricted",
+    4: "sensitive",
+}
+
+# Top-level keys belonging to ``SourceConfig`` itself; everything else in a
+# source dict is treated as custom ``settings``.
+SOURCE_CORE_KEYS: frozenset[str] = frozenset({
+    "name",
+    "type",
+    "url",
+    "quality_tier",
+    "tos_classification",
+    "fetch_depth",
+    "requires_key",
+})
+
+# Allowed ``action`` values for hard and soft quality gates.
+HARD_GATE_ACTIONS: frozenset[str] = frozenset({"block", "retry"})
+SOFT_GATE_ACTIONS: frozenset[str] = frozenset({"retry", "flag", "skip", "archive"})
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -156,8 +181,7 @@ class SourceConfig:
         ``requires_key`` is also coerced to a bool so string YAML values such as
         ``"true"`` / ``"false"`` never leak through as truthy strings.
         """
-        _TIER_TOS_MAP: dict[int, str] = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
-        mapped = _TIER_TOS_MAP.get(self.quality_tier, "open")
+        mapped = TIER_TOS_MAP.get(self.quality_tier, "open")
         if self.tos_classification == "open" and mapped != "open":
             self.tos_classification = mapped
         self.requires_key = _as_bool(self.requires_key)
@@ -526,15 +550,13 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
     domains = []
     for d in domains_raw:
         sources_raw: list[dict[str, Any]] = d.get("sources", []) or []
-        _SOURCE_CORE_KEYS = frozenset({"name", "type", "url", "quality_tier", "tos_classification", "fetch_depth", "requires_key"})
-        _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
         sources = []
         for s in sources_raw:
             tier = s.get("quality_tier", 1)
             tos = s.get("tos_classification")
             if not tos:
-                tos = _TIER_TOS_MAP.get(tier, "open")
-            raw_settings = {k: v for k, v in s.items() if k not in _SOURCE_CORE_KEYS}
+                tos = TIER_TOS_MAP.get(tier, "open")
+            raw_settings = {k: v for k, v in s.items() if k not in SOURCE_CORE_KEYS}
             # Flatten YAML's nested 'settings' key into the top level
             inner = raw_settings.pop("settings", None)
             if isinstance(inner, dict):
@@ -786,9 +808,6 @@ def validate_config(config: Config) -> list[str]:
         errors.append("llm.model is required")
 
     # --- Validate quality_gates (both global and per-domain) ---
-    HARD_GATE_ACTIONS = frozenset({"block", "retry"})
-    SOFT_GATE_ACTIONS = frozenset({"retry", "flag", "skip", "archive"})
-
     all_gate_confs: list[tuple[str, str, QualityGateConfig]] = [
         ("global", gn, gc) for gn, gc in config.quality_gates.items()
     ]
@@ -816,7 +835,10 @@ def validate_config(config: Config) -> list[str]:
         if not domain.name:
             errors.append("active domain missing name")
         if not domain.sources:
-            errors.append(f"active domain '{domain.name or '(unnamed)'}' must have at least one source")
+            errors.append(
+                f"active domain '{domain.name or '(unnamed)'}' "
+                "must have at least one source"
+            )
         if domain.search_mode not in ("keyword", "hybrid"):
             errors.append(
                 f"domain '{domain.name}'.search_mode must be 'keyword' or 'hybrid', "
@@ -899,9 +921,22 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             "provider": config.llm.provider,
             "model": config.llm.model,
             "api_key": config.llm.api_key,
+            "base_url": config.llm.base_url,
             "json_mode": config.llm.json_mode,
             "reasoning_model": config.llm.reasoning_model,
             "timeout": config.llm.timeout,
+            "fallback": [
+                {
+                    "provider": f.provider,
+                    "model": f.model,
+                    "base_url": f.base_url,
+                    "api_key": f.api_key,
+                    "json_mode": f.json_mode,
+                    "reasoning_model": f.reasoning_model,
+                    "timeout": f.timeout,
+                }
+                for f in config.llm.fallback
+            ],
         },
         "domains": [],
     }
@@ -1046,7 +1081,11 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "name": t.name,
                     "keywords": t.keywords,
                     **({"group": t.group} if t.group else {}),
-                    **({"relevance_threshold": t.relevance_threshold} if t.relevance_threshold != 30 else {}),
+                    **(
+                        {"relevance_threshold": t.relevance_threshold}
+                        if t.relevance_threshold != 30
+                        else {}
+                    ),
                 }
                 for t in domain.topics
             ],

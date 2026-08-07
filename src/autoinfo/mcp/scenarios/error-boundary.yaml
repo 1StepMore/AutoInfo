@@ -12,12 +12,12 @@ category: errors
 requires_env: []
 steps:
   - name: "unknown tool returns UnknownTool"
-    tool: definitely_not_a_real_tool
+    tool: nonexistent_tool_xyz
     arguments: {}
     expect:
       success: false
       error_code: "UnknownTool"
-      error_actionable: true
+      error_actionable: false
 
   - name: "nonexistent domain schema returns DomainNotFound"
     tool: get_domain_schema

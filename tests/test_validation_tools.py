@@ -269,6 +269,11 @@ steps:
             return {"success": True, "data": {"result": "ok"}}
         if name == "fake_error":
             return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
+        if name == "fake_error_actionable":
+            return {
+                "success": False,
+                "error": {"code": "Timeout", "message": "timeout", "actionable": True},
+            }
         if name == "bad_tool":
             return 42  # non-dict response — should trigger exception
         return {"success": True, "data": {}}
@@ -329,6 +334,49 @@ steps:
         assert result["status"] == "failed"
         assert result["steps"][0]["status"] == "failed"
         assert "WrongCode" in result["steps"][0].get("detail", "")
+
+    async def test_error_actionable_check_passes_when_actionable(
+        self, tmp_path: Path
+    ) -> None:
+        """error_actionable: true passes when the envelope carries actionable."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "act-ok.yaml").write_text(
+            "name: act-ok\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: fake_error_actionable\n    arguments: {}\n"
+            "    expect:\n      success: false\n      error_code: Timeout\n"
+            "      error_actionable: true\n",
+            encoding="utf-8",
+        )
+        result = await run_scenario(
+            "act-ok",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=sd,
+        )
+        assert result["status"] == "passed"
+        assert result["steps"][0]["status"] == "passed"
+
+    async def test_error_actionable_check_fails_when_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """error_actionable: true fails when the envelope omits actionable."""
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "act-bad.yaml").write_text(
+            "name: act-bad\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: fake_error\n    arguments: {}\n"
+            "    expect:\n      success: false\n      error_code: Timeout\n"
+            "      error_actionable: true\n",
+            encoding="utf-8",
+        )
+        result = await run_scenario(
+            "act-bad",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=sd,
+        )
+        assert result["status"] == "failed"
+        assert result["steps"][0]["status"] == "failed"
+        assert "actionable" in result["steps"][0].get("detail", "")
 
     async def test_requires_env_reports_unconfigured(self, scenario_dir: Path) -> None:
         """Scenario with missing env var should report 'unconfigured' — not

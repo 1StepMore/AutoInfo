@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
 
+from autoinfo.config import Config, DomainConfig
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
     _error_response,
@@ -366,8 +367,14 @@ class TestToolDispatch:
 
 
 class TestCollectSources:
+    @patch(
+        "autoinfo.mcp.server._load_config",
+        return_value=Config(domains=[DomainConfig(name="medical-research")]),
+    )
     @patch("autoinfo.collect.run_collection")
-    def test_dispatches_to_run_collection(self, mock_run: MagicMock) -> None:
+    def test_dispatches_to_run_collection(
+        self, mock_run: MagicMock, mock_config: MagicMock
+    ) -> None:
         mock_run.return_value = {
             "collection_id": "col-001",
             "domain": "medical-research",
@@ -388,12 +395,21 @@ class TestCollectSources:
         )
         assert result["collection_id"] == "col-001"
 
+    @patch(
+        "autoinfo.mcp.server._load_config",
+        return_value=Config(domains=[DomainConfig(name="medical-research")]),
+    )
     @patch("autoinfo.collect.run_collection")
-    def test_dry_run_passed_through(self, mock_run: MagicMock) -> None:
+    def test_dry_run_passed_through(
+        self, mock_run: MagicMock, mock_config: MagicMock
+    ) -> None:
         _handle_collect_sources(domain="medical-research", dry_run=True)
         mock_run.assert_called_once_with(domain="medical-research", dry_run=True)
 
-    def test_nonexistent_domain_returns_not_found(self) -> None:
+    @patch("autoinfo.mcp.server._load_config", return_value=Config())
+    def test_nonexistent_domain_returns_not_found(
+        self, mock_config: MagicMock
+    ) -> None:
         result = _handle_collect_sources(domain="nonexistent-domain")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -521,8 +537,11 @@ class TestListSummaries:
         assert result["count"] == 2
         assert result["domain"] == "medical-research"
 
+    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
     @patch("autoinfo.kb.KBStore")
-    def test_empty_result(self, mock_kb: MagicMock) -> None:
+    def test_empty_result(
+        self, mock_kb: MagicMock, mock_status: MagicMock
+    ) -> None:
         mock_instance = mock_kb.return_value
         mock_instance.list_entries.return_value = []
 

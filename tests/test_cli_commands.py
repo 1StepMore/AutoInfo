@@ -103,7 +103,10 @@ _MOCK_SUMMARIES_ENTRIES = [
         "entry_id": "kb-entry-001",
         "title": "Improved IVF outcomes with time-lapse embryo imaging",
         "domain": "medical-research",
-        "summary": "A large RCT showing time-lapse imaging improves live birth rates (48.2% vs 39.5%).",
+        "summary": (
+            "A large RCT showing time-lapse imaging improves live birth rates "
+            "(48.2% vs 39.5%)."
+        ),
         "relevance_score": 92.0,
         "collected_at": "2026-07-15T10:30:00Z",
         "source_url": "https://example.com/article1",
@@ -174,7 +177,7 @@ class TestStatusCommand:
         """Status produces human-readable output with domain name."""
         mock_show.return_value = _MOCK_STATUS_RESULT
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(app, ["status"])
 
         assert result.exit_code == 0
@@ -190,7 +193,7 @@ class TestStatusCommand:
         """--json flag produces parseable JSON."""
         mock_show.return_value = _MOCK_STATUS_RESULT
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(app, ["status", "--json"])
 
         assert result.exit_code == 0
@@ -207,7 +210,7 @@ class TestStatusCommand:
         """Verify that --json output is properly formatted JSON."""
         mock_show.return_value = _MOCK_STATUS_RESULT
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(app, ["status", "--json"])
 
         assert result.exit_code == 0
@@ -225,7 +228,7 @@ class TestStatusCommand:
         self, mock_show: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """--domain filter is passed to show_status()."""
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
                 ["status", "--domain", "medical-research"],
@@ -262,7 +265,7 @@ class TestDoctorCommand:
         """Doctor with healthy system shows check indicators."""
         mock_run.return_value = _MOCK_DOCTOR_RESULT
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(app, ["doctor"])
 
         assert result.exit_code == 0
@@ -278,7 +281,7 @@ class TestDoctorCommand:
         """--json flag produces parseable JSON."""
         mock_run.return_value = _MOCK_DOCTOR_RESULT
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(app, ["doctor", "--json"])
 
         assert result.exit_code == 0
@@ -328,14 +331,14 @@ class TestSummariesCommand:
 
     @patch("autoinfo.kb.KBStore")
     def test_summaries_human(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """Summaries lists entries in human-readable format."""
         mock_store = MagicMock()
         mock_store.list_entries.return_value = _MOCK_SUMMARIES_ENTRIES
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
                 ["summaries", "list", "--domain", "medical-research"],
@@ -348,14 +351,14 @@ class TestSummariesCommand:
 
     @patch("autoinfo.kb.KBStore")
     def test_summaries_json(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """--json flag produces parseable JSON."""
         mock_store = MagicMock()
         mock_store.list_entries.return_value = _MOCK_SUMMARIES_ENTRIES
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
                 ["summaries", "list", "--domain", "medical-research", "--json"],
@@ -370,14 +373,14 @@ class TestSummariesCommand:
 
     @patch("autoinfo.kb.KBStore")
     def test_summaries_empty(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """Summaries with no entries shows empty message."""
         mock_store = MagicMock()
         mock_store.list_entries.return_value = []
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
                 ["summaries", "list", "--domain", "medical-research"],
@@ -388,14 +391,14 @@ class TestSummariesCommand:
 
     @patch("autoinfo.kb.KBStore")
     def test_summaries_with_limit_offset(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """--limit and --offset are passed to list_entries."""
         mock_store = MagicMock()
         mock_store.list_entries.return_value = _MOCK_SUMMARIES_ENTRIES[:1]
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
-        with patch("autoinfo.config.get_config_path", return_value=tmp_config_dir):
+        with patch("autoinfo.cli.summaries.get_config_path", return_value=tmp_config_dir):
             result = cli_runner.invoke(
                 app,
                 [
@@ -462,7 +465,9 @@ class TestInitCommand:
             d = tmp_path / sub
             assert d.is_dir(), f"expected directory {d} to exist"
 
-    @pytest.mark.skip(reason="interactive init requires a real TTY; CliRunner provides a StringIO stdin")
+    @pytest.mark.skip(
+        reason="interactive init requires a real TTY; CliRunner provides a StringIO stdin"
+    )
     def test_init_interactive_flow(
         self, cli_runner: Any, tmp_path: Path
     ) -> None:

@@ -194,3 +194,22 @@ with 1.83.7 (8+1 tests PASS), `pip install -e .` refreshed version metadata (PAS
 - `grep -c "env-dep\|mock-seam\|stale\|regression" tests/TRIAGE.md` → 84
 - Full suite output: `/tmp/opencode/triage-full.txt`
 - Evidence: `.omo/evidence/merged-task-1-triage.md`, `.omo/evidence/merged-task-1-clean.txt`
+
+## Post-baseline fixes (2026-08-07 — #117)
+
+The following 8 tests were config-dependent (implicitly relying on a gitignored
+`.autoinfo/config.yaml` in the repo root). In a fresh checkout/CI the file is
+absent, so each test now patches a usage-site seam instead of the loader:
+`PYTHONPATH=src pytest tests/test_cli_commands.py tests/test_mcp_server.py` is
+green with `.autoinfo/` missing.
+
+| Test | Seam now patched |
+|---|---|
+| `test_cli_commands.py::TestSummariesCommand::test_summaries_human` | `autoinfo.cli.summaries.get_config_path` (usage-site binding — `summaries.py` imports it at module top, so patching `autoinfo.config.get_config_path` was a no-op) |
+| `test_cli_commands.py::TestSummariesCommand::test_summaries_json` | same |
+| `test_cli_commands.py::TestSummariesCommand::test_summaries_empty` | same |
+| `test_cli_commands.py::TestSummariesCommand::test_summaries_with_limit_offset` | same |
+| `test_mcp_server.py::TestCollectSources::test_dispatches_to_run_collection` | `autoinfo.mcp.server._load_config` → `Config(domains=[DomainConfig(name="medical-research")])` |
+| `test_mcp_server.py::TestCollectSources::test_dry_run_passed_through` | same |
+| `test_mcp_server.py::TestCollectSources::test_nonexistent_domain_returns_not_found` | `autoinfo.mcp.server._load_config` → `Config()` (empty domains → `_find_domain` returns None → `DOMAIN_NOT_FOUND`) |
+| `test_mcp_server.py::TestListSummaries::test_empty_result` | `autoinfo.mcp.server._detect_kb_status` → `"operational"` (prevents short-circuit on `uninitialized`) |

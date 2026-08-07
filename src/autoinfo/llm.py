@@ -451,7 +451,11 @@ def call_with_fallback(
 
     chain: list[dict[str, str]] = [{
         "model": primary,
-        "base_url": base_url or "",
+        # Primary base_url defaults to config.llm.base_url (issue #147
+        # follow-up: callers like cefr/quality/qa/keywords pass no base_url,
+        # so without this the primary silently hits the provider default
+        # endpoint (e.g. api.openai.com) instead of the configured one).
+        "base_url": base_url or (config.llm.base_url or ""),
         "api_key": api_key or "",
     }]
     for fb in config.llm.fallback:

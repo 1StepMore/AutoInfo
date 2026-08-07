@@ -329,6 +329,50 @@ def scan_kb_tier_evidence(evidence_dir: str | Path) -> set[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# Scenario-library coverage — the validation library itself must exercise the
+# full capability surface (issue #156).  A product/format/source the library
+# never touches is invisible to acceptance even when the code implements it.
+# ---------------------------------------------------------------------------
+
+def scan_scenario_library(scenarios_dir: str | Path) -> dict[str, set[str]]:
+    """Scan validation scenario YAMLs for products, formats and source names.
+
+    Returns ``{"products", "formats", "sources"}`` — the union of every
+    product/format/source token the scenario library mentions, so the report
+    can show which implemented capabilities validation actually exercises.
+    """
+    root = Path(scenarios_dir)
+    out: dict[str, set[str]] = {"products": set(), "formats": set(), "sources": set()}
+    if not root.is_dir():
+        return out
+
+    PRODUCTS = {"digest", "report", "tutorial", "presentation",
+                "premium-briefing", "column", "magazine-digest",
+                "enterprise-briefing"}
+    FORMATS = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+    # Well-known source tokens appearing in scenario yaml (name/step values).
+    SOURCES = {"pubmed", "openalex", "crossref", "dblp", "arxiv", "semantic-scholar",
+               "reddit", "spotify", "youtube", "bilibili", "sec", "gdelt",
+               "huggingface", "kaggle", "github", "hacker", "yahoo", "quandl",
+               "ssrn", "unpaywall", "akshare", "nyt", "reuters", "core",
+               "apple", "edx", "stack", "producthunt", "substack", "uspto"}
+
+    for yf in root.glob("*.yaml"):
+        text = yf.read_text(encoding="utf-8")
+        low = text.lower()
+        for p in PRODUCTS:
+            if p in low:
+                out["products"].add(p)
+        for f in FORMATS:
+            if f in low:
+                out["formats"].add(f)
+        for s in SOURCES:
+            if s in low:
+                out["sources"].add(s)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Report rendering
 # ---------------------------------------------------------------------------
 
@@ -342,6 +386,7 @@ def render_report(
     evidence_dir: str = "",
     source_evidence: set[tuple[str, str]] | None = None,
     kb_evidence: set[tuple[str, str]] | None = None,
+    scenarios_dir: str = "",
 ) -> str:
     """Render the markdown matrix report for *spec*.
 
@@ -479,6 +524,37 @@ def render_report(
         lines.append("All required KB tiers have entries.")
     lines.append("")
 
+    # --- SCENARIO_LIBRARY_COVERAGE (issue #156) ---
+    lines.append("## SCENARIO_LIBRARY_COVERAGE")
+    lines.append("")
+    lines.append(
+        "Capabilities the validation scenario library actually exercises "
+        "vs the full implemented surface (spec products/formats/sources). "
+        "A capability the library never touches is invisible to acceptance:"
+    )
+    lines.append("")
+    sc = scan_scenario_library(scenarios_dir) if scenarios_dir else {
+        "products": set(), "formats": set(), "sources": set(),
+    }
+    spec_products = set(spec.get("products", []))
+    spec_formats = set(spec.get("formats", []))
+    spec_sources = set(spec.get("source_platforms", []))
+    miss_products = sorted(spec_products - sc["products"])
+    miss_formats = sorted(spec_formats - sc["formats"])
+    lines.append(
+        f"- Products exercised: {len(sc['products'])}/{len(spec_products)} "
+        f"— missing: {', '.join(miss_products) or 'none'}"
+    )
+    lines.append(
+        f"- Formats exercised: {len(sc['formats'])}/{len(spec_formats)} "
+        f"— missing: {', '.join(miss_formats) or 'none'}"
+    )
+    lines.append(
+        f"- Source tokens exercised: {len(sc['sources'])}/27 (best-effort "
+        f"text scan) — missing: {', '.join(sorted(set(spec_sources) - sc['sources'])) or 'none'}"
+    )
+    lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
@@ -529,6 +605,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="outputs/coverage-matrix/",
         help="Output directory for matrix-report.md (default: outputs/coverage-matrix/)",
     )
+    parser.add_argument(
+        "--scenarios-dir",
+        default="src/autoinfo/mcp/scenarios",
+        help="Validation scenario library dir to scan for capability coverage (default: src/autoinfo/mcp/scenarios)",
+    )
     return parser.parse_args(argv)
 
 
@@ -568,6 +649,7 @@ def main(argv: list[str] | None = None) -> int:
         evidence_dir=args.evidence,
         source_evidence=source_evidence,
         kb_evidence=kb_evidence,
+        scenarios_dir=args.scenarios_dir,
     )
 
     out_dir = Path(args.output)

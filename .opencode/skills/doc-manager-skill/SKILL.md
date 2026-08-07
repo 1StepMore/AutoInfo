@@ -395,7 +395,7 @@ These documentation files span multiple code modules and must be checked wheneve
 
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
-| New scenario schema field (e.g. `timeout_seconds`, `recovery_steps`, `min_passing`/`pass_ratio`, `regression`/`regression_issue`, `collect_artifacts`) | `docs/dev/validation-scenario-contract.md`, this skill (§1.5), `AGENTS.md`, `README.md` | Document field in schema + semantics; bump scenario/tool counts if the surface changed |
+| New scenario schema field (e.g. `timeout_seconds`, `recovery_steps`, `min_passing`/`pass_ratio`, `regression`/`regression_issue`, `collect_artifacts`, `error_actionable`) | `docs/dev/validation-scenario-contract.md`, this skill (§1.5), `AGENTS.md`, `README.md` | Document field in schema + semantics; bump scenario/tool counts if the surface changed |
 | New regression scenario in `scenarios/regression/` | `docs/dev/validation-scenario-contract.md` (inventory), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Add to regression inventory (with `regression_issue`); update "57 scenarios (52 functional + 5 regression)" counts |
 | Report/packaging format change (`scripts/validation_report.py`, `scripts/validation_delivery.py`) | `AGENTS.md`, `README.md`, `docs/dev/validation-scenario-contract.md` (report sections) | Update Verdicts / Regression failures / Blockers / Per-step trace + 01-RAW…04-MATRIX packaging + manifest authenticity/D1-D3/UX metrics descriptions |
 | E8 matrix change (`scripts/coverage_matrix.py`, `docs/dev/specs/end-user-matrix.yaml`) | `README.md`, `AGENTS.md`, `docs/dev/enduser-coverage-matrix.md` | Update 04-MATRIX / coverage-gaps / Oracle R8 descriptions |

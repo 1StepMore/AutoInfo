@@ -283,6 +283,7 @@ AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
 | model | deepseek/deepseek-chat | Any LiteLLM-supported model |
 | base_url | (none) | Required for non-OpenRouter endpoints |
 | api_key | ${AUTOINFO_LLM_API_KEY} | Set via env var or config |
+| fallback | [] | Ordered `llm.fallback` list — each entry: `provider`, `model`, optional `base_url`/`api_key`. Every LLM call path (extraction, validation judge, quality gates, translation QA, output generation, keyword suggest, Q&A, CEFR) walks `[primary] + fallback` via `llm.call_with_fallback`; the first successful model wins. |
 
 **Precedence** (highest to lowest):
 1. MCP tool parameter (e.g. `init_project(llm_provider="openai")`)
@@ -291,6 +292,17 @@ AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
 4. Default values (openrouter/deepseek/deepseek-chat)
 
 **Custom endpoint** (e.g. OpenCode Go, Ollama, Azure): set `provider="openai"`, `base_url` to your endpoint, `api_key` via env var, `model` to your model name.
+
+**Fallback example** (`.autoinfo/config.yaml`):
+```yaml
+llm:
+  provider: openai
+  model: deepseek-v4-flash
+  base_url: https://opencode.ai/zen/go/v1
+  fallback:
+    - model: mimo-v2.5
+      base_url: https://opencode.ai/zen/go/v1
+```
 
 ## `.omo/` Workspace
 
@@ -400,15 +412,16 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
 | Validation scenarios | ✅ 57 scenarios (52 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
-| Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` (run after primary failure) + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
+| Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` (run after primary failure) + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `expect.error_actionable` envelope assertion; root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
 | Regression flywheel | ✅ `scenarios/regression/` (regression-collect-int-id #104, regression-llm-key-resolution #119, regression-period-enum #126, regression-report-structure #121, regression-source-301 #135) + `coverage_audit.py` "Regression scenarios: N (issues: ...)" + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX (E8 matrix + coverage-gaps.json, Oracle R8 unconfigured-vs-gap)/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics) |
 | End-user coverage matrix (E8) | ✅ `scripts/coverage_matrix.py` + `docs/dev/specs/end-user-matrix.yaml` |
 | End-user journey validation | ✅ `enduser-journey.yaml` scenario; UX metrics UX_OK/completion_rate ≥ 0.8; error-boundary asserts `actionable` field |
 | LLM timeout + parallel processing | ✅ `LLMConfig.timeout` (default 120.0) threaded through LLM calls; `AUTOINFO_PROCESS_WORKERS` ThreadPoolExecutor; MCP `asyncio.to_thread` offload |
+| LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; first successful model wins, aggregate error surfaces last failure |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~3239 tests collected (includes validation wave E1-E9 scenarios + regression suite) |
+| Test suite | ✅ ~3256 tests collected (includes validation wave E1-E9 scenarios + regression suite + #141-#148 regression guards) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 | Standardized error envelope | ✅ All MCP + REST API errors return `{success: false, error: {code, message, actionable}}`; 27 ErrorCode values; `error_dict()` deprecated |
 | REST success envelope | ✅ REST API success responses return `{success: true, data: ...}` (breaking change v1.9; migration: `docs/dev/migration-v1.9.md`); dashboard JS unwraps transparently |

@@ -79,6 +79,7 @@ steps:
       # mcp envelope assertions:
       data_has: ["domains"]           # keys that must exist in envelope.data (dict)
       error_code: "UnknownTool"       # when success expected False: envelope.error.code
+      error_actionable: false         # when success expected False: envelope.error.actionable must equal this boolean (asserts the remediation hint)
       # cli assertions:
       exit_code: 0                    # expected subprocess returncode
       stdout_has: ["substring"]       # substrings that must appear in stdout

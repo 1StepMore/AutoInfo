@@ -139,14 +139,20 @@ class TestTopicsAddCLI:
         with patch("pathlib.Path.cwd", return_value=tmp_project):
             cli_runner.invoke(
                 app,
-                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
+                [
+                    "topics", "add", "--domain", "medical-research",
+                    "--name", "IVF", "--keywords", "IVF",
+                ],
                 catch_exceptions=False,
             )
         # Second add (same)
         with patch("pathlib.Path.cwd", return_value=tmp_project):
             result = cli_runner.invoke(
                 app,
-                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
+                [
+                    "topics", "add", "--domain", "medical-research",
+                    "--name", "IVF", "--keywords", "IVF,embryo",
+                ],
                 catch_exceptions=False,
             )
         assert result.exit_code == 0
@@ -161,11 +167,12 @@ class TestTopicsAddCLI:
 
     def test_add_topic_domain_not_found(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
         """Adding a topic to a non-existent domain prints an error."""
-        result = cli_runner.invoke(
-            app,
-            ["topics", "add", "--domain", "nonexistent", "--name", "Test", "--keywords", "a"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "add", "--domain", "nonexistent", "--name", "Test", "--keywords", "a"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 1
         assert "not configured" in result.output
 
@@ -192,12 +199,18 @@ class TestTopicsListCLI:
         with patch("pathlib.Path.cwd", return_value=tmp_project):
             cli_runner.invoke(
                 app,
-                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF,embryo"],
+                [
+                    "topics", "add", "--domain", "medical-research",
+                    "--name", "IVF", "--keywords", "IVF,embryo",
+                ],
                 catch_exceptions=False,
             )
             cli_runner.invoke(
                 app,
-                ["topics", "add", "--domain", "medical-research", "--name", "Gene therapy", "--keywords", "CRISPR,gene"],
+                [
+                    "topics", "add", "--domain", "medical-research",
+                    "--name", "Gene therapy", "--keywords", "CRISPR,gene",
+                ],
                 catch_exceptions=False,
             )
 
@@ -222,13 +235,16 @@ class TestTopicsListCLI:
         assert result.exit_code == 0
         assert "No topics configured" in result.stdout
 
-    def test_list_topics_domain_not_found(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
+    def test_list_topics_domain_not_found(
+        self, cli_runner: Any, app: Any, tmp_project: Path
+    ) -> None:
         """Listing topics for a non-existent domain prints an error."""
-        result = cli_runner.invoke(
-            app,
-            ["topics", "list", "--domain", "nonexistent"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "list", "--domain", "nonexistent"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 1
         assert "not configured" in result.output
 
@@ -252,7 +268,10 @@ class TestTopicsRemoveCLI:
         with patch("pathlib.Path.cwd", return_value=tmp_project):
             cli_runner.invoke(
                 app,
-                ["topics", "add", "--domain", "medical-research", "--name", "IVF", "--keywords", "IVF"],
+                [
+                    "topics", "add", "--domain", "medical-research",
+                    "--name", "IVF", "--keywords", "IVF",
+                ],
                 catch_exceptions=False,
             )
 
@@ -281,13 +300,16 @@ class TestTopicsRemoveCLI:
         assert result.exit_code == 1
         assert "not found" in result.output
 
-    def test_remove_topic_domain_not_found(self, cli_runner: Any, app: Any, tmp_project: Path) -> None:
+    def test_remove_topic_domain_not_found(
+        self, cli_runner: Any, app: Any, tmp_project: Path
+    ) -> None:
         """Removing a topic from a non-existent domain prints an error."""
-        result = cli_runner.invoke(
-            app,
-            ["topics", "remove", "--domain", "nonexistent", "--topic-id", "x"],
-            catch_exceptions=False,
-        )
+        with patch("pathlib.Path.cwd", return_value=tmp_project):
+            result = cli_runner.invoke(
+                app,
+                ["topics", "remove", "--domain", "nonexistent", "--topic-id", "x"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 1
         assert "not configured" in result.output
 
@@ -311,7 +333,10 @@ class TestMCPAddTopic:
         """Adding a new topic returns created=True and persists it."""
         _setup_minimal_config(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_add_topic(
                 domain="medical-research",
                 name="Gene therapy",
@@ -327,9 +352,16 @@ class TestMCPAddTopic:
         """Adding the same topic again returns created=False with existing data."""
         _setup_minimal_config(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
-            result1 = _handle_add_topic(domain="medical-research", name="Gene therapy", keywords=["CRISPR"])
-            result2 = _handle_add_topic(domain="medical-research", name="Gene therapy", keywords=["different"])
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
+            result1 = _handle_add_topic(
+                domain="medical-research", name="Gene therapy", keywords=["CRISPR"]
+            )
+            result2 = _handle_add_topic(
+                domain="medical-research", name="Gene therapy", keywords=["different"]
+            )
 
         assert result1["created"] is True
         assert result2["created"] is False
@@ -340,14 +372,20 @@ class TestMCPAddTopic:
         """Adding to a non-existent domain returns DomainNotFound error."""
         _setup_minimal_config(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_add_topic(domain="nonexistent", name="Test")
 
         assert result["error_code"] == "DomainNotFound"
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_add_topic(domain="medical-research", name="Test")
 
         assert "error_code" in result
@@ -363,7 +401,10 @@ class TestMCPRemoveTopic:
         """Removing an existing topic returns removed=True."""
         _setup_config_with_topics(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
 
         assert result["removed"] is True
@@ -373,7 +414,10 @@ class TestMCPRemoveTopic:
         """Removing a non-existent topic returns TopicNotFound error."""
         _setup_config_with_topics(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_remove_topic(domain="medical-research", topic_id="nonexistent")
 
         assert result["error_code"] == "TopicNotFound"
@@ -382,14 +426,20 @@ class TestMCPRemoveTopic:
         """Removing from a non-existent domain returns DomainNotFound error."""
         _setup_config_with_topics(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_remove_topic(domain="nonexistent", topic_id="IVF")
 
         assert result["error_code"] == "DomainNotFound"
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
 
         assert "error_code" in result
@@ -405,7 +455,10 @@ class TestMCPListTopics:
         """Listing topics returns all topics for the domain."""
         _setup_config_with_topics(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_list_topics(domain="medical-research")
 
         assert result["count"] == 2
@@ -417,7 +470,10 @@ class TestMCPListTopics:
         """Domain with no topics returns an empty list."""
         _setup_minimal_config(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_list_topics(domain="medical-research")
 
         assert result["count"] == 0
@@ -427,14 +483,20 @@ class TestMCPListTopics:
         """Listing topics for a non-existent domain returns DomainNotFound."""
         _setup_minimal_config(tmp_path)
 
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_list_topics(domain="nonexistent")
 
         assert result["error_code"] == "DomainNotFound"
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
-        with patch("autoinfo.mcp.server._config_path", return_value=tmp_path / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.mcp.server._config_path",
+            return_value=tmp_path / ".autoinfo" / "config.yaml",
+        ):
             result = _handle_list_topics(domain="medical-research")
 
         assert "error_code" in result
@@ -511,7 +573,12 @@ def _setup_minimal_config(tmp_path: Path) -> None:
                 "name": "medical-research",
                 "active": True,
                 "sources": [
-                    {"name": "pubmed", "type": "api", "url": "https://pubmed.ncbi.nlm.nih.gov/", "quality_tier": 1},
+                    {
+                        "name": "pubmed",
+                        "type": "api",
+                        "url": "https://pubmed.ncbi.nlm.nih.gov/",
+                        "quality_tier": 1,
+                    },
                 ],
                 "topics": [],
             },
@@ -535,7 +602,12 @@ def _setup_config_with_topics(tmp_path: Path) -> None:
                 "name": "medical-research",
                 "active": True,
                 "sources": [
-                    {"name": "pubmed", "type": "api", "url": "https://pubmed.ncbi.nlm.nih.gov/", "quality_tier": 1},
+                    {
+                        "name": "pubmed",
+                        "type": "api",
+                        "url": "https://pubmed.ncbi.nlm.nih.gov/",
+                        "quality_tier": 1,
+                    },
                 ],
                 "topics": [
                     {"name": "IVF", "keywords": ["IVF", "embryo"]},

@@ -20,6 +20,8 @@ import json
 import logging
 from typing import Any
 
+from autoinfo.llm import call_with_fallback
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHTS = {
@@ -157,15 +159,6 @@ def back_translate(
             forward_model,
         )
 
-    _litellm = _get_litellm()
-    if _litellm is None:
-        logger.error("back_translate: litellm is not available")
-        return {
-            "back_translated_text": "",
-            "back_model": back_model,
-            "forward_model": forward_model,
-            "success": False,
-        }
     if timeout is None:
         timeout = _resolve_timeout()
 
@@ -177,7 +170,7 @@ def back_translate(
     )
 
     try:
-        response = _litellm.completion(
+        response = call_with_fallback(
             model=back_model,
             messages=[
                 {
@@ -192,7 +185,7 @@ def back_translate(
             ],
             max_tokens=4000,
             temperature=0.1,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
 
         back_text: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -254,11 +247,6 @@ def llm_judge_translation(
         ``faithfulness_score`` — 0-100 float
         ``issues`` — list of ``{"severity": str, "description": str, "position": str}``
     """
-    _litellm = _get_litellm()
-    if _litellm is None:
-        logger.error("llm_judge_translation: litellm not available")
-        return {"faithfulness_score": 0.0, "issues": [{"severity": "major", "description": "litellm unavailable", "position": "n/a"}]}
-
     if model is None:
         model = _resolve_default_model()
     if timeout is None:
@@ -287,16 +275,16 @@ def llm_judge_translation(
     )
 
     try:
-        response = _litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            json_mode=json_mode,
             max_tokens=1000,
             temperature=0.1,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
 
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -451,21 +439,6 @@ def run_back_translation_pipeline(
 # ---------------------------------------------------------------------------
 
 
-def _get_litellm() -> Any:
-    """Lazily import and return the ``litellm`` module.
-
-    Returns ``None`` when the package is not available (graceful
-    degradation for environments where LiteLLM is not installed).
-    """
-    try:
-        import litellm  # noqa: PLC0415 — deferred import
-
-        return litellm
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed — run 'pip install litellm'")
-        return None
-
-
 def _resolve_timeout() -> float | None:
     """Resolve the per-call LLM timeout (seconds) from config.
 
@@ -593,10 +566,6 @@ def refine_translation(
     if model is None:
         model = _resolve_default_model()
 
-    _litellm = _get_litellm()
-    if _litellm is None:
-        logger.error("refine_translation: litellm is not available")
-        return {"translation": initial_translation, "model_used": model}
     if timeout is None:
         timeout = _resolve_timeout()
 
@@ -628,7 +597,7 @@ def refine_translation(
     )
 
     try:
-        response = _litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {
@@ -643,7 +612,7 @@ def refine_translation(
             ],
             max_tokens=4000,
             temperature=0.1,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
 
         translation: str = response.choices[0].message.content  # type: ignore[union-attr]

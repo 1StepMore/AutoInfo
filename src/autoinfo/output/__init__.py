@@ -29,13 +29,14 @@ import sqlite3
 import tarfile
 import uuid
 import xml.etree.ElementTree as ET
-import yaml
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal
+
+import yaml
 
 if TYPE_CHECKING:
     from autoinfo.config import SourceConfig  # noqa: F811
@@ -47,6 +48,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, Templa
 
 from autoinfo.config import Config, get_config_path, load_config
 from autoinfo.kb import KBStore, SQLiteIndex
+from autoinfo.llm import call_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -2231,12 +2233,6 @@ def _call_llm_for_digest(
     Uses the same LiteLLM pattern as :class:`LLMExtractor` but with
     a custom summarization prompt.
     """
-    try:
-        import litellm  # noqa: PLC0415
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed \u2014 run 'pip install litellm'")
-        return {}
-
     if config is None:
         config_path = get_config_path()
         if config_path is not None:
@@ -2251,17 +2247,17 @@ def _call_llm_for_digest(
     full_model = model
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=full_model,
             messages=[
                 {"role": "system", "content": _DIGEST_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
+            json_mode=config.llm.json_mode and not config.llm.reasoning_model,
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
-            api_base=config.llm.base_url or None,
+            base_url=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM digest synthesis failed: %s", exc)
@@ -4067,12 +4063,6 @@ def _call_llm_for_translation(
     Returns a dict with ``translated_title`` and ``translated_body``.
     Returns empty strings on failure.
     """
-    try:
-        import litellm  # noqa: PLC0415
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed — run 'pip install litellm'")
-        return {"translated_title": "", "translated_body": ""}
-
     if config is None:
         config_path = get_config_path()
         if config_path is not None:
@@ -4094,17 +4084,17 @@ def _call_llm_for_translation(
     )
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=full_model,
             messages=[
                 {"role": "system", "content": _TRANSLATION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
+            json_mode=config.llm.json_mode and not config.llm.reasoning_model,
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
-            api_base=config.llm.base_url or None,
+            base_url=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM translation failed: %s", exc)
@@ -4661,12 +4651,6 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
 
     Uses the same pattern as ``_call_llm_for_digest``.
     """
-    try:
-        import litellm  # noqa: PLC0415
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed — run 'pip install litellm'")
-        return {}
-
     config_path = get_config_path()
     if config_path and config_path.is_file():
         try:
@@ -4680,7 +4664,7 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
     full_model = model
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=full_model,
             messages=[
                 {
@@ -4691,11 +4675,11 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
                 },
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
+            json_mode=config.llm.json_mode and not config.llm.reasoning_model,
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
-            api_base=config.llm.base_url or None,
+            base_url=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("Tutorial generation failed: %s", exc)
@@ -4922,12 +4906,6 @@ def _render_presentation_agent_json(
 
 def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     """Call LiteLLM to generate structured presentation content."""
-    try:
-        import litellm  # noqa: PLC0415
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed — run 'pip install litellm'")
-        return {}
-
     config_path = get_config_path()
     if config_path and config_path.is_file():
         try:
@@ -4941,7 +4919,7 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     full_model = model
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=full_model,
             messages=[
                 {
@@ -4952,11 +4930,11 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
                 },
                 {"role": "user", "content": prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if config.llm.json_mode and not config.llm.reasoning_model else {}),
+            json_mode=config.llm.json_mode and not config.llm.reasoning_model,
             max_tokens=4000,
             temperature=0.1,
             api_key=config.llm.api_key or None,
-            api_base=config.llm.base_url or None,
+            base_url=config.llm.base_url or None,
         )
     except Exception as exc:
         logger.error("LLM presentation synthesis failed: %s", exc)
@@ -5015,7 +4993,7 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
     back to the standalone HTML renderer with a log warning.
     """
     import subprocess  # noqa: PLC0415
-    import tempfile    # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
 
     title = context.get("title", "Presentation")
     author = context.get("domain", "AutoInfo")
@@ -5478,6 +5456,7 @@ def _render_audio_edge_tts(
         If the TTS synthesis fails.
     """
     import asyncio  # noqa: PLC0415
+
     import edge_tts  # noqa: PLC0415
 
     async def _synthesize() -> bytes:
@@ -5869,18 +5848,6 @@ def simplify_text(
         "Rewrite this text at the target CEFR level. Return only the simplified text."
     )
 
-    try:
-        import litellm  # noqa: PLC0415
-    except ImportError:
-        logger.error("litellm is not installed — cannot simplify content")
-        return {
-            "simplified": content,
-            "original_level": original_level,
-            "simplified_level": "unknown",
-            "verified": False,
-            "error": "litellm not installed",
-        }
-
     # Resolve model config (same pattern as cefr.py)
     from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
 
@@ -5900,7 +5867,7 @@ def simplify_text(
         logger.debug("Could not load config for simplify_text", exc_info=True)
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -5909,7 +5876,7 @@ def simplify_text(
             max_tokens=4000,
             temperature=0.3,
             api_key=api_key or None,
-            api_base=base_url or None,
+            base_url=base_url or None,
         )
         simplified: str = (response.choices[0].message.content or "").strip()  # type: ignore[union-attr]
     except Exception as exc:

@@ -25,6 +25,7 @@ from typing import Any, Literal
 import yaml
 
 from autoinfo.config import QualityGateConfig
+from autoinfo.llm import call_with_fallback
 from autoinfo.models import ExtractionResult, Item, KBEntry
 
 logger = logging.getLogger(__name__)
@@ -797,10 +798,9 @@ class G3RelevanceScoring:
         # ---- Choose scoring method --------------------------------------
         llm_retries_used = 0
         if gate_config is not None and gate_config.retries > 0:
-            _litellm_mod = self._get_litellm()
-            if _litellm_mod is not None and self._model:
+            if self._model:
                 score_val, llm_retries_used = self._llm_score(
-                    text, keywords, gate_config, _litellm_mod,
+                    text, keywords, gate_config,
                 )
                 if score_val is None:
                     # All retries exhausted → neutral pass
@@ -868,7 +868,6 @@ class G3RelevanceScoring:
         text: str,
         keywords: list[str],
         gate_config: QualityGateConfig,
-        litellm_mod: Any,
     ) -> tuple[int | None, int]:
         """Run LLM-based relevance scoring with retry loop.
 
@@ -920,7 +919,7 @@ class G3RelevanceScoring:
                     )
                     raw: str = response.choices[0].message.content
                 else:
-                    response = litellm_mod.completion(
+                    response = call_with_fallback(
                         model=model,
                         messages=[
                             {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -928,7 +927,7 @@ class G3RelevanceScoring:
                         ],
                         max_tokens=10,
                         temperature=0.0,
-                        **(dict(timeout=self._timeout) if self._timeout is not None else {}),
+                        timeout=self._timeout,
                     )
                     raw = response.choices[0].message.content
 
@@ -1121,18 +1120,6 @@ class G4FactualConsistency:
                 },
             )
 
-        _litellm = self._get_litellm()
-        if _litellm is None:
-            return QualityResult(
-                gate_name="G4-SummaryFactual",
-                passed=False,
-                flagged=True,
-                details={
-                    "contradiction": None,
-                    "explanation": "litellm is not available",
-                },
-            )
-
         if gate_config is not None and gate_config.retries > 0:
             retry_models = list(gate_config.retry_models) if gate_config.retry_models else []
             models = [self._model] + retry_models
@@ -1163,16 +1150,16 @@ class G4FactualConsistency:
                             f"Please re-evaluate carefully."
                         )
 
-                response = _litellm.completion(
+                response = call_with_fallback(
                     model=model,
                     messages=[
                         {"role": "system", "content": self.SYSTEM_PROMPT},
                         {"role": "user", "content": user_content},
                     ],
-                    **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
+                    json_mode=self._json_mode,
                     max_tokens=500,
                     temperature=0.0,
-                    **(dict(timeout=self._timeout) if self._timeout is not None else {}),
+                    timeout=self._timeout,
                 )
 
                 raw_content: str = response.choices[0].message.content
@@ -1414,21 +1401,8 @@ class G5TranslationAccuracy:
                 },
             )
 
-        _litellm = self._get_litellm()
-        if _litellm is None:
-            return QualityResult(
-                gate_name="G5-TranslationAccuracy",
-                passed=False,
-                flagged=True,
-                details={
-                    "faithful": None,
-                    "explanation": "litellm is not available",
-                    "issues": [],
-                },
-            )
-
         try:
-            response = _litellm.completion(
+            response = call_with_fallback(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -1440,10 +1414,10 @@ class G5TranslationAccuracy:
                         ),
                     },
                 ],
-                **(dict(response_format={"type": "json_object"}) if self._json_mode else {}),
+                json_mode=self._json_mode,
                 max_tokens=500,
                 temperature=0.0,
-                **(dict(timeout=self._timeout) if self._timeout is not None else {}),
+                timeout=self._timeout,
             )
 
             content: str = response.choices[0].message.content  # type: ignore[union-attr]
@@ -2600,14 +2574,6 @@ def llm_judge(
     timeout: float | None = None,
 ) -> dict[str, Any]:
     """Gate 5: LLM-based quality eval (faithfulness, terminology, style, readability 0-100)."""
-    try:
-        import litellm as _lm_mod  # noqa: PLC0415
-    except ImportError:
-        logger.error("litellm is not installed")
-        return {"faithfulness": 0, "terminology": 0, "style": 0, "readability": 0,
-                "issues": ["litellm unavailable"]}
-
-    _lm: Any = _lm_mod
     if model is None:
         model = _resolve_llm_model()
     if timeout is None:
@@ -2623,13 +2589,13 @@ def llm_judge(
     )
 
     try:
-        resp = _lm.completion(
+        resp = call_with_fallback(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            json_mode=json_mode,
             max_tokens=1000,
             temperature=0.0,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
         parsed = json.loads(resp.choices[0].message.content)
     except Exception as e:

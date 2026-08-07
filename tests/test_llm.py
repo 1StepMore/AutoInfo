@@ -19,9 +19,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoinfo.llm import LLMExtractor
+from autoinfo.config import Config, LLMConfig
+from autoinfo.llm import LLMExtractor, call_with_fallback
 from autoinfo.models import ExtractionResult, Item
-
 
 # ===================================================================
 # Fixtures
@@ -456,3 +456,133 @@ class TestConfigHandling:
         assert "key_points" in prompt
         # Default fields are always included even when not in the schema
         assert "entities" in prompt
+
+
+# ===================================================================
+# call_with_fallback — shared chain-walk helper (issue #147)
+# ===================================================================
+
+
+class TestCallWithFallback:
+    """``llm.call_with_fallback`` walks primary + fallback model chain.
+
+    The same helper is used by every standalone litellm call site so the
+    configured fallback chain protects all LLM paths, not just extraction.
+    """
+
+    def _config_with_fallback(self) -> Config:
+        return Config(
+            llm=LLMConfig(
+                provider="openrouter",
+                model="deepseek/deepseek-chat",
+                api_key="",
+                fallback=[LLMConfig(provider="openai", model="gpt-4o", api_key="")],
+            )
+        )
+
+    def _mock_litellm(self) -> MagicMock:
+        return MagicMock()
+
+    def test_primary_failure_falls_back(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Primary fails → fallback model is tried and its response returned."""
+        import logging
+
+        mock_lm = self._mock_litellm()
+        fallback_resp = MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
+
+        def _side_effect(**kwargs: object) -> MagicMock:
+            if "deepseek" in str(kwargs.get("model", "")):
+                raise Exception("Primary model error")
+            return fallback_resp
+
+        mock_lm.completion.side_effect = _side_effect
+
+        caplog.set_level(logging.INFO)
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            resp = call_with_fallback(
+                messages=[{"role": "user", "content": "hi"}],
+                config=self._config_with_fallback(),
+            )
+
+        assert resp is fallback_resp
+        assert mock_lm.completion.call_count == 2
+        models_called = [
+            str(c.kwargs["model"]) for c in mock_lm.completion.call_args_list
+        ]
+        assert "deepseek/deepseek-chat" in models_called
+        assert "openai/gpt-4o" in models_called
+        assert "Fallback to openai/gpt-4o succeeded" in caplog.text
+
+    def test_all_models_fail_raises(self) -> None:
+        """Every model in the chain failing raises RuntimeError."""
+        mock_lm = self._mock_litellm()
+        mock_lm.completion.side_effect = Exception("Always fails")
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            with pytest.raises(RuntimeError, match="All LLM models"):
+                call_with_fallback(
+                    messages=[{"role": "user", "content": "hi"}],
+                    config=self._config_with_fallback(),
+                )
+        assert mock_lm.completion.call_count == 2
+
+    def test_no_fallback_single_attempt(self) -> None:
+        """Without a configured fallback the primary is attempted once."""
+        cfg = Config(
+            llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="")
+        )
+        mock_lm = self._mock_litellm()
+        resp = MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
+        mock_lm.completion.return_value = resp
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = call_with_fallback(
+                messages=[{"role": "user", "content": "hi"}],
+                config=cfg,
+                max_tokens=512,
+                temperature=0.2,
+            )
+
+        assert result is resp
+        assert mock_lm.completion.call_count == 1
+        call_kwargs = mock_lm.completion.call_args.kwargs
+        assert call_kwargs["model"] == "openai/gpt-4o-mini"
+        assert call_kwargs["max_tokens"] == 512
+        assert call_kwargs["temperature"] == 0.2
+
+    def test_json_mode_passes_response_format(self) -> None:
+        """json_mode=True adds response_format json_object to the call."""
+        cfg = Config(
+            llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="")
+        )
+        mock_lm = self._mock_litellm()
+        mock_lm.completion.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="{}"))]
+        )
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            call_with_fallback(
+                messages=[{"role": "user", "content": "hi"}],
+                config=cfg,
+                json_mode=True,
+            )
+
+        call_kwargs = mock_lm.completion.call_args.kwargs
+        assert call_kwargs["response_format"] == {"type": "json_object"}
+
+    def test_primary_succeeds_no_fallback_attempt(self) -> None:
+        """Successful primary call never touches the fallback model."""
+        mock_lm = self._mock_litellm()
+        resp = MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
+        mock_lm.completion.return_value = resp
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = call_with_fallback(
+                messages=[{"role": "user", "content": "hi"}],
+                config=self._config_with_fallback(),
+            )
+
+        assert result is resp
+        assert mock_lm.completion.call_count == 1

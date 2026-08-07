@@ -23,6 +23,8 @@ from typing import Any, Awaitable, Callable
 
 import yaml
 
+from autoinfo.llm import call_with_fallback
+
 SCENARIOS_DIR: Path = Path(__file__).resolve().parent / "scenarios"
 
 # ---------------------------------------------------------------------------
@@ -361,8 +363,6 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
     ValueError
         If the judge response cannot be parsed.
     """
-    import litellm  # noqa: PLC0415 — deferred import (same as llm.py)
-
     llm_cfg = _resolve_llm_config()
     prompt = (
         "You are a validation judge for the AutoInfo platform. Determine "
@@ -373,12 +373,12 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
         '"reason": "one-sentence justification"}'
     )
     start = time.monotonic()
-    response = litellm.completion(
-        model=llm_cfg["model"],
+    response = call_with_fallback(
         messages=[{"role": "user", "content": prompt}],
+        model=llm_cfg["model"],
         max_tokens=500,
         temperature=0.0,
-        api_base=llm_cfg["api_base"],
+        base_url=llm_cfg["api_base"],
         api_key=llm_cfg["api_key"] or None,
     )
     duration = time.monotonic() - start

@@ -168,13 +168,16 @@ class TestQualityTimeout:
             choices=[MagicMock(message=MagicMock(content="88"))]
         )
         gate = G3RelevanceScoring(timeout=30.0)
-        with patch.object(G3RelevanceScoring, "_get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             gate.check(
                 sample_item,
                 ["IVF"],
                 gate_config=QualityGateConfig(name="G3", retries=1),
             )
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 30.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 30.0
 
     def test_g3_without_timeout_omits_kwarg(self, sample_item: Item) -> None:
         from autoinfo.config import QualityGateConfig
@@ -185,13 +188,16 @@ class TestQualityTimeout:
             choices=[MagicMock(message=MagicMock(content="88"))]
         )
         gate = G3RelevanceScoring()
-        with patch.object(G3RelevanceScoring, "_get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             gate.check(
                 sample_item,
                 ["IVF"],
                 gate_config=QualityGateConfig(name="G3", retries=1),
             )
-        assert "timeout" not in mock_lm.completion.call_args.kwargs
+        assert mock_cwf.call_args.kwargs["timeout"] is None
 
     def test_g4_passes_timeout(self, sample_item: Item, tmp_path) -> None:
         from autoinfo.quality import G4FactualConsistency
@@ -208,9 +214,12 @@ class TestQualityTimeout:
             collections_path=tmp_path,
             timeout=40.0,
         )
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             gate.check(sample_item, extraction)
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 40.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 40.0
 
     def test_g5_passes_timeout(self, sample_item: Item) -> None:
         from autoinfo.quality import G5TranslationAccuracy
@@ -224,9 +233,12 @@ class TestQualityTimeout:
         extraction = _dummy_extraction(sample_item)
         extraction.custom_fields["translation"] = "Some translated text."
         gate = G5TranslationAccuracy(timeout=55.0)
-        with patch.object(G5TranslationAccuracy, "_get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             gate.check(sample_item, extraction)
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 55.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 55.0
 
     def test_llm_judge_passes_timeout(self) -> None:
         from autoinfo.quality import llm_judge
@@ -281,7 +293,10 @@ class TestTranslationQaTimeout:
         from autoinfo.translation_qa import back_translate
 
         mock_lm = self._patch_litellm()
-        with patch("autoinfo.translation_qa._get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.translation_qa.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             back_translate(
                 source_text="hello",
                 translated_text="bonjour",
@@ -289,7 +304,7 @@ class TestTranslationQaTimeout:
                 target_lang="fr",
                 timeout=28.0,
             )
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 28.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 28.0
 
     def test_llm_judge_translation_passes_timeout(self) -> None:
         from autoinfo.translation_qa import llm_judge_translation
@@ -300,15 +315,21 @@ class TestTranslationQaTimeout:
                 message=MagicMock(content='{"faithfulness_score": 80, "issues": []}')
             )]
         )
-        with patch("autoinfo.translation_qa._get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.translation_qa.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             llm_judge_translation("source", "back", "en", timeout=29.0)
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 29.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 29.0
 
     def test_refine_translation_passes_timeout(self) -> None:
         from autoinfo.translation_qa import refine_translation
 
         mock_lm = self._patch_litellm()
-        with patch("autoinfo.translation_qa._get_litellm", return_value=mock_lm):
+        with patch(
+            "autoinfo.translation_qa.call_with_fallback",
+            return_value=mock_lm.completion.return_value,
+        ) as mock_cwf:
             refine_translation(
                 source_text="hello",
                 initial_translation="bonjour",
@@ -317,7 +338,7 @@ class TestTranslationQaTimeout:
                 judge_feedback=[],
                 timeout=31.0,
             )
-        assert mock_lm.completion.call_args.kwargs["timeout"] == 31.0
+        assert mock_cwf.call_args.kwargs["timeout"] == 31.0
 
 
 # ===================================================================

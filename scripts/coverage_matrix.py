@@ -49,6 +49,22 @@ UNCONFIGURED = "未配置unconfigured"
 
 _ALL_STATUSES = (PRODUCED, GAP, NOT_APPLICABLE, UNCONFIGURED)
 
+# Scenario-library capability tokens scanned from scenario yaml (issue #156).
+SCENARIO_PRODUCTS = {
+    "digest", "report", "tutorial", "presentation",
+    "premium-briefing", "column", "magazine-digest",
+    "enterprise-briefing",
+}
+SCENARIO_FORMATS = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+# Well-known source tokens appearing in scenario yaml (name/step values).
+SCENARIO_SOURCES = {
+    "pubmed", "openalex", "crossref", "dblp", "arxiv", "semantic-scholar",
+    "reddit", "spotify", "youtube", "bilibili", "sec", "gdelt",
+    "huggingface", "kaggle", "github", "hacker", "yahoo", "quandl",
+    "ssrn", "unpaywall", "akshare", "nyt", "reuters", "core",
+    "apple", "edx", "stack", "producthunt", "substack", "uspto",
+}
+
 # format -> extension, mirrors _PERSIST_EXT_BY_FORMAT in src/autoinfo/mcp/server.py
 FORMAT_EXT = {
     "markdown": ".md",
@@ -346,27 +362,16 @@ def scan_scenario_library(scenarios_dir: str | Path) -> dict[str, set[str]]:
     if not root.is_dir():
         return out
 
-    PRODUCTS = {"digest", "report", "tutorial", "presentation",
-                "premium-briefing", "column", "magazine-digest",
-                "enterprise-briefing"}
-    FORMATS = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
-    # Well-known source tokens appearing in scenario yaml (name/step values).
-    SOURCES = {"pubmed", "openalex", "crossref", "dblp", "arxiv", "semantic-scholar",
-               "reddit", "spotify", "youtube", "bilibili", "sec", "gdelt",
-               "huggingface", "kaggle", "github", "hacker", "yahoo", "quandl",
-               "ssrn", "unpaywall", "akshare", "nyt", "reuters", "core",
-               "apple", "edx", "stack", "producthunt", "substack", "uspto"}
-
     for yf in root.glob("*.yaml"):
         text = yf.read_text(encoding="utf-8")
         low = text.lower()
-        for p in PRODUCTS:
+        for p in SCENARIO_PRODUCTS:
             if p in low:
                 out["products"].add(p)
-        for f in FORMATS:
+        for f in SCENARIO_FORMATS:
             if f in low:
                 out["formats"].add(f)
-        for s in SOURCES:
+        for s in SCENARIO_SOURCES:
             if s in low:
                 out["sources"].add(s)
     return out
@@ -608,7 +613,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--scenarios-dir",
         default="src/autoinfo/mcp/scenarios",
-        help="Validation scenario library dir to scan for capability coverage (default: src/autoinfo/mcp/scenarios)",
+        help="Validation scenario library dir to scan for capability coverage "
+        "(default: src/autoinfo/mcp/scenarios)",
     )
     return parser.parse_args(argv)
 

@@ -430,7 +430,7 @@ def _step_assert(
     """Run assertions on a single tool-call envelope and return a step result.
 
     Supports the canonical envelope fields (``success`` / ``data_has`` /
-    ``error_code``) plus surface-specific fields:
+    ``error_code`` / ``error_actionable``) plus surface-specific fields:
 
     - CLI (``kind: cli``): ``exit_code``, ``stdout_has``, ``stderr_has``
     - HTTP (``kind: http``): ``status_code``, ``json_has``
@@ -571,6 +571,25 @@ def _step_assert(
                     "detail": (
                         f"expected error_code={error_code}, "
                         f"got {actual}: {env}"
+                    ),
+                }
+
+        # error_actionable (issue #141) — verify the actionable boolean
+        # hint agents use to remediate is present on the error envelope.
+        expected_actionable = expect.get("error_actionable")
+        if expected_actionable is not None:
+            error = env.get("error", {})
+            actual_actionable = (
+                error.get("actionable") if isinstance(error, dict) else None
+            )
+            if actual_actionable != expected_actionable:
+                return {
+                    "name": step_name,
+                    "tool": tool,
+                    "status": "failed",
+                    "detail": (
+                        f"expected error_actionable={expected_actionable}, "
+                        f"got {actual_actionable}: {env}"
                     ),
                 }
 

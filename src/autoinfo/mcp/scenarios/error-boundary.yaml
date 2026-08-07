@@ -17,7 +17,7 @@ steps:
     expect:
       success: false
       error_code: "UnknownTool"
-      error_actionable: true
+      error_actionable: false
 
   - name: "nonexistent domain schema returns DomainNotFound"
     tool: get_domain_schema

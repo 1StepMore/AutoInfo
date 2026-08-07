@@ -640,7 +640,9 @@ def test_error_boundary_asserts_actionable_on_error_envelope():
     error_steps = [s for s in data["steps"] if s["expect"].get("success") is False]
     assert error_steps, "expected error-envelope steps"
     for step in error_steps:
-        assert step["expect"].get("error_actionable") is True, (
+        # Every error step must pin the actionable boolean (true OR false —
+        # UnknownTool is genuinely not actionable, #141).
+        assert step["expect"].get("error_actionable") is not None, (
             f"step '{step['name']}' must assert error.actionable"
         )
         assert step["expect"]["error_code"], f"step '{step['name']}' keeps error_code"

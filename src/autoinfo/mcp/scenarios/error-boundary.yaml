@@ -12,7 +12,7 @@ category: errors
 requires_env: []
 steps:
   - name: "unknown tool returns UnknownTool"
-    tool: nonexistent_tool_xyz
+    tool: definitely_not_a_real_tool
     arguments: {}
     expect:
       success: false

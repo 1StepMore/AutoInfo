@@ -943,18 +943,6 @@ def config_to_dict(config: Config) -> dict[str, Any]:
     # Only include project_name when non-empty (backward compat)
     if config.project.project_name:
         raw["project"]["project_name"] = config.project.project_name
-    # Serialize llm.fallback
-    if config.llm.fallback:
-        raw["llm"]["fallback"] = [
-            {
-                "provider": fb.provider,
-                "model": fb.model,
-                "json_mode": fb.json_mode,
-                "reasoning_model": fb.reasoning_model,
-                "timeout": fb.timeout,
-            }
-            for fb in config.llm.fallback
-        ]
     # Serialize llm.tasks
     if config.llm.tasks:
         raw["llm"]["tasks"] = {}

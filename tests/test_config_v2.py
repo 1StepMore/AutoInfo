@@ -596,6 +596,37 @@ class TestDataclassRoundTrip:
         assert d["domains"][0]["search_mode"] == "hybrid"
         assert d["domains"][0]["extract_fields"] == ["title"]
 
+    def test_config_to_dict_preserves_llm_base_url_and_fallback(self) -> None:
+        """#155: save_config must not drop llm.base_url / fallback base_url+api_key.
+
+        Regression: config_to_dict wrote llm.fallback twice — the second pass
+        overwrote the full serialization with a reduced dict that omitted
+        ``base_url`` and ``api_key``, silently wiping them on every save.
+        """
+        original = Config(
+            project=ProjectConfig(name="test", created_at=""),
+            llm=LLMConfig(
+                provider="openai",
+                model="deepseek-v4-flash",
+                api_key="primary-key",
+                base_url="https://opencode.ai/zen/go/v1",
+                fallback=[
+                    LLMConfig(
+                        provider="openai",
+                        model="mimo-v2.5",
+                        api_key="fb-key",
+                        base_url="https://opencode.ai/zen/go/v1",
+                    )
+                ],
+            ),
+        )
+        d = config_to_dict(original)
+        assert d["llm"]["base_url"] == "https://opencode.ai/zen/go/v1"
+        fb = d["llm"]["fallback"][0]
+        assert fb["model"] == "mimo-v2.5"
+        assert fb["base_url"] == "https://opencode.ai/zen/go/v1"
+        assert fb["api_key"] == "fb-key"
+
 
 # ---------------------------------------------------------------------------
 # Validation edge cases

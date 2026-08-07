@@ -1,0 +1,76 @@
+# Issue #156 — scenario-library coverage for the three products the library
+# never touched: premium-briefing, magazine-digest, enterprise-briefing.
+# None of the three is reachable through the MCP generate_* handlers (the
+# handlers hardcode the "digest"/"report" product names), so the steps drive
+# the Python API directly via kind: cli one-liners that pass the
+# PRODUCT_TEMPLATES row's ProductTemplate to generate_digest / generate_report
+# (same invocation pattern as tests/test_magazine_digest.py) and persist the
+# render under outputs/<domain>/<product>-<format>-<YYYYmmdd-HHMMSS>.<ext> so
+# the evidence scan (scripts/coverage_matrix.py) picks it up.
+# LLM-required (same BYOK obligation as output-digest-report / output-ebook):
+# digest/report synthesis runs through the LLM seam; without
+# AUTOINFO_LLM_API_KEY this scenario reports unconfigured, never skipped.
+name: output-premium-products
+description: "Issue #156 — premium-briefing, magazine-digest, and enterprise-briefing generation via PRODUCT_TEMPLATES"
+category: output
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research", "general-news"]
+collect_artifacts:
+  - "outputs/**/*.md"
+  - "outputs/**/*.json"
+  - "outputs/**/*.html"
+  - "outputs/**/*.mp3"
+steps:
+  - name: "generate premium-briefing digest via product_template"
+    kind: cli
+    command: |
+      python -c "
+      from autoinfo.output import PRODUCT_TEMPLATES, generate_digest
+      import datetime, pathlib
+      t = next(r['template'] for r in PRODUCT_TEMPLATES if r['name'] == 'premium-briefing')
+      out = generate_digest(domain='medical-research', period='weekly', format='markdown', product_template=t)
+      p = pathlib.Path('outputs/medical-research')
+      p.mkdir(parents=True, exist_ok=True)
+      f = p / ('premium-briefing-markdown-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S') + '.md')
+      f.write_text(out)
+      print('WROTE', f.name, len(out))
+      "
+    expect:
+      success: true
+      stdout_has: ["WROTE"]
+
+  - name: "generate magazine-digest via product_template (general-news)"
+    kind: cli
+    command: |
+      python -c "
+      from autoinfo.output import PRODUCT_TEMPLATES, generate_digest
+      import datetime, pathlib
+      t = next(r['template'] for r in PRODUCT_TEMPLATES if r['name'] == 'magazine-digest')
+      out = generate_digest(domain='general-news', period='weekly', format='markdown', product_template=t)
+      p = pathlib.Path('outputs/general-news')
+      p.mkdir(parents=True, exist_ok=True)
+      f = p / ('magazine-digest-markdown-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S') + '.md')
+      f.write_text(out)
+      print('WROTE', f.name, len(out))
+      "
+    expect:
+      success: true
+      stdout_has: ["WROTE"]
+
+  - name: "generate enterprise-briefing report via product_template"
+    kind: cli
+    command: |
+      python -c "
+      from autoinfo.output import PRODUCT_TEMPLATES, generate_report
+      import datetime, pathlib
+      t = next(r['template'] for r in PRODUCT_TEMPLATES if r['name'] == 'enterprise-briefing')
+      out = generate_report(domain='medical-research', period='monthly', report_type='standard', format='markdown', product_template=t)
+      p = pathlib.Path('outputs/medical-research')
+      p.mkdir(parents=True, exist_ok=True)
+      f = p / ('enterprise-briefing-markdown-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S') + '.md')
+      f.write_text(out)
+      print('WROTE', f.name, len(out))
+      "
+    expect:
+      success: true
+      stdout_has: ["WROTE"]

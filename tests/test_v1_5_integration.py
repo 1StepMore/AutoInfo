@@ -355,14 +355,17 @@ class TestQualityGatePipelineIntegration:
             {"contradiction": False, "explanation": "Second check passed."},
         ])
 
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            side_effect=mock_llm.completion.side_effect,
+        ) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
         assert result.passed is True
         assert result.details["contradiction"] is False
-        assert mock_llm.completion.call_count == 2
-        model_args = [call.kwargs.get("model") for call in mock_llm.completion.call_args_list]
+        assert mock_cwf.call_count == 2
+        model_args = [call.kwargs.get("model") for call in mock_cwf.call_args_list]
         assert model_args[0] == "test/test-model"
         assert model_args[1] == "test/model-two"
 

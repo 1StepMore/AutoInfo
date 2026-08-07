@@ -503,4 +503,5 @@ def call_with_fallback(
 
     raise RuntimeError(
         f"All LLM models (primary + fallback) failed: {', '.join(attempted)}"
+        f" — last error: {last_exception}"
     ) from last_exception

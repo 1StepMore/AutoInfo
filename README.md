@@ -80,10 +80,10 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **RAW product variants (E11)** — RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field distinguishing the three RAW delivery modes
 - **Podcast RSS publishing (C11)** — RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation; audio output auto-persists MP3 to disk
 - **Validated source types** — `VALID_SOURCE_TYPES` frozenset (29 types) as single source of truth for source type validation across MCP and CLI
-- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 57 scenarios (52 functional + 5 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
+- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 59 scenarios (54 functional + 5 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float); `requires_http` gates steps that need a live REST server (reports `unconfigured` when offline). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
 - **Validation regression flywheel** — `scenarios/regression/` subdirectory (5 regression scenarios, REGRESSION marker) auto-loads via recursive glob; `coverage_audit.py` prints a "Regression scenarios: N (issues: ...)" metric; `.github/ISSUE_TEMPLATE/bug_report.md` carries a mandatory 回归场景 (regression scenario) field so every bug ships with a scenario.
 - **Validation delivery packaging** — `scripts/validation_delivery.py` builds 01-RAW / 02-PROCESSED / 03-KB / 04-MATRIX / 06-REJECTED plus `validation-report.md` and `manifest.json` with per-file authenticity, D1-D3 delivery gates, and UX metrics (UX_OK/completion_rate ≥ 0.8). Output scenarios persist `collect_artifacts` for post-run inspection.
-- **End-user coverage matrix (E8)** — `scripts/coverage_matrix.py` generates the end-user feature coverage matrix from `docs/dev/specs/end-user-matrix.yaml`; surfaced as the 04-MATRIX section in validation delivery plus Oracle R8 unconfigured-vs-gap analysis.
+- **End-user coverage matrix (E8)** — `scripts/coverage_matrix.py` generates the end-user feature coverage matrix from `docs/dev/specs/end-user-matrix.yaml`; surfaced as the 04-MATRIX section in validation delivery plus Oracle R8 unconfigured-vs-gap analysis. Scenario library exercises 8/8 products, 7/7 formats, and 27/27 source platforms (issue #156 closed).
 - **End-user journey validation** — `enduser-journey.yaml` scenario drives the full B1 lifecycle with UX metrics (UX_OK/completion_rate ≥ 0.8) measured in validation packaging; the error-boundary scenario asserts the `actionable` field of the error envelope.
 - **LLM timeout + parallel processing** — `LLMConfig.timeout` (default 120.0) threads through every LLM call; processing uses a `ThreadPoolExecutor` sized by `AUTOINFO_PROCESS_WORKERS`; MCP handlers offload blocking work via `asyncio.to_thread`.
 - **LLM fallback chain on all paths** — shared `llm.call_with_fallback` helper; the configured `llm.fallback` list now protects every LLM call path (extraction, validation judge, quality gates, translation QA, output generation, keyword suggest, Q&A, CEFR), not just extraction.
@@ -166,7 +166,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
-| Validation scenarios | ✅ 57 scenarios (52 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
+| Validation scenarios | ✅ 59 scenarios (54 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
 | Regression flywheel | ✅ `scenarios/regression/` (5 scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics UX_OK/completion_rate ≥ 0.8) |
@@ -176,7 +176,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; first successful model wins |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~3256 tests collected (includes validation wave E1-E9 scenarios + regression suite + #141-#148 regression guards) |
+| Test suite | ✅ ~3264 tests collected (includes validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + hermetic config-seam fixes) |
 
 ## Quick Start
 
@@ -209,7 +209,7 @@ AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
 
 1. **Health** — `health_check()` → `{status, version, tools_count}`
 2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
-3. **Validate** — `list_validation_scenarios()` (57 scenarios: 52 functional + 5 regression) → `run_validation_scenario(scenario="system-health")`
+3. **Validate** — `list_validation_scenarios()` (59 scenarios: 54 functional + 5 regression) → `run_validation_scenario(scenario="system-health")`
 
 Validation is the fastest way to prove the system works: each scenario makes
 real MCP / CLI / REST calls and asserts on the `{success, data}` envelope.
@@ -462,7 +462,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-AutoInfo has evolved through v1.3-v1.8.4 with major feature additions at each release. See [CHANGELOG.md](CHANGELOG.md) for the full version history. Notable v1.8.2-v1.8.4 additions: bundle export, delivery schedules, podcast RSS publishing (C11), HackerNews collector, MCP-native validation toolset (44→57 scenarios in 2026-08-05, incl. the 5-scenario regression flywheel), B23 ebook/audiobook output, version unification at 1.8.1 (see `src/autoinfo/_version.py`). The following items remain explicitly deferred:
+AutoInfo has evolved through v1.3-v1.8.4 with major feature additions at each release. See [CHANGELOG.md](CHANGELOG.md) for the full version history. Notable v1.8.2-v1.8.4 additions: bundle export, delivery schedules, podcast RSS publishing (C11), HackerNews collector, MCP-native validation toolset (44→57→59 scenarios in 2026-08-05→07, incl. the 5-scenario regression flywheel), B23 ebook/audiobook output, version unification at 1.8.1 (see `src/autoinfo/_version.py`). The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|

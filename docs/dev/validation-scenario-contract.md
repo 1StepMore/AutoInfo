@@ -29,6 +29,11 @@ category: <one of: system|discovery|source|topic|collection|kb|output|delivery|
 requires_env: []                    # optional list of env var names; if ANY missing
                                     # the WHOLE scenario reports status=unconfigured
                                     # (Director User BYOK obligation — never skipped)
+requires_http: []                   # optional list of URLs (e.g. http://127.0.0.1:8741/health);
+                                    # if ANY URL is unreachable the scenario reports
+                                    # status=unconfigured with a reason instead of
+                                    # failing (env preconditions are not code defects,
+                                    # #157).  Used for REST-server-gated scenarios.
 cleanup_steps:                      # optional list of steps (same schema as `steps`)
                                     # run AFTER the main steps on pass AND on fail
                                     # (best-effort); reported under `cleanup` and
@@ -99,6 +104,11 @@ steps:
   `status: unconfigured` with per-step unconfigured results. This is the CORRECT
   behavior — the Director User must provide BYOK keys during onboarding. Never write
   scenarios that silently skip; use requires_env to surface unconfigured.
+- **`requires_http`**: if any listed URL is unreachable, the scenario returns
+  `status: unconfigured` (not failed) with a reason per precondition. REST-server
+  and network-gated scenarios use this so a missing local server (e.g. uvicorn on
+  port 8741) or an offline service does not pollute the failed count — env
+  preconditions are not code defects (#157).
 - **`cleanup_steps`**: optional top-level list using the same step schema as
   `steps`. The executor runs them after the main steps **regardless of the main
   outcome** (pass or fail) — so scenario-created state is removed even when a
@@ -209,9 +219,9 @@ the scenario library. The audit also prints a `Regression scenarios: N (issues: 
 metric — every scenario in `scenarios/regression/` must carry `regression: true` and
 a `regression_issue`, and the audit lists any that don't.
 
-## Scenario inventory (as of 2026-08-05)
+## Scenario inventory (as of 2026-08-07)
 
-57 scenario files in `src/autoinfo/mcp/scenarios/` (52 functional flat in `scenarios/`
+59 scenario files in `src/autoinfo/mcp/scenarios/` (54 functional flat in `scenarios/`
 + 5 regression in `scenarios/regression/`):
 
 - **System/Discovery**: system-health, discovery, meta-validation
@@ -224,6 +234,13 @@ a `regression_issue`, and the audit lists any that don't.
   kb-lifecycle, kb-extraction, kb-promote (E8: Draft→Wiki promotion end to end)
 - **Output**: output-digest-report, output-ebook, output-tutorial-presentation,
   output-simplify-recommend, output-discovery, output-column
+- **M7 additions**: sources-gap-closure (3 new source-type registrations),
+  output-column (report_type=column, LLM-gated), sources-a6-keyed
+  (FRED/Finnhub, env-gated)
+- **2026-08-07 additions (#156)**: output-premium-products (premium-briefing /
+  magazine-digest / enterprise-briefing via `product_template`, LLM-gated),
+  sources-coverage (academic + all 27 source platforms; completes products 8/8,
+  formats 7/7, sources 27/27 in the E8 matrix)
 - **Delivery/End-user/Cost**: delivery-channels, delivery-schedules,
   enduser-lifecycle, enduser-preferences, cost-budget, products-billing,
   enduser-journey (E8: full B1 lifecycle with UX metrics)
@@ -232,9 +249,6 @@ a `regression_issue`, and the audit lists any that don't.
 - **LLM-gated**: llm-gated (classify_cefr, suggest_keywords, cefr_batch)
 - **CLI**: cli-core, cli-content, cli-ops, cli-extra, cli-llm
 - **REST**: rest-api
-- **M7 additions**: sources-gap-closure (3 new source-type registrations),
-  output-column (report_type=column, LLM-gated), sources-a6-keyed
-  (FRED/Finnhub, env-gated)
 - **Regression (scenarios/regression/)**: regression-collect-int-id (#104),
   regression-llm-key-resolution (#119), regression-period-enum (#126),
   regression-report-structure (#121), regression-source-301 (#135). Each carries

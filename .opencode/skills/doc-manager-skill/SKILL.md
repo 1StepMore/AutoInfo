@@ -80,14 +80,14 @@ All documentation files in the AutoInfo project, organized by audience and purpo
 
 ### 1.5 Validation Docs (testing and verification plans)
 
-> **Active validation method (2026-08-03+):** the **MCP-native validation toolset** — `list_validation_scenarios` / `run_validation_scenario` tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocess and REST HTTP steps). Scenario authoring contract: `docs/dev/validation-scenario-contract.md`. Scenario library: `src/autoinfo/mcp/scenarios/` (57 YAML files covering 142/142 MCP tools, all 28 CLI groups, 8 REST endpoints; 52 functional + 5 regression in `scenarios/regression/`). Executor features: per-step `timeout_seconds`, `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`), per-step execution trace + root-cause report, and recursive-glob auto-load of the regression subdirectory. When the feature surface changes, add/update scenarios in `src/autoinfo/mcp/scenarios/` per the contract — do NOT update archived part files.
+> **Active validation method (2026-08-03+):** the **MCP-native validation toolset** — `list_validation_scenarios` / `run_validation_scenario` tools execute Agent-native validation scenarios through the MCP surface (plus real CLI subprocess and REST HTTP steps). Scenario authoring contract: `docs/dev/validation-scenario-contract.md`. Scenario library: `src/autoinfo/mcp/scenarios/` (59 YAML files covering 142/142 MCP tools, all 28 CLI groups, 8 REST endpoints; 54 functional + 5 regression in `scenarios/regression/`). Executor features: per-step `timeout_seconds`, `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`), `requires_http` env-gating (#157), per-step execution trace + root-cause report, and recursive-glob auto-load of the regression subdirectory. When the feature surface changes, add/update scenarios in `src/autoinfo/mcp/scenarios/` per the contract — do NOT update archived part files.
 >
 > **Archived 2026-08-03, deleted 2026-08-04.** The validation plan v2 suite (README, part-01..part-15, 24 YAML scenarios, runner script) was superseded by the MCP-native validation toolset and has been removed. The `tier1-baseline4-report.md` baseline report is retained at `docs/archive/tier1-baseline4-report.md` (see §1.7).
 
 | File | Purpose | Criticality | Update Frequency |
 |------|---------|-------------|-----------------|
 | `docs/dev/validation-scenario-contract.md` | Scenario authoring contract for the MCP-native validation toolset (schema, semantics, coverage audit, report sections) | 🔴 P0 — active validation | When scenario schema/semantics change |
-| `src/autoinfo/mcp/scenarios/*.yaml` | Active Agent-native validation scenario library (57 files: 52 functional + 5 regression in `scenarios/regression/`) | 🔴 P0 — active validation | When feature surface changes |
+| `src/autoinfo/mcp/scenarios/*.yaml` | Active Agent-native validation scenario library (59 files: 54 functional + 5 regression in `scenarios/regression/`) | 🔴 P0 — active validation | When feature surface changes |
 | `src/autoinfo/mcp/validation.py` | Scenario loader + executor (llm_assert, cli/http steps, unconfigured semantics, per-step timeout, recovery_steps, partial-pass, per-step trace) | 🔴 P0 — active validation | When executor logic changes |
 | `docs/dev/specs/end-user-matrix.yaml` + `scripts/coverage_matrix.py` | E8 end-user coverage matrix source + generator (surfaced as 04-MATRIX in validation delivery) | 🟡 P1 — E8 matrix | When end-user feature surface changes |
 | `scripts/validation_report.py`, `scripts/validation_delivery.py` | Validation report emitter (Verdicts / Regression failures / Blockers / Per-step trace) + delivery packaging (01-RAW…04-MATRIX, manifest.json with per-file authenticity + D1-D3 gates + UX metrics) | 🟡 P1 — validation tooling | When report/packaging format changes |
@@ -396,7 +396,7 @@ These documentation files span multiple code modules and must be checked wheneve
 | Change | Docs to Update | What to Update |
 |--------|---------------|----------------|
 | New scenario schema field (e.g. `timeout_seconds`, `recovery_steps`, `min_passing`/`pass_ratio`, `regression`/`regression_issue`, `collect_artifacts`, `error_actionable`) | `docs/dev/validation-scenario-contract.md`, this skill (§1.5), `AGENTS.md`, `README.md` | Document field in schema + semantics; bump scenario/tool counts if the surface changed |
-| New regression scenario in `scenarios/regression/` | `docs/dev/validation-scenario-contract.md` (inventory), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Add to regression inventory (with `regression_issue`); update "57 scenarios (52 functional + 5 regression)" counts |
+| New regression scenario in `scenarios/regression/` | `docs/dev/validation-scenario-contract.md` (inventory), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Add to regression inventory (with `regression_issue`); update "59 scenarios (54 functional + 5 regression)" counts |
 | Report/packaging format change (`scripts/validation_report.py`, `scripts/validation_delivery.py`) | `AGENTS.md`, `README.md`, `docs/dev/validation-scenario-contract.md` (report sections) | Update Verdicts / Regression failures / Blockers / Per-step trace + 01-RAW…04-MATRIX packaging + manifest authenticity/D1-D3/UX metrics descriptions |
 | E8 matrix change (`scripts/coverage_matrix.py`, `docs/dev/specs/end-user-matrix.yaml`) | `README.md`, `AGENTS.md`, `docs/dev/enduser-coverage-matrix.md` | Update 04-MATRIX / coverage-gaps / Oracle R8 descriptions |
 | `.github/ISSUE_TEMPLATE/bug_report.md` regression field | `AGENTS.md`, `README.md` | Keep the mandatory 回归场景 field described in the regression-flywheel row |
@@ -489,8 +489,8 @@ Some numbers appear in multiple docs and must stay consistent:
 | Source types | `README.md`, `AGENTS.md`, `docs/dev/specs/pipeline.md` | 29 (`VALID_SOURCE_TYPES` frozenset) |
 | Collector handlers | `README.md`, `AGENTS.md` | 30 |
 | Output product templates | `README.md`, `AGENTS.md`, `CHANGELOG.md` | 8 (digest, report, tutorial, presentation, premium-briefing, column, magazine-digest, enterprise-briefing) |
-| Validation scenarios | `README.md`, `AGENTS.md`, `docs/dev/validation-scenario-contract.md`, `src/autoinfo/mcp/scenarios/` | 57 (52 functional + 5 regression in `scenarios/regression/`) |
-| Test count | `README.md`, `AGENTS.md` | ~3239 |
+| Validation scenarios | `README.md`, `AGENTS.md`, `docs/dev/validation-scenario-contract.md`, `src/autoinfo/mcp/scenarios/` | 59 (54 functional + 5 regression in `scenarios/regression/`) |
+| Test count | `README.md`, `AGENTS.md` | ~3264 |
 | REST API port | `README.md`, `AGENTS.md` | 8741 |
 | Demo domains count | `README.md`, `AGENTS.md` | 13 |
 | Demo domain names | `README.md` | medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |

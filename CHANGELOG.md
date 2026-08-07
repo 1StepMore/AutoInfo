@@ -46,6 +46,17 @@ All notable changes to the AutoInfo project will be documented in this file.
 - **G2 dedup freshness: naive/aware datetime crash fixed (#145)** — `_parse_iso_datetime` normalizes naive timestamps to UTC (third occurrence of this bug class); regression test `test_naive_item_aware_entry_no_crash`. (536211f, closes #145)
 - **MCP collect_sources offload regression guard (#148)** — the `asyncio.to_thread` dispatch and `limit` pass-through are pinned by tests (real MCP runs complete in 7-9s; the reported 60s timeout did not reproduce). (540f415, closes #148)
 
+### Added (2026-08-07 audit wave: #153, #155, #156, #157, #161, #117)
+- **Validation env prereqs report `unconfigured`, not failed (#157)** — `validation.py` gains a `requires_http` scenario key (`_http_reachable` gate) plus `_classify_step_exception` and a shared `_unconfigured_scenario_result`; `rest-api.yaml` declares `requires_http: ["http://127.0.0.1:8741/health"]`. A missing REST server / Reddit OAuth / TTS network now surfaces as `unconfigured` with a reason instead of a `failed` step, so full validation runs reflect only real code defects. (1129db7, closes #157)
+- **Validation coverage closure (#156)** — two new scenarios: `output-premium-products.yaml` (premium-briefing / magazine-digest / enterprise-briefing generation via the output module's `product_template` API, persisted for E8 evidence) and `sources-coverage.yaml` (academic + all 27 source-platform collection coverage). `coverage_matrix.py` now unions the spec's `source_platforms` names into the scenario-library scan (was abbreviated legacy spellings), so coverage reports products 8/8, formats 7/7, source tokens 27/27. (cd44baa, 15099b4, closes #156)
+
+### Fixed (2026-08-07 audit wave: #153, #155, #161, #117)
+- **Primary LLM base_url defaults to `config.llm.base_url` (#153)** — `call_with_fallback`'s primary model used the default endpoint when the config `llm.base_url` was set; the primary model now inherits it, and `config.py`/`llm.py` pass the ruff changed-file gate. (c5a6ac6, closes #153)
+- **`save_config` no longer drops fallback `base_url`/`api_key` (#155)** — `config_to_dict` serialized `llm.fallback` twice; the second pass overwrote the full serialization with a reduced dict omitting `base_url`/`api_key`, silently wiping fallback endpoints/credentials on every save. Removed the redundant second pass; regression test added. (d81404d, closes #155)
+- **CI test suite green: 36 pre-existing failures fixed (#161)** — three root causes: (1) `ebooklib` missing in CI (`ci.yml` now installs `.[dev,ebook]`, matching nightly); (2) rich/typer `--help` emitted ANSI escapes under `GITHUB_ACTIONS=true` that split double-dash flags (`--domain` → `-`+`-domain`) — fixed with `TERM: dumb` on the CI test job; (3) four config-seam tests depended on the ambient cwd config — made hermetic via `pathlib.Path.cwd` patches and the `_mock_load_config` seam. Cleared pre-existing ruff debt in the touched test files. (b755add, closes #161)
+- **8 config-dependent tests made hermetic (#117)** — `test_cli_commands.py` patches retargeted to `autoinfo.cli.summaries.get_config_path` and `test_mcp_server.py` gained `_load_config`/`_detect_kb_status` seams so the suite passes on a fresh CI checkout with no `.autoinfo/config.yaml`. (11d105b, closes #117)
+- **End-user matrix full-capability spec (13→112 required cells) + scenario-library coverage check (#158)** — `docs/dev/specs/end-user-matrix.yaml` now declares the full implemented surface (13 domains × 8 products × 7 formats + 27 source platforms + KB tiers); `scripts/coverage_matrix.py` gained `scan_source_evidence` and the `SCENARIO_PRODUCTS`/`SCENARIO_FORMATS`/`SCENARIO_SOURCES` hoisted constants, and passes the ruff changed-file gate. (e747588)
+
 ### Fixed
 - **Dead-source detection** — Semantic Scholar rate-limit 429 is now raised as `SourceFailure` (fail-fast, no partial results) instead of a silent partial fetch. (63b15d4, closes #135)
 - **arXiv bio feed fix** — medical-research arXiv source moved from `rss/bio` (dead feed) to `rss/q-bio`. (63b15d4, closes #137)
@@ -53,6 +64,7 @@ All notable changes to the AutoInfo project will be documented in this file.
 
 ### Docs
 - **Validation wave docs (E1-E9)** — README.md, AGENTS.md, `docs/dev/validation-scenario-contract.md`, and the doc-manager-skill updated for the E1-E9 wave: scenario count 47 → 57 (52 functional + 5 regression), test count → ~3239, new schema fields (`timeout_seconds`, `recovery_steps`, `min_passing`/`pass_ratio`, `regression`/`regression_issue`), regression/ subdirectory convention, and report output sections. (938fb6b, closes #140)
+- **2026-08-07 audit wave docs** — README.md, AGENTS.md, `docs/dev/validation-scenario-contract.md`, and the doc-manager-skill updated for the #153-#164 wave: scenario count 57 → 59 (54 functional + 5 regression), test count → ~3264, `requires_http` schema key documented, CI test suite green (36 failures fixed), coverage matrix 8/8 products / 7/7 formats / 27/27 source tokens, and the end-user matrix required-cells spec (13→112). (doc-manager pass)
 
 ## Unreleased (2026-08-04)
 

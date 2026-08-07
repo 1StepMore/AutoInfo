@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
@@ -561,6 +562,154 @@ steps:
         assert result["status"] == "failed"
         assert result["steps"][0]["status"] == "failed"
         assert "dispatch exception" in result["steps"][0].get("detail", "")
+
+    # --- #157: env-prereq failures report "unconfigured", not "failed" ----
+
+    HTTP_REQUIRED_YAML = """\
+name: http-required
+description: "Scenario requiring a reachable HTTP endpoint"
+category: test
+requires_http: ["http://127.0.0.1:9/health"]
+steps:
+  - name: "all-pass step"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["result"]
+"""
+
+    def _write_scenario(self, tmp_path: Path, name: str, content: str) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / f"{name}.yaml").write_text(content, encoding="utf-8")
+        return sd
+
+    async def test_requires_http_unreachable_reports_unconfigured(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A scenario whose requires_http endpoint is unreachable reports
+        'unconfigured' with the URL in the reason — not 'failed' (#157)."""
+        sd = self._write_scenario(tmp_path, "http-required", self.HTTP_REQUIRED_YAML)
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._http_reachable", lambda url: False
+        )
+        result = await run_scenario(
+            "http-required", dispatch=self._fake_dispatch, scenarios_dir=sd
+        )
+        assert result["status"] == "unconfigured"
+        assert "http://127.0.0.1:9/health" in result["unconfigured_reason"]
+        assert result["summary"]["unconfigured"] == result["summary"]["total"]
+        assert result["summary"]["failed"] == 0
+        assert all(
+            step["status"] == "unconfigured" for step in result["steps"]
+        )
+
+    async def test_requires_http_reachable_runs_steps(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """When the requires_http endpoint is reachable the steps run and are
+        NOT marked unconfigured (#157)."""
+        sd = self._write_scenario(tmp_path, "http-required", self.HTTP_REQUIRED_YAML)
+        monkeypatch.setattr(
+            "autoinfo.mcp.validation._http_reachable", lambda url: True
+        )
+        result = await run_scenario(
+            "http-required", dispatch=self._fake_dispatch, scenarios_dir=sd
+        )
+        assert result["status"] == "passed"
+        assert result["steps"][0]["status"] == "passed"
+        assert result["summary"]["unconfigured"] == 0
+
+    async def test_reddit_oauth_missing_classified_unconfigured(
+        self, tmp_path: Path
+    ) -> None:
+        """A dispatch raising Reddit-OAuth-missing ValueError is classified
+        as unconfigured, not failed (#157)."""
+        sd = self._write_scenario(
+            tmp_path,
+            "reddit-oauth",
+            "name: reddit-oauth\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: reddit_tool\n    arguments: {}\n",
+        )
+
+        async def raise_dispatch(name: str, arguments: dict) -> dict:
+            raise ValueError(
+                "Reddit OAuth2 requires client_id and client_secret in config."
+            )
+
+        result = await run_scenario(
+            "reddit-oauth", dispatch=raise_dispatch, scenarios_dir=sd
+        )
+        step = result["steps"][0]
+        assert step["status"] == "unconfigured"
+        assert "Reddit" in step["detail"]
+        assert result["status"] == "unconfigured"
+
+    async def test_tts_network_error_classified_unconfigured(
+        self, tmp_path: Path
+    ) -> None:
+        """A dispatch raising the TTS network RuntimeError is classified as
+        unconfigured, not failed (#157)."""
+        sd = self._write_scenario(
+            tmp_path,
+            "tts-net",
+            "name: tts-net\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: tts_tool\n    arguments: {}\n",
+        )
+
+        async def raise_dispatch(name: str, arguments: dict) -> dict:
+            raise RuntimeError("OpenAI TTS network error: Network is unreachable")
+
+        result = await run_scenario(
+            "tts-net", dispatch=raise_dispatch, scenarios_dir=sd
+        )
+        step = result["steps"][0]
+        assert step["status"] == "unconfigured"
+        assert "TTS" in step["detail"]
+
+    async def test_connect_error_classified_unconfigured(
+        self, tmp_path: Path
+    ) -> None:
+        """An httpx connection error raised from dispatch is classified as
+        unconfigured, not failed (#157)."""
+        sd = self._write_scenario(
+            tmp_path,
+            "connect-err",
+            "name: connect-err\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: http_tool\n    arguments: {}\n",
+        )
+
+        async def raise_dispatch(name: str, arguments: dict) -> dict:
+            raise httpx.ConnectError("connection refused")
+
+        result = await run_scenario(
+            "connect-err", dispatch=raise_dispatch, scenarios_dir=sd
+        )
+        step = result["steps"][0]
+        assert step["status"] == "unconfigured"
+        assert "connect" in step["detail"].lower()
+
+    async def test_other_exception_still_failed(self, tmp_path: Path) -> None:
+        """BACKWARD-COMPAT GUARD: exceptions that are NOT an environment
+        prereq gap keep the historic 'failed' classification (#157)."""
+        sd = self._write_scenario(
+            tmp_path,
+            "generic-boom",
+            "name: generic-boom\ndescription: Test\nsteps:\n"
+            "  - name: step\n    tool: boom_tool\n    arguments: {}\n",
+        )
+
+        async def raise_dispatch(name: str, arguments: dict) -> dict:
+            raise RuntimeError("boom")
+
+        result = await run_scenario(
+            "generic-boom", dispatch=raise_dispatch, scenarios_dir=sd
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"  # NOT unconfigured
+        assert "dispatch exception" in step["detail"]
+        assert result["status"] == "failed"
 
 
 class TestRunScenarioCliHttp:

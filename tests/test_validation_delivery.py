@@ -763,3 +763,59 @@ def test_package_matrix_llm_absent_marks_gated_unconfigured(tmp_path: Path, monk
     assert "未配置unconfigured" in report
     assert "| tutorial | 空gap |" not in report
     assert "| tutorial | 未配置unconfigured |" in report
+
+
+# ---------------------------------------------------------------------------
+# _tier_subpath — absolute-prefix stripping (issue #143)
+# ---------------------------------------------------------------------------
+
+
+def test_tier_subpath_absolute_repo_path_relativized():
+    """Absolute paths under the repo root map to the tier subpath only."""
+    cwd = Path.cwd()
+    src = cwd / "knowledge" / "medical-research" / "01-Raw" / "general" / "x.md"
+    assert vd._tier_subpath(src) == Path("01-Raw/general/x.md")
+
+
+def test_tier_subpath_absolute_draft_path_relativized():
+    """Absolute 02-Draft path under the repo root → tier subpath, no prefix."""
+    cwd = Path.cwd()
+    src = cwd / "knowledge" / "medical-research" / "02-Draft" / "d.md"
+    assert vd._tier_subpath(src) == Path("02-Draft/d.md")
+
+
+def test_tier_subpath_relative_paths_unchanged():
+    """Repo-relative inputs keep the historical slice behaviour."""
+    assert vd._tier_subpath(Path("knowledge/medical-research/01-Raw/w.md")) == Path("01-Raw/w.md")
+    assert vd._tier_subpath(Path("collections/medical-research/z.json")) == Path("z.json")
+    assert vd._tier_subpath(Path("outputs/medical-research/digest.md")) == Path("digest.md")
+
+
+def test_tier_subpath_shallow_bare_name():
+    """Shallow paths fall back to the bare file name."""
+    assert vd._tier_subpath(Path("digest.md")) == Path("digest.md")
+
+
+def test_tier_subpath_outside_repo_keeps_slice():
+    """Paths outside the repo root keep the historical slice behaviour."""
+    src = Path("/tmp/outside/knowledge/medical-research/02-Draft/d.md")
+    assert vd._tier_subpath(src) == Path("outside/knowledge/medical-research/02-Draft/d.md")
+
+
+# ---------------------------------------------------------------------------
+# KB scenario artifact globs — 03-Wiki coverage (issue #144)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fname",
+    ["kb-promote.yaml", "kb-draft.yaml"],
+)
+def test_kb_scenarios_collect_03_wiki(fname: str):
+    """KB scenarios glob all three tiers so 03-KB is never empty (#144)."""
+    scenario = ROOT / "src" / "autoinfo" / "mcp" / "scenarios" / fname
+    data = yaml.safe_load(scenario.read_text(encoding="utf-8"))
+    globs = data["collect_artifacts"]
+    assert any("03-Wiki" in g for g in globs)
+    assert any("01-Raw" in g for g in globs)
+    assert any("02-Draft" in g for g in globs)

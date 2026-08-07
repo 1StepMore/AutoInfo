@@ -15,6 +15,7 @@ requires_domain: ["medical-research"]
 collect_artifacts:
   - "knowledge/medical-research/01-Raw/**/*.md"
   - "knowledge/medical-research/02-Draft/**/*.md"
+  - "knowledge/medical-research/03-Wiki/**/*.md"
 steps:
   - name: "create_kb_entry writes to 01-Raw"
     tool: create_kb_entry

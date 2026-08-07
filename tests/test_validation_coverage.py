@@ -65,6 +65,7 @@ def test_kb_promote_yaml_exists_and_parses():
     assert data["collect_artifacts"] == [
         "knowledge/medical-research/01-Raw/**/*.md",
         "knowledge/medical-research/02-Draft/**/*.md",
+        "knowledge/medical-research/03-Wiki/**/*.md",
     ]
 
 

@@ -184,7 +184,7 @@ class TestG4FactualConsistencyCheck:
         mock_llm = _mock_litellm(
             {"contradiction": False, "explanation": "Summary matches source."}
         )
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, sample_extraction)
 
@@ -203,7 +203,7 @@ class TestG4FactualConsistencyCheck:
                 "explanation": "Summary says decrease but source says increase.",
             }
         )
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, contradictory_extraction)
 
@@ -217,7 +217,7 @@ class TestG4FactualConsistencyCheck:
     ) -> None:
         """LLM returns invalid JSON → flagged as uncertain (contradiction=None)."""
         mock_llm = _mock_litellm_raw("this is not json")
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, sample_extraction)
 
@@ -231,7 +231,7 @@ class TestG4FactualConsistencyCheck:
     ) -> None:
         """LLM returns JSON missing 'contradiction' key → treated as no contradiction."""
         mock_llm = _mock_litellm({"explanation": "No contradiction field"})
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, sample_extraction)
 
@@ -259,7 +259,7 @@ class TestG4FactualConsistencyCheck:
         self, sample_item: Item, sample_extraction: ExtractionResult
     ) -> None:
         """When litellm is not installed, return flagged result with explanation."""
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=None):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=RuntimeError("litellm is not available")):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, sample_extraction)
 
@@ -274,7 +274,7 @@ class TestG4FactualConsistencyCheck:
         """LLM raises an exception → returned as flagged uncertain."""
         mock_llm = MagicMock()
         mock_llm.completion.side_effect = RuntimeError("API timeout")
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
             g4 = G4FactualConsistency(model="test/test")
             result = g4.check(sample_item, sample_extraction)
 

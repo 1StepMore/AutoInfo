@@ -65,6 +65,7 @@ from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES
+from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -1528,8 +1529,8 @@ def _handle_remove_source(source_id: str, confirm: bool = True) -> dict[str, Any
         return {
             "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
             "message": (
-                f"This operation is destructive and requires confirmation. "
-                f"Pass confirm=True to proceed."
+                "This operation is destructive and requires confirmation. "
+                "Pass confirm=True to proceed."
             ),
             "actionable": True,
         }
@@ -1745,8 +1746,8 @@ def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True) -> di
         return {
             "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
             "message": (
-                f"This operation is destructive and requires confirmation. "
-                f"Pass confirm=True to proceed."
+                "This operation is destructive and requires confirmation. "
+                "Pass confirm=True to proceed."
             ),
             "actionable": True,
         }
@@ -2017,8 +2018,6 @@ def _handle_suggest_keywords(
     """Use LLM to suggest keywords from the given text."""
     import json
 
-    import litellm  # noqa: PLC0415 — deferred import
-
     from autoinfo.config import get_config_path, load_config
 
     timeout: float | None = None
@@ -2063,18 +2062,18 @@ def _handle_suggest_keywords(
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            json_mode=json_mode,
             max_tokens=500,
             temperature=0.3,
-            api_base=base_url,
+            base_url=base_url,
             api_key=api_key or None,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
         content: str = response.choices[0].message.content or ""  # type: ignore[union-attr]
 
@@ -2552,8 +2551,8 @@ def _handle_list_output_templates(domain: str = "", user_id: str | None = None) 
     whose ``access_level`` is accessible to the user are returned.
     When *user_id* is ``None``, all templates are returned (backward compatible).
     """
-    from autoinfo.output import list_output_templates as _list_output_templates
     from autoinfo.billing import check_access
+    from autoinfo.output import list_output_templates as _list_output_templates
 
     result = _list_output_templates(domain=domain)
     templates: list[dict[str, Any]] = result["templates"]
@@ -2666,10 +2665,10 @@ def _handle_generate_digest(
 
     Dispatches to :func:`autoinfo.output.generate_digest`.
     """
-    from autoinfo.output import generate_digest as _generate_digest
+    from datetime import date, timedelta
 
     from autoinfo.kb import KBStore
-    from datetime import date, timedelta
+    from autoinfo.output import generate_digest as _generate_digest
 
     _period_days = {"daily": 1, "weekly": 7, "monthly": 30}
     _days = _period_days.get(period, 7)
@@ -2761,10 +2760,10 @@ def _handle_generate_report(
 
     Dispatches to :func:`autoinfo.output.generate_report`.
     """
-    from autoinfo.output import generate_report as _generate_report
+    from datetime import date, timedelta
 
     from autoinfo.kb import KBStore
-    from datetime import date, timedelta
+    from autoinfo.output import generate_report as _generate_report
 
     _period_days = {"daily": 1, "weekly": 7, "monthly": 30}
     _days = _period_days.get(period, 7)
@@ -3407,8 +3406,8 @@ def _handle_remove_schedule(name: str, confirm: bool = False) -> dict[str, Any]:
         return {
             "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
             "message": (
-                f"This operation is destructive and requires confirmation. "
-                f"Pass confirm=True to proceed."
+                "This operation is destructive and requires confirmation. "
+                "Pass confirm=True to proceed."
             ),
             "actionable": True,
         }
@@ -3772,7 +3771,7 @@ def _handle_init_project(
     """
     # Lazy imports to avoid circular dependencies
     from autoinfo.cli.init import _DEMO_DOMAINS_DIR, _ensure_dir, _run_init
-    from autoinfo.mcp.errors import ErrorCode, error_dict
+    from autoinfo.mcp.errors import ErrorCode
 
     autoinfo_dir = Path.cwd() / ".autoinfo"
     config_path = autoinfo_dir / "config.yaml"
@@ -4114,8 +4113,8 @@ def _handle_archive_project(reason: str = "", confirm: bool = False) -> dict[str
         return {
             "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
             "message": (
-                f"This operation is destructive and requires confirmation. "
-                f"Pass confirm=True to proceed."
+                "This operation is destructive and requires confirmation. "
+                "Pass confirm=True to proceed."
             ),
             "actionable": True,
         }
@@ -4161,10 +4160,10 @@ def _handle_batch_run(
     model: str = "",
 ) -> dict[str, Any]:
     """Run collect + process in sequence for a domain. Returns per-phase results."""
+    from datetime import datetime, timezone
+
     from autoinfo.collect import run_collection
     from autoinfo.process import ProcessResult, run_processing
-
-    from datetime import datetime, timezone
 
     start_time = datetime.now(timezone.utc)
     phases: list[dict[str, Any]] = []
@@ -5140,7 +5139,8 @@ def _handle_get_metrics(name: str, arguments: dict) -> dict[str, Any]:
 
 def _handle_get_prometheus_metrics(name: str, arguments: dict) -> dict[str, Any]:
     """Return raw Prometheus exposition-format metrics in a dict wrapper."""
-    from autoinfo.metrics import format_prometheus, get_metrics as _get_metrics
+    from autoinfo.metrics import format_prometheus
+    from autoinfo.metrics import get_metrics as _get_metrics
 
     data = _get_metrics()
     return {"format": "prometheus", "metrics_text": format_prometheus(data)}
@@ -5193,6 +5193,7 @@ def _handle_delete_user_data(name: str, arguments: dict) -> dict[str, Any]:
 
 def _handle_query_delivery_log(name: str, arguments: dict) -> dict[str, Any] | list[dict[str, Any]]:
     import dataclasses
+
     from autoinfo.delivery_log import query_delivery_log
     subscription_id = arguments.get("subscription_id")
     limit = arguments.get("limit", 50)

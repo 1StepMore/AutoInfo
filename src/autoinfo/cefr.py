@@ -17,6 +17,8 @@ import logging
 import re
 from typing import Any
 
+from autoinfo.llm import call_with_fallback
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -97,13 +99,7 @@ def classify_text(
 
     # --- Call LLM ------------------------------------------------------------
     try:
-        import litellm  # noqa: PLC0415 — deferred import
-    except ImportError:
-        logger.error("litellm is not installed — cannot classify CEFR")
-        return {"cefr_level": "unknown", "confidence": 0.0}
-
-    try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -111,9 +107,9 @@ def classify_text(
             ],
             max_tokens=50,
             temperature=0.1,
-            api_base=base_url or None,
+            base_url=base_url or None,
             api_key=api_key or None,
-            **(dict(timeout=timeout) if timeout is not None else {}),
+            timeout=timeout,
         )
         content: str = response.choices[0].message.content  # type: ignore[union-attr]
         return _parse_level(content)

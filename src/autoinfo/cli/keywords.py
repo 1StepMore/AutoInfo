@@ -18,6 +18,7 @@ import os
 import typer
 
 from autoinfo.keywords import KeywordsFile, KeywordState
+from autoinfo.llm import call_with_fallback
 
 app = typer.Typer(help="Manage per-domain keyword lifecycle")
 
@@ -194,8 +195,6 @@ def suggest(
         )
         raise typer.Exit(code=1)
 
-    import litellm  # deferred import — mirrors the MCP handler
-
     system_prompt = (
         "You are a keyword extraction assistant. Given a text, suggest "
         f"up to {limit} relevant keywords or short phrases (2-5 words) "
@@ -206,16 +205,16 @@ def suggest(
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
 
     try:
-        response = litellm.completion(
+        response = call_with_fallback(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            json_mode=json_mode,
             max_tokens=500,
             temperature=0.3,
-            api_base=base_url,
+            base_url=base_url,
             api_key=api_key or None,
         )
         content: str = response.choices[0].message.content or ""

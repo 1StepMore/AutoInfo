@@ -145,7 +145,7 @@ class TestQueryCollected:
     # Answer with citations
     # ------------------------------------------------------------------
 
-    @patch("autoinfo.qa._get_litellm")
+    @patch("autoinfo.qa.call_with_fallback")
     def test_answer_with_citations(
         self,
         mock_get_litellm: MagicMock,
@@ -154,7 +154,7 @@ class TestQueryCollected:
         seed_entries: dict[str, str],
     ) -> None:
         """FTS5 search yields entries; LLM returns a cited answer."""
-        mock_get_litellm.return_value = mock_litellm
+        mock_get_litellm.return_value = mock_litellm.completion.return_value
 
         result = query_collected(
             query="embryo IVF time-lapse",
@@ -174,7 +174,7 @@ class TestQueryCollected:
             assert "title" in src
 
         # Verify the LLM was called with the expected prompt shape
-        call_args = mock_litellm.completion.call_args
+        call_args = mock_get_litellm.call_args
         assert call_args is not None
         messages = call_args[1]["messages"]
         assert messages[0]["role"] == "system"
@@ -185,7 +185,7 @@ class TestQueryCollected:
     # Empty results
     # ------------------------------------------------------------------
 
-    @patch("autoinfo.qa._get_litellm")
+    @patch("autoinfo.qa.call_with_fallback")
     def test_empty_results(
         self,
         mock_get_litellm: MagicMock,
@@ -194,7 +194,7 @@ class TestQueryCollected:
         seed_entries: dict[str, str],
     ) -> None:
         """No matching entries → graceful empty response, no LLM call."""
-        mock_get_litellm.return_value = mock_litellm
+        mock_get_litellm.return_value = mock_litellm.completion.return_value
 
         result = query_collected(
             query="xyznonexistent12345",
@@ -207,13 +207,13 @@ class TestQueryCollected:
         assert result["sources"] == []
 
         # LLM should NOT be called when there are no sources
-        mock_litellm.completion.assert_not_called()
+        mock_get_litellm.assert_not_called()
 
     # ------------------------------------------------------------------
     # Explicit content_ids
     # ------------------------------------------------------------------
 
-    @patch("autoinfo.qa._get_litellm")
+    @patch("autoinfo.qa.call_with_fallback")
     def test_explicit_content_ids(
         self,
         mock_get_litellm: MagicMock,
@@ -222,7 +222,7 @@ class TestQueryCollected:
         seed_entries: dict[str, str],
     ) -> None:
         """When content_ids is provided, only those entries are used."""
-        mock_get_litellm.return_value = mock_litellm
+        mock_get_litellm.return_value = mock_litellm.completion.return_value
 
         # Pick two specific entry IDs
         entry_ids = list(seed_entries.keys())
@@ -247,7 +247,7 @@ class TestQueryCollected:
     # Independent queries
     # ------------------------------------------------------------------
 
-    @patch("autoinfo.qa._get_litellm")
+    @patch("autoinfo.qa.call_with_fallback")
     def test_independent_queries(
         self,
         mock_get_litellm: MagicMock,
@@ -256,7 +256,7 @@ class TestQueryCollected:
         seed_entries: dict[str, str],
     ) -> None:
         """Each call is stateless — second query ignores first."""
-        mock_get_litellm.return_value = mock_litellm
+        mock_get_litellm.return_value = mock_litellm.completion.return_value
 
         # First query
         result1 = query_collected(
@@ -275,12 +275,12 @@ class TestQueryCollected:
         assert result2["answer"]
 
         # Verify LLM was called twice with full conversation each time
-        assert mock_litellm.completion.call_count == 2
+        assert mock_get_litellm.call_count == 2
 
         # Each call should contain the full article context (not just
         # a continuation).  Check that both messages include the
         # article content.
-        for call_args in mock_litellm.completion.call_args_list:
+        for call_args in mock_get_litellm.call_args_list:
             messages = call_args[1]["messages"]
             user_msg = messages[1]["content"]
             assert "Question: embryo IVF" in user_msg
@@ -290,7 +290,7 @@ class TestQueryCollected:
     # content_ids with non-existent IDs
     # ------------------------------------------------------------------
 
-    @patch("autoinfo.qa._get_litellm")
+    @patch("autoinfo.qa.call_with_fallback")
     def test_content_ids_unknown(
         self,
         mock_get_litellm: MagicMock,
@@ -298,7 +298,7 @@ class TestQueryCollected:
         kb_store: KBStore,
     ) -> None:
         """content_ids that don't exist → empty sources."""
-        mock_get_litellm.return_value = mock_litellm
+        mock_get_litellm.return_value = mock_litellm.completion.return_value
 
         result = query_collected(
             query="anything",
@@ -309,4 +309,4 @@ class TestQueryCollected:
 
         assert "No relevant articles found" in result["answer"]
         assert result["sources"] == []
-        mock_litellm.completion.assert_not_called()
+        mock_get_litellm.assert_not_called()

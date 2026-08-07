@@ -15,6 +15,7 @@ from typing import Any
 
 from autoinfo.config import get_config_path, load_config
 from autoinfo.kb import KBStore
+from autoinfo.llm import call_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -144,13 +145,6 @@ def _call_llm_for_qa(query: str, articles: list[str]) -> str:
     str
         The LLM's answer text, or an error message if the call fails.
     """
-    _litellm = _get_litellm()
-    if _litellm is None:
-        return (
-            "LLM is not available. Please ensure litellm is installed "
-            "(``pip install litellm``)."
-        )
-
     # Resolve the effective model + configure API key from config
     full_model = _resolve_model()
 
@@ -172,7 +166,7 @@ def _call_llm_for_qa(query: str, articles: list[str]) -> str:
     )
 
     try:
-        response = _litellm.completion(
+        response = call_with_fallback(
             model=full_model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -189,20 +183,6 @@ def _call_llm_for_qa(query: str, articles: list[str]) -> str:
             f"An error occurred while contacting the LLM: {exc}. "
             "Please check your LLM configuration and try again."
         )
-
-
-def _get_litellm() -> Any:
-    """Lazily import and return the ``litellm`` module.
-
-    Returns ``None`` when the package is not available.
-    """
-    try:
-        import litellm  # noqa: PLC0415 — deferred import
-
-        return litellm
-    except (ImportError, ModuleNotFoundError):
-        logger.error("litellm is not installed — run 'pip install litellm'")
-        return None
 
 
 def _resolve_model() -> str:

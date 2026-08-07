@@ -1314,7 +1314,7 @@ class TestG4RetryChain:
         mock_llm = _g4_mock_litellm_sequential([
             {"contradiction": False, "explanation": "Summary matches source."},
         ])
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1322,7 +1322,7 @@ class TestG4RetryChain:
         assert result.flagged is False
         assert result.details["contradiction"] is False
         assert result.score == 1.0
-        assert mock_llm.completion.call_count == 1
+        assert mock_cwf.call_count == 1
 
     def test_retries_twice_succeeds_on_third(self) -> None:
         """G4 retries after contradiction; succeeds on 3rd attempt with different model."""
@@ -1341,7 +1341,7 @@ class TestG4RetryChain:
             },
             {"contradiction": False, "explanation": "Summary matches source on re-evaluation."},
         ])
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1349,8 +1349,8 @@ class TestG4RetryChain:
         assert result.flagged is False
         assert result.details["contradiction"] is False
         assert result.score == 1.0
-        assert mock_llm.completion.call_count == 3
-        model_args = [call.kwargs.get("model") for call in mock_llm.completion.call_args_list]
+        assert mock_cwf.call_count == 3
+        model_args = [call.kwargs.get("model") for call in mock_cwf.call_args_list]
         assert model_args[0] == "test/test-model"
         assert model_args[1] == "test/model-two"
         assert model_args[2] == "test/model-three"
@@ -1366,7 +1366,7 @@ class TestG4RetryChain:
             {"contradiction": True, "explanation": "Second check: still contradictory."},
             {"contradiction": True, "explanation": "Third check: still contradicts."},
         ])
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1376,7 +1376,7 @@ class TestG4RetryChain:
         assert result.details["contradiction"] is True
         assert result.details["action"] == "block"
         assert result.details["retry_count"] == 3
-        assert mock_llm.completion.call_count == 3
+        assert mock_cwf.call_count == 3
 
     def test_failed_json_written_on_block(self, tmp_path: Path) -> None:
         """When G4 blocks, _failed/ diagnostics JSON is written."""
@@ -1391,7 +1391,7 @@ class TestG4RetryChain:
         ])
 
         collections_dir = tmp_path / "collections"
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
             g4 = G4FactualConsistency(
                 model="test/test-model",
                 collections_path=str(collections_dir),
@@ -1427,7 +1427,7 @@ class TestG4RetryChain:
         gate_config = _g4_gate_config(retries=3)
 
         mock_llm = MagicMock()
-        with patch.object(G4FactualConsistency, "_get_litellm", return_value=mock_llm):
+        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 

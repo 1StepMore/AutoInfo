@@ -278,6 +278,57 @@ def _configured_domain_names() -> list[str]:
         return []
 
 
+def _http_reachable(url: str, timeout: float = 2.0) -> bool:
+    """Return ``True`` when *url* answers with any server status code.
+
+    Any 2xx-4xx HTTP response counts as reachable (the service is up).
+    Connection-level failures (refused, timeout, DNS) return ``False``.
+    """
+    import httpx  # noqa: PLC0415 — deferred import
+
+    try:
+        resp = httpx.get(url, timeout=timeout)
+    except Exception:
+        return False
+    return 200 <= resp.status_code < 500
+
+
+def _classify_step_exception(exc: Exception) -> str | None:
+    """Return an ``unconfigured`` reason for known environment-prereq gaps.
+
+    Exceptions that mean the environment is not set up — missing Reddit
+    OAuth credentials, an unreachable TTS service, connection failures,
+    an unreachable network (fixes #157) — map to a reason string.  Genuine
+    code defects (everything else) return ``None`` so the caller keeps the
+    historic ``failed`` classification.
+    """
+    import httpx  # noqa: PLC0415 — deferred import
+
+    if (
+        isinstance(exc, ValueError)
+        and "requires client_id and client_secret" in str(exc)
+    ):
+        return (
+            "Reddit OAuth credentials missing (client_id/client_secret). "
+            "Director User must configure them before running this scenario."
+        )
+    if isinstance(exc, RuntimeError) and str(exc).startswith(
+        "OpenAI TTS network error"
+    ):
+        return (
+            "OpenAI TTS network error — the TTS service is unreachable. "
+            "Check network access and re-run."
+        )
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)):
+        return (
+            f"connection failure: {exc}. The required service is not "
+            "reachable; start it and re-run."
+        )
+    if isinstance(exc, OSError) and "network is unreachable" in str(exc).lower():
+        return f"network unreachable: {exc}. Check network access and re-run."
+    return None
+
+
 def _resolve_llm_config() -> dict[str, Any]:
     """Resolve the LLM call config from the project config.
 
@@ -767,6 +818,7 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
         data.setdefault("category", "general")
         data.setdefault("requires_env", [])
         data.setdefault("requires_domain", [])
+        data.setdefault("requires_http", [])
 
         # Issue #138: partial-pass policy validation.  Both keys are optional;
         # when absent the scenario keeps ALL-or-nothing semantics.
@@ -810,6 +862,7 @@ def list_scenarios(scenarios_dir: Path | None = None) -> dict[str, Any]:
                 "category": sc.get("category", "general"),
                 "step_count": len(sc["steps"]),
                 "requires_env": sc.get("requires_env", []),
+                "requires_http": sc.get("requires_http", []),
             }
             for sc in scs
         ],
@@ -887,12 +940,15 @@ async def _execute_step(
             if isinstance(env, dict):
                 env = _normalize_envelope(env)
     except Exception as exc:
+        reason = _classify_step_exception(exc)
+        status = "unconfigured" if reason is not None else "failed"
+        detail = reason if reason is not None else f"dispatch exception: {exc}"
         return _decorate_step_result(
             {
                 "name": step_def["name"],
                 "tool": tool_ref,
-                "status": "failed",
-                "detail": f"dispatch exception: {exc}",
+                "status": status,
+                "detail": detail,
             },
             step_def,
             step_index,
@@ -1093,6 +1149,54 @@ async def _execute_step_with_recovery(
     return sr
 
 
+def _unconfigured_scenario_result(
+    scenario: dict[str, Any], trace_id: str, reason: str
+) -> dict[str, Any]:
+    """Build the whole-scenario ``unconfigured`` early-return result.
+
+    Every step is marked ``unconfigured`` with the same *reason* and no
+    step runs; the summary counts all steps as unconfigured.  Shared by
+    the ``requires_env`` / ``requires_domain`` / ``requires_http``
+    precondition blocks so they produce byte-identical result shapes
+    (fixes #157).
+    """
+    unconfigured_steps = [
+        _decorate_step_result(
+            {
+                "name": s["name"],
+                "tool": s.get("tool") or s.get("command") or s.get("url", ""),
+                "status": "unconfigured",
+                "detail": reason,
+            },
+            s,
+            idx,
+            trace_id,
+            0.0,
+        )
+        for idx, s in enumerate(scenario["steps"], start=1)
+    ]
+    result: dict[str, Any] = {
+        "scenario": scenario["name"],
+        "description": scenario["description"],
+        "category": scenario.get("category", "general"),
+        "status": "unconfigured",
+        "unconfigured_reason": reason,
+        "summary": {
+            "passed": 0,
+            "failed": 0,
+            "unconfigured": len(unconfigured_steps),
+            "recovered": 0,
+            "total": len(unconfigured_steps),
+        },
+        "steps": unconfigured_steps,
+        "trace_id": trace_id,
+    }
+    for _key in ("regression", "regression_issue"):
+        if _key in scenario:
+            result[_key] = scenario[_key]
+    return result
+
+
 async def run_scenario(
     name: str,
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
@@ -1171,50 +1275,15 @@ async def run_scenario(
     requires_env: list[str] = scenario.get("requires_env", [])
     missing_env = [v for v in requires_env if not os.environ.get(v)]
     if missing_env:
-        all_steps = scenario["steps"]
-        unconfigured_steps = [
-            _decorate_step_result(
-                {
-                    "name": s["name"],
-                    "tool": s.get("tool") or s.get("command") or s.get("url", ""),
-                    "status": "unconfigured",
-                    "detail": (
-                        f"missing required env var(s): {', '.join(missing_env)}. "
-                        "Director User must configure these during onboarding "
-                        "(BYOK — see docs/dev/required-api-keys.md)."
-                    ),
-                },
-                s,
-                idx,
-                trace_id,
-                0.0,
-            )
-            for idx, s in enumerate(all_steps, start=1)
-        ]
-        _result: dict[str, Any] = {
-            "scenario": name,
-            "description": scenario["description"],
-            "category": scenario.get("category", "general"),
-            "status": "unconfigured",
-            "unconfigured_reason": (
+        return _unconfigured_scenario_result(
+            scenario,
+            trace_id,
+            (
                 f"missing required env var(s): {', '.join(missing_env)}. "
                 "Director User must configure these during onboarding "
                 "(BYOK — see docs/dev/required-api-keys.md)."
             ),
-            "summary": {
-                "passed": 0,
-                "failed": 0,
-                "unconfigured": len(unconfigured_steps),
-                "recovered": 0,
-                "total": len(unconfigured_steps),
-            },
-            "steps": unconfigured_steps,
-            "trace_id": trace_id,
-        }
-        for _key in ("regression", "regression_issue"):
-            if _key in scenario:
-                _result[_key] = scenario[_key]
-        return _result
+        )
 
     # Precondition check: scenarios may declare required domains (fixes #120).
     # If the project config does not have one of the required domains, the
@@ -1227,50 +1296,30 @@ async def run_scenario(
             d for d in requires_domain if d not in configured_domains
         ]
         if missing_domains:
-            all_steps = scenario["steps"]
-            unconfigured_steps = [
-                _decorate_step_result(
-                    {
-                        "name": s["name"],
-                        "tool": s.get("tool") or s.get("command") or s.get("url", ""),
-                        "status": "unconfigured",
-                        "detail": (
-                            f"missing required domain(s): {', '.join(missing_domains)}. "
-                            "Run `autoinfo init --demo <domain>` or add_domain() to "
-                            "configure them before running this scenario."
-                        ),
-                    },
-                    s,
-                    idx,
-                    trace_id,
-                    0.0,
-                )
-                for idx, s in enumerate(all_steps, start=1)
-            ]
-            _result: dict[str, Any] = {
-                "scenario": name,
-                "description": scenario["description"],
-                "category": scenario.get("category", "general"),
-                "status": "unconfigured",
-                "unconfigured_reason": (
+            return _unconfigured_scenario_result(
+                scenario,
+                trace_id,
+                (
                     f"missing required domain(s): {', '.join(missing_domains)}. "
                     "Run `autoinfo init --demo <domain>` or add_domain() to "
                     "configure them before running this scenario."
                 ),
-                "summary": {
-                    "passed": 0,
-                    "failed": 0,
-                    "unconfigured": len(unconfigured_steps),
-                    "recovered": 0,
-                    "total": len(unconfigured_steps),
-                },
-                "steps": unconfigured_steps,
-                "trace_id": trace_id,
-            }
-            for _key in ("regression", "regression_issue"):
-                if _key in scenario:
-                    _result[_key] = scenario[_key]
-            return _result
+            )
+
+    # Precondition check (fixes #157): scenarios may declare required HTTP
+    # endpoints (e.g. the REST API server).  An unreachable endpoint means
+    # the environment is not set up — report unconfigured, not failed.
+    requires_http: list[str] = scenario.get("requires_http", [])
+    unreachable = [u for u in requires_http if not _http_reachable(u)]
+    if unreachable:
+        return _unconfigured_scenario_result(
+            scenario,
+            trace_id,
+            (
+                f"required HTTP endpoint not reachable: {', '.join(unreachable)}. "
+                "Start the service (e.g. uvicorn on port 8741) and re-run."
+            ),
+        )
 
     # Determine which steps to run
     if steps is not None:

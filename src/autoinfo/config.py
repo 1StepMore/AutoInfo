@@ -899,9 +899,22 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             "provider": config.llm.provider,
             "model": config.llm.model,
             "api_key": config.llm.api_key,
+            "base_url": config.llm.base_url,
             "json_mode": config.llm.json_mode,
             "reasoning_model": config.llm.reasoning_model,
             "timeout": config.llm.timeout,
+            "fallback": [
+                {
+                    "provider": f.provider,
+                    "model": f.model,
+                    "base_url": f.base_url,
+                    "api_key": f.api_key,
+                    "json_mode": f.json_mode,
+                    "reasoning_model": f.reasoning_model,
+                    "timeout": f.timeout,
+                }
+                for f in config.llm.fallback
+            ],
         },
         "domains": [],
     }

@@ -247,6 +247,88 @@ def classify_grid(
 
 
 # ---------------------------------------------------------------------------
+# Source-platform & KB-tier coverage (full-capability revision, 2026-08-07)
+# ---------------------------------------------------------------------------
+
+
+def classify_source_coverage(
+    spec: dict[str, Any],
+    collected_sources: set[tuple[str, str]],
+) -> list[dict[str, str]]:
+    """Return source-coverage gaps from ``required_sources``.
+
+    *collected_sources* is a set of ``(domain, source_name)`` that actually
+    produced data (evidence from ``collections/<domain>/<source>/`` dirs).
+    Returns a list of missing ``{domain, source}`` dicts (empty = full
+    coverage).
+    """
+    gaps: list[dict[str, str]] = []
+    for req in spec.get("required_sources", []):
+        key = (req["domain"], req["source"])
+        if key not in collected_sources:
+            gaps.append({"domain": req["domain"], "source": req["source"]})
+    return gaps
+
+
+def classify_kb_tier_coverage(
+    spec: dict[str, Any],
+    kb_tiers_present: set[tuple[str, str]],
+) -> list[dict[str, str]]:
+    """Return KB-tier gaps from ``required_kb_tiers``.
+
+    *kb_tiers_present* is a set of ``(domain, tier)`` with entries in
+    ``knowledge/<domain>/<tier>/``. Returns missing ``{domain, tier}`` dicts.
+    """
+    gaps: list[dict[str, str]] = []
+    for req in spec.get("required_kb_tiers", []):
+        key = (req["domain"], req["tier"])
+        if key not in kb_tiers_present:
+            gaps.append({"domain": req["domain"], "tier": req["tier"]})
+    return gaps
+
+
+def scan_source_evidence(evidence_dir: str | Path) -> set[tuple[str, str]]:
+    """Scan ``collections/`` dirs for collected ``(domain, source)`` pairs.
+
+    A source counts as collected when its collection dir contains at least
+    one JSON item file (``collections/<domain>/<source>/*.json``), i.e. the
+    collector really ran and produced raw data (not dry_run-only).
+    """
+    root = Path(evidence_dir)
+    collected: set[tuple[str, str]] = set()
+    coll_root = root / "collections"
+    if coll_root.is_dir():
+        for domain_dir in coll_root.iterdir():
+            if not domain_dir.is_dir():
+                continue
+            domain = domain_dir.name
+            for src_dir in domain_dir.iterdir():
+                if not src_dir.is_dir():
+                    continue
+                items = [f for f in src_dir.iterdir() if f.is_file() and f.suffix == ".json"]
+                if items:
+                    collected.add((domain, src_dir.name))
+    return collected
+
+
+def scan_kb_tier_evidence(evidence_dir: str | Path) -> set[tuple[str, str]]:
+    """Scan ``knowledge/<domain>/<tier>/`` for present KB tiers."""
+    root = Path(evidence_dir)
+    present: set[tuple[str, str]] = set()
+    kb_root = root / "knowledge"
+    if kb_root.is_dir():
+        for domain_dir in kb_root.iterdir():
+            if not domain_dir.is_dir():
+                continue
+            domain = domain_dir.name
+            for tier in ("01-Raw", "02-Draft", "03-Wiki"):
+                tier_dir = domain_dir / tier
+                if tier_dir.is_dir() and any(tier_dir.rglob("*.md")):
+                    present.add((domain, tier))
+    return present
+
+
+# ---------------------------------------------------------------------------
 # Report rendering
 # ---------------------------------------------------------------------------
 
@@ -258,12 +340,15 @@ def render_report(
     *,
     spec_path: str = "",
     evidence_dir: str = "",
+    source_evidence: set[tuple[str, str]] | None = None,
+    kb_evidence: set[tuple[str, str]] | None = None,
 ) -> str:
     """Render the markdown matrix report for *spec*.
 
     Returns the full ``matrix-report.md`` text (title, meta, legend, the
-    products x domains table, and the ``COVERAGE_GAP`` summary listing every
-    required cell classified ``空gap`` — never silent).
+    products x domains table, the ``COVERAGE_GAP`` summary, and the
+    ``SOURCE_COVERAGE`` / ``KB_TIER_COVERAGE`` blocks) listing every
+    required cell classified as a gap — never silent.
     """
     products: list[str] = list(spec.get("products", []))
     domains: list[str] = list(spec.get("domains", []))
@@ -358,6 +443,42 @@ def render_report(
         )
     lines.append("")
 
+    # --- SOURCE_COVERAGE (full-capability revision) ---
+    source_gaps = classify_source_coverage(spec, source_evidence or set())
+    lines.append("## SOURCE_COVERAGE")
+    lines.append("")
+    lines.append(
+        "Required source-platform cells (domain x source) with no collected "
+        "raw data — these block acceptance for the configured demo domains:"
+    )
+    lines.append("")
+    if source_gaps:
+        lines.append("| Domain | Source |")
+        lines.append("|--------|--------|")
+        for g in source_gaps:
+            lines.append(f"| {g['domain']} | {g['source']} |")
+    else:
+        lines.append("All required sources produced raw data.")
+    lines.append("")
+
+    # --- KB_TIER_COVERAGE (full-capability revision) ---
+    kb_gaps = classify_kb_tier_coverage(spec, kb_evidence or set())
+    lines.append("## KB_TIER_COVERAGE")
+    lines.append("")
+    lines.append(
+        "Required KB-tier cells (domain x tier) with no entries — the "
+        "pipeline must reach each tier for the configured demo domains:"
+    )
+    lines.append("")
+    if kb_gaps:
+        lines.append("| Domain | Tier |")
+        lines.append("|--------|------|")
+        for g in kb_gaps:
+            lines.append(f"| {g['domain']} | {g['tier']} |")
+    else:
+        lines.append("All required KB tiers have entries.")
+    lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
@@ -431,6 +552,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     produced = scan_evidence(evidence_dir)
+    source_evidence = scan_source_evidence(evidence_dir)
+    kb_evidence = scan_kb_tier_evidence(evidence_dir)
 
     if args.llm_available is None:
         llm_available = detect_llm_available(args.config)
@@ -443,6 +566,8 @@ def main(argv: list[str] | None = None) -> int:
         llm_available,
         spec_path=args.spec,
         evidence_dir=args.evidence,
+        source_evidence=source_evidence,
+        kb_evidence=kb_evidence,
     )
 
     out_dir = Path(args.output)
@@ -453,11 +578,15 @@ def main(argv: list[str] | None = None) -> int:
     counts = {status: 0 for status in _ALL_STATUSES}
     for status in classify_grid(spec, produced, llm_available).values():
         counts[status] += 1
+    source_gaps = classify_source_coverage(spec, source_evidence)
+    kb_gaps = classify_kb_tier_coverage(spec, kb_evidence)
     print(f"MATRIX: {report_path}")
     print(f"cells={sum(counts.values())} (domains x products x formats), "
           f"llm_available={llm_available}")
     for status in _ALL_STATUSES:
         print(f"  {status}: {counts[status]}")
+    print(f"source_gaps: {len(source_gaps)} / required_sources")
+    print(f"kb_tier_gaps: {len(kb_gaps)} / required_kb_tiers")
     return 0
 
 

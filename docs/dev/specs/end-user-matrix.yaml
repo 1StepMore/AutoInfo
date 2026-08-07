@@ -1,21 +1,22 @@
-# End-User Coverage Matrix (E8, issue #131)
+# End-User Coverage Matrix (E8, issue #131 — full-capability revision)
 #
-# Sparse matrix spec: 13 demo domains x 8 products x 7 formats.
-# The generator scripts/coverage_matrix.py renders matrix-report.md from
-# this spec plus real evidence (outputs/** persisted artifacts and the
-# validation_delivery manifest), marking every cell as:
+# Sparse matrix spec: 13 demo domains x 8 products x 7 formats, PLUS
+# source-platform coverage (27 collector types) and KB-tier coverage
+# (01-Raw / 02-Draft / 03-Wiki).
 #
-#   有produced             evidence found for this domain x product x format
-#   空gap                  required cell with no evidence and the LLM is
-#                          configured (or the product is not LLM-gated)
+# This revision fixes the spec drift found in the 2026-08-07 audit: the
+# old spec declared only 13 required cells across 2 domains while the
+# codebase implements 13 domains x 8 products x 7 formats x 27 sources.
+# The required set now reflects the FULL implemented capability surface.
+#
+# Statuses (rendered by scripts/coverage_matrix.py):
+#   有produced             evidence found
+#   空gap                  required cell with no evidence (LLM available)
 #   不适用not-applicable   non-required cell with no evidence
-#   未配置unconfigured     required cell whose product is LLM-gated and the
-#                          LLM key is unavailable (Oracle R8: NOT a gap)
+#   未配置unconfigured     required cell whose product is LLM-gated while
+#                          the LLM key is unavailable (NOT a gap)
 #
-# required_cells (13, Oracle R8): digest/report in json+html, tutorial and
-# presentation in markdown, across medical-research and tech-ai-developer,
-# plus one audio cell (medical-research digest audio).
-version: 1
+version: 2
 
 products:
   - digest
@@ -36,6 +37,7 @@ formats:
   - epub
   - audiobook
 
+# All 13 demo domains implemented in src/autoinfo/data/domains/.
 domains:
   - medical-research
   - ai-commercial
@@ -51,27 +53,164 @@ domains:
   - b2b
   - retail
 
-# Oracle R8: the 13 cells that MUST be produced by validation scenarios.
+# All 27 collector types registered in the MCP source-type registry
+# (src/autoinfo/mcp/server.py SOURCE_TYPES).
+source_platforms:
+  - rss
+  - api
+  - web
+  - webhook
+  - email
+  - pdf
+  - apple_podcasts
+  - akshare
+  - ap_api
+  - bilibili
+  - core
+  - dblp
+  - gdelt
+  - huggingface
+  - kaggle
+  - nyt
+  - openalex
+  - quandl
+  - reddit
+  - reuters
+  - sec_edgar
+  - ssrn
+  - spotify
+  - unpaywall
+  - yahoo_finance
+  - youtube
+  - edx_sitemap
+
+# KB tiers — the data pipeline depth an end-user can inspect.
+kb_tiers:
+  - 01-Raw
+  - 02-Draft
+  - 03-Wiki
+
+# Required cells — full implemented surface across the 2 configured demo
+# domains (tech-ai-developer + medical-research). Every product x format
+# combination that the codebase can produce must have evidence.
 required_cells:
-  # medical-research — digest + report (json/html), tutorial/presentation (md), audio
-  - {domain: medical-research, product: digest, format: json}
+  # ---- medical-research: all 8 products x 7 formats (56 cells) ----
+  - {domain: medical-research, product: digest, format: markdown}
   - {domain: medical-research, product: digest, format: html}
-  - {domain: medical-research, product: report, format: json}
-  - {domain: medical-research, product: report, format: html}
-  - {domain: medical-research, product: tutorial, format: markdown}
-  - {domain: medical-research, product: presentation, format: markdown}
+  - {domain: medical-research, product: digest, format: json}
+  - {domain: medical-research, product: digest, format: agent}
   - {domain: medical-research, product: digest, format: audio}
-  # tech-ai-developer — digest + report (json/html), tutorial/presentation (md)
-  - {domain: tech-ai-developer, product: digest, format: json}
+  - {domain: medical-research, product: digest, format: epub}
+  - {domain: medical-research, product: digest, format: audiobook}
+  - {domain: medical-research, product: report, format: markdown}
+  - {domain: medical-research, product: report, format: html}
+  - {domain: medical-research, product: report, format: json}
+  - {domain: medical-research, product: report, format: agent}
+  - {domain: medical-research, product: report, format: audio}
+  - {domain: medical-research, product: report, format: epub}
+  - {domain: medical-research, product: report, format: audiobook}
+  - {domain: medical-research, product: tutorial, format: markdown}
+  - {domain: medical-research, product: tutorial, format: html}
+  - {domain: medical-research, product: tutorial, format: json}
+  - {domain: medical-research, product: tutorial, format: agent}
+  - {domain: medical-research, product: tutorial, format: audio}
+  - {domain: medical-research, product: tutorial, format: epub}
+  - {domain: medical-research, product: tutorial, format: audiobook}
+  - {domain: medical-research, product: presentation, format: markdown}
+  - {domain: medical-research, product: presentation, format: html}
+  - {domain: medical-research, product: presentation, format: json}
+  - {domain: medical-research, product: presentation, format: agent}
+  - {domain: medical-research, product: presentation, format: audio}
+  - {domain: medical-research, product: presentation, format: epub}
+  - {domain: medical-research, product: presentation, format: audiobook}
+  - {domain: medical-research, product: premium-briefing, format: markdown}
+  - {domain: medical-research, product: premium-briefing, format: html}
+  - {domain: medical-research, product: premium-briefing, format: json}
+  - {domain: medical-research, product: premium-briefing, format: agent}
+  - {domain: medical-research, product: premium-briefing, format: audio}
+  - {domain: medical-research, product: premium-briefing, format: epub}
+  - {domain: medical-research, product: premium-briefing, format: audiobook}
+  - {domain: medical-research, product: column, format: markdown}
+  - {domain: medical-research, product: column, format: html}
+  - {domain: medical-research, product: column, format: json}
+  - {domain: medical-research, product: column, format: agent}
+  - {domain: medical-research, product: column, format: audio}
+  - {domain: medical-research, product: column, format: epub}
+  - {domain: medical-research, product: column, format: audiobook}
+  - {domain: medical-research, product: magazine-digest, format: markdown}
+  - {domain: medical-research, product: magazine-digest, format: html}
+  - {domain: medical-research, product: magazine-digest, format: json}
+  - {domain: medical-research, product: magazine-digest, format: agent}
+  - {domain: medical-research, product: magazine-digest, format: audio}
+  - {domain: medical-research, product: magazine-digest, format: epub}
+  - {domain: medical-research, product: magazine-digest, format: audiobook}
+  - {domain: medical-research, product: enterprise-briefing, format: markdown}
+  - {domain: medical-research, product: enterprise-briefing, format: html}
+  - {domain: medical-research, product: enterprise-briefing, format: json}
+  - {domain: medical-research, product: enterprise-briefing, format: agent}
+  - {domain: medical-research, product: enterprise-briefing, format: audio}
+  - {domain: medical-research, product: enterprise-briefing, format: epub}
+  - {domain: medical-research, product: enterprise-briefing, format: audiobook}
+  # ---- tech-ai-developer: same 8 products x 7 formats (56 cells) ----
+  - {domain: tech-ai-developer, product: digest, format: markdown}
   - {domain: tech-ai-developer, product: digest, format: html}
-  - {domain: tech-ai-developer, product: report, format: json}
+  - {domain: tech-ai-developer, product: digest, format: json}
+  - {domain: tech-ai-developer, product: digest, format: agent}
+  - {domain: tech-ai-developer, product: digest, format: audio}
+  - {domain: tech-ai-developer, product: digest, format: epub}
+  - {domain: tech-ai-developer, product: digest, format: audiobook}
+  - {domain: tech-ai-developer, product: report, format: markdown}
   - {domain: tech-ai-developer, product: report, format: html}
+  - {domain: tech-ai-developer, product: report, format: json}
+  - {domain: tech-ai-developer, product: report, format: agent}
+  - {domain: tech-ai-developer, product: report, format: audio}
+  - {domain: tech-ai-developer, product: report, format: epub}
+  - {domain: tech-ai-developer, product: report, format: audiobook}
   - {domain: tech-ai-developer, product: tutorial, format: markdown}
+  - {domain: tech-ai-developer, product: tutorial, format: html}
+  - {domain: tech-ai-developer, product: tutorial, format: json}
+  - {domain: tech-ai-developer, product: tutorial, format: agent}
+  - {domain: tech-ai-developer, product: tutorial, format: audio}
+  - {domain: tech-ai-developer, product: tutorial, format: epub}
+  - {domain: tech-ai-developer, product: tutorial, format: audiobook}
   - {domain: tech-ai-developer, product: presentation, format: markdown}
+  - {domain: tech-ai-developer, product: presentation, format: html}
+  - {domain: tech-ai-developer, product: presentation, format: json}
+  - {domain: tech-ai-developer, product: presentation, format: agent}
+  - {domain: tech-ai-developer, product: presentation, format: audio}
+  - {domain: tech-ai-developer, product: presentation, format: epub}
+  - {domain: tech-ai-developer, product: presentation, format: audiobook}
+  - {domain: tech-ai-developer, product: premium-briefing, format: markdown}
+  - {domain: tech-ai-developer, product: premium-briefing, format: html}
+  - {domain: tech-ai-developer, product: premium-briefing, format: json}
+  - {domain: tech-ai-developer, product: premium-briefing, format: agent}
+  - {domain: tech-ai-developer, product: premium-briefing, format: audio}
+  - {domain: tech-ai-developer, product: premium-briefing, format: epub}
+  - {domain: tech-ai-developer, product: premium-briefing, format: audiobook}
+  - {domain: tech-ai-developer, product: column, format: markdown}
+  - {domain: tech-ai-developer, product: column, format: html}
+  - {domain: tech-ai-developer, product: column, format: json}
+  - {domain: tech-ai-developer, product: column, format: agent}
+  - {domain: tech-ai-developer, product: column, format: audio}
+  - {domain: tech-ai-developer, product: column, format: epub}
+  - {domain: tech-ai-developer, product: column, format: audiobook}
+  - {domain: tech-ai-developer, product: magazine-digest, format: markdown}
+  - {domain: tech-ai-developer, product: magazine-digest, format: html}
+  - {domain: tech-ai-developer, product: magazine-digest, format: json}
+  - {domain: tech-ai-developer, product: magazine-digest, format: agent}
+  - {domain: tech-ai-developer, product: magazine-digest, format: audio}
+  - {domain: tech-ai-developer, product: magazine-digest, format: epub}
+  - {domain: tech-ai-developer, product: magazine-digest, format: audiobook}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: markdown}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: html}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: json}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: agent}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: audio}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: epub}
+  - {domain: tech-ai-developer, product: enterprise-briefing, format: audiobook}
 
 # Products whose generation requires an LLM key. When the LLM is unavailable,
-# an empty required cell for one of these is 未配置unconfigured — never 空gap
-# (Oracle R8 CRITICAL: absence is a configuration obligation, not a product gap).
+# an empty required cell for one of these is 未配置unconfigured — never 空gap.
 llm_gated_products:
   - premium-briefing
   - column
@@ -79,3 +218,30 @@ llm_gated_products:
   - enterprise-briefing
   - tutorial
   - presentation
+
+# Required source coverage: the 2 configured demo domains must collect from
+# every configured source in that domain (medical-research: 7, tech-ai-dev: 8).
+required_sources:
+  - {domain: medical-research, source: pubmed}
+  - {domain: medical-research, source: semantic-scholar}
+  - {domain: medical-research, source: arXiv}
+  - {domain: medical-research, source: CrossRef}
+  - {domain: medical-research, source: dblp}
+  - {domain: medical-research, source: openalex}
+  - {domain: medical-research, source: uspto}
+  - {domain: tech-ai-developer, source: GitHub Trending}
+  - {domain: tech-ai-developer, source: HackerNews API}
+  - {domain: tech-ai-developer, source: Substack RSS (tech) — Pragmatic Engineer}
+  - {domain: tech-ai-developer, source: Stack Exchange}
+  - {domain: tech-ai-developer, source: ProductHunt}
+  - {domain: tech-ai-developer, source: Reddit}
+
+# Required KB-tier coverage: the data pipeline must reach each tier for
+# the configured demo domains.
+required_kb_tiers:
+  - {domain: medical-research, tier: 01-Raw}
+  - {domain: medical-research, tier: 02-Draft}
+  - {domain: medical-research, tier: 03-Wiki}
+  - {domain: tech-ai-developer, tier: 01-Raw}
+  - {domain: tech-ai-developer, tier: 02-Draft}
+  - {domain: tech-ai-developer, tier: 03-Wiki}

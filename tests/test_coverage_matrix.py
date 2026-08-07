@@ -105,10 +105,18 @@ def test_classify_cell_accepts_tuple_form(spec):
 
 
 def test_spec_parses_and_has_required_structure(spec):
-    assert spec["version"] == 1
+    assert spec["version"] == 2
     assert len(spec["products"]) == 8
     assert len(spec["formats"]) == 7
     assert len(spec["domains"]) == 13
+
+
+def test_spec_full_capability_dimensions_present(spec):
+    """Full-capability revision (2026-08-07): source + KB-tier dimensions."""
+    assert len(spec["source_platforms"]) >= 25
+    assert set(spec["kb_tiers"]) == {"01-Raw", "02-Draft", "03-Wiki"}
+    assert len(spec["required_sources"]) >= 10
+    assert len(spec["required_kb_tiers"]) >= 4
 
 
 def test_spec_has_at_least_10_required_cells(spec):

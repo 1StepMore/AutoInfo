@@ -12,8 +12,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from autoinfo.config import QualityGateConfig
 from autoinfo.models import Item, KBEntry
 from autoinfo.quality import (
@@ -23,7 +21,6 @@ from autoinfo.quality import (
     QualityResult,
     run_quality_gates,
 )
-
 
 # ===================================================================
 # G1 — Source Authority
@@ -252,6 +249,32 @@ class TestG2Dedup:
         assert result.passed is True
         assert result.details["is_duplicate"] is False
 
+    def test_naive_item_aware_entry_no_crash(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
+        """G2 freshness window must not crash on naive-vs-aware datetime (#145)."""
+        item = Item(
+            **{
+                **sample_item.to_dict(),
+                "collected_at": "2026-07-15T10:30:00",  # naive (no tz suffix)
+            }
+        )
+        existing = [
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/other",  # bypass URL match
+                    "title": sample_item.title,  # force fuzzy-title path
+                }
+            )
+        ]  # collected_at stays aware ("2026-07-15T10:30:00Z")
+        g2 = G2Dedup()
+        result = g2.check(item, existing)
+
+        assert result.passed is False
+        assert result.details["is_duplicate"] is True
+        assert result.details["matched_by"] == "fuzzy_title"
+
     def test_pmid_duplicate_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
         """Use different URLs so URL match doesn't fire before PMID match."""
         item = Item(
@@ -335,7 +358,9 @@ class TestG2Dedup:
         assert result.passed is True
         assert result.details["is_duplicate"] is False
 
-    def test_no_match_returns_correct_details(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+    def test_no_match_returns_correct_details(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
         existing = [
             KBEntry(
                 **{
@@ -374,7 +399,9 @@ class TestG2Dedup:
         assert result.details["matched_by"] == "url"
         assert result.passed is False
 
-    def test_different_urls_same_pmid_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+    def test_different_urls_same_pmid_detected(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
         """Different URLs with same PMID should be caught by PMID match."""
         item = Item(
             **{
@@ -398,7 +425,9 @@ class TestG2Dedup:
         assert result.passed is False
         assert result.details["matched_by"] == "pmid"
 
-    def test_fuzzy_title_duplicate_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+    def test_fuzzy_title_duplicate_detected(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
         """Similar titles (≥85% match) should be flagged as duplicates."""
         item = Item(
             **{
@@ -413,7 +442,8 @@ class TestG2Dedup:
                     **sample_kb_entry.to_dict(),
                     "source_url": "https://example.com/existing-entry",
                     # Title is almost identical — only missing "a" article
-                    "title": "Improved IVF outcomes with time-lapse embryo imaging: randomized controlled trial",
+                    "title": "Improved IVF outcomes with time-lapse embryo "
+                    "imaging: randomized controlled trial",
                 }
             )
         ]
@@ -426,7 +456,9 @@ class TestG2Dedup:
         assert result.details["matched_by"] == "fuzzy_title"
         assert result.details["similarity"] >= 0.85
 
-    def test_fuzzy_title_below_threshold_passes(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
+    def test_fuzzy_title_below_threshold_passes(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
         """Dissimilar titles (< 85% match) should not trigger fuzzy dedup."""
         item = Item(
             **{
@@ -545,12 +577,20 @@ class TestG3RelevanceScoring:
         # 1/3 match = round((1/3)*100) = 33
         # With threshold=30: 33 >= 30 → passes (not flagged)
         # With threshold=40: 33 < 40 → flagged + hidden
-        result_low = g3.check(sample_item, topic_keywords=["IVF", "quantum", "computing"], threshold=30)
+        result_low = g3.check(
+            sample_item,
+            topic_keywords=["IVF", "quantum", "computing"],
+            threshold=30,
+        )
         assert result_low.score == 33.0
         assert result_low.passed is True
         assert result_low.flagged is False  # 33 >= 30
 
-        result_high = g3.check(sample_item, topic_keywords=["IVF", "quantum", "computing"], threshold=40)
+        result_high = g3.check(
+            sample_item,
+            topic_keywords=["IVF", "quantum", "computing"],
+            threshold=40,
+        )
         assert result_high.score == 33.0
         assert result_high.passed is False
         assert result_high.flagged is True  # 33 < 40

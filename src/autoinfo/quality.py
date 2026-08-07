@@ -111,11 +111,11 @@ class G0SchemaIntegrity:
             """Run validation once, return list of field errors."""
             errors: list[dict[str, object]] = []
 
-            for field in self.MANDATORY_FIELDS:
-                val = item.get(field)
+            for fname in self.MANDATORY_FIELDS:
+                val = item.get(fname)
                 if not isinstance(val, str) or not val.strip():
                     errors.append({
-                        "field": field,
+                        "field": fname,
                         "reason": "missing or empty",
                         "value": val,
                     })
@@ -659,9 +659,15 @@ class G2Dedup:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value)
+            dt = datetime.fromisoformat(value)
         except (ValueError, TypeError):
             return None
+        # Normalize naive timestamps to UTC so comparisons (e.g. G2 freshness
+        # window: `item_dt - entry_dt`) never mix naive and aware datetimes
+        # (issue #145 — third occurrence of this class of bug).
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
 
 # ---------------------------------------------------------------------------
@@ -897,9 +903,9 @@ class G3RelevanceScoring:
                 # Escalating context on retry
                 if attempt > 0:
                     user_content += (
-                        f"\n\nPrevious attempt failed to produce a valid "
-                        f"score (0-100). Please ensure you return ONLY a "
-                        f"single integer between 0 and 100."
+                        "\n\nPrevious attempt failed to produce a valid "
+                        "score (0-100). Please ensure you return ONLY a "
+                        "single integer between 0 and 100."
                     )
 
                 if self.llm_call is not None:
@@ -2612,13 +2618,19 @@ def llm_judge(
         f"Source: {source[:3000]}\nTarget: {target[:3000]}\n"
         "Score 0-100: faithfulness(meaning), terminology(domain terms), "
         "style(tone), readability(fluency). List issues.\n"
-        'Return JSON: {"faithfulness":int,"terminology":int,"style":int,"readability":int,"issues":[str]}'
+        'Return JSON: {"faithfulness":int,"terminology":int,"style":int,'
+        '"readability":int,"issues":[str]}'
     )
 
     try:
-        resp = _lm.completion(model=model, messages=[{"role": "user", "content": prompt}],
-                              **(dict(response_format={"type": "json_object"}) if json_mode else {}), max_tokens=1000, temperature=0.0,
-                              **(dict(timeout=timeout) if timeout is not None else {}))
+        resp = _lm.completion(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            **(dict(response_format={"type": "json_object"}) if json_mode else {}),
+            max_tokens=1000,
+            temperature=0.0,
+            **(dict(timeout=timeout) if timeout is not None else {}),
+        )
         parsed = json.loads(resp.choices[0].message.content)
     except Exception as e:
         logger.warning("llm_judge failed: %s", e)

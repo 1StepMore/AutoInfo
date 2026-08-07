@@ -46,7 +46,8 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
     "tl_dr": '"tl_dr": "2-3 sentence summary of the article"',
     "key_points": '"key_points": ["3-5 most important findings or takeaways"]',
     "entities": (
-        '"entities": [{"name": "Entity name", "type": "concept|person|org|drug|technology|procedure"}]'
+        '"entities": [{"name": "Entity name", '
+        '"type": "concept|person|org|drug|technology|procedure"}]'
     ),
     "relevance_score": '"relevance_score": integer 0-100 indicating relevance to medical research',
 }

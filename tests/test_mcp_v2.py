@@ -19,7 +19,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
 
 from autoinfo.mcp import server as mcp_server
@@ -275,8 +274,18 @@ class TestAddSource:
 class TestAddSources:
     def test_batch_adds_sources(self, tmp_config: Path) -> None:
         sources = [
-            {"name": "src-a", "url": "https://a.example.com", "type": "api", "domain": "medical-research"},
-            {"name": "src-b", "url": "https://b.example.com", "type": "rss", "domain": "medical-research"},
+            {
+                "name": "src-a",
+                "url": "https://a.example.com",
+                "type": "api",
+                "domain": "medical-research",
+            },
+            {
+                "name": "src-b",
+                "url": "https://b.example.com",
+                "type": "rss",
+                "domain": "medical-research",
+            },
         ]
         result = _handle_add_sources(sources=sources)
         assert result["total"] == 2
@@ -597,7 +606,8 @@ class TestNewToolDispatch:
             method="tools/call",
             params=CallToolRequestParams(name="list_domains", arguments={}),
         )
-        result = await handler(request)
+        with _mock_load_config():
+            result = await handler(request)
         data = json.loads(result.root.content[0].text)
         # Envelope shape
         assert data["success"] is True

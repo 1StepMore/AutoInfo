@@ -7,10 +7,10 @@ logic is tested — the stubs only print ``"not yet implemented"``.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -85,23 +85,40 @@ class TestSourcesCommand:
         assert "--url" in result.stdout
         assert "--type" in result.stdout
 
-    def test_sources_add_requires_domain(self, cli_runner: Any, app: Any) -> None:
+    def test_sources_add_requires_domain(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """``autoinfo sources add`` fails when domain is not configured."""
-        result = cli_runner.invoke(
-            app,
-            [
-                "sources",
-                "add",
-                "--name",
-                "test",
-                "--url",
-                "https://example.com",
-                "--type",
-                "api",
-                "--domain",
-                "test-domain",
-            ],
+        from unittest.mock import patch
+
+        import yaml
+
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "config.yaml").write_text(
+            yaml.dump(
+                {
+                    "project": {"name": "T", "created_at": ""},
+                    "llm": {"provider": "openai", "model": "m", "api_key": ""},
+                    "domains": [],
+                }
+            ),
+            encoding="utf-8",
         )
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "sources",
+                    "add",
+                    "--name",
+                    "test",
+                    "--url",
+                    "https://example.com",
+                    "--type",
+                    "api",
+                    "--domain",
+                    "test-domain",
+                ],
+            )
         assert result.exit_code != 0
         assert "not configured" in result.stderr
 

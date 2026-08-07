@@ -252,6 +252,32 @@ class TestG2Dedup:
         assert result.passed is True
         assert result.details["is_duplicate"] is False
 
+    def test_naive_item_aware_entry_no_crash(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
+        """G2 freshness window must not crash on naive-vs-aware datetime (#145)."""
+        item = Item(
+            **{
+                **sample_item.to_dict(),
+                "collected_at": "2026-07-15T10:30:00",  # naive (no tz suffix)
+            }
+        )
+        existing = [
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/other",  # bypass URL match
+                    "title": sample_item.title,  # force fuzzy-title path
+                }
+            )
+        ]  # collected_at stays aware ("2026-07-15T10:30:00Z")
+        g2 = G2Dedup()
+        result = g2.check(item, existing)
+
+        assert result.passed is False
+        assert result.details["is_duplicate"] is True
+        assert result.details["matched_by"] == "fuzzy_title"
+
     def test_pmid_duplicate_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
         """Use different URLs so URL match doesn't fire before PMID match."""
         item = Item(

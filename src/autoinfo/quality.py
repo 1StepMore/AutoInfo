@@ -659,9 +659,15 @@ class G2Dedup:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value)
+            dt = datetime.fromisoformat(value)
         except (ValueError, TypeError):
             return None
+        # Normalize naive timestamps to UTC so comparisons (e.g. G2 freshness
+        # window: `item_dt - entry_dt`) never mix naive and aware datetimes
+        # (issue #145 — third occurrence of this class of bug).
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
 
 # ---------------------------------------------------------------------------

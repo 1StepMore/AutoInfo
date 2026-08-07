@@ -93,9 +93,18 @@ def _tier_subpath(src: Path) -> Path:
     """Path below '<root>/<domain>/' so nested structure survives the copy.
 
     E.g. ``knowledge/medical-research/01-Raw/crispr/2026-08-05-x.md`` maps to
-    ``01-Raw/crispr/2026-08-05-x.md``; shallow paths fall back to the bare name.
+    ``01-Raw/crispr/2026-08-05-x.md``; shallow paths fall back to the bare
+    name.  Absolute inputs under the repo root are relativized first so the
+    mount/user prefix is never embedded in the package (issue #143).
     """
-    parts = src.parts
+    cwd = Path.cwd().resolve()
+    try:
+        rel = src.resolve().relative_to(cwd)
+    except (ValueError, OSError):
+        # Not under the repo root — keep the historical slice behaviour.
+        parts = src.parts
+        return Path(*parts[2:]) if len(parts) >= 3 else Path(src.name)
+    parts = rel.parts
     return Path(*parts[2:]) if len(parts) >= 3 else Path(src.name)
 
 

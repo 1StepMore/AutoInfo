@@ -15,7 +15,7 @@ import json
 
 import typer
 
-from autoinfo.kb import KBStore
+from autoinfo.kb import KBStore, PromotionRejected
 
 app = typer.Typer(help="Knowledge base operations")
 
@@ -144,7 +144,7 @@ def list_tiers(
             "description": {
                 "01-Raw": "Sole entry point for collected content",
                 "02-Draft": "Agent-created drafts from Raw entries",
-                "03-Wiki": "Human-promoted, reviewed entries (append-only)",
+                "03-Wiki": "Admission-gated agent-promoted curated entries (append-only)",
             }.get(tier, ""),
             "entry_count": entry_count,
         })
@@ -239,14 +239,65 @@ def promote(
         False, "--json", help="Output as JSON"
     ),
 ) -> None:
-    """Promote a Draft entry to 03-Wiki (human-only, append-only)."""
+    """Promote a Draft entry to 03-Wiki (admission-gated agent promotion, append-only).
+
+    The draft must pass the curation gate (source provenance, G1/G3
+    thresholds, G4 factual consistency); rejected drafts stay in 02-Draft
+    with a _failed/ marker written.
+    """
     store = KBStore()
     try:
         result = store.promote_kb_draft(draft_id=entry_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, FileNotFoundError, PromotionRejected) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
+
+
+@app.command(name="promote-pending")
+def promote_pending(
+    domain: str = typer.Option(
+        ..., "--domain", help="Domain whose eligible 02-Draft entries to promote"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON"
+    ),
+) -> None:
+    """Promote all eligible Draft entries for a domain (batch sweep).
+
+    Each 02-Draft entry is admission-checked via the curation gate;
+    previously rejected entries (carrying a _failed/ marker) are skipped
+    and never retried. Prints a summary with per-entry failure reasons.
+    """
+    config = None
+    try:
+        from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
+
+        cfg_path = get_config_path()
+        if cfg_path is not None:
+            config = load_config(cfg_path)
+    except Exception:
+        config = None
+
+    store = KBStore()
+    result = store.promote_pending_drafts(domain=domain, config=config, caller="sweep")
+
+    if json_output:
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+
+    typer.echo(f"Promotion sweep for domain '{domain}':")
+    typer.echo(f"  Total drafts:            {result['total']}")
+    typer.echo(f"  Promoted:                {len(result['promoted'])}")
+    typer.echo(f"  Rejected:                {len(result['rejected'])}")
+    typer.echo(f"  Failed:                  {len(result['failed'])}")
+    typer.echo(f"  Skipped (_failed/):      {len(result['skipped_failed_markers'])}")
+    for p in result["promoted"]:
+        typer.echo(f"    + {p['entry_id']}")
+    for r in result["rejected"]:
+        typer.echo(f"    - {r['entry_id']}: {', '.join(r['reasons'])}")
+    for f in result["failed"]:
+        typer.echo(f"    ! {f['entry_id']}: {f['error']}")
 
 
 @app.command()

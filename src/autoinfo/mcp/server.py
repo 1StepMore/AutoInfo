@@ -65,6 +65,7 @@ from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES
+from autoinfo.kb import DirectorOnlyError, is_director
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
 
@@ -2507,8 +2508,11 @@ def _handle_promote_kb_draft(
 ) -> dict[str, Any]:
     """Promote a Draft KB entry to the 03-Wiki tier.
 
-    Human-only operation per KB rules. The draft must be in 02-Draft tier.
-    Returns the promoted entry path and metadata.
+    Admission-gated agent promotion: the draft must pass the curation gate
+    (source provenance, G0, G1/G3 thresholds, G4 factual consistency) or
+    the promotion is rejected and a ``_failed/<domain>/<entry_id>.md``
+    marker is written while the draft stays in 02-Draft. The draft must be
+    in 02-Draft tier. Returns the promoted entry path and metadata.
     """
     from autoinfo.kb import KBStore
 
@@ -2530,6 +2534,77 @@ def _handle_promote_kb_draft(
         }
     except Exception as exc:
         logger.exception("promote_kb_draft failed for '%s'", entry_id)
+        return _error_dict(exc)
+
+
+def _handle_demote_kb_wiki(entry_id: str, actor: str = "director") -> dict[str, Any]:
+    """Demote a 03-Wiki entry back to 02-Draft (director-only backdoor).
+
+    Content is preserved: the file moves from ``03-Wiki/`` to ``02-Draft/``
+    under the same domain and topic, frontmatter ``tier`` is rewritten to
+    ``02-Draft`` and a ``demoted_at`` timestamp is appended; the original
+    promotion provenance is kept.  The actor must be whitelisted in
+    ``AUTOINFO_DIRECTOR_ACTORS`` (default ``director``) or the call is
+    refused with a ``DIRECTOR_ONLY`` error envelope.
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    try:
+        return store.demote_entry(entry_id=entry_id, caller=actor)
+    except DirectorOnlyError as exc:
+        return error_response(
+            code=ErrorCode.DIRECTOR_ONLY,
+            message=str(exc),
+            actionable=True,
+        )
+
+
+def _handle_force_promote(draft_id: str, actor: str = "director") -> dict[str, Any]:
+    """Force-promote a 02-Draft entry to 03-Wiki, skipping the admission gate.
+
+    Director-only backdoor: provenance / G0 / G1 / G3 / G4 checks are not
+    evaluated; the frontmatter records ``promotion_source: director``.  The
+    actor must be whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (default
+    ``director``) or the call is refused with a ``DIRECTOR_ONLY`` error
+    envelope.
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    try:
+        return store.force_promote_kb_draft(draft_id=draft_id, caller=actor)
+    except DirectorOnlyError as exc:
+        return error_response(
+            code=ErrorCode.DIRECTOR_ONLY,
+            message=str(exc),
+            actionable=True,
+        )
+
+
+def _handle_promote_pending(domain: str, actor: str = "agent") -> dict[str, Any]:
+    """Promote all eligible 02-Draft entries for *domain* (batch sweep).
+
+    Each 02-Draft entry is admission-checked via the existing promote path;
+    entries previously rejected (carrying a ``_failed/<domain>/<entry_id>.md``
+    marker) are skipped and never retried.  Returns a summary with
+    promoted/rejected/failed per entry and per-entry failure reasons; the
+    sweep never raises (per-entry failures are collected in the summary).
+    """
+    from autoinfo.kb import KBStore
+
+    store = KBStore()
+    config = None
+    try:
+        config = _load_config()
+    except Exception:
+        config = None
+    try:
+        return store.promote_pending_drafts(
+            domain=domain, config=config, caller=actor
+        )
+    except Exception as exc:
+        logger.exception("promote_pending failed for domain '%s'", domain)
         return _error_dict(exc)
 
 
@@ -4488,11 +4563,13 @@ def _handle_set_gate_config(
 
     from autoinfo.config import DeliveryGateConfig, QualityGateConfig
 
-    # Determine if this is a quality or delivery gate
+    # Determine if this is a quality or delivery gate. CurationGate is
+    # always a quality gate: its dict carries ``enabled`` (the G4 switch),
+    # which the generic heuristic below would otherwise misread as delivery.
     is_delivery = (
         gate in domain_cfg.delivery_gates
         or ("action_on_failure" in config)
-        or ("enabled" in config and "category" not in config)
+        or (gate != "CurationGate" and "enabled" in config and "category" not in config)
     )
     is_quality = (gate in domain_cfg.quality_gates) or not is_delivery
 
@@ -4507,6 +4584,7 @@ def _handle_set_gate_config(
             retry_models=list(config.get("retry_models", [])),
             action=str(config.get("action", "flag")),
             threshold=config.get("threshold", None),
+            enabled=bool(config.get("enabled", True)),
         )
         domain_cfg.quality_gates[gate] = new_gc
     else:
@@ -5149,10 +5227,18 @@ def _handle_get_prometheus_metrics(name: str, arguments: dict) -> dict[str, Any]
 def _handle_soft_delete_entry(name: str, arguments: dict) -> dict[str, Any]:
     from autoinfo.kb import KBStore
     store = KBStore()
+    actor = arguments.get("actor") or "director"
     purge = arguments.get("purge", False)
-    if purge:
-        return store.delete_entry(arguments["entry_id"])
-    return store.soft_delete_entry(arguments["entry_id"])
+    try:
+        if purge:
+            return store.delete_entry(arguments["entry_id"], actor=actor)
+        return store.soft_delete_entry(arguments["entry_id"], actor=actor)
+    except DirectorOnlyError as exc:
+        return error_response(
+            code=ErrorCode.DIRECTOR_ONLY,
+            message=str(exc),
+            actionable=True,
+        )
 
 
 def _handle_mark_stale(name: str, arguments: dict) -> dict[str, Any]:
@@ -6695,7 +6781,9 @@ def _error_response(exc: Exception) -> list[TextContent]:
     Returns ``list[TextContent]`` with the uniform ``{success, error}`` shape.
     """
     # -- Determine ErrorCode from exception type ---------------------------
-    if isinstance(exc, FileNotFoundError):
+    if isinstance(exc, DirectorOnlyError):
+        code = ErrorCode.DIRECTOR_ONLY
+    elif isinstance(exc, FileNotFoundError):
         code = ErrorCode.NOT_FOUND
     elif isinstance(exc, (ValueError, KeyError)):
         code = ErrorCode.VALIDATION_ERROR
@@ -7943,8 +8031,12 @@ async def list_tools() -> list[Tool]:
             name="promote_kb_draft",
             description=(
                 "Promote a Draft KB entry (02-Draft) to the 03-Wiki tier. "
-                "Human-only operation: once promoted, entries are append-only "
-                "and cannot be demoted. The entry must already exist in 02-Draft."
+                "Admission-gated agent promotion: the draft must satisfy "
+                "the curation gate (source provenance, G1/G3 thresholds, "
+                "G4 factual consistency) or the promotion is rejected and "
+                "a _failed/ marker is written while the draft stays in "
+                "02-Draft. Once promoted, entries are append-only and "
+                "cannot be demoted. The entry must already exist in 02-Draft."
             ),
             inputSchema={
                 "type": "object",
@@ -7960,6 +8052,84 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["entry_id"],
+            },
+        ),
+        Tool(
+            name="demote_kb_wiki",
+            description=(
+                "Demote a 03-Wiki entry back to 02-Draft (director-only backdoor). "
+                "Content is preserved: the file moves to 02-Draft with a "
+                "demoted_at marker; the original promotion provenance is kept. "
+                "The actor must be whitelisted in AUTOINFO_DIRECTOR_ACTORS "
+                "(default 'director') or the call is refused with DIRECTOR_ONLY."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {
+                        "type": "string",
+                        "description": "ID of the 03-Wiki entry to demote",
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Acting director (must be in AUTOINFO_DIRECTOR_ACTORS)",
+                        "default": "director",
+                    },
+                },
+                "required": ["entry_id"],
+            },
+        ),
+        Tool(
+            name="force_promote",
+            description=(
+                "Force-promote a 02-Draft entry to 03-Wiki, skipping the "
+                "admission gate (director-only backdoor). Records "
+                "promotion_source: director. The actor must be whitelisted "
+                "in AUTOINFO_DIRECTOR_ACTORS (default 'director') or the "
+                "call is refused with DIRECTOR_ONLY."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "draft_id": {
+                        "type": "string",
+                        "description": "ID of the 02-Draft entry to force-promote",
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Acting director (must be in AUTOINFO_DIRECTOR_ACTORS)",
+                        "default": "director",
+                    },
+                },
+                "required": ["draft_id"],
+            },
+        ),
+        Tool(
+            name="promote_pending",
+            description=(
+                "Batch-promote all eligible 02-Draft entries for a domain "
+                "(promotion sweep). Each draft is admission-checked via the "
+                "curation gate (source provenance, G1/G3 thresholds, G4 "
+                "factual consistency); drafts previously rejected (carrying "
+                "a _failed/ marker) are skipped and never retried. "
+                "Idempotent: already-promoted entries are naturally skipped. "
+                "Returns a summary with promoted/rejected/failed per entry "
+                "and per-entry failure reasons."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name (e.g. medical-research)",
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Acting agent recorded in promoted_by (default 'agent')",
+                        "default": "agent",
+                    },
+                },
+                "required": ["domain"],
             },
         ),
         Tool(
@@ -9196,7 +9366,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "gate": {
                         "type": "string",
-                        "description": "Gate name (e.g. G0, G1, D1, D2)",
+                        "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
                     },
                 },
                 "required": ["domain", "gate"],
@@ -9214,7 +9384,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "gate": {
                         "type": "string",
-                        "description": "Gate name (e.g. G0, G1, D1, D2)",
+                        "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
                     },
                     "config": {
                         "type": "object",
@@ -9239,7 +9409,7 @@ async def list_tools() -> list[Tool]:
                             },
                             "enabled": {
                                 "type": "boolean",
-                                "description": "Whether the gate is enabled (delivery gates)",
+                                "description": "Whether enabled (delivery gates; CurationGate G4)",
                             },
                             "action_on_failure": {
                                 "type": "string",
@@ -9583,7 +9753,7 @@ async def list_tools() -> list[Tool]:
         # -- Soft-delete & GDPR (4) -------------------------------------------
         Tool(
             name="soft_delete_entry",
-            description="Mark an entry as deleted (soft-delete) or permanently remove it (hard-delete). Set purge=True for permanent deletion.",
+            description="Mark an entry as deleted (soft-delete) or permanently remove it (hard-delete). Set purge=True for permanent deletion. 03-Wiki entries are append-only: only an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS (default 'director') can delete them.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -9592,6 +9762,11 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "If False (default), performs soft-delete (mark as deleted). If True, permanently deletes the entry from index, FTS5, and disk.",
                         "default": False,
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Acting actor. 03-Wiki entries require an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS (default 'director')",
+                        "default": "director",
                     },
                 },
                 "required": ["entry_id"],
@@ -10510,6 +10685,28 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 )
             ]
 
+        # -- Director-only backdoor guard: demote / force-promote ---------
+        # Blocks non-whitelisted actors at dispatch so neither the store nor
+        # the audit trail records the attempt as a real mutation.  The
+        # handlers repeat the check so direct handler calls stay safe too.
+        if name in ("demote_kb_wiki", "force_promote"):
+            actor = arguments.get("actor") or "director"
+            if not is_director(actor):
+                _dispatch_audit["code"] = "director_only"
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(error_response(
+                            code=ErrorCode.DIRECTOR_ONLY,
+                            message=(
+                                f"actor '{actor}' not whitelisted "
+                                "in AUTOINFO_DIRECTOR_ACTORS"
+                            ),
+                            actionable=True,
+                        )),
+                    )
+                ]
+
         # -- System (2) ---------------------------------------------------
         if name == "get_tool_count":
             result = _handle_get_tool_count()
@@ -10633,6 +10830,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_list_kb_tier(**arguments)
         elif name == "promote_kb_draft":
             result = _handle_promote_kb_draft(**arguments)
+        elif name == "demote_kb_wiki":
+            result = _handle_demote_kb_wiki(**arguments)
+        elif name == "force_promote":
+            result = _handle_force_promote(**arguments)
+        elif name == "promote_pending":
+            result = _handle_promote_pending(**arguments)
         elif name == "reindex_kb":
             result = _handle_reindex_kb(**arguments)
         elif name == "create_kb_entry":

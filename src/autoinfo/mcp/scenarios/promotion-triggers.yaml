@@ -1,0 +1,395 @@
+# Promotion triggers (plan todo T9c / T6, D7 coverage slot) — pins every
+# shipped trigger surface of the curation gate:
+#
+#   1. Agent promote trigger: an eligible draft promotes to 03-Wiki
+#      (promotion_source=agent).
+#   2. Sweep safety (fail-fast): a draft whose source Raw entry is gone is
+#      REFUSED (unresolvable-source) and a `_failed/` marker is written —
+#      a batch sweep can never silently promote a broken provenance chain.
+#   3. Idempotency: re-promoting an already-promoted entry is refused; no
+#      duplicate 03-Wiki rows.
+#   4. Director force trigger: force_promote bypasses the admission gate
+#      (a below-threshold draft the agent path refuses can be promoted by
+#      the director).
+#   5. Sweep trigger (promote_pending): batch-promotes every eligible
+#      02-Draft entry of a domain and SKIPS entries that already carry a
+#      `_failed/` marker (never retried).  The sweep runs in the throwaway
+#      "t9-sweep" domain so the real medical-research KB is never swept.
+#   6. Product-driven trigger: digest/report content selection consumes
+#      03-Wiki before 02-Draft (curated-first, source_tier badge).
+#
+# Deterministic: real KBStore seeds with QualityResult scores (same call
+# path as process_collection), real MCP calls for draft/promote/force/sweep.
+name: promotion-triggers
+description: "Promotion triggers: agent promote, unresolvable-source fail-fast, re-promotion idempotency, director force bypass, curated-first consumption"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+collect_artifacts:
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
+  - "knowledge/medical-research/03-Wiki/**/*.md"
+  - "knowledge/t9-sweep/**/*.md"
+  - "knowledge/_failed/**/*.md"
+steps:
+  # ---- trigger 1: agent promote -------------------------------------------
+  - name: "seed first 01-Raw entry with real gate scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-trig-van-raw", source_name="web", source_type="web",
+          source_url="https://promotion-triggers.autoinfo.dev/vanished",
+          source_platform="web", title="T9 Trigger Vanished Entry",
+          content="T9 promotion trigger vanished-source source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      raw = store.store_entry(item=item, tier="01-Raw",
+                              quality_results={"G1-SourceAuthority": g1,
+                                               "G3-RelevanceScoring": g3})
+      print("SEED_VAN_RAW " + raw.entry_id + " " + raw.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_VAN_RAW medical-research-general-t9-trigger-vanished-entry 01-Raw"]
+
+  - name: "create_kb_draft from first Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-trigger-vanished-entry
+      title: "T9 Trigger Vanished Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  # ---- trigger 2: sweep safety — source disappears before promote ---------
+  - name: "remove the source Raw entry (director purge)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-general-t9-trigger-vanished-entry")
+      assert meta is not None, "seeded raw missing"
+      res = store.delete_entry("medical-research-general-t9-trigger-vanished-entry", actor="director")
+      print("PURGED_RAW " + str(res.get("deleted")))
+      assert res.get("deleted") is True, res
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PURGED_RAW True"]
+
+  - name: "promote refuses draft whose source is unresolvable (fail-fast)"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-trigger-vanished-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+  - name: "verify _failed marker written and draft preserved"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-draft-t9-trigger-vanished-draft")
+      assert meta is not None and meta.get("tier") == "02-Draft", meta
+      print("VANISHED_TIER " + meta.get("tier", ""))
+      marker = pathlib.Path("knowledge/_failed/medical-research/medical-research-draft-t9-trigger-vanished-draft.md")
+      print("VANISHED_MARKER " + str(marker.is_file()))
+      assert marker.is_file(), "expected _failed marker"
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["VANISHED_TIER 02-Draft", "VANISHED_MARKER True"]
+
+  # ---- trigger 1 (again) + trigger 3: idempotency -------------------------
+  - name: "seed second 01-Raw entry with real gate scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-trig-elig-raw", source_name="web", source_type="web",
+          source_url="https://promotion-triggers.autoinfo.dev/eligible",
+          source_platform="web", title="T9 Trigger Eligible Entry",
+          content="T9 promotion trigger eligible source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      raw = store.store_entry(item=item, tier="01-Raw",
+                              quality_results={"G1-SourceAuthority": g1,
+                                               "G3-RelevanceScoring": g3})
+      print("SEED_ELIG_RAW " + raw.entry_id + " " + raw.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_ELIG_RAW medical-research-general-t9-trigger-eligible-entry 01-Raw"]
+
+  - name: "create_kb_draft from second Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-trigger-eligible-entry
+      title: "T9 Trigger Eligible Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "agent promote trigger promotes eligible draft"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-trigger-eligible-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "re-promotion of the same entry is refused (idempotency)"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-trigger-eligible-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+  # ---- trigger 4: director force bypass ------------------------------------
+  - name: "force_promote bypasses admission for a below-threshold draft"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-trig-low-raw", source_name="web", source_type="web",
+          source_url="https://promotion-triggers.autoinfo.dev/low",
+          source_platform="web", title="T9 Trigger Low Entry",
+          content="T9 promotion trigger low-score source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 5.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=5.0,
+                         details={})
+      raw = store.store_entry(item=item, tier="01-Raw",
+                              quality_results={"G1-SourceAuthority": g1,
+                                               "G3-RelevanceScoring": g3})
+      draft = store.create_kb_draft(raw_ids=[raw.entry_id], title="T9 Trigger Low Draft")
+      print("SEED_LOW_DRAFT " + draft.entry_id + " " + draft.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_LOW_DRAFT medical-research-draft-t9-trigger-low-draft 02-Draft"]
+
+  - name: "agent promote of below-threshold draft is refused"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-trigger-low-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+  - name: "director force_promote bypasses the admission gate"
+    tool: force_promote
+    arguments:
+      draft_id: medical-research-draft-t9-trigger-low-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  # ---- trigger 5: sweep (promote_pending) in a throwaway domain -----------
+  - name: "seed sweep-domain drafts: one eligible, one previously rejected"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore, PromotionRejected
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      g1low = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                            details={"source_score": 5.0})
+      g3low = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=5.0,
+                            details={})
+
+      def seed(ident, title, url, scores, t):
+          item = Item(
+              id=ident, source_name="web", source_type="web", source_url=url,
+              source_platform="web", title=title, content="t9 sweep body " + title,
+              domain="t9-sweep", topic_tags=["general"],
+              collected_at="2026-08-08T00:00:00+00:00",
+              content_type="text", quality_tier=1,
+          )
+          return store.store_entry(item=item, tier="01-Raw", quality_results=scores)
+
+      raw_elig = seed("t9-sweep-elig-raw", "T9 Sweep Eligible Entry",
+                      "https://t9-sweep.autoinfo.dev/eligible",
+                      {"G1-SourceAuthority": g1, "G3-RelevanceScoring": g3}, "raw")
+      draft_elig = store.create_kb_draft(raw_ids=[raw_elig.entry_id],
+                                         title="T9 Sweep Eligible Draft")
+      raw_rej = seed("t9-sweep-rej-raw", "T9 Sweep Rejected Entry",
+                     "https://t9-sweep.autoinfo.dev/rejected",
+                     {"G1-SourceAuthority": g1low, "G3-RelevanceScoring": g3low}, "raw")
+      draft_rej = store.create_kb_draft(raw_ids=[raw_rej.entry_id],
+                                        title="T9 Sweep Rejected Draft")
+      try:
+          store.promote_kb_draft(draft_id=draft_rej.entry_id)
+          print("UNEXPECTED_ADMISSION")
+          raise SystemExit(1)
+      except PromotionRejected:
+          pass
+      print("SEED_SWEEP " + draft_elig.entry_id + " " + draft_rej.entry_id)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_SWEEP t9-sweep-draft-t9-sweep-eligible-draft t9-sweep-draft-t9-sweep-rejected-draft"]
+
+  - name: "promote_pending sweep promotes eligible, skips failed-marker draft"
+    tool: promote_pending
+    arguments:
+      domain: t9-sweep
+    expect:
+      success: true
+      data_has: ["domain", "total", "promoted", "rejected", "skipped_failed_markers"]
+
+  - name: "sweep result: eligible promoted to 03-Wiki, rejected draft untouched"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      elig = store.index.get_entry("t9-sweep-draft-t9-sweep-eligible-draft")
+      assert elig is not None and elig.get("tier") == "03-Wiki", elig
+      print("SWEEP_ELIGIBLE " + elig.get("tier", ""))
+      rej = store.index.get_entry("t9-sweep-draft-t9-sweep-rejected-draft")
+      assert rej is not None and rej.get("tier") == "02-Draft", rej
+      print("SWEEP_REJECTED " + rej.get("tier", ""))
+      marker = pathlib.Path("knowledge/_failed/t9-sweep/t9-sweep-draft-t9-sweep-rejected-draft.md")
+      print("SWEEP_MARKER " + str(marker.is_file()))
+      assert marker.is_file(), "previously rejected draft must keep its marker"
+      print("SWEEP_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SWEEP_ELIGIBLE 03-Wiki", "SWEEP_REJECTED 02-Draft", "SWEEP_MARKER True", "SWEEP_OK"]
+
+  # ---- trigger 6: product-driven curated-first consumption ----------------
+  - name: "product-driven selection consumes 03-Wiki before 02-Draft"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _filter_entries_by_content_preference
+      # Real promoted state: eligible draft is 03-Wiki, vanished draft is 02-Draft.
+      entries = [
+          {"entry_id": "medical-research-draft-t9-trigger-vanished-draft",
+           "tier": "02-Draft", "relevance_score": 85.0},
+          {"entry_id": "medical-research-draft-t9-trigger-eligible-draft",
+           "tier": "03-Wiki", "relevance_score": 85.0},
+      ]
+      out = _filter_entries_by_content_preference(entries, "processed_only")
+      ids = [e["entry_id"] for e in out]
+      print("PRODUCT_ORDER " + ",".join(ids))
+      assert ids[0] == "medical-research-draft-t9-trigger-eligible-draft", (
+          "wiki (curated) must be consumed first: " + str(ids))
+      assert out[0].get("source_tier") == "curated", out
+      assert out[1].get("source_tier") == "fresh", out
+      print("PRODUCT_CURATED_FIRST_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PRODUCT_ORDER medical-research-draft-t9-trigger-eligible-draft,medical-research-draft-t9-trigger-vanished-draft", "PRODUCT_CURATED_FIRST_OK"]
+
+# Always-run best-effort cleanup (never affects scenario status).  Director-
+# routed per T5 (03-Wiki append-only for non-directors).
+cleanup_steps:
+  - name: "director purge of scenario entries + _failed markers"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      ids = ["medical-research-draft-t9-trigger-eligible-draft",
+             "medical-research-draft-t9-trigger-vanished-draft",
+             "medical-research-draft-t9-trigger-low-draft",
+             "medical-research-general-t9-trigger-eligible-entry",
+             "medical-research-general-t9-trigger-low-entry",
+             "t9-sweep-draft-t9-sweep-eligible-draft",
+             "t9-sweep-draft-t9-sweep-rejected-draft",
+             "t9-sweep-general-t9-sweep-eligible-entry",
+             "t9-sweep-general-t9-sweep-rejected-entry"]
+      removed = []
+      for eid in ids:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          res = store.delete_entry(eid, actor="director")  # T5: director path
+          removed.append(eid + ":" + str(res))
+      for p in list(pathlib.Path("knowledge/_failed").rglob("*t9-trigger-*")):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(pathlib.Path("knowledge/_failed").rglob("*t9-sweep-*")):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(pathlib.Path("knowledge/t9-sweep").rglob("*")):
+          if p.is_file():
+              p.unlink(missing_ok=True)
+              removed.append(str(p))
+      for d in sorted(pathlib.Path("knowledge/t9-sweep").rglob("*"), reverse=True):
+          try:
+              d.rmdir()
+          except OSError:
+              pass
+      for d in ("knowledge/t9-sweep", "knowledge/_failed/t9-sweep"):
+          try:
+              pathlib.Path(d).rmdir()
+          except OSError:
+              pass
+      for p in list(pathlib.Path("knowledge/medical-research").rglob("*t9-trigger-*")):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      print("CLEANED " + str(removed))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from autoinfo.config import Config, QualityGateConfig, get_config_path, load_config
-from autoinfo.kb import KBStore
+from autoinfo.kb import KBStore, PromotionRejected
 from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import Item
@@ -324,8 +324,6 @@ def _update_index_cefr(entry_id: str, cefr_level: str) -> None:
     Non-blocking: any failure is logged and swallowed.
     """
     try:
-        from autoinfo.kb import KBStore
-
         store = KBStore()
         with store.index._connect() as conn:
             conn.execute(
@@ -511,6 +509,7 @@ def run_processing(
     batch_size: int = 0,
     check_factual: bool = False,
     check_translation: bool = False,
+    auto_promote: bool = False,
 ) -> ProcessResult:
     """Main processing pipeline.
 
@@ -557,6 +556,12 @@ def run_processing(
     check_translation : bool, optional
         When ``True``, run the G5 translation accuracy gate after G4
         (requires an LLM call per item).  Defaults to ``False``.
+    auto_promote : bool, optional
+        When ``True``, each item that passes extraction + quality gates is
+        automatically admission-checked via the curation gate and promoted
+        to 03-Wiki when eligible (per-entry try/except — a rejection or
+        unexpected failure never aborts the run; rejected items stay in
+        02-Draft with a ``_failed/`` marker).  Defaults to ``False``.
 
     Returns
     -------
@@ -1071,6 +1076,44 @@ def run_processing(
                 entry.trace_id = item.trace_id
             item_log["entry_id"] = entry.entry_id
             stats["kb_entries_created"] += 1
+
+            # Step c1: Auto-promotion (T6) — admission-checked, best-effort.
+            # Only items that passed all quality gates (G1+G2+G3) qualify;
+            # each promotion attempt is isolated so a rejection or an
+            # unexpected failure never aborts the pipeline.
+            if auto_promote and gates_passed == 3:
+                item_log["auto_promote_attempted"] = True
+                try:
+                    with _STORAGE_LOCK:
+                        draft_entry = kb_store.create_kb_draft(
+                            raw_ids=[entry.entry_id],
+                            title=item.title,
+                            summary=extraction.tl_dr if extraction else "",
+                            tags=item.topic_tags,
+                        )
+                        kb_store.promote_kb_draft(
+                            draft_id=draft_entry.entry_id,
+                            config=config,
+                            caller="process",
+                        )
+                    item_log["auto_promoted"] = True
+                    item_log["promoted_entry_id"] = draft_entry.entry_id
+                except PromotionRejected as exc:
+                    item_log["auto_promoted"] = False
+                    item_log["promotion_rejected"] = [str(r) for r in exc.reasons]
+                    logger.warning(
+                        "Auto-promotion rejected for item %s: %s",
+                        item.id,
+                        exc,
+                    )
+                except Exception as exc:
+                    item_log["auto_promoted"] = False
+                    item_log["promotion_error"] = str(exc)
+                    logger.warning(
+                        "Auto-promotion failed for item %s: %s",
+                        item.id,
+                        exc,
+                    )
 
             # Step c2: CEFR classification (non-blocking — only when enabled)
             if config is not None and config.cefr.enabled:

@@ -115,7 +115,7 @@
 | C1 | **社交+视频网络（算法分发）** | #1 (54%) | C 算法分发 | ✅ `social_publish` 渠道（mastodon/bluesky/linkedin/threads/x）(delivery/social.py) | ✅ tests/delivery/test_social.py | ✅ |
 | C2 | **搜索引擎+AI 概览** | #2 | A 主动拉取 | ✅ export_kb format="sitemap"（sitemap.xml）+ JSON-LD 结构化数据 | ✅ Part 2 Q9.19（CLI sitemap）+ Part 4 Q36i.1/Q36i.2（export_kb sitemap + JSON-LD，新增场景） | ✅ |
 | C3 | **自有网站/APP** | #5 (51%) | A 主动拉取 | ✅ REST API (FastAPI, 8741) + Web UI Dashboard | ✅ Part 7 Q47/Q48 | ✅ |
-| C4 | **AI 聊天机器人/答案引擎** | #4 (10%) | D AI 代理 | ✅ MCP Server (141 tools) | ✅ Part 3+4 | ✅ |
+| C4 | **AI 聊天机器人/答案引擎** | #4 (10%) | D AI 代理 | ✅ MCP Server (145 tools) | ✅ Part 3+4 | ✅ |
 | C5 | **推送通知** | #6 | B 被动推送 | ✅ Push 推送通道 (PushDeliveryChannel + scheduler) | ✅ Part 13 Q63.20（push 渠道分发，新增场景）+ 单元测试 tests/delivery/test_push.py（23 tests） | ✅ |
 | C6 | **邮件订阅** | #7 | B 被动推送 | ✅ SMTP 渠道 | ✅ Part 9 Q56a 56a.4（env-gated：`SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`，无凭证 SKIPPED 不 FAIL；2026-08-02 已加场景，凭证未提供故 SKIPPED） | ⚠️ 待 SMTP 凭证（场景就绪；提供 Mailtrap/Resend 免费层或 Gmail app password 后重跑 56a.4 → ✅） |
 | C7 | **RSS Feed** | #10 (6%) | A 主动拉取 | ✅ export_rss | ✅ Part 4 Q34.9 | ✅ |
@@ -178,7 +178,7 @@
 
 | # | Agent 能力 | 报告关键数据 | AutoInfo Code | Validation Plan | 覆盖状态 |
 |:-:|-----------|:-----------:|:-------------:|:---------------:|:--------:|
-| E1 | **MCP 工具暴露** | 报告推荐 | ✅ 141 tools | ✅ Part 3+4 | ✅ |
+| E1 | **MCP 工具暴露** | 报告推荐 | ✅ 145 tools | ✅ Part 3+4 | ✅ |
 | E2 | **付费用户管理** | 订阅经济 $7,388 亿 | ✅ Stripe 集成 (878行, 51测试: 42 mock + 9 stripe-mock 集成) | ✅ Part 13 Q65e + TestStripeLifecycle 集成回归 (skipif 无 stripe-mock) | ✅ |
 | E3 | **用量追踪/计费** | Zuora SEI | ✅ CostMeter + ConsumptionEvent | ✅ Part 13 Q65h (cost E2E) | ✅ |
 | E4 | **多渠道分发** | 6+ 渠道 | ✅ 13 delivery adapters（含 push） | ✅ Part 13 Q63.17-63.19 | ✅ |

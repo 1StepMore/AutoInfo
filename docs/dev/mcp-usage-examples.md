@@ -5,7 +5,7 @@ Worked examples for common AutoInfo MCP tool workflows. Referenced from
 expected return shape.
 
 For the compact pattern index, see `AGENTS.md` → Common Patterns. For the
-full tool catalog, see `docs/dev/specs/mcp-tools.md` (141 tools, 35 categories).
+full tool catalog, see `docs/dev/specs/mcp-tools.md` (145 tools, 35 categories).
 
 ---
 
@@ -75,10 +75,10 @@ the `next_steps` items (e.g. `configure_llm`, add sources) to finish setup.
 ```
 1. flag_for_knowledge_base(summary_id="sum_123", tags=["important", "review"]) → promote summary
 2. create_kb_draft(summary_id="sum_123") → agent creates Draft from Raw
-3. (User promotes Draft → Wiki via CLI `autoinfo kb promote`)
+3. promote_kb_draft(draft_id="draft_123") → agent promotes Draft → Wiki (no human gate)
 ```
 
-Summary flagged, Draft created, awaiting human promotion to Wiki.
+Summary flagged, Draft created, promoted to Wiki by the agent. Promotion is an agent production operation (2026-08-08 director decision); the CLI `autoinfo kb promote` is the human-facing equivalent.
 
 ## Set up and run a cron schedule
 

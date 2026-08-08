@@ -17,7 +17,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio (SSE transport is future work)
-2. **All capabilities** are exposed as MCP tools (142 tools across 35 categories)
+2. **All capabilities** are exposed as MCP tools (145 tools across 35 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -86,7 +86,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 142 MCP tools across 35 categories
+│   │   │   ├── mcp-tools.md        # 145 MCP tools across 35 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── user-lifecycle-definition.md # Foundational user type definitions (B1/B2/B3)
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
@@ -102,7 +102,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 28 CLI command groups
-│       ├── mcp/                     # MCP server (142 tools)
+│       ├── mcp/                     # MCP server (145 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap)
@@ -125,8 +125,8 @@ Hard constraints derived from `founder-expectations.md`. Violating them produces
 ```
 Collected Item → 01-Raw → 02-Draft → 03-Wiki
      ↑             ↑          ↑           ↑
-  Auto-ingest    Sole       Agent can   Only human
-                 entry      process &   can promote
+  Auto-ingest    Sole       Agent can   Agent
+                 entry      process &   promotes
                  point      create      Draft → Wiki
 ```
 
@@ -134,8 +134,8 @@ Collected Item → 01-Raw → 02-Draft → 03-Wiki
 |------|-----|
 | **01-Raw is the sole entry point** for all collected content | Every collected item must have complete source provenance. No skipping. |
 | **Agent cannot create Draft from outside** — only from 01-Raw | Prevents garbage entries. Raw→Draft→Wiki is sequential. |
-| **Agent cannot write to 03-Wiki** | Only human promotes Draft→Wiki. Wiki entries are permanently reviewed. |
-| **03-Wiki is append-only** | Once promoted, entries stay. Agent cannot demote or delete Wiki entries. Only human can. Agent may deprecate (tag `status: deprecated`) upon explicit human command. |
+| **Agent promotes Draft→Wiki via `promote_kb_draft`** | AutoInfo's KB is a **database** for raw/processed data production, not a human-curated knowledge base (director decision 2026-08-08). Promotion is a production step, executed by the agent with no human gate — maximum automation, agent as user. A human promote/approval step would cripple production throughput. |
+| **03-Wiki is append-only** | Once promoted, entries stay. Agent cannot demote or delete Wiki entries. Deprecation (tag `status: deprecated`) only upon explicit human command. |
 | **Source metadata is mandatory** | Every Raw entry must have `source_url`, `source_type`, `source_platform`. |
 
 ### Collection Pipeline
@@ -178,7 +178,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 |--------|--------|
 | **Run `init_project` MCP tool** | Use `init_project` MCP tool for agent workflows instead of CLI `init`. CLI `init` remains available for humans. |
 | **Do not manage raw API keys** | Use `configure_llm()` MCP tool for BYOK setup — stores env var reference (`\${AUTOINFO_LLM_API_KEY}`), never the raw key. Never store, generate, or transmit keys. |
-| **Do not write to 03-Wiki** | Only human can promote Draft→Wiki. |
+| **Do not demote or delete Wiki entries** | 03-Wiki is append-only. Promotion Draft→Wiki is an **agent operation** (`promote_kb_draft`, no human gate); demotion/deletion are not agent operations. |
 | **Do not create Draft from outside** | Draft must come from 01-Raw. |
 | **Do not demote Wiki entries** | Wiki is append-only. Tag `deprecated` only upon human command. |
 | **Do not delete source or domain config** | Human decides what sources/domains to remove. |
@@ -187,7 +187,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 
 ## Tool Discovery Guidance
 
-142 MCP tools across 35 categories:
+145 MCP tools across 35 categories:
 
 | Category | Key Tools |
 |----------|-----------|
@@ -197,7 +197,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | **Source** | `add_source` (idempotent), `add_sources` (batch), `remove_source`, `test_source`, `list_sources`, `get_source_health`, `get_feeds` |
 | **Topic** | `add_topic`, `remove_topic`, `list_topics`, `list_keywords`, `approve_keyword`, `reject_keyword`, `suggest_keywords`, `topic_group_add`, `topic_group_remove` |
 | **Collection** | `collect_sources` (with dry_run, domain-less), `get_collection_progress`, `get_collection_status`, `process_collection` (with batch, check_factual, check_translation), `get_processing_progress`, `batch_run`, `clean_cache` |
-| **KB** | `search_knowledge_base` (hybrid, cross-domain), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_entry`, `create_kb_draft`, `reject_kb_draft`, `promote_kb_draft` (human-only Draft→Wiki), `list_kb_tier` (01-Raw/02-Draft/03-Wiki), `reindex_kb`, `flag_for_knowledge_base` |
+| **KB** | `search_knowledge_base` (hybrid, cross-domain), `get_kb_entry`, `list_summaries`, `get_summary`, `create_kb_entry`, `create_kb_draft`, `reject_kb_draft`, `promote_kb_draft` (agent promotion Draft→Wiki), `list_kb_tier` (01-Raw/02-Draft/03-Wiki), `reindex_kb`, `flag_for_knowledge_base` |
 | **KB Relations** | `link_items`, `get_item_relations` |
 | **KB Versioning** | `get_entry_history`, `restore_entry_version` |
 | **KB Monitor** | `get_collection_stats`, `get_collection_diff` |
@@ -225,7 +225,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | **Observability** | `trace_item`, `get_metrics`, `get_prometheus_metrics`, `diagnose_system` |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` (push delivers canonical `{event, payload, schema_version: 1, trace_id, product_id}` via durable SQLite outbox) |
 | **Audit** | `query_audit_log` |
-| **Validation** | `list_validation_scenarios`, `run_validation_scenario` (59 scenarios = 54 functional + 5 regression in `scenarios/regression/`; M7T52: sources-gap-closure + output-column + sources-a6-keyed; E8 wave: per-scenario timeout, recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel, enduser-journey + UX metrics; #157: requires_http env gate; #156: premium-briefing/magazine-digest/enterprise-briefing + full source coverage) |
+| **Validation** | `list_validation_scenarios`, `run_validation_scenario` (65 scenarios = 60 functional + 5 regression in `scenarios/regression/`; M7T52: sources-gap-closure + output-column + sources-a6-keyed; E8 wave: per-scenario timeout, recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel, enduser-journey + UX metrics; #157: requires_http env gate; #156: premium-briefing/magazine-digest/enterprise-briefing + full source coverage) |
 
 **Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
@@ -244,7 +244,7 @@ The table indexes every pattern; the five most-used are inlined below.
 | Configure the LLM (BYOK) | `configure_llm()` stores env var reference (see below) |
 | Create a custom domain | add_domain → add_source → add_topic → collect |
 | Initialise a project | `init_project()` scaffolds + returns next_steps |
-| Save an article to the KB | flag → create_kb_draft → human promotes |
+| Save an article to the KB | flag → create_kb_draft → promote_kb_draft (agent promotes Draft→Wiki, no human gate) |
 | Set up and run a cron schedule | add_schedule → cron_install → run |
 | Generate and send a digest email | generate_digest → send_email |
 | Classify content by CEFR level | `classify_cefr(text, language)` |
@@ -355,7 +355,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 142 tools across 35 categories |
+| MCP server | ✅ 145 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -410,8 +410,8 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Email config MCP | ✅ email_config MCP tool |
 | Cost dashboard MCP | ✅ cost_dashboard MCP tool |
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
-| Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
-| Validation scenarios | ✅ 59 scenarios (54 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
+| Demo domains | ✅ 13 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail) |
+| Validation scenarios | ✅ 65 scenarios (60 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` (run after primary failure) + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `expect.error_actionable` envelope assertion; root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
 | Regression flywheel | ✅ `scenarios/regression/` (regression-collect-int-id #104, regression-llm-key-resolution #119, regression-period-enum #126, regression-report-structure #121, regression-source-301 #135) + `coverage_audit.py` "Regression scenarios: N (issues: ...)" + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX (E8 matrix + coverage-gaps.json, Oracle R8 unconfigured-vs-gap)/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics) |
@@ -424,7 +424,7 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 | Test suite | ✅ ~3264 tests collected (includes validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + hermetic config-seam fixes) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedules MCP tools, cron-integrated |
 | Standardized error envelope | ✅ All MCP + REST API errors return `{success: false, error: {code, message, actionable}}`; 27 ErrorCode values; `error_dict()` deprecated |
-| REST success envelope | ✅ REST API success responses return `{success: true, data: ...}` (breaking change v1.9; migration: `docs/dev/migration-v1.9.md`); dashboard JS unwraps transparently |
+| REST success envelope | ✅ REST API success responses return `{success: true, data: ...}` (breaking change v1.9; migration: `docs/archive/migration-v1.9.md`); dashboard JS unwraps transparently |
 | LLM guard | ✅ Centralized `LLM_NOT_CONFIGURED` at `call_tool` dispatch (14 LLM-required tools) — no more raw auth errors |
 | Actionable guidance | ✅ `init_project` returns `next_steps`; `diagnose_system` returns `health_score` (0-100) + `phase`; DOMAIN_NOT_FOUND includes "Use add_domain()" |
 | CLI help text | ✅ 9 CLI command groups have custom help descriptions |
@@ -448,4 +448,5 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
 - `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes archived gap-audit docs.
 - `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (keystone reference)
-- `docs/dev/agent-tester-validation.md` — End-to-end runbook for agent-testers validating AutoInfo feature-by-feature via real MCP/CLI/REST calls; maintained alongside `validation-scenario-contract.md` (authoring) and `launch-validation-framework.md` (grading)
+- `docs/dev/acceptance-framework.md` — **Acceptance mechanism (keystone, AC1-AC9)**: user model integrity, data-layer integrity, dual orientation (agent-operated tool / human-first results), coverage commitment, quality, commercial viability, process governance, documentation health (AC8), test & validation suite health (AC9). Supersedes `launch-validation-framework.md` as the top-level validation charter (D1-D5 now archived at `docs/archive/launch-validation-framework.md`; evidence machinery retained as tooling).
+- `docs/dev/validation-scenario-contract.md` — Scenario authoring **and agent-tester execution** how-to (real MCP/CLI/REST calls, real artifacts); authoring + execution merged into one doc 2026-08-08 (former runbook archived at `docs/archive/agent-tester-validation.md`); graded against `acceptance-framework.md` (AC1-AC9)

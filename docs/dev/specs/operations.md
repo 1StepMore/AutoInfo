@@ -901,7 +901,7 @@ B2 encounters error
 
 | Intervention | B3 MCP/CLI Capability | Status |
 |-------------|----------------------|--------|
-| **Promote Draft→Wiki** | `create_kb_draft()` → human approval → CLI `kb promote` | ✅ Implemented (human-only per KB rules) |
+| **Promote Draft→Wiki** | `create_kb_draft()` → agent promotes via MCP `promote_kb_draft` (KB-tier guard; no human gate — KB is a database for raw/processed production, director decision 2026-08-08) | ✅ Implemented (agent operation) |
 | **Restore deleted entry** | `restore_entry(entry_id)` | ✅ Implemented |
 | **Soft-delete entry** | `soft_delete_entry(entry_id)` | ✅ Implemented |
 | **Repair source config** | `remove_source()` + `add_source()` | ✅ Implemented |

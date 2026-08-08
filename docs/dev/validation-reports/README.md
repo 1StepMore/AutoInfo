@@ -1,17 +1,21 @@
-# Validation Run Reports
+# Acceptance Run Reports
 
-Versioned launch-validation run reports (fixes #129 P0-2).
+Versioned acceptance run reports per `docs/dev/acceptance-framework.md` (AC1-AC9, §7.5/§10).
 
 ## Layout
 
 | Path | Content |
 |------|---------|
 | `validation-runs/<date>/scenarios.json` | Persisted scenario results per run (`run_validation_scenario(save_results=true)` or `validation_delivery.py`) |
-| `validation-runs/<date>/evidence/` | A1-A12 evidence files collected during the run (git-tracked via `.gitignore` whitelist) |
+| `validation-runs/<date>/evidence/` | A1-A24 evidence files collected during the run (git-tracked via `.gitignore` whitelist) |
 | `validation-runs/latest.txt` | Pointer to the newest run directory |
-| `docs/dev/validation-reports/launch-validation-<version>-<date>.md` | Executive run report generated from a run's `scenarios.json` |
+| `docs/dev/validation-reports/acceptance-<version>-<date>.md` | Executive acceptance run report generated from a run's `scenarios.json` |
 | `validation-deliveries/<date>/` | Delivery zips from `validation_delivery.py` (fixed archive location) |
 | `validation-runs/coverage/coverage-<date>.json` | Timestamped coverage audit output from `scripts/coverage_audit.py` |
+
+> Naming history: reports were previously `launch-validation-<version>.md` under the D1-D5 framework
+> (`docs/archive/launch-validation-framework.md`, archived 2026-08-08). The convention is now
+> `acceptance-<version>.md` per the acceptance framework §7.5.
 
 ## Workflow
 
@@ -27,6 +31,9 @@ python3 scripts/validation_diff.py                # latest vs previous
 
 # 4. Timestamped tool-coverage audit
 python3 scripts/coverage_audit.py
+
+# 5. Documentation inventory + consistency check (AC8)
+python3 scripts/doc_inventory.py --check
 ```
 
 ## Durability
@@ -35,3 +42,12 @@ python3 scripts/coverage_audit.py
 repo-root `validation-runs/` directory are whitelisted in `.gitignore`, so
 run evidence and results are committed to git and survive clones/cleanups
 instead of being ephemeral local files.
+
+## Closure status
+
+The 2026-08-08 first-run findings matrix is maintained in
+`docs/dev/validation-reports/acceptance-2026-08-08.md`. The KB-curation
+gap-closure wave (2026-08-08) closed B-03, B-04, B-05, B-06, B-07, B-08,
+the query_collected CWD trap, and the FRED_API_KEY documentation gap — see
+the "B-class Closure Status" section there. Still open: B-01 `remove_domain`
+confirm guard, B-02 CLI portal disposition, R-01 explicit gate config.

@@ -129,17 +129,18 @@ On `collect`, the handler requests **only items newer than** `last_collected_at`
 ```
     01-Raw         02-Draft       03-Wiki
       ↑               ↑              ↑
-  Sole entry      Agent can       Only human
-  point for all   process Raw     can promote
-  collected       and create      Draft → Wiki
-  content         Draft           (Wiki = permanently reviewed)
+  Sole entry      Agent can       Agent promotes
+  point for all   process Raw     Draft → Wiki via
+  collected       and create      promote_kb_draft
+  content         Draft           (no human gate —
+                                  KB is a production database)
 ```
 
 | Tier | Purpose | Written by | Edited by | Durability |
 |------|---------|-----------|-----------|------------|
 | **01-Raw** | Immutable source record | Agent (from collected items) | Agent (re-collection only) | Append-only per collection |
 | **02-Draft** | LLM-processed summary | Agent (from 01-Raw) | Agent (re-extract from same Raw) | Replaceable (re-processing) |
-| **03-Wiki** | Reviewed, permanent knowledge | Human (promote from Draft) | Human only | Immutable (append-only) |
+| **03-Wiki** | Reviewed, permanent knowledge | Agent (promote from Draft, no human gate) | Agent only (append-only) | Immutable (append-only) |
 
 ### 2.2 Storage
 

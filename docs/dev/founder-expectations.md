@@ -56,7 +56,7 @@ Both product types are first-class entities in the architecture. The platform is
 | **Universal by default** | The platform is domain-agnostic. Demo domains are configurations, not hardcoded features |
 | **Source-first** | Quality of output is bounded by quality of sources. Curated demo source libraries prove the concept |
 | **Knowledge as asset** | The accumulated knowledge base is the primary long-term asset, not the real-time feed |
-| **KB pipeline (4-tier)** | 4-tier pipeline (01-Raw → 02-Draft → 03-Wiki; 00-Inbox is scaffolded but deprecated — never written to). Sequential, no skipping. Only human can promote Draft→Wiki. 01-Raw is the sole entry point. Aligned with KB pipeline design |
+| **KB pipeline (4-tier)** | 4-tier pipeline (01-Raw → 02-Draft → 03-Wiki; 00-Inbox is scaffolded but deprecated — never written to). Sequential, no skipping. Draft→Wiki promotion is an **agent operation** (`promote_kb_draft`; the KB is a database for raw/processed production, director decision 2026-08-08). 01-Raw is the sole entry point. Aligned with KB pipeline design |
 | **Agent-native** | All capabilities exposed as MCP tools first. CLI is fallback. Director-user communicates through agents |
 | **BYOK** | Users bring their own LLM keys. No vendor lock-in. Local models supported where feasible |
 | **Honest about gaps** | This document must candidly acknowledge what doesn't work yet |
@@ -289,7 +289,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
 | Tests | ✅ ~2942 tests across 100+ test files (includes new collector tests) |
-| MCP tools | ✅ 141 tools across 35 categories |
+| MCP tools | ✅ 145 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 28 command groups |
 
@@ -463,7 +463,7 @@ Consumer requirements identified from global information payment research (5 rep
 - `docs/dev/specs/delivery.md` — Output generation, delivery channels, error recovery, end user lifecycle
 - `docs/dev/specs/operations.md` — Cost governance, data privacy, knowledge lifecycle, observability
 - `docs/dev/specs/market-positioning.md` — Priority matrix, competitive landscape, pricing, personas
-- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (141 tools, 35 categories)
+- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (145 tools, 35 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/specs/user-lifecycle-definition.md` — **Root spec**: B1/B2/B3 user types and complete lifecycle definitions
 - `docs/dev/specs/multi-tenancy-auth.md` — Multi-tenancy, authentication, rate limiting, admin dashboard (architectural design; deferred until SSE transport)

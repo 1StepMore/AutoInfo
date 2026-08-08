@@ -48,7 +48,7 @@
 │         configs, executes the full pipeline on behalf of B1:     │
 │         collect → extract → KB → generate → deliver.            │
 │                                                                  │
-│  Interacts via: MCP tools (141 tools across 35 categories)      │
+│  Interacts via: MCP tools (145 tools across 35 categories)      │
 │                                                                  │
 │  Does NOT: Handle money or pricing decisions.                    │
 │            Accept ad-hoc instructions from B1.                   │
@@ -280,7 +280,7 @@ B3 **does not**:
 |-------|---------|-------------|----------------|
 | **B3.1 Configure** | Deploy / upgrade | B3 sets: pricing tier definitions (placeholder values), domain-to-tier mapping, per-domain quality thresholds (source tier minimums, relevance score minimums), delivery SLA targets, data retention policies. In demo phase, these are code-level constants or config file values. | 🟡 Partially done. Some thresholds exist as constants in code. No unified "B3 config" that bundles pricing + quality + SLA + retention. |
 | **B3.2 Monitor** | Ongoing | B3 reviews: B2 periodic execution reports, dashboard (system health, collection stats, delivery success rates, cost burn, anomaly flags), alert notifications (cron failure, budget threshold breached, source unreachable). B3 does NOT proactively intervene unless alerted. | 🟡 Dashboard exists (Web UI Bootstrap 5) but limited to collection stats + KB search. No execution reports. No anomaly alerting beyond budget alerts. |
-| **B3.3 Intervene** | Critical error or blocking issue | B3 takes manual action: repair broken source config, promote Draft→Wiki (human-only operation), restore deleted entries, clear disk space, restart failed services. | 🟡 Manual CLI operations exist (`kb promote`, `soft_delete_entry`, `restore_entry`). No structured incident response workflow. No "intervention mode" in the UI. |
+| **B3.3 Intervene** | Critical error or blocking issue | B3 takes manual action: repair broken source config, restore deleted entries, clear disk space, restart failed services. (Note: promote Draft→Wiki is **no longer** a B3 action — 2026-08-08 director decision: promotion is an agent operation, the KB being a database for raw/processed production.) | 🟡 Manual CLI operations exist (`soft_delete_entry`, `restore_entry`). No structured incident response workflow. No "intervention mode" in the UI. |
 
 ### 4.3 B3 Configuration Scope (Demo Phase)
 

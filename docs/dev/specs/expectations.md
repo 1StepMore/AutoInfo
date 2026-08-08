@@ -428,7 +428,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 *KB architecture follows the proven KB pipeline design (`docs/archive/kb-pipeline-reference.md`): a 4-level pipeline with sequential promotion.*
 
-> **Lifecycle cross-ref:** Supports B3.3 Intervene — the promote Draft→Wiki operation is a B3 intervention action (human-only per KB pipeline rules). See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path) for the full intervention model.
+> **Lifecycle cross-ref:** Supports B3.3 Intervene — note: the promote Draft→Wiki operation is no longer a B3 intervention action (2026-08-08 director decision: promotion is an **agent operation**, the KB being a database for raw/processed production). See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path) for the remaining intervention model.
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -436,17 +436,18 @@ The research report reveals a clear **polarization** between "engineering-feasib
   ```
   Collected Item → 01-Raw → 02-Draft → 03-Wiki
        ↑              ↑          ↑           ↑
-    Auto-ingest    Raw is     Agent can    Only human
-    from F11      the ONLY    process &    can promote
-                  entry       create       Draft → Wiki.
-                  point       Draft.       03-Wiki never
-                              No direct     directly written.
+    Auto-ingest    Raw is     Agent can    Agent
+    from F11      the ONLY    process &    promotes
+                  entry       create       Draft → Wiki
+                  point       Draft.       03-Wiki reached
+                              No direct     via promote_kb_draft
+                              bypass to     (no human gate)
                               03-Wiki.
   ```
 | **00-Inbox** ⚠️ deprecated | Scaffolded by `init` but **no code ever writes to it**. Items go directly to 01-Raw. Retained as an empty directory skeleton for backward compatibility. Corresponds to KB tier `00-Inbox/`. |
 | **01-Raw** (auto, primary) | **Sole entry point** for all collected content. Every collected item (from F11) lands here automatically. **全量保留，不做取舍** — keep everything, filter later. File name = readable topic slug, not source ID. Corresponds to KB tier `01-Raw/`. |
 | **02-Draft** (agent-writable) | Agent can create Draft entries from Raw: cleaned, merged, restructured, enriched. But agent **cannot** create Draft directly from outside — only from 01-Raw. User reviews Draft before promotion. Corresponds to KB tier `02-Draft/`. |
-| **03-Wiki** (human-only, append-only) | Permanently reviewed knowledge. **No direct writes allowed** (hard rule). Only human can promote Draft→Wiki. Agent never writes to 03-Wiki. **Append-only**: once promoted, entries stay. Agent cannot demote or delete Wiki entries — only human can. Agent may deprecate (tag `status: deprecated`) or annotate entries upon explicit human command. Corresponds to KB tier `03-Wiki/`. |
+| **03-Wiki** (agent-promoted, append-only) | Final production tier — permanently stored knowledge. **No direct writes allowed** (hard rule); promotion happens only through `promote_kb_draft` (KB-tier guard). Agent promotes Draft→Wiki (2026-08-08 director decision: the KB is a database for raw/processed production — promotion is an agent production step with no human gate). **Append-only**: once promoted, entries stay. Agent cannot demote or delete Wiki entries. Agent may deprecate (tag `status: deprecated`) or annotate entries upon explicit human command. Corresponds to KB tier `03-Wiki/`. |
 | **Directory structure** | `knowledge/<domain>/<tier>/<topic>/<YYYY-MM-DD>-<slug>.md`. Example: `knowledge/medical-research/01-Raw/ivf/2026-07-20-endometrial-receptivity.md`. |
 | **Entry frontmatter** | `title`, `domain`, `tier` (raw/draft/wiki), `source_url` (必填), `source_type` (paper/article/video/…), `source_platform` (pubmed/arxiv/…), `author`, `collected_at`, `summary`, `source_ids[]`, `tags[]`, `status` (raw/processing/compiled), `priority` (1-5), `language`, `related_concepts[]`, `linked_entries[]`, `custom_fields: {key: value}`. |
 | **Generic schema + custom fields** | All entries share base fields. Each domain defines `custom_fields`. Medical: `{doi, authors, journal, methodology, sample_size}`. AI: `{category, pricing, competitors}`. User-defined: anything. |
@@ -457,7 +458,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Auto-extraction → Draft candidate** | LLM extraction (F15) + quality gates (G1-G3) produce a Draft candidate from Raw. Agent can present: "3 papers promoted to Draft-ready, review and promote to Wiki?" |
 | **Agent: create Draft** | `create_kb_draft(raw_ids=["..."], title="...", summary="...", tags=[...])`. **Cannot** skip Raw. |
 | **Agent: list tiers** | `list_kb_tier(domain="medical-research", tier="01-Raw")` — returns entries in a specific pipeline stage. |
-| **User: promote Draft→Wiki** | `autoinfo kb promote <entry-id>` — the only way to create Wiki entries. Agent must not call this. |
+| **Agent: promote Draft→Wiki** | `promote_kb_draft(draft_id="...")` — the only way to create Wiki entries. Promotion is an **agent production operation** (2026-08-08 director decision: the KB is a database for raw/processed production — no human gate). The CLI `autoinfo kb promote <entry-id>` is the human-facing equivalent. |
 | **User: reject Draft** | `autoinfo kb reject <entry-id> --reason "needs more sources"` — sends back to Raw or archives. |
 | **Agent: reject Draft** | `reject_kb_draft(draft_id="...", reason="needs more sources", action="back_to_raw")` — agent processes rejection on human instruction. Moves Draft back to Raw for revision. |
 
@@ -838,7 +839,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Cross-source similarity detection** | Items from different sources covering same content → detected via: (1) title TF-IDF cosine similarity > 0.85, (2) content sentence-level Jaccard similarity > 0.7. Flagged as potential cross-source duplicates. |
 | **LLM-assisted merge** | When cross-source duplicates confirmed, agent can invoke `merge_items(primary_id, secondary_ids, mode)` → LLM consolidates metadata (combines sources, reconciles field differences, preserves both source provenance URLs). |
 | **Merge result** | New KB entry with `merged_from: [uuid1, uuid2]`, `sources: [source1, source2]`, consolidated title/summary/key points, combined entity list. Original entries marked `status: superseded` with `superseded_by: new_uuid`. |
-| **Trust boundary** | Merged entries are Draft-tier (require human promotion to Wiki). Agent cannot auto-merge into Wiki. Merge decision is logged in audit trail with full rationale. |
+| **Trust boundary** | Merged entries are Draft-tier (promoted by the agent via `promote_kb_draft`, no human gate). Agent cannot auto-merge into Wiki. Merge decision is logged in audit trail with full rationale. |
 | **MCP tools** | `find_similar_items(entry_id, threshold)` — scan KB for similar entries by title + content similarity. `merge_items(primary_id, secondary_ids, mode)` — merge with auto (LLM-driven) or manual (keep primary) mode. |
 
 ### 3.12 Phase 12: Operational Observability
@@ -1154,7 +1155,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 *Structured B3 intervention when B2 encounters critical errors. Severity classification, intervention steps, post-incident audit.*
 
-> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path). F20 (KB Storage) — promote Draft→Wiki is a B3 intervention action (human-only per KB pipeline rules). F47 (Audit Log) — intervention actions are audit-logged. Partially implemented: CLI operations exist (`autoinfo doctor`, `autoinfo trace`, `autoinfo kb promote`) but there is no structured incident workflow with severity classification and post-incident audit.
+> **Cross-ref:** [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path). F20 (KB Storage) — note: promote Draft→Wiki is an **agent operation** since 2026-08-08 (KB is a database for raw/processed production), no longer a B3 intervention action. F47 (Audit Log) — intervention actions are audit-logged. Partially implemented: CLI operations exist (`autoinfo doctor`, `autoinfo trace`, `autoinfo kb promote`) but there is no structured incident workflow with severity classification and post-incident audit.
 
 | UX Detail | Specification |
 |-----------|---------------|
@@ -1182,6 +1183,6 @@ Associated spec files:
 - [`quality-gates.md`](./quality-gates.md) — G0-G5 quality gates, D1-D3 delivery gates: catalog, philosophy, retry strategies, configuration
 - [`delivery.md`](./delivery.md) — Output generation, delivery channels, error recovery & resilience, end user lifecycle
 - [`operations.md`](./operations.md) — Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability
-- [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (141 tools across 35 categories)
+- [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (145 tools across 35 categories)
 - [`data-models.md`](./data-models.md) — Consolidated data model schemas (Item, ExtractionResult, UserProfile, Subscription, DeliveryLog, CostLog, AuditLog, SystemHealth)
 - [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) — B1/B2/B3 user types with complete lifecycles (root spec for F65-F72)

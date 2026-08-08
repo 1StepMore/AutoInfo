@@ -40,7 +40,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 142 MCP tools across 35 categories. Agent operates, human directs.
+- **Agent-native** — 145 MCP tools across 35 categories. Agent operates, human directs.
 - **Self-discovering tool count** — `get_tool_count` MCP tool returns dynamic tool count, no more hardcoded numbers
 - **LLM configuration tool** — `configure_llm` MCP tool for agent-oriented BYOK setup (provider, model, api_key, base_url)
 - **Agent-oriented error responses** — Unified dual-format error responses (flat + envelope) for backward-compatible consumer migration
@@ -80,7 +80,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **RAW product variants (E11)** — RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field distinguishing the three RAW delivery modes
 - **Podcast RSS publishing (C11)** — RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation; audio output auto-persists MP3 to disk
 - **Validated source types** — `VALID_SOURCE_TYPES` frozenset (29 types) as single source of truth for source type validation across MCP and CLI
-- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 59 scenarios (54 functional + 5 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float); `requires_http` gates steps that need a live REST server (reports `unconfigured` when offline). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
+- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 65 scenarios (60 functional + 5 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float); `requires_http` gates steps that need a live REST server (reports `unconfigured` when offline). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
 - **Validation regression flywheel** — `scenarios/regression/` subdirectory (5 regression scenarios, REGRESSION marker) auto-loads via recursive glob; `coverage_audit.py` prints a "Regression scenarios: N (issues: ...)" metric; `.github/ISSUE_TEMPLATE/bug_report.md` carries a mandatory 回归场景 (regression scenario) field so every bug ships with a scenario.
 - **Validation delivery packaging** — `scripts/validation_delivery.py` builds 01-RAW / 02-PROCESSED / 03-KB / 04-MATRIX / 06-REJECTED plus `validation-report.md` and `manifest.json` with per-file authenticity, D1-D3 delivery gates, and UX metrics (UX_OK/completion_rate ≥ 0.8). Output scenarios persist `collect_artifacts` for post-run inspection.
 - **End-user coverage matrix (E8)** — `scripts/coverage_matrix.py` generates the end-user feature coverage matrix from `docs/dev/specs/end-user-matrix.yaml`; surfaced as the 04-MATRIX section in validation delivery plus Oracle R8 unconfigured-vs-gap analysis. Scenario library exercises 8/8 products, 7/7 formats, and 27/27 source platforms (issue #156 closed).
@@ -111,7 +111,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 142 tools across 35 categories |
+| MCP server | ✅ 145 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -166,7 +166,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
-| Validation scenarios | ✅ 59 scenarios (54 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
+| Validation scenarios | ✅ 65 scenarios (60 functional + 5 regression in `scenarios/regression/`, REGRESSION marker, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
 | Regression flywheel | ✅ `scenarios/regression/` (5 scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics UX_OK/completion_rate ≥ 0.8) |
@@ -209,7 +209,7 @@ AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
 
 1. **Health** — `health_check()` → `{status, version, tools_count}`
 2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
-3. **Validate** — `list_validation_scenarios()` (59 scenarios: 54 functional + 5 regression) → `run_validation_scenario(scenario="system-health")`
+3. **Validate** — `list_validation_scenarios()` (65 scenarios: 60 functional + 5 regression) → `run_validation_scenario(scenario="system-health")`
 
 Validation is the fastest way to prove the system works: each scenario makes
 real MCP / CLI / REST calls and asserts on the `{success, data}` envelope.
@@ -230,7 +230,7 @@ curl http://localhost:8741/api/v1/entries?limit=5
 ## Run the AutoInfo MCP server
 
 AutoInfo ships an MCP server (`python -m autoinfo.mcp.server`) that exposes
-142 tools over stdio. Editor configs are already committed for Cursor
+145 tools over stdio. Editor configs are already committed for Cursor
 (`.cursor/mcp.json`), OpenCode (`.opencode/mcp.json`), and Claude Desktop
 (`.claude/claude_desktop_config.json`). They all run
 `python -m autoinfo.mcp.server` and pass `AUTOINFO_LLM_API_KEY` through from
@@ -330,7 +330,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (142 tools)
+         └── MCP server (145 tools)
 ```
 
 ## Tech Stack
@@ -340,7 +340,7 @@ Sources (RSS/API/Web)
 | Language | Python ≥ 3.11 |
 | CLI | typer (28 command groups) |
 | REST API | FastAPI + uvicorn (port 8741) |
-| MCP server | mcp (Model Context Protocol) — 142 tools over stdio |
+| MCP server | mcp (Model Context Protocol) — 145 tools over stdio |
 | LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |
 | Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
 | KB files | Markdown + python-frontmatter, git-versioned |
@@ -394,7 +394,7 @@ autoinfo alert-rules add|list|remove  # Alert rule management (MCP parity)
 autoinfo agent-callback add|list|remove  # Agent push callbacks (MCP parity)
 ```
 
-## MCP Tools (142)
+## MCP Tools (145)
 
 | Category | Tools |
 |----------|-------|
@@ -404,7 +404,7 @@ autoinfo agent-callback add|list|remove  # Agent push callbacks (MCP parity)
 | **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
 | **Topic** | add_topic, remove_topic, list_topics, topic_group_add, topic_group_remove, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
 | **Collection** | collect_sources (with dry_run, domain-less), get_collection_progress, get_collection_status, process_collection (with batch, check_factual, check_translation), get_processing_progress, batch_run, clean_cache |
-| **KB** | search_knowledge_base (hybrid, cross-domain), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (human-only Draft→Wiki), list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |
+| **KB** | search_knowledge_base (hybrid, cross-domain), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (agent promotion Draft→Wiki), list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |
 | **KB Relations** | link_items, get_item_relations |
 | **KB Versioning** | get_entry_history, restore_entry_version |
 | **KB Monitor** | get_collection_stats, get_collection_diff |

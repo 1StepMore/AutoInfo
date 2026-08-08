@@ -21,11 +21,12 @@ Each quality gate operates at a specific pipeline stage, evaluates a different s
 | **G3** | **Collection** | `run_quality_gates()` — runs after G2 | `Item` + topic keywords | Scores relevance 0-100. Below-threshold items are archived (stored but hidden from default views). |
 | **G4** | **Processing** | LLM extraction phase (opt-in: `--check-factual` flag) | `Item` content vs `ExtractionResult.tl_dr` | Verifies LLM summary does not contradict source. On persistent failure: blocks item, writes diagnostics to `_failed/`. |
 | **G5** | **Processing** | LLM extraction phase (opt-in: `--check-translation` flag) | Source text vs `ExtractionResult.custom_fields["translation"]` | Verifies translation faithfulness. Advisory only — never blocks. |
+| **CurationGate** | **Promotion (admission)** | `promote_kb_draft()`: evaluated before a 02-Draft entry is promoted to 03-Wiki (`check_promotion_admission` in `autoinfo/promotion.py`) | 02-Draft `KBEntry` | Admission gate for Draft→Wiki promotion: provenance completeness + G0 schema re-check + G1 `source_score` ≥ 30 + G3 `relevance_score` ≥ 30 + G4 factual re-check. Hard gate: reject blocks promotion and writes `_failed/`. See §3.1. |
 | **D1** | **Delivery** | Product generation (`generate_digest` / `generate_report` / `generate_tutorial` / `generate_presentation`) — PROCESSED products only | Product output dict | Checks required sections (`key_findings`, `summary`, `recommendations`) are present and non-empty. Default action: block delivery. |
 | **D2** | **Delivery** | Product generation — PROCESSED products only | Rendered output body | Validates HTML (tag balance), JSON (`json.loads`), Markdown (trivially passes). Default action: fallback to plain text. |
 | **D3** | **Delivery** | Product generation — PROCESSED products only | Each entry's `collected_at` date | Flags entries older than recency window (default 30 days). Default action: flag (advisory). |
 
-**Key rule**: G0-G3 are **mandatory** on every collected item. G4-G5 are **opt-in** (require explicit flags because they make LLM calls). D1-D3 run **only for PROCESSED products**; RAW products skip all delivery gates.
+**Key rule**: G0-G3 are **mandatory** on every collected item. G4-G5 are **opt-in** (require explicit flags because they make LLM calls). **CurationGate** runs at Draft→Wiki promotion time (see §3.1). D1-D3 run **only for PROCESSED products**; RAW products skip all delivery gates.
 
 Pipeline diagram:
 
@@ -33,8 +34,9 @@ Pipeline diagram:
 Collection                           Processing                         Delivery
 ────────────────────────────────      ──────────────────────      ─────────────────────────
 Raw Item ─→ [G0][G1][G2][G3] ─→ 01-Raw KB ─→ LLM Extract ─→ 02-Draft KB ─→ [D1][D2][D3] ─→ Product
-                    ↑                        ↑       ↑
-                Always runs                 G4 (opt-in) G5 (opt-in)           Only for PROCESSED
+                    ↑                        ↑       ↑            ↑
+                Always runs                 G4 (opt-in) G5 (opt-in)  CurationGate on
+                                                                promote Draft → Wiki
 ```
 
 ---
@@ -60,6 +62,41 @@ Raw Item ─→ [G0][G1][G2][G3] ─→ 01-Raw KB ─→ LLM Extract ─→ 02-D
 | **G3: Relevance scoring** | 🟡 Soft | LLM-based relevance score against user's topics and keywords. Score 0-100. | Retry 2x with different model | Below threshold → archived (stored but not shown) | 🔴 P0 |
 | **G4: Summary factual consistency** | 🔴 Hard | LLM verifies: does the generated summary contradict the source text? | Retry 3x with escalating context (different model each retry) | Block item; flag for human review with full diff | 🟡 P1 |
 | **G5: Translation accuracy** | 🟡 Soft | Multi-round verification: (1) faithfulness to original, (2) back-translation consistency, (3) domain terminology compliance, (4) style/tone match. Composite quality score 0-100. | Retry 2x with escalating context | Flag translation issues at each round; store both versions with per-round diagnostics; below-threshold scores trigger human review prompt | 🟡 P1 |
+| **CurationGate: Promotion admission** | 🔴 Hard | Admission for Draft→Wiki promotion (`check_promotion_admission` in `src/autoinfo/promotion.py`): (a) provenance completeness: `source_raw_ids` non-empty and every 01-Raw reference resolves with `source_url`/`source_type`/`source_platform`; (b) G0 schema re-check on the draft; (c) G1 `source_score` ≥ threshold (default 30); (d) G3 `relevance_score` ≥ threshold (default 30); (e) G4 factual re-check on the final body text (LLM, **on by default**: a fail is a hard reject). Deterministic checks (a)-(d) accumulate every rejection reason; G4 only runs when they are clean (fail-fast, no wasted LLM spend). | Hard: reject immediately (G4 3× retry with escalating context first); no retry for deterministic checks | Block promotion; typed `PromotionRejected` with per-component reason codes; entry stays 02-Draft; `_failed/` marker written | 🔴 P0 |
+
+### 3.1 Curation Gate: Promotion Admission (Draft to Wiki)
+
+The CurationGate is the **admission standard** for promoting a 02-Draft entry to
+the append-only 03-Wiki tier. Promotion is an **agent operation** (`promote_kb_draft`,
+`promotion_source: agent`, no human gate: the KB is a database for raw/processed
+production, director decision 2026-08-08); the gate is the machine-enforced quality
+bar that replaces the human approval step.
+
+**Admission standard** (all must pass; a reject is a hard block):
+
+| # | Check | Threshold / rule |
+|---|-------|------------------|
+| (a) | **Provenance completeness** | `source_raw_ids` non-empty; every referenced 01-Raw entry resolves with complete `source_url`/`source_type`/`source_platform` |
+| (b) | **G0 schema re-check** | Draft passes `G0SchemaIntegrity` |
+| (c) | **G1 source authority** | `source_score` ≥ 30 (configurable per domain) |
+| (d) | **G3 relevance** | `relevance_score` ≥ 30 (configurable per domain) |
+| (e) | **G4 factual re-check** | Final body text re-checked by `G4FactualConsistency` (LLM); **on by default**, fail = hard reject |
+
+**Hard gate semantics**: a failed admission check **blocks promotion**: the entry
+stays in 02-Draft, a typed `PromotionRejected` with per-component reason codes
+(`missing-source-provenance`, `g0-schema-failed`, `source-score-below-threshold`,
+`relevance-below-threshold`, `g4-factual-failed`) is raised, and a `_failed/`
+marker is written. There is no silent pass and no human fallback loop; the agent
+fixes the underlying cause (e.g. re-process the Raw with complete provenance) and
+re-promotes. The director-only `force_promote` MCP tool (actor whitelist
+`AUTOINFO_DIRECTOR_ACTORS`, default `director`) can bypass admission deliberately
+and records `promotion_source: director` in the frontmatter.
+
+**Configuration**: per-domain `quality_gates.CurationGate` entry:
+`threshold` is the shared G1/G3 bar (default 30) and `enabled` toggles the G4
+factual re-check (default `True`). When the entry is absent the defaults apply.
+The dedicated `G1-SourceAuthority` / `G3-RelevanceScoring` keys take precedence
+over the shared CurationGate threshold.
 
 ---
 

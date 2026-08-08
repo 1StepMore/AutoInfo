@@ -125,7 +125,7 @@ cursor.execute(
 |---------|:---:|:---:|:---:|
 | 01-Raw | ✅ Read/Write own | ✅ Read/Write own | 🔴 Forbidden |
 | 02-Draft | ✅ Read/Write own | ✅ Read/Write own | 🔴 Forbidden |
-| 03-Wiki | ✅ Read/Write own (human promote only) | ✅ Read/Write own | 🔴 Forbidden |
+| 03-Wiki | ✅ Read/Write own (agent promote via `promote_kb_draft`) | ✅ Read/Write own | 🔴 Forbidden |
 
 **Cross-tenant sharing (v3+):** Tenants may explicitly share KB entries to other tenants via a `shared_with: [tenant_ids]` field.
 Not in v1 scope.

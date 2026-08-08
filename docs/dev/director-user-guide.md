@@ -17,7 +17,7 @@ AutoInfo has three distinct user roles. This document is for the first one:
 | Role | Description | Interface | Example |
 |------|-------------|-----------|---------|
 | **Director User** (人类指挥者) | **You.** Gives high-level intent in natural language. Never touches AutoInfo directly. The agent is your interface. | Natural language conversation with the agent | "帮我追踪本周辅助生殖领域的重要论文，按创新程度排序，出一份简报" |
-| **Direct User** (Agent / 直接执行者) | The AI agent that executes commands. Translates your NL into MCP tool calls, runs collection pipelines, generates output, reports results. | MCP tools (141 tools, 35 categories). CLI is fallback. | Calling `collect_sources()`, `generate_digest()`, `search_knowledge_base()` |
+| **Direct User** (Agent / 直接执行者) | The AI agent that executes commands. Translates your NL into MCP tool calls, runs collection pipelines, generates output, reports results. | MCP tools (145 tools, 35 categories). CLI is fallback. | Calling `collect_sources()`, `generate_digest()`, `search_knowledge_base()` |
 | **End User** (最终用户 / 付费客户) | The paying customer who consumes the knowledge products you produce. They receive digests, reports, data feeds. You never talk to them through AutoInfo -- the system delivers to them. | Email digests, Telegram messages, WeChat pushes, API feeds | A pharmaceutical company receiving "IVF Research Weekly" via email |
 
 See `docs/dev/founder-expectations.md` SS1.3 for the full role specification.
@@ -27,7 +27,7 @@ See `docs/dev/founder-expectations.md` SS1.3 for the full role specification.
 - **You do not click buttons.** There is no dashboard you operate. You talk to an agent who does the clicking.
 - **You do not run commands.** The agent handles `autoinfo collect`, `autoinfo process`, etc. You can use CLI as a fallback, but the primary channel is conversation.
 - **You stay strategic.** The agent handles tactical execution: finding sources, configuring topics, running pipelines, generating output. You decide the direction.
-- **You are the final gate.** Some operations are human-only: promoting knowledge to the Wiki, permanent deletion, removing domains. The agent cannot do these without you.
+- **You are the final gate.** Some operations are human-only: permanent deletion, removing domains or sources. The agent cannot do these without you. (KB Draft→Wiki promotion is **not** in this class — the agent promotes as part of the production pipeline, by design.)
 
 ---
 
@@ -84,7 +84,7 @@ See `AGENTS.md` for the full tool catalog.
 
 These operations require your direct action. The agent will tell you when they are needed and wait for your instruction:
 
-- Promote Draft-to-Wiki (only you can finalize knowledge base entries)
+- Promote Draft-to-Wiki is **agent-driven** (`promote_kb_draft`, no human gate — the KB is a production database). Permanent deletion and removing domains/sources require you.
 - Permanently delete or purge data
 - Remove sources or domains
 - Run `autoinfo init` (but can run `init_project` MCP tool)
@@ -292,28 +292,26 @@ The 4-tier KB pipeline is:
 ```
 Collected Item → 01-Raw → 02-Draft → 03-Wiki
                      ↑          ↑           ↑
-                  Auto-ingest  Agent can   ONLY YOU
-                  from source  create      can promote
-                               Draft       Draft → Wiki
+                  Auto-ingest  Agent can   Agent promotes
+                  from source  create      Draft → Wiki via
+                               Draft       promote_kb_draft
 ```
 
-The agent can create Draft entries from Raw. But only you can promote Draft to Wiki. This is the most important human-only operation because Wiki entries are treated as permanent, reviewed knowledge.
+The agent creates Draft entries from Raw **and promotes Draft to Wiki itself** (`promote_kb_draft`, KB-tier guard, no human gate). AutoInfo's KB is a **database** for raw/processed data production — not a human-curated knowledge base (director decision 2026-08-08). Promotion is a production step in the agent's pipeline; requiring your approval on every promotion would cripple throughput. The agent will surface promotions in its reports so you can monitor quality, but you are **not** in the promote loop:
 
-The agent will present Drafts for your review:
-
-> **Agent**: "3 new Draft entries ready for review:
+> **Agent**: "3 entries promoted to 03-Wiki this cycle (2 accepted, 1 flagged for re-check), 1 Draft rejected for missing sources:
 >
-> 1. **Endometrial Receptivity Biomarkers** -- DOI: 10.1234/... -- Score: 92
-> 2. **AI in Embryo Grading** -- DOI: 10.5678/... -- Score: 88
-> 3. **Ovarian Stimulation Protocols** -- DOI: 10.9012/... -- Score: 75
->
-> Would you like to review and promote any to Wiki?"
+> 1. **Endometrial Receptivity Biomarkers** -- promoted
+> 2. **AI in Embryo Grading** -- promoted
+> 3. **Ovarian Stimulation Protocols** -- flagged (low relevance), Draft retained"
 
-You can then:
+You can still act if you disagree (quality oversight, not a gate):
 
-- **Promote**: Run `autoinfo kb promote <entry-id>` (CLI) or tell the agent "Promote #1 and #2 to Wiki"
+- **Force-promote**: Tell the agent "Promote #3 anyway" -- agent calls `promote_kb_draft()`
 - **Reject**: Tell the agent "Reject #3, needs more sources" -- agent calls `reject_kb_draft()`
-- **Request changes**: Tell the agent "Expand the summary on #2 before promotion"
+- **Request changes**: Tell the agent "Re-process #2 before promotion" -- the agent edits the Draft
+
+03-Wiki remains **append-only**: the agent cannot demote or delete Wiki entries; deprecation happens only on your explicit command.
 
 See `docs/dev/specs/expectations.md` F20 and `docs/dev/specs/pipeline.md` for the full KB pipeline spec.
 
@@ -749,7 +747,7 @@ These are not interruptions. The agent presents them as observations and asks fo
 
 - `AGENTS.md` -- Agent operating model, MCP tool catalog, common patterns
 - `docs/dev/founder-expectations.md` §1.3 -- Three user types definition (stayed in index)
-- `docs/dev/specs/expectations.md` F20 -- KB pipeline and human-only promotion
+- `docs/dev/specs/expectations.md` F20 -- KB pipeline and agent promotion (Draft→Wiki, no human gate)
 - `docs/dev/specs/expectations.md` F29 -- PROCESSED product generation and custom instructions
 - `docs/dev/specs/expectations.md` F40 -- End user portal, agent override constraints
 - `docs/dev/specs/expectations.md` F47 -- Data deletion and human-only purge

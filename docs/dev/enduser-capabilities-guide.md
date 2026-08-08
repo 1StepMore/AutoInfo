@@ -137,7 +137,7 @@ Everything collected flows through a 3-tier pipeline:
 
 - **01-Raw** is the sole entry point for collected content. Every item keeps complete source provenance (`source_url`, `source_type`, `source_platform`).
 - **02-Draft** is where an agent can process and refine content, but a Draft can only be created from 01-Raw.
-- **03-Wiki** is the curated tier. Only a human can promote Draft to Wiki, and Wiki is append-only: entries there are permanently reviewed.
+- **03-Wiki** is the final production tier. Promotion Draft→Wiki is an **agent operation** (`promote_kb_draft`, no human gate — the KB is a database for raw/processed production), and Wiki is append-only: entries there are not demoted or deleted.
 
 Browse and manage the tiers:
 
@@ -349,7 +349,7 @@ Runs the same collected content through the daily-briefing report type, tuned fo
 autoinfo kb promote --entry-id <id>
 ```
 
-The final step is human-only: promoting a Draft to the append-only Wiki tier. An agent cannot do this, by design.
+The final step is agent-driven: promoting a Draft to the append-only Wiki tier via `promote_kb_draft` (KB-tier guard, no human gate).
 
 ---
 

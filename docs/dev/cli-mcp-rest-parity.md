@@ -9,7 +9,7 @@ three commands:
 | Surface | Derivation command |
 |---------|-------------------|
 | CLI | `.venv/bin/autoinfo --help` + per-group `autoinfo <group> --help` (28 groups, all subcommands) |
-| MCP | `list_tools()` on `autoinfo.mcp.server` (141 tools, runtime registry) |
+| MCP | `list_tools()` on `autoinfo.mcp.server` (145 tools, runtime registry) |
 | REST | FastAPI `app.routes` + `router.routes` on `autoinfo.api.server` (3 routers: routes/portal/storefront + app-level) |
 
 Derivation date: 2026-08-05. Re-derive with the commands above whenever the
@@ -417,7 +417,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Command | Status | Purpose |
 |---------|--------|---------|
-| `kb promote` | ✓ CLI+MCP | Promote Draft→Wiki — **human-only, append-only** (→ `promote_kb_draft`; kept here for completeness) |
+| `kb promote` | ✓ CLI+MCP | Promote Draft→Wiki — **agent-operated, append-only** (→ `promote_kb_draft`; kept here for completeness) |
 | `kb wiki-links` | CLI-only | Rebuild `[[wiki links]]` across the KB |
 | `kb decay` | ✓ CLI+MCP | Decay metrics (listed above; kept here for completeness) |
 | `output sitemap` | CLI-only | Generate XML sitemap for KB entries |

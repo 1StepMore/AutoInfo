@@ -1,5 +1,12 @@
 # AutoInfo Launch Validation Framework (D1-D5)
 
+> ⚠️ **SUPERSEDED as the top-level validation charter (2026-08-08).** The acceptance authority is now
+> [`docs/dev/acceptance-framework.md`](acceptance-framework.md) (AC1-AC7, keystone). This document is
+> **retained as evidence-production tooling**: its evidence catalog (A1-A12), SUSPECT table (S1-S4),
+> grading legend, and run-report skeleton are referenced by AC1-AC7 and continue to be used to produce
+> per-version evidence. The D1-D5 dimensions remain valid as *evidence views* but are no longer the
+> acceptance criteria on their own; per-dimension verdicts are now graded against the AC criteria.
+
 > **Keystone validation document.** The reusable pre-launch validation TEMPLATE for AutoInfo. This document is the test specification, written FIRST. Other agents collect evidence in parallel that is graded against it. Each version reuses this template unchanged and records its own evidence in a versioned run report.
 >
 > **Purpose:** Define what "launch-ready" means for a given version across five dimensions: D1 data-layer definitions, D2 authenticity, D3 readability (human and agent tracks), D4 requirement awareness at onboarding, D5 validation meta-coverage. Provide the grading rules, binary acceptance criteria, evidence requirements, the SUSPECT table, and the re-runnable evidence catalog.

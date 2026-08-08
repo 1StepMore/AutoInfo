@@ -1,0 +1,92 @@
+# Curated-priority consumption (plan todo T9c / T7) — the processed_only
+# content-preference policy must consume 03-Wiki (curated) entries first and
+# fall back to 02-Draft, tagging every selected entry with `source_tier`
+# ("curated" | "fresh") for tier-badge rendering.
+#
+# The policy lives in
+# `autoinfo.output._filter_entries_by_content_preference` — the exact code
+# path generate_digest / generate_report use before rendering.  The steps
+# exercise it deterministically with real-shaped entry dicts (no LLM needed),
+# plus one real MCP call against the live KB to pin the tier surface.
+name: curated-priority-consumption
+description: "Curated-priority consumption: processed_only selects 03-Wiki first with source_tier badge, Draft fallback, raw_only/both unchanged"
+category: output
+requires_env: []
+requires_domain: ["medical-research"]
+steps:
+  - name: "processed_only: wiki first (curated) then draft (fresh), raw excluded"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _filter_entries_by_content_preference
+      entries = [
+          {"entry_id": "draft-a", "tier": "02-Draft", "relevance_score": 90.0},
+          {"entry_id": "wiki-a", "tier": "03-Wiki", "relevance_score": 50.0},
+          {"entry_id": "raw-a", "tier": "01-Raw", "relevance_score": 95.0},
+      ]
+      out = _filter_entries_by_content_preference(entries, "processed_only")
+      ids = [e["entry_id"] for e in out]
+      print("CURATED_ORDER " + ",".join(ids))
+      assert ids[0] == "wiki-a", "03-Wiki must rank first even at lower relevance"
+      assert ids[1] == "draft-a", ids
+      assert "raw-a" not in ids, "01-Raw must be excluded by processed_only"
+      tiers = {e["entry_id"]: e.get("source_tier") for e in out}
+      print("SOURCE_TIERS " + str(tiers))
+      assert tiers == {"wiki-a": "curated", "draft-a": "fresh"}, tiers
+      print("CURATED_FIRST_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CURATED_ORDER wiki-a,draft-a", "SOURCE_TIERS", "curated", "fresh", "CURATED_FIRST_OK"]
+
+  - name: "fallback: no wiki entries -> draft fills, all tagged fresh"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _filter_entries_by_content_preference
+      entries = [
+          {"entry_id": "draft-x", "tier": "02-Draft", "relevance_score": 40.0},
+          {"entry_id": "draft-y", "tier": "02-Draft", "relevance_score": 80.0},
+      ]
+      out = _filter_entries_by_content_preference(entries, "processed_only")
+      ids = [e["entry_id"] for e in out]
+      print("FALLBACK_ORDER " + ",".join(ids))
+      assert ids == ["draft-y", "draft-x"], "drafts sorted by relevance desc"
+      assert all(e.get("source_tier") == "fresh" for e in out), out
+      print("FALLBACK_FRESH_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["FALLBACK_ORDER draft-y,draft-x", "FALLBACK_FRESH_OK"]
+
+  - name: "raw_only keeps raw only; both returns entries unchanged"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _filter_entries_by_content_preference
+      entries = [
+          {"entry_id": "wiki-a", "tier": "03-Wiki", "relevance_score": 50.0},
+          {"entry_id": "raw-a", "tier": "01-Raw", "relevance_score": 95.0},
+      ]
+      raw_only = _filter_entries_by_content_preference(entries, "raw_only")
+      assert [e["entry_id"] for e in raw_only] == ["raw-a"], raw_only
+      both = _filter_entries_by_content_preference(entries, "both")
+      assert both == entries, "both must leave entries unchanged"
+      assert _filter_entries_by_content_preference(entries, "both") == entries
+      print("RAW_BOTH_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RAW_BOTH_OK"]
+
+  - name: "live KB: list_kb_tier 03-Wiki returns entries and count"
+    tool: list_kb_tier
+    arguments:
+      domain: medical-research
+      tier: 03-Wiki
+    expect:
+      success: true
+      data_has: ["entries", "count"]

@@ -5,6 +5,13 @@
 # Fix: default changed from "month" to "monthly"; both functions now share
 # the same period enum (daily, weekly, monthly).
 # This scenario verifies the default via both MCP noop path and CLI inspection.
+#
+# Envelope note: _handle_generate_report returns a FLAT dual-format envelope
+# {success, domain, format, period, status, content, message} — call_tool
+# passes it through unchanged (no `data` key).  The assertion engine's
+# `data_has` inspects env["data"], which is absent here, so the MCP step
+# asserts `success: true` and the contract keys are verified on the flat
+# envelope by a deterministic CLI step calling the handler directly.
 name: regression-period-enum
 description: "Regression #126: generate_report default period is monthly; digest/report enums aligned"
 category: regression
@@ -18,7 +25,25 @@ steps:
       domain: regression-126-noop-domain
     expect:
       success: true
-      data_has: ["domain", "format", "period", "content"]
+
+  - name: "noop report envelope carries full contract keys (flat envelope)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.mcp.server import _handle_generate_report
+      out = _handle_generate_report(domain="regression-126-noop-domain")
+      assert out.get("success") is True, out
+      for k in ("domain", "format", "period", "content"):
+          assert k in out, "missing key " + k + " in " + str(sorted(out))
+      assert out.get("period") == "monthly", "expected monthly default, got " + str(out.get("period"))
+      print("REPORT_CONTRACT " + out.get("period", "") + " " + out.get("format", ""))
+      print("PERIOD_ENUM_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REPORT_CONTRACT monthly markdown", "PERIOD_ENUM_OK"]
+
   - name: "handler default period is monthly (not month)"
     kind: cli
     command: |-

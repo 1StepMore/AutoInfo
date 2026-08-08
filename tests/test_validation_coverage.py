@@ -3,10 +3,11 @@
 Covers three things:
 
 1. ``kb-promote.yaml`` — valid YAML with the required scenario keys.
-2. ``kb-promote.yaml`` — exactly 4 main steps exercising the full
-   Raw -> Draft -> Wiki pipeline (create_kb_entry, create_kb_draft,
-   promote_kb_draft, cli wiki verification) plus a cleanup step that
-   purges BOTH the 03-Wiki and 01-Raw entries.
+2. ``kb-promote.yaml`` — a two-section admission matrix: section 1 [pass]
+   promotes an eligible draft to 03-Wiki (tier 03, promotion_source=agent);
+   section 2 [reject] refuses a draft whose source lacks source_url with no
+   03-Wiki row.  Its cleanup purges BOTH the 03-Wiki and 01-Raw entries via
+   the DIRECTOR path (T5: 03-Wiki is append-only for non-directors).
 3. ``scripts/coverage_audit.py`` — the counting logic must be
    ``covered = declared ∩ scenario_used`` so that phantom scenario tools
    (e.g. ``definitely_not_a_real_tool`` in error-boundary.yaml) can never
@@ -66,28 +67,42 @@ def test_kb_promote_yaml_exists_and_parses():
         "knowledge/medical-research/01-Raw/**/*.md",
         "knowledge/medical-research/02-Draft/**/*.md",
         "knowledge/medical-research/03-Wiki/**/*.md",
+        "knowledge/_failed/medical-research/**/*.md",
     ]
 
 
 def test_kb_promote_steps_and_cleanup():
+    """kb-promote.yaml is a two-section admission matrix: [pass] eligible
+    draft -> 03-Wiki with promotion_source=agent; [reject] draft whose source
+    lacks source_url -> refused with no 03-Wiki row.  The cleanup routes every
+    delete through the DIRECTOR path (T5: 03-Wiki is append-only, non-director
+    deletes are refused with DirectorOnlyError / WIKI_PROTECTED)."""
     data = yaml.safe_load(KB_PROMOTE_YAML.read_text(encoding="utf-8"))
     steps = data["steps"]
-    # Exactly 4 steps: create_kb_entry -> create_kb_draft -> promote_kb_draft
-    # -> cli wiki verification.
-    assert len(steps) == 4
+    # 8 steps: 2 sections x (seed raw -> create draft -> promote -> verify)
+    assert len(steps) == 8
     tools = [s.get("tool") for s in steps]
-    assert tools[:3] == ["create_kb_entry", "create_kb_draft", "promote_kb_draft"]
-    # Step 4 verifies the promoted wiki entry via a CLI python check.
-    assert steps[3].get("kind") == "cli"
-    assert "03-Wiki" in steps[3]["expect"]["stdout_has"]
+    # Section 1 [pass]: seeds the raw via the store (real G1/G3 gate scores —
+    # MCP create_kb_entry cannot set scores), then drives draft + promote
+    # through the MCP surface.
+    assert steps[0].get("kind") == "cli"
+    assert tools[1:3] == ["create_kb_draft", "promote_kb_draft"]
+    # Section 2 [reject]: promote is refused with an error envelope.
+    assert tools[5:7] == ["create_kb_draft", "promote_kb_draft"]
+    assert steps[6]["expect"].get("success") is False
+    assert any("03-Wiki" in s for s in steps[3]["expect"]["stdout_has"])  # pass-side verify
+    assert any("02-Draft" in s for s in steps[7]["expect"]["stdout_has"])  # reject-side verify
 
     cleanup = data.get("cleanup_steps")
     assert isinstance(cleanup, list) and len(cleanup) >= 1
     cleanup_cmd = cleanup[0]["command"]
     # Cleanup must purge the promoted 03-Wiki entry AND the original 01-Raw
-    # entry (promotion keeps the draft's entry_id in 03-Wiki).
-    assert "medical-research-general-kb-promote-scenario-test-entry" in cleanup_cmd
-    assert "medical-research-draft-kb-promote-scenario-draft" in cleanup_cmd
+    # entries (promotion keeps the draft's entry_id in 03-Wiki).
+    assert "medical-research-general-t9-kbp-pass-entry" in cleanup_cmd
+    assert "medical-research-draft-t9-kbp-pass-draft" in cleanup_cmd
+    # T5 alignment: deletes run through the director path (03-Wiki is
+    # append-only; non-director deletes are refused).
+    assert 'actor="director"' in cleanup_cmd
     assert "03-Wiki" in cleanup_cmd
     assert cleanup[0]["expect"].get("success") is True
     assert "CLEANED" in cleanup[0]["expect"]["stdout_has"]
@@ -199,9 +214,12 @@ def test_non_mcp_steps_do_not_count(coverage_audit, tmp_path):
 
 
 def test_live_audit_prints_full_coverage():
-    """End-to-end: the real script against the real repo must report 142/142
-    with an empty MISSING list (kb-promote.yaml covers promote_kb_draft, the
-    phantom from error-boundary.yaml is not counted as a real tool)."""
+    """End-to-end: the real script against the real repo must report 145/145
+    with an empty MISSING list (145 tools = 142 baseline + T5's director
+    backdoor tools demote_kb_wiki/force_promote + T6's promote_pending sweep;
+    all three are covered by the director-backdoor and promotion-triggers
+    scenarios; the phantom from error-boundary.yaml is not counted as a real
+    tool)."""
     result = subprocess.run(
         [sys.executable, str(AUDIT_SCRIPT)],
         cwd=ROOT,
@@ -210,7 +228,7 @@ def test_live_audit_prints_full_coverage():
         timeout=120,
     )
     assert result.returncode == 0, result.stderr
-    assert "Covered by scenarios: 142/142" in result.stdout
+    assert "Covered by scenarios: 145/145" in result.stdout
     assert "MISSING tools (0):" in result.stdout
     # phantom must be reported separately, never as missing
     assert "definitely_not_a_real_tool" in result.stdout

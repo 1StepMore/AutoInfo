@@ -1,0 +1,217 @@
+# KB promote admission gate — typed rejection reasons, _failed/ routing, and
+# the threshold path (plan todo T9c / T3 admission module).
+#
+# The admission gate (autoinfo/promotion.py) evaluates, in order:
+#   (a) source provenance (resolvable source_ids with full source_url /
+#       source_type / source_platform),
+#   (b) G0 schema re-check,
+#   (c) G1 source_score >= threshold (default 30),
+#   (d) G3 relevance_score >= threshold (default 30),
+#   (e) CurationGate G4 factual re-check (LLM — skipped here because the
+#       deterministic checks fail first: fail-fast, no LLM spend).
+# A rejection keeps the draft in 02-Draft, writes
+# `knowledge/_failed/<domain>/<entry_id>.md`, and never creates a 03-Wiki row.
+#
+# Determinism: the MCP create_kb_entry tool stores no quality scores, so the
+# scenario seeds 01-Raw entries via the real KBStore with genuine
+# QualityResult gate scores (the same call path process_collection uses), then
+# drives draft creation + promotion through the real MCP surface.
+#
+# Cleanup is director-routed (T5): 03-Wiki is append-only, so deletes use
+# `store.delete_entry(eid, actor="director")` — non-director deletes of
+# 03-Wiki entries are refused (DirectorOnlyError / WIKI_PROTECTED).
+name: kb-promote-admission
+description: "Promotion admission gate: G1/G3 threshold rejection with typed reasons, _failed marker, draft preserved; eligible draft passes"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+collect_artifacts:
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
+  - "knowledge/medical-research/03-Wiki/**/*.md"
+  - "knowledge/_failed/medical-research/**/*.md"
+steps:
+  # ---- rejection: G1/G3 below threshold ------------------------------------
+  - name: "seed 01-Raw entry with full provenance but low gate scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-adm-low-raw", source_name="web", source_type="web",
+          source_url="https://kb-admission.autoinfo.dev/low-score",
+          source_platform="web", title="T9 Admission Low Score Entry",
+          content="T9 admission threshold rejection source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 10.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=10.0,
+                         details={})
+      entry = store.store_entry(item=item, tier="01-Raw",
+                                quality_results={"G1-SourceAuthority": g1,
+                                                 "G3-RelevanceScoring": g3})
+      print("SEED_LOW_RAW " + entry.entry_id + " " + entry.tier)
+      assert entry.tier == "01-Raw"
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_LOW_RAW", "medical-research-general-t9-admission-low-score-entry"]
+
+  - name: "create_kb_draft from low-score Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-admission-low-score-entry
+      title: "T9 Admission Low Score Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "promote_kb_draft rejects below-threshold draft (error envelope)"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-admission-low-score-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+  - name: "typed rejection reasons + _failed marker + draft preserved"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore, PromotionRejected
+      store = KBStore()
+      try:
+          store.promote_kb_draft(draft_id="medical-research-draft-t9-admission-low-score-draft")
+          print("ADMISSION_ALLOWED unexpected")
+          raise SystemExit(1)
+      except PromotionRejected as exc:
+          reasons = [str(r) for r in exc.reasons]
+          print("ADMISSION_REASONS " + ",".join(sorted(reasons)))
+          assert "source-score-below-threshold" in reasons, reasons
+          assert "relevance-below-threshold" in reasons, reasons
+      meta = store.index.get_entry("medical-research-draft-t9-admission-low-score-draft")
+      assert meta is not None and meta.get("tier") == "02-Draft", meta
+      print("DRAFT_TIER " + meta.get("tier", ""))
+      marker = pathlib.Path("knowledge/_failed/medical-research/medical-research-draft-t9-admission-low-score-draft.md")
+      print("FAILED_MARKER " + str(marker.is_file()))
+      assert marker.is_file(), "expected _failed marker"
+      wiki_paths = list(pathlib.Path("knowledge/medical-research/03-Wiki").rglob("*t9-admission-low-score-draft*"))
+      assert len(wiki_paths) == 0, wiki_paths
+      print("NO_WIKI_ROW True")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ADMISSION_REASONS", "source-score-below-threshold", "relevance-below-threshold", "DRAFT_TIER 02-Draft", "FAILED_MARKER True", "NO_WIKI_ROW True"]
+
+  # ---- acceptance: scores above threshold pass admission -------------------
+  - name: "seed 01-Raw entry with full provenance and above-threshold scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-adm-hi-raw", source_name="web", source_type="web",
+          source_url="https://kb-admission.autoinfo.dev/high-score",
+          source_platform="web", title="T9 Admission High Score Entry",
+          content="T9 admission threshold acceptance source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      entry = store.store_entry(item=item, tier="01-Raw",
+                                quality_results={"G1-SourceAuthority": g1,
+                                                 "G3-RelevanceScoring": g3})
+      print("SEED_HI_RAW " + entry.entry_id + " " + entry.tier)
+      assert entry.tier == "01-Raw"
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_HI_RAW", "medical-research-general-t9-admission-high-score-entry"]
+
+  - name: "create_kb_draft from above-threshold Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-admission-high-score-entry
+      title: "T9 Admission High Score Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "promote_kb_draft admits above-threshold draft"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-admission-high-score-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "verify promoted entry lives in 03-Wiki"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-draft-t9-admission-high-score-draft")
+      if meta is None or meta.get("tier") != "03-Wiki":
+          print("ADMITTED_WIKI missing or wrong tier: " + str(meta))
+          raise SystemExit(1)
+      print("ADMITTED_WIKI " + meta.get("tier", ""))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ADMITTED_WIKI 03-Wiki"]
+
+# Always-run best-effort cleanup (never affects scenario status).  Purges only
+# entries matching this scenario's deterministic ids; director-routed per T5.
+cleanup_steps:
+  - name: "director purge of scenario entries + _failed markers"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      ids = ["medical-research-draft-t9-admission-low-score-draft",
+             "medical-research-draft-t9-admission-high-score-draft",
+             "medical-research-general-t9-admission-low-score-entry",
+             "medical-research-general-t9-admission-high-score-entry"]
+      removed = []
+      for eid in ids:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          res = store.delete_entry(eid, actor="director")  # T5: director path
+          removed.append(eid + ":" + str(res))
+      for p in list(pathlib.Path("knowledge/_failed/medical-research").glob("*t9-admission-*")):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      for p in list(pathlib.Path("knowledge/medical-research").rglob("*t9-admission-*")):
+          p.unlink(missing_ok=True)
+          removed.append(str(p))
+      print("CLEANED " + str(removed))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

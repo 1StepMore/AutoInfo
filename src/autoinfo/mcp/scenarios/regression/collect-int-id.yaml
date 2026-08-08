@@ -5,6 +5,12 @@
 # This scenario exercises the fixed _cache_items directly via a CLI step
 # constructing Item objects with int and str-with-slash ids — deterministic,
 # no network or env gating needed.
+#
+# Fortification (plan todo T9b): the step now runs inside an ABSOLUTE temp
+# directory (tempfile.mkdtemp is always absolute) with a guaranteed cleanup —
+# try/finally restores the previous cwd and shutil.rmtree's the tmp dir, so a
+# failed assertion can never leak a collections/ dir or leave the process in
+# a mutated cwd.  Path math is done against the absolute Path(tmp) base only.
 name: regression-collect-int-id
 description: "Regression #104: _cache_items survives int item ids (GitHub Trending)"
 category: regression
@@ -16,7 +22,7 @@ steps:
     kind: cli
     command: |-
       python3 -c '
-      import os, tempfile
+      import os, shutil, tempfile
       from pathlib import Path
       from autoinfo.collect import _cache_items
       from autoinfo.models import Item
@@ -25,15 +31,23 @@ steps:
           return Item(id=i, source_name="regression-104", source_type="web",
                       source_url=url, title="t", content="c")
 
-      tmp = tempfile.mkdtemp(prefix="regression-104-")
-      os.chdir(tmp)
-      _cache_items(
-          [mk(12345, "https://x.dev/1"), mk("a/b", "https://x.dev/2")],
-          "regression-104", "int-id-source")
-      files = sorted(str(p.relative_to(tmp)) for p in Path("collections").rglob("*.json"))
-      assert any(f.endswith("12345.json") for f in files), files
-      assert any(f.endswith("a_b.json") for f in files), files
-      print("CACHE_ITEMS_INT_ID_OK")
+      tmp = Path(tempfile.mkdtemp(prefix="regression-104-"))
+      old_cwd = os.getcwd()
+      try:
+          os.chdir(tmp)
+          _cache_items(
+              [mk(12345, "https://x.dev/1"), mk("a/b", "https://x.dev/2")],
+              "regression-104", "int-id-source")
+          # Absolute base for path math — relative_to() on a relative
+          # Path would raise when the base is absolute (py3.12+ rglob).
+          base = tmp.resolve()
+          files = sorted(str(p.relative_to(base)) for p in (base / "collections").rglob("*.json"))
+          assert any(f.endswith("12345.json") for f in files), files
+          assert any(f.endswith("a_b.json") for f in files), files
+          print("CACHE_ITEMS_INT_ID_OK")
+      finally:
+          os.chdir(old_cwd)
+          shutil.rmtree(tmp, ignore_errors=True)
       '
     expect:
       success: true

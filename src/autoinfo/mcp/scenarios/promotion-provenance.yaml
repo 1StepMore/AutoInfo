@@ -1,0 +1,138 @@
+# Promotion provenance (plan todo T9c / T1+T2) — a successful agent
+# promotion records `promotion_source: agent`, `promoted_by`, `promoted_at`
+# in the 03-Wiki frontmatter and NEVER writes the legacy `human_promoted`
+# marker.  The SQLite index tier flips to 03-Wiki and get_kb_entry reads it
+# back through the real MCP surface.
+#
+# Determinism: the admission gate needs real G1/G3 scores (see
+# kb-promote.yaml header), so the 01-Raw entry is seeded via the real
+# KBStore with genuine QualityResult scores, then draft creation, promotion
+# and reads all go through the real MCP tools.
+name: promotion-provenance
+description: "Promotion provenance: agent promote writes promotion_source=agent / promoted_by / promoted_at, never human_promoted; re-promotion refused"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+collect_artifacts:
+  - "knowledge/medical-research/01-Raw/**/*.md"
+  - "knowledge/medical-research/02-Draft/**/*.md"
+  - "knowledge/medical-research/03-Wiki/**/*.md"
+steps:
+  - name: "seed 01-Raw entry with real gate scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-prov-raw", source_name="web", source_type="web",
+          source_url="https://promotion-provenance.autoinfo.dev/entry",
+          source_platform="web", title="T9 Provenance Entry",
+          content="T9 promotion provenance source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      raw = store.store_entry(item=item, tier="01-Raw",
+                              quality_results={"G1-SourceAuthority": g1,
+                                               "G3-RelevanceScoring": g3})
+      print("SEED_RAW " + raw.entry_id + " " + raw.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_RAW medical-research-general-t9-provenance-entry 01-Raw"]
+
+  - name: "create_kb_draft from seeded Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-provenance-entry
+      title: "T9 Provenance Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "promote_kb_draft promotes the draft"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-provenance-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "frontmatter records agent provenance, never human_promoted"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-draft-t9-provenance-draft")
+      if meta is None or meta.get("tier") != "03-Wiki":
+          print("PROV_TIER wrong: " + str(meta))
+          raise SystemExit(1)
+      print("PROV_TIER " + meta.get("tier", ""))
+      fm = pathlib.Path(meta["file_path"]).read_text(encoding="utf-8").split("---")[1]
+      print("PROMOTION_SOURCE " + ("agent" if "promotion_source: agent" in fm else "missing"))
+      print("PROMOTED_BY " + ("agent" if "promoted_by: agent" in fm else "missing"))
+      print("PROMOTED_AT " + str("promoted_at:" in fm))
+      print("HUMAN_PROMOTED " + str("human_promoted" in fm))
+      assert "promotion_source: agent" in fm, fm[:300]
+      assert "promoted_by: agent" in fm, fm[:300]
+      assert "promoted_at:" in fm, fm[:300]
+      assert "human_promoted" not in fm, "human_promoted must not be written"
+      print("PROVENANCE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PROV_TIER 03-Wiki", "PROMOTION_SOURCE agent", "PROMOTED_BY agent", "PROMOTED_AT True", "HUMAN_PROMOTED False", "PROVENANCE_OK"]
+
+  - name: "get_kb_entry reads the promoted entry back"
+    tool: get_kb_entry
+    arguments:
+      entry_id: medical-research-draft-t9-provenance-draft
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "re-promotion of an already-promoted entry is refused"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-provenance-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+# Always-run best-effort cleanup (never affects scenario status).  Director-
+# routed per T5: the promoted 03-Wiki entry is append-only for non-directors.
+cleanup_steps:
+  - name: "director purge of scenario entries"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      ids = ["medical-research-draft-t9-provenance-draft",
+             "medical-research-general-t9-provenance-entry"]
+      removed = []
+      for eid in ids:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          res = store.delete_entry(eid, actor="director")  # T5: director path
+          removed.append(eid + ":" + str(res))
+      print("CLEANED " + str(removed))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

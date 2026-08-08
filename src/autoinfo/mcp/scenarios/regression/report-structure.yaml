@@ -5,6 +5,12 @@
 # period, content} (noop path returns content: "").
 # This scenario uses the MCP generate_report tool with a nonexistent domain
 # (noop path) — deterministic, no LLM or KB content needed.
+#
+# Envelope note: _handle_generate_report returns a FLAT dual-format envelope
+# {success, domain, format, period, status, content, message} — call_tool
+# passes it through unchanged (no `data` key), so `data_has` cannot be used.
+# The MCP steps assert `success: true` on the envelope; a CLI step then
+# verifies the full contract keys on the flat dict for every format branch.
 name: regression-report-structure
 description: "Regression #121: generate_report markdown branch returns domain/format/period/content keys"
 category: regression
@@ -12,26 +18,47 @@ regression: true
 regression_issue: "#121"
 requires_env: []
 steps:
-  - name: "markdown report carries full contract keys on noop path"
+  - name: "markdown report succeeds on noop path"
     tool: generate_report
     arguments:
       domain: regression-121-noop-domain
       format: markdown
     expect:
       success: true
-      data_has: ["domain", "format", "period", "content"]
-  - name: "json report carries full contract keys on noop path"
+
+  - name: "json report succeeds on noop path"
     tool: generate_report
     arguments:
       domain: regression-121-noop-domain
       format: json
     expect:
       success: true
-      data_has: ["domain", "format", "period", "content"]
-  - name: "report without explicit format defaults to markdown with full keys"
+
+  - name: "report without explicit format succeeds (defaults to markdown)"
     tool: generate_report
     arguments:
       domain: regression-121-noop-domain
     expect:
       success: true
-      data_has: ["domain", "format", "period", "content"]
+
+  - name: "every format branch carries full contract keys (flat envelope)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.mcp.server import _handle_generate_report
+      for fmt in ("markdown", "json", ""):
+          args = {"domain": "regression-121-noop-domain"}
+          if fmt:
+              args["format"] = fmt
+          out = _handle_generate_report(**args)
+          assert out.get("success") is True, out
+          for k in ("domain", "format", "period", "content"):
+              assert k in out, "missing key " + k + " for format " + (fmt or "default")
+          assert out.get("content") == "", "noop content must be empty, got " + str(out.get("content"))
+          print("CONTRACT_OK " + (fmt or "default") + " " + out.get("format", ""))
+      print("REPORT_STRUCTURE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CONTRACT_OK default markdown", "CONTRACT_OK markdown markdown", "CONTRACT_OK json json", "REPORT_STRUCTURE_OK"]

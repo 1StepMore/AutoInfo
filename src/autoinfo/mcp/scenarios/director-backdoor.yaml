@@ -1,0 +1,140 @@
+# Director backdoor (plan todo T9c / T5) — demote / force-promote / wiki
+# delete are director-only.  Every non-whitelisted actor call is refused at
+# dispatch with a DIRECTOR_ONLY error envelope; the default actor ("director",
+# the first member of AUTOINFO_DIRECTOR_ACTORS) succeeds.
+#
+# Also pins the T5 wiki guard: soft_delete_entry on a 03-Wiki entry with a
+# non-director actor is refused (03-Wiki is append-only).
+name: director-backdoor
+description: "Director backdoor: force_promote/demote_kb_wiki/soft_delete wiki refused for non-directors (DIRECTOR_ONLY), succeed for default actor"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+steps:
+  - name: "seed 01-Raw entry and draft for backdoor probes"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-bd-raw", source_name="web", source_type="web",
+          source_url="https://director-backdoor.autoinfo.dev/entry",
+          source_platform="web", title="T9 Backdoor Entry",
+          content="T9 director backdoor probe source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      raw = store.store_entry(item=item, tier="01-Raw",
+                              quality_results={"G1-SourceAuthority": g1,
+                                               "G3-RelevanceScoring": g3})
+      draft = store.create_kb_draft(raw_ids=[raw.entry_id], title="T9 Backdoor Draft")
+      print("SEED_DRAFT " + draft.entry_id + " " + draft.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_DRAFT medical-research-draft-t9-backdoor-draft 02-Draft"]
+
+  - name: "force_promote refused for non-whitelisted actor (DIRECTOR_ONLY)"
+    tool: force_promote
+    arguments:
+      draft_id: medical-research-draft-t9-backdoor-draft
+      actor: hacker
+    expect:
+      success: false
+      error_code: "DIRECTOR_ONLY"
+      error_actionable: true
+
+  - name: "force_promote succeeds for default director actor"
+    tool: force_promote
+    arguments:
+      draft_id: medical-research-draft-t9-backdoor-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "soft_delete_entry on 03-Wiki refused for non-director (wiki guard)"
+    tool: soft_delete_entry
+    arguments:
+      entry_id: medical-research-draft-t9-backdoor-draft
+      actor: hacker
+    expect:
+      success: false
+      error_code: "DIRECTOR_ONLY"
+      error_actionable: true
+
+  - name: "demote_kb_wiki refused for non-whitelisted actor (DIRECTOR_ONLY)"
+    tool: demote_kb_wiki
+    arguments:
+      entry_id: medical-research-draft-t9-backdoor-draft
+      actor: hacker
+    expect:
+      success: false
+      error_code: "DIRECTOR_ONLY"
+      error_actionable: true
+
+  - name: "demote_kb_wiki succeeds for default director actor"
+    tool: demote_kb_wiki
+    arguments:
+      entry_id: medical-research-draft-t9-backdoor-draft
+    expect:
+      success: true
+      data_has: ["status", "entry_id", "new_path"]
+
+  - name: "demotion preserves content + provenance, marks demoted_at"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-draft-t9-backdoor-draft")
+      if meta is None or meta.get("tier") != "02-Draft":
+          print("DEMOTED_TIER wrong: " + str(meta))
+          raise SystemExit(1)
+      print("DEMOTED_TIER " + meta.get("tier", ""))
+      fm = pathlib.Path(meta["file_path"]).read_text(encoding="utf-8").split("---")[1]
+      print("DEMOTED_AT " + str("demoted_at:" in fm))
+      print("PROVENANCE_KEPT " + str("promotion_source: director" in fm))
+      assert "demoted_at:" in fm, fm[:300]
+      assert "promotion_source: director" in fm, "promotion provenance must be kept"
+      print("DEMOTE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DEMOTED_TIER 02-Draft", "DEMOTED_AT True", "PROVENANCE_KEPT True", "DEMOTE_OK"]
+
+# Always-run best-effort cleanup (never affects scenario status).  Director-
+# routed deletes per T5 (03-Wiki append-only); the demoted entry is a draft
+# again but the director path works for every tier.
+cleanup_steps:
+  - name: "director purge of scenario entries"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      ids = ["medical-research-draft-t9-backdoor-draft",
+             "medical-research-general-t9-backdoor-entry"]
+      removed = []
+      for eid in ids:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          res = store.delete_entry(eid, actor="director")  # T5: director path
+          removed.append(eid + ":" + str(res))
+      print("CLEANED " + str(removed))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

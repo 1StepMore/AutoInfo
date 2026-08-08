@@ -1,0 +1,166 @@
+# Search tier soft-boost (plan todo T9c / T8) — search_knowledge_base must
+# surface a `tier` field on every result and, on equal combined scores, rank
+# the 03-Wiki entry above the same-scored 02-Draft entry (TIER_SCORE_BOOST
+# 03-Wiki x1.05; Draft/Raw x1.0).
+#
+# Determinism: two 01-Raw entries are seeded with IDENTICAL relevance_score
+# (50) and collected_at, and titles carrying a unique marker token
+# ("t9ztoken") that only these entries contain.  One is promoted to 03-Wiki
+# via the real force_promote tool (director path), the other stays 02-Draft.
+# combined = relevance*0.8 + freshness*0.2, so wiki = 40.2*1.05 = 42.21 >
+# draft/raw = 40.2 — the wiki entry sorts first, deterministically.
+#
+# Draft entries are not FTS5-indexed at creation (create_kb_draft indexes
+# only the entries table), so the scenario runs reindex_kb after promotion to
+# rebuild the search index from the on-disk frontmatter before asserting.
+name: search-tier-boost
+description: "Search tier soft-boost: results carry tier field; wiki entry ranks before equal-scored draft"
+category: kb
+requires_env: []
+requires_domain: ["medical-research"]
+steps:
+  - name: "seed two equal-score 01-Raw entries with unique marker token"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      ts = "2026-08-08T00:00:00+00:00"
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=50.0,
+                         details={})
+      for ident, title, url in (
+          ("t9z-wiki-raw", "T9Z Token Wiki Entry", "https://t9z.autoinfo.dev/wiki"),
+          ("t9z-draft-raw", "T9Z Token Draft Entry", "https://t9z.autoinfo.dev/draft"),
+      ):
+          item = Item(
+              id=ident, source_name="web", source_type="web", source_url=url,
+              source_platform="web", title=title,
+              content="t9ztoken marker body for " + title,
+              domain="medical-research", topic_tags=["general"],
+              collected_at=ts, content_type="text", quality_tier=1,
+          )
+          entry = store.store_entry(item=item, tier="01-Raw",
+                                    quality_results={"G1-SourceAuthority": g1,
+                                                     "G3-RelevanceScoring": g3})
+          print("SEED " + entry.entry_id + " " + entry.tier)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED medical-research-general-t9z-token-wiki-entry 01-Raw", "SEED medical-research-general-t9z-token-draft-entry 01-Raw"]
+
+  - name: "create_kb_draft from wiki-side Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9z-token-wiki-entry
+      title: "T9Z Token Wiki Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "create_kb_draft from draft-side Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9z-token-draft-entry
+      title: "T9Z Token Draft Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "force_promote wiki-side draft to 03-Wiki (director path)"
+    tool: force_promote
+    arguments:
+      draft_id: medical-research-draft-t9z-token-wiki-draft
+    expect:
+      success: true
+      data_has: ["status", "draft_id", "new_path"]
+
+  - name: "reindex_kb so the promoted drafts are searchable"
+    tool: reindex_kb
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+
+  - name: "search returns results with entries and total_count"
+    tool: search_knowledge_base
+    arguments:
+      query: t9ztoken
+      domain: medical-research
+      limit: 10
+    expect:
+      success: true
+      data_has: ["entries", "total_count", "query"]
+
+  - name: "wiki entry ranks first; every result carries a tier field"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      res = store.search_knowledge_base(query="t9ztoken", domain="medical-research", limit=10)
+      entries = res.get("entries", [])
+      assert entries, "expected matches for marker token"
+      for e in entries:
+          assert "tier" in e, "result missing tier field: " + str(e.get("entry_id"))
+      ordered = [(e["entry_id"], e.get("tier", "")) for e in entries]
+      print("SEARCH_ORDER " + str(ordered))
+      assert ordered[0][0] == "medical-research-draft-t9z-token-wiki-draft", ordered
+      assert ordered[0][1] == "03-Wiki", ordered
+      assert ordered[1][0] == "medical-research-draft-t9z-token-draft-draft", ordered
+      assert ordered[1][1] == "02-Draft", ordered
+      print("TIER_BOOST_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEARCH_ORDER", "medical-research-draft-t9z-token-wiki-draft", "03-Wiki", "TIER_BOOST_OK"]
+
+  - name: "no-match query returns empty results (negative path)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      res = store.search_knowledge_base(query="t9ztoken-no-such-term-zzz", domain="medical-research", limit=10)
+      assert res.get("entries") == [], res
+      assert res.get("total_count") == 0, res
+      print("EMPTY_RESULTS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["EMPTY_RESULTS_OK"]
+
+# Always-run best-effort cleanup (never affects scenario status).  Purges only
+# entries this scenario created; director-routed per T5 (03-Wiki append-only).
+cleanup_steps:
+  - name: "director purge of scenario entries"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      ids = ["medical-research-draft-t9z-token-wiki-draft",
+             "medical-research-draft-t9z-token-draft-draft",
+             "medical-research-general-t9z-token-wiki-entry",
+             "medical-research-general-t9z-token-draft-entry"]
+      removed = []
+      for eid in ids:
+          meta = store.index.get_entry(eid)
+          if meta is None:
+              continue
+          res = store.delete_entry(eid, actor="director")  # T5: director path
+          removed.append(eid + ":" + str(res))
+      print("CLEANED " + str(removed))
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

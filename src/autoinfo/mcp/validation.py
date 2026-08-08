@@ -15,6 +15,7 @@ import datetime
 import json
 import os
 import re
+import signal
 import subprocess
 import time
 import uuid
@@ -181,25 +182,51 @@ def diff_scenario_runs(
     }
 
 
+def _kill_process_group(proc: subprocess.Popen[Any]) -> None:
+    """SIGKILL the whole process group of *proc*.
+
+    The CLI step runs in its own session/process group
+    (``start_new_session=True``), so killing the group is the only reliable
+    way to reap orphaned grandchildren (background children spawned by the
+    ``shell=True`` wrapper) after a timeout.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def _run_cli_step(command: str, timeout: float = 180.0) -> dict[str, Any]:
     """Execute a CLI command in a real subprocess and normalize to an envelope.
 
     Returns ``{"success": exit_code == 0, "data": {exit_code, stdout, stderr}}``.
     Real process execution — never mocked.  Raises on timeout.
+
+    The subprocess is spawned in its own session (``start_new_session=True``)
+    so that a timeout can SIGKILL the entire process group — including any
+    background children the shell may have spawned — instead of leaving
+    orphaned processes behind.
     """
-    result = subprocess.run(
+    proc = subprocess.Popen(
         command,
         shell=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout,
+        start_new_session=True,
     )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_group(proc)
+        proc.wait()
+        raise
     return {
-        "success": result.returncode == 0,
+        "success": proc.returncode == 0,
         "data": {
-            "exit_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "exit_code": proc.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
         },
     }
 

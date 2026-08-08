@@ -46,7 +46,7 @@ def preferences_show(
         raise typer.Exit(code=1)
 
     if json_output:
-        typer.echo(json.dumps(profile.delivery_prefs, indent=2, ensure_ascii=False))
+        typer.echo(json.dumps(profile.delivery_preferences, indent=2, ensure_ascii=False))
         return
 
     typer.echo(f"User:        {profile.user_id}")
@@ -55,8 +55,9 @@ def preferences_show(
     typer.echo(f"Tier:        {profile.tier}")
     typer.echo(f"Status:      {profile.status}")
     typer.echo("Preferences:")
-    if profile.delivery_prefs:
-        for k, v in profile.delivery_prefs.items():
+    prefs: dict[str, Any] = profile.delivery_preferences or {}
+    if prefs:
+        for k, v in prefs.items():
             typer.echo(f"  {k}: {v}")
     else:
         typer.echo("  (none)")
@@ -87,7 +88,7 @@ def preferences_update(
         raise typer.Exit(code=1)
 
     typer.echo(f"Updated preferences for end-user: {profile.user_id}")
-    typer.echo(json.dumps(profile.delivery_prefs, indent=2, ensure_ascii=False))
+    typer.echo(json.dumps(profile.delivery_preferences, indent=2, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------

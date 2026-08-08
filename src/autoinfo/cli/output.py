@@ -169,8 +169,8 @@ def export(
     try:
         result = export_kb(domain=domain, format=format)
         typer.echo(
-            f"Exported {result['entries_count']} entries "
-            f"to {result['path']}"
+            f"Exported {result.get('entries_count', 0)} entries "
+            f"to {result.get('path', 'unknown')}"
         )
     except (FileNotFoundError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)

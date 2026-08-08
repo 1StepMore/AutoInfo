@@ -500,7 +500,7 @@ async def get_portal_preferences(
     """Return the delivery preferences for an end-user.
 
     Delegates to :func:`autoinfo.user_store.get_profile` and returns the
-    ``delivery_prefs`` dict together with profile metadata.
+    ``delivery_preferences`` dict together with profile metadata.
     """
     from autoinfo.user_store import get_profile as _get_profile
 
@@ -512,7 +512,7 @@ async def get_portal_preferences(
         "user_id": profile.user_id,
         "name": profile.name,
         "email": profile.email,
-        "delivery_prefs": profile.delivery_prefs,
+        "delivery_preferences": profile.delivery_preferences or {},
         "tier": profile.tier,
         "status": profile.status,
     })
@@ -521,7 +521,7 @@ async def get_portal_preferences(
 class PreferencesUpdate(BaseModel):
     """Request body for ``PUT /portal/preferences``."""
 
-    delivery_prefs: dict[str, Any] = Field(
+    delivery_preferences: dict[str, Any] = Field(
         default_factory=dict, description="Delivery preferences key-value map"
     )
     email: str | None = Field(None, description="Optional new email address")
@@ -546,8 +546,8 @@ async def update_portal_preferences(
         raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
 
     kwargs: dict[str, Any] = {}
-    if body.delivery_prefs:
-        kwargs["delivery_prefs"] = body.delivery_prefs
+    if body.delivery_preferences:
+        kwargs["delivery_prefs"] = body.delivery_preferences
     if body.email is not None:
         kwargs["email"] = body.email
 
@@ -559,7 +559,7 @@ async def update_portal_preferences(
         "user_id": updated.user_id,
         "name": updated.name,
         "email": updated.email,
-        "delivery_prefs": updated.delivery_prefs,
+        "delivery_preferences": updated.delivery_preferences or {},
         "tier": updated.tier,
         "status": updated.status,
     })

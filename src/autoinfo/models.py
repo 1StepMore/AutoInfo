@@ -210,6 +210,10 @@ class KBEntry:
     previous_version: int = 0
     supersedes: str = ""
     trace_id: str = ""  # Per-item pipeline traceability — UUID from collection, resolvable via trace_item
+    # KB promotion provenance — frontmatter-only (no DB column); how a Draft
+    # reached 03-Wiki ("agent" | "director") and which actor promoted it.
+    promotion_source: str | None = None
+    promoted_by: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

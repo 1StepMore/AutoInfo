@@ -14,14 +14,14 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 39 |
-| Total lines | 20700 |
+| Total lines | 20732 |
 | Active files | 30 |
 | Archived files | 9 |
 | Category — archive | 9 files / 4932 lines |
 | Category — known-limitations | 1 files / 255 lines |
 | Category — skills | 2 files / 631 lines |
 | Category — specs | 12 files / 7747 lines |
-| Category — validation-reports | 2 files / 187 lines |
+| Category — validation-reports | 2 files / 219 lines |
 | Category — docs/dev | 13 files / 6948 lines |
 
 ## Inventory
@@ -61,8 +61,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/pipeline.md` | 512 | specs | active | — |
 | `dev/specs/quality-gates.md` | 183 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 441 | specs | active | — |
-| `dev/validation-reports/README.md` | 44 | validation-reports | active | — |
-| `dev/validation-reports/acceptance-2026-08-08.md` | 143 | validation-reports | active | — |
+| `dev/validation-reports/README.md` | 53 | validation-reports | active | — |
+| `dev/validation-reports/acceptance-2026-08-08.md` | 166 | validation-reports | active | — |
 | `dev/validation-scenario-contract.md` | 753 | docs/dev | active | — |
 | `known-limitations/blocked-sources.md` | 255 | known-limitations | active | — |
 | `skills/autoinfo-skill/SKILL.md` | 262 | skills | active | — |

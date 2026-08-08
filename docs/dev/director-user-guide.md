@@ -68,7 +68,7 @@ The flow is always the same:
 
 ### What the Agent Can Do (In Brief)
 
-The agent has 141 MCP tools organized into 35 categories. Everything AutoInfo can do, the agent can do on your behalf:
+The agent has 145 MCP tools organized into 35 categories. Everything AutoInfo can do, the agent can do on your behalf:
 
 - Configure domains, sources, and topics
 - Run collection and processing pipelines

@@ -216,7 +216,7 @@ B1 modifies config
 The **B2 Direct User** is an AI agent that serves as the **primary operator** of the AutoInfo platform. B2:
 
 - Connects to AutoInfo via the MCP protocol (stdio; SSE is future work)
-- Uses 141 MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
+- Uses 145 MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
 - Reads B1 subscription configs to determine what to collect, process, and deliver for each B1 user
 - Operates autonomously on a schedule — executing the full pipeline for all active subscriptions
 - Reports execution status and anomalies to B3 (Director) for oversight

@@ -3,7 +3,7 @@ name: doc-manager-skill
 description: AutoInfo project documentation inventory, change-impact analysis, and doc-update workflow.
   Load this skill whenever code changes may affect project documentation.
 author: AutoInfo
-version: 2.0.0
+version: 2.0.1
 ---
 
 # AutoInfo Documentation Manager Skill
@@ -62,7 +62,7 @@ When you modify code, the listed docs **must** be reviewed and updated:
 | LLM extraction / config | `AGENTS.md` (LLM Configuration), `docs/dev/specs/pipeline.md`, `README.md` | Provider/model/fallback docs, extraction spec |
 | Output formats / delivery channels | `README.md`, `AGENTS.md`, `docs/dev/specs/delivery.md`, `CHANGELOG.md` | Format lists, channel matrix (13), output spec |
 | End-user lifecycle / billing | `docs/dev/specs/delivery.md`, `docs/dev/specs/user-lifecycle-definition.md`, `AGENTS.md`, `README.md`, `CHANGELOG.md` | User types (B1/B2/B3), subscription tiers, check_access |
-| Validation engine / scenarios | `docs/dev/validation-scenario-contract.md`, `AGENTS.md`, `README.md`, `CHANGELOG.md`, `src/autoinfo/mcp/scenarios/` | Scenario counts (59 = 54 + 5 regression), schema fields |
+| Validation engine / scenarios | `docs/dev/validation-scenario-contract.md`, `AGENTS.md`, `README.md`, `CHANGELOG.md`, `src/autoinfo/mcp/scenarios/` | Scenario counts (65 = 60 + 5 regression), schema fields |
 | Feature addition / scope change | `docs/dev/cross-dimensional-catalog.md` (keystone — mandatory), all P0 docs, `CHANGELOG.md` | Cell statuses (🟢/🟡/🔴/🟠), gap-to-spec mapping |
 | Version bump / release | `pyproject.toml`, `CHANGELOG.md`, `README.md`, `AGENTS.md`, `docs/dev/founder-expectations.md`, `docs/dev/specs/expectations.md` | Version refs, status tables, release notes |
 
@@ -84,7 +84,7 @@ When you modify code, the listed docs **must** be reviewed and updated:
 
 ### Step 2 — Apply changes per doc type
 - `README.md`: Features list, Status table, Quick Start, architecture diagram,
-  CLI table (28 groups), MCP tools table (142), Demo Domains table, Known Limitations.
+  CLI table (28 groups), MCP tools table (145), Demo Domains table, Known Limitations.
 - `AGENTS.md`: Project Structure tree, Architecture Rules, Agent Constraints
   (MUST NOT), Tool Discovery table, Common Patterns, LLM Configuration,
   Status table (must match README), References.
@@ -95,12 +95,12 @@ When you modify code, the listed docs **must** be reviewed and updated:
 - Spec files (`docs/dev/specs/*.md`): only the spec owning the changed topic.
 
 ### Step 3 — Update quantitative references
-Drift-prone facts checked by `doc_inventory.py --check`: MCP tools 142 / 35
-categories · CLI groups 28 · delivery channels 13 · validation scenarios 59
-(54 functional + 5 regression) · demo domains 13.
+Drift-prone facts checked by `doc_inventory.py --check`: MCP tools 145 / 35
+categories · CLI groups 28 · delivery channels 13 · validation scenarios 65
+(60 functional + 5 regression) · demo domains 13.
 Also keep consistent wherever they appear (README, AGENTS, CHANGELOG, specs,
 skills): source types 29, collector handlers 30, output templates 8,
-LLM-required tools 14, REST port 8741, test count ~3264.
+LLM-required tools 14, REST port 8741, test count ~3390.
 
 ### Step 4 — Verify
 1. `python3 scripts/doc_inventory.py --check` — must exit 0 (facts match,

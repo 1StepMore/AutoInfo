@@ -18,16 +18,20 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import subprocess
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from autoinfo.config import Config
 from autoinfo.models import ExtractionResult, Item, KBEntry
+from autoinfo.promotion import RejectionReason, check_promotion_admission
 from autoinfo.quality import QualityResult
 from autoinfo.schema import check_schema
 
@@ -52,6 +56,106 @@ class RelationType(str, Enum):
 
 
 RELATION_TYPES = {rt.value for rt in RelationType}
+
+# ---------------------------------------------------------------------------
+# Search tier soft-boost
+# ---------------------------------------------------------------------------
+
+# Soft post-multiplier applied to the combined score in
+# ``KBStore.search_knowledge_base`` so curated 03-Wiki entries outrank
+# equal-scoring Draft/Raw entries.  It is applied only after the base
+# score (relevance * 0.8 + freshness * 0.2) is computed and never
+# overrides stale-content demotion, which stays the primary sort key.
+TIER_SCORE_BOOST: dict[str, float] = {
+    "03-Wiki": 1.05,
+    "02-Draft": 1.0,
+    "01-Raw": 1.0,
+}
+
+
+class PromotionRejected(Exception):  # noqa: N818 — mandated name (plan T2/T5/T9 use PromotionRejected), not a generic Error
+    """Raised when a 02-Draft entry fails the promotion admission gate.
+
+    The draft is **not** moved and not deleted — it stays in 02-Draft and a
+    ``_failed/<domain>/<entry_id>.md`` marker is written alongside it.
+    ``reasons`` carries one typed :class:`RejectionReason` code per failed
+    admission component so callers can route/handle rejections without
+    parsing prose.
+    """
+
+    def __init__(self, reasons: list[RejectionReason]) -> None:
+        self.reasons = reasons
+        super().__init__(
+            "Promotion rejected: " + ", ".join(str(r) for r in reasons)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Director whitelist — advisory actor gating for the curation backdoor
+# ---------------------------------------------------------------------------
+
+_DIRECTOR_ACTORS_ENV = "AUTOINFO_DIRECTOR_ACTORS"
+
+
+def _director_actors() -> frozenset[str]:
+    """Parse the ``AUTOINFO_DIRECTOR_ACTORS`` whitelist (default ``director``).
+
+    The env var holds a comma-separated list of actor names; entries are
+    stripped and empty entries are dropped.  Read on every call so tests and
+    operators can change the whitelist without a reload.
+    """
+    raw = os.environ.get(_DIRECTOR_ACTORS_ENV, "director")
+    return frozenset(a.strip() for a in raw.split(",") if a.strip())
+
+
+def is_director(actor: str | None) -> bool:
+    """Return whether *actor* is whitelisted in ``AUTOINFO_DIRECTOR_ACTORS``.
+
+    ``None`` (or an empty string) — a caller that did not declare an actor —
+    resolves to the default ``"director"`` actor, preserving pre-backdoor
+    behavior for internal callers while every MCP surface passes its actor
+    explicitly.  Advisory by design: real auth is future scope (v2).
+    """
+    return (actor or "director").strip() in _director_actors()
+
+
+def _ensure_wiki_delete_allowed(
+    tier: str,
+    *,
+    actor: str | None,
+    entry_id: str,
+) -> None:
+    """Refuse deleting a 03-Wiki entry unless *actor* is a director.
+
+    03-Wiki is append-only: only a whitelisted director may soft-delete or
+    purge curated entries.  01-Raw / 02-Draft are unaffected.
+    """
+    if tier == "03-Wiki" and not is_director(actor):
+        raise DirectorOnlyError(
+            actor=actor or "director",
+            entry_id=entry_id,
+            operation="delete",
+        )
+
+
+class DirectorOnlyError(Exception):  # noqa: N818 — mandated name (plan T5), not a generic Error
+    """Raised when a non-director actor attempts a director-only KB operation.
+
+    Director-only operations — Wiki demotion (``demote_entry``), forced
+    promotion (``force_promote_kb_draft``), and deletion of 03-Wiki entries —
+    require an actor whitelisted in the ``AUTOINFO_DIRECTOR_ACTORS``
+    environment variable (default ``director``).  The MCP layer maps this to
+    the ``DIRECTOR_ONLY`` error envelope code.
+    """
+
+    def __init__(self, *, actor: str, entry_id: str, operation: str) -> None:
+        self.actor = actor
+        self.entry_id = entry_id
+        self.operation = operation
+        super().__init__(
+            f"actor '{actor}' not whitelisted in AUTOINFO_DIRECTOR_ACTORS: "
+            f"{operation} on '{entry_id}' requires a director"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -576,19 +680,28 @@ class SQLiteIndex:
             ).fetchone()
             return dict(row) if row else None
 
-    def delete_entry(self, entry_id: str) -> bool:
+    def delete_entry(self, entry_id: str, *, actor: str | None = None) -> bool:
         """Delete an entry from the index, FTS5 table, and disk file.
 
         Returns ``True`` when the entry existed and was deleted,
         ``False`` when no entry with *entry_id* was found.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If the entry lives in the 03-Wiki tier and *actor* is not
+            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (03-Wiki is
+            append-only; only a director may purge curated entries).
         """
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT file_path, rowid FROM entries WHERE entry_id = ?",
+                "SELECT file_path, rowid, tier FROM entries WHERE entry_id = ?",
                 (entry_id,),
             ).fetchone()
             if row is None:
                 return False
+
+            _ensure_wiki_delete_allowed(row["tier"], actor=actor, entry_id=entry_id)
 
             file_path = row["file_path"]
             rowid = row["rowid"]
@@ -1471,7 +1584,7 @@ class SQLiteIndex:
                 rows = conn.execute(
                     f"""SELECT e.entry_id, e.title, e.summary, e.relevance_score,
                                e.source_score, e.file_path, e.domain, e.collected_at,
-                               e.created_at, f.rank
+                               e.created_at, e.tier, f.rank
                         FROM entries_fts5 f
                         JOIN entries e ON e.rowid = f.rowid
                         WHERE {where_clause}
@@ -2072,6 +2185,29 @@ class SQLiteIndex:
 # ---------------------------------------------------------------------------
 
 
+def _default_kb_base_path() -> Path:
+    """Resolve the default KB base path anchored at the project root.
+
+    The project root is the first ancestor of the current working directory
+    (walking up, stopping before the home directory) that contains
+    ``.autoinfo/config.yaml`` — the same marker :func:`autoinfo.config.
+    get_config_path` uses, but anchored by ancestor walk instead of cwd-only.
+    This makes ``KBStore()`` resolve to the same ``<root>/knowledge`` no
+    matter which subdirectory of the project the process runs from.
+
+    When no project config is found, falls back to ``Path("knowledge")``
+    relative to the current working directory (historical behavior, which
+    keeps cwd-based callers — including tests that chdir to a temp project —
+    unchanged).
+    """
+    for ancestor in (Path.cwd(), *Path.cwd().parents):
+        if ancestor == Path.home():
+            break
+        if (ancestor / ".autoinfo" / "config.yaml").is_file():
+            return ancestor / "knowledge"
+    return Path("knowledge")
+
+
 class KBStore:
     """High-level knowledge base store that combines Markdown files + SQLite.
 
@@ -2087,7 +2223,9 @@ class KBStore:
     >>> full = store.get_entry(entry.entry_id)
     """
 
-    def __init__(self, base_path: Path = Path("knowledge")) -> None:
+    def __init__(self, base_path: Path | None = None) -> None:
+        if base_path is None:
+            base_path = _default_kb_base_path()
         self.base_path = base_path.resolve()
         # Place the SQLite db alongside the knowledge directory
         db_path = self.base_path.parent / "autoinfo.db"
@@ -2674,12 +2812,23 @@ class KBStore:
             return None
         return self.get_entry(meta[0]["entry_id"])
 
-    def delete_entry(self, entry_id: str) -> dict[str, Any]:
+    def delete_entry(
+        self,
+        entry_id: str,
+        *,
+        actor: str | None = None,
+    ) -> dict[str, Any]:
         """Delete an entry by *entry_id* from the index, FTS5, and disk.
 
         Returns ``{"deleted": True, "entry_id": ..., "title": ...}`` on
         success, or ``{"deleted": False, "entry_id": ..., "error": ...}``
         when the entry does not exist.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If the entry lives in the 03-Wiki tier and *actor* is not
+            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS``.
         """
         meta = self.index.get_entry(entry_id)
         if meta is None:
@@ -2689,7 +2838,7 @@ class KBStore:
                 "error": "Entry not found",
             }
 
-        ok = self.index.delete_entry(entry_id)
+        ok = self.index.delete_entry(entry_id, actor=actor)
         return {
             "deleted": ok,
             "entry_id": entry_id,
@@ -2801,8 +2950,11 @@ class KBStore:
             collected_at=today_str,
             summary=summary,
             tags=tags,
-            quality_tier=1,
-            relevance_score=0.0,
+            # Carry forward real gate scores from the first source Raw entry
+            # (G1/G3-derived) instead of zeroing them (G-02 score-cleanup gap).
+            quality_tier=int(raw_entries[0].get("quality_tier") or 1),
+            relevance_score=float(raw_entries[0].get("relevance_score") or 0.0),
+            source_score=float(raw_entries[0].get("source_score") or 0.0),
             dedup_status="unique",
             file_path=str(file_path),
             custom_fields={"source_raw_ids": source_raw_ids},
@@ -2973,18 +3125,131 @@ class KBStore:
                 f"Unknown action '{action}'. Use 'back_to_raw' or 'archive'."
             )
 
-    def promote_kb_draft(self, draft_id: str) -> dict[str, Any]:
-        """Promote a Draft entry to the 03-Wiki tier (human-only).
+    @staticmethod
+    def _entry_from_meta(meta: dict[str, Any]) -> KBEntry:
+        """Rebuild a :class:`KBEntry` from an index meta dict.
 
-        Reads the file from ``02-Draft/``, adds ``human_promoted: true``
-        and ``promoted_at`` to the frontmatter, moves the file to
-        ``03-Wiki/`` under the same domain and topic, and updates the
-        SQLite index tier to ``03-Wiki``.
+        Used by the admission gate and the promotion path so the gate, the
+        promoted record, and the raw-entry resolver all see identical data
+        (scores, provenance, ``source_ids``).
+        """
+        custom_fields_raw = meta.get("custom_fields") or "{}"
+        custom_fields: dict[str, Any] = json.loads(custom_fields_raw)
+        return KBEntry(
+            entry_id=meta["entry_id"],
+            title=meta.get("title", ""),
+            domain=meta.get("domain", ""),
+            tier=meta.get("tier", "01-Raw"),
+            source_url=meta.get("source_url", ""),
+            source_type=meta.get("source_type", ""),
+            source_platform=meta.get("source_platform", ""),
+            collected_at=meta.get("collected_at", ""),
+            summary=meta.get("summary", ""),
+            tags=json.loads(meta.get("tags", "[]")),
+            quality_tier=int(meta.get("quality_tier") or 1),
+            relevance_score=float(meta.get("relevance_score") or 0.0),
+            source_score=float(meta.get("source_score") or 0.0),
+            dedup_status=meta.get("dedup_status", "unique"),
+            file_path=meta.get("file_path", ""),
+            custom_fields=custom_fields,
+            author=custom_fields.get("author", ""),
+            source_ids=custom_fields.get("source_ids", []),
+            status=custom_fields.get("status", "active"),
+            related_concepts=custom_fields.get("related_concepts", []),
+            linked_entries=custom_fields.get("linked_entries", []),
+            language=meta.get("language", ""),
+        )
+
+    def _resolve_raw_entry(self, raw_id: str) -> KBEntry | None:
+        """Resolve a 01-Raw entry by id for the admission gate's provenance check.
+
+        Returns ``None`` when the id does not exist or does not live in the
+        01-Raw tier — the gate then reports the source as unresolvable.
+        """
+        meta = self.index.get_entry(raw_id)
+        if meta is None or meta.get("tier") != "01-Raw":
+            return None
+        return self._entry_from_meta(meta)
+
+    def _write_promotion_failed_marker(
+        self, entry: KBEntry, reasons: list[RejectionReason]
+    ) -> Path:
+        """Write ``knowledge/_failed/<domain>/<entry_id>.md`` for a rejected promotion.
+
+        Mirrors the collection/processing ``_failed/`` convention
+        (``_failed/`` under a domain-scoped directory, diagnostics payload)
+        while keeping the draft itself untouched in 02-Draft.
+        """
+        domain = entry.domain or "unknown"
+        failed_dir = self.base_path / "_failed" / domain
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        marker = failed_dir / f"{entry.entry_id}.md"
+        reason_codes = [str(r) for r in reasons]
+        frontmatter = yaml.dump(
+            {
+                "entry_id": entry.entry_id,
+                "domain": domain,
+                "tier": "02-Draft",
+                "gate": "PromotionAdmission",
+                "rejected_at": datetime.now(timezone.utc).isoformat(),
+                "reasons": reason_codes,
+                "item_snapshot": {
+                    "id": entry.entry_id,
+                    "title": entry.title,
+                    "source_url": entry.source_url,
+                    "source_type": entry.source_type,
+                    "source_platform": entry.source_platform,
+                    "draft_path": entry.file_path,
+                },
+            },
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+            width=120,
+        )
+        body = (
+            f"# Promotion rejected: {entry.entry_id}\n\n"
+            "The admission gate rejected this 02-Draft entry; it was **not** "
+            "moved to 03-Wiki and remains in 02-Draft.\n"
+        )
+        marker.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8")
+        logger.warning(
+            "Promotion rejected for %s (%s) — marker written to %s",
+            entry.entry_id,
+            ", ".join(reason_codes),
+            marker,
+        )
+        return marker
+
+    def promote_kb_draft(
+        self,
+        draft_id: str,
+        *,
+        config: Config | None = None,
+        caller: str = "agent",
+    ) -> dict[str, Any]:
+        """Promote a Draft entry to the 03-Wiki tier (admission-gated agent promotion).
+
+        Evaluates the promotion admission gate (:mod:`autoinfo.promotion` —
+        provenance completeness, G0 schema re-check, G1/G3 thresholds, and
+        the CurationGate G4 factual re-check) **before** touching the file.
+        A rejected draft stays in ``02-Draft/`` and a
+        ``_failed/<domain>/<entry_id>.md`` marker is written; the file is
+        never moved or deleted.  On acceptance the frontmatter records
+        ``promotion_source: agent`` / ``promoted_by`` / ``promoted_at`` and
+        the file moves to ``03-Wiki/`` under the same domain and topic, with
+        the SQLite index tier updated to ``03-Wiki``.
 
         Parameters
         ----------
         draft_id:
             Entry ID of the Draft to promote.
+        config:
+            Project configuration for gate thresholds; ``None`` uses the
+            gate defaults (30/30, G4 enabled).
+        caller:
+            Actor performing the promotion, recorded in ``promoted_by``
+            (default ``"agent"``).
 
         Returns
         -------
@@ -2997,6 +3262,9 @@ class KBStore:
             If *draft_id* is not found or not in the 02-Draft tier.
         FileNotFoundError
             If the Draft file is missing from disk.
+        PromotionRejected
+            If the admission gate rejects the draft; ``reasons`` carries
+            the typed rejection codes and a ``_failed/`` marker is written.
         """
         meta = self.index.get_entry(draft_id)
         if meta is None:
@@ -3014,35 +3282,56 @@ class KBStore:
                 f"Draft file not found on disk: {file_path}"
             )
 
+        # --- Admission gate (T2/T3): evaluate before any file movement ----
+        entry = self._entry_from_meta(meta)
+        admission = check_promotion_admission(
+            entry,
+            meta.get("domain", ""),
+            config,
+            resolve_raw=self._resolve_raw_entry,
+        )
+        if not admission.allowed:
+            self._write_promotion_failed_marker(entry, admission.reasons)
+            raise PromotionRejected(admission.reasons)
+
+        return self._move_draft_to_wiki(meta, promotion_source="agent", caller=caller)
+
+    def _move_draft_to_wiki(
+        self,
+        meta: dict[str, Any],
+        *,
+        promotion_source: str,
+        caller: str,
+    ) -> dict[str, Any]:
+        """Rewrite the frontmatter with promotion provenance, move the
+        02-Draft file to 03-Wiki under the same domain/topic, and re-index.
+
+        Shared by :meth:`promote_kb_draft` (admission-gated agent promotion)
+        and :meth:`force_promote_kb_draft` (director bypass).  No gate logic
+        lives here — callers decide whether admission is required.
+        """
+        file_path = Path(meta["file_path"])
         raw_content = file_path.read_text(encoding="utf-8")
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        fm_data: dict[str, Any] = {}
+        body = raw_content
         if raw_content.startswith("---"):
             end = raw_content.find("---", 3)
             if end != -1:
-                fm_text = raw_content[3:end]
-                fm_data = yaml.safe_load(fm_text) or {}
-                fm_data["human_promoted"] = True
-                fm_data["promoted_at"] = now_iso
-                new_fm = yaml.dump(
-                    fm_data,
-                    default_flow_style=False,
-                    allow_unicode=True,
-                    sort_keys=False,
-                    width=120,
-                )
+                fm_data = yaml.safe_load(raw_content[3:end]) or {}
                 body = raw_content[end + 3 :].lstrip("\n")
-                raw_content = f"---\n{new_fm}---\n\n{body}"
-            else:
-                raw_content = (
-                    f"---\nhuman_promoted: true\npromoted_at: {now_iso}\n"
-                    f"---\n\n{raw_content}"
-                )
-        else:
-            raw_content = (
-                f"---\nhuman_promoted: true\npromoted_at: {now_iso}\n"
-                f"---\n\n{raw_content}"
-            )
+        fm_data["promotion_source"] = promotion_source
+        fm_data["promoted_by"] = caller
+        fm_data["promoted_at"] = now_iso
+        new_fm = yaml.dump(
+            fm_data,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+            width=120,
+        )
+        raw_content = f"---\n{new_fm}---\n\n{body}"
 
         parts = list(file_path.parts)
         tier_idx = None
@@ -3058,40 +3347,283 @@ class KBStore:
         new_path.write_text(raw_content, encoding="utf-8")
         file_path.unlink()
 
-        custom_fields_raw = meta.get("custom_fields") or "{}"
-        draft_custom_fields: dict[str, Any] = json.loads(custom_fields_raw)
-
-        entry = KBEntry(
-            entry_id=draft_id,
-            title=meta["title"],
-            domain=meta["domain"],
+        promoted_entry = replace(
+            self._entry_from_meta(meta),
             tier="03-Wiki",
-            source_url=meta.get("source_url", ""),
-            source_type=meta.get("source_type", ""),
-            source_platform=meta.get("source_platform", ""),
-            collected_at=meta.get("collected_at", ""),
-            summary=meta.get("summary", ""),
-            tags=json.loads(meta.get("tags", "[]")),
-            quality_tier=meta.get("quality_tier", 1),
-            relevance_score=meta.get("relevance_score", 0.0),
-            dedup_status=meta.get("dedup_status", "unique"),
             file_path=str(new_path),
-            custom_fields=draft_custom_fields,
-            author=draft_custom_fields.get("author", ""),
-            source_ids=draft_custom_fields.get("source_ids", []),
-            status=draft_custom_fields.get("status", "active"),
-            related_concepts=draft_custom_fields.get("related_concepts", []),
-            linked_entries=draft_custom_fields.get("linked_entries", []),
-            language=meta.get("language", ""),
+            promotion_source=promotion_source,
+            promoted_by=caller,
         )
-        self.index.index_entry(entry)
+        self.index.index_entry(promoted_entry)
 
         return {
             "status": "promoted",
-            "draft_id": draft_id,
+            "draft_id": meta["entry_id"],
             "old_path": str(file_path),
             "new_path": str(new_path),
             "promoted_at": now_iso,
+        }
+
+    def promote_pending_drafts(
+        self,
+        domain: str,
+        *,
+        config: Config | None = None,
+        caller: str = "sweep",
+    ) -> dict[str, Any]:
+        """Promote all eligible 02-Draft entries for *domain* (T6 sweep trigger).
+
+        Batch promotion: lists every 02-Draft entry in the domain, skips
+        entries that already carry a ``_failed/<domain>/<entry_id>.md``
+        marker (previously rejected — **never retried**), and attempts the
+        admission-gated promotion per entry via :meth:`promote_kb_draft`.
+        Every per-entry attempt is isolated — a rejection or an unexpected
+        failure never aborts the sweep.  Idempotent: already-promoted
+        entries no longer live in 02-Draft, so a second sweep promotes
+        nothing.
+
+        Parameters
+        ----------
+        domain:
+            Domain whose eligible 02-Draft entries are promoted.
+        config:
+            Project configuration for gate thresholds; ``None`` uses the
+            gate defaults (30/30, G4 enabled).
+        caller:
+            Actor performing the promotions, recorded in ``promoted_by``
+            (default ``"sweep"``).
+
+        Returns
+        -------
+        dict
+            Summary: ``{domain, total, promoted: [{entry_id, new_path}],
+            rejected: [{entry_id, reasons}], failed: [{entry_id, error}],
+            skipped_failed_markers: [entry_id]}``.
+        """
+        summary: dict[str, Any] = {
+            "domain": domain,
+            "total": 0,
+            "promoted": [],
+            "rejected": [],
+            "failed": [],
+            "skipped_failed_markers": [],
+        }
+        drafts = self.list_kb_tier(domain=domain, tier="02-Draft", limit=10000)
+        summary["total"] = len(drafts)
+        for draft in drafts:
+            draft_id = draft.get("entry_id", "")
+            if not draft_id:
+                continue
+            marker = self.base_path / "_failed" / domain / f"{draft_id}.md"
+            if marker.is_file():
+                summary["skipped_failed_markers"].append(draft_id)
+                logger.info(
+                    "Promotion sweep skip %s — previous admission failure "
+                    "marker exists, not retried",
+                    draft_id,
+                )
+                continue
+            try:
+                result = self.promote_kb_draft(
+                    draft_id=draft_id, config=config, caller=caller
+                )
+                summary["promoted"].append(
+                    {"entry_id": draft_id, "new_path": result.get("new_path", "")}
+                )
+            except PromotionRejected as exc:
+                summary["rejected"].append(
+                    {
+                        "entry_id": draft_id,
+                        "reasons": [str(r) for r in exc.reasons],
+                    }
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                summary["failed"].append({"entry_id": draft_id, "error": str(exc)})
+            except Exception as exc:  # never let one draft abort the sweep
+                logger.exception("promotion sweep failed for %s", draft_id)
+                summary["failed"].append({"entry_id": draft_id, "error": str(exc)})
+        return summary
+
+    # ------------------------------------------------------------------
+    # Director backdoor — demotion & forced promotion (T5)
+    # ------------------------------------------------------------------
+
+    def force_promote_kb_draft(
+        self,
+        draft_id: str,
+        *,
+        caller: str = "director",
+    ) -> dict[str, Any]:
+        """Force-promote a 02-Draft entry to 03-Wiki, skipping the admission
+        gate (director-only backdoor).
+
+        The director bypasses :func:`autoinfo.promotion.check_promotion_admission`
+        entirely — provenance, G0/G1/G3, and the CurationGate G4 re-check are
+        not evaluated.  The frontmatter records ``promotion_source: director``
+        / ``promoted_by`` / ``promoted_at`` and the file moves to ``03-Wiki/``
+        under the same domain and topic, with the SQLite index tier updated.
+
+        Parameters
+        ----------
+        draft_id:
+            Entry ID of the Draft to force-promote.
+        caller:
+            Actor performing the promotion, recorded in ``promoted_by``
+            (default ``"director"``).  Must be whitelisted in
+            ``AUTOINFO_DIRECTOR_ACTORS``.
+
+        Returns
+        -------
+        dict
+            Summary of the operation including old/new paths.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If *caller* is not whitelisted in ``AUTOINFO_DIRECTOR_ACTORS``.
+        ValueError
+            If *draft_id* is not found or not in the 02-Draft tier.
+        FileNotFoundError
+            If the Draft file is missing from disk.
+        """
+        if not is_director(caller):
+            raise DirectorOnlyError(
+                actor=caller, entry_id=draft_id, operation="force-promote"
+            )
+
+        meta = self.index.get_entry(draft_id)
+        if meta is None:
+            raise ValueError(f"Draft entry '{draft_id}' not found")
+
+        if meta.get("tier") != "02-Draft":
+            raise ValueError(
+                f"Entry '{draft_id}' is not a Draft "
+                f"(tier: {meta.get('tier', 'unknown')})"
+            )
+
+        file_path = Path(meta["file_path"])
+        if not file_path.is_file():
+            raise FileNotFoundError(
+                f"Draft file not found on disk: {file_path}"
+            )
+
+        return self._move_draft_to_wiki(meta, promotion_source="director", caller=caller)
+
+    def demote_entry(
+        self,
+        entry_id: str,
+        *,
+        caller: str = "director",
+    ) -> dict[str, Any]:
+        """Demote a 03-Wiki entry back to 02-Draft (director-only backdoor).
+
+        Content is fully preserved: the file moves from ``03-Wiki/`` to
+        ``02-Draft/`` under the same domain and topic, frontmatter ``tier``
+        is rewritten to ``02-Draft`` and a ``demoted_at`` timestamp (plus
+        ``demoted_by``) is appended.  The original ``promotion_source`` /
+        ``promoted_by`` provenance is kept so the promotion remains
+        auditable, and the SQLite index tier is updated to ``02-Draft``.
+
+        Parameters
+        ----------
+        entry_id:
+            Entry ID of the 03-Wiki entry to demote.
+        caller:
+            Actor performing the demotion (default ``"director"``).  Must be
+            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS``.
+
+        Returns
+        -------
+        dict
+            Summary of the operation including old/new paths.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If *caller* is not whitelisted in ``AUTOINFO_DIRECTOR_ACTORS``.
+        ValueError
+            If *entry_id* is not found or not in the 03-Wiki tier.
+        FileNotFoundError
+            If the Wiki file is missing from disk.
+        """
+        if not is_director(caller):
+            raise DirectorOnlyError(
+                actor=caller, entry_id=entry_id, operation="demote"
+            )
+
+        meta = self.index.get_entry(entry_id)
+        if meta is None:
+            raise ValueError(f"Entry '{entry_id}' not found")
+
+        if meta.get("tier") != "03-Wiki":
+            raise ValueError(
+                f"Entry '{entry_id}' is not in 03-Wiki "
+                f"(tier: {meta.get('tier', 'unknown')})"
+            )
+
+        file_path = Path(meta["file_path"])
+        if not file_path.is_file():
+            raise FileNotFoundError(
+                f"Wiki file not found on disk: {file_path}"
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        raw_content = file_path.read_text(encoding="utf-8")
+        if raw_content.startswith("---"):
+            end = raw_content.find("---", 3)
+            if end != -1:
+                fm_data = yaml.safe_load(raw_content[3:end]) or {}
+                fm_data["tier"] = "02-Draft"
+                fm_data["demoted_at"] = now_iso
+                fm_data["demoted_by"] = caller
+                new_fm = yaml.dump(
+                    fm_data,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    width=120,
+                )
+                body = raw_content[end + 3 :].lstrip("\n")
+                raw_content = f"---\n{new_fm}---\n\n{body}"
+            else:
+                raw_content = (
+                    f"---\ntier: 02-Draft\ndemoted_at: {now_iso}\n"
+                    f"demoted_by: {caller}\n---\n\n{raw_content}"
+                )
+        else:
+            raw_content = (
+                f"---\ntier: 02-Draft\ndemoted_at: {now_iso}\n"
+                f"demoted_by: {caller}\n---\n\n{raw_content}"
+            )
+
+        parts = list(file_path.parts)
+        tier_idx = None
+        for i, p in enumerate(parts):
+            if p == "03-Wiki":
+                tier_idx = i
+                break
+        if tier_idx is not None:
+            parts[tier_idx] = "02-Draft"
+        new_path = Path(*parts)
+
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_text(raw_content, encoding="utf-8")
+        file_path.unlink()
+
+        demoted_entry = replace(
+            self._entry_from_meta(meta),
+            tier="02-Draft",
+            file_path=str(new_path),
+        )
+        self.index.index_entry(demoted_entry)
+
+        return {
+            "status": "demoted",
+            "entry_id": entry_id,
+            "old_path": str(file_path),
+            "new_path": str(new_path),
+            "demoted_at": now_iso,
+            "demoted_by": caller,
         }
 
     def list_kb_tier(
@@ -3400,7 +3932,8 @@ class KBStore:
         -------
         dict
             ``{query, domain, entries, total_count, limit, offset, method}``.
-            Each entry includes ``freshness_score`` and ``is_stale`` fields.
+            Each entry includes ``tier`` ("01-Raw"/"02-Draft"/"03-Wiki"),
+            ``freshness_score`` and ``is_stale`` fields.
             Falls back to LIKE search if FTS5 syntax is invalid.
         """
         results = self.index.search_fts5(
@@ -3443,16 +3976,22 @@ class KBStore:
             is_stale = freshness_score < freshness_threshold
             relevance_score = entry.get("relevance_score", 0.5) or 0.5
             combined_score = relevance_score * 0.8 + freshness_score * 0.2
+            tier = entry.get("tier", "01-Raw")
+            combined_score *= TIER_SCORE_BOOST.get(tier, 1.0)
+            entry["tier"] = tier
             entry["freshness_score"] = round(freshness_score, 4)
             entry["is_stale"] = is_stale
             entry["combined_score"] = round(combined_score, 4)
             scored_entries.append(entry)
 
         # Demote stale entries when include_stale is False (default).
-        _sort_key = lambda e: (e["is_stale"], -e["combined_score"])
+        # entry_id is the final tie-break so equal scores sort deterministically.
         if include_stale:
-            _sort_key = lambda e: -e["combined_score"]
-        scored_entries.sort(key=_sort_key)
+            scored_entries.sort(key=lambda e: (-e["combined_score"], e["entry_id"]))
+        else:
+            scored_entries.sort(
+                key=lambda e: (e["is_stale"], -e["combined_score"], e["entry_id"])
+            )
 
         for e in scored_entries:
             e.pop("combined_score", None)
@@ -3680,7 +4219,12 @@ class KBStore:
     # Soft-delete, restore, and GDPR user data management
     # ------------------------------------------------------------------
 
-    def soft_delete_entry(self, entry_id: str) -> dict[str, Any]:
+    def soft_delete_entry(
+        self,
+        entry_id: str,
+        *,
+        actor: str | None = None,
+    ) -> dict[str, Any]:
         """Mark an entry as deleted without removing it from disk.
 
         Sets ``deleted=1`` and ``deleted_at`` to the current UTC timestamp
@@ -3689,6 +4233,13 @@ class KBStore:
 
         Returns ``{"deleted": True, "entry_id": ...}`` on success, or an
         error dict when the entry is not found.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If the entry lives in the 03-Wiki tier and *actor* is not
+            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (03-Wiki is
+            append-only; only a director may soft-delete curated entries).
         """
         meta = self.index.get_entry(entry_id)
         if meta is None:
@@ -3697,6 +4248,10 @@ class KBStore:
                 "entry_id": entry_id,
                 "error": "Entry not found",
             }
+
+        _ensure_wiki_delete_allowed(
+            meta.get("tier", "01-Raw"), actor=actor, entry_id=entry_id
+        )
 
         now = datetime.now(timezone.utc).isoformat()
 
@@ -3959,6 +4514,11 @@ def _build_frontmatter(
         data["status"] = entry.status
         data["related_concepts"] = entry.related_concepts
         data["linked_entries"] = entry.linked_entries
+        # Promotion provenance is nullable — emit only when set
+        if entry.promotion_source is not None:
+            data["promotion_source"] = entry.promotion_source
+        if entry.promoted_by is not None:
+            data["promoted_by"] = entry.promoted_by
 
     # Include quality gate flags in frontmatter for transparency
     flags: dict[str, bool] = dict(entry.quality_flags)

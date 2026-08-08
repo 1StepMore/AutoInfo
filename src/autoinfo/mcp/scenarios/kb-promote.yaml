@@ -1,14 +1,33 @@
-# KB Promote tools - verify the full Raw -> Draft -> Wiki promotion lifecycle.
+# KB Promote tools — two-section admission matrix for the Raw -> Draft -> Wiki
+# promotion lifecycle (plan todo T9a).
 #
-# Self-contained: every step operates only on the entry this scenario creates
-# (deterministic entry_id derived from domain/topic/title), never on
-# pre-existing KB entries.  cleanup_steps purge exactly what the scenario
-# created after every run (the 01-Raw entry AND the 03-Wiki entry promoted
-# from the draft — promotion moves the file from 02-Draft to 03-Wiki but the
-# entry_id stays the draft's), regardless of pass/fail, so the real KB is
-# left contaminant-free.
+# Section 1 [pass]: a fully-provenanced draft with real G1/G3 gate scores
+#   promotes to 03-Wiki with tier=03 and promotion_source=agent.
+# Section 2 [reject]: a draft whose source Raw entry lacks source_url is
+#   refused by the admission gate; the draft stays in 02-Draft and a
+#   `_failed/<domain>/<entry_id>.md` marker is written. No 03-Wiki row exists.
+#
+# Admission notes (determinism): the admission gate requires
+# source_score >= 30 AND relevance_score >= 30 (G1/G3 thresholds, default
+# config) — values the MCP create_kb_entry tool cannot set (it stores no
+# quality results).  This scenario therefore seeds the 01-Raw entries via the
+# real KBStore with genuine QualityResult gate scores (deterministic CLI
+# step — the same call path process_collection uses), then drives draft
+# creation + promotion through the real MCP surface.
+#
+# Cleanup alignment with T5 (director backdoor): 03-Wiki is append-only —
+# KBStore.delete_entry() on a 03-Wiki entry is REFUSED for non-director
+# actors (DirectorOnlyError / WIKI_PROTECTED, kb.py `_ensure_wiki_delete_allowed`).
+# The cleanup below therefore routes every delete through the director path:
+# `store.delete_entry(eid, actor="director")` (director is the default member
+# of the AUTOINFO_DIRECTOR_ACTORS whitelist).  Non-director deletes of the
+# promoted 03-Wiki entry would raise and leave the real KB contaminated.
+#
+# Self-contained: every step operates only on entries this scenario creates
+# (deterministic entry_ids from domain/topic/title slugging), never on
+# pre-existing KB entries.
 name: kb-promote
-description: "Promote a KB entry from 01-Raw through 02-Draft to 03-Wiki, then clean up"
+description: "Promote admission matrix: eligible draft -> 03-Wiki (promotion_source=agent); draft missing source_url -> reject, no 03 row"
 category: kb
 requires_env: []
 requires_domain: ["medical-research"]
@@ -16,106 +35,207 @@ collect_artifacts:
   - "knowledge/medical-research/01-Raw/**/*.md"
   - "knowledge/medical-research/02-Draft/**/*.md"
   - "knowledge/medical-research/03-Wiki/**/*.md"
+  - "knowledge/_failed/medical-research/**/*.md"
 steps:
-  - name: "create_kb_entry writes to 01-Raw"
-    tool: create_kb_entry
-    arguments:
-      domain: medical-research
-      title: "KB Promote Scenario Test Entry"
-      content: "This is a test entry created by the kb-promote validation scenario."
-      source_url: https://kb-promote.autoinfo.dev/promote-test
-      source_type: web
+  # ---- Section 1 [pass] ---------------------------------------------------
+  - name: "seed 01-Raw pass entry with real G1/G3 gate scores"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.quality import QualityResult
+      store = KBStore()
+      item = Item(
+          id="t9-kbp-pass-raw", source_name="web", source_type="web",
+          source_url="https://kb-promote.autoinfo.dev/pass-entry",
+          source_platform="web", title="T9 KBP Pass Entry",
+          content="T9 kb-promote pass-path source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      g1 = QualityResult(gate_name="G1-SourceAuthority", passed=True, score=0.0,
+                         details={"source_score": 72.0})
+      g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+                         details={})
+      entry = store.store_entry(item=item, tier="01-Raw",
+                                quality_results={"G1-SourceAuthority": g1,
+                                                 "G3-RelevanceScoring": g3})
+      print("SEED_PASS_RAW " + entry.entry_id + " " + entry.tier)
+      assert entry.tier == "01-Raw"
+      '
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["SEED_PASS_RAW", "medical-research-general-t9-kbp-pass-entry", "01-Raw"]
 
-  - name: "create_kb_draft creates Draft from scenario Raw"
+  - name: "create_kb_draft creates Draft from pass Raw (carries scores)"
     tool: create_kb_draft
     arguments:
       raw_ids:
-        - medical-research-general-kb-promote-scenario-test-entry
-      title: "KB Promote Scenario Draft"
-      summary: "Draft created for kb-promote validation scenario."
-      tags: ["validation", "scenario"]
+        - medical-research-general-t9-kbp-pass-entry
+      title: "T9 KBP Pass Draft"
     expect:
       success: true
       data_has: ["entry_id", "tier"]
 
-  - name: "promote_kb_draft promotes Draft to 03-Wiki"
+  - name: "promote_kb_draft admits eligible draft to 03-Wiki"
     tool: promote_kb_draft
     arguments:
-      entry_id: medical-research-draft-kb-promote-scenario-draft
+      entry_id: medical-research-draft-t9-kbp-pass-draft
     expect:
       success: true
       data_has: ["status", "draft_id", "new_path"]
 
-  - name: "verify wiki entry exists via cli python check"
+  - name: "verify wiki entry: tier 03-Wiki + promotion_source=agent"
     kind: cli
     command: |-
-      python3 -c "
+      python3 -c '
+      import pathlib
       from autoinfo.kb import KBStore
       store = KBStore()
-      meta = store.index.get_entry('medical-research-draft-kb-promote-scenario-draft')
+      meta = store.index.get_entry("medical-research-draft-t9-kbp-pass-draft")
       if meta is None:
-          print('WIKI_ENTRY missing')
+          print("WIKI_ENTRY missing")
           raise SystemExit(1)
-      if meta.get('tier') != '03-Wiki':
-          print('WIKI_ENTRY wrong tier: ' + str(meta.get('tier')))
+      print("WIKI_TIER " + meta.get("tier", ""))
+      if meta.get("tier") != "03-Wiki":
+          print("WIKI_ENTRY wrong tier: " + str(meta.get("tier")))
           raise SystemExit(1)
-      print('WIKI_ENTRY ' + meta.get('tier', '') + ' ' + str(meta.get('source_url', '')))
-      "
+      fm = pathlib.Path(meta["file_path"]).read_text(encoding="utf-8").split("---")[1]
+      print("PROMOTION_SOURCE " + ("agent" if "promotion_source: agent" in fm else "missing"))
+      assert "promotion_source: agent" in fm, fm[:300]
+      assert "human_promoted" not in fm, "human_promoted must not be written"
+      '
     expect:
       success: true
       exit_code: 0
-      stdout_has: ["WIKI_ENTRY", "03-Wiki"]
+      stdout_has: ["WIKI_TIER 03-Wiki", "PROMOTION_SOURCE agent"]
+
+  # ---- Section 2 [reject] -------------------------------------------------
+  - name: "seed 01-Raw reject entry without source_url provenance"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      store = KBStore()
+      item = Item(
+          id="t9-kbp-reject-raw", source_name="web", source_type="web",
+          source_url="", source_platform="",
+          title="T9 KBP Reject Entry",
+          content="T9 kb-promote reject-path source content.",
+          domain="medical-research", topic_tags=["general"],
+          collected_at="2026-08-08T00:00:00+00:00",
+          content_type="text", quality_tier=1,
+      )
+      entry = store.store_entry(item=item, tier="01-Raw")
+      print("SEED_REJECT_RAW " + entry.entry_id + " " + entry.tier)
+      assert entry.tier == "01-Raw"
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SEED_REJECT_RAW", "medical-research-general-t9-kbp-reject-entry", "01-Raw"]
+
+  - name: "create_kb_draft creates Draft from provenance-less Raw"
+    tool: create_kb_draft
+    arguments:
+      raw_ids:
+        - medical-research-general-t9-kbp-reject-entry
+      title: "T9 KBP Reject Draft"
+    expect:
+      success: true
+      data_has: ["entry_id", "tier"]
+
+  - name: "promote_kb_draft rejects draft whose source lacks source_url"
+    tool: promote_kb_draft
+    arguments:
+      entry_id: medical-research-draft-t9-kbp-reject-draft
+    expect:
+      success: false
+      error_code: "InternalError"
+      error_actionable: true
+
+  - name: "verify rejection: draft stays 02-Draft, no 03 row, _failed marker"
+    kind: cli
+    command: |-
+      python3 -c '
+      import pathlib
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-draft-t9-kbp-reject-draft")
+      if meta is None:
+          print("REJECT_ENTRY missing")
+          raise SystemExit(1)
+      print("REJECT_TIER " + meta.get("tier", ""))
+      assert meta.get("tier") == "02-Draft", meta.get("tier")
+      wiki_paths = list(pathlib.Path("knowledge/medical-research/03-Wiki").rglob("*t9-kbp-reject-draft*"))
+      print("NO_WIKI_ROW " + str(len(wiki_paths) == 0))
+      assert len(wiki_paths) == 0, wiki_paths
+      marker = pathlib.Path("knowledge/_failed/medical-research/medical-research-draft-t9-kbp-reject-draft.md")
+      print("FAILED_MARKER " + str(marker.is_file()))
+      assert marker.is_file(), "expected _failed marker"
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REJECT_TIER 02-Draft", "NO_WIKI_ROW True", "FAILED_MARKER True"]
 
 # Always-run best-effort cleanup (engine executes these after the main steps,
 # on pass or fail; results never affect the scenario status).  Only entries
 # whose source_url matches the scenario marker are purged, so real user data
-# is never touched.  Promotion moves the Draft file to 03-Wiki (same
-# entry_id), so BOTH the original 01-Raw entry and the promoted 03-Wiki
-# entry are removed.
+# is never touched.
+#
+# T5 alignment: every delete runs through the DIRECTOR path —
+# `store.delete_entry(eid, actor="director")` — because the promoted 03-Wiki
+# entry is append-only and non-director deletes are refused
+# (DirectorOnlyError).  The director is the default member of the
+# AUTOINFO_DIRECTOR_ACTORS whitelist, so no env setup is required.
 cleanup_steps:
-  - name: "cleanup promoted wiki entry + raw entry"
+  - name: "director purge of scenario raw/draft/wiki entries + _failed markers"
     kind: cli
     command: |-
-      python3 -c "
-      from pathlib import Path
+      python3 -c '
+      import pathlib
       from autoinfo.kb import KBStore
       store = KBStore()
-      markers = [('medical-research-general-kb-promote-scenario-test-entry',
-                  'https://kb-promote.autoinfo.dev/promote-test'),
-                 ('medical-research-draft-kb-promote-scenario-draft',
-                  'https://kb-promote.autoinfo.dev/promote-test')]
+      ids = ["medical-research-draft-t9-kbp-pass-draft",
+             "medical-research-draft-t9-kbp-reject-draft",
+             "medical-research-general-t9-kbp-pass-entry",
+             "medical-research-general-t9-kbp-reject-entry"]
+      urls = {"medical-research-draft-t9-kbp-pass-draft": "https://kb-promote.autoinfo.dev/pass-entry",
+              "medical-research-draft-t9-kbp-reject-draft": "",
+              "medical-research-general-t9-kbp-pass-entry": "https://kb-promote.autoinfo.dev/pass-entry",
+              "medical-research-general-t9-kbp-reject-entry": ""}
       removed = []
-      for eid, url in markers:
+      for eid in ids:
           meta = store.index.get_entry(eid)
           if meta is None:
               continue
-          if meta.get('source_url') != url:
-              print('REFUSE ' + eid)
+          if meta.get("source_url", "") != urls[eid]:
+              print("REFUSE " + eid)
               continue
-          res = store.delete_entry(eid)
-          removed.append(eid + ':' + str(res.get('deleted')))
-      for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-promote-scenario-test-entry*')):
+          # Director-routed delete: required for the promoted 03-Wiki entry
+          # (T5 WIKI_PROTECTED for non-director actors); works for raw/draft
+          # entries too.  Purges index + FTS5 + disk file.
+          res = store.delete_entry(eid, actor="director")
+          removed.append(eid + ":" + str(res))
+      for p in list(pathlib.Path("knowledge/_failed/medical-research").glob("*t9-kbp-*")):
           p.unlink(missing_ok=True)
           removed.append(str(p))
-      for p in list(Path('knowledge/medical-research/02-Draft').rglob('*kb-promote-scenario-draft*')):
+      for p in list(pathlib.Path("knowledge/medical-research/01-Raw/general").glob("*t9-kbp-*")):
           p.unlink(missing_ok=True)
           removed.append(str(p))
-      for p in list(Path('knowledge/medical-research/03-Wiki').rglob('*kb-promote-scenario-draft*')):
+      for p in list(pathlib.Path("knowledge/medical-research/02-Draft").rglob("*t9-kbp-*")):
           p.unlink(missing_ok=True)
           removed.append(str(p))
-      for p in list(Path('knowledge/_archive/medical-research').glob('*kb-promote-scenario-draft*')):
+      for p in list(pathlib.Path("knowledge/medical-research/03-Wiki").rglob("*t9-kbp-*")):
           p.unlink(missing_ok=True)
           removed.append(str(p))
-      with store.index._connect() as conn:
-          for row in conn.execute('SELECT rowid FROM entries_fts5 WHERE title LIKE ?',
-                                  ('%KB Promote Scenario%',)).fetchall():
-              conn.execute('DELETE FROM entries_fts5 WHERE rowid = ?', (row[0],))
-              removed.append('fts5:' + str(row[0]))
-      print('CLEANED ' + str(removed))
-      "
+      print("CLEANED " + str(removed))
+      '
     expect:
       success: true
       exit_code: 0

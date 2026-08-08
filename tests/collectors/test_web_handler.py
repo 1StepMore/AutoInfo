@@ -17,8 +17,8 @@ from autoinfo.collectors.web import WebHandler
 from autoinfo.models import Item
 
 # Paths
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-CASSETTES = Path(__file__).resolve().parent / "cassettes"
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
+CASSETTES = Path(__file__).resolve().parent.parent / "cassettes"
 
 # ---------------------------------------------------------------------------
 # Fixtures

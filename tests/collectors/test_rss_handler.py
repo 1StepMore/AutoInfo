@@ -15,8 +15,8 @@ from autoinfo.collectors.rss import RSSHandler
 from autoinfo.models import Item
 
 # Path to VCR cassettes
-CASSETTES = Path(__file__).resolve().parent / "cassettes"
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+CASSETTES = Path(__file__).resolve().parent.parent / "cassettes"
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 # ---------------------------------------------------------------------------
 # Fixtures

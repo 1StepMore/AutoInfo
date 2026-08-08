@@ -10,6 +10,9 @@ Covers:
     - list_kb_tier returns only entries in specified tier
     - SQLite index updated with correct tier
     - Frontmatter includes source_raw_ids
+    - Promotion provenance: promotion_source/promoted_by fields + frontmatter
+    - Draft carries forward real Raw scores (G-02: no more hardcoded 0/1)
+    - Legacy Drafts without source_raw_ids remain compatible
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ import yaml
 
 from autoinfo.kb import KBStore
 from autoinfo.models import Item, KBEntry
-
 
 # ===================================================================
 # Fixtures
@@ -42,6 +44,7 @@ def sample_item_1() -> Item:
         source_name="pubmed",
         source_type="api",
         source_url="https://example.com/paper1",
+        source_platform="pubmed",
         title="IVF outcomes with time-lapse imaging",
         content=(
             "Time-lapse embryo imaging has been proposed as a non-invasive "
@@ -63,6 +66,7 @@ def sample_item_2() -> Item:
         source_name="pubmed",
         source_type="api",
         source_url="https://example.com/paper2",
+        source_platform="pubmed",
         title="AI-assisted embryo grading",
         content=(
             "Artificial intelligence models can predict embryo viability "
@@ -77,11 +81,68 @@ def sample_item_2() -> Item:
     )
 
 
+def _store_scored_raw(store: KBStore, item: Item) -> KBEntry:
+    """Store a Raw entry with full provenance and real G1/G3 gate scores so
+    the promotion admission gate (T2/T3) admits drafts built from it.
+
+    Mirrors ``make_scored_raw`` in tests/kb/test_promotion.py — G1 lives in
+    ``details["source_score"]``, G3 in the gate score (see
+    ``test_draft_carries_forward_raw_scores`` for the carry-forward wiring).
+    """
+    from autoinfo.quality import QualityResult
+
+    g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=85.0)
+    g1 = QualityResult(
+        gate_name="G1-SourceAuthority",
+        passed=True,
+        score=0.0,
+        details={"source_score": 72.0},
+    )
+    return store.store_entry(
+        item,
+        quality_results={
+            "G3-RelevanceScoring": g3,
+            "G1-SourceAuthority": g1,
+        },
+    )
+
+
+@pytest.fixture(autouse=True)
+def _promotion_g4_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Swap the promotion-time G4 factual checker (promotion.py) for a
+    passing fake so promote tests never make real LLM calls.
+
+    Mirrors ``patch_g4`` in tests/kb/test_promotion.py: the admission gate
+    itself is untouched — only the LLM-backed checker backend is faked.
+    """
+    from autoinfo.quality import QualityResult
+
+    class _FakeG4:
+        def __init__(self, *_: object, **__: object) -> None:
+            pass
+
+        def check(
+            self,
+            item: object,  # noqa: ARG002
+            extraction: object,  # noqa: ARG002
+            gate_config: object | None = None,  # noqa: ARG002
+        ) -> QualityResult:
+            return QualityResult(
+                gate_name="G4-SummaryFactual",
+                passed=True,
+                score=1.0,
+                details={"contradiction": False},
+            )
+
+    monkeypatch.setattr("autoinfo.promotion.G4FactualConsistency", _FakeG4)
+
+
 @pytest.fixture
 def raw_entry_ids(store: KBStore, sample_item_1: Item, sample_item_2: Item) -> list[str]:
-    """Store two Raw entries and return their entry IDs."""
-    e1 = store.store_entry(sample_item_1)
-    e2 = store.store_entry(sample_item_2)
+    """Store two admission-eligible Raw entries (full provenance + real
+    G1/G3 scores) and return their entry IDs."""
+    e1 = _store_scored_raw(store, sample_item_1)
+    e2 = _store_scored_raw(store, sample_item_2)
     return [e1.entry_id, e2.entry_id]
 
 
@@ -122,7 +183,9 @@ class TestCreateKbDraft:
         assert fm["entry_id"] == draft.entry_id
         assert fm["title"] == "Frontmatter test draft"
 
-    def test_frontmatter_includes_source_raw_ids(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_frontmatter_includes_source_raw_ids(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         draft = store.create_kb_draft(
             raw_ids=raw_entry_ids,
             title="Draft with source refs",
@@ -265,7 +328,9 @@ class TestRejectKbDraft:
             raw_ids=[raw_entry_ids[0]],
             title="Draft to archive",
         )
-        result = store.reject_kb_draft(draft_id=draft.entry_id, reason="Out of scope", action="archive")
+        result = store.reject_kb_draft(
+            draft_id=draft.entry_id, reason="Out of scope", action="archive"
+        )
         assert result["status"] == "archived"
         assert result["action"] == "archive"
         assert "_archive" in result["new_path"]
@@ -388,7 +453,9 @@ class TestSQLiteIndexTier:
 
 
 class TestExpandedFrontmatter:
-    def test_frontmatter_has_expanded_fields(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_frontmatter_has_expanded_fields(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         """Draft frontmatter must include all 5 new fields."""
         draft = store.create_kb_draft(
             raw_ids=raw_entry_ids,
@@ -413,7 +480,9 @@ class TestExpandedFrontmatter:
         assert fm["related_concepts"] == []
         assert fm["linked_entries"] == []
 
-    def test_draft_custom_fields_stored_in_sqlite(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_draft_custom_fields_stored_in_sqlite(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         """New fields should be serialized into custom_fields JSON in SQLite."""
         draft = store.create_kb_draft(
             raw_ids=raw_entry_ids,
@@ -430,7 +499,9 @@ class TestExpandedFrontmatter:
         assert cf.get("related_concepts") == []
         assert cf.get("linked_entries") == []
 
-    def test_raw_entry_does_not_have_expanded_fields(self, store: KBStore, sample_item_1: Item) -> None:
+    def test_raw_entry_does_not_have_expanded_fields(
+        self, store: KBStore, sample_item_1: Item
+    ) -> None:
         """01-Raw entries should NOT contain the expanded frontmatter fields."""
         entry = store.store_entry(sample_item_1)
         raw = Path(entry.file_path).read_text(encoding="utf-8")
@@ -440,10 +511,14 @@ class TestExpandedFrontmatter:
         assert "author" not in fm, "author should not appear in 01-Raw frontmatter"
         assert "source_ids" not in fm, "source_ids should not appear in 01-Raw frontmatter"
         assert "status" not in fm, "status should not appear in 01-Raw frontmatter"
-        assert "related_concepts" not in fm, "related_concepts should not appear in 01-Raw frontmatter"
+        assert "related_concepts" not in fm, (
+            "related_concepts should not appear in 01-Raw frontmatter"
+        )
         assert "linked_entries" not in fm, "linked_entries should not appear in 01-Raw frontmatter"
 
-    def test_expanded_fields_survive_promotion(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_expanded_fields_survive_promotion(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         """Expanded fields should carry forward through Draft → Wiki promotion."""
         draft = store.create_kb_draft(
             raw_ids=raw_entry_ids,
@@ -529,7 +604,9 @@ class TestExpandedFrontmatter:
         assert loaded.related_concepts == []
         assert loaded.linked_entries == []
 
-    def test_expanded_fields_persist_after_reject(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_expanded_fields_persist_after_reject(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         """Expanded fields should survive Draft → Raw demotion (reject).
 
         Note: reject modifies the existing file frontmatter in-place
@@ -586,10 +663,11 @@ class TestPromoteKbDraft:
         # New Wiki file should exist
         assert Path(result["new_path"]).exists()
 
-    def test_promote_adds_human_promoted_frontmatter(
+    def test_promote_records_agent_promotion_source(
         self, store: KBStore, raw_entry_ids: list[str]
     ) -> None:
-        """Unit test: promoted file gets human_promoted + promoted_at in frontmatter."""
+        """Unit test: promoted file gets promotion_source=agent + promoted_at
+        in frontmatter (T2: human_promoted is no longer written)."""
         draft = store.create_kb_draft(
             raw_ids=[raw_entry_ids[0]],
             title="Frontmatter promote test",
@@ -598,7 +676,8 @@ class TestPromoteKbDraft:
         raw = Path(result["new_path"]).read_text(encoding="utf-8")
         end = raw.find("---", 3)
         fm = yaml.safe_load(raw[3:end])
-        assert fm["human_promoted"] is True
+        assert fm["promotion_source"] == "agent"
+        assert "human_promoted" not in fm
         assert "promoted_at" in fm
 
     def test_promote_nonexistent_draft_raises_error(self, store: KBStore) -> None:
@@ -685,3 +764,160 @@ class TestEnsureNotWiki:
         entry = store.store_entry(sample_item_1)
         assert entry.tier == "01-Raw"
         assert Path(entry.file_path).exists()
+
+
+# ===================================================================
+# Promotion provenance — KBEntry fields + Draft score carry-forward
+# ===================================================================
+
+
+class TestPromotionProvenance:
+    """T1: promotion_source/promoted_by provenance fields and Draft
+    carry-forward of real Raw scores (G-02: scores must not be zeroed)."""
+
+    def test_promotion_fields_exist_on_model_default_none(self) -> None:
+        """KBEntry exposes nullable promotion_source/promoted_by, defaulting to None."""
+        entry = KBEntry(
+            entry_id="prov-1",
+            title="Provenance model",
+            domain="medical-research",
+        )
+        assert entry.promotion_source is None
+        assert entry.promoted_by is None
+        entry.promotion_source = "agent"
+        entry.promoted_by = "alice"
+        assert entry.promotion_source == "agent"
+        assert entry.promoted_by == "alice"
+
+    def test_promotion_fields_render_in_frontmatter_when_set(self) -> None:
+        """Set promotion fields appear in generated frontmatter."""
+        from autoinfo.kb import _build_frontmatter
+
+        entry = KBEntry(
+            entry_id="prov-2",
+            title="Provenance fm",
+            domain="medical-research",
+            tier="02-Draft",
+            promotion_source="agent",
+            promoted_by="alice",
+        )
+        fm = _build_frontmatter(entry)
+        assert "promotion_source: agent" in fm
+        assert "promoted_by: alice" in fm
+
+    def test_promotion_fields_omitted_from_frontmatter_when_unset(self) -> None:
+        """Nullable provenance fields stay out of frontmatter when unset."""
+        from autoinfo.kb import _build_frontmatter
+
+        entry = KBEntry(
+            entry_id="prov-3",
+            title="Provenance none",
+            domain="medical-research",
+            tier="02-Draft",
+        )
+        fm = _build_frontmatter(entry)
+        assert "promotion_source" not in fm
+        assert "promoted_by" not in fm
+
+    def test_draft_carries_forward_raw_scores(
+        self, store: KBStore, sample_item_1: Item
+    ) -> None:
+        """A Draft created from a scored Raw entry inherits the exact
+        G1/G3-derived values instead of hardcoded 0/1."""
+        from autoinfo.quality import QualityResult
+
+        g3 = QualityResult(
+            gate_name="G3-RelevanceScoring", passed=True, score=87.5
+        )
+        g1 = QualityResult(
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=0.0,
+            details={"source_score": 72.0},
+        )
+        sample_item_1.quality_tier = 3
+        raw = store.store_entry(
+            sample_item_1,
+            quality_results={
+                "G3-RelevanceScoring": g3,
+                "G1-SourceAuthority": g1,
+            },
+        )
+        assert raw.relevance_score == 87.5
+        assert raw.quality_tier == 3
+        assert raw.source_score == 72.0
+
+        draft = store.create_kb_draft(
+            raw_ids=[raw.entry_id],
+            title="Score carry-forward draft",
+        )
+        assert draft.relevance_score == 87.5
+        assert draft.quality_tier == 3
+        assert draft.source_score == 72.0
+
+        fm_raw = Path(draft.file_path).read_text(encoding="utf-8")
+        end = fm_raw.find("---", 3)
+        fm = yaml.safe_load(fm_raw[3:end])
+        assert fm["relevance_score"] == 87.5
+        assert fm["quality_tier"] == 3
+        assert fm["source_score"] == 72.0
+
+        meta = store.index.get_entry(draft.entry_id)
+        assert meta is not None
+        assert meta["relevance_score"] == 87.5
+        assert meta["quality_tier"] == 3
+        assert meta["source_score"] == 72.0
+
+    def test_draft_from_legacy_raw_without_scores_creates_fine(
+        self, store: KBStore, sample_item_1: Item
+    ) -> None:
+        """A Draft from a legacy Raw row (score columns never populated)
+        still creates fine and stays 'pending' (no promotion provenance)."""
+        raw = store.store_entry(sample_item_1)
+        draft = store.create_kb_draft(
+            raw_ids=[raw.entry_id],
+            title="Legacy-source draft",
+        )
+        assert draft.tier == "02-Draft"
+        assert Path(draft.file_path).exists()
+        assert draft.relevance_score == 0.0
+        assert draft.quality_tier == 1
+        assert draft.source_score == 0.0
+        assert draft.promotion_source is None
+        assert draft.promoted_by is None
+        meta = store.get_entry(draft.entry_id)
+        assert meta is not None
+        assert meta["tier"] == "02-Draft"
+
+    def test_legacy_draft_without_source_raw_ids_preserves_real_values(
+        self, store: KBStore
+    ) -> None:
+        """A pre-provenance Draft (no source_raw_ids custom field) keeps
+        its previously-real scores — loading never zeroes them."""
+        entry = KBEntry(
+            entry_id="legacy-draft-no-raw",
+            title="Legacy no-raw draft",
+            domain="medical-research",
+            tier="02-Draft",
+            source_url="https://example.com/legacy",
+            source_type="api",
+            source_platform="pubmed",
+            collected_at="2026-01-01T00:00:00Z",
+            summary="",
+            tags=["legacy"],
+            quality_tier=2,
+            relevance_score=66.0,
+            source_score=58.0,
+            dedup_status="unique",
+            file_path=str(
+                store.base_path / "medical-research" / "02-Draft"
+                / "general" / "legacy-draft.md"
+            ),
+        )
+        store.index.index_entry(entry)
+        meta = store.get_entry(entry.entry_id)
+        assert meta is not None
+        assert meta["tier"] == "02-Draft"
+        assert meta["relevance_score"] == 66.0
+        assert meta["quality_tier"] == 2
+        assert meta["source_score"] == 58.0

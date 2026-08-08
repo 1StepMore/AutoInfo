@@ -43,7 +43,7 @@ _CASSETTE_NAMES = (
 
 def _cassettes_present() -> bool:
     return all(
-        (Path(__file__).parent / "cassettes" / name).exists()
+        (Path(__file__).parent.parent / "cassettes" / name).exists()
         for name in _CASSETTE_NAMES
     )
 

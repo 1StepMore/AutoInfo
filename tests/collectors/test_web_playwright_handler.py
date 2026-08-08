@@ -25,7 +25,7 @@ from autoinfo.collectors.web_playwright import (
 from autoinfo.models import Item
 
 # Paths
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 # ---------------------------------------------------------------------------
 # Fixtures

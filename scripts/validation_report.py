@@ -27,8 +27,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "validation-runs"
 REPORTS = ROOT / "docs" / "dev" / "validation-reports"
-FRAMEWORK = "docs/dev/launch-validation-framework.md"
-TEMPLATE = "docs/dev/launch-validation-template.md"
+FRAMEWORK = "docs/dev/acceptance-framework.md"
+TEMPLATE = "docs/archive/launch-validation-framework.md"
 
 
 def _latest_run() -> str:

@@ -250,6 +250,11 @@ class QualityGateConfig:
     """Configuration for a single quality gate (G0-G5 or custom).
 
     Attributes match the YAML schema in ``founder-expectations.md`` §4.4.
+
+    A domain may also configure the ``CurationGate`` entry (promotion
+    admission): ``threshold`` is the shared G1/G3 bar (default 30) and
+    ``enabled`` toggles the G4 factual re-check (default ``True``).  When
+    the entry is absent, those defaults apply (see ``autoinfo.promotion``).
     """
 
     name: str = ""
@@ -262,6 +267,7 @@ class QualityGateConfig:
     source_score_map: dict[int, float] = field(default_factory=dict)
     # Optional G1 tier→score override. When non-empty, replaces the module-level
     # SOURCE_TIER_SCORE_MAP for this gate. Example: {1: 95, 2: 75, 3: 55, 4: 25}.
+    enabled: bool = True
 
 
 @dataclass
@@ -395,9 +401,15 @@ class OutputConfig:
         Maximum seconds to allow for a single weasyprint PDF render
         (default 120).  Large knowledge bases may exceed this on slow
         machines — raise it via ``output.pdf_timeout`` in config.yaml.
+    source_tier_badge:
+        When True (default), digest and report templates render a
+        ``[curated]`` / ``[fresh]`` badge per entry based on its
+        ``source_tier`` (03-Wiki vs 02-Draft).  Disable via
+        ``output.source_tier_badge: false`` in config.yaml.
     """
 
     pdf_timeout: float = 120.0
+    source_tier_badge: bool = True
 
 
 @dataclass
@@ -596,6 +608,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 action=str(gc.get("action", "flag")),
                 threshold=gc.get("threshold", None),
                 window_days=int(gc.get("window_days", 0)),
+                enabled=_as_bool(gc.get("enabled", True)),
             )
         # --- Parse per-domain delivery_gates ---
         domain_dg_raw: dict[str, Any] = d.get("delivery_gates", {}) or {}
@@ -634,6 +647,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             action=str(gc.get("action", "flag")),
             threshold=gc.get("threshold", None),
             window_days=int(gc.get("window_days", 0)),
+            enabled=_as_bool(gc.get("enabled", True)),
         )
 
     delivery_gates_raw: dict[str, Any] = raw.get("delivery_gates", {}) or {}
@@ -759,6 +773,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         ),
         output=OutputConfig(
             pdf_timeout=float(output_raw.get("pdf_timeout", 120.0)),
+            source_tier_badge=_as_bool(output_raw.get("source_tier_badge", True)),
         ),
     )
 
@@ -1038,6 +1053,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                 entry["threshold"] = gc.threshold
             if gc.window_days:
                 entry["window_days"] = gc.window_days
+            if not gc.enabled:
+                entry["enabled"] = gc.enabled
             raw["quality_gates"][gate_name] = entry
     if config.delivery_gates:
         raw["delivery_gates"] = {}
@@ -1098,6 +1115,8 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     entry["threshold"] = gc.threshold
                 if gc.window_days:
                     entry["window_days"] = gc.window_days
+                if not gc.enabled:
+                    entry["enabled"] = gc.enabled
                 domain_qg_dict[gate_name] = entry
             domain_dict["quality_gates"] = domain_qg_dict
         if domain.delivery_gates:

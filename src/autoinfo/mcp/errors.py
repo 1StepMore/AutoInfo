@@ -48,6 +48,7 @@ class ErrorCode(str, Enum):
     NO_CACHED_ITEMS = "NoCachedItems"
     EMPTY_RESULT = "EmptyResult"
     CONFIG_NOT_FOUND = "ConfigNotFound"
+    DIRECTOR_ONLY = "DIRECTOR_ONLY"
 
 
 class ErrorDetail(TypedDict):

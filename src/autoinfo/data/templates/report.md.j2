@@ -25,7 +25,7 @@
 | # | Title | Summary |
 |---|-------|---------|
 {% for entry in section.entries %}
-| {{ loop.index }} | {{ entry.title }} | {{ entry.summary }} |
+| {{ loop.index }} | {% if source_tier_badge and entry.source_tier %}[{{ entry.source_tier }}] {% endif %}{{ entry.title }} | {{ entry.summary }} |
 {% endfor %}
 {% endif %}
 

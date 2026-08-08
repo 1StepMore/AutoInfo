@@ -47,7 +47,7 @@ import httpx
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, TemplateNotFound
 
 from autoinfo.config import Config, get_config_path, load_config
-from autoinfo.kb import KBStore, SQLiteIndex
+from autoinfo.kb import KBStore, PromotionRejected, SQLiteIndex
 from autoinfo.llm import call_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -838,6 +838,35 @@ def _export_pdf(
     }
 
 
+def _derive_export_lang(entries: list[dict[str, Any]]) -> str:
+    """Derive the ebook language code from *entries*.
+
+    Uses the first entry that declares a ``language`` field, normalized to
+    its primary RFC 5646 subtag (``zh-CN`` → ``zh``); otherwise runs
+    ``langdetect`` over the concatenated titles/summaries; falls back to
+    ``"en"`` when no signal is available.
+    """
+    for e in entries:
+        lang = (e.get("language") or "").strip()
+        if lang:
+            return lang.split("-")[0].lower()
+    sample = " ".join(
+        f"{e.get('title', '')} {e.get('summary', '')}".strip()
+        for e in entries
+        if (e.get("title") or e.get("summary"))
+    ).strip()
+    if sample:
+        try:
+            from langdetect import detect  # noqa: PLC0415 — deferred import
+
+            detected = detect(sample)
+            if detected:
+                return str(detected)
+        except Exception:
+            logger.debug("langdetect failed on export sample", exc_info=True)
+    return "en"
+
+
 def _export_epub(
     export_dir: Path,
     entries: list[dict[str, Any]],
@@ -878,7 +907,7 @@ def _export_epub(
     result = render_epub(
         title=f"{domain_label} \u2014 Export",
         author="AutoInfo",
-        lang="en",
+        lang=_derive_export_lang(entries),
         chapters=chapters,
     )
 
@@ -937,7 +966,7 @@ def _export_mobi(
     epub_result = render_epub(
         title=f"{domain_label} \u2014 Export",
         author="AutoInfo",
-        lang="en",
+        lang=_derive_export_lang(entries),
         chapters=chapters,
     )
     result = render_mobi(epub_result["data_b64"])
@@ -1829,6 +1858,16 @@ def _compute_date_range(period: str) -> tuple[str, str]:
     return date_from, date_to
 
 
+def _curated_sort_key(entry: dict[str, Any]) -> tuple[float, str]:
+    """Sort key for curated consumption: relevance desc, stable tie by entry_id."""
+    score = entry.get("relevance_score")
+    try:
+        quality = float(score) if score is not None else 0.0
+    except (TypeError, ValueError):
+        quality = 0.0
+    return (-quality, str(entry.get("entry_id", "")))
+
+
 def _filter_entries_by_content_preference(
     entries: list[dict[str, Any]],
     content_preference: str,
@@ -1836,7 +1875,11 @@ def _filter_entries_by_content_preference(
     """Filter KB entries by the end-user ``content_preference`` tier policy.
 
     - ``"raw_only"``: keep only 01-Raw tier entries.
-    - ``"processed_only"``: keep only 02-Draft and 03-Wiki tier entries.
+    - ``"processed_only"``: keep 02-Draft and 03-Wiki tier entries with
+      curated-priority consumption: 03-Wiki entries come first (sorted by
+      relevance desc, stable ties), 02-Draft entries fill the remainder.
+      Each selected entry carries ``source_tier`` — ``"curated"`` for
+      Wiki, ``"fresh"`` for Draft — for tier badge rendering.
     - ``"both"`` (or any unknown value): return entries unchanged.
 
     The input list is not mutated.
@@ -1844,10 +1887,101 @@ def _filter_entries_by_content_preference(
     if content_preference == "raw_only":
         return [e for e in entries if e.get("tier", "") == "01-Raw"]
     if content_preference == "processed_only":
+        wiki = sorted(
+            (e for e in entries if e.get("tier", "") == "03-Wiki"),
+            key=_curated_sort_key,
+        )
+        draft = sorted(
+            (e for e in entries if e.get("tier", "") == "02-Draft"),
+            key=_curated_sort_key,
+        )
         return [
-            e for e in entries if e.get("tier", "") in ("02-Draft", "03-Wiki")
+            *({**e, "source_tier": "curated"} for e in wiki),
+            *({**e, "source_tier": "fresh"} for e in draft),
         ]
     return entries
+
+
+def _source_tier_badge_enabled() -> bool:
+    """Resolve ``output.source_tier_badge`` from config (default True)."""
+    try:
+        config_path = get_config_path()
+        if config_path is not None:
+            return bool(load_config(config_path).output.source_tier_badge)
+    except Exception:
+        logger.debug(
+            "Failed to load output.source_tier_badge, defaulting to True",
+            exc_info=True,
+        )
+    return True
+
+
+def _promote_eligible_drafts(
+    store: KBStore,
+    domains: list[str],
+    caller: str = "digest",
+) -> dict[str, Any]:
+    """Promote eligible 02-Draft entries for the given domains (T6 trigger).
+
+    Best-effort promotion sweep run before entry selection: every 02-Draft
+    entry is admission-checked by the existing promote path
+    (:meth:`KBStore.promote_kb_draft`) inside its own try/except, so a
+    rejection or an unexpected failure never blocks content generation.
+    Project gate thresholds apply when a config is present (defaults
+    otherwise).  Idempotent — already-promoted entries are no longer in
+    02-Draft and are naturally skipped.
+
+    Returns a summary dict ``{promoted: [entry_id], rejected:
+    [{entry_id, reasons}], failed: [{entry_id, error}]}`` which callers
+    may log or ignore.
+    """
+    summary: dict[str, Any] = {"promoted": [], "rejected": [], "failed": []}
+    if not domains:
+        return summary
+    try:
+        config_path = get_config_path()
+        config = load_config(config_path) if config_path is not None else None
+    except Exception:
+        config = None
+    for domain in domains:
+        try:
+            drafts = store.list_kb_tier(
+                domain=domain, tier="02-Draft", limit=10000
+            )
+        except Exception as exc:
+            logger.warning(
+                "promote_eligible: could not list 02-Draft for '%s': %s",
+                domain,
+                exc,
+            )
+            continue
+        for draft in drafts:
+            draft_id = draft.get("entry_id", "")
+            if not draft_id:
+                continue
+            try:
+                store.promote_kb_draft(
+                    draft_id=draft_id, config=config, caller=caller
+                )
+                summary["promoted"].append(draft_id)
+                logger.info(
+                    "Product-driven promotion of %s (caller=%s)",
+                    draft_id,
+                    caller,
+                )
+            except PromotionRejected as exc:
+                summary["rejected"].append(
+                    {
+                        "entry_id": draft_id,
+                        "reasons": [str(r) for r in exc.reasons],
+                    }
+                )
+            except Exception as exc:
+                summary["failed"].append({"entry_id": draft_id, "error": str(exc)})
+                logger.warning(
+                    "Promotion failed for %s: %s", draft_id, exc
+                )
+    return summary
 
 
 def _resolve_content_preference(user_id: str) -> str:
@@ -2638,6 +2772,14 @@ def generate_digest(
         elif not isinstance(tags_raw, list):
             entry["tags"] = []
 
+    # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+    # Best-effort per entry: a rejected/failed promotion never blocks the
+    # digest (rejections are expected — they stay in 02-Draft with a
+    # _failed/ marker).
+    _promote_eligible_drafts(
+        store, digest_domains if is_cross_domain_digest else [domain], caller="digest"
+    )
+
     # --- Content-preference tier filtering (B-001) ---------------------------
     if content_preference != "both":
         filtered_entries = _filter_entries_by_content_preference(
@@ -2721,6 +2863,7 @@ def generate_digest(
         "entries": entries,
         "llm_synthesis": llm_synthesis,
         "target_audience": target_audience,
+        "source_tier_badge": _source_tier_badge_enabled(),
     }
 
     # --- Render --------------------------------------------------------------
@@ -3003,6 +3146,7 @@ def generate_report(
 
     # --- Auto-load content_preference from user profile (B-001) --------------
     content_preference: str = _resolve_content_preference(user_id)
+    source_tier_badge: bool = _source_tier_badge_enabled()
 
     # --- Freemium access gating (G15) ----------------------------------------
     if user_id and product_template is not None:
@@ -3044,6 +3188,13 @@ def generate_report(
             entries.extend(domain_entries)
     else:
         entries = kb_store.list_entries(domain, limit=5000)
+
+    # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+    # Best-effort per entry — a rejected/failed promotion never blocks the
+    # report (rejections stay in 02-Draft with a _failed/ marker).
+    _promote_eligible_drafts(
+        kb_store, report_domains if is_cross_domain else [domain], caller="report"
+    )
 
     # --- Content-preference tier filtering (B-001) ---------------------------
     if content_preference != "both":
@@ -3170,6 +3321,7 @@ def generate_report(
                     "summary": e.get("summary", ""),
                     "source_url": e.get("source_url", ""),
                     "relevance_score": e.get("relevance_score", 0),
+                    "source_tier": e.get("source_tier"),
                     "domain": e.get("domain", domain),
                 }
                 for e in g["entries"]
@@ -3200,7 +3352,7 @@ def generate_report(
     # -- Render -------------------------------------------------------------
     if product_template is not None:
         variant = FORMAT_TO_VARIANT.get(format, format)
-        pt_context = _report_data_to_dict(report_data)
+        pt_context = _report_data_to_dict(report_data, source_tier_badge=source_tier_badge)
         # The "column" product renders through its own template family
         # (column.md.j2); every other product type keeps the report family.
         product_type = "column" if report_type == "column" else "report"
@@ -3210,7 +3362,7 @@ def generate_report(
     elif format == "html":
         rendered = _render_report_html(report_data, period=period)
     elif format == "audio":
-        markdown_text = _render_report_template(report_data)
+        markdown_text = _render_report_template(report_data, source_tier_badge=source_tier_badge)
         mp3_bytes = _render_audio(markdown_text)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
     elif format in ("epub", "audiobook"):
@@ -3220,7 +3372,14 @@ def generate_report(
         if not report_chapters:
             # Degenerate report (no summary/sections/references): render the
             # full template as a single chapter so the book is still valid.
-            report_chapters = [(report_data.title, _render_report_template(report_data))]
+            report_chapters = [
+                (
+                    report_data.title,
+                    _render_report_template(
+                        report_data, source_tier_badge=source_tier_badge
+                    ),
+                )
+            ]
         if format == "epub":
             ebook_result = render_epub(
                 title=report_data.title,
@@ -3277,7 +3436,9 @@ def generate_report(
         }
         rendered = _render_agent_json(agent_entries, agent_context)
     else:
-        rendered = _render_report_template(report_data)
+        rendered = _render_report_template(
+            report_data, source_tier_badge=source_tier_badge
+        )
 
     # -- Source attribution (F46) --------------------------------------------
     if is_cross_domain:
@@ -3347,7 +3508,9 @@ def generate_report(
             context=report_context,
             product_type=product_type,
             delivery_gate_configs=delivery_gate_configs,
-            fallback_render_fn=lambda: _render_report_template(report_data),
+            fallback_render_fn=lambda: _render_report_template(
+                report_data, source_tier_badge=source_tier_badge
+            ),
         )
         if user_id:
             _try_notify_content_ready(
@@ -3734,7 +3897,9 @@ def _llm_json_extract(
     return result.custom_fields.get(field)
 
 
-def _report_data_to_dict(report_data: ReportData) -> dict[str, Any]:
+def _report_data_to_dict(
+    report_data: ReportData, source_tier_badge: bool = True
+) -> dict[str, Any]:
     """Convert a :class:`ReportData` instance to a flat dict for Jinja2 rendering.
 
     Maps ``ReportSection.items`` → ``entries`` to match the variable
@@ -3747,6 +3912,7 @@ def _report_data_to_dict(report_data: ReportData) -> dict[str, Any]:
         "domain": report_data.domain,
         "collection_id": report_data.collection_id,
         "executive_summary": report_data.executive_summary,
+        "source_tier_badge": source_tier_badge,
         "sections": [
             {
                 "title": s.title,
@@ -3846,7 +4012,7 @@ def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
     return chapters
 
 
-def _render_report_template(report_data: ReportData) -> str:
+def _render_report_template(report_data: ReportData, source_tier_badge: bool = True) -> str:
     """Render the report data through the Jinja2 template."""
     if not TEMPLATE_PATH.is_file():
         raise FileNotFoundError(
@@ -3862,6 +4028,7 @@ def _render_report_template(report_data: ReportData) -> str:
         domain=report_data.domain,
         collection_id=report_data.collection_id,
         executive_summary=report_data.executive_summary,
+        source_tier_badge=source_tier_badge,
         sections=[
             {
                 "title": s.title,
@@ -4501,6 +4668,23 @@ def generate_tutorial(
         entries = filtered_entries
 
     if not entries:
+        if format == "agent":
+            return json.dumps(
+                {
+                    "@context": _JSONLD_TUTORIAL["@context"],
+                    "@type": _JSONLD_TUTORIAL["@type"],
+                    "error": {
+                        "code": "EMPTY_CONTENT",
+                        "message": (
+                            f"No knowledge base entries found for domain '{domain}'. "
+                            "Cannot generate an agent-format tutorial."
+                        ),
+                    },
+                    "entries": [],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
         return (
             f"# {domain} — Tutorial\n\n"
             f"_No knowledge base entries found for domain '{domain}'._"
@@ -5579,6 +5763,7 @@ def _render_digest_html(context: dict[str, Any]) -> str:
             "source_url": e.get("source_url", "") or "",
             "summary": e.get("summary", "") or "",
             "relevance_score": e.get("relevance_score"),
+            "source_tier": e.get("source_tier"),
         }
         for e in (context.get("entries") or [])
     ]

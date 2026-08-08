@@ -10,7 +10,9 @@ entries by tier according to the stored ``content_preference``:
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -89,7 +91,10 @@ class TestDigestContentPreference:
     """``generate_digest`` filters entries by stored content_preference."""
 
     def _call_digest(
-        self, preferences: dict[str, Any], user_id: str = "u-1"
+        self,
+        preferences: dict[str, Any],
+        user_id: str = "u-1",
+        entries: list[dict[str, Any]] | None = None,
     ) -> str:
         from autoinfo.output import generate_digest
 
@@ -100,7 +105,7 @@ class TestDigestContentPreference:
         ):
             mock_llm.return_value = {"executive_summary": "Synthesis."}
             mock_store = MagicMock()
-            mock_store.list_entries.return_value = _ALL_ENTRIES
+            mock_store.list_entries.return_value = entries or _ALL_ENTRIES
             mock_kb_cls.return_value = mock_store
             mock_prefs.return_value = _prefs_result(preferences)
             return generate_digest(
@@ -112,12 +117,122 @@ class TestDigestContentPreference:
         assert "Raw tier article one" in result
         assert "Draft tier article one" not in result
         assert "Wiki tier article one" not in result
+        # raw_only entries carry no source_tier -> no badge rendered
+        assert "[curated]" not in result
+        assert "[fresh]" not in result
 
     def test_processed_only_excludes_raw_tier(self) -> None:
         result = self._call_digest({"content_preference": "processed_only"})
         assert "Raw tier article one" not in result
         assert "Draft tier article one" in result
         assert "Wiki tier article one" in result
+        # Wiki (curated) entries come first, Draft (fresh) entries fill in
+        assert result.index("Wiki tier article one") < result.index("Draft tier article one")
+        # Tier badge is rendered for both curated and fresh entries
+        assert "[curated] Wiki tier article one" in result
+        assert "[fresh] Draft tier article one" in result
+
+    def test_processed_only_wiki_first_quality_order(self) -> None:
+        """Wiki entries precede drafts and sort by relevance desc (stable ties)."""
+        wiki_low = {
+            **_WIKI_ENTRY,
+            "entry_id": "wiki-002",
+            "title": "Wiki tier article two",
+            "relevance_score": 70.0,
+        }
+        draft_high = {
+            **_DRAFT_ENTRY,
+            "entry_id": "draft-002",
+            "title": "Draft tier article two",
+            "relevance_score": 99.0,
+        }
+        entries = [_RAW_ENTRY, draft_high, wiki_low, _DRAFT_ENTRY, _WIKI_ENTRY]
+        result = self._call_digest(
+            {"content_preference": "processed_only"}, entries=entries
+        )
+        # All curated first, quality desc within tier
+        assert result.index("Wiki tier article one") < result.index("Wiki tier article two")
+        assert result.index("Wiki tier article two") < result.index("Draft tier article two")
+        # Draft fallback also sorted by relevance desc
+        assert result.index("Draft tier article two") < result.index("Draft tier article one")
+
+    def test_processed_only_draft_fallback_fills_capacity(self) -> None:
+        """When Wiki supply is insufficient, Draft entries fill the remainder."""
+        draft_2 = {
+            **_DRAFT_ENTRY,
+            "entry_id": "draft-002",
+            "title": "Draft tier article two",
+        }
+        draft_3 = {
+            **_DRAFT_ENTRY,
+            "entry_id": "draft-003",
+            "title": "Draft tier article three",
+        }
+        entries = [_RAW_ENTRY, draft_2, _WIKI_ENTRY, draft_3]
+        result = self._call_digest(
+            {"content_preference": "processed_only"}, entries=entries
+        )
+        assert result.index("Wiki tier article one") < result.index("Draft tier article two")
+        assert result.index("Draft tier article two") < result.index("Draft tier article three")
+        assert "[fresh] Draft tier article three" in result
+
+    def test_source_tier_in_json_payload(self) -> None:
+        """JSON payload carries per-entry source_tier (curated/fresh)."""
+        from autoinfo.output import generate_digest
+
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch("autoinfo.output._call_llm_for_digest") as mock_llm,
+            patch("autoinfo.user_store.get_preferences") as mock_prefs,
+        ):
+            mock_llm.return_value = {"executive_summary": "Synthesis."}
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = _ALL_ENTRIES
+            mock_kb_cls.return_value = mock_store
+            mock_prefs.return_value = _prefs_result(
+                {"content_preference": "processed_only"}
+            )
+            result = generate_digest(
+                domain="test-domain", period="weekly", user_id="u-1", format="json"
+            )
+
+        data = json.loads(result)
+        tiers = {e["entry_id"]: e["source_tier"] for e in data["entries"]}
+        assert tiers == {"wiki-001": "curated", "draft-001": "fresh"}
+
+    def test_source_tier_badge_disabled_hides_badge(self) -> None:
+        """``output.source_tier_badge: false`` keeps wiki-first order but no badge."""
+        from autoinfo.config import Config
+        from autoinfo.output import generate_digest
+
+        cfg = Config()
+        cfg.output.source_tier_badge = False
+        with (
+            patch("autoinfo.output.KBStore") as mock_kb_cls,
+            patch("autoinfo.output._call_llm_for_digest") as mock_llm,
+            patch("autoinfo.user_store.get_preferences") as mock_prefs,
+            patch(
+                "autoinfo.output.get_config_path",
+                return_value=Path("/tmp/autoinfo/config.yaml"),
+            ),
+            patch("autoinfo.output.load_config", return_value=cfg),
+        ):
+            mock_llm.return_value = {"executive_summary": "Synthesis."}
+            mock_store = MagicMock()
+            mock_store.list_entries.return_value = _ALL_ENTRIES
+            mock_kb_cls.return_value = mock_store
+            mock_prefs.return_value = _prefs_result(
+                {"content_preference": "processed_only"}
+            )
+            result = generate_digest(
+                domain="test-domain", period="weekly", user_id="u-1"
+            )
+
+        assert "Wiki tier article one" in result
+        assert "Draft tier article one" in result
+        assert result.index("Wiki tier article one") < result.index("Draft tier article one")
+        assert "[curated]" not in result
+        assert "[fresh]" not in result
 
     def test_both_includes_all_tiers(self) -> None:
         result = self._call_digest({"content_preference": "both"})
@@ -185,12 +300,20 @@ class TestReportContentPreference:
         assert "Raw tier article one" in result
         assert "Draft tier article one" not in result
         assert "Wiki tier article one" not in result
+        # raw_only entries carry no source_tier -> no badge rendered
+        assert "[curated]" not in result
+        assert "[fresh]" not in result
 
     def test_processed_only_excludes_raw_tier(self) -> None:
         result = self._call_report({"content_preference": "processed_only"})
         assert "Raw tier article one" not in result
         assert "Draft tier article one" in result
         assert "Wiki tier article one" in result
+        # Wiki (curated) entries come first, Draft (fresh) entries fill in
+        assert result.index("Wiki tier article one") < result.index("Draft tier article one")
+        # Tier badge is rendered for both curated and fresh entries
+        assert "[curated] Wiki tier article one" in result
+        assert "[fresh] Draft tier article one" in result
 
     def test_both_includes_all_tiers(self) -> None:
         result = self._call_report({"content_preference": "both"})

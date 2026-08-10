@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 OUTPUTS = ROOT / "outputs"
 
-import os  # noqa: E402, I001
+import os  # noqa: E402
 os.environ.setdefault("AUTOINFO_LLM_API_KEY", os.environ.get("OPENCODE_GO_KEY", ""))
 
-from autoinfo.output import (  # noqa: E402, I001
+from autoinfo.output import (  # noqa: E402
     generate_digest, generate_report, generate_tutorial, generate_presentation,
     PRODUCT_TEMPLATES,
 )
@@ -65,15 +65,40 @@ def _is_bad(path: Path, text: str) -> tuple[bool, str]:
     return False, ""
 
 
-def gen_one(domain: str, product: str) -> str:
+def _gen(domain: str, product: str) -> str:
+    # Per-domain synthesis instructions — keeps the LLM in-domain so
+    # products reflect the domain's actual value (issue #182 paygrade).
+    _DOMAIN_INSTRUCTIONS = {
+        "language-learning": (
+            "This is a LANGUAGE LEARNING domain (English teaching materials, "
+            "graded readers, literacy and multilingual resources). Organize "
+            "content around language-learning value: vocabulary themes, "
+            "reading-comprehension topics, teaching strategies, CEFR/level "
+            "progression, and what each resource offers learners and teachers. "
+            "Do NOT write a generic news summary."
+        ),
+        "financial-intelligence": (
+            "This is a FINANCIAL INTELLIGENCE domain. Extract the market "
+            "intelligence value: macro indicators, company filings that signal "
+            "strategy/risk, market data points. Synthesize what these filings "
+            "and data mean for investors/analysts rather than just listing "
+            "filings. Do NOT write a regulatory-checklist summary."
+        ),
+    }
+    instructions = _DOMAIN_INSTRUCTIONS.get(domain, "")
+
     if product == "digest":
-        return generate_digest(domain=domain, period="weekly", format="markdown")
+        return generate_digest(domain=domain, period="weekly", format="markdown",
+                               custom_instructions=instructions)
     if product == "report":
-        return generate_report(domain=domain, period="weekly", format="markdown")
+        return generate_report(domain=domain, period="weekly", format="markdown",
+                               custom_instructions=instructions)
     if product == "tutorial":
-        return generate_tutorial(domain=domain, format="markdown")
+        return generate_tutorial(domain=domain, format="markdown",
+                                 custom_instructions=instructions)
     if product == "presentation":
-        return generate_presentation(domain=domain, topic="", format="markdown")
+        return generate_presentation(domain=domain, topic="", format="markdown",
+                                     custom_instructions=instructions)
     # PRODUCT_TEMPLATES is a list[dict] with name/template keys
     template_obj = None
     for pt in PRODUCT_TEMPLATES:
@@ -81,7 +106,8 @@ def gen_one(domain: str, product: str) -> str:
             template_obj = pt.get("template")
             break
     return generate_report(domain=domain, period="weekly", format="markdown",
-                           product_template=template_obj, product_type="PROCESSED")
+                           product_template=template_obj, product_type="PROCESSED",
+                           custom_instructions=instructions)
 
 
 def main() -> None:
@@ -113,16 +139,24 @@ def main() -> None:
                     if not bad and len(text) >= MIN_CHARS[prod]:
                         continue  # already good
             try:
-                result = gen_one(dom, prod)
+                result = _gen(dom, prod)
                 text = result if isinstance(result, str) else str(result)
-                out_path.write_text(text, encoding="utf-8")
                 bad, why = _is_bad(out_path, text)
-                status = "OK" if not bad and len(text) >= MIN_CHARS[prod] else "BAD"
-                msg = f"[{status}] {dom}/{prod}: {len(text)} chars"
-                if status == "BAD":
-                    msg += f" ({why})"
-                print(msg)
+                ok = not bad and len(text) >= MIN_CHARS[prod]
+                if ok:
+                    out_path.write_text(text, encoding="utf-8")
+                    print(f"[OK] {dom}/{prod}: {len(text)} chars")
+                else:
+                    # Issue #182 audit-feedback: never persist an empty/draft
+                    # shell — delete any stale BAD copy so it can't ship.
+                    if out_path.exists():
+                        out_path.unlink()
+                    print(f"[BAD] {dom}/{prod}: {len(text)} chars ({why or f'short:{len(text)}'})")
             except Exception as exc:  # noqa: BLE001
+                # Generator raised (e.g. presentation empty-shell guard) — no
+                # artifact written, nothing stale left behind.
+                if out_path.exists() and out_path.stat().st_size < MIN_CHARS[prod]:
+                    out_path.unlink()
                 print(f"[ERR] {dom}/{prod}: {exc}")
 
 

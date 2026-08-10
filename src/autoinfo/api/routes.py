@@ -299,6 +299,13 @@ async def create_entry(body: EntryCreate) -> dict[str, Any]:
     except PermissionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if entry is None:
+        # Issue #182: rejected (content too short) — surface a clean error
+        raise HTTPException(
+            status_code=422,
+            detail="entry rejected by KB store (content too short or unparseable)",
+        )
+
     # Fetch the full entry with content to return
     full = store.get_entry(entry.entry_id) or entry.to_dict()
     return success_envelope(_entry_to_response(full))

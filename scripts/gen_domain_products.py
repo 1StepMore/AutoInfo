@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 os.environ.setdefault("AUTOINFO_LLM_API_KEY", os.environ.get("OPENCODE_GO_KEY", ""))
 
-from autoinfo.output import (
+from autoinfo.output import (  # noqa: E402, I001
     generate_digest, generate_report, generate_tutorial, generate_presentation,
     PRODUCT_TEMPLATES,
 )
@@ -43,8 +43,8 @@ def main() -> None:
         print("usage: gen_domain_products.py <domain>")
         sys.exit(1)
     domain = sys.argv[1]
-    OUT = ROOT / "outputs" / domain
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_dir = ROOT / "outputs" / domain
+    out_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d-%H%M%S')
     products = ["digest", "report", "tutorial", "presentation",
                 "premium-briefing", "column", "magazine-digest", "enterprise-briefing"]
@@ -54,7 +54,7 @@ def main() -> None:
             if not out or len(str(out)) < 500:
                 print(f"[ERR] {p}: too short ({len(str(out))})")
                 continue
-            f = OUT / f"{p}-markdown-{stamp}.md"
+            f = out_dir / f"{p}-markdown-{stamp}.md"
             f.write_text(str(out), encoding="utf-8")
             print(f"[OK] {p}: {len(str(out))} chars")
         except Exception as e:

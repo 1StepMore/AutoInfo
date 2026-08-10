@@ -9,7 +9,6 @@ domains so the matrix honestly reflects the 13-domain target (#182).
 
 Usage: HOME=/home/renanzai python3 scripts/extend_matrix_13domains.py [--dry-run]
 """
-import re
 import sys
 from pathlib import Path
 
@@ -54,7 +53,9 @@ def main() -> None:
         for product in PRODUCTS:
             for fmt in ALL_FORMATS:
                 cap = "implemented" if fmt in CAPABILITY[product] else "not-implemented"
-                lines.append(f"  - {{domain: {d}, product: {product}, format: {fmt}, capability: {cap}}}")
+                cell = f"  - {{domain: {d}, product: {product}, format: {fmt}, "
+                cell += f"capability: {cap}}}"
+                lines.append(cell)
 
     new_block = (
         "# Required cells — FULL end-user capability surface (8 products x 7 formats).\n"

@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 OUTPUTS = ROOT / "outputs"
 
-import os  # noqa: E402
+import os  # noqa: E402, I001
 os.environ.setdefault("AUTOINFO_LLM_API_KEY", os.environ.get("OPENCODE_GO_KEY", ""))
 
-from autoinfo.output import (  # noqa: E402
+from autoinfo.output import (  # noqa: E402, I001
     generate_digest, generate_report, generate_tutorial, generate_presentation,
     PRODUCT_TEMPLATES,
 )
@@ -118,7 +118,10 @@ def main() -> None:
                 out_path.write_text(text, encoding="utf-8")
                 bad, why = _is_bad(out_path, text)
                 status = "OK" if not bad and len(text) >= MIN_CHARS[prod] else "BAD"
-                print(f"[{status}] {dom}/{prod}: {len(text)} chars" + (f" ({why})" if status == "BAD" else ""))
+                msg = f"[{status}] {dom}/{prod}: {len(text)} chars"
+                if status == "BAD":
+                    msg += f" ({why})"
+                print(msg)
             except Exception as exc:  # noqa: BLE001
                 print(f"[ERR] {dom}/{prod}: {exc}")
 

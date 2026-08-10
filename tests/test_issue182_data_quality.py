@@ -17,11 +17,11 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from autoinfo.collect import _matches_keywords  # noqa: E402
-from autoinfo.collectors.http_api import HttpApiHandler  # noqa: E402
-from autoinfo.config import SourceConfig  # noqa: E402
-from autoinfo.models import Item  # noqa: E402
-from autoinfo.process import _is_valid_discovery_keyword  # noqa: E402
+from autoinfo.collect import _matches_keywords  # noqa: E402, I001
+from autoinfo.collectors.http_api import HttpApiHandler  # noqa: E402, I001
+from autoinfo.config import SourceConfig  # noqa: E402, I001
+from autoinfo.models import Item  # noqa: E402, I001
+from autoinfo.process import _is_valid_discovery_keyword  # noqa: E402, I001
 
 
 # ---------------------------------------------------------------------------
@@ -127,12 +127,6 @@ def test_keyword_filter_accepts_short_single_word() -> None:
 
 
 def test_matches_keywords_flattens_topics() -> None:
-    dom = _FakeDomain(
-        topics=[
-            _FakeTopic("IVF breakthroughs", ["IVF", "embryo", "implantation"]),
-            _FakeTopic("Neuroplasticity", ["neuroplasticity", "synaptic"]),
-        ]
-    )
     # main impl takes a keyword list directly
     kws = ["ivf", "embryo", "neuroplasticity"]
     assert "ivf" in kws

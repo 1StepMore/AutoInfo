@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 OUTPUTS = ROOT / "outputs"
 
-import os  # noqa: E402
+import os  # noqa: E402, I001
 os.environ.setdefault("AUTOINFO_LLM_API_KEY", os.environ.get("OPENCODE_GO_KEY", ""))
 
-from autoinfo.output import (  # noqa: E402
+from autoinfo.output import (  # noqa: E402, I001
     generate_digest, generate_report, generate_tutorial, generate_presentation,
     PRODUCT_TEMPLATES,
 )
@@ -46,6 +46,26 @@ VAGUE_RE = [
     r"this article provides guidelines", r"this article provides instructions",
 ]
 
+# Per-domain synthesis instructions — keeps the LLM in-domain so
+# products reflect the domain's actual value (issue #182 paygrade).
+_DOMAIN_INSTRUCTIONS = {
+    "language-learning": (
+        "This is a LANGUAGE LEARNING domain (English teaching materials, "
+        "graded readers, literacy and multilingual resources). Organize "
+        "content around language-learning value: vocabulary themes, "
+        "reading-comprehension topics, teaching strategies, CEFR/level "
+        "progression, and what each resource offers learners and teachers. "
+        "Do NOT write a generic news summary."
+    ),
+    "financial-intelligence": (
+        "This is a FINANCIAL INTELLIGENCE domain. Extract the market "
+        "intelligence value: macro indicators, company filings that signal "
+        "strategy/risk, market data points. Synthesize what these filings "
+        "and data mean for investors/analysts rather than just listing "
+        "filings. Do NOT write a regulatory-checklist summary."
+    ),
+}
+
 
 def _first_summary(text: str) -> str:
     m = re.search(r"## (?:Executive Summary|The Big Idea)\s*\n(.*?)(?=\n## |\Z)", text, re.S)
@@ -66,25 +86,6 @@ def _is_bad(path: Path, text: str) -> tuple[bool, str]:
 
 
 def _gen(domain: str, product: str) -> str:
-    # Per-domain synthesis instructions — keeps the LLM in-domain so
-    # products reflect the domain's actual value (issue #182 paygrade).
-    _DOMAIN_INSTRUCTIONS = {
-        "language-learning": (
-            "This is a LANGUAGE LEARNING domain (English teaching materials, "
-            "graded readers, literacy and multilingual resources). Organize "
-            "content around language-learning value: vocabulary themes, "
-            "reading-comprehension topics, teaching strategies, CEFR/level "
-            "progression, and what each resource offers learners and teachers. "
-            "Do NOT write a generic news summary."
-        ),
-        "financial-intelligence": (
-            "This is a FINANCIAL INTELLIGENCE domain. Extract the market "
-            "intelligence value: macro indicators, company filings that signal "
-            "strategy/risk, market data points. Synthesize what these filings "
-            "and data mean for investors/analysts rather than just listing "
-            "filings. Do NOT write a regulatory-checklist summary."
-        ),
-    }
     instructions = _DOMAIN_INSTRUCTIONS.get(domain, "")
 
     if product == "digest":

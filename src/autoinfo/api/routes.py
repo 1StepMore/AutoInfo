@@ -270,7 +270,10 @@ async def create_entry(body: EntryCreate) -> dict[str, Any]:
                     "success": False,
                     "error": {
                         "code": ErrorCode.DOMAIN_NOT_FOUND,
-                        "message": f"Domain '{body.domain}' not found. Use add_domain(name='{body.domain}') to create it.",
+                        "message": (
+                            f"Domain '{body.domain}' not found. "
+                            f"Use add_domain(name='{body.domain}') to create it."
+                        ),
                         "actionable": True,
                     },
                 },
@@ -477,7 +480,9 @@ async def list_feeds(
             ET.SubElement(xml_item, "description").text = item["summary"] or ""
             if item["collected_at"]:
                 ET.SubElement(xml_item, "pubDate").text = item["collected_at"]
-            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = item["source_type"] or ""
+            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = (
+                item["source_type"] or ""
+            )
 
         from fastapi.responses import Response
         ET.indent(rss, space="  ")

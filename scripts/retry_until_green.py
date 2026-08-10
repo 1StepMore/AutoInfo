@@ -17,10 +17,10 @@ sys.path.insert(0, str(ROOT / "src"))
 OUTPUTS = ROOT / "outputs"
 STAMP = "20260810-paygrade"
 
-import os  # noqa: E402
+import os  # noqa: E402, I001
 os.environ.setdefault("AUTOINFO_LLM_API_KEY", os.environ.get("OPENCODE_GO_KEY", ""))
 
-from autoinfo.output import (  # noqa: E402
+from autoinfo.output import (  # noqa: E402, I001
     generate_digest, generate_report, generate_tutorial, generate_presentation,
     PRODUCT_TEMPLATES,
 )

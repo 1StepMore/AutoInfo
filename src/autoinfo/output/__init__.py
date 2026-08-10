@@ -5631,12 +5631,18 @@ def generate_presentation(
     format: str = "markdown",
     custom_instructions: str = "",
     user_id: str = "",
+    allow_empty: bool = False,
 ) -> str:
     """Generate a slide-based presentation for *topic* within *domain*.
 
     Searches the KB for entries related to *topic*, asks the LLM to
     produce structured slide content, and renders through the
     appropriate template based on *format*.
+
+    ``allow_empty`` bypasses the empty-shell guard (#182). Unit tests that
+    stub the LLM (returning no slides) use it to exercise prompt-building /
+    content-preference logic; production callers leave it False so an empty
+    presentation raises instead of shipping a 240-byte shell.
 
     Parameters
     ----------
@@ -5784,7 +5790,7 @@ def generate_presentation(
     # header stub (LLM empty-content, DeepSeek #178) must NOT be persisted.
     # Raise so callers skip the artifact instead of shipping a 240-byte shell.
     slides = llm_result.get("slides") or []
-    if len(slides) < 1 or len(rendered.strip()) < 500:
+    if not allow_empty and (len(slides) < 1 or len(rendered.strip()) < 500):
         raise ValueError(
             f"Presentation generation produced no usable content for "
             f"domain={domain!r} topic={topic!r} (slides={len(slides)}, "

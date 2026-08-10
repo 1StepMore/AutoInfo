@@ -89,6 +89,9 @@ def _scan_bad() -> list[tuple[str, str, str]]:
         if not dom_dir.is_dir():
             continue
         domain = dom_dir.name
+        # Skip non-domain dirs (coverage-matrix, validation-processed, etc.)
+        if domain in ("coverage-matrix", "validation-processed", "test-domain"):
+            continue
         for prod in ["digest", "report", "tutorial", "presentation",
                      "premium-briefing", "column", "magazine-digest", "enterprise-briefing"]:
             path = dom_dir / f"{prod}-markdown-{STAMP}.md"

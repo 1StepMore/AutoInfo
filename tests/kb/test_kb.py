@@ -216,9 +216,11 @@ class TestSQLiteIndex:
             )
         )
 
-        # date_from = 2026-07-01 — should include only "new"
+        # date_from = 2026-07-01 — strict collected_at would keep only "new",
+        # but the #182 created_at fallback keeps both (both indexed just now
+        # with fresh created_at). Digest generation never sees empty.
         entries = index.list_entries("medical-research", date_from="2026-07-01")
-        assert len(entries) == 1
+        assert len(entries) == 2
         assert entries[0]["entry_id"] == "new"
 
         # date_from = 2026-01-01 — should include both
@@ -561,8 +563,12 @@ class TestKBStore:
         store.store_entry(new_item)
 
         entries = store.list_entries("medical-research", date_from="2026-07-01")
-        assert len(entries) == 1
-        # entry_id is auto-generated as {domain}-{topic_slug}-{slug}
+        # Issue #182: created_at fallback — both items were stored just now
+        # (fresh created_at), so even the old-collected_at item passes the
+        # weekly window via its ingest time. Digest generation thus never
+        # sees an empty domain when sources publish old-dated articles.
+        assert len(entries) == 2
+        # newest first (both collected_at DESC)
         assert "new-article" in entries[0]["entry_id"]
 
     # ------------------------------------------------------------------

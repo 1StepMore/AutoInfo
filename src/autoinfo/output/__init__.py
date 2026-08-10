@@ -5778,7 +5778,19 @@ def generate_presentation(
         return _render_presentation_agent_json(llm_result, domain, topic, target_audience, generated_at, topic_entries)  # noqa: E501
 
     # -- Render via Jinja2 template ---------------------------------------
-    return _render_presentation_template(context, format=format)
+    rendered = _render_presentation_template(context, format=format)
+
+    # Issue #182 audit-feedback: a presentation with zero slides or only a
+    # header stub (LLM empty-content, DeepSeek #178) must NOT be persisted.
+    # Raise so callers skip the artifact instead of shipping a 240-byte shell.
+    slides = llm_result.get("slides") or []
+    if len(slides) < 1 or len(rendered.strip()) < 500:
+        raise ValueError(
+            f"Presentation generation produced no usable content for "
+            f"domain={domain!r} topic={topic!r} (slides={len(slides)}, "
+            f"chars={len(rendered.strip())})"
+        )
+    return rendered
 
 
 def _render_presentation_agent_json(

@@ -141,11 +141,22 @@ def main() -> None:
             try:
                 result = _gen(dom, prod)
                 text = result if isinstance(result, str) else str(result)
-                out_path.write_text(text, encoding="utf-8")
                 bad, why = _is_bad(out_path, text)
-                status = "OK" if not bad and len(text) >= MIN_CHARS[prod] else "BAD"
-                print(f"[{status}] {dom}/{prod}: {len(text)} chars" + (f" ({why})" if status == "BAD" else ""))
+                ok = not bad and len(text) >= MIN_CHARS[prod]
+                if ok:
+                    out_path.write_text(text, encoding="utf-8")
+                    print(f"[OK] {dom}/{prod}: {len(text)} chars")
+                else:
+                    # Issue #182 audit-feedback: never persist an empty/draft
+                    # shell — delete any stale BAD copy so it can't ship.
+                    if out_path.exists():
+                        out_path.unlink()
+                    print(f"[BAD] {dom}/{prod}: {len(text)} chars ({why or f'short:{len(text)}'})")
             except Exception as exc:  # noqa: BLE001
+                # Generator raised (e.g. presentation empty-shell guard) — no
+                # artifact written, nothing stale left behind.
+                if out_path.exists() and out_path.stat().st_size < MIN_CHARS[prod]:
+                    out_path.unlink()
                 print(f"[ERR] {dom}/{prod}: {exc}")
 
 

@@ -7001,6 +7001,12 @@ def _render_audio_edge_tts(
 ) -> bytes:
     """Render *text* as MP3 audio using the edge-tts library (local, free).
 
+    Auto-selects a voice matching the dominant script when the configured
+    voice cannot speak it: edge-tts ``en-US-JennyNeural`` raises
+    ``NoAudioReceived`` for CJK-heavy text, which surfaced as 4 failing
+    digest-audiobook cells (2026-08-11).  Text containing CJK codepoints
+    uses ``zh-CN-XiaoxiaoNeural``; otherwise the requested voice is used.
+
     Raises
     ------
     ImportError
@@ -7012,8 +7018,20 @@ def _render_audio_edge_tts(
 
     import edge_tts  # noqa: PLC0415
 
+    # CJK detection (CJK Unified Ideographs, Hiragana/Katakana, Hangul).
+    cjk_ranges = (
+        (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+        (0x3040, 0x30FF),   # Hiragana + Katakana
+        (0xAC00, 0xD7AF),   # Hangul Syllables
+    )
+    has_cjk = any(
+        any(lo <= ord(ch) <= hi for lo, hi in cjk_ranges)
+        for ch in text
+    )
+    effective_voice = "zh-CN-XiaoxiaoNeural" if has_cjk else voice
+
     async def _synthesize() -> bytes:
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, effective_voice)
         chunks: list[bytes] = []
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":

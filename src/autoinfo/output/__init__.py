@@ -6329,10 +6329,14 @@ def generate_presentation(
 
     # -- Build LLM prompt -------------------------------------------------
     audience_desc = _AUDIENCE_DESCRIPTIONS.get(target_audience, "general audience")
+    # Cap KB entries sent to the LLM: DeepSeek-V4-Flash is a reasoning
+    # model — a long prompt burns max_tokens on reasoning_content and
+    # emits empty/truncated content (issue #178). 10 representative
+    # entries (title + summary) keep the prompt well under the safe
+    # threshold while still grounding the deck in domain facts.
     entry_summaries = "\n".join(
-        f"- [{e.get('entry_id', '?')}] {e.get('title', '?')}: "
-        f"{e.get('summary', '(no summary)')}"
-        for e in topic_entries[:100]  # cap entries sent to LLM
+        f"- {e.get('title', '?')}: {e.get('summary', '(no summary)')[:220]}"
+        for e in topic_entries[:10]  # cap entries sent to LLM (#178)
     )
 
     prompt = (

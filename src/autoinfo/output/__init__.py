@@ -2949,6 +2949,23 @@ def generate_digest(
             date_from=date_from,
             limit=query_limit,
         )
+        # Data-staleness fallback: when no entry falls inside the period
+        # window (e.g. collectors last ran weeks ago), the digest would be
+        # an empty shell — unacceptable for a paying end user.  Relax the
+        # date filter to the full domain set so the product still delivers
+        # content (2026-08-11: online-education had 8 entries, all
+        # collected 2026-07-2x, weekly window 08-04..08-11 → 0 entries →
+        # empty digest/json/agent shells).
+        if not entries:
+            logger.info(
+                "No entries for domain '%s' in period %s..%s — falling "
+                "back to full domain set",
+                domain, date_from, date_to,
+            )
+            entries = store.list_entries(
+                domain=domain,
+                limit=query_limit,
+            )
 
     # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
     for entry in entries:
@@ -5777,7 +5794,14 @@ def generate_tutorial(
     # parseable JSON or markdown with a stable shape.  Ensure a domain that
     # HAS entries never renders the all-empty template: replace an unusable
     # LLM result entirely and fill any still-missing sections from KB entries.
-    if format == "markdown":
+    if format in ("markdown", "agent"):
+        # Deterministic completeness: DeepSeek-V4-Flash does not reliably
+        # emit the tutorial schema as parseable JSON/markdown.  A domain
+        # that HAS entries must never render an empty tutorial — for
+        # markdown AND agent (agent consumes the same KB-derived content;
+        # without this, an empty LLM result yields slides/steps=[] shells,
+        # e.g. 26 empty tutorial-agent artifacts in the 2026-08-11 fill
+        # run).
         if not _tutorial_has_content(llm_result):
             logger.warning(
                 "Tutorial LLM output unusable for domain '%s' (missing "
@@ -6387,23 +6411,32 @@ def generate_presentation(
         "generated_at": generated_at,
     }
 
+    # Issue #182 audit-feedback: a presentation with zero slides or only a
+    # header stub (LLM empty-content, DeepSeek #178) must NOT be persisted.
+    # Raise so callers skip the artifact instead of shipping a 240-byte shell.
+    # Applies to markdown AND agent: agent previously returned the JSON-LD
+    # shell directly (slides=[]), producing 13 empty presentation-agent
+    # artifacts in the 2026-08-11 fill run.
+    slides = llm_result.get("slides") or []
+    # Render the markdown form purely as a content-completeness check for
+    # agent output (same template context, same content).
+    rendered = _render_presentation_template(context, format=format)
+    rendered_check = (
+        _render_presentation_template(context, format="markdown")
+        if format == "agent"
+        else rendered
+    )
+    if not allow_empty and (len(slides) < 1 or len(rendered_check.strip()) < 500):
+        raise ValueError(
+            f"Presentation generation produced no usable content for "
+            f"domain={domain!r} topic={topic!r} (slides={len(slides)}, "
+            f"chars={len(rendered_check.strip())})"
+        )
+
     # -- Agent-native JSON-LD format ----------------------------------------
     if format == "agent":
         return _render_presentation_agent_json(llm_result, domain, topic, target_audience, generated_at, topic_entries)  # noqa: E501
 
-    # -- Render via Jinja2 template ---------------------------------------
-    rendered = _render_presentation_template(context, format=format)
-
-    # Issue #182 audit-feedback: a presentation with zero slides or only a
-    # header stub (LLM empty-content, DeepSeek #178) must NOT be persisted.
-    # Raise so callers skip the artifact instead of shipping a 240-byte shell.
-    slides = llm_result.get("slides") or []
-    if not allow_empty and (len(slides) < 1 or len(rendered.strip()) < 500):
-        raise ValueError(
-            f"Presentation generation produced no usable content for "
-            f"domain={domain!r} topic={topic!r} (slides={len(slides)}, "
-            f"chars={len(rendered.strip())})"
-        )
     return rendered
 
 

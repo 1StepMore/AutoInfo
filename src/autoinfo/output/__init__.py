@@ -3141,7 +3141,13 @@ def generate_digest(
                     except (json.JSONDecodeError, TypeError):
                         pass
                 else:
-                    rendered = rendered.rstrip() + "\n\n" + attribution
+                    # Text formats get a plain attribution footer. Binary
+                    # formats (audio/epub/audiobook) carry base64 payloads —
+                    # appending text would corrupt the base64 and make
+                    # b64decode fail with "string argument should contain
+                    # only ASCII characters" (F46 regression, 2026-08-11).
+                    if format not in ("audio", "epub", "audiobook"):
+                        rendered = rendered.rstrip() + "\n\n" + attribution
 
     # --- Record consumption event (CD-018) -----------------------------------
     if user_id:
@@ -3770,7 +3776,13 @@ def generate_report(
                     except (json.JSONDecodeError, TypeError):
                         pass
                 else:
-                    rendered = rendered.rstrip() + "\n\n" + attribution
+                    # Text formats get a plain attribution footer. Binary
+                    # formats (audio/epub/audiobook) carry base64 payloads —
+                    # appending text would corrupt the base64 and make
+                    # b64decode fail with "string argument should contain
+                    # only ASCII characters" (F46 regression, 2026-08-11).
+                    if format not in ("audio", "epub", "audiobook"):
+                        rendered = rendered.rstrip() + "\n\n" + attribution
 
     # --- Record consumption event (CD-018) -----------------------------------
     if user_id:
@@ -6784,10 +6796,14 @@ def _render_audio(
                 "Install with: pip install 'autoinfo[tts]'"
             )
         except Exception:
-            logger.warning(
-                "Local TTS (edge-tts) failed — falling back to OpenAI TTS.",
-                exc_info=True,
-            )
+            # edge-tts is configured as the engine; a synthesis failure is
+            # NOT a reason to fall back to OpenAI — the user chose local
+            # explicitly (e.g. no api.openai.com route), and OpenAI may be
+            # unreachable (2026-08-11: WSL has no route to api.openai.com,
+            # so the fallback turns a clean edge-tts error into a
+            # misleading "OpenAI TTS network error" after 150s+).  Re-raise
+            # so callers can retry or surface the real error.
+            raise
 
     # --- Whisper engine (OpenAI Whisper model via TTS API) ---
     if resolved_engine == "whisper":

@@ -4,7 +4,7 @@
 - Spec version: 2
 - Evidence dir: `.`
 - LLM available: yes
-- Generated: 2026-08-11T14:23:54.569274+00:00
+- Generated: 2026-08-11T15:12:35.456013+00:00
 - Cells: 728 (domains=13 x products=8 x formats=7), required=728 — produced=338, gap=0, unconfigured=0, not-applicable=390
 
 ## Legend

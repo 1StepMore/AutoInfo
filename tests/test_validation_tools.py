@@ -301,11 +301,14 @@ steps:
         and internal ``outputs/coverage-matrix/**`` reports must be absent
         from the artifacts list, while a legit file next to them is kept.
         """
+        # Trailing "**" matches only dirs on Python < 3.13 (CPython gh-70303),
+        # so all patterns follow the "**/*.ext" convention the packaged
+        # scenarios use — otherwise 3.12 collects zero files here.
         sd = self._write_scenario(
             tmp_path,
             "artifact-glob",
             "name: artifact-glob\ndescription: Test\n"
-            'collect_artifacts: ["knowledge/**", "outputs/**"]\n'
+            'collect_artifacts: ["knowledge/**/*.md", "outputs/**/*.md"]\n'
             "steps:\n"
             "  - name: step\n    tool: fake_tool\n    arguments: {}\n"
             "    expect:\n      success: true\n",

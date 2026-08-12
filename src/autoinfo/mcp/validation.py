@@ -1267,7 +1267,11 @@ async def run_scenario(
         each cleanup step — may run for at most this long before it is
         reported as failed with a ``timed out after <timeout>s`` detail.
         Applied per step, not as a whole-scenario budget: a scenario with
-        N steps can run up to ~N×timeout.
+        N steps can run up to ~N×timeout.  A step may override this cap
+        for itself by declaring ``timeout_seconds`` in the scenario YAML
+        (issue #203) — e.g. multi-round LLM generation steps declare a
+        larger per-step limit while every other step keeps the run-level
+        default.
 
     Returns
     -------
@@ -1380,8 +1384,14 @@ async def run_scenario(
     counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
 
     for step_idx, step_def in selected:
+        # Per-step timeout override (issue #203): a step may declare its own
+        # ``timeout_seconds`` (scenario YAML) which overrides the run-level
+        # *timeout* for that step only.  Long-running steps (e.g. multi-round
+        # LLM generation) then declare their own cap instead of being killed
+        # by the scenario-wide default.
+        step_timeout = float(step_def.get("timeout_seconds") or timeout)
         sr = await _execute_step_with_recovery(
-            step_def, dispatch, timeout, step_idx, trace_id
+            step_def, dispatch, step_timeout, step_idx, trace_id
         )
         _count_step_result(sr, counts)
         step_results.append(sr)
@@ -1454,8 +1464,9 @@ async def run_scenario(
         cleanup_results: list[dict[str, Any]] = []
         cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
         for step_idx, step_def in enumerate(cleanup_defs, start=1):
+            step_timeout = float(step_def.get("timeout_seconds") or timeout)
             sr = await _execute_step_with_recovery(
-                step_def, dispatch, timeout, step_idx, trace_id
+                step_def, dispatch, step_timeout, step_idx, trace_id
             )
             _count_step_result(sr, cleanup_counts)
             cleanup_results.append(sr)

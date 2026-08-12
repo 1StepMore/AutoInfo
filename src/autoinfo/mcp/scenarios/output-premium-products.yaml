@@ -21,8 +21,14 @@ collect_artifacts:
   - "outputs/**/*.html"
   - "outputs/**/*.mp3"
 steps:
+  # Per-step timeout override (issue #203): these three steps each run
+  # multi-round LLM generation (synthesis + product sections), which
+  # deterministically exceeded the 180s run-level default (observed
+  # 273.5–289s for enterprise-briefing).  Each step declares its own
+  # generous cap so the scenario survives slow-model days.
   - name: "generate premium-briefing digest via product_template"
     kind: cli
+    timeout_seconds: 600
     command: |
       python -c "
       from autoinfo.output import PRODUCT_TEMPLATES, generate_digest
@@ -41,6 +47,7 @@ steps:
 
   - name: "generate magazine-digest via product_template (general-news)"
     kind: cli
+    timeout_seconds: 600
     command: |
       python -c "
       from autoinfo.output import PRODUCT_TEMPLATES, generate_digest
@@ -59,6 +66,7 @@ steps:
 
   - name: "generate enterprise-briefing report via product_template"
     kind: cli
+    timeout_seconds: 600
     command: |
       python -c "
       from autoinfo.output import PRODUCT_TEMPLATES, generate_report

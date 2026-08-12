@@ -2006,6 +2006,156 @@ cleanup_steps:
         assert result["steps"][2]["status"] == "passed"
 
 
+class TestRunScenarioPerStepTimeout:
+    """Per-step ``timeout_seconds`` override in scenario YAML (issue #203).
+
+    ``run_scenario`` applies a single run-level ``timeout`` to every step.
+    Long-running steps (e.g. enterprise-briefing generation with multi-round
+    LLM calls) deterministically exceed that cap, so a step may declare its
+    own ``timeout_seconds`` which overrides the run-level timeout for that
+    step only — leaving the run-level default as the fallback for every
+    other step.
+    """
+
+    SCENARIO_YAML = """\
+name: per-step-timeout-scenario
+description: "Per-step timeout_seconds override scenario"
+category: test
+requires_env: []
+steps:
+  - name: "extended-timeout step"
+    tool: medium_slow_tool
+    arguments: {}
+    timeout_seconds: 2.0
+    expect:
+      success: true
+
+  - name: "tight-timeout step"
+    tool: slow_tool
+    arguments: {}
+    timeout_seconds: 0.05
+    expect:
+      success: true
+
+  - name: "default-timeout step"
+    tool: slow_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    CLEANUP_SCENARIO_YAML = """\
+name: per-step-timeout-cleanup-scenario
+description: "Cleanup step with per-step timeout_seconds override"
+category: test
+requires_env: []
+steps:
+  - name: "fast step"
+    tool: fast_tool
+    arguments: {}
+    expect:
+      success: true
+cleanup_steps:
+  - name: "extended-timeout cleanup"
+    tool: medium_slow_tool
+    arguments: {}
+    timeout_seconds: 2.0
+    expect:
+      success: true
+"""
+
+    @pytest.fixture
+    def scenario_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "per-step-timeout-scenario.yaml").write_text(
+            self.SCENARIO_YAML, encoding="utf-8"
+        )
+        (sd / "per-step-timeout-cleanup-scenario.yaml").write_text(
+            self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
+        )
+        return sd
+
+    async def _fake_dispatch(self, name: str, arguments: dict) -> dict:
+        """medium_slow_tool completes in 0.5s (between the 0.1s run-level
+        timeout and the 2.0s per-step override); slow_tool hangs far beyond
+        both so timeouts are exercised deterministically."""
+        if name == "medium_slow_tool":
+            await asyncio.sleep(0.5)
+        elif name == "slow_tool":
+            await asyncio.sleep(5)
+        return {"success": True, "data": {"result": "ok"}}
+
+    async def test_per_step_override_extends_beyond_run_timeout(
+        self, scenario_dir: Path
+    ) -> None:
+        """A step declaring timeout_seconds=2.0 passes even though the
+        run-level timeout is 0.1s — the override extends the cap."""
+        result = await run_scenario(
+            "per-step-timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "passed"
+        step = result["steps"][0]
+        assert step["status"] == "passed"
+        assert step["duration"] >= 0.4  # actually ran to completion
+
+    async def test_per_step_override_tightens_beyond_run_timeout(
+        self, scenario_dir: Path
+    ) -> None:
+        """A step declaring timeout_seconds=0.05 fails at 0.05s, not at the
+        0.1s run-level cap — the override tightens the limit."""
+        result = await run_scenario(
+            "per-step-timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[2],
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert "0.05" in step["detail"]
+
+    async def test_run_level_timeout_still_applies_without_override(
+        self, scenario_dir: Path
+    ) -> None:
+        """A step without timeout_seconds keeps the run-level timeout — the
+        override is per-step, never a global reconfiguration."""
+        result = await run_scenario(
+            "per-step-timeout-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[3],
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "failed"
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert "timed out" in step["detail"]
+        assert "0.1" in step["detail"]
+
+    async def test_per_step_override_applies_to_cleanup(
+        self, scenario_dir: Path
+    ) -> None:
+        """Cleanup steps honour timeout_seconds too (they share the same
+        step-execution path as the main steps)."""
+        result = await run_scenario(
+            "per-step-timeout-cleanup-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=scenario_dir,
+            timeout=0.1,
+        )
+        assert result["status"] == "passed"
+        assert "cleanup" in result
+        assert result["cleanup"]["summary"]["failed"] == 0
+        assert result["cleanup"]["steps"][0]["status"] == "passed"
+
+
 class TestMCPRunValidationScenarioTimeout:
     """E4: MCP run_validation_scenario handler passes timeout to run_scenario."""
 

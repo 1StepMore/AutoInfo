@@ -10596,7 +10596,9 @@ async def list_tools() -> list[Tool]:
                         "default": 180.0,
                         "description": (
                             "Per-step timeout in seconds (default 180). "
-                            "Each step may run for at most this long."
+                            "Each step may run for at most this long. "
+                            "A step may declare its own larger cap via "
+                            "timeout_seconds in the scenario YAML (issue #203)."
                         ),
                     },
                 },

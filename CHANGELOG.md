@@ -2,6 +2,79 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [0.10.0](https://github.com/1StepMore/AutoInfo/compare/v0.9.0...v0.10.0) (2026-08-14)
+
+
+### Features
+
+* **config:** configure mimo-v2.5 fallback chain on opencode gateway ([894c760](https://github.com/1StepMore/AutoInfo/commit/894c760699cabcab420e8cd88eae0b5f5d969797))
+* **router:** wire per-task model routing and pin G4/G5 judgment model ([bb007ab](https://github.com/1StepMore/AutoInfo/commit/bb007ab6540c344218fdc68c4c3fc94c11442808))
+* **skills:** add dev-side workflow skills — validation-runner + deep-modules (2026-08-13) ([7536e95](https://github.com/1StepMore/AutoInfo/commit/7536e95b28c1a2ec90ab3922f75533e053c079d3))
+* **skills:** deep-modules v1.1.0 — absorb 七阶段 §3.1 update (2026-08-13) ([3aff3a6](https://github.com/1StepMore/AutoInfo/commit/3aff3a67412b975ecc881e84d00bdd83df8cf55c))
+* **validation:** add scripted best-practice audits + LLM-judge calibration skeleton ([5036859](https://github.com/1StepMore/AutoInfo/commit/5036859231b5ff5c44b1fce95b8a01ac20761519))
+
+
+### Bug Fixes
+
+* **ci:** clear pre-existing lint/mypy debt on changed files ([2a0c24b](https://github.com/1StepMore/AutoInfo/commit/2a0c24b2fad2a938c9822ae7a2ad1a00322fd08b))
+* **ci:** make coverage gate baseline-aware — no-regression vs merge-base, 60% for new modules only ([#258](https://github.com/1StepMore/AutoInfo/issues/258)) ([16c116b](https://github.com/1StepMore/AutoInfo/commit/16c116b1e37f6ea5175af83a3d207f8ecd27af13))
+* **ci:** restore main CI green — test env gates + mcp server hygiene ([16cdee7](https://github.com/1StepMore/AutoInfo/commit/16cdee7d8172fc17391df4aa3d6fa16942db064e))
+* **llm:** add per-provider rate limiting and jittered backoff for 429/5xx ([c0efa9e](https://github.com/1StepMore/AutoInfo/commit/c0efa9e6b3c988ad2b1ed958b04a938c4484e1a8))
+* **llm:** disable thinking on reasoning models — stop token-budget truncation of JSON output (2026-08-13) ([c33c6d0](https://github.com/1StepMore/AutoInfo/commit/c33c6d0c5f4391343a923e2592bf36897815dff0))
+* **mcp:** clean_cache dry_run exempt from confirm guard ([#252](https://github.com/1StepMore/AutoInfo/issues/252)) ([#253](https://github.com/1StepMore/AutoInfo/issues/253)) ([f5ea27d](https://github.com/1StepMore/AutoInfo/commit/f5ea27dfa2c33e374c9e01ba2434af3c79814f6e))
+* **mcp:** persist video by copying the MP4, not b64decoding the JSON blob ([#254](https://github.com/1StepMore/AutoInfo/issues/254)) ([#256](https://github.com/1StepMore/AutoInfo/issues/256)) ([482f4cb](https://github.com/1StepMore/AutoInfo/commit/482f4cb5150dac1da8c304e0a28d864e81f5afcd))
+* **output:** D1-block test uses empty entry store — fallback (issue [#217](https://github.com/1StepMore/AutoInfo/issues/217)) only fires with entries ([f4eab0f](https://github.com/1StepMore/AutoInfo/commit/f4eab0f4eee850e66d4c64d452f6df9399f9990a))
+* **output:** deterministic synthesis fallback when LLM returns empty ([#217](https://github.com/1StepMore/AutoInfo/issues/217)) ([88d7185](https://github.com/1StepMore/AutoInfo/commit/88d71852aa8ad80201177ea6219ea20afec49558))
+* **output:** deterministic synthesis fallback when LLM returns empty ([#217](https://github.com/1StepMore/AutoInfo/issues/217)) ([23dd7b0](https://github.com/1StepMore/AutoInfo/commit/23dd7b09860c6edc1d902bb2d771c9f9069593c1))
+* **output:** guard None config + resolve pre-existing mypy Any-returns in output module ([b49d22c](https://github.com/1StepMore/AutoInfo/commit/b49d22cd348adf75850bdbf4219cac677916b687))
+* **output:** raise video render timeouts 600s -&gt; 1200s ([#237](https://github.com/1StepMore/AutoInfo/issues/237)) ([c10b6e6](https://github.com/1StepMore/AutoInfo/commit/c10b6e6ec1ad6d82e0356e4ab2d3b1c54dd4705d))
+* **output:** raise video render timeouts 600s -&gt; 1200s ([#237](https://github.com/1StepMore/AutoInfo/issues/237)) ([0b10555](https://github.com/1StepMore/AutoInfo/commit/0b10555f91c9e8c48e08528f68df56c98252eab1))
+* **output:** resolve mypy/ruff in digest tests — cast union results, annotate fixtures ([2554245](https://github.com/1StepMore/AutoInfo/commit/25542456e501c1f3fa9bb05bdc845166058f1073))
+* **process:** restore G3 archive action after gate parallelization ([c11635f](https://github.com/1StepMore/AutoInfo/commit/c11635fb298dce8f5c3ff8f14fb0bc7356b8e6b4))
+* **server:** persist column products as column-markdown-* ([#229](https://github.com/1StepMore/AutoInfo/issues/229)) ([559a56d](https://github.com/1StepMore/AutoInfo/commit/559a56dfa614810fe7f7894808eef4814dd2a83a))
+* **server:** persist column video products under column-* and lock with regression tests ([1bf0ad3](https://github.com/1StepMore/AutoInfo/commit/1bf0ad307476ddaf59dccbf1537c54415b8c36d9))
+* **validation:** director-required scenario steps pass actor=director ([#236](https://github.com/1StepMore/AutoInfo/issues/236)) ([2754f38](https://github.com/1StepMore/AutoInfo/commit/2754f38fc43924a2ba5016002a337c6e81e56241))
+* **validation:** director-required scenario steps pass actor=director ([#236](https://github.com/1StepMore/AutoInfo/issues/236)) ([9b65a11](https://github.com/1StepMore/AutoInfo/commit/9b65a11cee752429dd674c50337c1733dc673e06))
+* **validation:** eliminate raw-exception leaks, run real LLM-judge calibration, disambiguate tool descriptions ([1309804](https://github.com/1StepMore/AutoInfo/commit/1309804e7719d9355cf71190f8fcfbea25f29ce2))
+* **validation:** output-ebook — raise per-step timeout to 900s ([#255](https://github.com/1StepMore/AutoInfo/issues/255)) ([#257](https://github.com/1StepMore/AutoInfo/issues/257)) ([d0ce706](https://github.com/1StepMore/AutoInfo/commit/d0ce7067b0f1c56d5ceee0842e028f7c8523428e))
+* **validation:** quality-gate-config scenario — use non-normalized gate names ([#242](https://github.com/1StepMore/AutoInfo/issues/242)) ([f91046e](https://github.com/1StepMore/AutoInfo/commit/f91046e68123ab1c634c5a5663acc0d1bedabe9e))
+* **validation:** quality-gate-config scenario — use non-normalized gate names ([#242](https://github.com/1StepMore/AutoInfo/issues/242)) ([042a3c3](https://github.com/1StepMore/AutoInfo/commit/042a3c3bd45a6d0c6bd9a28f97dea42f5253fee1))
+* **validation:** resolve pre-existing ruff/mypy errors in validation_delivery.py ([4a847ce](https://github.com/1StepMore/AutoInfo/commit/4a847ce54d1bd5b9c0a9813135cd34d8b7ddf567))
+
+
+### Performance Improvements
+
+* **llm:** enforce shared rate limiting across all parallel fan-out paths ([da5362a](https://github.com/1StepMore/AutoInfo/commit/da5362a32d69ab9e1a540de39444367a50769f97))
+* **llm:** preserve thinking on judgment gates — per-call-site disable_thinking (2026-08-13) ([02a06a8](https://github.com/1StepMore/AutoInfo/commit/02a06a8cf0353b41e558b7872e9d1bc05953a7f9))
+* **mcp:** offload 14 sync LLM handlers with asyncio.to_thread ([d41b844](https://github.com/1StepMore/AutoInfo/commit/d41b84499226743dcd538fba7faf6e1fcd1bf8fa))
+* **mcp:** parallelize cefr_batch with bounded ThreadPoolExecutor ([b9a9b7e](https://github.com/1StepMore/AutoInfo/commit/b9a9b7e739c0287d69c1ec551dec8381f1c4c0d1))
+* **output:** parallelize _group_by_theme batch loop preserving order ([798555c](https://github.com/1StepMore/AutoInfo/commit/798555c621be80d24afe788dd5c1929d1776dfb3))
+* **process:** raise worker cap to 16, probe-gated ([e587cf4](https://github.com/1StepMore/AutoInfo/commit/e587cf4bdb5e0be0ea50c71d8edda8371d684416))
+* **process:** run post-extraction gates concurrently, preserve retry and report order ([cc5939c](https://github.com/1StepMore/AutoInfo/commit/cc5939c5d072d6ab700458777b66ccbe75e0f3d1))
+* **validation:** cap output-gen concurrency at 2 ([#234](https://github.com/1StepMore/AutoInfo/issues/234)) ([683dfdf](https://github.com/1StepMore/AutoInfo/commit/683dfdf565c67f739a9d5bfaa544a4126e409545))
+* **validation:** cap output-gen concurrency at 2 ([#234](https://github.com/1StepMore/AutoInfo/issues/234)) ([f3eec93](https://github.com/1StepMore/AutoInfo/commit/f3eec93aac26d908d6d8b13ce1942660de69cb81))
+* **validation:** cap output-gen concurrency at 2 ([#234](https://github.com/1StepMore/AutoInfo/issues/234)) ([6bd1480](https://github.com/1StepMore/AutoInfo/commit/6bd14808e34f3adfa636f10948685b9f72fdaac4))
+* **validation:** parallelize readonly + output-gen scenario scheduling ([#234](https://github.com/1StepMore/AutoInfo/issues/234)) ([aa62cef](https://github.com/1StepMore/AutoInfo/commit/aa62cef64b0b6af38f83f027e1530bcd2df786ef))
+* **validation:** parallelize readonly + output-gen scenario scheduling ([#234](https://github.com/1StepMore/AutoInfo/issues/234)) ([28d0f2d](https://github.com/1StepMore/AutoInfo/commit/28d0f2d8ac032845a61dfa65f54e2bcd49be8a39))
+
+
+### Documentation
+
+* add ADR records + root glossary, fix skill count drift, cleanup (2026-08-13) ([cbcf23b](https://github.com/1StepMore/AutoInfo/commit/cbcf23b53c2ca134f643e4d5637baa2db83c1b9a))
+* add in-repo workflow charter + ADR-0006, host methodology in docs/dev (2026-08-13) ([894cf11](https://github.com/1StepMore/AutoInfo/commit/894cf112112aca593bc78251d738b59dc3ec17b0))
+* align docs with verified ground truth (68 scenarios, 3640 tests, 145 tools; fix schema/metric/lifecycle drift) ([87dc925](https://github.com/1StepMore/AutoInfo/commit/87dc9258dcd9a54586e6101147f7382ada568332))
+* gap-1(c) — major-wave plan promotion to docs/dev/plans/ (2026-08-13) ([d69cc6b](https://github.com/1StepMore/AutoInfo/commit/d69cc6b6fb380544bb1f9f3699674d794aa9e558))
+* **loop-log:** record pit [#13](https://github.com/1StepMore/AutoInfo/issues/13) — persist product name decides matrix evidence ([#229](https://github.com/1StepMore/AutoInfo/issues/229)) ([f34d9d0](https://github.com/1StepMore/AutoInfo/commit/f34d9d068d446713ef50b9149d1ed43ed8e72a32))
+* **loop-log:** record pit [#13](https://github.com/1StepMore/AutoInfo/issues/13) — persist product name decides matrix evidence ([#229](https://github.com/1StepMore/AutoInfo/issues/229)) ([55ccc5c](https://github.com/1StepMore/AutoInfo/commit/55ccc5cd24b9735116c23954fbdb12e89ac2f472))
+* **loop-log:** record pit [#14](https://github.com/1StepMore/AutoInfo/issues/14) — full validation results polluted by DeepSeek LLM time-window flakiness ([bd6279f](https://github.com/1StepMore/AutoInfo/commit/bd6279f551df3e4550949b06a8eb065d10e33a21))
+* **loop-log:** record pit [#14](https://github.com/1StepMore/AutoInfo/issues/14) — LLM time-window flakiness pollutes full validation ([330d111](https://github.com/1StepMore/AutoInfo/commit/330d111a4b0f05748f9f36ba9664fb92ec8b4f5f))
+* reflect solo-maintainer ruleset governance (0 approvals, CI gate) ([#251](https://github.com/1StepMore/AutoInfo/issues/251)) ([503dc7b](https://github.com/1StepMore/AutoInfo/commit/503dc7b3d2344f9113c93f50e5c9eed16b96e206))
+* **skill:** self-enforce doc-manager numbers + cover schemas/ADR/glossary in inventory ([4a9359e](https://github.com/1StepMore/AutoInfo/commit/4a9359e90180adf0c465e20e02cfa8180bc71694))
+* sync llm-concurrency wave — rate limiting, fallback, caps, routing, test count 3728 ([d3cc80d](https://github.com/1StepMore/AutoInfo/commit/d3cc80dd15a1924245d1e1ac1ab5aee663c4120d))
+* sync video wave + reasoning control + matrix v3 across all docs (2026-08-13) ([70549f6](https://github.com/1StepMore/AutoInfo/commit/70549f6956cbf90ffb33b4b10d308936b0f5c582))
+* **validation:** archive master-plan, align promote authorization, adopt regression: true key ([6c20f04](https://github.com/1StepMore/AutoInfo/commit/6c20f047db93607a866c1bb4f773b65b0f8e69c2))
+* **validation:** revive LOOP-LOG + add validation governance (loop contract, failure triage, archive map) ([#255](https://github.com/1StepMore/AutoInfo/issues/255) area) ([#259](https://github.com/1StepMore/AutoInfo/issues/259)) ([9091819](https://github.com/1StepMore/AutoInfo/commit/9091819cf7c626f5b1f02ccee42100fcfcc210c7))
+
 ## v1.10 (Unreleased, 2026-08-11) — output-quality-mega wave
 
 ### Infrastructure (2026-08-15)

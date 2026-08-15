@@ -28,11 +28,11 @@
 | 3 | **Spotify AI Podcasts** (`spotify` collector) | <https://developer.spotify.com/dashboard> — log in, **Create app** → copy **Client ID** + **Client Secret** (free) | `AUTOINFO_SPOTIFY_CLIENT_ID` + `AUTOINFO_SPOTIFY_CLIENT_SECRET` (env, **pair**) | Both required; collector refuses without them |
 | 4 | **Quandl / Nasdaq Data Link** (`quandl` collector) | <https://data.nasdaq.com/sign-up> — free account → key under **Account → API Key** | `AUTOINFO_QUANDL_API_KEY` (env) | Collector logs "No Quandl API key configured" and returns `[]` without it (verified `quandl.py`) |
 | 5 | **Finnhub** (http-api source) | <https://finnhub.io/register> — free sandbox key, 60 calls/min | `FINNHUB_API_KEY` (env) + source `settings: {token: "${FINNHUB_API_KEY}"}`; key travels in `token` query param | Required for the `financial-intelligence` demo domain source |
-| 6 | **FRED** (http-api source) | <https://fredaccount.stlouisfed.org/apikeys> — free account at research.stlouisfed.org → **API Keys** | `FRED_API_KEY` (env) + source `settings: {api_key: "${FRED_API_KEY}", auth_mode: query}` | Free registration; also gates the `sources-a6-keyed` validation scenario |
+| 6 | **FRED** (http-api source) | <https://fredaccount.stlouisfed.org/apikeys> — free account at research.stlouisfed.org → **API Keys** | `FRED_API_KEY` (env) — agent adds source `settings.api_key: "${FRED_API_KEY}"` at key-delivery time (`auth_mode: query` already in the demo config) | Free registration; also gates the `sources-a6-keyed` validation scenario |
 | 7 | **Alpha Vantage** (http-api source) | <https://www.alphavantage.co/support/#api-key> — free key emailed instantly | Source `settings: {api_key: "${ALPHA_VANTAGE_API_KEY}", auth_mode: query}` (handler sends `api_key=`; source expects `apikey=` — agent wires the correct param) | Free tier 25 req/day |
-| 8 | **Twelve Data** (http-api source) | <https://twelvedata.com/register> — free **Basic** plan, key on dashboard (800 calls/day, 8/min) | Source `settings: {api_key: "${TWELVE_DATA_API_KEY}", ...}` | Key shown immediately after account creation |
+| 8 | **Twelve Data** (http-api source) | <https://twelvedata.com/register> — free **Basic** plan, key on dashboard (800 calls/day, 8/min) | Source `settings: {api_key: "${TWELVE_DATA_API_KEY}", ...}` (agent wires it at key-delivery time — demo config currently carries a literal `YOUR_TWELVEDATA_KEY` placeholder in `params` that must be replaced by the `${VAR}` ref) | Key shown immediately after account creation |
 | 9 | **Guardian Open Platform** (http-api source) | <https://open-platform.theguardian.com/access/> — register → **Developer key** tier, emailed instantly (5,000 calls/day, 12/sec) | Source `settings: {api_key: "${GUARDIAN_API_KEY}", auth_mode: query}` (Guardian expects `api-key=` param — agent wires it) | Free tier is non-commercial |
-| 10 | **Reddit** (`reddit` collector) | <https://www.reddit.com/prefs/apps> → **create another app** → type **script** → note the **client ID** (under the app name) and **secret** | Source `settings: {client_id: …, client_secret: …, user_agent: "AutoInfo/1.0", subreddits: […]}` (no env mechanism — config only) | OAuth2 client-credentials; `_authenticate` raises without client_id+client_secret (verified `reddit.py`) |
+| 10 | **Reddit** (`reddit` collector) | <https://www.reddit.com/prefs/apps> → **create another app** → type **script** → note the **client ID** (under the app name) and **secret** | Source `settings: {client_id: …, client_secret: …, user_agent: "AutoInfo/1.0", subreddits: […]}` (no env mechanism — config only; agent fills in `client_id`/`client_secret`/`user_agent` at key-delivery time — demo config currently carries only `subreddits`) | OAuth2 client-credentials; `_authenticate` raises without client_id+client_secret (verified `reddit.py`) |
 | 11 | **wanfang (万方)** (http-api source) | 万方数据开放平台 — <https://open.wanfangdata.com.cn> (or Aliyun Marketplace "万方数据" API → APPCODE) | Source `settings: {headers: {…APPCODE…}}` | ⚠️ **Extra work**: source requires `POST` transport, but the generic handler is GET-only. A key alone is insufficient — a small code change (POST-capable transport or dedicated handler) is a separate unit of work, tracked with a regression scenario. |
 
 ## How to hand the keys over
@@ -61,13 +61,19 @@ when possible (keys never transit the agent session).
 
 ## What happens after the keys arrive
 
-1. W1 config sync adds/renames the 12 unconfigured source entries (incl. the
-   10 non-wanfang blocked sources above) via `autoinfo sources add` (no
-   hand-editing of config).
-2. The blocked-source collection wave runs `autoinfo collect` per source;
+1. For http-api sources (Finnhub, FRED, Alpha Vantage, Twelve Data, Guardian)
+   the agent adds the `${VAR}` `settings.api_key` ref to each source config
+   (never a raw value) and fills Reddit's `client_id`/`client_secret`/
+   `user_agent`; the env-var collectors (NYT/AP/Spotify/Quandl) need nothing
+   further once the variable is exported. wanfang still needs the POST
+   transport first — see row 11.
+2. The key-blocked collection wave runs `autoinfo collect` per source;
    `collections/<domain>/<source>/` gains real JSON items.
-3. Coverage matrix regenerates: `source_gaps` 38 → 0 (all 87 required
-   sources collected); `kb_tier_gaps` 32 → 0; report×video already 0.
+3. Coverage matrix regenerates: the key-closable source gaps close
+   (`source_gaps` 48 → ~37; the ~37 remainder are the egress-blocked /
+   dead-feed verdicts recorded in
+   `.omo/evidence/validation-runs/2026-08-16_ac4-w4-matrix/remaining-source-gap-verdicts.md`).
+   `kb_tier_gaps` is already 0; report×video already 0.
 4. Full test suite + evidence capture + atomic commits (per the W0–W5 plan).
 
 Sources that still cannot be collected after keys (dead endpoint, policy, or the

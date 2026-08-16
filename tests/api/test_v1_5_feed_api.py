@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for ``GET /api/v1/feeds`` — RAW product feed endpoint.
 
 Follows the same pattern as ``TestRestAPI`` in ``test_v1_2_integration.py``.

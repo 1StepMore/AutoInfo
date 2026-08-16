@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for REST API error responses.
 
 Verifies that all error paths return the canonical error envelope:

@@ -46,7 +46,7 @@ def result(error_audit):
 
 
 def test_all_error_sites_parsed(result):
-    assert result["total_sites"] == 109
+    assert result["total_sites"] == 110
 
 
 def test_call_site_kind_breakdown(result):
@@ -55,7 +55,7 @@ def test_call_site_kind_breakdown(result):
     kinds = Counter(s["call"] for s in result["sites"])
     assert kinds["_error_dict"] == 0
     assert kinds["_error_from_exc"] == 65
-    assert kinds["error_response"] == 43
+    assert kinds["error_response"] == 44
     assert kinds["error_dict"] == 1
 
 

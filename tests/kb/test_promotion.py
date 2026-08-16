@@ -635,7 +635,9 @@ def make_scored_raw(
         quality_tier=2,
     )
     if not with_quality_results:
-        return store.store_entry(item)
+        entry = store.store_entry(item)
+        assert entry is not None
+        return entry
     g3 = QualityResult(
         gate_name="G3-RelevanceScoring", passed=True, score=g3_score
     )
@@ -645,13 +647,15 @@ def make_scored_raw(
         score=0.0,
         details={"source_score": g1_score},
     )
-    return store.store_entry(
+    entry = store.store_entry(
         item,
         quality_results={
             "G3-RelevanceScoring": g3,
             "G1-SourceAuthority": g1,
         },
     )
+    assert entry is not None
+    return entry
 
 
 def _marker_path(store: KBStore, entry_id: str) -> Path:

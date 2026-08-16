@@ -72,7 +72,7 @@ when possible (keys never transit the agent session).
 3. Coverage matrix regenerates: the key-closable source gaps close
    (`source_gaps` 48 → ~37; the ~37 remainder are the egress-blocked /
    dead-feed verdicts recorded in
-   `.omo/evidence/validation-runs/2026-08-16_ac4-w4-matrix/remaining-source-gap-verdicts.md`).
+   `docs/dev/remaining-source-gap-verdicts.md`).
    `kb_tier_gaps` is already 0; report×video already 0.
 4. Full test suite + evidence capture + atomic commits (per the W0–W5 plan).
 

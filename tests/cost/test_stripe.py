@@ -1049,7 +1049,7 @@ class TestStripeLifecycle:
     Run these with::
 
         make stripe-mock
-        python3 -m pytest tests/test_stripe.py::TestStripeLifecycle -v
+        .venv/bin/python -m pytest tests/cost/test_stripe.py::TestStripeLifecycle -v
     """
 
     # ------------------------------------------------------------------

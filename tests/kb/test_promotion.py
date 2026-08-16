@@ -500,6 +500,69 @@ class TestCurationG4:
         assert result.allowed
         assert calls == []
 
+    def test_g4_config_none_loads_disk_config_model(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """config=None resolves the G4 model from disk config (PR #284 guard).
+
+        ``_run_g4_check`` must load ``.autoinfo/config.yaml`` when no Config
+        object is passed, instead of hardcoding openrouter/deepseek-chat.
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "llm:\n  provider: openai\n  model: regression-test-model\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("autoinfo.config.get_config_path", lambda: config_path)
+
+        records: list[str] = []
+        result = g4_result(True)
+
+        class _RecorderG4:
+            def __init__(self, model: str = "", **_: object) -> None:
+                records.append(model)
+
+            def check(self, *_: object, **__: object) -> QualityResult:
+                return result
+
+        monkeypatch.setattr("autoinfo.promotion.G4FactualConsistency", _RecorderG4)
+
+        admission = check_promotion_admission(
+            make_entry(),
+            "medical-research",
+            None,
+            resolve_raw=resolver([make_raw()]),
+        )
+        assert admission.allowed is True
+        assert records == ["openai/regression-test-model"]
+
+    def test_g4_config_none_without_disk_config_falls_back_to_defaults(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No Config and no disk config — G4 falls back to hardcoded defaults."""
+        monkeypatch.setattr("autoinfo.config.get_config_path", lambda: None)
+
+        records: list[str] = []
+        result = g4_result(True)
+
+        class _RecorderG4:
+            def __init__(self, model: str = "", **_: object) -> None:
+                records.append(model)
+
+            def check(self, *_: object, **__: object) -> QualityResult:
+                return result
+
+        monkeypatch.setattr("autoinfo.promotion.G4FactualConsistency", _RecorderG4)
+
+        admission = check_promotion_admission(
+            make_entry(),
+            "medical-research",
+            None,
+            resolve_raw=resolver([make_raw()]),
+        )
+        assert admission.allowed is True
+        assert records == ["openrouter/deepseek/deepseek-chat"]
+
 
 # ===================================================================
 # Happy path — full admission pass

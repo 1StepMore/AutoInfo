@@ -133,7 +133,14 @@ def test_scan_reports_missing_and_undeclared(scanner: Any, tmp_path: Path) -> No
     # the raw map includes step arguments.domain by spec; the undeclared
     # flag is a declaration-hygiene check, not a coverage-absence check.
     assert missing == [
-        d for d in DEMO_DOMAINS if d not in ("medical-research", "ai-commercial", "financial-intelligence")
+        d
+        for d in DEMO_DOMAINS
+        if d
+        not in (
+            "medical-research",
+            "ai-commercial",
+            "financial-intelligence",
+        )
     ]
     assert len(missing) == 10
 
@@ -153,7 +160,12 @@ def test_throwaway_and_agnostic_scenarios_never_flagged(
         tmp_path,
         "sweep",
         [],
-        ["t9-sweep", "nonexistent-domain-xyz", "regression-121-noop-domain", "regression-126-noop-domain"],
+        [
+            "t9-sweep",
+            "nonexistent-domain-xyz",
+            "regression-121-noop-domain",
+            "regression-126-noop-domain",
+        ],
     )
     _write_scenario(tmp_path, "agnostic", [], ["medical-research"])
 

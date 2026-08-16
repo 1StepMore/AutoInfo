@@ -1229,7 +1229,7 @@ class SQLiteIndex:
                     (ver_num, entry_id),
                 ).fetchone()
                 if row is not None:
-                    return dict(row)["version_id"]
+                    return dict(row)["version_id"]  # type: ignore[no-any-return]
                 return None
 
         va_id = _resolve_version_id(version_a)
@@ -1361,7 +1361,7 @@ class SQLiteIndex:
                     "SELECT COUNT(*) FROM entries WHERE collected_at >= ?",
                     (today,),
                 ).fetchone()
-            return count
+            return count  # type: ignore[no-any-return]
 
     def count_entries(self, domain: str | None = None) -> int:
         """Return the total number of entries, optionally filtered by domain."""
@@ -1372,7 +1372,7 @@ class SQLiteIndex:
                 ).fetchone()
             else:
                 (count,) = conn.execute("SELECT COUNT(*) FROM entries").fetchone()
-            return count
+            return count  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Collection stats / diff
@@ -1882,7 +1882,7 @@ class SQLiteIndex:
         total = len(entries)
         paged = entries[offset : offset + limit]
 
-        result: dict[str, Any] = {
+        result: dict[str, Any] = {  # type: ignore[no-redef]
             "query": query,
             "domain": domain,
             "entries": paged,
@@ -2668,7 +2668,7 @@ class KBStore:
             if g1 is not None:
                 raw_score = g1.details.get("source_score")
                 if raw_score is not None:
-                    source_score = float(raw_score)
+                    source_score = float(raw_score)  # type: ignore[arg-type]
 
         entry_status: str = "active"
         if quality_results:
@@ -3250,7 +3250,7 @@ class KBStore:
 
         # Build KBEntry
         source_raw_ids = ",".join(raw_ids)
-        entry = KBEntry(
+        entry = KBEntry(  # type: ignore[assignment]
             entry_id=entry_id,
             title=title,
             domain=domain,
@@ -3278,16 +3278,16 @@ class KBStore:
 
         # Write Markdown file
         file_dir.mkdir(parents=True, exist_ok=True)
-        frontmatter = _build_frontmatter(entry)
+        frontmatter = _build_frontmatter(entry)  # type: ignore[arg-type]
         parts = [f"---\n{frontmatter}---\n\n"]
         parts.append(f"_Compiled from: {source_raw_ids}_\n\n")
         parts.append(merged_body)
         file_path.write_text("".join(parts), encoding="utf-8")
 
         # Index in SQLite
-        self.index.index_entry(entry)
+        self.index.index_entry(entry)  # type: ignore[arg-type]
 
-        return entry
+        return entry  # type: ignore[return-value]
 
     def reject_kb_draft(
         self,

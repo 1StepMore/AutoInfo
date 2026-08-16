@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from autoinfo.kb import KBStore
@@ -258,7 +258,7 @@ async def get_entry(entry_id: str) -> dict[str, Any]:
 
 
 @router.post("/entries", response_model=dict[str, Any], status_code=201)
-async def create_entry(body: EntryCreate) -> dict[str, Any]:
+async def create_entry(body: EntryCreate) -> Response | dict[str, Any]:
     """Create a new KB entry from the provided fields."""
     if body.tier != "01-Raw":
         return JSONResponse(  # pyright: ignore[reportReturnType]
@@ -662,7 +662,7 @@ async def get_portal_delivery_history(
             offset=0,
         )
         for entry in raw:
-            all_entries.append(entry.to_dict())
+            all_entries.append(entry.to_dict())  # type: ignore[attr-defined]
 
     # Sort by last_attempt DESC
     all_entries.sort(key=lambda e: e.get("last_attempt", ""), reverse=True)
@@ -674,7 +674,7 @@ async def get_portal_delivery_history(
 
     return success_envelope({
         "user_id": user_id,
-        "subscriptions": [s.to_dict() for s in subscriptions],
+        "subscriptions": [s.to_dict() for s in subscriptions],  # type: ignore[attr-defined]
         "entries": page,
         "total": total,
         "limit": limit,

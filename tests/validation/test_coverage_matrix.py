@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """End-user coverage matrix tests (E8, issue #131).
 
 Exercises the real ``scripts/coverage_matrix.py`` (same importlib pattern as

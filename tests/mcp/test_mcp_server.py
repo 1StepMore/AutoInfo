@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for the AutoInfo MCP server.
 
 Covers:

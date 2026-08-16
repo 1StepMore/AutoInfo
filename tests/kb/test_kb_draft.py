@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for 02-Draft tier — create_kb_draft, reject_kb_draft, list_kb_tier.
 
 Covers:

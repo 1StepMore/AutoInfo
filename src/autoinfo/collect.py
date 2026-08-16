@@ -822,7 +822,7 @@ def _fetch_items(
         if settings.get("since_date"):
             email_config["since_date"] = settings["since_date"]
         items = handler.collect(email_config)
-        return items[:limit]
+        return items[:limit]  # type: ignore[no-any-return]
 
     # -- PubMed handler path -----------------------------------------------
     if hasattr(handler, "search") and hasattr(handler, "fetch"):
@@ -862,7 +862,7 @@ def _fetch_items(
             )
             return []
         items = handler.fetch(url, query=query, limit=limit)
-        return items[:limit]
+        return items[:limit]  # type: ignore[no-any-return]
 
     # -- QuandlHandler path -------------------------------------------------
     if getattr(handler, "_handler_type", "") == "QuandlHandler":
@@ -884,7 +884,7 @@ def _fetch_items(
             )
             return []
         items = handler.fetch(url, query=query, limit=limit)
-        return items[:limit]
+        return items[:limit]  # type: ignore[no-any-return]
 
     # -- NYT handler path ------------------------------------------------
     if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "nyt":
@@ -1017,7 +1017,7 @@ def _fetch_items(
             return []
         items = handler.fetch(url)
         # Apply limit
-        return items[:limit]
+        return items[:limit]  # type: ignore[no-any-return]
 
     raise TypeError(f"Handler for '{source_config.name}' has no usable fetch method")
 

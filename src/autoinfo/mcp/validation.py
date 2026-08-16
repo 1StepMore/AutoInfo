@@ -108,7 +108,7 @@ def load_scenario_results(run_dir: Path) -> dict[str, Any] | None:
     if not payload_path.exists():
         return None
     try:
-        return json.loads(payload_path.read_text(encoding="utf-8"))
+        return json.loads(payload_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -400,7 +400,7 @@ def _resolve_llm_model() -> str:
 
     Same pattern as ``quality._resolve_llm_model``.
     """
-    return _resolve_llm_config()["model"]
+    return _resolve_llm_config()["model"]  # type: ignore[no-any-return]
 
 
 def _parse_llm_verdict(content: str | None) -> dict[str, Any]:
@@ -462,7 +462,7 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
         disable_thinking=False,
     )
     duration = time.monotonic() - start
-    content = response.choices[0].message.content  # type: ignore[union-attr]
+    content = response.choices[0].message.content
     parsed = _parse_llm_verdict(content)
     usage = getattr(response, "usage", None)
     tokens: dict[str, Any] | None = None

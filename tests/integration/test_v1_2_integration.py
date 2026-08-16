@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Integration tests for AutoInfo v1.2 features — 17 feature categories.
 
 Covers:

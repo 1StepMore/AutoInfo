@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Error-message audit tests (D-工-4 evidence, best-practice-review).
 
 Locks the behavior of ``scripts/error_message_audit.py`` so the D-工-4

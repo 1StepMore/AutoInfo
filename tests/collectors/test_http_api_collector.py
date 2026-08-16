@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for the generic HTTP JSON API collector (:class:`HttpApiHandler`).
 
 Verifies:

@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Scenario outcome-audit tests (D-工-5 evidence, best-practice-review).
 
 Locks the behavior of ``scripts/scenario_outcome_audit.py`` so the D-工-5

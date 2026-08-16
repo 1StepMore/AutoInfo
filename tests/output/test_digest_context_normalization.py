@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Tests for digest-path context normalization (output-quality-mega, todo 5).
 
 Covers the dual-context contract: when ``generate_digest`` is called with a

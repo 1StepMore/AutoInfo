@@ -25,7 +25,6 @@ from fastapi.testclient import TestClient
 
 from autoinfo.kb import KBStore
 
-
 # ---------------------------------------------------------------------------
 # Fixture: isolated TestClient
 # ---------------------------------------------------------------------------
@@ -40,8 +39,8 @@ def client(tmp_path: Path) -> TestClient:
     in an isolated directory, and patches ``get_config_path`` so that
     ``_known_domains()`` returns an empty set.
     """
-    from autoinfo.api.server import app
     import autoinfo.api.routes as routes
+    from autoinfo.api.server import app
 
     # -- minimal config (no domains → _known_domains() returns empty) ---------
     config_dir = tmp_path / ".autoinfo"
@@ -70,7 +69,9 @@ def client(tmp_path: Path) -> TestClient:
 def _assert_error_envelope(
     response, status_code: int, error_code: str, *, actionable: bool | None = None,
 ) -> None:
-    """Assert that *response* has the canonical ``{success, error: {code, message, actionable}}`` envelope."""
+    """Assert that *response* has the canonical
+    ``{success, error: {code, message, actionable}}`` envelope.
+    """
     assert response.status_code == status_code, (
         f"Expected status {status_code}, got {response.status_code}: {response.text[:200]}"
     )

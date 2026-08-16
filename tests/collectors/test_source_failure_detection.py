@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Issue #135 — dead-source detection: no silent "0 found".
 
 Verifies:

@@ -23,6 +23,7 @@ from autoinfo.api.server import app
 from autoinfo.billing import (
     _user_stripe_map,
     create_checkout_session,
+    get_subscription_status,
     get_user_stripe_id,
     handle_webhook,
     set_user_stripe_id,

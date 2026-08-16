@@ -141,7 +141,7 @@ class TestUnhandledException:
         ):
             resp = client.post(
                 "/api/v1/entries",
-                json={"title": "Test Article", "content": "Body text"},
+                json={"title": "Test Article", "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces."},
             )
 
         _assert_error_envelope(resp, 500, "InternalError", actionable=False)
@@ -160,7 +160,7 @@ class TestUnhandledException:
         ):
             resp = client.post(
                 "/api/v1/entries",
-                json={"title": "Fail", "content": "Body"},
+                json={"title": "Fail", "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces."},
             )
 
         _assert_error_envelope(resp, 500, "InternalError", actionable=False)
@@ -180,7 +180,7 @@ class TestValueError:
         ):
             resp = client.post(
                 "/api/v1/entries",
-                json={"title": "Test Article", "content": "Body"},
+                json={"title": "Test Article", "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces."},
             )
 
         _assert_error_envelope(resp, 400, "ValidationError", actionable=True)
@@ -200,7 +200,7 @@ class TestKeyError:
         ):
             resp = client.post(
                 "/api/v1/entries",
-                json={"title": "Test Article", "content": "Body"},
+                json={"title": "Test Article", "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces."},
             )
 
         _assert_error_envelope(resp, 400, "ValidationError", actionable=True)
@@ -227,7 +227,7 @@ class TestHTTPException:
         ):
             resp = client.post(
                 "/api/v1/entries",
-                json={"title": "Test", "content": "Body"},
+                json={"title": "Test", "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces."},
             )
 
         _assert_error_envelope(resp, 400, "ValidationError", actionable=True)
@@ -312,7 +312,7 @@ class TestDomainNotFound:
             "/api/v1/entries",
             json={
                 "title": "Test",
-                "content": "Body",
+                "content": "This is a sufficiently long body for the exception-mapping tests, well above the fifty-character minimum content guard that every KB write boundary now enforces.",
                 "domain": "non-existent-domain",
             },
         )

@@ -296,6 +296,25 @@ async def create_entry(body: EntryCreate) -> dict[str, Any]:
                 },
             )
 
+    # Enforce the same 50-char content floor the process/import write paths
+    # use — an entry with empty/short content is an empty shell (#279).
+    from autoinfo.kb import MIN_KB_CONTENT_CHARS
+
+    if len((body.content or "").strip()) < MIN_KB_CONTENT_CHARS:
+        return JSONResponse(  # pyright: ignore[reportReturnType]
+            status_code=400,
+            content={
+                "success": False,
+                "error": {
+                    "code": ErrorCode.VALIDATION_ERROR,
+                    "message": (
+                        f"content must be at least {MIN_KB_CONTENT_CHARS} characters"
+                    ),
+                    "actionable": True,
+                },
+            },
+        )
+
     store = _get_store()
 
     # Build an Item from the request body

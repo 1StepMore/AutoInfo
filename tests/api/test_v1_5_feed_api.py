@@ -61,7 +61,11 @@ class TestFeedAPI:
         """
         body: dict[str, Any] = {
             "title": title,
-            "content": f"Content for {title}",
+            "content": (
+                f"Content for {title}, expanded with enough surrounding "
+                "text to satisfy the fifty-character minimum content "
+                "guard enforced at every KB write boundary."
+            ),
             "domain": domain,
             "tags": tags or ["IVF"],
             "source_type": source_type,

@@ -2451,6 +2451,14 @@ def _default_kb_base_path() -> Path:
     return Path("knowledge")
 
 
+# Minimum meaningful content length for a KB entry.  The process pipeline
+# (process.py) and importers (importer.py) already enforce 50 characters;
+# centralizing the constant here lets every write boundary — MCP
+# create_kb_entry / create_kb_draft and the REST API — share the same floor
+# (issue #279: entries with empty/short content must never enter the KB).
+MIN_KB_CONTENT_CHARS = 50
+
+
 class KBStore:
     """High-level knowledge base store that combines Markdown files + SQLite.
 
@@ -3214,6 +3222,7 @@ class KBStore:
         file_path = file_dir / file_name
 
         merged_body_parts: list[str] = []
+        source_bodies: list[str] = []
         for i, re in enumerate(raw_entries):  # noqa: F402
             merged_body_parts.append(
                 f"## Source {i + 1}: {re['title']}\n\n"
@@ -3222,10 +3231,22 @@ class KBStore:
             if raw_fp.is_file():
                 raw_text = raw_fp.read_text(encoding="utf-8")
                 body = _strip_frontmatter(raw_text)
+                source_bodies.append(body)
                 merged_body_parts.append(body)
             merged_body_parts.append("\n\n")
 
         merged_body = "".join(merged_body_parts)
+
+        # Same 50-char floor the process/import write paths enforce: a Draft
+        # built from a Raw entry whose content is below MIN_KB_CONTENT_CHARS
+        # is an empty shell and must not be written (issue #279).
+        if any(
+            len(body.strip()) < self.min_content_chars for body in source_bodies
+        ):
+            raise ValueError(
+                "draft content too short: a source Raw entry provides "
+                f"fewer than {self.min_content_chars} characters"
+            )
 
         # Build KBEntry
         source_raw_ids = ",".join(raw_ids)

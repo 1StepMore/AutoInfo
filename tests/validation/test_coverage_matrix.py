@@ -366,7 +366,9 @@ def _write_runs_for(path: Path) -> None:
     )
 
 
-def test_scan_source_evidence_runs_json_is_not_evidence(tmp_path):
+def test_scan_source_evidence_runs_json_is_not_evidence(
+    tmp_path: Path,
+) -> None:
     def _write_runs(path: Path, status: str = "error", items_found: int = 0) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -385,7 +387,7 @@ def test_scan_source_evidence_runs_json_is_not_evidence(tmp_path):
     assert cm.scan_source_evidence(tmp_path) == set()
 
 
-def test_scan_source_evidence_nested_date_items_count(tmp_path):
+def test_scan_source_evidence_nested_date_items_count(tmp_path: Path) -> None:
     coll = tmp_path / "collections"
     _touch(coll / "medical-research" / "pubmed" / "2026-08-08" / "42566234.json")
     _touch(coll / "medical-research" / "pubmed" / "2026-08-11" / "42559456.json")
@@ -398,14 +400,14 @@ def test_scan_source_evidence_nested_date_items_count(tmp_path):
     }
 
 
-def test_scan_source_evidence_failed_dir_not_a_source(tmp_path):
+def test_scan_source_evidence_failed_dir_not_a_source(tmp_path: Path) -> None:
     coll = tmp_path / "collections"
     _touch(coll / "medical-research" / "_failed" / "test-item-g4-retry.json")
 
     assert cm.scan_source_evidence(tmp_path) == set()
 
 
-def test_scan_source_evidence_flat_items_still_count(tmp_path):
+def test_scan_source_evidence_flat_items_still_count(tmp_path: Path) -> None:
     coll = tmp_path / "collections"
     _touch(coll / "b2b" / "producthunt" / "item1.json")
     _touch(coll / "b2b" / "producthunt" / "item2.json")

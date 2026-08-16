@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import yaml
 
@@ -70,7 +70,7 @@ def demo_domains() -> list[str]:
     return list(DEMO_DOMAINS)
 
 
-def _step_domains(step: dict) -> set[str]:
+def _step_domains(step: dict[str, Any]) -> set[str]:
     """Step domains declared via ``arguments.domain`` (strings only)."""
     args = step.get("arguments")
     if not isinstance(args, dict):

@@ -29,6 +29,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from fastapi.testclient import TestClient
 
 from autoinfo.models import Item
 
@@ -313,7 +314,7 @@ class TestRestAPI:
         assert entry["domain"] == "medical-research"
         assert "entry_id" in entry
 
-    def test_create_entry_short_content_returns_400(self, client):
+    def test_create_entry_short_content_returns_400(self, client: TestClient):
         """POST /entries with content shorter than 50 chars returns 400
         with the VALIDATION_ERROR envelope (issue #279)."""
         response = client.post(
@@ -331,7 +332,7 @@ class TestRestAPI:
         assert "at least 50 characters" in data["error"]["message"]
         assert data["error"]["actionable"] is True
 
-    def test_create_entry_long_content_returns_201(self, client):
+    def test_create_entry_long_content_returns_201(self, client: TestClient):
         """POST /entries with a >=50-char body still returns 201."""
         response = client.post(
             "/api/v1/entries",

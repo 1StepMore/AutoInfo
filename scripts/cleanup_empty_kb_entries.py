@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -29,7 +30,7 @@ _EMPTY_TIERS = ("01-Raw", "02-Draft")
 _WIKI_MARKER = "03-Wiki"
 
 
-def _iter_entries(knowledge_root: Path):
+def _iter_entries(knowledge_root: Path) -> Iterator[Path]:
     """Yield every markdown file under ``<root>/<domain>/{01-Raw,02-Draft}/``.
 
     Never descends into 03-Wiki: only the two writable tiers are globbed,

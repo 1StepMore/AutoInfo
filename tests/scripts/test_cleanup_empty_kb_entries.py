@@ -17,6 +17,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # scripts/ is not a package — load it via sys.path like the script itself does.
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -70,7 +72,9 @@ def test_apply_removes_only_short_non_wiki(tmp_path: Path) -> None:
     assert short_wiki.exists()
 
 
-def test_dry_run_prints_report_and_leaves_files(tmp_path: Path, capsys) -> None:
+def test_dry_run_prints_report_and_leaves_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """--dry-run prints the report and summary line without deleting."""
     kb, short_raw, long_raw, short_wiki = _fixture_tree(tmp_path)
 

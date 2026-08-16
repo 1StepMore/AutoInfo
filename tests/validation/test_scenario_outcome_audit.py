@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -43,7 +44,7 @@ def result(outcome_audit):
     return outcome_audit.audit_all()
 
 
-def test_all_70_scenarios_parsed(result):
+def test_all_70_scenarios_parsed(result: dict[str, Any]) -> None:
     assert result["summary"]["total_scenarios"] == 70
     assert result["summary"]["regression_scenarios"] == 6
 

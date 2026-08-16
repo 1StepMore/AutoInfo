@@ -15,6 +15,7 @@ YAML-1.1-safe approach) so the document loads with the real `on` key.
 """
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -23,13 +24,13 @@ WORKFLOW = (
 )
 
 
-def _load_workflow() -> dict:
-    return yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+def _load_workflow() -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader))
 
 
-def _steps() -> list[dict]:
+def _steps() -> list[dict[str, Any]]:
     data = _load_workflow()
-    return data["jobs"]["release-please"]["steps"]
+    return cast(list[dict[str, Any]], data["jobs"]["release-please"]["steps"])
 
 
 def test_token_uses_pat_with_bot_fallback() -> None:

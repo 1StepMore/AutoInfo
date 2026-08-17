@@ -4275,6 +4275,7 @@ def _handle_init_project(
         missing_keys = _detect_missing_source_keys(domain, sources_yaml=demo_sources)
         next_steps = [
             "configure_llm(api_key='...', provider='...', model='...')",
+            "configure_llm(llm_fallback=[{'model': 'mimo-v2.5', 'base_url': 'https://opencode.ai/zen/go/v1'}], llm_tasks={'extraction': {'model': 'deepseek-v4-flash'}}); verify with test_llm_connection()",
             f"collect_sources(domain='{domain}')",
             f"process_collection(domain='{domain}')",
         ]
@@ -4339,6 +4340,7 @@ def _handle_init_project(
         missing_keys = _detect_missing_source_keys(domain, sources_yaml=demo_sources)
         next_steps = [
             "configure_llm(api_key='...', provider='...', model='...')",
+            "configure_llm(llm_fallback=[{'model': 'mimo-v2.5', 'base_url': 'https://opencode.ai/zen/go/v1'}], llm_tasks={'extraction': {'model': 'deepseek-v4-flash'}}); verify with test_llm_connection()",
             f"collect_sources(domain='{domain}')",
             f"process_collection(domain='{domain}')",
         ]

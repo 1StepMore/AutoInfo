@@ -4186,11 +4186,100 @@ def _handle_init_project(
         }
 
 
+def _validate_llm_pool_params(
+    llm_fallback: list[dict[str, Any]] | None,
+    llm_tasks: dict[str, Any] | None,
+) -> str | None:
+    """Validate ``llm_fallback`` / ``llm_tasks`` before any disk write.
+
+    Returns a human-readable error message when invalid, ``None`` when
+    valid.  Runs BEFORE the YAML write so a failed validation leaves the
+    config file untouched (mtime unchanged).
+    """
+    if llm_fallback is not None:
+        if not isinstance(llm_fallback, list):
+            return "llm_fallback must be a list of fallback entries"
+        for i, entry in enumerate(llm_fallback):
+            if not isinstance(entry, dict):
+                return (
+                    f"llm_fallback[{i}] must be an object with at least "
+                    "a 'model' field"
+                )
+            model = entry.get("model")
+            if not isinstance(model, str) or not model.strip():
+                return (
+                    f"llm_fallback[{i}] is missing the required 'model' field"
+                )
+    if llm_tasks is not None:
+        if not isinstance(llm_tasks, dict):
+            return "llm_tasks must be an object mapping task names to configs"
+        allowed = {"model", "provider", "max_tokens"}
+        for task_name, task_cfg in llm_tasks.items():
+            if not isinstance(task_cfg, dict):
+                return (
+                    f"llm_tasks[{task_name}] must be an object with "
+                    "model/provider/max_tokens fields"
+                )
+            unknown = set(task_cfg) - allowed
+            if unknown:
+                return (
+                    f"llm_tasks[{task_name}] has unknown fields: "
+                    f"{', '.join(sorted(unknown))}"
+                )
+            for field, value in task_cfg.items():
+                if field in ("model", "provider") and not isinstance(value, str):
+                    return f"llm_tasks[{task_name}].{field} must be a string"
+                if field == "max_tokens" and not isinstance(value, int):
+                    return f"llm_tasks[{task_name}].max_tokens must be an integer"
+    return None
+
+
+def _merge_fallback_entries(
+    existing: list[dict[str, Any]],
+    new_entries: list[dict[str, Any]],
+    primary_provider: str,
+    primary_model: str,
+) -> list[dict[str, Any]]:
+    """Merge new fallback entries into the existing list.
+
+    Entries are keyed on the FULL ``(provider or primary_provider, model)``
+    identity (after inheritance) — same key updates fields in place,
+    different key appends.  Empty-model entries are completed with the
+    inherited primary model BEFORE writing so ``call_with_fallback``
+    (llm.py:714-727) can never confuse a backup entry with the primary.
+    """
+    result = list(existing)
+    for entry in new_entries:
+        provider = entry.get("provider") or primary_provider
+        model = entry.get("model") or primary_model
+        key = (provider, model)
+        replaced = False
+        for i, ex in enumerate(result):
+            ex_provider = ex.get("provider") or primary_provider
+            ex_model = ex.get("model") or primary_model
+            if (ex_provider, ex_model) == key:
+                merged = dict(ex)
+                merged.update(entry)
+                if not merged.get("model"):
+                    merged["model"] = primary_model
+                result[i] = merged
+                replaced = True
+                break
+        if not replaced:
+            completed = dict(entry)
+            if not completed.get("model"):
+                completed["model"] = primary_model
+            result.append(completed)
+    return result
+
+
 def _handle_configure_llm(
     provider: str = "",
     model: str = "",
     api_key: str = "",
     base_url: str = "",
+    llm_fallback: list[dict[str, Any]] | None = None,
+    llm_tasks: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Update LLM configuration in .autoinfo/config.yaml.
 
@@ -4206,11 +4295,25 @@ def _handle_configure_llm(
         The caller should set the ``AUTOINFO_LLM_API_KEY`` env var.
     base_url:
         LLM base URL (e.g. \"http://localhost:11434/v1\").
+    llm_fallback:
+        Fallback chain entries (list of dicts, each with a required
+        ``model``).  ``None`` leaves the existing fallback untouched;
+        ``[]`` clears it; entries merge by ``(provider, model)`` identity.
+    llm_tasks:
+        Per-task LLM overrides keyed by task name (``model``/``provider``/
+        ``max_tokens``).  ``None`` leaves existing tasks untouched;
+        ``{}`` clears them.  Judgment tasks (g4_factual/g5_translation/
+        llm_judge) are writable but still resolve to the release-pinned
+        JUDGMENT_MODEL at runtime.
     """
     config_path = _config_path()
 
     # No-op when nothing is supplied
-    if not any([provider, model, api_key, base_url]):
+    if (
+        not any([provider, model, api_key, base_url])
+        and llm_fallback is None
+        and llm_tasks is None
+    ):
         return {
             "status": "noop",
             "message": (
@@ -4238,19 +4341,80 @@ def _handle_configure_llm(
         if cfg is None:
             cfg = {}
 
+        llm = cfg.setdefault("llm", {})
+
+        # Validate BEFORE writing so a failed validation leaves the file
+        # untouched (mtime unchanged).
+        validation_error = _validate_llm_pool_params(llm_fallback, llm_tasks)
+        if validation_error:
+            return error_response(
+                ErrorCode.VALIDATION_ERROR,
+                validation_error,
+                actionable=True,
+            )
+
         # Incremental updates — only write fields explicitly provided
         if provider:
-            cfg.setdefault("llm", {})["provider"] = provider
+            llm["provider"] = provider
         if model:
-            cfg.setdefault("llm", {})["model"] = model
+            llm["model"] = model
         if base_url:
-            cfg.setdefault("llm", {})["base_url"] = base_url
+            llm["base_url"] = base_url
         if api_key:
             # Store env var reference, NEVER the raw key
-            cfg.setdefault("llm", {})["api_key"] = "${AUTOINFO_LLM_API_KEY}"
+            llm["api_key"] = "${AUTOINFO_LLM_API_KEY}"
+
+        # Fallback merge — keyed on (provider or primary, model) identity.
+        # None = don't touch; [] = clear; list = merge with dedup.
+        if llm_fallback is not None:
+            if not llm_fallback:
+                llm["fallback"] = []
+            else:
+                primary_provider = llm.get("provider", "")
+                primary_model = llm.get("model", "")
+                existing_fallback = llm.get("fallback", []) or []
+                llm["fallback"] = _merge_fallback_entries(
+                    existing_fallback,
+                    llm_fallback,
+                    primary_provider,
+                    primary_model,
+                )
+
+        # Tasks merge — by task name.  None = don't touch; {} = clear.
+        if llm_tasks is not None:
+            if not llm_tasks:
+                llm["tasks"] = {}
+            else:
+                existing_tasks = llm.get("tasks", {}) or {}
+                merged_tasks = dict(existing_tasks)
+                for task_name, task_cfg in llm_tasks.items():
+                    merged_tasks[str(task_name)] = task_cfg
+                llm["tasks"] = merged_tasks
 
         with open(config_path, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+        # Write-then-verify: round-trip through load_config so a malformed
+        # write surfaces as an error instead of a silently-broken config.
+        try:
+            from autoinfo.config import load_config
+
+            loaded = load_config(config_path)
+            if llm_fallback is not None and len(loaded.llm.fallback) != len(
+                llm["fallback"]
+            ):
+                raise RuntimeError("fallback count mismatch after round-trip")
+            if llm_tasks is not None and set(loaded.llm.tasks) != set(
+                llm["tasks"]
+            ):
+                raise RuntimeError("task names mismatch after round-trip")
+        except Exception as exc:
+            logger.exception("configure_llm round-trip verification failed")
+            return error_response(
+                ErrorCode.INTERNAL_ERROR,
+                f"Config written but failed round-trip verification: {exc}",
+                actionable=True,
+            )
 
         updated = {
             "provider": provider or "(unchanged)",
@@ -4262,15 +4426,31 @@ def _handle_configure_llm(
                 else "(unchanged)"
             ),
         }
+        if llm_fallback is not None:
+            updated["fallback"] = llm["fallback"]
+        if llm_tasks is not None:
+            updated["tasks"] = llm["tasks"]
+
+        message = (
+            "LLM configured. "
+            "Also set AUTOINFO_LLM_API_KEY env var for the API key. "
+            "See docs/dev/required-api-keys.md for the full list of "
+            "API keys and environment variables."
+        )
+        if llm_tasks:
+            from autoinfo.config import JUDGMENT_TASKS
+
+            judgment_written = sorted(set(llm_tasks) & set(JUDGMENT_TASKS))
+            if judgment_written:
+                message += (
+                    f" Judgment task(s) {', '.join(judgment_written)} "
+                    "are written to llm.tasks but 运行期仍强制 JUDGMENT_MODEL "
+                    "(release-pinned; llm.tasks cannot override judgment models)."
+                )
 
         return success_response({
             "status": "success",
-            "message": (
-                "LLM configured. "
-                "Also set AUTOINFO_LLM_API_KEY env var for the API key. "
-                "See docs/dev/required-api-keys.md for the full list of "
-                "API keys and environment variables."
-            ),
+            "message": message,
             "updated": updated,
             "config_path": str(config_path),
         })
@@ -10030,7 +10210,12 @@ async def list_tools() -> list[Tool]:
                 "Update LLM configuration in .autoinfo/config.yaml. "
                 "Incremental: only updates fields explicitly provided. "
                 "api_key is stored as env var reference (${AUTOINFO_LLM_API_KEY}), "
-                "never the raw key. No-op when no parameters are supplied."
+                "never the raw key. No-op when no parameters are supplied. "
+                "llm_fallback configures the fallback chain (None = unchanged, "
+                "[] = clear, entries merge by (provider, model) identity); "
+                "llm_tasks configures per-task model routing (None = unchanged, "
+                "{} = clear; judgment tasks still resolve to the release-pinned "
+                "JUDGMENT_MODEL at runtime)."
             ),
             inputSchema={
                 "type": "object",
@@ -10054,6 +10239,65 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "LLM base URL (e.g. \"http://localhost:11434/v1\")",
                         "default": "",
+                    },
+                    "llm_fallback": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "model": {
+                                    "type": "string",
+                                    "description": "Fallback model name (required)",
+                                },
+                                "provider": {
+                                    "type": "string",
+                                    "description": "Fallback provider; empty inherits the primary provider",
+                                },
+                                "base_url": {
+                                    "type": "string",
+                                    "description": "Fallback base URL",
+                                },
+                                "api_key": {
+                                    "type": "string",
+                                    "description": "Fallback API key (env var reference ${...}); empty inherits the primary key",
+                                },
+                                "json_mode": {
+                                    "type": "boolean",
+                                    "description": "Force JSON response format for this fallback",
+                                },
+                                "reasoning_model": {
+                                    "type": "boolean",
+                                    "description": "Mark this fallback as a reasoning model",
+                                },
+                                "timeout": {
+                                    "type": "number",
+                                    "description": "Per-call timeout in seconds",
+                                },
+                            },
+                            "required": ["model"],
+                        },
+                        "description": "Fallback chain entries. None = leave unchanged; [] = clear; entries merge by (provider, model) identity.",
+                    },
+                    "llm_tasks": {
+                        "type": "object",
+                        "description": "Per-task LLM overrides keyed by task name (model/provider/max_tokens). None = leave unchanged; {} = clear. Judgment tasks (g4_factual/g5_translation/llm_judge) still resolve to the release-pinned JUDGMENT_MODEL at runtime.",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "model": {
+                                    "type": "string",
+                                    "description": "Task model override",
+                                },
+                                "provider": {
+                                    "type": "string",
+                                    "description": "Task provider override",
+                                },
+                                "max_tokens": {
+                                    "type": "integer",
+                                    "description": "Task max_tokens override",
+                                },
+                            },
+                        },
                     },
                 },
                 "required": [],

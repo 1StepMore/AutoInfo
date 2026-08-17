@@ -39,7 +39,7 @@ PRIMARY_PROVIDER = "openai"
 _BASE_CONFIG_BYTES: bytes | None = None
 
 
-@pytest.fixture
+@pytest.fixture  # type: ignore[untyped-decorator]
 def config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """chdir into a tmp dir so ``_config_path()`` resolves to tmp/.autoinfo/config.yaml."""
     monkeypatch.chdir(tmp_path)

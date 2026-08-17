@@ -34,7 +34,17 @@ EXPECTED = {
     },
     "financial-intelligence": {
         "old": ["Alpha Vantage", "FRED"],
-        "new": ["Finnhub", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"],
+        "new": [
+            "Finnhub",
+            "SEC EDGAR",
+            "Twelve Data",
+            "World Bank Data",
+            "Quandl/Nasdaq Data Link",
+            # #288 (2026-08-17): keyless finance news RSS feeds
+            "CNBC Investing",
+            "TheStreet",
+            "MarketWatch Markets (DJ)",
+        ],
     },
     "tech-ai-developer": {
         "old": ["GitHub Trending", "HackerNews API"],
@@ -58,11 +68,43 @@ def _load_sources(domain: str) -> list[dict]:
 
 
 @pytest.mark.parametrize("domain, old, new", [
-    ("medical-research", ["pubmed"], ["semantic-scholar", "arXiv", "CrossRef", "dblp", "openalex", "uspto"]),
+    (
+        "medical-research",
+        ["pubmed"],
+        ["semantic-scholar", "arXiv", "CrossRef", "dblp", "openalex", "uspto"],
+    ),
     ("ai-commercial", ["techcrunch", "producthunt"], ["Crunchbase", "36kr"]),
-    ("language-learning", ["project-gutenberg"], ["news-in-levels", "commonlit"]),
-    ("financial-intelligence", ["Alpha Vantage", "FRED"], ["Finnhub", "SEC EDGAR", "Twelve Data", "World Bank Data", "Quandl/Nasdaq Data Link"]),
-    ("tech-ai-developer", ["GitHub Trending", "HackerNews API"], ["Substack RSS (tech) — Pragmatic Engineer", "Stack Exchange", "ProductHunt", "Reddit", "Spotify AI Podcasts", "Bilibili (B站)"]),
+    (
+        "language-learning",
+        ["project-gutenberg"],
+        ["news-in-levels", "commonlit"],
+    ),
+    (
+        "financial-intelligence",
+        ["Alpha Vantage", "FRED"],
+        [
+            "Finnhub",
+            "SEC EDGAR",
+            "Twelve Data",
+            "World Bank Data",
+            "Quandl/Nasdaq Data Link",
+            "CNBC Investing",
+            "TheStreet",
+            "MarketWatch Markets (DJ)",
+        ],
+    ),
+    (
+        "tech-ai-developer",
+        ["GitHub Trending", "HackerNews API"],
+        [
+            "Substack RSS (tech) — Pragmatic Engineer",
+            "Stack Exchange",
+            "ProductHunt",
+            "Reddit",
+            "Spotify AI Podcasts",
+            "Bilibili (B站)",
+        ],
+    ),
 ])
 class TestDemoSources:
     def test_old_sources_preserved(self, domain: str, old: list[str], new: list[str]) -> None:

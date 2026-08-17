@@ -228,8 +228,11 @@ def test_build_body_does_not_raise_on_int_content() -> None:
         source_type="api",
         source_url="https://api.worldbank.org/v2/country",
         title="United States",
-        content=12345,
+        content="",
     )
+    # Simulate a non-str value that slipped through the untyped collection
+    # boundary (raw API JSON) — the crash site _build_body must tolerate it.
+    object.__setattr__(item, "content", 12345)
     body = _build_body(item)
     assert "12345" in body
     assert "## Original Content" in body

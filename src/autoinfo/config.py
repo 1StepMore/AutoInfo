@@ -150,7 +150,7 @@ class LLMConfig:
     fallback: list[LLMConfig] = field(default_factory=list)
     tasks: dict[str, LLMTaskConfig] = field(default_factory=dict)
 
-    def resolve_model(self) -> str:
+    def resolve_model(self, default_provider: str | None = None) -> str:
         """Return the fully-qualified model string for LiteLLM.
 
         ``model`` may already carry a provider prefix (e.g.
@@ -158,11 +158,18 @@ class LLMConfig:
         ``gpt-4``).  When bare, the provider is prepended.  This avoids
         double-prefixing (``openai/openai/...``) when callers configure a
         prefixed model while also passing ``provider``.
+
+        *default_provider* supplies the provider prefix when ``self.provider``
+        is empty — used by callers that inherit a provider from elsewhere
+        (e.g. an empty-provider fallback entry inheriting the primary
+        provider).  When omitted the historical ``'openrouter'`` fallback is
+        kept, so the no-argument call is fully backward compatible.
         """
         model = self.model or ""
         if "/" in model or not model:
             return model
-        return f"{self.provider or 'openrouter'}/{model}"
+        provider = self.provider or default_provider or "openrouter"
+        return f"{provider}/{model}"
 
 
 @dataclass

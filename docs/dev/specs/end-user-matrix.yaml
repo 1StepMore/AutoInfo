@@ -1026,7 +1026,6 @@ required_sources:
   - {domain: financial-news, source: reuters-business}
   - {domain: financial-news, source: cnbc}
   - {domain: financial-news, source: ft-alphaville}
-  - {domain: financial-news, source: yahoo-finance}
   - {domain: financial-news, source: seeking-alpha}
   - {domain: financial-news, source: businesswire-technology}
   - {domain: financial-news, source: prnewswire-financial-services}

@@ -3,7 +3,7 @@
 Locks the behavior of ``scripts/tool_desc_audit.py`` so the audit the
 best-practice review dimension relies on stays deterministic:
 
-1. All 145 declared tools are parsed (matches ``get_tool_count``).
+1. All 146 declared tools are parsed (matches ``get_tool_count``).
 2. Verb-first naming — ``email_config`` is the only non-verb-style name;
    namespace+verb names (``enduser_create``, ``soft_delete_entry``,
    ``knowledge_graph_export``) are NOT violations.
@@ -36,8 +36,8 @@ def result(tool_audit):
     return tool_audit.audit_tools(SERVER_SRC.read_text(encoding="utf-8"))
 
 
-def test_all_145_tools_parsed(result):
-    assert result["declared"] == 145
+def test_all_146_tools_parsed(result):
+    assert result["declared"] == 146
 
 
 def test_email_config_is_only_verb_violation(result):

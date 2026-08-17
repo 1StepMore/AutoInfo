@@ -137,7 +137,7 @@ def _load_sources(domain: str) -> list[dict[str, Any]]:
     path = DEMO_DIR / domain / "sources.yaml"
     with open(path) as fh:
         data = yaml.safe_load(fh)
-    return data["sources"]
+    return list(data["sources"])
 
 
 def test_source_dispatch_pass_fail() -> None:

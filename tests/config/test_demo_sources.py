@@ -7,6 +7,7 @@ with valid structure.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -60,11 +61,11 @@ EXPECTED = {
 }
 
 
-def _load_sources(domain: str) -> list[dict]:
+def _load_sources(domain: str) -> list[dict[str, Any]]:
     path = DEMO_DIR / domain / "sources.yaml"
     with open(path) as fh:
         data = yaml.safe_load(fh)
-    return data["sources"]
+    return list(data["sources"])
 
 
 @pytest.mark.parametrize("domain, old, new", [

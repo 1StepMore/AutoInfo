@@ -1280,23 +1280,67 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
 
 
 def _handle_list_available_models() -> dict[str, Any]:
-    """List available LLM models from configuration."""
+    """List available LLM models from configuration.
+
+    Returns the full model pool: the primary model first, then every
+    configured fallback entry (``task: fallback:<model>``), then every
+    per-task model override (``task: <task name>``).  The primary entry
+    keeps its historical shape (task/provider/model/api_key_configured);
+    fallback and task entries are appended with additional fields
+    (``inherits_provider``, ``max_tokens``).  ``count`` always equals
+    ``len(models)``.
+    """
     try:
         config = _load_config()
     except Exception as exc:
         return {"models": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
 
-    models = [
+    api_key_configured = bool(
+        config.llm.api_key
+        or os.environ.get("AUTOINFO_LLM_API_KEY")
+    )
+
+    models: list[dict[str, Any]] = [
         {
             "task": "default",
             "provider": config.llm.provider,
             "model": config.llm.model,
-            "api_key_configured": bool(
-                config.llm.api_key
-                or os.environ.get("AUTOINFO_LLM_API_KEY")
-            ),
+            "api_key_configured": api_key_configured,
         },
     ]
+
+    # Fallback chain entries — appended after the primary.  An empty
+    # provider means the entry inherits the primary provider at call time
+    # (call_with_fallback, llm.py:714-727); the key is inherited too.
+    for fb in config.llm.fallback:
+        models.append(
+            {
+                "task": f"fallback:{fb.model}",
+                "provider": fb.provider,
+                "model": fb.model,
+                "api_key_configured": bool(
+                    fb.api_key
+                    or config.llm.api_key
+                    or os.environ.get("AUTOINFO_LLM_API_KEY")
+                ),
+                "inherits_provider": not bool(fb.provider),
+            }
+        )
+
+    # Per-task model overrides — appended last.  Tasks inherit the
+    # primary provider/model/key when their own fields are empty.
+    for task_name, tc in config.llm.tasks.items():
+        models.append(
+            {
+                "task": task_name,
+                "provider": tc.provider,
+                "model": tc.model,
+                "api_key_configured": api_key_configured,
+                "inherits_provider": not bool(tc.provider),
+                "max_tokens": tc.max_tokens,
+            }
+        )
+
     return {"models": models, "count": len(models)}
 
 

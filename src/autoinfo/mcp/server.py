@@ -1666,6 +1666,159 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
         )
 
 
+def _chain_contains_timeout(exc: BaseException) -> bool:
+    """Walk the exception cause/context chain looking for a timeout.
+
+    ``call_with_fallback`` raises ``RuntimeError`` with the last provider
+    error as ``__cause__``; a timeout can sit anywhere in that chain (e.g.
+    a wrapped ``httpx.TimeoutException``).
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.TimeoutException):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _handle_test_llm_connection(
+    provider: str = "",
+    model: str = "",
+    base_url: str = "",
+    api_key: str = "",
+) -> dict[str, Any]:
+    """Test LLM connectivity with the current or overridden configuration.
+
+    Mirrors ``_handle_test_source``: entry validation → error envelope →
+    result dict.  Key validation is handler-internal (NOT the dispatcher
+    guard) so an explicit ``api_key`` param can bypass the config/env key
+    check.  ``config_source`` is ``"params"`` when any override param is
+    supplied, else ``"config"``.
+    """
+    import time
+
+    from autoinfo.config import Config, LLMConfig, get_config_path, load_config
+
+    # Resolve current effective config — param overrides win, the rest
+    # inherits the on-disk values (the same source get_effective_llm_config
+    # reads internally).
+    current_provider = ""
+    current_model = ""
+    current_base_url = ""
+    current_key = ""
+    current_timeout: float | None = None
+    current_json_mode = False
+    current_reasoning_model = False
+    current_fallback: list[LLMConfig] = []
+    try:
+        config_path = get_config_path()
+        if config_path:
+            config = load_config(config_path)
+            current_provider = config.llm.provider
+            current_model = config.llm.model
+            current_base_url = config.llm.base_url
+            current_key = config.llm.api_key
+            current_timeout = config.llm.timeout
+            current_json_mode = config.llm.json_mode
+            current_reasoning_model = config.llm.reasoning_model
+            current_fallback = config.llm.fallback
+    except Exception:
+        pass
+
+    eff_provider = provider or current_provider
+    eff_model = model or current_model
+    eff_base_url = base_url or current_base_url
+    eff_key = api_key or current_key
+
+    # Resolve ${ENV} references so a placeholder without a backing env var
+    # does not count as a real key.
+    if eff_key.startswith("${") and eff_key.endswith("}"):
+        eff_key = os.environ.get(eff_key[2:-1], "")
+    if not eff_key:
+        eff_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+
+    # Handler-internal key check (mirrors _handle_suggest_keywords): an
+    # explicit api_key param skips the check; otherwise a config/env key is
+    # required.  NOT the dispatcher guard — that only inspects config/env
+    # keys and would make explicit overrides unreachable.
+    if not eff_key:
+        return error_response(
+            code=ErrorCode.LLM_NOT_CONFIGURED,
+            message=(
+                "LLM is not configured. Use configure_llm() to set up your "
+                "API key or pass api_key explicitly. "
+                f"See {_REQUIRED_KEYS_DOCS_REF} for the full list of API keys "
+                "and environment variables."
+            ),
+            actionable=True,
+        )
+
+    # Temporary config: param overrides on top of the inherited values so the
+    # configured fallback chain still applies to the probe call.
+    temp_llm = LLMConfig(
+        provider=eff_provider,
+        model=eff_model,
+        api_key=eff_key,
+        base_url=eff_base_url,
+        json_mode=current_json_mode,
+        reasoning_model=current_reasoning_model,
+        timeout=current_timeout,
+        fallback=current_fallback,
+    )
+    temp_config = Config(llm=temp_llm)
+
+    tested_model = temp_llm.resolve_model() or (
+        f"{eff_provider or 'openrouter'}/{eff_model or 'deepseek/deepseek-chat'}"
+    )
+    config_source = (
+        "params" if any([provider, model, base_url, api_key]) else "config"
+    )
+
+    start = time.monotonic()
+    try:
+        response = call_with_fallback(
+            messages=[{"role": "user", "content": "Reply with exactly: OK"}],
+            max_tokens=16,
+            temperature=0.0,
+            timeout=current_timeout,
+            config=temp_config,
+        )
+        latency_ms = round((time.monotonic() - start) * 1000.0, 1)
+        content = ""
+        if response is not None and getattr(response, "choices", None):
+            content = response.choices[0].message.content or ""
+        return {
+            "connectable": True,
+            "tested_model": tested_model,
+            "latency_ms": latency_ms,
+            "message": f"LLM connection successful ({tested_model}).",
+            "config_source": config_source,
+        }
+    except Exception as exc:
+        logger.exception("LLM connection test failed")
+        if _chain_contains_timeout(exc):
+            return error_response(
+                code=ErrorCode.TIMEOUT,
+                message=(
+                    f"LLM connection test timed out for '{tested_model}'. "
+                    "Check the base_url and network connectivity. "
+                    f"See {_REQUIRED_KEYS_DOCS_REF}."
+                ),
+                actionable=True,
+            )
+        return error_response(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=(
+                f"LLM connection test failed for '{tested_model}': {exc}. "
+                "Check the provider/model/base_url configuration. "
+                f"See {_REQUIRED_KEYS_DOCS_REF}."
+            ),
+            actionable=True,
+        )
+
+
 def _infer_format(content_type: str, content_preview: str) -> str:
     """Infer content format from content-type header and body preview."""
     if "xml" in content_type:
@@ -10303,6 +10456,42 @@ async def list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="test_llm_connection",
+            description=(
+                "Test LLM connectivity with the current or overridden "
+                "configuration. Makes a minimal completion call and reports "
+                "connectable, tested_model, latency_ms, and config_source "
+                "(params when any override is supplied, else config). "
+                "Pass api_key explicitly to test a key without persisting it."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "description": "LLM provider override (e.g. \"openai\", \"openrouter\")",
+                        "default": "",
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "LLM model override (e.g. \"gpt-4\", \"deepseek/deepseek-chat\")",
+                        "default": "",
+                    },
+                    "base_url": {
+                        "type": "string",
+                        "description": "LLM base URL override (e.g. \"http://localhost:11434/v1\")",
+                        "default": "",
+                    },
+                    "api_key": {
+                        "type": "string",
+                        "description": "API key override for this test only (never persisted). Empty inherits the config/env key.",
+                        "default": "",
+                    },
+                },
+                "required": [],
+            },
+        ),
         # -- Metrics (2) --------------------------------------------------
         Tool(
             name="get_metrics",
@@ -11522,6 +11711,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = _handle_init_project(**arguments)
         elif name == "configure_llm":
             result = _handle_configure_llm(**arguments)
+        elif name == "test_llm_connection":
+            result = await asyncio.to_thread(
+                _handle_test_llm_connection, **arguments
+            )
         elif name == "list_projects":
             result = _handle_list_projects()
         elif name == "get_project_assets":

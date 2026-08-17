@@ -1808,7 +1808,9 @@ def _handle_test_llm_connection(
         base_url=eff_base_url,
         json_mode=current_json_mode,
         reasoning_model=current_reasoning_model,
-        timeout=current_timeout,
+        # current_timeout is Optional (absent when no on-disk config exists);
+        # coerce to the LLMConfig default (120.0) so LLMConfig.timeout stays float.
+        timeout=current_timeout or 120.0,
         fallback=current_fallback,
     )
     temp_config = Config(llm=temp_llm)

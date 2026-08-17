@@ -16,6 +16,7 @@ All tests run against a tmp_path config so the repository's runtime
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -39,7 +40,7 @@ PRIMARY_PROVIDER = "openai"
 _BASE_CONFIG_BYTES: bytes | None = None
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """chdir into a tmp dir so ``_config_path()`` resolves to tmp/.autoinfo/config.yaml."""
     monkeypatch.chdir(tmp_path)
@@ -365,7 +366,9 @@ def test_fallback_entry_not_dict_validation_error(config_dir: Path) -> None:
     config_path = _write_base_config(config_dir)
     mtime_before = config_path.stat().st_mtime_ns
 
-    result = _handle_configure_llm(llm_fallback=["mimo-v2.5"])
+    result = _handle_configure_llm(
+        llm_fallback=cast(list[dict[str, Any]], ["mimo-v2.5"])
+    )
 
     assert result["success"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value

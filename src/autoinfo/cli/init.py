@@ -1,16 +1,15 @@
-from __future__ import annotations
-
 """`autoinfo init` — project skeleton generator.
 
 Creates the `.autoinfo/` directory structure, default config, and
 optionally populates it with a demo domain definition.
 """
 
+from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 import typer
 import yaml
@@ -224,7 +223,10 @@ def _run_init(
     typer.echo()
     typer.echo("  2. Collect from sources:")
     if first_topic:
-        typer.echo(f"     autoinfo collect --domain {first_domain} --topic \"{first_topic}\" --limit 5")
+        typer.echo(
+            f"     autoinfo collect --domain {first_domain} --topic "
+            f"\"{first_topic}\" --limit 5"
+        )
     else:
         typer.echo(f"     autoinfo collect --domain {first_domain} --limit 5")
     typer.echo()
@@ -238,14 +240,20 @@ def init(
         None,
         "--demo",
         "-d",
-        help="Demo domain to initialize (omit to enter interactive mode). May be repeated for multiple domains.",
+        help=(
+            "Demo domain to initialize (omit to enter interactive mode). "
+            "May be repeated for multiple domains."
+        ),
         show_default=False,
     ),
     name: Optional[str] = typer.Option(
         None,
         "--name",
         "-n",
-        help="Optional human-friendly project name stored as project.name (and project.project_name for backward compat) in config.",
+        help=(
+            "Optional human-friendly project name stored as project.name "
+            "(and project.project_name for backward compat) in config."
+        ),
         show_default=False,
     ),
     interactive: bool = typer.Option(

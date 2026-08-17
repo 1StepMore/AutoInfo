@@ -40,7 +40,7 @@ def similarity_audit() -> Any:
 
 
 @pytest.fixture(scope="module")
-def result(similarity_audit: Any) -> dict[str, Any]:
+def result(similarity_audit: Any) -> Any:
     return similarity_audit.audit_similarity(
         SERVER_SRC.read_text(encoding="utf-8")
     )

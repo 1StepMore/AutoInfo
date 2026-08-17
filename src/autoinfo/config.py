@@ -240,7 +240,7 @@ class DomainConfig:
     max_auto_keywords: int = 100
     auto_keyword_min_length: int = 2
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Apply domain-specific TTL defaults for built-in demo domains."""
         domain_defaults = {
             "medical-research": 180,
@@ -1184,20 +1184,20 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         if domain.quality_gates:
             domain_qg_dict: dict[str, Any] = {}
             for gate_name, gc in domain.quality_gates.items():
-                entry: dict[str, Any] = {
+                domain_qg_entry: dict[str, Any] = {
                     "category": gc.category,
                     "retries": gc.retries,
                     "action": gc.action,
                 }
                 if gc.retry_models:
-                    entry["retry_models"] = gc.retry_models
+                    domain_qg_entry["retry_models"] = gc.retry_models
                 if gc.threshold is not None:
-                    entry["threshold"] = gc.threshold
+                    domain_qg_entry["threshold"] = gc.threshold
                 if gc.window_days:
-                    entry["window_days"] = gc.window_days
+                    domain_qg_entry["window_days"] = gc.window_days
                 if not gc.enabled:
-                    entry["enabled"] = gc.enabled
-                domain_qg_dict[gate_name] = entry
+                    domain_qg_entry["enabled"] = gc.enabled
+                domain_qg_dict[gate_name] = domain_qg_entry
             domain_dict["quality_gates"] = domain_qg_dict
         if domain.delivery_gates:
             domain_dg_dict: dict[str, Any] = {}

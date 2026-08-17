@@ -1017,7 +1017,12 @@ class TestInitProjectNextSteps:
         assert len(next_steps) == 4
         assert next_steps == [
             "configure_llm(api_key='...', provider='...', model='...')",
-            "configure_llm(llm_fallback=[{'model': 'mimo-v2.5', 'base_url': 'https://opencode.ai/zen/go/v1'}], llm_tasks={'extraction': {'model': 'deepseek-v4-flash'}}); verify with test_llm_connection()",
+            (
+                "configure_llm(llm_fallback=[{'model': 'mimo-v2.5', "
+                "'base_url': 'https://opencode.ai/zen/go/v1'}], "
+                "llm_tasks={'extraction': {'model': 'deepseek-v4-flash'}}); "
+                "verify with test_llm_connection()"
+            ),
             "collect_sources(domain='medical-research')",
             "process_collection(domain='medical-research')",
         ]

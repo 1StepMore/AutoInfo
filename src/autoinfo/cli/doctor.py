@@ -84,6 +84,37 @@ def _print_human(result: dict[str, Any]) -> None:
             "       See docs/dev/required-api-keys.md for API key setup"
         )
 
+    # --- LLM fallback chain ---
+    fh = result.get("fallback_health", {})
+    if fh:
+        if fh.get("configured"):
+            typer.echo(f"  ✅ LLM fallback chain: {fh.get('count', 0)} fallback(s)")
+            for entry in fh.get("entries", []):
+                inherited = []
+                if entry.get("inherits_provider"):
+                    inherited.append("provider")
+                if entry.get("inherits_key"):
+                    inherited.append("key")
+                inherit_str = f" (inherits {', '.join(inherited)})" if inherited else ""
+                typer.echo(f"       ↳ {entry.get('model', '?')}{inherit_str}")
+        else:
+            typer.echo(
+                "  ⚠ LLM fallback chain: not configured "
+                "(add llm.fallback to .autoinfo/config.yaml)"
+            )
+        primary = fh.get("primary", {})
+        if primary:
+            flags = []
+            if primary.get("reasoning_model"):
+                flags.append("reasoning_model")
+            if primary.get("json_mode"):
+                flags.append("json_mode")
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            typer.echo(
+                f"       primary: {primary.get('provider', '?')}/"
+                f"{primary.get('model', '?')}{flag_str}"
+            )
+
     # --- Sources ---
     sources = result.get("sources", [])
     if sources:

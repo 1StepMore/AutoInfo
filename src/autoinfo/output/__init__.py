@@ -3099,9 +3099,24 @@ _DIGEST_ENTERPRISE_METRICS_FIELDS: list[str] = [
     "(enterprise decision-support table)",
 ]
 
+# Issue #313: magazine-digest editorial framing — an editor's note framing
+# the week plus a personality profile / deep-dive feature story, so the
+# magazine is a narrative product rather than a bare summary list.
+_DIGEST_MAGAZINE_EDITORIAL_FIELDS: list[str] = (
+    _DIGEST_PRODUCT_BASE_FIELDS
+    + [
+        '"editorial_intro": "A 2-3 sentence editorial introduction paragraph '
+        'for this magazine edition \u2014 the editor\'s framing of the week, '
+        'written in a magazine voice (opinionated but factual)"',
+        '"feature_story": "A 3-5 paragraph personality profile / deep-dive '
+        "story on one notable person, company, or trend from the period, in "
+        "magazine feature style \u2014 a narrative beyond the summary list\"",
+    ]
+)
+
 _DIGEST_PRODUCT_FIELD_DESCRIPTIONS: dict[str, list[str]] = {
     "premium-briefing": _DIGEST_PRODUCT_BASE_FIELDS,
-    "magazine-digest": _DIGEST_PRODUCT_BASE_FIELDS,
+    "magazine-digest": _DIGEST_MAGAZINE_EDITORIAL_FIELDS,
     "enterprise-briefing": (
         _DIGEST_PRODUCT_BASE_FIELDS + _DIGEST_ENTERPRISE_METRICS_FIELDS
     ),
@@ -3550,9 +3565,20 @@ def _normalize_digest_product_context(
     ]
 
     # --- Product-specific fields (todo 7), flattened generically ----------
-    for synthesis_field in ("implications", "risks", "action_required", "key_metrics"):
+    # List-shaped fields flow through as-is; string-shaped editorial fields
+    # (editorial_intro / feature_story, issue #313) carry through as strings.
+    for synthesis_field in (
+        "implications",
+        "risks",
+        "action_required",
+        "key_metrics",
+        "editorial_intro",
+        "feature_story",
+    ):
         value = synthesis.get(synthesis_field, [])
-        flat[synthesis_field] = value if isinstance(value, list) else []
+        flat[synthesis_field] = (
+            value if isinstance(value, list) else (str(value) if isinstance(value, str) else [])
+        )
 
     return flat
 

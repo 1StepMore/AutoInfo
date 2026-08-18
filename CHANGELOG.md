@@ -2,7 +2,11 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
-## Unreleased
+## [Unreleased]
+
+### Features
+
+* **output:** magazine-digest editorial intro + personality/deep-dive feature — the magazine synthesis prompt requests `editorial_intro` + `feature_story` fields and `magazine-digest.md.j2` renders "## Editor's Note" + "## The Feature" sections when the LLM synthesis carries them ([#313](https://github.com/1StepMore/AutoInfo/issues/313))
 
 ### Bug Fixes
 

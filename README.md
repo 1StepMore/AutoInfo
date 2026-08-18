@@ -75,7 +75,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Bundle export** — `export_kb(format="bundle")` creates a ZIP archive containing JSON data, Markdown summary, YAML metadata, and a weasyprint-rendered PDF report (with graceful fallback)
 - **Cross-domain reports & digests** — `generate_report()` and `generate_digest()` accept a `domains` parameter for multi-domain synthesis. New MCP tool `generate_cross_domain_report` for cross-domain analysis.
 - **Specialized report types** — `report_type` parameter: `industry`, `competitive`, `trend`, `daily-briefing` — each with customized section structure and LLM prompts
-- **Differentiated product templates** — 8 product families with dedicated Jinja2 templates, incl. `premium-briefing` (market-report-anchored numbered takeaways with So-what/Risk/Actions) and `enterprise-briefing` (one-page exec summary + Key Metrics table + Action Required + Risk matrix). Guard-first product-type resolution + digest render-context normalization; `generate_report(product=...)` / `generate_digest(product=...)` / CLI `--product`
+- **Differentiated product templates** — 8 product families with dedicated Jinja2 templates, incl. `premium-briefing` (market-report-anchored numbered takeaways with So-what/Risk/Actions), `enterprise-briefing` (one-page exec summary + Key Metrics table + Action Required + Risk matrix), and `magazine-digest` (per-title clusters + editorial intro + personality feature story). Guard-first product-type resolution + digest render-context normalization; `generate_report(product=...)` / `generate_digest(product=...)` / CLI `--product`
 - **Per-product LLM synthesis** — implications/risks/action_required/key_metrics fields synthesized per product template and carried into agent-format JSON-LD output
 - **Delivery schedule automation** — `add_delivery_schedule` MCP tool for cron-based periodic output generation + delivery. Integrates with `autoinfo cron run`.
 - **Content simplification (E14)** — `simplify_content` MCP tool rewrites text to a target CEFR reading level (A1-C1) using LLM, with original/simplified level classification and verification flag
@@ -110,7 +110,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters + `filter_custom_fields` on custom_fields JSON) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
-| Output generation | ✅ Digest (Markdown/HTML/JSON/Agent/Audio/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/Video/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB/MOBI) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI); 8 product templates incl. premium-briefing/enterprise-briefing + per-product LLM synthesis |
+| Output generation | ✅ Digest (Markdown/HTML/JSON/Agent/Audio/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/Video/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB/MOBI) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI); 8 product templates incl. premium-briefing/enterprise-briefing/magazine-digest (editorial intro + personality feature story, #313) + per-product LLM synthesis |
 | Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
 | Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) via `format='audio'`; `format='audiobook'` = chaptered MP3 + ZIP (ID3v2.3 CHAP/CTOC via mutagen) |
 | Video output | ✅ HyperFrames HTML+GSAP→MP4 (`report format="video"`): TTS narration + themed scene compositions, 36+8 themes, 6 layouts with adjacent-scene diversity; MCP `generate_report`/`generate_cross_domain_report` expose `video` |
@@ -475,6 +475,7 @@ AutoInfo has evolved through v1.3-v1.8.4 with major feature additions at each re
 |---------|--------|-------|
 | Config override system (~/.autoinfo/overrides/) | 📋 Planned | Per-project config layering |
 | Multi-user / collaboration (auth, teams) | 📋 Planned | user_id fields in place; full auth v2 |
+| Report-path magazine render | 📋 Known limitation | `magazine-digest` renders through the digest path (D11 canonical). When invoked as a *report* product (no top-level entries), the magazine layout renders without per-title entry clusters — known pre-existing quirk (#313), documented, not fixed |
 
 > See `docs/dev/founder-expectations.md` §14 for the full deferred-items catalog.
 > Cross-dimensional catalog (keystone product matrix): `docs/dev/cross-dimensional-catalog.md` (42 cells, 5 gap types across A1-A7 Pipeline × B1/B2/B3 Users).

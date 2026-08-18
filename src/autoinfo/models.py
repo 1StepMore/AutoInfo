@@ -100,7 +100,7 @@ class CollectionResult:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CollectionStats:
+    def from_dict(cls, data: dict[str, Any]) -> "CollectionResult":
         return cls(**data)
 
 

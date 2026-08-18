@@ -23,7 +23,7 @@ from typing import Any
 
 import trafilatura
 
-from autoinfo.collectors.web import WebHandler
+from autoinfo.collectors.web import USER_AGENT, WebHandler
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,10 @@ class PlaywrightWebHandler:
             with _sync_playwright() as pw:
                 browser = self._launch_browser(pw)
                 try:
-                    page = browser.new_page()
+                    # Carry the same browser-like UA as the httpx quick path
+                    # so JS-rendered fetches are not blocked by UA checks.
+                    context = browser.new_context(user_agent=USER_AGENT)
+                    page = context.new_page()
                     html = self._render_page(page, url)
                     if html is None:
                         return []

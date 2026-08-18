@@ -127,10 +127,12 @@ def _make_mock_page(html_content: str = "<html><body>Mocked</body></html>") -> M
 
 
 def _make_mock_browser(page: MagicMock | None = None) -> MagicMock:
-    """Build a mock Playwright ``Browser`` that opens *page*."""
+    """Build a mock Playwright ``Browser`` that opens *page* via a context."""
     browser = MagicMock()
     if page is not None:
-        browser.new_page.return_value = page
+        context = MagicMock()
+        context.new_page.return_value = page
+        browser.new_context.return_value = context
     return browser
 
 

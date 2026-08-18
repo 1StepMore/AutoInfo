@@ -28,7 +28,6 @@ from unittest.mock import MagicMock, patch
 import jsonschema
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Schema loading (read from disk — real published schemas)
 # ---------------------------------------------------------------------------
@@ -58,7 +57,10 @@ SCHEMA_EXPORT = _load_schema("knowledge-base-export")
 _CJK_ENTRY: dict[str, Any] = {
     "entry_id": "cjk-001",
     "title": "量子コンピューティングの最新動向",
-    "summary": "量子コンピューティングの研究は加速しており、バイオ医薬品の分子シミュレーション応用が期待されています。",
+    "summary": (
+        "量子コンピューティングの研究は加速しており、"
+        "バイオ医薬品の分子シミュレーション応用が期待されています。"
+    ),
     "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
     "source_type": "api",
     "source_platform": "pubmed",
@@ -752,7 +754,9 @@ class TestConstantsSchemaAlignment:
         """_JSONLD_PRESENTATION @context/@type must match knowledge-presentation-v1.json"""
         from autoinfo.output import _JSONLD_PRESENTATION
 
-        assert _JSONLD_PRESENTATION["@context"] == SCHEMA_PRESENTATION["properties"]["@context"]["const"]
+        assert _JSONLD_PRESENTATION["@context"] == (
+            SCHEMA_PRESENTATION["properties"]["@context"]["const"]
+        )
         assert _JSONLD_PRESENTATION["@type"] == SCHEMA_PRESENTATION["properties"]["@type"]["const"]
 
     def test_export_constants_match_schema(self) -> None:

@@ -15,7 +15,6 @@ import httpx
 from autoinfo.collectors.web import USER_AGENT, WebHandler
 from autoinfo.collectors.web_playwright import PlaywrightWebHandler
 
-
 # ---------------------------------------------------------------------------
 # Shared constant
 # ---------------------------------------------------------------------------

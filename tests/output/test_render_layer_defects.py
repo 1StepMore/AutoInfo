@@ -12,10 +12,6 @@ TDD: these tests should fail (RED) before the fix, pass (GREEN) after.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # ② Magazine plural bug
@@ -39,7 +35,8 @@ class TestMagazinePluralBug:
         tmpl = env.from_string(
             '{{ entries|length }} articles '
             'from {{ (entries|groupby("source_platform", default="General"))|length }} '
-            'publication{{ "s" if (entries|groupby("source_platform", default="General"))|length != 1 else "" }}'
+            'publication{{ "s" if '
+            '(entries|groupby("source_platform", default="General"))|length != 1 else "" }}'
         )
         entries = [{"source_platform": "pubmed", "title": "A"}]
         result = tmpl.render(entries=entries)
@@ -57,7 +54,8 @@ class TestMagazinePluralBug:
         tmpl = env.from_string(
             '{{ entries|length }} articles '
             'from {{ (entries|groupby("source_platform", default="General"))|length }} '
-            'publication{{ "s" if (entries|groupby("source_platform", default="General"))|length != 1 else "" }}'
+            'publication{{ "s" if '
+            '(entries|groupby("source_platform", default="General"))|length != 1 else "" }}'
         )
         entries = [
             {"source_platform": "pubmed", "title": "A"},
@@ -106,42 +104,60 @@ class TestPlatformNameFilter:
         """digest.md.j2 line 49 should use platform_name filter."""
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "digest.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "digest.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
     def test_column_template_uses_filter(self) -> None:
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
     def test_report_template_uses_filter(self) -> None:
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "report.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "report.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
     def test_premium_briefing_uses_filter(self) -> None:
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "premium-briefing.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "premium-briefing.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
     def test_enterprise_briefing_uses_filter(self) -> None:
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "enterprise-briefing.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "enterprise-briefing.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
     def test_magazine_digest_uses_filter(self) -> None:
         from pathlib import Path
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "magazine-digest.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "magazine-digest.md.j2"
+        )
         content = tpl_path.read_text()
         assert "platform_name" in content
 
@@ -177,7 +193,7 @@ class TestReferenceNewlineIntegrity:
             "{% endfor %}"
         )
         result = self._render_ref_loop(refs, tpl)
-        lines = [l for l in result.strip().splitlines() if l.strip()]
+        lines = [line for line in result.strip().splitlines() if line.strip()]
         assert len(lines) == 2, f"Expected 2 separate lines, got {len(lines)}: {lines!r}"
 
     def test_report_refs_separate_lines(self) -> None:
@@ -195,15 +211,19 @@ class TestReferenceNewlineIntegrity:
             "{% endfor %}"
         )
         result = self._render_ref_loop(refs, tpl)
-        lines = [l for l in result.strip().splitlines() if l.strip()]
+        lines = [line for line in result.strip().splitlines() if line.strip()]
         assert len(lines) == 3, f"Expected 3 separate lines, got {len(lines)}: {lines!r}"
 
     def test_column_template_no_jamming(self) -> None:
         """column.md.j2 reference loop must not jam entries."""
         from pathlib import Path
+
         from jinja2 import Environment
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        )
         content = tpl_path.read_text()
 
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -230,14 +250,20 @@ class TestReferenceNewlineIntegrity:
                 break
             if in_section and line.startswith("- **"):
                 ref_lines.append(line)
-        assert len(ref_lines) == 2, f"Expected 2 separate ref lines, got {len(ref_lines)}: {ref_lines!r}"
+        assert len(ref_lines) == 2, (
+            f"Expected 2 separate ref lines, got {len(ref_lines)}: {ref_lines!r}"
+        )
 
     def test_report_template_no_jamming(self) -> None:
         """report.md.j2 reference loop must not jam entries."""
         from pathlib import Path
+
         from jinja2 import Environment
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "report.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "report.md.j2"
+        )
         content = tpl_path.read_text()
 
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -265,7 +291,9 @@ class TestReferenceNewlineIntegrity:
             if in_refs and line.startswith("1.") or (in_refs and line.startswith("- **")):
                 ref_lines.append(line)
         # Should be on separate lines
-        assert len(ref_lines) == 2, f"Expected 2 separate ref lines, got {len(ref_lines)}: {ref_lines!r}"
+        assert len(ref_lines) == 2, (
+            f"Expected 2 separate ref lines, got {len(ref_lines)}: {ref_lines!r}"
+        )
 
 
 # ---------------------------------------------------------------------------

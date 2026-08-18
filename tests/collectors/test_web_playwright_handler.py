@@ -18,9 +18,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from autoinfo.collectors.web_playwright import (
+    _PLAYWRIGHT_AVAILABLE,
     PlaywrightWebHandler,
     _make_item_id,
-    _PLAYWRIGHT_AVAILABLE,
 )
 from autoinfo.models import Item
 

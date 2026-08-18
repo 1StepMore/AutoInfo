@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # ① Column empty-shell: sections=[] must render fallback text
 # ---------------------------------------------------------------------------
@@ -21,9 +20,13 @@ class TestColumnEmptyShell:
 
     def _render_column(self, sections: list[dict[str, Any]], **kwargs: Any) -> str:
         from pathlib import Path
+
         from jinja2 import Environment
 
-        tpl_path = Path(__file__).parent.parent.parent / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+        )
         content = tpl_path.read_text()
 
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -42,13 +45,21 @@ class TestColumnEmptyShell:
     def test_deep_dive_empty_shows_fallback(self) -> None:
         result = self._render_column(sections=[])
         # Must NOT have an empty "## Deep Dive" heading with nothing under it
-        assert "No deep-dive" in result or "no deep-dive" in result.lower() or "no sections" in result.lower(), (
+        assert (
+            "No deep-dive" in result
+            or "no deep-dive" in result.lower()
+            or "no sections" in result.lower()
+        ), (
             f"Expected fallback text in Deep Dive section, got:\n{result}"
         )
 
     def test_implications_empty_shows_fallback(self) -> None:
         result = self._render_column(sections=[])
-        assert "No outlook" in result or "no outlook" in result.lower() or "no sections" in result.lower(), (
+        assert (
+            "No outlook" in result
+            or "no outlook" in result.lower()
+            or "no sections" in result.lower()
+        ), (
             f"Expected fallback text in Implications section, got:\n{result}"
         )
 

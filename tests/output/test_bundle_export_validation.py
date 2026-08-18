@@ -9,11 +9,9 @@ TDD: these tests should fail (RED) before the fix, pass (GREEN) after.
 
 from __future__ import annotations
 
-import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -66,7 +64,10 @@ class TestBundleMembersValidation:
     """Bundle zip must contain all required member files."""
 
     def test_bundle_contains_required_members(self, project_dir: Path) -> None:
-        with patch("autoinfo.output.get_config_path", return_value=project_dir / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=project_dir / ".autoinfo" / "config.yaml",
+        ):
             result = export_kb(format="bundle")
 
         path = Path(result["path"])
@@ -77,16 +78,24 @@ class TestBundleMembersValidation:
 
     def test_bundle_zip_nontrivial_size(self, project_dir: Path) -> None:
         """Bundle zip with entries should be >100 bytes."""
-        with patch("autoinfo.output.get_config_path", return_value=project_dir / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=project_dir / ".autoinfo" / "config.yaml",
+        ):
             result = export_kb(format="bundle")
 
         path = Path(result["path"])
         size = path.stat().st_size
-        assert size > 100, f"Bundle zip too small ({size} bytes) for {result['entries_count']} entries"
+        assert size > 100, (
+            f"Bundle zip too small ({size} bytes) for {result['entries_count']} entries"
+        )
 
     def test_bundle_no_empty_warning_when_entries_exist(self, project_dir: Path) -> None:
         """Bundle with real entries should not contain empty-state warning."""
-        with patch("autoinfo.output.get_config_path", return_value=project_dir / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=project_dir / ".autoinfo" / "config.yaml",
+        ):
             result = export_kb(format="bundle")
 
         assert result["entries_count"] >= 1
@@ -101,7 +110,10 @@ class TestBundleEmptyState:
 
     def test_empty_entries_has_warning(self, empty_project_dir: Path) -> None:
         """Zero-entry bundle should include an empty-state warning."""
-        with patch("autoinfo.output.get_config_path", return_value=empty_project_dir / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=empty_project_dir / ".autoinfo" / "config.yaml",
+        ):
             result = export_kb(format="bundle")
 
         assert result["entries_count"] == 0
@@ -113,7 +125,10 @@ class TestBundleEmptyState:
 
     def test_empty_entries_bundle_still_valid(self, empty_project_dir: Path) -> None:
         """Zero-entry bundle should still be a valid zip with required members."""
-        with patch("autoinfo.output.get_config_path", return_value=empty_project_dir / ".autoinfo" / "config.yaml"):
+        with patch(
+            "autoinfo.output.get_config_path",
+            return_value=empty_project_dir / ".autoinfo" / "config.yaml",
+        ):
             result = export_kb(format="bundle")
 
         path = Path(result["path"])

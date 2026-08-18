@@ -15,7 +15,7 @@ Covers:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import (
@@ -117,7 +117,7 @@ def _magazine_template() -> ProductTemplate:
     """Return the ``magazine-digest`` ProductTemplate row from the registry."""
     for row in PRODUCT_TEMPLATES:
         if row["name"] == "magazine-digest":
-            return row["template"]
+            return cast(ProductTemplate, row["template"])
     raise AssertionError(
         "magazine-digest ProductTemplate row missing from PRODUCT_TEMPLATES"
     )
@@ -127,7 +127,7 @@ def _digest_template() -> ProductTemplate:
     """Return the base ``digest`` ProductTemplate row from the registry."""
     for row in PRODUCT_TEMPLATES:
         if row["name"] == "digest":
-            return row["template"]
+            return cast(ProductTemplate, row["template"])
     raise AssertionError("digest ProductTemplate row missing from PRODUCT_TEMPLATES")
 
 

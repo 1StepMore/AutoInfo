@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 74 |
-| Total lines | 28752 |
+| Total lines | 28769 |
 | Active files | 60 |
 | Archived files | 14 |
 | Category — archive | 14 files / 7284 lines |
@@ -22,7 +22,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 9 files / 423 lines |
-| Category — specs | 12 files / 8770 lines |
+| Category — specs | 12 files / 8787 lines |
 | Category — validation-reports | 8 files / 2624 lines |
 | Category — docs/dev | 22 files / 8153 lines |
 | Category — docs/root | 1 files / 61 lines |
@@ -80,7 +80,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/multi-tenancy-auth.md` | 770 | specs | active | — |
 | `dev/specs/operations.md` | 930 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
-| `dev/specs/pipeline.md` | 567 | specs | active | — |
+| `dev/specs/pipeline.md` | 584 | specs | active | — |
 | `dev/specs/quality-gates.md` | 187 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 441 | specs | active | — |
 | `dev/validation-governance.md` | 75 | docs/dev | active | — |

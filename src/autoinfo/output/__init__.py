@@ -205,10 +205,10 @@ _TEST_TITLE_SUBSTRINGS: tuple[str, ...] = (
     "placeholder", "test content",
 )
 _TEST_URL_MARKERS: tuple[str, ...] = (
-    "example.com", "example.org", "localhost", "127.0.0.1", ".local",
+    "example.org", "localhost", "127.0.0.1", ".local",
 )
 _TEST_SOURCE_PLATFORMS: frozenset[str] = frozenset({
-    "test", "fixture", "mock", "stub", "sample", "demo",
+    "fixture", "mock", "stub", "sample",
     "test-fixture", "test_fixture", "test-source", "test_source",
 })
 

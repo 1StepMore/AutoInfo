@@ -2,6 +2,12 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## Unreleased
+
+### Bug Fixes
+
+* **output:** report section headings are semantic theme titles (short noun phrases, never raw keyword dumps) with near-duplicate heading dedup ([#311](https://github.com/1StepMore/AutoInfo/issues/311))
+
 ## [1.10.0](https://github.com/1StepMore/AutoInfo/compare/v1.9.1...v1.10.0) (2026-08-17)
 
 

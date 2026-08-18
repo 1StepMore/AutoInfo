@@ -5064,7 +5064,13 @@ def _llm_group_batch(
         cross_domain_instruction +
         "Group the following knowledge base entries into 3\u20135 themes. "
         "Each entry goes into exactly one theme. Do NOT use catch-all names "
-        "like \"General\" or \"Additional\".\n\n"
+        "like \"General\" or \"Additional\". "
+        "Give each theme a SHORT SEMANTIC title: a concise noun phrase "
+        "(2-6 words) naming the theme (e.g. 'Funding & M&A Momentum', "
+        "'Reproductive Health Outcomes'). Never use a raw keyword list, "
+        "concatenated entry titles, or separator-dumped keywords (no '/' or "
+        "'&'-joined keyword strings). Titles must be unique and "
+        "descriptive.\n\n"
         'Return JSON: {"groups": [{"theme": str, "entry_ids": [str]}]}\n\n'
         f"Entries:\n{entry_summaries}"
     )
@@ -5090,7 +5096,13 @@ def _llm_group_batch(
             "2\u20133 DISTINCT themes. Do NOT use catch-all themes like "
             "\"General\", \"Miscellaneous\", or \"Other\". Each entry must "
             "be assigned to the most specific theme that describes its "
-            "content.\n\n"
+            "content. "
+            "Give each theme a SHORT SEMANTIC title: a concise noun phrase "
+            "(2-6 words) naming the theme (e.g. 'Funding & M&A Momentum', "
+            "'Reproductive Health Outcomes'). Never use a raw keyword list, "
+            "concatenated entry titles, or separator-dumped keywords (no '/' or "
+            "'&'-joined keyword strings). Titles must be unique and "
+            "descriptive.\n\n"
             'Return JSON: {"groups": [{"theme": str, "entry_ids": [str]}]}\n\n'
             f"Entries:\n{entry_summaries}"
         )
@@ -5321,7 +5333,54 @@ def _merge_theme_groups(
             "description": description,
             "entries": entries,
         })
-    return result
+
+    # -- Near-duplicate theme merge pass ------------------------------------
+    # The exact-name pass above merges themes that normalize to the same
+    # string, but near-duplicates (case, "&" vs "and", word order) still
+    # slip through and surface as duplicate report sections.  Merge pairs
+    # whose normalized token sets have Jaccard similarity >= 0.6 with one
+    # set a subset of the other; keep the longest original title and
+    # deduplicate entries by ``entry_id``.
+    pending = list(result)
+    final: list[dict[str, Any]] = []
+    while pending:
+        group = pending.pop(0)
+        group_tokens = set(_normalize_theme_text(group["theme"]).split())
+        rest: list[dict[str, Any]] = []
+        for other in pending:
+            other_tokens = set(_normalize_theme_text(other["theme"]).split())
+            union = group_tokens | other_tokens
+            if (
+                group_tokens
+                and other_tokens
+                and len(group_tokens & other_tokens) / len(union) >= 0.6
+                and (group_tokens <= other_tokens or other_tokens <= group_tokens)
+            ):
+                # Absorb *other* into *group*: keep the longest original
+                # title, prefer the first non-empty description, dedupe ids.
+                if len(str(other["theme"])) > len(str(group["theme"])):
+                    group["theme"] = other["theme"]
+                if not group.get("description") and other.get("description"):
+                    group["description"] = other["description"]
+                seen = {
+                    e.get("entry_id", "") for e in group["entries"]
+                    if e.get("entry_id")
+                }
+                for e in other["entries"]:
+                    eid = e.get("entry_id", "")
+                    if eid and eid in seen:
+                        continue
+                    if eid:
+                        seen.add(eid)
+                    group["entries"].append(e)
+                group_tokens = set(
+                    _normalize_theme_text(group["theme"]).split()
+                )
+            else:
+                rest.append(other)
+        final.append(group)
+        pending = rest
+    return final
 
 
 def _ensure_all_entries_grouped(

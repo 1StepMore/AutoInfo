@@ -272,6 +272,18 @@ class ExtractionResult:
     usage: dict[str, Any] = field(default_factory=dict)  # LLM token usage metadata
 ```
 
+#### Report Thematic Grouping (issue #311)
+
+Report generation groups KB entries into 3–5 themes via an LLM. The grouping
+prompts (main + strict-retry) require each theme to carry a SHORT SEMANTIC
+title — a concise noun phrase (2-6 words) naming the theme, never a raw
+keyword list, concatenated entry titles, or separator-dumped keywords.
+After batches are merged, `_merge_theme_groups` first merges themes that
+normalize to the same string, then runs a near-duplicate pass: pairs whose
+normalized token sets have Jaccard similarity >= 0.6 with one set a subset
+of the other are merged (longest original title kept, entries deduplicated
+by `entry_id`), so report section headings are unique semantic titles.
+
 ### 3.3 LLM Configuration
 
 LLM usage follows a hierarchical config:

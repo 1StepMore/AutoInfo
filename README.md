@@ -21,7 +21,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **REST API** — Full CRUD over HTTP (FastAPI, port 8741), no auth (localhost security)
 - **Web UI Dashboard** — Bootstrap 5, collection stats, KB search, source health overview
 - **CEFR classification** — LLM-based EN/ZH/JA reading level scoring for language learning
-- **Output formats** — Markdown, JSON, PDF, **HTML**, **EPUB/MOBI** (ebooklib EPUB3 + calibre MOBI via `format="epub"/"mobi"`), **Audiobook** (chaptered MP3 via `format="audiobook"`, ID3v2.3 CHAP/CTOC + ZIP bundle), **Video** (HTML+GSAP→MP4 via HyperFrames: TTS narration + themed scene compositions, 36+8 themes, 6 layouts with mandatory adjacent-scene diversity) (digest/report via Jinja2 + LLM, presentation via Reveal.js CDN)
+- **Output formats** — Markdown, JSON, PDF, **HTML**, **EPUB/MOBI** (ebooklib EPUB3 + calibre MOBI via `format="epub"/"mobi"`), **Audiobook** (chaptered MP3 via `format="audiobook"`, ID3v2.3 CHAP/CTOC + ZIP bundle), **Video** (HTML+GSAP→MP4 via HyperFrames: TTS narration + themed scene compositions, 36+8 themes, 6 layouts with mandatory adjacent-scene diversity) (digest/report via Jinja2 + LLM, presentation via Reveal.js CDN); report section headings are SHORT SEMANTIC theme titles (concise noun phrases, never keyword dumps) with near-duplicate headings merged (#311)
 - **Translation QA pipeline** — 5 lite quality gates, back-translation verification, multi-round refinement, terminology guardrails, composite quality scoring
 - **Email sending** — SMTP-based digest delivery (manual and cron-scheduled)
 - **Webhook push** — Per-item webhook notification on collected content

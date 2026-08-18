@@ -6750,7 +6750,11 @@ _REPORT_PRODUCT_BASE_SECTIONS = (
     "(index-aligned with Key Findings; each action MUST specify WHO does it, "
     "WHAT specifically, and a WHEN timeline — e.g. 'CMO: ship the Q3 pricing "
     "experiment to 10% of enterprise customers by 2026-09-15'. Never a bare "
-    "'conduct market analysis'.)"
+    "'conduct market analysis'.)\n\n"
+    "The Executive Summary's opening coverage sentence MUST name exactly the "
+    "number of Key Findings you detail below — e.g. \"This briefing details N "
+    "selected items from the period.\" Never state a coverage count larger "
+    "than the number of Key Findings bullets you actually write."
 )
 
 _REPORT_ENTERPRISE_METRICS_SECTION = (

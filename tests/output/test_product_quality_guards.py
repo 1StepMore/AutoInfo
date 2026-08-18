@@ -77,7 +77,7 @@ _TEST_URL_ENTRY: dict[str, Any] = {
     "entry_id": "test-url-001",
     "title": "Some realistic-looking title",
     "summary": "Some summary",
-    "source_url": "https://example.com/test-article",
+    "source_url": "https://example.org/test-article",
     "source_platform": "pubmed",
 }
 
@@ -272,13 +272,19 @@ class TestFilterProductEntries:
         result = _filter_product_entries([_EMPTY_ENTRY, _REAL_ENTRY])
         assert [e["entry_id"] for e in result] == ["real-001"]
 
-    def test_drops_example_dot_com_url(self) -> None:
-        result = _filter_product_entries([_TEST_URL_ENTRY, _REAL_ENTRY])
-        assert [e["entry_id"] for e in result] == ["real-001"]
-
     def test_drops_example_dot_org_url(self) -> None:
         result = _filter_product_entries([_TEST_ORG_URL_ENTRY, _REAL_ENTRY])
         assert [e["entry_id"] for e in result] == ["real-001"]
+
+    def test_keeps_example_dot_com_url(self) -> None:
+        """example.com was relaxed out of the URL markers (9b0bf13) — the RFC
+        2606 reserved domain is used by legitimate fixtures, so an entry whose
+        only test signal is example.com must be kept."""
+        entry = dict(_TEST_URL_ENTRY)
+        entry["entry_id"] = "example-com-001"
+        entry["source_url"] = "https://example.com/test-article"
+        result = _filter_product_entries([entry, _REAL_ENTRY])
+        assert [e["entry_id"] for e in result] == ["example-com-001", "real-001"]
 
     def test_drops_test_titles(self) -> None:
         result = _filter_product_entries(

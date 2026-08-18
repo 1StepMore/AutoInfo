@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -146,7 +146,7 @@ def _product_analysis(store: KBStore, entry_id: str) -> dict[str, Any]:
         if isinstance(custom_fields_raw, str)
         else dict(custom_fields_raw)
     )
-    return custom_fields["product_analysis"]
+    return cast(dict[str, Any], custom_fields["product_analysis"])
 
 
 # ===========================================================================

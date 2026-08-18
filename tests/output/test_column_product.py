@@ -19,8 +19,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult
-from autoinfo.output import _VALID_REPORT_TYPES, PRODUCT_TEMPLATES
+from autoinfo.output import (
+    _VALID_REPORT_TYPES,
+    PRODUCT_TEMPLATES,
+    DeliveryOutput,
+)
 
 # ===================================================================
 # Fixtures
@@ -175,7 +180,7 @@ class TestColumnFreePath:
     """Without ``user_id`` the column report renders normally (no gating)."""
 
     def test_no_user_id_renders_report(
-        self, sample_entries: list[dict]
+        self, sample_entries: list[dict[str, Any]]
     ) -> None:
         """Free path: LLM mocked, full render through the report template."""
         mock_extract = MagicMock(
@@ -240,16 +245,17 @@ def _call_report(
     """Call ``generate_report`` from ``autoinfo.output``."""
     from autoinfo.output import generate_report
 
-    return generate_report(
+    result = generate_report(
         domain=domain,
         format="markdown",
         report_type=report_type,
         user_id=user_id,
         product_template=product_template,
     )
+    return result.output if isinstance(result, DeliveryOutput) else result
 
 
-def _get_llm_extractor_class():
+def _get_llm_extractor_class() -> type[LLMExtractor]:
     """Return the ``LLMExtractor`` class from ``autoinfo.llm``."""
     from autoinfo.llm import LLMExtractor
 

@@ -547,10 +547,13 @@ class TestReportDataToDictProductFields:
             generated_at="2026-08-10 00:00 UTC",
             domain="medical-research",
             executive_summary="Summary.",
-            key_findings=[
-                "Time-lapse imaging: Significant improvement in live birth rates.",
-                "AI embryo selection: Promising but lacks prospective validation.",
-            ],
+            key_findings=cast(
+                list[dict[str, Any]],
+                [
+                    "Time-lapse imaging: Significant improvement in live birth rates.",
+                    "AI embryo selection: Promising but lacks prospective validation.",
+                ],
+            ),
             sections=[
                 ReportSection(title="IVF", content="c", items=[_SAMPLE_ENTRIES[0]])
             ],

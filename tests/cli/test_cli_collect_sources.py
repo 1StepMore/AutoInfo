@@ -15,7 +15,9 @@ and an unknown/failed requested source produces a warning + non-zero exit.
 
 from __future__ import annotations
 
-from unittest.mock import ANY, patch
+from unittest.mock import ANY, MagicMock, patch
+
+from typer.testing import CliRunner
 
 from autoinfo.cli.collect import app
 
@@ -40,7 +42,7 @@ class TestCollectSourceFlags:
 
     @patch("autoinfo.collect.run_collection")
     def test_two_source_flags_both_collect(
-        self, mock_run_collection: object, cli_runner: object
+        self, mock_run_collection: MagicMock, cli_runner: CliRunner
     ) -> None:
         """``--source pubmed --source rss`` passes BOTH names to run_collection."""
         mock_run_collection.return_value = _mock_result()
@@ -62,7 +64,7 @@ class TestCollectSourceFlags:
 
     @patch("autoinfo.collect.run_collection")
     def test_comma_separated_source_still_splits(
-        self, mock_run_collection: object, cli_runner: object
+        self, mock_run_collection: MagicMock, cli_runner: CliRunner
     ) -> None:
         """``--source "pubmed,rss"`` still splits into a list (legacy behavior)."""
         mock_run_collection.return_value = _mock_result()
@@ -88,7 +90,7 @@ class TestCollectUnknownSource:
 
     @patch("autoinfo.collect.run_collection")
     def test_unknown_source_warns_and_exits_nonzero(
-        self, mock_run_collection: object, cli_runner: object
+        self, mock_run_collection: MagicMock, cli_runner: CliRunner
     ) -> None:
         """A requested source missing from the domain config exits non-zero."""
         mock_run_collection.return_value = _mock_result(unknown_sources=["rss"])
@@ -103,7 +105,7 @@ class TestCollectUnknownSource:
 
     @patch("autoinfo.collect.run_collection")
     def test_failed_requested_source_exits_nonzero(
-        self, mock_run_collection: object, cli_runner: object
+        self, mock_run_collection: MagicMock, cli_runner: CliRunner
     ) -> None:
         """A requested source that errors during collection exits non-zero."""
         mock_run_collection.return_value = _mock_result(
@@ -129,7 +131,7 @@ class TestCollectUnknownSource:
 
     @patch("autoinfo.collect.run_collection")
     def test_no_source_flag_collects_all(
-        self, mock_run_collection: object, cli_runner: object
+        self, mock_run_collection: MagicMock, cli_runner: CliRunner
     ) -> None:
         """Without ``--source``, sources=None (collect all) — unchanged behavior."""
         mock_run_collection.return_value = _mock_result()

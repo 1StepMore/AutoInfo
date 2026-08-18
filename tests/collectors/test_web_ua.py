@@ -33,7 +33,10 @@ class TestUserAgentConstant:
         """web_playwright must reuse the same UA constant as web.py."""
         from autoinfo.collectors import web_playwright
 
-        assert web_playwright.USER_AGENT is USER_AGENT
+        # web_playwright re-imports USER_AGENT from web.py (module attribute
+        # exists at runtime) but does not re-export it in its public API, so
+        # mypy cannot see it — the identity check is the point of this test.
+        assert web_playwright.USER_AGENT is USER_AGENT  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

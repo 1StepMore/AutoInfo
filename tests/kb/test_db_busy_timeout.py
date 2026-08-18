@@ -80,8 +80,8 @@ def test_connect_executes_busy_timeout_pragma(
         def __enter__(self) -> "_FakeConn":
             return self
 
-        def __exit__(self, *exc: Any) -> bool:
-            return False
+        def __exit__(self, *exc: Any) -> None:
+            return None
 
     monkeypatch.setattr("autoinfo.kb.sqlite3.connect", lambda _path: _FakeConn())
     SQLiteIndex(Path("/tmp/fake-kb.db"))._connect()

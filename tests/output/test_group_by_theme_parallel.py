@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import re
 import threading
+from typing import Any
 
+from autoinfo.llm import LLMExtractor
 from autoinfo.output import (
     _GROUPING_BATCH_SIZE,
     _ensure_all_entries_grouped,
@@ -28,9 +30,9 @@ from autoinfo.output import (
 # ---------------------------------------------------------------------------
 
 
-def _make_entries(n: int, start: int = 1) -> list[dict]:
+def _make_entries(n: int, start: int = 1) -> list[dict[str, Any]]:
     """Deterministic fixture entries (identical shape to the baseline capture)."""
-    entries: list[dict] = []
+    entries: list[dict[str, Any]] = []
     for i in range(start, start + n):
         eid = f"e{i}"
         entries.append({
@@ -46,11 +48,11 @@ def _make_entries(n: int, start: int = 1) -> list[dict]:
 
 
 class _FakeResult:
-    def __init__(self, custom_fields: dict) -> None:
+    def __init__(self, custom_fields: dict[str, Any]) -> None:
         self.custom_fields = custom_fields
 
 
-class _MockExtractor:
+class _MockExtractor(LLMExtractor):
     """Deterministic mocked LLMExtractor.
 
     Parses entry ids out of the prompt and groups them into two themes
@@ -68,7 +70,7 @@ class _MockExtractor:
         self.gate = gate
         self.calls = 0
 
-    def extract(self, item, schema=None) -> _FakeResult:
+    def extract(self, item: Any, schema: Any = None) -> Any:
         self.calls += 1
         if self.gate is not None:
             self.gate.enter()
@@ -115,14 +117,17 @@ class _ConcurrencyGate:
 
 
 def _sequential_group_by_theme(
-    extractor, entries: list[dict], domain: str = "", domains=None
-) -> list[dict]:
+    extractor: LLMExtractor,
+    entries: list[dict[str, Any]],
+    domain: str = "",
+    domains: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """Replicates the pre-change sequential batch loop of ``_group_by_theme``."""
     batch_size = _GROUPING_BATCH_SIZE
     batches = [
         entries[i : i + batch_size] for i in range(0, len(entries), batch_size)
     ]
-    merged: list[dict] = []
+    merged: list[dict[str, Any]] = []
     for batch in batches:
         merged.extend(
             _group_batch_by_theme(extractor, batch, domain=domain, domains=domains)

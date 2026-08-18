@@ -18,6 +18,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import (
+    DeliveryOutput,
     _filter_product_entries,
     _is_test_entry,
     generate_digest,
@@ -54,10 +55,6 @@ class TestIsTestEntryTrue:
     """Each row: (description, entry) -> _is_test_entry must return True."""
 
     # --- URL markers ---
-
-    def test_url_example_com(self) -> None:
-        e = _mk_entry(source_url="https://example.com/test-article")
-        assert _is_test_entry(e) is True
 
     def test_url_example_org(self) -> None:
         e = _mk_entry(source_url="https://example.org/placeholder")
@@ -201,10 +198,6 @@ class TestIsTestEntryTrue:
 
     # --- Source platform markers ---
 
-    def test_platform_test(self) -> None:
-        e = _mk_entry(source_platform="test")
-        assert _is_test_entry(e) is True
-
     def test_platform_fixture(self) -> None:
         e = _mk_entry(source_platform="fixture")
         assert _is_test_entry(e) is True
@@ -219,10 +212,6 @@ class TestIsTestEntryTrue:
 
     def test_platform_sample(self) -> None:
         e = _mk_entry(source_platform="sample")
-        assert _is_test_entry(e) is True
-
-    def test_platform_demo(self) -> None:
-        e = _mk_entry(source_platform="demo")
         assert _is_test_entry(e) is True
 
 
@@ -270,6 +259,24 @@ class TestIsTestEntryFalse:
             summary="Phase III trial results demonstrate significant "
                     "improvement in patient outcomes.",
         )
+        assert _is_test_entry(e) is False
+
+    def test_url_example_com(self) -> None:
+        """example.com is an RFC 2606 reserved domain used by real fixtures
+        (relaxed in 9b0bf13) — must NOT be flagged as a test entry."""
+        e = _mk_entry(source_url="https://example.com/test-article")
+        assert _is_test_entry(e) is False
+
+    def test_platform_test(self) -> None:
+        """source_platform 'test' is used by many real fixtures (relaxed in
+        9b0bf13) — must NOT be flagged as a test entry."""
+        e = _mk_entry(source_platform="test")
+        assert _is_test_entry(e) is False
+
+    def test_platform_demo(self) -> None:
+        """source_platform 'demo' is a demo-domain value (relaxed in 9b0bf13)
+        — must NOT be flagged as a test entry."""
+        e = _mk_entry(source_platform="demo")
         assert _is_test_entry(e) is False
 
     def test_title_containing_sample_size(self) -> None:
@@ -343,7 +350,7 @@ class TestFilterProductEntriesHardened:
             source_url="https://pubmed.ncbi.nlm.nih.gov/22222/",
         )
         test_entries = [
-            _mk_entry(entry_id="t1", source_url="https://example.com/test"),
+            _mk_entry(entry_id="t1", source_url="https://example.org/test"),
             _mk_entry(entry_id="t2", title="Lorem ipsum dolor"),
             _mk_entry(entry_id="t3", title="Get Test"),
             _mk_entry(entry_id="t4", title="Test"),
@@ -353,7 +360,7 @@ class TestFilterProductEntriesHardened:
             _mk_entry(entry_id="t8", source_url="http://127.0.0.1:3000"),
             _mk_entry(entry_id="t9", source_url="http://myapp.local/api"),
             _mk_entry(entry_id="t10", source_platform="sample"),
-            _mk_entry(entry_id="t11", source_platform="demo"),
+            _mk_entry(entry_id="t11", source_platform="fixture"),
             _mk_entry(entry_id="t12", custom_fields={"status": "placeholder"}),
             _mk_entry(entry_id="t13", summary="Lorem ipsum content here"),
         ]
@@ -400,14 +407,14 @@ _REAL_ENTRY_2: dict[str, Any] = {
 
 _EXAMPLE_COM_ENTRY: dict[str, Any] = {
     "entry_id": "test-url-001",
-    "title": "Test Article from Example Domain",
+    "title": "Test Entry from Example Domain",
     "domain": "medical-research",
     "tier": "01-Raw",
     "source_url": "https://example.com/test-article",
     "source_type": "web",
     "source_platform": "web",
     "collected_at": (date.today() - timedelta(days=1)).isoformat(),
-    "summary": "This is a test article from the example domain.",
+    "summary": "This is a test entry from the example domain.",
     "tags": "[]",
     "quality_tier": 1,
     "relevance_score": 50.0,
@@ -471,9 +478,9 @@ def _mock_list_entries(
     ]
 
 
-def _extract_body(result: str | Any) -> str:
+def _extract_body(result: str | DeliveryOutput) -> str:
     """Extract the rendered body from a generate_* return value."""
-    if hasattr(result, "output"):
+    if isinstance(result, DeliveryOutput):
         return result.output
     return str(result)
 
@@ -495,7 +502,7 @@ class TestEndToEndNoTestContent:
             domain="medical-research", period="weekly", format="markdown"
         ))
         assert "example.com" not in body
-        assert "Test Article from Example Domain" not in body
+        assert "Test Entry from Example Domain" not in body
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
@@ -542,7 +549,7 @@ class TestEndToEndNoTestContent:
         ))
         data = json.loads(body)
         entry_titles = [e.get("title", "") for e in data.get("entries", [])]
-        assert "Test Article from Example Domain" not in entry_titles
+        assert "Test Entry from Example Domain" not in entry_titles
         assert "Lorem ipsum placeholder article" not in entry_titles
         assert "Sample test entry from mock platform" not in entry_titles
 

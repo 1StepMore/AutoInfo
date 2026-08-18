@@ -379,7 +379,7 @@ def _pipeline_log_dir() -> Path:
     return Path("logs")
 
 
-def _load_run_history(limit: int = 50) -> list[dict[str, Any]]:
+def _load_run_history(limit: int | None = 50) -> list[dict[str, Any]]:
     """Load the most recent pipeline log entries (newest first).
 
     Reads ``logs/pipeline-*.log`` — the JSON structured log written by

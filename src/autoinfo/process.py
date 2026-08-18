@@ -131,7 +131,8 @@ def _is_db_locked_error(exc: BaseException) -> bool:
 
 def _jittered_backoff(attempt: int, base: float = _DB_LOCK_BACKOFF_BASE_S) -> float:
     """Return a small jittered backoff delay (seconds) for *attempt* (0-indexed)."""
-    return base * (2 ** attempt) * (0.5 + random.random())
+    result: float = base * (2 ** attempt) * (0.5 + random.random())
+    return result
 
 
 def _store_entry_with_retry(
@@ -243,7 +244,8 @@ def detect_language(text: str) -> str:
         top = langs[0]
         if top.prob < 0.8:
             return "unknown"
-        return top.lang
+        detected: str = top.lang
+        return detected
     except _LDE:
         return "unknown"
 
@@ -288,9 +290,9 @@ class ProcessResult:
     is_complete: bool = True
     passed_gates: int = 0
     kb_entries_created: int = 0
-    errors: list[dict] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
     duration_s: float = 0.0
-    per_item_logs: list[dict] = field(default_factory=list)
+    per_item_logs: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, Any] = field(default_factory=lambda: {
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -388,7 +390,7 @@ def _init_progress_table(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _read_progress(domain: str) -> dict:
+def _read_progress(domain: str) -> dict[str, Any]:
     """Read the persisted processing progress for *domain*.
 
     Returns
@@ -776,8 +778,8 @@ def run_processing(
     new_index = 0
     if batch_size > 0:
         progress = _read_progress(domain)
-        start_index: int = progress["last_processed_index"]  # type: ignore[assignment]
-        persisted_total: int = progress["total_items"]  # type: ignore[assignment]
+        start_index: int = progress["last_processed_index"]
+        persisted_total: int = progress["total_items"]
 
         # If the cache grew (new items collected), restart from 0 so nothing
         # is missed.  If it shrank, also reset to avoid an out-of-range slice.
@@ -1636,7 +1638,7 @@ def run_processing(
     return result
 
 
-def get_processing_progress(domain: str) -> dict:
+def get_processing_progress(domain: str) -> dict[str, Any]:
     """Return the current processing progress for *domain*.
 
     Parameters

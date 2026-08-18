@@ -4913,13 +4913,14 @@ def _build_frontmatter(
     if extraction and extraction.custom_fields:
         data["extracted_fields"] = extraction.custom_fields
 
-    return yaml.dump(
+    result: str = yaml.dump(
         data,
         default_flow_style=False,
         allow_unicode=True,
         sort_keys=False,
         width=120,
     )
+    return result
 
 
 def _build_body(

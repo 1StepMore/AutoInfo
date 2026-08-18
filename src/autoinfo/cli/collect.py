@@ -146,7 +146,7 @@ def collect(
 
         else:
             # -- Single-domain collection (existing behavior) --------------
-            run_kwargs: dict[str, Any] = dict(
+            single_run_kwargs: dict[str, Any] = dict(
                 domain=domain,
                 topic=topic,
                 sources=sources,
@@ -155,8 +155,8 @@ def collect(
                 progress_cb=progress_cb,
             )
             if force_full:
-                run_kwargs["force_full"] = True
-            result = run_collection(**run_kwargs)
+                single_run_kwargs["force_full"] = True
+            result = run_collection(**single_run_kwargs)
 
             # -- Output ----------------------------------------------------
             if json_output:

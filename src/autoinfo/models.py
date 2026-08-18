@@ -32,6 +32,8 @@ class Item:
     previous_version: int = 0
     supersedes: str = ""
     trace_id: str = ""
+    _cefr_classification: dict[str, Any] = field(default_factory=dict)
+    _detected_language: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

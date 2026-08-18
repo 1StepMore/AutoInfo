@@ -8,10 +8,10 @@ Usage::
 """
 
 
-import json
-from typing import Any
+import json  # noqa: E402
+from typing import Any  # noqa: E402
 
-import typer
+import typer  # noqa: E402
 
 app = typer.Typer()
 
@@ -19,7 +19,10 @@ app = typer.Typer()
 @app.callback(invoke_without_command=True)
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
-    verbose: bool = typer.Option(False, "--verbose", help="Extended diagnostics (run history, error rates, latency, source health, cost)"),
+    verbose: bool = typer.Option(
+        False, "--verbose",
+        help="Extended diagnostics (run history, error rates, latency, source health, cost)",
+    ),
 ) -> None:
     """Check system health and configuration."""
     try:

@@ -6546,7 +6546,12 @@ _REPORT_TYPE_PROMPTS: dict[str, str] = {
         "cadence — timeline of developments in the period), Implications & "
         "Outlook, Reader Takeaways. Write in a confident expert persona with "
         "analytical depth; this is a longer-form premium column, not a "
-        "briefing. Prioritize high-relevance items (relevance_score > 50)."
+        "briefing. Prioritize high-relevance items (relevance_score > 50).\n"
+        "The Deep Dive section MUST contain 8-10 distinct subsections "
+        "(numbered or headed), each with 2-3 paragraphs of analysis grounded "
+        "in specific entries — quote concrete numbers, dates, and named "
+        "companies/studies from the source material; no filler paragraphs. "
+        "Target total column length 2000-3000 words."
     ),
 }
 
@@ -6570,11 +6575,20 @@ _REPORT_PRODUCT_BASE_SECTIONS = (
     "## Risks & Opportunities\n"
     "- <risk title> | <likelihood> | <impact> | <mitigation>\n"
     "(one bullet per finding, same order; likelihood/impact values: "
-    "High/Medium/Low)\n\n"
+    "High/Medium/Low)\n"
+    "Every risk title MUST embed a concrete number, case, or named entity "
+    "from the source entries — no generic labels like 'Valuation Bubble "
+    "Risk'. Examples: 'Fintech down-rounds up 3.2x YoY (CB Insights)', "
+    "'Stripe API latency 2.1s in APAC peak'. The mitigation MUST name a "
+    "specific action, who does it, and a timeline (e.g. 'Switch 30% of "
+    "traffic to the fallback provider by 2026-09-30').\n\n"
     "## Action Required\n"
     "- <action for finding 1>\n"
     "- <action for finding 2>\n"
-    "(index-aligned with Key Findings; concise imperative sentences)"
+    "(index-aligned with Key Findings; each action MUST specify WHO does it, "
+    "WHAT specifically, and a WHEN timeline — e.g. 'CMO: ship the Q3 pricing "
+    "experiment to 10% of enterprise customers by 2026-09-15'. Never a bare "
+    "'conduct market analysis'.)"
 )
 
 _REPORT_ENTERPRISE_METRICS_SECTION = (

@@ -118,14 +118,14 @@ def store(tmp_path: Path) -> KBStore:
     kb_store.index.index_entry(
         _entry(
             "medical-research-ivf-entry-1",
-            "https://example.com/article1",
+            "https://pubmed.ncbi.nlm.nih.gov/12345678/",
             "Time-lapse imaging improves IVF outcomes",
         )
     )
     kb_store.index.index_entry(
         _entry(
             "medical-research-ivf-entry-2",
-            "https://example.com/article2",
+            "https://pubmed.ncbi.nlm.nih.gov/87654321/",
             "AI embryo selection shows promise",
         )
     )

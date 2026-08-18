@@ -47,6 +47,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Cross-domain search** — `search_knowledge_base()` searches all active domains when domain is omitted
 - **Domain-less collection** — `collect_sources()` collects from all active domains when no domain specified
 - **Agent-native tutorial/presentation/export** — Tutorial, presentation, and KB export support `format="agent"` for JSON-LD output
+- **Inline source citations in tutorials** — tutorial content bodies cite the real KB entry `source_url`s they synthesize (`(Source: <url>)`), aligned with the digest/report citation mechanism
 - **Persistent job state** — Collection/processing job state survives server restarts via SQLite-backed storage
 - **Persistent agent callbacks** — Agent callback registration persists across restarts via SQLite
 - **Batch CEFR classification** — `cefr_batch` MCP tool for classifying multiple texts at once

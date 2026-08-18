@@ -6888,6 +6888,7 @@ def generate_tutorial(
     entry_summaries = "\n".join(
         f"- [{e.get('entry_id', '?')}] {e.get('title', '?')}: "
         f"{e.get('summary', '(no summary)')}"
+        + (f" (Source: {e['source_url']})" if e.get("source_url") else "")
         for e in entries
     )
 
@@ -7128,6 +7129,9 @@ def _build_tutorial_json_prompt(
         '  - "summary": 2-3 sentence summary of the tutorial\n'
         '  - "further_reading": array of reference strings\n\n'
         f"KB Entries:\n{entry_summaries}\n\n"
+        "In every \"content\" section body, follow each key claim with an "
+        "inline citation to its source entry, e.g. \"(Source: <source_url>)\". "
+        "Only cite URLs present in the KB Entries list.\n"
         "Return all fields in a single JSON object. Adapt depth, terminology, "
         f"and examples specifically for a {target_audience} audience."
     )
@@ -7174,6 +7178,9 @@ def _build_tutorial_markdown_prompt(
         "## Further Reading\n"
         "- <reference 1>\n"
         "- <reference 2>\n\n"
+        "In every content paragraph, follow each key claim with an inline "
+        "citation to its source entry, e.g. \"(Source: <source_url>)\". Only "
+        "cite URLs present in the KB Entries list.\n\n"
         "Use exactly the heading names above. Do NOT wrap your answer in a "
         "code fence or emit JSON.\n\n"
         f"KB Entries:\n{entry_summaries}\n\n"
@@ -7333,7 +7340,11 @@ def _entry_derived_sections(
         summary = entry.get("summary") or "(no summary available)"
         if len(objectives) < 5:
             objectives.append(title)
-        content.append({"heading": title, "body": summary})
+        body = summary
+        url = entry.get("source_url")
+        if url:
+            body += f" (Source: {url})"
+        content.append({"heading": title, "body": body})
         exercises.append(
             {
                 "title": f"What is the key finding in '{title}'?",
@@ -7343,7 +7354,6 @@ def _entry_derived_sections(
                 ),
             }
         )
-        url = entry.get("source_url")
         if url and url not in further_reading:
             further_reading.append(url)
     return objectives[:5], content, exercises, further_reading[:20]

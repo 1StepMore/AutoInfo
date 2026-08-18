@@ -546,6 +546,11 @@ B2.4 Operate reads the B1 subscription configs to determine:
 - Where to deliver (from B1's `channels`)
 - Which products to generate (from B1's tier → product mapping)
 
+Generated products cite their sources: digest/report/tutorial bodies carry
+inline citations to the real KB entry `source_url`s they synthesize (e.g.
+`(Source: https://…/12345678/)`), so every claim is traceable back to a
+collected item (issue #312 tutorial citations).
+
 ### 9.5 B2.5 Monitor
 
 **B2 monitors pipeline execution health. This is ongoing.**

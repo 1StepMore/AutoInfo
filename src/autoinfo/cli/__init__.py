@@ -48,7 +48,7 @@ app = typer.Typer(
 def main(
     ctx: typer.Context,
     json: bool = typer.Option(False, "--json", help="Enable JSON output"),
-):
+) -> None:
     """AutoInfo CLI — collect, process, and manage your information."""
     ctx.obj = {"json": json}
 

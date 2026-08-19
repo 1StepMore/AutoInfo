@@ -155,6 +155,11 @@ def _generate_config(
                         {"default_language": domain_data["default_language"]}
                         if domain_data.get("default_language")
                         else {}
+                    )
+                    | (
+                        {"exclude_keywords": domain_data["exclude_keywords"]}
+                        if domain_data.get("exclude_keywords")
+                        else {}
                     ),
                 })
             else:
@@ -205,6 +210,11 @@ def _generate_config(
                 **(
                     {"default_language": domain_data["default_language"]}
                     if domain_data.get("default_language")
+                    else {}
+                )
+                | (
+                    {"exclude_keywords": domain_data["exclude_keywords"]}
+                    if domain_data.get("exclude_keywords")
                     else {}
                 ),
             })

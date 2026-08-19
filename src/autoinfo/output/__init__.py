@@ -480,6 +480,93 @@ def _resolve_effective_language(
     return ""
 
 
+def _get_domain_exclude_keywords(domain: str) -> list[str]:
+    """Load the ``exclude_keywords`` list for *domain* from the project config.
+
+    Returns an empty list when the config cannot be loaded or the domain is
+    not found — an empty list means "no filtering" (backward compatible).
+    Mirrors the config-loading pattern of :func:`_get_domain_source_configs`.
+    """
+    config_path = get_config_path()
+    if config_path is None or not config_path.is_file():
+        return []
+    try:
+        config = load_config(config_path)
+    except Exception:
+        return []
+    for d in config.domains:
+        if d.name == domain:
+            return list(d.exclude_keywords)
+    return []
+
+
+def _entry_matches_exclude_keywords(
+    entry: dict[str, Any], keywords: list[str]
+) -> bool:
+    """Return True when any excluded keyword appears in the entry's content.
+
+    Matching is a deterministic substring check (casefold for latin, CJK-aware)
+    over the entry's title + summary + tags.  Tags may arrive as a JSON string
+    (SQLite) or a list — the same parsing pattern as ``_build_digest_llm_prompt``.
+    """
+    if not keywords:
+        return False
+    title = str(entry.get("title") or "")
+    summary = str(entry.get("summary") or "")
+    tags_raw = entry.get("tags", "")
+    if isinstance(tags_raw, str):
+        try:
+            tags_list = json.loads(tags_raw)
+        except (json.JSONDecodeError, TypeError):
+            tags_list = [tags_raw] if tags_raw else []
+    elif isinstance(tags_raw, list):
+        tags_list = tags_raw
+    else:
+        tags_list = []
+    tags_text = " ".join(str(t) for t in tags_list)
+    haystack = f"{title}\n{summary}\n{tags_text}".casefold()
+    return any(kw and kw.casefold() in haystack for kw in keywords)
+
+
+def _filter_entries_by_domain_exclusions(
+    entries: list[dict[str, Any]], domain: str
+) -> list[dict[str, Any]]:
+    """Drop entries matching a per-domain ``exclude_keywords`` blacklist (#319).
+
+    Issue #319: ai-commercial digests contained medical entries (贝达药业,
+    EyePoint DURAVYU) that passed the G1-G3 relevance gates.  This is a
+    product-generation-layer filter (NOT a gate change): each entry is checked
+    against the ``exclude_keywords`` of its OWN domain (entry dicts carry
+    ``domain``; falls back to *domain* when absent), so a cross-domain digest
+    filters per-entry.  Matching is deterministic — substring on
+    title+summary+tags, no LLM involvement.  Returns the input unchanged when
+    no domain declares exclusions.
+    """
+    if not entries:
+        return entries
+    exclude_by_domain: dict[str, list[str]] = {}
+    kept: list[dict[str, Any]] = []
+    dropped = 0
+    for entry in entries:
+        entry_domain = str(entry.get("domain") or domain)
+        if entry_domain not in exclude_by_domain:
+            exclude_by_domain[entry_domain] = _get_domain_exclude_keywords(
+                entry_domain
+            )
+        keywords = exclude_by_domain[entry_domain]
+        if keywords and _entry_matches_exclude_keywords(entry, keywords):
+            dropped += 1
+            continue
+        kept.append(entry)
+    if dropped:
+        logger.info(
+            "Excluded %d entries from product input for domain '%s' via "
+            "exclude_keywords (cross-domain noise filter)",
+            dropped, domain,
+        )
+    return kept
+
+
 class _DeliveryGatesBypass:
     """Sentinel type for explicitly bypassing delivery-gate resolution."""
 
@@ -4019,6 +4106,13 @@ def generate_digest(
     if effective_language:
         entries = _filter_entries_by_language(entries, effective_language)
 
+    # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+    # Cross-domain noise guard: drop entries whose title/summary/tags match a
+    # keyword on the entry's OWN domain's exclude_keywords blacklist BEFORE LLM
+    # synthesis.  Deterministic substring match, no LLM involvement.  No-op for
+    # domains with an empty list.
+    entries = _filter_entries_by_domain_exclusions(entries, domain)
+
     # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
     for entry in entries:
         tags_raw = entry.get("tags", "")
@@ -4535,6 +4629,11 @@ def generate_report(
     )
     if effective_language:
         entries = _filter_entries_by_language(entries, effective_language)
+
+    # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+    # Cross-domain noise guard: drop entries matching their own domain's
+    # exclude_keywords blacklist BEFORE thematic grouping / LLM synthesis.
+    entries = _filter_entries_by_domain_exclusions(entries, domain)
 
     if not entries:
         rendered: str

@@ -38,6 +38,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -339,8 +340,13 @@ def _is_test_entry(entry: dict[str, Any]) -> bool:
     # (a) empty title AND empty summary -> no usable content
     if not title and not summary:
         return True
-    # (a2) empty/placeholder summary -> no content for a product (issue #294)
-    if _is_empty_summary(summary):
+    # (a2) empty/placeholder summary -> only dropped when the entry also
+    # lacks a usable title or a real source URL.  A real Draft/Wiki entry
+    # whose body lives in the KB markdown file but whose DB ``summary``
+    # column is empty is meaningful and must NOT be dropped for a product
+    # (issue #326) — dropping it left the column Deep Dive / report
+    # Sections empty even when real KB data existed.
+    if _is_empty_summary(summary) and (not title or not source_url):
         return True
     # (a3) summary contains lorem ipsum -> placeholder text (issue #293)
     if "lorem ipsum" in summary.lower():
@@ -3565,6 +3571,65 @@ def _get_domain_source_configs(domain: str) -> list["SourceConfig"]:
     return []
 
 
+# Generic source_platform values that carry no specific source identity (the
+# #325 re-derivation replaces these with the configured source name when a
+# hostname match can be made against the domain's source configs).
+_GENERIC_PLATFORMS = frozenset({"", "rss", "web", "api"})
+
+# SourceConfig types whose entries can be matched to a source by hostname.
+_MATCHABLE_SOURCE_TYPES = frozenset({"rss", "web", "webhook", "api", "pdf"})
+
+
+def _derive_source_label(
+    entry: dict[str, Any],
+    domain: str,
+    *,
+    source_configs: list["SourceConfig"] | None = None,
+) -> str:
+    """Derive a specific source name for *entry* when its stored
+    ``source_platform`` is a generic placeholder (``rss``/``web``/``api`` or
+    empty) — issue #325.
+
+    Pre-#323 KB entries carry ``source_platform='rss'`` even for real sources
+    (TechCrunch, arXiv, 36Kr, …), so the References section rendered the
+    generic ``(RSS)`` label.  The #323 collector fix only affects newly
+    collected items; this re-derivation recovers the specific source name for
+    existing entries by matching the entry's ``source_url`` host against the
+    domain's configured source URLs.
+
+    Returns the derived source identifier (a source config ``name``) when a
+    match is found, otherwise returns the entry's stored ``source_platform``
+    unchanged.  Matching is deterministic — no LLM.
+    """
+    platform = str(entry.get("source_platform") or "").strip()
+    if platform.lower() not in _GENERIC_PLATFORMS:
+        return platform
+    source_url = str(entry.get("source_url") or "").strip()
+    if not source_url:
+        return platform
+    try:
+        url_host = urlsplit(source_url).hostname or ""
+    except ValueError:
+        return platform
+    if not url_host:
+        return platform
+    configs = source_configs if source_configs is not None else _get_domain_source_configs(domain)
+    for sc in configs:
+        if sc.type not in _MATCHABLE_SOURCE_TYPES:
+            continue
+        sc_url = str(sc.url or "").strip()
+        if not sc_url:
+            continue
+        try:
+            sc_host = urlsplit(sc_url).hostname or ""
+        except ValueError:
+            continue
+        # Hostname match (strip leading www. for robustness).
+        if sc_host == url_host or sc_host.lstrip("www.") == url_host.lstrip("www."):
+            return sc.name.strip() or platform
+    return platform
+
+
 def _build_attribution_footer(
     sources: list["SourceConfig"],
     output_format: str = "markdown",
@@ -3819,12 +3884,17 @@ def _normalize_digest_product_context(
     )
 
     # --- References derived from entries (report-path item shape) ----------
+    # #325: derive the specific source label for entries whose stored
+    # source_platform is a generic placeholder (pre-#323 'rss' etc.).
+    _src_configs = _get_domain_source_configs(domain)
     flat["references"] = [
         {
             "title": e.get("title", ""),
             "source_url": e.get("source_url", ""),
             "source_type": e.get("source_type", ""),
-            "source_platform": e.get("source_platform", ""),
+            "source_platform": _derive_source_label(
+                e, e.get("domain", domain), source_configs=_src_configs,
+            ),
             "domain": e.get("domain", domain),
         }
         for e in entries_list
@@ -3854,7 +3924,11 @@ def _normalize_digest_product_context(
     # and no usable sections exist but entries do, derive them
     # deterministically so the template never renders the empty placeholder.
     sections = _normalize_column_sections(synthesis.get("sections"))
-    if product_family == "column" and not sections and entries_list:
+    if product_family in ("column", "report") and not sections and entries_list:
+        # #326: derive sections deterministically for the report family too
+        # (previously only "column" got a deterministic fallback, so the
+        # report product rendered `**Sections**: 0` + an empty shell whenever
+        # the LLM synthesis carried no explicit sections).
         sections = _deterministic_column_sections(entries_list, domain)
     flat["sections"] = sections
 
@@ -4732,12 +4806,17 @@ def generate_report(
         return rendered
 
     # -- Build reference list from entries --------------------------------
+    # #325: derive the specific source label for entries whose stored
+    # source_platform is a generic placeholder (pre-#323 'rss' etc.).
+    _src_configs = _get_domain_source_configs(domain)
     references = [
         {
             "title": e.get("title", ""),
             "source_url": e.get("source_url", ""),
             "source_type": e.get("source_type", ""),
-            "source_platform": e.get("source_platform", ""),
+            "source_platform": _derive_source_label(
+                e, e.get("domain", domain), source_configs=_src_configs,
+            ),
             "domain": e.get("domain", domain),
         }
         for e in entries

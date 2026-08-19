@@ -19,7 +19,7 @@ name: regression-crossdomain-noise-filter
 description: "Regression #319: ai-commercial products exclude cross-domain medical entries via per-domain exclude_keywords"
 category: regression
 regression: true
-regression_issue: "319"
+regression_issue: "#319"
 requires_env: []
 steps:
   - name: "ai-commercial digest excludes 贝达药业/DURAVYU entries before synthesis"

@@ -32,7 +32,7 @@ name: regression-product-h1-titles
 description: "Regression #318: 6 product families render distinct product-aware H1 titles (period prefix + product word + domain) on digest and report paths"
 category: regression
 regression: true
-regression_issue: "318"
+regression_issue: "#318"
 requires_env: []
 steps:
   - name: "digest path renders 6 distinct product-aware H1 titles"

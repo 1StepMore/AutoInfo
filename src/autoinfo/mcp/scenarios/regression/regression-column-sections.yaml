@@ -21,7 +21,7 @@ name: regression-column-sections
 description: "Regression #316: column digest renders >=8 deep-dive subsections with a matching Sections count, never the empty placeholder"
 category: regression
 regression: true
-regression_issue: "316"
+regression_issue: "#316"
 requires_env: []
 steps:
   - name: "column digest renders 8+ deep-dive subsections from synthesis sections"

@@ -31,6 +31,7 @@ from . import (
     summaries,
     topics,
     trace,
+    validate,
 )
 
 # Import init function directly (not as typer app — single-command module)
@@ -77,6 +78,11 @@ app.add_typer(cost.app, name="cost")
 app.add_typer(enduser.app, name="enduser")
 app.add_typer(portal.app, name="portal")
 app.add_typer(trace.app, name="trace")
+app.add_typer(
+    validate.app,
+    name="validate",
+    help="Run the full-matrix acceptance executor + regression guard (#331/#332)",
+)
 app.add_typer(
     import_kb.app,
     name="import-kb",

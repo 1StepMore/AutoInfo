@@ -3014,6 +3014,33 @@ PRODUCT_TEMPLATES: list[dict[str, Any]] = [
 ]
 
 
+# Product family → H1 product word (issue #318).  Keyed by the family name
+# resolved by :func:`_resolve_digest_product_type` /
+# :func:`_resolve_report_product_type` (the registry row name when its flat
+# template file exists, else the default family).  The default
+# ``digest``/``report`` families map to their own words so the non-product
+# paths keep their historical titles byte-identical.
+_PRODUCT_H1_WORDS: dict[str, str] = {
+    "digest": "Digest",
+    "report": "Report",
+    "premium-briefing": "Premium Briefing",
+    "column": "Column",
+    "magazine-digest": "Magazine Digest",
+    "enterprise-briefing": "Enterprise Briefing",
+}
+
+
+def _product_h1_word(family: str, default: str = "Digest") -> str:
+    """Return the H1 product word for a resolved product *family* (issue #318).
+
+    *family* is the template family name produced by
+    :func:`_resolve_digest_product_type` / :func:`_resolve_report_product_type`
+    (e.g. ``"premium-briefing"``).  Unknown families fall back to *default*
+    so the non-product paths keep their historical titles.
+    """
+    return _PRODUCT_H1_WORDS.get(family, default)
+
+
 def _resolve_digest_product_type(template: ProductTemplate, variant: str) -> str:
     """Map a ProductTemplate instance back to its digest template family.
 
@@ -4107,8 +4134,14 @@ def generate_digest(
 
     # --- Build template context ----------------------------------------------
     generated_at = datetime.now(timezone.utc).isoformat()
+    # Issue #318: the H1 product word follows the resolved product family
+    # (digest/report/premium-briefing/column/magazine-digest/enterprise-briefing)
+    # instead of being hardcoded to "Digest"; the period label still drives
+    # the Daily/Weekly/Monthly prefix.  The default digest family keeps the
+    # historical "{period_label} Digest — {domain}" title byte-identical.
+    digest_h1_word = _product_h1_word(digest_family)
     context = {
-        "title": f"{period_label} Digest \u2014 {digest_title_domain}",
+        "title": f"{period_label} {digest_h1_word} \u2014 {digest_title_domain}",
         "domain": digest_title_domain,
         "period": period,
         "period_label": period_label,
@@ -4244,7 +4277,7 @@ def generate_digest(
             _try_notify_content_ready(
                 user_id=user_id,
                 product_type="digest",
-                title=f"{period_label} Digest \u2014 {digest_title_domain}",
+                title=f"{period_label} {digest_h1_word} \u2014 {digest_title_domain}",
             )
         _fire_agent_notification(
             "new_digest",
@@ -4257,7 +4290,7 @@ def generate_digest(
         _try_notify_content_ready(
             user_id=user_id,
             product_type="digest",
-            title=f"{period_label} Digest \u2014 {digest_title_domain}",
+            title=f"{period_label} {digest_h1_word} \u2014 {digest_title_domain}",
         )
     _fire_agent_notification(
         "new_digest", rendered, product_id=f"{digest_title_domain}-{period}"
@@ -4735,8 +4768,19 @@ def generate_report(
         for g in groupings
     ]
 
+    # Issue #318: the report H1 product word follows the resolved product
+    # family when a product template is used (premium-briefing/column/
+    # enterprise-briefing); the default report path (no product_template,
+    # incl. report_type="column" T40) keeps the historical
+    # "{domain} — Report" title byte-identical.
+    report_h1_word = (
+        _product_h1_word(report_family, default="Report")
+        if product_template is not None
+        else "Report"
+    )
+
     report_data = ReportData(
-        title=f"{report_title_domain} \u2014 Report",
+        title=f"{report_title_domain} \u2014 {report_h1_word}",
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         domain=report_title_domain,
         collection_id=collection_id or "",
@@ -4952,7 +4996,7 @@ def generate_report(
             _try_notify_content_ready(
                 user_id=user_id,
                 product_type="report",
-                title=f"{report_title_domain} \u2014 Report",
+                title=f"{report_title_domain} \u2014 {report_h1_word}",
             )
         _fire_agent_notification(
             "new_report",
@@ -4965,7 +5009,7 @@ def generate_report(
         _try_notify_content_ready(
             user_id=user_id,
             product_type="report",
-            title=f"{report_title_domain} \u2014 Report",
+            title=f"{report_title_domain} \u2014 {report_h1_word}",
         )
     _fire_agent_notification(
         "new_report", rendered, product_id=f"{report_title_domain}-{period}"

@@ -3114,12 +3114,24 @@ _DIGEST_MAGAZINE_EDITORIAL_FIELDS: list[str] = (
     ]
 )
 
+# Issue #316: column deep-dive sections — the column template renders a
+# Deep Dive from a ``sections`` array (each ``{title, content}``), so the
+# digest synthesis must request it (mirroring the #308 report-path wording).
+_DIGEST_COLUMN_SECTIONS_FIELDS: list[str] = [
+    '"sections": [{"title": "Subsection title", "content": "2-3 paragraphs '
+    'of analysis grounded in specific entries \u2014 quote concrete numbers, '
+    'dates, and named companies/studies from the source material; no filler '
+    'paragraphs"}], 8-10 distinct deep-dive subsections, each with '
+    'substantive content',
+]
+
 _DIGEST_PRODUCT_FIELD_DESCRIPTIONS: dict[str, list[str]] = {
     "premium-briefing": _DIGEST_PRODUCT_BASE_FIELDS,
     "magazine-digest": _DIGEST_MAGAZINE_EDITORIAL_FIELDS,
     "enterprise-briefing": (
         _DIGEST_PRODUCT_BASE_FIELDS + _DIGEST_ENTERPRISE_METRICS_FIELDS
     ),
+    "column": _DIGEST_COLUMN_SECTIONS_FIELDS,
 }
 
 
@@ -3454,8 +3466,77 @@ def _build_attribution_footer(
     return f"---\n\n## Source Attribution\n\n{body}\n"
 
 
+def _normalize_column_sections(raw: Any) -> list[dict[str, Any]]:
+    """Normalize the LLM ``sections`` array to ``{title, content, entries}``.
+
+    Drops items without a usable ``title`` or ``content`` so the column
+    template never renders empty subsections (issue #316).  ``entries`` is
+    carried through when the LLM provides it (optional — the template
+    renders an entry table only when present).
+    """
+    if not isinstance(raw, list):
+        return []
+    sections: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if not title or not content:
+            continue
+        section: dict[str, Any] = {"title": title, "content": content}
+        entries = item.get("entries")
+        if isinstance(entries, list):
+            section["entries"] = entries
+        sections.append(section)
+    return sections
+
+
+def _deterministic_column_sections(
+    entries: list[dict[str, Any]], domain: str = ""
+) -> list[dict[str, Any]]:
+    """Derive column deep-dive sections deterministically from entries (#316).
+
+    Groups entries by theme (source_type → domain → keyword, the same
+    deterministic fallback the report path uses) and emits one section per
+    group; when the grouping yields fewer than 8 sections but there are at
+    least 8 entries, falls back to one section per entry (title + summary)
+    so the column Deep Dive never renders the empty placeholder when
+    entries exist.
+    """
+    groups = _deterministic_grouping(entries, domain=domain)
+    if groups:
+        sections = [
+            {
+                "title": str(g.get("theme") or "").strip(),
+                "content": str(g.get("description") or "").strip(),
+                "entries": list(g.get("entries") or []),
+            }
+            for g in groups
+            if (str(g.get("theme") or "").strip())
+        ]
+        if len(sections) >= 8:
+            return sections
+    # One section per entry (title + summary) — real content, never
+    # fabricated, and never an empty Deep Dive when entries exist.
+    sections = []
+    for e in entries:
+        title = str(e.get("title") or "").strip()
+        if not title:
+            continue
+        summary = str(e.get("summary") or "").strip()
+        sections.append(
+            {
+                "title": title,
+                "content": summary or title,
+                "entries": [e],
+            }
+        )
+    return sections
+
+
 def _normalize_digest_product_context(
-    context: dict[str, Any], domain: str
+    context: dict[str, Any], domain: str, product_family: str = "digest"
 ) -> dict[str, Any]:
     """Normalize the digest context to the flat §2.1 product-template shape.
 
@@ -3482,6 +3563,13 @@ def _normalize_digest_product_context(
       ``action_required``, ``key_metrics`` ← flattened from
       ``llm_synthesis`` when present, else ``[]`` — generic, so any new
       synthesis field flows through automatically
+    - ``sections`` (issue #316): the column template's Deep Dive source —
+      flattened from ``llm_synthesis["sections"]`` when present (list of
+      ``{title, content, entries}`` dicts, unusable items dropped); when
+      *product_family* is ``"column"`` and no usable sections exist but
+      entries do, sections are derived deterministically from the entries
+      so the template never renders the empty placeholder.  Non-column
+      families default to ``[]`` (backward compatible).
 
     All other top-level digest keys (``title``, ``domain``, ``generated_at``,
     ``period``, ``entries``, …) are kept untouched — templates must simply
@@ -3579,6 +3667,17 @@ def _normalize_digest_product_context(
         flat[synthesis_field] = (
             value if isinstance(value, list) else (str(value) if isinstance(value, str) else [])
         )
+
+    # --- Column deep-dive sections (issue #316) ---------------------------
+    # The column template renders ``sections`` (list of {title, content,
+    # entries}) for the Deep Dive + Implications sections.  Flatten the LLM
+    # synthesis ``sections`` array when present; when the family is column
+    # and no usable sections exist but entries do, derive them
+    # deterministically so the template never renders the empty placeholder.
+    sections = _normalize_column_sections(synthesis.get("sections"))
+    if product_family == "column" and not sections and entries_list:
+        sections = _deterministic_column_sections(entries_list, domain)
+    flat["sections"] = sections
 
     return flat
 
@@ -3995,7 +4094,9 @@ def generate_digest(
         _persist_product_analysis_to_kb(store, entries, llm_synthesis)
     elif product_template is not None:
         product_type = digest_family
-        pt_context = _normalize_digest_product_context(context, domain)
+        pt_context = _normalize_digest_product_context(
+            context, domain, product_family=digest_family
+        )
         rendered = product_template.render(product_type, variant, pt_context)
     elif format == "json":
         rendered = _render_json(context)

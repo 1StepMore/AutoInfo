@@ -151,7 +151,9 @@ class TestMatrix:
         assert data["schema_version"] == 1
 
     def test_diff_report_cards_all_classes(self) -> None:
-        def card(pairs):
+        def card(
+            pairs: list[tuple[str, str, bool]],
+        ) -> vm.MatrixReport:
             m = vm.MatrixReport(generated_at="t", commit="c")
             m.products = [{
                 "domain": "d", "product": p, "status": "ok",

@@ -311,6 +311,67 @@ def _is_empty_summary(summary: str) -> bool:
     return bool(_NO_CONTENT_SUMMARY_RE.match(stripped))
 
 
+def _is_empty_content(content: Any) -> bool:
+    """True when *content* is blank (no real body text).
+
+    Issue #326: the product pipeline enriches real KB entries with their
+    ``content`` (body loaded from the KB markdown file).  An entry whose
+    ``content`` is missing, empty, or whitespace-only has no extractable body
+    and is treated as an empty entry (like issue #294's empty summaries).  A
+    non-empty ``content`` signals a real Draft/Wiki entry even when the DB
+    ``summary`` column is empty.
+    """
+    if content is None:
+        return True
+    stripped = str(content).strip()
+    return not stripped
+
+
+def _enrich_entry_content(entry: dict[str, Any]) -> dict[str, Any]:
+    """Load an entry's body ``content`` from its KB markdown file when the
+    DB ``summary`` column is empty (issue #326).
+
+    Real Draft/Wiki entries store their extracted text under
+    ``## Original Content`` in the KB markdown file, but the SQLite
+    ``entries`` table has no ``content`` column and its ``summary`` column
+    may be empty.  ``_is_test_entry`` would otherwise drop these real entries
+    as "empty-summary" (issue #294) — leaving the column Deep Dive / report
+    Sections empty.  This helper reads the file body so ``_is_empty_content``
+    sees real content and the entry is kept.
+
+    The file is only read when the summary is empty (the common case has a
+    non-empty summary and skips the I/O entirely).
+    """
+    if not _is_empty_summary(str(entry.get("summary") or "")):
+        return entry
+    file_path = entry.get("file_path")
+    if not file_path or not Path(str(file_path)).is_file():
+        return entry
+    try:
+        raw = Path(str(file_path)).read_text(encoding="utf-8")
+    except OSError:
+        return entry
+    # Prefer the "## Original Content" section; fall back to the raw body.
+    marker = "## Original Content"
+    if marker in raw:
+        body = raw.split(marker, 1)[1].strip()
+    else:
+        body = raw.strip()
+    if body:
+        entry["content"] = body
+    return entry
+
+
+def _enrich_product_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Enrich product entries with file ``content`` (issue #326).
+
+    Applied after entry loading and before ``_filter_product_entries`` so real
+    Draft/Wiki entries with an empty DB summary but file content survive the
+    empty-entry guard.
+    """
+    return [_enrich_entry_content(dict(e)) if isinstance(e, dict) else e for e in entries]
+
+
 def _entry_custom_fields(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse an entry's ``custom_fields`` (JSON string or dict) into a dict."""
     raw = entry.get("custom_fields")
@@ -340,13 +401,14 @@ def _is_test_entry(entry: dict[str, Any]) -> bool:
     # (a) empty title AND empty summary -> no usable content
     if not title and not summary:
         return True
-    # (a2) empty/placeholder summary -> only dropped when the entry also
-    # lacks a usable title or a real source URL.  A real Draft/Wiki entry
-    # whose body lives in the KB markdown file but whose DB ``summary``
-    # column is empty is meaningful and must NOT be dropped for a product
-    # (issue #326) — dropping it left the column Deep Dive / report
-    # Sections empty even when real KB data existed.
-    if _is_empty_summary(summary) and (not title or not source_url):
+    # (a2) empty/placeholder summary -> only treated as a test/empty entry
+    # when there is no real body content either.  A real Draft/Wiki entry
+    # whose body lives in the KB markdown file (loaded into the entry dict's
+    # ``content`` field by the product pipeline) but whose DB ``summary``
+    # column is empty is meaningful and must NOT be dropped (issue #326).
+    # Entries without a ``content`` field (never enriched from a file) keep
+    # the #294 behaviour: empty summary -> dropped.
+    if _is_empty_summary(summary) and _is_empty_content(entry.get("content")):
         return True
     # (a3) summary contains lorem ipsum -> placeholder text (issue #293)
     if "lorem ipsum" in summary.lower():
@@ -4198,8 +4260,11 @@ def generate_digest(
 
     # --- Test/empty entry filtering (issue #298 — layer 1) -------------------
     # Drop empty/test/placeholder entries BEFORE synthesis and BEFORE render so
-    # both the LLM input and the rendered body are clean.
-    entries = _filter_product_entries(entries)
+    # both the LLM input and the rendered body are clean.  Real Draft/Wiki
+    # entries with an empty DB summary but file content are first enriched
+    # (issue #326) so their column Deep Dive / report Sections are never an
+    # empty shell from real KB data.
+    entries = _filter_product_entries(_enrich_product_entries(entries))
 
     # --- Language filter (issue #309 / #317) --------------------------------
     # When a user requests a specific language (or a domain declares a
@@ -4726,7 +4791,11 @@ def generate_report(
         entries = filtered_entries
 
     # --- Test/empty entry filtering (issue #298 — layer 1) -------------------
-    entries = _filter_product_entries(entries)
+    # Drop empty/test/placeholder entries BEFORE synthesis and BEFORE render.
+    # Real Draft/Wiki entries with an empty DB summary but file content are
+    # first enriched (issue #326) so the report Sections are never an empty
+    # shell from real KB data.
+    entries = _filter_product_entries(_enrich_product_entries(entries))
 
     # --- Language filter (issue #309 / #317) --------------------------------
     # An explicit param wins; otherwise the domain default fills in;

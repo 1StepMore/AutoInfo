@@ -2,6 +2,10 @@
 # Tracks AI startup funding, product launches, and industry trends
 name: ai-commercial
 description: "AI commercial intelligence — startup funding, product launches, industry trends"
+# Issue #317: 3 of 4 sources are English (TechCrunch/ProductHunt/Crunchbase);
+# 36KR is Chinese.  Default the output language to English so products come out
+# single-language without an explicit --language param.
+default_language: en
 
 sources:
   - name: techcrunch

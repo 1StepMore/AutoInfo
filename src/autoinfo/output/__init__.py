@@ -447,6 +447,39 @@ def _filter_entries_by_language(
     return kept
 
 
+def _resolve_effective_language(
+    language: str, domain: str, *, cross_domain: bool = False
+) -> str:
+    """Resolve the effective language for a product (issue #317).
+
+    Precedence:
+    1. An explicit *language* param always wins.
+    2. Otherwise, for a single-domain product, fall back to the domain's
+       configured ``default_language`` (so mixed-language domains like
+       ai-commercial come out single-language without manual params).
+    3. Otherwise ``""`` — no filtering (legacy behavior).
+
+    For a cross-domain product (*cross_domain* True) we never silently pick
+    one domain's default across multiple domains: an explicit param wins,
+    otherwise no filtering.
+    """
+    if language:
+        return language
+    if cross_domain:
+        return ""
+    config_path = get_config_path()
+    if config_path is None or not config_path.is_file():
+        return ""
+    try:
+        config = load_config(config_path)
+    except Exception:
+        return ""
+    for d in config.domains:
+        if d.name == domain:
+            return d.default_language or ""
+    return ""
+
+
 class _DeliveryGatesBypass:
     """Sentinel type for explicitly bypassing delivery-gate resolution."""
 
@@ -3948,11 +3981,16 @@ def generate_digest(
     # both the LLM input and the rendered body are clean.
     entries = _filter_product_entries(entries)
 
-    # --- Language filter (issue #309) ---------------------------------------
-    # When a user requests a specific language, drop entries in other
-    # languages so a digest/report is internally consistent (no zh/en interleave).
-    if language:
-        entries = _filter_entries_by_language(entries, language)
+    # --- Language filter (issue #309 / #317) --------------------------------
+    # When a user requests a specific language (or a domain declares a
+    # default_language), drop entries in other languages so a digest/report is
+    # internally consistent (no zh/en interleave).  An explicit param wins;
+    # otherwise the domain default fills in; cross-domain never auto-picks one.
+    effective_language = _resolve_effective_language(
+        language, domain, cross_domain=is_cross_domain_digest
+    )
+    if effective_language:
+        entries = _filter_entries_by_language(entries, effective_language)
 
     # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
     for entry in entries:
@@ -4456,9 +4494,14 @@ def generate_report(
     # --- Test/empty entry filtering (issue #298 — layer 1) -------------------
     entries = _filter_product_entries(entries)
 
-    # --- Language filter (issue #309) ---------------------------------------
-    if language:
-        entries = _filter_entries_by_language(entries, language)
+    # --- Language filter (issue #309 / #317) --------------------------------
+    # An explicit param wins; otherwise the domain default fills in;
+    # cross-domain never auto-picks one domain's default.
+    effective_language = _resolve_effective_language(
+        language, domain, cross_domain=is_cross_domain
+    )
+    if effective_language:
+        entries = _filter_entries_by_language(entries, effective_language)
 
     if not entries:
         rendered: str

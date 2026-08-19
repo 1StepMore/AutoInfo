@@ -151,6 +151,11 @@ def _generate_config(
                     "active": True,
                     "sources": domain_data.get("sources", []),
                     "topics": domain_data.get("topics", []),
+                    **(
+                        {"default_language": domain_data["default_language"]}
+                        if domain_data.get("default_language")
+                        else {}
+                    ),
                 })
             else:
                 config.setdefault("domains", []).append({
@@ -197,6 +202,11 @@ def _generate_config(
                 "active": True,
                 "sources": domain_data.get("sources", []),
                 "topics": domain_data.get("topics", []),
+                **(
+                    {"default_language": domain_data["default_language"]}
+                    if domain_data.get("default_language")
+                    else {}
+                ),
             })
         else:
             config["domains"].append({

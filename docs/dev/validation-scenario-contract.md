@@ -98,7 +98,7 @@ Scenarios must be real, loadable, and self-verifying: every implemented MCP tool
 exercised by a `kind: mcp` step in at least one scenario. The executor engine lives in
 `src/autoinfo/mcp/validation.py` (scenario loading via `load_scenarios()`); the MCP
 surface is `list_validation_scenarios` / `run_validation_scenario`. Every scenario runs
-against the live system from the **project root** (`/mnt/d/贯维/AutoInfo`) where
+against the live system from the **project root** (`<repo-root>`) where
 `.autoinfo/config.yaml` exists and the `medical-research` domain is configured with 5
 sources, 3 topics, and populated `knowledge/medical-research/01-Raw/` data. This is the
 REAL operation context — do NOT write "empty state" assertions; tools return real data
@@ -581,7 +581,7 @@ but the matrix row additionally requires the real call and the artifact.
 
 ## 2.6 Step-by-Step Walkthrough
 
-Run from the project root (`/mnt/d/贯维/AutoInfo`). The venv interpreter is
+Run from the project root (`<repo-root>`). The venv interpreter is
 `.venv/bin/python`; the `autoinfo` console script must be on PATH.
 
 ### 2.6.1 Pre-flight (RED baseline first)

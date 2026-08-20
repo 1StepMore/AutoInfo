@@ -219,7 +219,7 @@ class TestMatrix:
             report = vm.run_matrix(["ai-commercial"], ["report"], only_assert=True)
         assert report.summary["total_products"] == 1
         assert report.summary["failures"] == 0
-        assert report.to_dict()["schema_version"] == 1
+        assert report.to_dict()["schema_version"] == 2
         assert report.to_dict()["tool"] == "autoinfo validate --matrix"
 
     def test_run_matrix_missing_file_reports_failure(self) -> None:
@@ -241,7 +241,7 @@ class TestMatrix:
         path = vm.save_report_card(report, out_dir)
         assert path.is_file()
         data = json.loads(path.read_text(encoding="utf-8"))
-        assert data["schema_version"] == 1
+        assert data["schema_version"] == 2
 
     def test_diff_report_cards_all_classes(self) -> None:
         def card(

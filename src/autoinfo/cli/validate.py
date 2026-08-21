@@ -103,6 +103,11 @@ def matrix(
         help="#348 smart-skip: allow premium products (premium-briefing, "
              "column, enterprise-briefing) to skip at the plain threshold",
     ),
+    link_check: bool = typer.Option(
+        False, "--link-check",
+        help="#352.2: HEAD-check every [View Source]/References URL for "
+             "reachability (slow, opt-in; never runs on the default path)",
+    ),
 ) -> None:
     """Run the full-matrix acceptance executor (#331).
 
@@ -135,6 +140,7 @@ def matrix(
         batch_id=batch_id,
         artifacts_dir=artifacts_dir,
         skip=skip_policy,
+        include_slow=link_check,
     )
     _render_report_card(report)
     if json_out:
@@ -237,6 +243,11 @@ def stability(
             f"{', '.join(MATRIX_PRODUCTS)}"
         ),
     ),
+    link_check: bool = typer.Option(
+        False, "--link-check",
+        help="#352.2: HEAD-check every [View Source]/References URL for "
+             "reachability (slow, opt-in; never runs on the default path)",
+    ),
 ) -> None:
     """Cross-day stability diff of two persisted batches (#352.1).
 
@@ -256,6 +267,7 @@ def stability(
         base / cur / "products",
         domain_list,
         product_list,
+        include_slow=link_check,
     )
     d = result["diff"]
     counts = d["counts"]

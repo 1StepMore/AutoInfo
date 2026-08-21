@@ -904,3 +904,124 @@ def diff_report_cards(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, An
             "fixed": len(fixed), "existing_failing": len(existing),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-day stability (#352.1) — deterministic re-assertion + batch diff
+# ---------------------------------------------------------------------------
+
+
+def _newest_persisted_product(
+    products_root: Path, domain: str, product: str
+) -> Path | None:
+    """Newest ``<product>-markdown-*.md`` for (domain, product), or None.
+
+    Newest = highest ``-markdown-*`` suffix (lexical; the #335 stamps are
+    zero-padded ``%Y%m%d-%H%M%S`` so lexical order == chronological and is
+    immune to mtime skew from copy/rsync).
+    """
+    base = products_root / domain
+    if not base.is_dir():
+        return None
+    matches = sorted(
+        (p for p in base.iterdir()
+         if p.is_file() and p.name.startswith(f"{product}-markdown-")),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    return matches[0] if matches else None
+
+
+def assert_persisted_batch(
+    batch_root: Path,
+    domains: list[str],
+    products: list[str],
+) -> dict[str, Any]:
+    """Re-assert the persisted products of one batch into a report-card-shaped
+    dict (#352.1).  NEVER regenerates: each (domain, product) row reads the
+    newest ``<product>-markdown-*.md`` file and runs the deterministic
+    ``run_assertions`` on it, so a stability diff reflects genuine assertion
+    pass/fail drift — LLM nondeterminism cannot produce a false diff.
+
+    Returns a ``MatrixReport.to_dict()``-shaped card: ``schema_version 2``,
+    ``tool``, ``commit`` (via ``_current_commit``), ``batch_id`` (the root
+    dir name), ``products`` rows with ``status`` ``ok``/``missing``/``error``
+    and per-assertion dicts, plus a ``summary`` breakdown.
+    """
+    rows: list[dict[str, Any]] = []
+    failures = missing = error = total = 0
+    for domain in domains:
+        for product in products:
+            path = _newest_persisted_product(batch_root, domain, product)
+            if path is None:
+                rows.append({
+                    "domain": domain, "product": product, "status": "missing",
+                    "assertions": [], "error": "no persisted product file",
+                })
+                missing += 1
+                failures += 1
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                rows.append({
+                    "domain": domain, "product": product, "status": "error",
+                    "assertions": [], "error": str(exc)[:200],
+                })
+                error += 1
+                failures += 1
+                continue
+            results = run_assertions(text, domain=domain, product=product)
+            failing = [r for r in results if not r.passed]
+            failures += len(failing)
+            total += len(results)
+            rows.append({
+                "domain": domain, "product": product, "status": "ok",
+                "assertions": [r.to_dict() for r in results],
+            })
+    batch_id = batch_root.name
+    summary = {
+        "batch_id": batch_id,
+        "domains": domains,
+        "products": products,
+        "total_products": len(rows),
+        "total_asserts": total,
+        "failures": failures,
+        "failing_assertions": failures - missing - error,
+        "missing_products": missing,
+        "error_products": error,
+    }
+    return {
+        "schema_version": 2,
+        "tool": "autoinfo validate --matrix",
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "commit": _current_commit(),
+        "batch_id": batch_id,
+        "products": rows,
+        "summary": summary,
+    }
+
+
+def diff_batches(
+    prev_root: Path,
+    cur_root: Path,
+    domains: list[str],
+    products: list[str],
+) -> dict[str, Any]:
+    """Cross-day stability diff of two persisted batches (#352.1).
+
+    Re-asserts both batches (deterministic, no regeneration) and runs
+    ``diff_report_cards`` on the two report cards.  Returns ``prev_batch``
+    and ``cur_batch`` cards, the ``diff`` output and ``stable`` — True when
+    nothing regressed and nothing is new.
+    """
+    prev_card = assert_persisted_batch(prev_root, domains, products)
+    cur_card = assert_persisted_batch(cur_root, domains, products)
+    diff = diff_report_cards(prev_card, cur_card)
+    stable = diff["counts"]["regressed"] == 0 and diff["counts"]["new"] == 0
+    return {
+        "prev_batch": prev_card,
+        "cur_batch": cur_card,
+        "stable": stable,
+        "diff": diff,
+    }

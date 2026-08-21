@@ -179,7 +179,7 @@ class TestRunAssertionsIncludeSlow:
         assertion; default ``include_slow=False`` does NOT (fast path unchanged,
         no network)."""
         default = vm.run_assertions(GOOD, domain="ai-commercial", product="report")
-        assert len(default) == 12
+        assert len(default) == len(vm.ASSERTION_FUNCS)
         assert "_references_reachable" not in {r.name for r in default}
 
         # The default fast path must never touch the network seam.
@@ -196,7 +196,7 @@ class TestRunAssertionsIncludeSlow:
             slow = vm.run_assertions(
                 GOOD, domain="ai-commercial", product="report", include_slow=True
             )
-        assert len(slow) == 13
+        assert len(slow) == len(vm.ASSERTION_FUNCS) + len(vm.SLOW_ASSERTION_FUNCS)
         reachable = [r for r in slow if r.name == "_references_reachable"]
         assert len(reachable) == 1
         assert reachable[0].passed

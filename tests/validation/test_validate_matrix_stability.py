@@ -86,7 +86,7 @@ class TestAssertPersistedBatch:
         assert (row["domain"], row["product"], row["status"]) == (
             "ai-commercial", "report", "ok"
         )
-        assert len(row["assertions"]) == 12
+        assert len(row["assertions"]) == len(vm.ASSERTION_FUNCS)
         assert all(a["passed"] for a in row["assertions"])
         assert card["summary"]["failures"] == 0
 

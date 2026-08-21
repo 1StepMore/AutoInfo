@@ -305,7 +305,15 @@ _AI_COMMERCIAL_NOISE = (
     "贝达药业", "华能", "株冶", "平安好医生", "DURAVYU", "SEC 8-K", "SEC 8K",
     "10-Q", "10Q", "财报", "年报",
 )
-_FIN_DILUTION = ("SEC 8-K", "SEC 8K", "10-Q", "10Q", "8-K filing", "8K filing")
+# #332: bare form ids ("8-K", "10-K") are included — stale SEC KB entries
+# carry titles like "8-K Apple Inc. (2026-07-30)" / "10-K Apple Inc.
+# (2026-01-15)" with no "SEC"/"filing" qualifier, so the dilution markers
+# must match the bare form string too.
+_FIN_DILUTION = (
+    "SEC 8-K", "SEC 8K", "8-K", "8K",
+    "10-Q", "10Q", "10-K", "10K",
+    "8-K filing", "8K filing",
+)
 
 _X = "cross-domain-noise-filter"
 

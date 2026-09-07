@@ -79,3 +79,34 @@
 ### 2026-08-31 追加（column 命令纠正 + chaos guard 发现）
 21. **`output report --type column` 不产出 column 模板**——只有 `--product column`（product_template 非 None）才走 column.md.j2（Big Idea/Deep Dive 结构）。`--type column` 是 T40 向后兼容：H1 保持 `{domain} — Report` + 标准 report 结构。**reference 里 `--type column` 的命令是错的**，正确命令：`output report --domain X --product column`。
 22. **厚 KB 域 LLM 分组不稳定**：b2b report 52 themes/24 single-entry、column 47 themes/16 single-entry 触发 #106 chaos guard → 回退 deterministic 分组，分组标题用原始 source 名（HACKERNEWS/RSS/API）→ 产品正文出现非语义 `###` 标题。已提 #113。fallback 分组标题应改用领域主题词。
+
+## 复盘记录（fix-retro，2026-09-07 起）
+
+> 每轮修复完成后按 `fix-retro` skill 输出复盘块（5 问）追加到此段。目标：不只记坑，沉淀模式——根因分类统计 → 重复模式识别 → 预防措施 → 技能沉淀。复盘块的根因分类基于失败定性协议（validation-governance.md），不凭印象。
+
+### 复盘模板（首轮复盘在下一轮修复后追加）
+
+```markdown
+## 复盘（fix-retro @ YYYY-MM-DD）
+**本轮修了什么**:
+- issue #NNN: 一句话
+
+**根因分类统计**:
+| 类型 | 数量 | 例子 |
+|------|------|------|
+| 类型错误 | N | ... |
+| 边界/空值 | N | ... |
+| 环境/配置 | N | ... |
+| 依赖/版本 | N | ... |
+| 其他 | N | ... |
+
+**模式识别**（重复出现的根因 → 系统性问题）:
+- 模式: ...（出现 ≥2 次）
+- 系统性解读: ...
+
+**预防措施**（哪些可以 gate 预防而非事后修）:
+- ...
+
+**沉淀**（新的 skill/checklist/坑清单条目）:
+- ...
+```

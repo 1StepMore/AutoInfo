@@ -1,8 +1,8 @@
 # Issue #97 Coverage Verdict
 
-**Audit date**: 2026-08-04  
-**Issue**: [#97 — End-user service coverage epic](https://github.com/1StepMore/AutoInfo/issues/97)  
-**Auditor**: Sisyphus-Junior (autonomous code-forensics agent)  
+**Audit date**: 2026-08-04
+**Issue**: [#97 — End-user service coverage epic](https://github.com/1StepMore/AutoInfo/issues/97)
+**Auditor**: Sisyphus-Junior (autonomous code-forensics agent)
 **Method**: `gh issue view 97` → parse 66-dimension plan → grep/glob verify each claimed implementation against `src/autoinfo/`
 
 ---
@@ -29,8 +29,8 @@ The original 66-dimension target has been superseded by a 99-dimension matrix (`
 
 | # | Product | Status | Evidence |
 |---|---------|--------|----------|
-| B9 | Competitive Analysis Report | ✅ shipped | `src/autoinfo/output/__init__.py:3890-3896` — `report_type="competitive"` with head-to-head comparison + SWOT template |
-| B10 | Trend Analysis Report | ✅ shipped | `src/autoinfo/output/__init__.py:3897-3902` — `report_type="trend"` with time-series, momentum, forward-looking signals |
+| B9 | Competitive Analysis Report | ✅ shipped | `src/autoinfo/output/__init__.py:7604` — `report_type="competitive"` with head-to-head comparison + SWOT template |
+| B10 | Trend Analysis Report | ✅ shipped | `src/autoinfo/output/__init__.py:7611` — `report_type="trend"` with time-series, momentum, forward-looking signals |
 | B11 | Audio Summary / Podcast | ✅ shipped | `src/autoinfo/output/__init__.py:2177` — `format="audio"` (OpenAI TTS); `src/autoinfo/delivery/rss.py:357-407` — podcast RSS with `<enclosure>` + `itunes:*` namespace |
 | B12 | Video Summary | ✅ shipped (scaffold) | `src/autoinfo/output/video.py` (783 lines) — ffmpeg assembly pipeline; `format="video"` accepted at `__init__.py:2601` |
 
@@ -56,7 +56,7 @@ The original 66-dimension target has been superseded by a 99-dimension matrix (`
 |---|------|--------|----------|
 | — | Portal / storefront | ✅ shipped | `src/autoinfo/api/portal.py` + `src/autoinfo/api/storefront.py` + CLI `portal`/`enduser` groups |
 | — | Agent callbacks | ✅ shipped | `src/autoinfo/mcp/server.py:10038` — `set_agent_callback` MCP tool; `src/autoinfo/agent_callback.py:96` — SQLite persistence |
-| — | target_audience parameter | ✅ shipped | `src/autoinfo/output/__init__.py:2517` — `--audience` (researcher/executive/investor/clinician/student) |
+| — | target_audience parameter | ✅ shipped | `src/autoinfo/cli/output.py:280-281` — `--audience` (researcher/executive/investor/clinician/student) |
 | — | Demo domain sources | ✅ shipped | 13 domains, 200 real sources across 30 collector handlers (31 files in `src/autoinfo/collectors/`) |
 
 ---

@@ -86,7 +86,7 @@ The mapping to shipped product types is one-to-one:
 | **Raw data** | RAW product | `variants: ["api_feed", "webhook", "bulk_export"]` (RAW product variants, E11, `README.md`) |
 | **Process data** | PROCESSED product: digest, report, tutorial, presentation, alert | digest 7 formats (markdown/html/json/agent/audio/epub/audiobook), report 8 (incl. video; note: video is missing from the MCP schema enum at `src/autoinfo/mcp/server.py:7586-7589`), tutorial 2 (markdown/agent), presentation 4 (markdown/html/mkslides/agent) |
 
-Citations: the product split is enforced in `src/autoinfo/output/__init__.py` (`product_type` of `"PROCESSED"` or `"RAW"`, RAW skips all delivery gates, see `src/autoinfo/output/__init__.py:191,2317,2360-2362,2765,2816-2818`); the user consumption model (B1) is defined in `docs/dev/specs/user-lifecycle-definition.md`.
+Citations: the product split is enforced in `src/autoinfo/output/__init__.py` (`product_type` of `"PROCESSED"` or `"RAW"`, RAW skips all delivery gates, see `src/autoinfo/output/__init__.py` (`DeliveryOutput`, `_apply_delivery_gates`, `_apply_min_content_guard`) and `src/autoinfo/output/export.py` (`_export_sqlite`, `_export_pdf`)); the user consumption model (B1) is defined in `docs/dev/specs/user-lifecycle-definition.md`.
 
 ### Binary acceptance criteria
 

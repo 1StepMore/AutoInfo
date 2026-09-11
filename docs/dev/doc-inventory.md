@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 97 |
-| Total lines | 31727 |
-| Active files | 70 |
+| Total files | 98 |
+| Total lines | 32015 |
+| Active files | 71 |
 | Archived files | 27 |
 | Category — archive | 27 files / 8627 lines |
 | Category — known-limitations | 2 files / 336 lines |
@@ -25,7 +25,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — specs | 12 files / 8832 lines |
 | Category — validation-reports | 14 files / 3186 lines |
 | Category — docs/dev | 24 files / 9037 lines |
-| Category — docs/root | 2 files / 103 lines |
+| Category — docs/root | 3 files / 391 lines |
 
 ## Inventory
 
@@ -121,6 +121,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `glossary.md` | 61 | docs/root | active | glossary |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
 | `known-limitations/demo-quality-residuals.md` | 48 | known-limitations | active | — |
+| `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |
 | `schemas/knowledge-digest-v1.json` | 154 | schemas | active | — |
 | `schemas/knowledge-presentation-v1.json` | 72 | schemas | active | — |

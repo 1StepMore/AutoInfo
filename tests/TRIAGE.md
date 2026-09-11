@@ -35,14 +35,20 @@ differs (stripe tests + real_api deselection).
 
 ## Skip-count ceiling (baseline)
 
-- **20 skipped** is the asserted ceiling (plan-verified baseline).
+- **25 optional-marked skips** is the current ENFORCED ceiling — the
+  `tests/conftest.py:193` session-finish guard fails when more than 25 tests
+  carrying `@pytest.mark.optional` skip in a run (plain untagged skips are
+  outside the budget). This supersedes the original plan-verified **20 skipped**
+  baseline, kept here as the historical note; the supersession is recorded in
+  the M0T3 ceiling update below (20 → 25).
 - This run (with exclusions) reports **11 skipped** — composition:
   `tests/output/test_video_integration.py` module-level `pytest.importorskip("PIL")` (1),
   `tests/test_digest.py` typer-on-Py3.14 skips (4),
   `tests/test_report.py` typer-on-Py3.14 skips (5),
   `tests/test_pubmed_handler.py` missing-VCR-cassettes skip (1).
 - **Rule: no new skip may be added without a triage tag and without raising the
-  ceiling.** All future skip gates (M0T3) must be tagged and counted against 20.
+  ceiling.** All future skip gates (M0T3) must be tagged and counted against the
+  current ceiling (25 — see the M0T3 update below; the original 20 is historical).
 
 ### Ceiling update — M0T3 (2026-08-05): 20 → 25 (per-test justification)
 
@@ -126,7 +132,7 @@ with 1.83.7 (8+1 tests PASS), `pip install -e .` refreshed version metadata (PAS
 | 47 | `tests/test_demo_sources.py::TestDemoSources::test_total_count[language-learning-old2-new2]` | stale | Same: EXPECTED 4, actual 3. |
 | 48 | `tests/test_demo_sources.py::TestDemoSources::test_total_count[financial-intelligence-old3-new3]` | stale | Same: EXPECTED 5, actual 6. |
 | 49 | `tests/test_demo_sources.py::TestDemoSources::test_total_count[tech-ai-developer-old4-new4]` | stale | Same: EXPECTED 5, actual 8. |
-| 50 | `tests/test_report.py::TestGenerateReport::test_llm_grouping_failure_falls_back_to_single_group` | stale | Intentional fallback change (f83bd8d): grouping fallback now splits by domain/source_type instead of single "General" — `src/autoinfo/output/__init__.py:3275-3317`. Test asserts old `"### General"` at `tests/test_report.py:247`. Fix: update expectation. |
+| 50 | `tests/test_report.py::TestGenerateReport::test_llm_grouping_failure_falls_back_to_single_group` | stale | Intentional fallback change (f83bd8d): grouping fallback now splits by domain/source_type instead of single "General" — `src/autoinfo/output/__init__.py:5632` (`_deterministic_grouping`). Test asserts old `"### General"` at `tests/test_report.py:247`. Fix: update expectation. |
 | 51 | `tests/test_report.py::TestGenerateReport::test_llm_grouping_exception_falls_back` | stale | same as #50 (`tests/test_report.py:276`) |
 | 52 | `tests/test_report.py::TestGenerateReport::test_ungrouped_entries_go_to_additional_topics` | stale | same as #50 (`tests/test_report.py:332`) |
 | 53 | `tests/test_source_health.py::TestGetSourceHealth::test_error_after_three_consecutive_failures[10]` | stale | Test-helper date bug: `_ts()` at `tests/test_source_health.py:68-73` computes `dt.replace(day=dt.day - days_ago)` — on 2026-08-05, `days_ago=9` → day=-4 → `ValueError: day -4 out of range`. Only passes when day-of-month ≥ max days_ago. Fix: use `timedelta`. |

@@ -254,11 +254,11 @@ Concepts that have never been designed — no spec, no code, no MCP tools.
 - **Status:** 🟢 Resolved — guard fix implemented 2026-08-12. Remaining: end-user-facing storefront/pricing page (P3).
 
 #### CD-011: [RESOLVED] Consumption Tracking (Read Receipts / Engagement)
-- **Description:** `consumption.py` IS implemented with `ConsumptionEvent` dataclass (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Auto-record on delivery from `src/autoinfo/output/__init__.py:2433` and `:2881`. No dedicated MCP tool for querying consumption events yet (accessed via `ConsumptionStore.list_events()` programmatically). No engagement metrics dashboard.
+- **Description:** `consumption.py` IS implemented with `ConsumptionEvent` dataclass (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Auto-record on delivery from `src/autoinfo/output/__init__.py:4016` and `:4964`. No dedicated MCP tool for querying consumption events yet (accessed via `ConsumptionStore.list_events()` programmatically). No engagement metrics dashboard.
 - **Affected Stages:** A6 (Consumption)
 - **Affected Users:** B1 (End User — consumption history tracked), B2 (Direct Agent — no MCP tool for querying), B3 (Director — no dashboard)
 - **Existing Cross-Ref:** AUD-04, G8
-- **Evidence:** `consumption.py` has `ConsumptionEvent` with `event_id`, `user_id`, `product_type`, `product_id`, `event_type`, `timestamp`, `metadata`. `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Events auto-recorded in `src/autoinfo/output/__init__.py:2433` and `:2881`.
+- **Evidence:** `consumption.py` has `ConsumptionEvent` with `event_id`, `user_id`, `product_type`, `product_id`, `event_type`, `timestamp`, `metadata`. `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Events auto-recorded in `src/autoinfo/output/__init__.py:4016` and `:4964`.
 - **Status:** 🟢 Resolved — core consumption tracking implemented. Remaining: MCP query tool, engagement dashboard (P2).
 
 #### CD-012: Retention & Churn Analysis
@@ -312,11 +312,11 @@ Gaps where the spec exists but code has not been written (or spec partially writ
 - **Status:** 🟡 Partially resolved — product read tools registered; 5 lifecycle tools still missing (2026-08-12).
 
 #### CD-018: [RESOLVED] Consumption Tracking MCP Tools
-- **Description:** `delivery.md` specs consumption tracking (read receipts, open rates, engagement signals). `consumption.py` IS implemented with `ConsumptionEvent` (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Events auto-record on delivery from `src/autoinfo/output/__init__.py:2433` and `:2881`. No dedicated MCP tool for querying consumption events yet (accessed programmatically via `ConsumptionStore.list_events()`). No engagement metrics dashboard.
+- **Description:** `delivery.md` specs consumption tracking (read receipts, open rates, engagement signals). `consumption.py` IS implemented with `ConsumptionEvent` (delivered/opened/clicked) and `ConsumptionStore` (SQLite-backed). Events auto-record on delivery from `src/autoinfo/output/__init__.py:4016` and `:4964`. No dedicated MCP tool for querying consumption events yet (accessed programmatically via `ConsumptionStore.list_events()`). No engagement metrics dashboard.
 - **Affected Stages:** A6 (Consumption)
 - **Affected Users:** B2 (Direct Agent — no consumption MCP tool), B1 (End User — reading history auto-tracked)
 - **Existing Cross-Ref:** AUD-04
-- **Evidence:** `consumption.py` has `ConsumptionEvent` dataclass, `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Auto-record in `src/autoinfo/output/__init__.py:2433` and `:2881`. No MCP tool registered for querying.
+- **Evidence:** `consumption.py` has `ConsumptionEvent` dataclass, `ConsumptionStore` with `record_event()` and `list_events()`. Database at `.autoinfo/consumption.db`. Auto-record in `src/autoinfo/output/__init__.py:4016` and `:4964`. No MCP tool registered for querying.
 - **Status:** 🟢 Resolved — core consumption tracking implemented. Remaining: MCP query tool (P2), engagement dashboard (P3).
 
 #### CD-019: Quiet Hours Configuration
@@ -497,7 +497,7 @@ Gaps that are not about missing features but about how the system is architected
 - **Description:** Core consumption tracking IS implemented (`ConsumptionEvent` + `ConsumptionStore`), but the consumption data is not yet used for feedback loops. Events are auto-recorded on delivery (delivered/opened/clicked) in `output.py`. No preference learning, no content adaptation based on engagement, no personalized ranking.
 - **Affected Stages:** A6 (Consumption) → A1-A4 (feedback)
 - **Affected Users:** B1 (End User — no personalized experience), B3 (Director — no data-driven optimization)
-- **Evidence:** `consumption.py` has `ConsumptionEvent`, `ConsumptionStore`, `record_event()`, `list_events()`. Events auto-recorded at `src/autoinfo/output/__init__.py:2433` and `:2881`. Database at `.autoinfo/consumption.db`. No MCP tool for querying events. No feedback loop to influence collection/extraction/delivery.
+- **Evidence:** `consumption.py` has `ConsumptionEvent`, `ConsumptionStore`, `record_event()`, `list_events()`. Events auto-recorded at `src/autoinfo/output/__init__.py:4016` and `:4964`. Database at `.autoinfo/consumption.db`. No MCP tool for querying events. No feedback loop to influence collection/extraction/delivery.
 - **Status:** 🟡 Partially — data collection exists, feedback loop missing.
 
 #### CD-041: No Data-Driven Business Metrics

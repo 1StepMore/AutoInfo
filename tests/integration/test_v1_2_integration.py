@@ -585,16 +585,26 @@ class TestCEFRClassification:
 
     def test_mcp_classify_cefr(self):
         """_handle_classify_cefr returns cefr_level key."""
+        from autoinfo.llm import LLMExtractor
         from autoinfo.mcp.server import _handle_classify_cefr
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "B1"
-        # TRIAGE #30 — same seam retarget as #25 (handler dispatches to
-        # autoinfo.cefr.classify_text at src/autoinfo/mcp/server.py:3258).
-        with patch.dict(
-            "sys.modules",
-            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        completion = MagicMock(return_value=mock_response)
+        # TRIAGE #30 mock-seam. _handle_classify_cefr → autoinfo.cefr.classify_text
+        # → autoinfo.llm.call_with_fallback → LLMExtractor._get_litellm(). A bare
+        # sys.modules["litellm"] injection is dead here: _get_litellm() mutates the
+        # shared "LiteLLM" logger with _handler.setStream(sys.stderr); after the
+        # preceding CLI test that handler is bound to a closed capture stream, so
+        # setStream() raises ValueError("I/O operation on closed file") before
+        # litellm.completion is reached. Patch the binding call_with_fallback
+        # actually looks up, then assert the completion mock was called.
+        with patch.object(
+            LLMExtractor,
+            "_get_litellm",
+            return_value=_litellm_stub(completion=completion),
         ):
             result = _handle_classify_cefr(text="A moderate text", lang="en")
+        completion.assert_called_once()
         assert result["cefr_level"] == "B1"
         assert result["confidence"] > 0.0
 

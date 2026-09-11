@@ -55,7 +55,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -266,17 +266,9 @@ class _FixtureStore:
         del domain, offset
         result = list(self._entries)
         if date_from:
-            result = [
-                e
-                for e in result
-                if str(e.get("collected_at") or "") >= date_from
-            ]
+            result = [e for e in result if str(e.get("collected_at") or "") >= date_from]
         if date_to:
-            result = [
-                e
-                for e in result
-                if str(e.get("collected_at") or "") <= date_to
-            ]
+            result = [e for e in result if str(e.get("collected_at") or "") <= date_to]
         return result[:limit]
 
     def list_kb_tier(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
@@ -346,18 +338,14 @@ class TestDigestEntryFiltersBoundary:
             ),
             patch("autoinfo.output._call_llm_for_digest", side_effect=_capture),
         ):
-            body = _as_text(
-                generate_digest(domain=DOMAIN, period="weekly", format="markdown")
-            )
+            body = _as_text(generate_digest(domain=DOMAIN, period="weekly", format="markdown"))
 
         for title in _KEEP_TITLES:
             assert title in body, f"kept entry missing from body: {title!r}"
             assert title in captured["prompt"], f"kept entry missing from prompt: {title!r}"
         for title in _DROPPED_TITLES:
             assert title not in body, f"filtered entry leaked into body: {title!r}"
-            assert title not in captured["prompt"], (
-                f"filtered entry leaked into prompt: {title!r}"
-            )
+            assert title not in captured["prompt"], f"filtered entry leaked into prompt: {title!r}"
 
     def test_explicit_language_param_wins_over_config_default(
         self, project: Path, frozen_clock: None, monkeypatch: pytest.MonkeyPatch
@@ -367,9 +355,14 @@ class TestDigestEntryFiltersBoundary:
         # 3 zh entries (> collapse guard) so the safety net does NOT relax the
         # filter; the explicit "zh" keeps them and drops the en ones.
         zh_entries = [
-            {**_FIXTURE_ENTRIES[0], "entry_id": f"zh-{i}", "language": "zh",
-             "title": f"中文条目 {i}", "summary": f"中文摘要 {i}",
-             "relevance_score": 90.0 - i}
+            {
+                **_FIXTURE_ENTRIES[0],
+                "entry_id": f"zh-{i}",
+                "language": "zh",
+                "title": f"中文条目 {i}",
+                "summary": f"中文摘要 {i}",
+                "relevance_score": 90.0 - i,
+            }
             for i in range(3)
         ]
         entries = zh_entries + [_FIXTURE_ENTRIES[0]]
@@ -381,9 +374,7 @@ class TestDigestEntryFiltersBoundary:
             ),
         ):
             body = _as_text(
-                generate_digest(
-                    domain=DOMAIN, period="weekly", format="markdown", language="zh"
-                )
+                generate_digest(domain=DOMAIN, period="weekly", format="markdown", language="zh")
             )
         assert "中文条目 0" in body
         assert "OpenAI ships a new frontier model" not in body
@@ -411,9 +402,7 @@ class TestReportEntryFiltersBoundary:
                 return_value="Overview.",
             ),
         ):
-            body = _as_text(
-                generate_report(domain=DOMAIN, period="weekly", format="markdown")
-            )
+            body = _as_text(generate_report(domain=DOMAIN, period="weekly", format="markdown"))
 
         for title in _KEEP_TITLES:
             assert title in body, f"kept entry missing from report: {title!r}"
@@ -546,8 +535,7 @@ class TestFilterEntriesByDomainExclusions:
         cfg = _write_project(tmp_path)
         raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
         raw["domains"][0]["exclude_keywords"] = []
-        cfg.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False),
-                       encoding="utf-8")
+        cfg.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         entries = [
             self._entry("noise-cjk", "贝达药业 2026 半年报"),
@@ -556,9 +544,7 @@ class TestFilterEntriesByDomainExclusions:
         kept = _filter_entries_by_domain_exclusions(entries, DOMAIN)
         assert kept == entries
 
-    def test_keyword_match_in_tags(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_keyword_match_in_tags(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _write_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         entries = [
@@ -599,10 +585,16 @@ class TestConvergeNearDuplicates:
 
     def test_cross_language_same_event_converges_to_one(self) -> None:
         entries = [
-            self._entry("en", "Dolly Parton has died", "https://example.com/en",
-                        lang="en", relevance=90.0),
-            self._entry("fr", "Mort de la star américaine Dolly Parton",
-                        "https://example.com/fr", lang="fr", relevance=60.0),
+            self._entry(
+                "en", "Dolly Parton has died", "https://example.com/en", lang="en", relevance=90.0
+            ),
+            self._entry(
+                "fr",
+                "Mort de la star américaine Dolly Parton",
+                "https://example.com/fr",
+                lang="fr",
+                relevance=60.0,
+            ),
         ]
         result = _converge_near_duplicates(entries)
         assert len(result) == 1
@@ -617,10 +609,15 @@ class TestConvergeNearDuplicates:
 
     def test_unrelated_same_noun_stories_not_merged(self) -> None:
         entries = [
-            self._entry("tokyo", "Donald Trump visits Tokyo",
-                        "https://example.com/1", dedup_status="unique"),
-            self._entry("indict", "Donald Trump indicted by prosecutors",
-                        "https://example.com/2", dedup_status="unique"),
+            self._entry(
+                "tokyo", "Donald Trump visits Tokyo", "https://example.com/1", dedup_status="unique"
+            ),
+            self._entry(
+                "indict",
+                "Donald Trump indicted by prosecutors",
+                "https://example.com/2",
+                dedup_status="unique",
+            ),
         ]
         assert len(_converge_near_duplicates(entries)) == 2
 
@@ -666,12 +663,21 @@ class TestFilterDigestEntries:
         entries = [
             self._entry("archived", "Archived story", status="archived"),
             self._entry("test", "Entry A"),  # test-title marker
-            self._entry("dup-en", "Dolly Parton has died",
-                        url="https://example.com/a", dedup_status="duplicate",
-                        relevance=90.0),
-            self._entry("dup-fr", "Mort de la star américaine Dolly Parton",
-                        url="https://example.com/b", dedup_status="duplicate",
-                        relevance=60.0, lang="fr"),
+            self._entry(
+                "dup-en",
+                "Dolly Parton has died",
+                url="https://example.com/a",
+                dedup_status="duplicate",
+                relevance=90.0,
+            ),
+            self._entry(
+                "dup-fr",
+                "Mort de la star américaine Dolly Parton",
+                url="https://example.com/b",
+                dedup_status="duplicate",
+                relevance=60.0,
+                lang="fr",
+            ),
             self._entry("keep", "A real medical breakthrough", relevance=95.0),
         ]
         result = _filter_digest_entries(entries)

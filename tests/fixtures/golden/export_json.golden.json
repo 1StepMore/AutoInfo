@@ -1,0 +1,40 @@
+[
+  {
+    "entry_id": "medical-research-ivf-embryo-selection-advances-with-ai-scoring",
+    "title": "Embryo selection advances with AI scoring",
+    "domain": "medical-research",
+    "tier": "01-Raw",
+    "source_url": "https://pubmed.ncbi.nlm.nih.gov/87654321/",
+    "source_type": "api",
+    "source_platform": "pubmed",
+    "attribution": "Source: PubMed (https://pubmed.ncbi.nlm.nih.gov/87654321/) — Tier 1, open",
+    "collected_at": "2026-07-16T10:00:00Z",
+    "summary": "",
+    "tags": [
+      "IVF"
+    ],
+    "relevance_score": 0.0,
+    "dedup_status": "unique",
+    "file_path": "<PROJECT>/knowledge/medical-research/01-Raw/IVF/2026-07-16-embryo-selection-advances-with-ai-scoring.md",
+    "content": "---\ntitle: Embryo selection advances with AI scoring\ndomain: medical-research\ntier: 01-Raw\nentry_id: medical-research-ivf-embryo-selection-advances-with-ai-scoring\nsource_url: https://pubmed.ncbi.nlm.nih.gov/87654321/\nsource_type: api\nsource_platform: pubmed\ncollected_at: '2026-07-16T10:00:00Z'\nsummary: ''\ntags:\n- IVF\nquality_tier: 1\nrelevance_score: 0.0\ndedup_status: unique\nsource_score: 0.0\nlanguage: en\nuser_id: ''\nversion: 1\nprevious_version: 0\nsupersedes: ''\ntrace_id: ''\n---\n\n## Original Content\nAI-based embryo scoring selects viable embryos more accurately."
+  },
+  {
+    "entry_id": "medical-research-ivf-time-lapse-embryo-imaging-improves-ivf-outcomes",
+    "title": "Time-lapse embryo imaging improves IVF outcomes",
+    "domain": "medical-research",
+    "tier": "01-Raw",
+    "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+    "source_type": "api",
+    "source_platform": "pubmed",
+    "attribution": "Source: PubMed (https://pubmed.ncbi.nlm.nih.gov/12345678/) — Tier 1, open",
+    "collected_at": "2026-07-15T10:00:00Z",
+    "summary": "",
+    "tags": [
+      "IVF"
+    ],
+    "relevance_score": 0.0,
+    "dedup_status": "unique",
+    "file_path": "<PROJECT>/knowledge/medical-research/01-Raw/IVF/2026-07-15-time-lapse-embryo-imaging-improves-ivf-outcomes.md",
+    "content": "---\ntitle: Time-lapse embryo imaging improves IVF outcomes\ndomain: medical-research\ntier: 01-Raw\nentry_id: medical-research-ivf-time-lapse-embryo-imaging-improves-ivf-outcomes\nsource_url: https://pubmed.ncbi.nlm.nih.gov/12345678/\nsource_type: api\nsource_platform: pubmed\ncollected_at: '2026-07-15T10:00:00Z'\nsummary: ''\ntags:\n- IVF\nquality_tier: 1\nrelevance_score: 0.0\ndedup_status: unique\nsource_score: 0.0\nlanguage: en\nuser_id: ''\nversion: 1\nprevious_version: 0\nsupersedes: ''\ntrace_id: ''\n---\n\n## Original Content\nTime-lapse embryo imaging improved live birth rates in a randomized controlled trial."
+  }
+]

@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 98 |
-| Total lines | 32015 |
+| Total lines | 32014 |
 | Active files | 71 |
 | Archived files | 27 |
 | Category — archive | 27 files / 8627 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 9 files / 424 lines |
 | Category — specs | 12 files / 8832 lines |
 | Category — validation-reports | 14 files / 3186 lines |
-| Category — docs/dev | 24 files / 9037 lines |
+| Category — docs/dev | 24 files / 9036 lines |
 | Category — docs/root | 3 files / 391 lines |
 
 ## Inventory
@@ -73,7 +73,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
-| `dev/autoinfo-corrections-20260904.md` | 440 | docs/dev | active | — |
+| `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
 | `dev/autoinfo-dev-roadmap-20260902.md` | 135 | docs/dev | active | — |
 | `dev/best-practice-review.md` | 388 | docs/dev | active | best-practice-review |
 | `dev/cli-mcp-rest-parity.md` | 467 | docs/dev | active | — |

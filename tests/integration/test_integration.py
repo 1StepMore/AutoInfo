@@ -320,7 +320,8 @@ class TestTrueTest:
         )
 
         # Also verify provider and model are present
-        assert llm.get("provider") == "openrouter"
+        # (src/autoinfo/data/default_config.yaml ships provider "openai").
+        assert llm.get("provider") == "openai"
         assert "deepseek" in llm.get("model", "")
 
     # ------------------------------------------------------------------

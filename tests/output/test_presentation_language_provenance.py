@@ -19,6 +19,7 @@ These tests lock:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -26,6 +27,8 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from autoinfo.output import DeliveryOutput, generate_presentation
+
+_RECENT_DATE = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
 
 
 def _as_text(result: str | DeliveryOutput) -> str:
@@ -82,7 +85,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "zh",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "AI概念股带动A股市场早盘波动 沪指小幅下跌 创业板翻红 锂矿稀土黄金股走强",
         "tags": "[]",
         "quality_tier": 1,
@@ -97,7 +100,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "zh",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "AI数据基础设施 注册资本20亿元 数据要素市场布局",
         "tags": "[]",
         "quality_tier": 1,
@@ -112,7 +115,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "AI startups raised record funding this week across seed and Series A rounds.",
         "tags": "[]",
         "quality_tier": 1,
@@ -127,7 +130,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "A new generative AI product launched with enterprise adoption momentum.",
         "tags": "[]",
         "quality_tier": 1,
@@ -229,7 +232,7 @@ class TestPresentationExcludeKeywordsFallback:
                 "source_type": "web",
                 "source_platform": "web",
                 "language": "zh",
-                "collected_at": "2026-08-25",
+                "collected_at": _RECENT_DATE,
                 "summary": "贝达药业 AI医药概念 新药上市 医药板块",
                 "tags": "[]",
                 "quality_tier": 1,
@@ -244,7 +247,7 @@ class TestPresentationExcludeKeywordsFallback:
                 "source_type": "web",
                 "source_platform": "web",
                 "language": "en",
-                "collected_at": "2026-08-25",
+                "collected_at": _RECENT_DATE,
                 "summary": "AI startups raised record funding this week.",
                 "tags": "[]",
                 "quality_tier": 1,

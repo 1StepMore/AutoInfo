@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +38,11 @@ from autoinfo.output import (
 
 STALE_SOURCE_NAME = "techcrunch"
 STALE_SOURCE_URL = "https://techcrunch.com/2026/01/01/ai-startup"
+
+# The #325 label derivation is orthogonal to freshness, but generate_digest
+# applies the F51 / backup #52 stale-source guard first — a hardcoded
+# collected_at ages past the threshold and masks the label assertion.
+_RECENT_ISO = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 
 def _as_text(result: str | DeliveryOutput) -> str:
@@ -87,7 +93,7 @@ def _stale_entry() -> dict[str, Any]:
         "relevance_score": 90.0,
         "tags": "[]",
         "tier": "01-Raw",
-        "collected_at": "2026-08-19T10:00:00Z",
+        "collected_at": _RECENT_ISO,
     }
 
 

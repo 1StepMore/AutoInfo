@@ -444,8 +444,9 @@ class TestInitIntegration:
         # Load via the new config loader
         cfg = load_config(config_path)
 
-        # Old fields still work
-        assert cfg.llm.provider == "openrouter"
+        # Old fields still work; the shipped default template
+        # (src/autoinfo/data/default_config.yaml) declares provider "openai".
+        assert cfg.llm.provider == "openai"
         assert "deepseek" in cfg.llm.model
 
         # New fields have defaults

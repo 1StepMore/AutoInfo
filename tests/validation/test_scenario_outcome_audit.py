@@ -4,10 +4,9 @@
 Locks the behavior of ``scripts/scenario_outcome_audit.py`` so the D-工-5
 evidence stays deterministic:
 
-1. All 117 scenarios (65 functional + 52 regression) are parsed with 448
-   steps (446 + the #351 V5 step-5 append to
-   ``regression-351-year-hallucination-tuning`` + the #9-reopened
-   ``regression-9-generic-theme-blocklist`` scenario).
+1. All 138 scenarios (65 functional + 73 regression) are parsed with 483
+   steps (the #119/#120 + 2026-09-04/09-05 regression waves appended the
+   later scenarios and steps).
 2. **Outcome grading** — >= 95% of steps assert an explicit ``success``
    key (grade the outcome envelope, not the path).
 3. **Error-path depth** — every error step pins ``error_code``; the
@@ -47,20 +46,16 @@ def result(outcome_audit):
     return outcome_audit.audit_all()
 
 
-def test_all_116_scenarios_parsed(result: dict[str, Any]) -> None:
-    # 129 = 124 scenarios from the #14-#18 output-fix wave baseline
-    # (regression-9-generic-theme-blocklist, regression-14-*, #16, #17, #18,
-    # regression-15-presentation-language-provenance) + the #119/#120
-    # cross-product-coherence wave (regression-cross-product-same-source,
-    # regression-grouping-degradation-honesty).
-    assert result["summary"]["total_scenarios"] == 129
-    assert result["summary"]["regression_scenarios"] == 64
+def test_all_138_scenarios_parsed(result: dict[str, Any]) -> None:
+    # 138 = 65 functional + 73 regression, the count documented in README.md
+    # and the validation-scenario regression waves through 2026-09-05.
+    assert result["summary"]["total_scenarios"] == 138
+    assert result["summary"]["regression_scenarios"] == 73
 
 
 def test_total_steps(result):
-    # 466 = 455 steps from the #14-#18 wave baseline + 11 steps from the
-    # #119/#120 cross-product-coherence wave scenarios.
-    assert result["summary"]["total_steps"] == 466
+    # 483 = the live step total across all 138 scenarios.
+    assert result["summary"]["total_steps"] == 483
 
 
 def test_outcome_grading_ratio_high(result):

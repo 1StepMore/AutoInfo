@@ -10,6 +10,30 @@ sources:
   tos_classification: open
   rate_limit: 10
   fetch_depth: abstract
+- name: producthunt
+  type: rss
+  url: https://www.producthunt.com/feed
+  quality_tier: 2
+  enabled: true
+  tos_classification: open
+  rate_limit: 10
+  fetch_depth: abstract
+- name: techcrunch
+  type: rss
+  url: https://techcrunch.com/feed/
+  quality_tier: 2
+  enabled: true
+  tos_classification: open
+  rate_limit: 10
+  fetch_depth: abstract
+- name: crunchbase-news
+  type: rss
+  url: https://news.crunchbase.com/feed/
+  quality_tier: 2
+  enabled: true
+  tos_classification: open
+  rate_limit: 10
+  fetch_depth: abstract
 - name: hackernews
   type: hackernews
   url: https://hacker-news.firebaseio.com/v0

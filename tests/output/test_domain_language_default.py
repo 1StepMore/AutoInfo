@@ -15,6 +15,7 @@ param wins, otherwise no filtering.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -29,6 +30,11 @@ from autoinfo.output import (
     generate_digest,
     generate_report,
 )
+
+# Required so fixture entries clear the product freshness guard (F51 /
+# backup #52): a hardcoded calendar date ages past the domain threshold and
+# the digest refuses to render an empty shell. Relative-to-now stays fresh.
+_RECENT_DATE = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
 
 
 def _as_text(result: str | DeliveryOutput) -> str:
@@ -88,7 +94,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "zh",
-        "collected_at": "2026-08-19",
+        "collected_at": _RECENT_DATE,
         "summary": "中文摘要内容",
         "tags": "[]",
         "quality_tier": 1,
@@ -103,7 +109,7 @@ _MIXED_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-19",
+        "collected_at": _RECENT_DATE,
         "summary": "English summary content",
         "tags": "[]",
         "quality_tier": 1,

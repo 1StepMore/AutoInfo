@@ -16,6 +16,7 @@ against that real-URL whitelist.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -23,6 +24,8 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from autoinfo.output import _sanitize_presentation_sources, generate_presentation
+
+_RECENT_DATE = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
 
 _ACCEPTANCE_RE = re.compile(r"knowledgebase|KB-|Source: [A-Z][a-z]+$")
 
@@ -182,7 +185,7 @@ _ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "AI startups raised record funding this week across seed and Series A rounds.",
         "tags": "[]",
         "quality_tier": 1,
@@ -197,7 +200,7 @@ _ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-25",
+        "collected_at": _RECENT_DATE,
         "summary": "A new generative AI product launched with enterprise adoption momentum.",
         "tags": "[]",
         "quality_tier": 1,

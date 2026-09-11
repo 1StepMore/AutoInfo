@@ -348,7 +348,9 @@ class TestProductTemplate:
                         "tags": "[]",
                         "source_platform": "web",
                         "source_type": "article",
-                        "collected_at": "2026-07-26",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
                         "relevance_score": 85,
                         "source_url": "http://example.com",
                     }
@@ -400,7 +402,9 @@ class TestDigestDeliveryGates:
                         "tags": "[]",
                         "source_platform": "web",
                         "source_type": "article",
-                        "collected_at": "2026-07-24",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
                         "relevance_score": 85,
                         "source_url": "http://example.com",
                     }
@@ -484,7 +488,9 @@ class TestDigestDeliveryGates:
                         "tags": "[]",
                         "source_platform": "web",
                         "source_type": "article",
-                        "collected_at": "2026-07-24",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
                         "relevance_score": 85,
                         "source_url": "http://example.com",
                     }
@@ -579,7 +585,9 @@ class TestDigestDeliveryGates:
                         "tags": "[]",
                         "source_platform": "web",
                         "source_type": "article",
-                        "collected_at": "2026-07-24",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
                         "relevance_score": 85,
                         "source_url": "http://example.com",
                     }

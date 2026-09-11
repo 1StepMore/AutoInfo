@@ -136,7 +136,19 @@ EXPECTED_PASS: dict[str, list[str]] = {
         "rock-paper-shotgun",
         "gematsu",
     ],
-    "b2b": ["a16z", "hackernews", "saastr", "b2b-news-network", "marTech"],
+    "b2b": [
+        "a16z",
+        "hackernews",
+        "saastr",
+        "b2b-news-network",
+        "marTech",
+        # #195: producthunt / techcrunch / crunchbase-news added to the b2b
+        # demo config so required_sources has no config-layer gap (matches
+        # README's B2B source list and end-user-matrix.yaml).
+        "producthunt",
+        "techcrunch",
+        "crunchbase-news",
+    ],
     "retail": [
         "retail-dive",
         "modern-retail",
@@ -256,12 +268,12 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-        # 3. Grand totals: 87 pass, 0 fail (all demo-domain sources now
+        # 3. Grand totals: 90 pass, 0 fail (all demo-domain sources now
         #    dispatch — HttpApiHandler + per-type handlers cover every source;
         #    disabled sources are still dispatchable, matching the count above)
-        assert len(all_pass) == 87, f"Expected 87 PASS, got {len(all_pass)}"
+        assert len(all_pass) == 90, f"Expected 90 PASS, got {len(all_pass)}"
         assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-        assert total == 87, f"Expected 87 total sources, got {total}"
+        assert total == 90, f"Expected 90 total sources, got {total}"
 
 
 # ---------------------------------------------------------------------------

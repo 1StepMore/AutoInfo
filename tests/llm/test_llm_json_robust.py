@@ -19,6 +19,7 @@ All LLM calls are mocked — no real API calls are made.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -42,6 +43,24 @@ def _mock_litellm(raw_text: str) -> MagicMock:
     mock_response.choices[0].message.content = raw_text
     mock_litellm.completion.return_value = mock_response
     return mock_litellm
+
+
+@pytest.fixture
+def hermetic_default_config(tmp_path: Path) -> str:
+    """Write a minimal config with **no** ``llm.max_tokens`` and return its path.
+
+    Hermetic seam (T4, 2026-09-11): pointing the usage-site
+    ``autoinfo.llm.get_config_path`` binding at this file keeps
+    default-behavior assertions independent of the gitignored repo-root
+    ``.autoinfo/config.yaml`` (which sets ``llm.max_tokens: 4000``).  See
+    `tests/TRIAGE.md:206-215` for the usage-site patch pattern.
+    """
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "llm:\n  provider: openai\n  model: deepseek-v4-flash\n",
+        encoding="utf-8",
+    )
+    return str(path)
 
 
 @pytest.fixture
@@ -206,9 +225,22 @@ class TestCallWithFallbackMaxTokens:
             )
         return mock_litellm
 
-    def test_default_stays_2000(self) -> None:
-        """No config / no explicit max_tokens -> 2000 (historical default)."""
+    def test_default_stays_2000(
+        self, monkeypatch: pytest.MonkeyPatch, hermetic_default_config: str
+    ) -> None:
+        """No ``max_tokens`` in config / no explicit value -> 2000 default.
+
+        Hermetic: the usage-site ``autoinfo.llm.get_config_path`` seam is
+        redirected to a test-owned tmp config (``hermetic_default_config``)
+        that omits ``llm.max_tokens`` — the real gitignored
+        ``.autoinfo/config.yaml`` (``max_tokens: 4000``) can no longer leak
+        in, so this asserts the library default rather than local deployment
+        state (T4, 2026-09-11).
+        """
+        get_config_path = MagicMock(return_value=hermetic_default_config)
+        monkeypatch.setattr("autoinfo.llm.get_config_path", get_config_path)
         mock_litellm = self._call()
+        assert get_config_path.called  # usage-site seam used; real config skipped
         assert mock_litellm.completion.call_args.kwargs["max_tokens"] == 2000
 
     def test_llm_config_max_tokens_effective(self) -> None:
@@ -250,13 +282,9 @@ class TestGatesFencedJson:
         self, sample_item: Item, sample_extraction: ExtractionResult
     ) -> None:
         """G4 with fenced JSON: previously raised, now passes cleanly."""
-        fenced = (
-            '```json\n{"contradiction": false, "explanation": "consistent"}\n```'
-        )
+        fenced = '```json\n{"contradiction": false, "explanation": "consistent"}\n```'
         with patch.object(LLMExtractor, "_get_litellm", return_value=_mock_litellm(fenced)):
-            result = G4FactualConsistency(json_mode=False).check(
-                sample_item, sample_extraction
-            )
+            result = G4FactualConsistency(json_mode=False).check(sample_item, sample_extraction)
         assert result.passed is True
         assert result.flagged is False
         assert result.details["explanation"] == "consistent"
@@ -265,14 +293,10 @@ class TestGatesFencedJson:
         self, sample_item: Item, sample_extraction: ExtractionResult
     ) -> None:
         """G5 with fenced JSON: previously raised, now passes cleanly."""
-        fenced = (
-            '```json\n{"faithful": true, "explanation": "ok", "issues": []}\n```'
-        )
+        fenced = '```json\n{"faithful": true, "explanation": "ok", "issues": []}\n```'
         sample_extraction.custom_fields = {"translation": "IVF success rates rise"}
         with patch.object(LLMExtractor, "_get_litellm", return_value=_mock_litellm(fenced)):
-            result = G5TranslationAccuracy(json_mode=False).check(
-                sample_item, sample_extraction
-            )
+            result = G5TranslationAccuracy(json_mode=False).check(sample_item, sample_extraction)
         assert result.passed is True
         assert result.flagged is False
         assert result.details["faithful"] is True
@@ -290,9 +314,7 @@ class TestCefrMaxTokens:
         """Fake LLM returning a bare level still classifies (B2)."""
         mock_litellm = _mock_litellm("B2")
         with patch.object(LLMExtractor, "_get_litellm", return_value=mock_litellm):
-            result = classify_text(
-                "The mitochondria is the powerhouse of the cell", lang="en"
-            )
+            result = classify_text("The mitochondria is the powerhouse of the cell", lang="en")
         assert result["cefr_level"] == "B2"
         # The bump from 50 must have taken effect (and be sane).
         assert mock_litellm.completion.call_args.kwargs["max_tokens"] >= 256

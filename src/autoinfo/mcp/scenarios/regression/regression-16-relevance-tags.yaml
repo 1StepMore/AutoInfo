@@ -17,9 +17,13 @@
 # relevance 70, one with `tags='[]'` and relevance 0.  The digest must render
 # entry 1's title/summary (real data flowing through) and must NOT render any
 # `Relevance | .../100` or `**Tags**` row (internal metrics removed by #85).
+# Issue #166 added a per-domain `min_product_relevance` floor at product
+# admission (medical-research = 30), so the relevance-0 filler is rejected
+# BEFORE rendering — it must NOT appear in the digest.  Its remaining role is
+# to prove the removed metrics rows never leak back from a zero-score entry.
 # Runs inside an ABSOLUTE temp cwd (tempfile.mkdtemp, try/finally cleanup).
 name: regression-16-relevance-tags
-description: "Regression #16: digest renders real entries with no flat 100.0/100 relevance leak and no internal Tags/Relevance row (#85)"
+description: "Regression #16: digest renders real entries with no flat 100.0/100 relevance leak and no internal Tags/Relevance row (#85); sub-floor relevance-0 entries are excluded at product admission (#166)"
 category: regression
 regression: true
 regression_issue: "#16"
@@ -67,9 +71,12 @@ steps:
                                     period="weekly", format="markdown",
                                     include_stale=True)
           assert isinstance(out, str), type(out)
-          # Real entries flow through: titles + summaries render.
+          # Real (>=floor) entries flow through: title + summary render.
           assert "AI startup raises Series A" in out, out
-          assert "Unrelated filler item" in out, out
+          # #166: the relevance-0 filler is below the medical-research
+          # min_product_relevance floor (30), so product admission drops it
+          # before rendering — it must not surface.
+          assert "Unrelated filler item" not in out, "sub-floor entry leaked:\n" + out
           # #85 (R2 metrics-leak): no per-entry Tags/Relevance rows at all.
           assert "**Tags**" not in out, "internal Tags row leaked:\n" + out
           # No flat 100.0/100 placeholder may leak (the #16 pre-fix bug).

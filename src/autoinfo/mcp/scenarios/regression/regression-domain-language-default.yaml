@@ -28,6 +28,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -38,13 +39,13 @@ steps:
            "domain": "ai-commercial", "tier": "01-Raw",
            "source_url": "https://36kr.com/zh/1", "source_type": "web",
            "source_platform": "web", "language": "zh",
-           "collected_at": "2026-08-19", "summary": "中文摘要内容",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "中文摘要内容",
            "tags": "[]", "quality_tier": 1, "relevance_score": 80.0},
           {"entry_id": "en-001", "title": "English AI funding round",
            "domain": "ai-commercial", "tier": "01-Raw",
            "source_url": "https://techcrunch.com/en/1", "source_type": "web",
            "source_platform": "web", "language": "en",
-           "collected_at": "2026-08-19", "summary": "English summary content",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "English summary content",
            "tags": "[]", "quality_tier": 1, "relevance_score": 85.0},
       ]
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
@@ -92,6 +93,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -102,13 +104,13 @@ steps:
            "domain": "ai-commercial", "tier": "01-Raw",
            "source_url": "https://36kr.com/zh/1", "source_type": "web",
            "source_platform": "web", "language": "zh",
-           "collected_at": "2026-08-19", "summary": "中文摘要内容",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "中文摘要内容",
            "tags": "[]", "quality_tier": 1, "relevance_score": 80.0},
           {"entry_id": "en-001", "title": "English AI funding round",
            "domain": "ai-commercial", "tier": "01-Raw",
            "source_url": "https://techcrunch.com/en/1", "source_type": "web",
            "source_platform": "web", "language": "en",
-           "collected_at": "2026-08-19", "summary": "English summary content",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "English summary content",
            "tags": "[]", "quality_tier": 1, "relevance_score": 85.0},
       ]
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
@@ -155,6 +157,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -165,13 +168,13 @@ steps:
            "domain": "medical-research", "tier": "01-Raw",
            "source_url": "https://36kr.com/zh/1", "source_type": "web",
            "source_platform": "web", "language": "zh",
-           "collected_at": "2026-08-19", "summary": "中文摘要内容",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "中文摘要内容",
            "tags": "[]", "quality_tier": 1, "relevance_score": 80.0},
           {"entry_id": "en-001", "title": "English AI funding round",
            "domain": "medical-research", "tier": "01-Raw",
            "source_url": "https://techcrunch.com/en/1", "source_type": "web",
            "source_platform": "web", "language": "en",
-           "collected_at": "2026-08-19", "summary": "English summary content",
+           "collected_at": (date.today() - timedelta(days=1)).isoformat(), "summary": "English summary content",
            "tags": "[]", "quality_tier": 1, "relevance_score": 85.0},
       ]
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],

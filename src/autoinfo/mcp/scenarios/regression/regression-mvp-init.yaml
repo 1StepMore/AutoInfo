@@ -36,7 +36,7 @@ steps:
     kind: cli
     timeout_seconds: 120
     command: |-
-      set -euo pipefail
+      set -eu
       TMP="$(mktemp -d)"
       trap 'rm -rf "$TMP"' EXIT
       cd "$TMP"

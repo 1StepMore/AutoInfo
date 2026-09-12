@@ -14,7 +14,8 @@
 # Deterministic (requires_env: []): the KBStore and LLM seams are patched in
 # the subprocess (same pattern as regression-9-generic-theme-blocklist.yaml).
 # Two entries are supplied — one with `tags='["ai", "funding"]'` and
-# relevance 70, one with `tags='[]'` and relevance 0.  The digest must render
+# relevance 70, one with `tags='[]'` and relevance 80 (above the
+# medical-research min_product_relevance floor of 30, per issue #224).  The digest must render
 # entry 1's title/summary (real data flowing through) and must NOT render any
 # `Relevance | .../100` or `**Tags**` row (internal metrics removed by #85).
 # Runs inside an ABSOLUTE temp cwd (tempfile.mkdtemp, try/finally cleanup).
@@ -44,7 +45,7 @@ steps:
           {"entry_id": "e2", "title": "Unrelated filler item",
            "summary": "An item with no tags and zero relevance.",
            "source_url": "https://example.com/e2", "source_type": "api",
-           "source_platform": "pubmed", "relevance_score": 0.0,
+           "source_platform": "pubmed", "relevance_score": 80.0,
            "tags": "[]", "tier": "01-Raw",
            "collected_at": "2026-08-02T10:00:00Z"},
       ]

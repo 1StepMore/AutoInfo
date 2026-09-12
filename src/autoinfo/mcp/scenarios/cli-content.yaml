@@ -18,7 +18,7 @@ steps:
   expect:
     success: true
     stdout_has:
-    - IVF breakthroughs
+    - IVF & Assisted Reproduction
   tool: _cli
 - name: summaries list
   kind: cli

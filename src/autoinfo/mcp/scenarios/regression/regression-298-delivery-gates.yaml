@@ -15,6 +15,13 @@
 # `delivery_gate_configs=None` (deterministic, no network/LLM key).  A
 # regression that stops resolving config gates fails here: the result must be
 # a DeliveryOutput whose gate_results contains D1-ProductCompleteness.
+#
+# Self-contained alert note: the D1 gate dispatches a D1-BLOCKED webhook alert
+# via `autoinfo.alerts._dispatch_notification` (which resolves the REAL
+# `.autoinfo/config.yaml` webhook URL, e.g. http://127.0.0.1:19997) when it
+# blocks.  The scenario mocks that dispatch so the step never depends on a
+# live webhook, and the fixture entry carries `language: en` so the domain's
+# seed `default_language: en` does not filter it out of the render.
 name: regression-298-delivery-gates
 description: "Regression #298: generate_digest resolves domain delivery_gates from config and runs D1-D3 by default"
 category: regression
@@ -61,6 +68,7 @@ steps:
               "tags": "[]",
               "quality_tier": 1,
               "relevance_score": 92.0,
+              "language": "en",
           }
           synthesis = {
               "executive_summary": "This week IVF technology advanced on time-lapse imaging.",
@@ -75,7 +83,9 @@ steps:
                      return_value=cfg_dir / "config.yaml"), \
                   patch("autoinfo.output.KBStore") as mock_kb, \
                   patch("autoinfo.output._call_llm_for_digest", return_value=synthesis), \
-                  patch("autoinfo.output._fire_agent_notification"):
+                  patch("autoinfo.output._fire_agent_notification"), \
+                  patch("autoinfo.alerts._dispatch_notification",
+                        return_value={"status": "skipped"}):
               mock_store = MagicMock()
               mock_store.list_entries.return_value = [real]
               mock_kb.return_value = mock_store

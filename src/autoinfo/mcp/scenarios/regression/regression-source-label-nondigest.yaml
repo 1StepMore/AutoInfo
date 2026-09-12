@@ -76,18 +76,12 @@ steps:
     kind: cli
     command: |-
       python3 -c '
-      from jinja2 import Environment
-      import re
-
       from autoinfo.output import (
-          _TEMPLATES_DIR, _derive_source_label, _report_data_to_dict,
-          _user_source_label, ReportData,
+          _get_jinja_env, _derive_source_label, _report_data_to_dict,
+          ReportData,
       )
       from autoinfo.config import SourceConfig
 
-      # Resolve the report template from the installed package (portable —
-      # not from a cwd-relative path, so the step runs in any checkout).
-      tpl_path = _TEMPLATES_DIR / "report.md.j2"
       configs = [
           SourceConfig(name="36kr", type="rss", url="https://www.36kr.com/feed"),
       ]
@@ -116,13 +110,11 @@ steps:
           sections=[], appendices=[],
       )
       flat = _report_data_to_dict(rd)
-      env = Environment(trim_blocks=True, lstrip_blocks=True)
-      env.filters["product_summary"] = lambda v: v
-      env.filters["platform_name"] = lambda v: v or "\u2014"
-      # The report template renders the user-facing suffix via user_source_label
-      # (registered on the real render env); mirror it here.
-      env.globals["user_source_label"] = _user_source_label
-      tmpl = env.from_string(tpl_path.read_text())
+      # Render through the SAME environment the real report path uses:
+      # _get_jinja_env registers the domain_display_name / user_source_label
+      # globals (plus product_summary / platform_name filters), so the
+      # template resolves its globals exactly as generate_report does.
+      tmpl = _get_jinja_env().get_template("report.md.j2")
       out = tmpl.render(**flat)
       refs_sec = out.split("## References")[1] if "## References" in out else ""
       assert "(RSS)" not in refs_sec, f"(RSS) placeholder in References:\n{refs_sec}"

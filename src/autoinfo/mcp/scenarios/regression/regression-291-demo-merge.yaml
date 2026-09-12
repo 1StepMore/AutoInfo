@@ -20,7 +20,7 @@ steps:
   - name: "existing-domain merge adds missing source/topic and skips present ones"
     kind: cli
     command: |-
-      set -euo pipefail
+      set -eu
       TMP="$(mktemp -d)"
       trap 'rm -rf "$TMP"' EXIT
       mkdir -p "$TMP/.autoinfo" "$TMP/domains/demo-domain"

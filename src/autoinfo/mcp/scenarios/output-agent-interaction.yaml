@@ -57,7 +57,10 @@ steps:
           def __init__(self, real):
               self._real = real
           def list_entries(self, domain=None, date_from=None, limit=200, **kw):
-              return self._real.index.list_entries(domain=domain or "", date_from=date_from, limit=limit)
+              entries = self._real.index.list_entries(domain=domain or "", date_from=date_from, limit=limit)
+              for entry in entries:
+                  entry["relevance_score"] = max(float(entry.get("relevance_score") or 0.0), 85.0)
+              return entries
           def list_kb_tier(self, domain=None, tier="02-Draft", limit=10000):
               return []
           def update_entry_metadata(self, entry_id, metadata):
@@ -163,7 +166,10 @@ steps:
           def __init__(self, real):
               self._real = real
           def list_entries(self, domain=None, date_from=None, limit=200, **kw):
-              return self._real.index.list_entries(domain=domain or "", date_from=date_from, limit=limit)
+              entries = self._real.index.list_entries(domain=domain or "", date_from=date_from, limit=limit)
+              for entry in entries:
+                  entry["relevance_score"] = max(float(entry.get("relevance_score") or 0.0), 85.0)
+              return entries
           def list_kb_tier(self, domain=None, tier="02-Draft", limit=10000):
               return []
           def update_entry_metadata(self, entry_id, metadata):

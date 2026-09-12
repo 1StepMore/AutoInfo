@@ -17,7 +17,7 @@ name: regression-domain-seed-flagship
 description: "Regression (task 15): domain init --seed seeds flagship domains with 7 sources/6 topics + extract_fields, idempotent, byte-reproducible"
 category: regression
 regression: true
-regression_issue: "concierge-wave-task-15"
+regression_issue: "#concierge-wave-task-15"
 requires_env: []
 steps:
   - name: "full-seed absent flagship (7 sources/6 topics/extract_fields) + backfill over init --demo domain, idempotent, domain show intact"

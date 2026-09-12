@@ -17,7 +17,7 @@ name: regression-sources-sections
 description: "Regression (P0-2): all 8 product templates render their Sources/References provenance section (or documented inline decision) with real source_urls"
 category: regression
 regression: true
-regression_issue: "concierge-wave-task-8"
+regression_issue: "#concierge-wave-task-8"
 requires_env: []
 steps:
   - name: "all 8 product templates carry source provenance (section or documented inline)"

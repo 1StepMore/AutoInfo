@@ -19,7 +19,7 @@ name: regression-qa-gates-dir
 description: "Regression: delivery zip contains 01-QA-GATES/ and every PROCESSED product has a gate-report (md+json); index rejected list matches manifest rejected key"
 category: regression
 regression: true
-regression_issue: "concierge-wave-task-7"
+regression_issue: "#concierge-wave-task-7"
 requires_env: []
 steps:
   - name: "packaged zip contains 01-QA-GATES with reports for every processed product"

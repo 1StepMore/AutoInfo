@@ -29,7 +29,7 @@ name: regression-mvp-init
 description: "Regression task 13: mvp init provisions premium/active pilot + mvp/u1 artifacts hermetically; mvp list shows it; idempotent; clean error paths"
 category: regression
 regression: true
-regression_issue: "concierge-wave-task-13"
+regression_issue: "#concierge-wave-task-13"
 requires_env: []
 steps:
   - name: "mvp init full chain + mvp list + idempotency + error paths, no LLM key"

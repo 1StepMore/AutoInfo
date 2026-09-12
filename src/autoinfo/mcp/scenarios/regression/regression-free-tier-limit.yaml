@@ -14,7 +14,7 @@ name: regression-free-tier-limit
 description: "Regression todo 12: named free user over product/frequency quota gets explicit FREE_TIER_LIMIT error; user_id='' batch path unblocked; premium unaffected"
 category: regression
 regression: true
-regression_issue: "todo-12 free-tier enforcement (roadmap:64)"
+regression_issue: "#todo-12 free-tier enforcement (roadmap:64)"
 requires_env: []
 steps:
   - name: "free-tier gate blocks named over-limit user, allows batch and premium"

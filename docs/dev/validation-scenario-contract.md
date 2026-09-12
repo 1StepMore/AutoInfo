@@ -146,7 +146,9 @@ regression: true                    # optional bool: marks this scenario as a
                                     # `## Regression failures` report section.
 regression_issue: "#NNN"            # optional (required when regression: true): the
                                     # issue/PR number this scenario guards against
-                                    # regressing, e.g. "#119".
+                                    # regressing, e.g. "#119". When the guarded change
+                                    # has no filed issue, use a #-prefixed wave/task
+                                    # tag instead (e.g. "#concierge-wave-task-7").
 steps:
   - name: "human readable step name"   # required
     kind: mcp                         # optional: mcp (default) | cli | http
@@ -221,8 +223,10 @@ steps:
   steps must pass. A scenario meeting the policy is `passed` even when some steps
   failed (they still surface in the report). Use where a subset of steps is
   legitimately environment-dependent.
-- **`regression` / `regression_issue`**: `regression: true` requires
-  `regression_issue: "#NNN"`. Files in `scenarios/regression/` are auto-loaded via
+- **`regression` / `regression_issue`**: `regression: true` requires a
+  `regression_issue` beginning with `#` — an issue/PR number (`"#NNN"`) or, when
+  no issue was filed, a #-prefixed wave/task tag (`"#concierge-wave-task-7"`).
+  Files in `scenarios/regression/` are auto-loaded via
   recursive glob and conventionally set both fields. Reports show regression scenarios
   with a "(regression)" suffix in the verdicts table and a dedicated `## Regression
   failures` section (root cause + guarded issue).

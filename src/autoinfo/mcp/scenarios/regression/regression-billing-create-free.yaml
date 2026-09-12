@@ -27,7 +27,7 @@ name: regression-billing-create-free
 description: "Regression concierge-wave-task-11: billing create-free provisions active profile + free-tier subscription (1 domain / 1 product / weekly / no custom) hermetically; idempotent; clean error path; over-limit generate_digest raises FreeTierLimitError"
 category: regression
 regression: true
-regression_issue: "concierge-wave-task-11"
+regression_issue: "#concierge-wave-task-11"
 requires_env: []
 steps:
   - name: "create-free provisions a free subscription (exit 0, creation surfaced)"

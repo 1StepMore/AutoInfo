@@ -22,6 +22,13 @@
 # blocks.  The scenario mocks that dispatch so the step never depends on a
 # live webhook, and the fixture entry carries `language: en` so the domain's
 # seed `default_language: en` does not filter it out of the render.
+#
+# Self-contained judge note (issue #233): when an LLM key is present, the D1-D3
+# layer-3 product judge (`autoinfo.output._run_product_judge`) calls a REAL LLM
+# and DeepSeek can return an empty/unparseable response ("judge returned no
+# verdict"), blocking delivery.  The scenario patches that seam to a
+# deterministic pass verdict so the gates never reach the network/LLM,
+# regardless of whether AUTOINFO_LLM_API_KEY is exported.
 name: regression-298-delivery-gates
 description: "Regression #298: generate_digest resolves domain delivery_gates from config and runs D1-D3 by default"
 category: regression
@@ -84,6 +91,8 @@ steps:
                   patch("autoinfo.output.KBStore") as mock_kb, \
                   patch("autoinfo.output._call_llm_for_digest", return_value=synthesis), \
                   patch("autoinfo.output._fire_agent_notification"), \
+                  patch("autoinfo.output._run_product_judge",
+                        return_value=(True, "")), \
                   patch("autoinfo.alerts._dispatch_notification",
                         return_value={"status": "skipped"}):
               mock_store = MagicMock()

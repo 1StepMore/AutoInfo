@@ -30,6 +30,7 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -42,7 +43,7 @@ steps:
           "source_type": "rss", "source_platform": "rss",
           "language": "en",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
                "recommendations": []}
@@ -88,6 +89,7 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -100,7 +102,7 @@ steps:
           "source_type": "rss", "source_platform": "rss",
           "language": "en",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
                "recommendations": []}
@@ -153,6 +155,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -165,7 +168,7 @@ steps:
           "source_type": "rss", "source_platform": "rss",
           "language": "en",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
                "recommendations": []}
@@ -213,6 +216,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -225,7 +229,7 @@ steps:
           "source_type": "rss", "source_platform": "rss",
           "language": "en",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
       SYNTH = {"executive_summary": "Synthesis.", "key_findings": [],
                "recommendations": []}
@@ -272,6 +276,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -284,7 +289,7 @@ steps:
           "source_type": "rss", "source_platform": "rss",
           "language": "en",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
 
       tmp = Path(tempfile.mkdtemp(prefix="regression-325-e-"))
@@ -375,6 +380,7 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       import yaml
       from autoinfo.output import (
@@ -396,7 +402,7 @@ steps:
           "source_type": "rss",
           "source_platform": "rss",
           "relevance_score": 90.0, "tags": "[]", "tier": "01-Raw",
-          "collected_at": "2026-08-19T10:00:00Z",
+          "collected_at": (date.today() - timedelta(days=1)).isoformat(),
       }
 
       def tmpl(name):

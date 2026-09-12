@@ -27,6 +27,7 @@ steps:
     command: |-
       python3 -c '
       import json, os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -38,7 +39,7 @@ steps:
                   "source_url": f"https://example.com/{eid}",
                   "source_type": "rss", "source_platform": "techcrunch",
                   "relevance_score": 85.0, "tags": tags,
-                  "collected_at": "2026-08-17"}
+                  "collected_at": (date.today() - timedelta(days=1)).isoformat()}
 
       ENTRIES = [
           entry("med-1", "贝达药业 2026 半年报", "医药公司业绩"),
@@ -98,6 +99,7 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -110,7 +112,7 @@ steps:
                   "source_url": f"https://example.com/{eid}",
                   "source_type": "rss", "source_platform": "techcrunch",
                   "relevance_score": 85.0, "tags": "[]",
-                  "collected_at": "2026-08-17"}
+                  "collected_at": (date.today() - timedelta(days=1)).isoformat()}
 
       AI_ENTRIES = [entry("ai-med-1", "贝达药业 半年报", "ai-commercial"),
                     entry("ai-1", "AI startup funding", "ai-commercial")]
@@ -171,6 +173,7 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import date, timedelta
       from pathlib import Path
       from unittest.mock import MagicMock, patch
       import yaml
@@ -182,7 +185,7 @@ steps:
                   "source_url": f"https://example.com/{eid}",
                   "source_type": "rss", "source_platform": "techcrunch",
                   "relevance_score": 85.0, "tags": "[]",
-                  "collected_at": "2026-08-17"}
+                  "collected_at": (date.today() - timedelta(days=1)).isoformat()}
 
       ENTRIES = [
           entry("med-1", "贝达药业 2026 半年报", "医药公司业绩"),

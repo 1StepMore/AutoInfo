@@ -24,6 +24,7 @@ TDD: these tests fail (RED) on main, pass (GREEN) after the #342 fix.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +38,13 @@ from autoinfo.output import (
     generate_tutorial,
 )
 
+# Freshness is scored against the REAL clock (``calculate_freshness_score``),
+# so ``collected_at`` must be relative to import time, not a hardcoded calendar
+# date — otherwise these fixtures expire once the domain TTL window elapses.
+_FRESH_BASE = datetime.now(timezone.utc) - timedelta(days=1)
+_FRESH_COLLECTED_AT = _FRESH_BASE.isoformat()
+_FRESH_COLLECTED_AT_PLUS_1H = (_FRESH_BASE + timedelta(hours=1)).isoformat()
+
 _SAMPLE_ENTRIES: list[dict[str, Any]] = [
     {
         "entry_id": "entry-001",
@@ -49,7 +57,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 91.0,
         "tags": '["AI", "journalism"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-29T10:00:00Z",
+        "collected_at": _FRESH_COLLECTED_AT,
     },
     {
         "entry_id": "entry-002",
@@ -62,7 +70,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 84.0,
         "tags": '["journalism", "trust"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-29T11:00:00Z",
+        "collected_at": _FRESH_COLLECTED_AT_PLUS_1H,
     },
 ]
 
@@ -80,17 +88,14 @@ def _magazine_template() -> ProductTemplate:
     for row in PRODUCT_TEMPLATES:
         if row["name"] == "magazine-digest":
             return cast(ProductTemplate, row["template"])
-    raise AssertionError(
-        "magazine-digest ProductTemplate row missing from PRODUCT_TEMPLATES"
-    )
+    raise AssertionError("magazine-digest ProductTemplate row missing from PRODUCT_TEMPLATES")
 
 
 def _assert_no_placeholder(text: str, domain: str, product: str) -> None:
     """Assert the rendered product passes the matrix ``_no_placeholder`` gate."""
     result = vm._no_placeholder(text, domain, product)
     assert result.passed, (
-        f"placeholder residue in {product} for {domain}: {result.details!r}\n"
-        f"{text[:2000]}"
+        f"placeholder residue in {product} for {domain}: {result.details!r}\n{text[:2000]}"
     )
 
 
@@ -248,7 +253,8 @@ class TestGenerateTutorialNoPlaceholder:
 
     @patch("autoinfo.output.KBStore")
     def test_generate_tutorial_zero_entries_neutral(
-        self, mock_kb: MagicMock,
+        self,
+        mock_kb: MagicMock,
     ) -> None:
         """The zero-entry path renders neutral prose, never a placeholder."""
         mock_store = MagicMock()

@@ -185,3 +185,54 @@ def test_local_json_flag_shape_is_untouched(project: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["domains"] == [] or "count" in payload
     assert "success" not in payload
+
+
+def test_usage_error_emits_envelope() -> None:
+    """Issue #242(a): a subcommand usage error must honour global --json.
+
+    Click raises this after the root callback ran (so the ContextVar is
+    already True), but the bare ``app()`` call previously let Typer print the
+    rich usage block and exit 2 with empty stdout.
+    """
+    result = runner.invoke(app, ["--json", "cost", "dashboard", "--days", "abc"])
+    payload = _assert_envelope(result.stdout, "usage-error")
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "ValidationError"
+    assert result.exit_code == 2
+
+
+def test_unknown_command_emits_envelope() -> None:
+    """Issue #242(a): an unknown *top-level* command must honour global --json.
+
+    ``Group.invoke`` resolves the command *before* the root callback runs, so
+    the ContextVar is still False here — the argv leading-scan is what detects
+    ``--json`` and drives the envelope.
+    """
+    result = runner.invoke(app, ["--json", "bogus-cmd"])
+    payload = _assert_envelope(result.stdout, "unknown-command")
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "ValidationError"
+    assert result.exit_code == 2
+
+
+def test_uncaught_internal_error_emits_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #242(a): an uncaught exception under global --json is enveloped."""
+
+    def _boom() -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("autoinfo.cli.domain._load", _boom)
+    result = runner.invoke(app, ["--json", "domain", "list"])
+    payload = _assert_envelope(result.stdout, "internal-error")
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "InternalError"
+    assert result.exit_code == 1
+
+
+def test_usage_error_without_json_is_unchanged() -> None:
+    """Issue #242(a): the non-json path keeps Click's usage output + exit 2."""
+    result = runner.invoke(app, ["cost", "dashboard", "--days", "abc"])
+    assert result.exit_code == 2
+    assert result.stdout == ""

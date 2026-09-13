@@ -1,0 +1,68 @@
+# Regression #242(a): the CLI global `--json` flag did not cover error paths
+# outside the commands' own `try/except` (src/autoinfo/cli/_output.py).
+#
+# A usage error (`autoinfo --json cost dashboard --days abc`) and an unknown
+# top-level command (`autoinfo --json bogus-cmd`) exited 2 with EMPTY stdout,
+# so a `--json` consumer could not parse the failure.  The fix adds a
+# top-level `_EnvelopeGroup.main` seam (src/autoinfo/cli/__init__.py) that
+# detects global `--json`, suppresses Click's own usage printing
+# (`standalone_mode=False`), and emits the canonical
+# `{success: false, error: {code, message, actionable}}` envelope with
+# `ValidationError` for usage errors.
+#
+# This scenario drives the REAL `python -m autoinfo.cli` subprocess and
+# asserts both the exit code (2) and a parseable envelope on stdout — no LLM,
+# no network, no project config needed.
+name: regression-242-cli-json-usage-envelope
+description: "Regression #242(a): global --json emits a canonical envelope for CLI usage errors and unknown commands"
+category: failure
+pyramid_layer: e2e
+pipeline_stage: A5
+user_level: B2.3
+regression: true
+regression_issue: "#242"
+requires_env: []
+steps:
+  - name: "global --json usage error exits 2 with a parseable envelope"
+    kind: cli
+    command: |-
+      python3 -c '
+      import json, subprocess, sys
+      proc = subprocess.run(
+          [sys.executable, "-m", "autoinfo.cli", "--json", "cost", "dashboard", "--days", "abc"],
+          capture_output=True, text=True,
+      )
+      assert proc.returncode == 2, f"expected exit 2, got {proc.returncode}: {proc.stderr[:300]}"
+      payload = json.loads(proc.stdout)
+      assert payload["success"] is False, payload
+      error = payload["error"]
+      assert error["code"] == "ValidationError", error
+      for key in ("code", "message", "actionable"):
+          assert key in error, error
+      print("CLI_JSON_USAGE_ENVELOPE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLI_JSON_USAGE_ENVELOPE_OK"]
+
+  - name: "global --json unknown command exits 2 with a parseable envelope"
+    kind: cli
+    command: |-
+      python3 -c '
+      import json, subprocess, sys
+      proc = subprocess.run(
+          [sys.executable, "-m", "autoinfo.cli", "--json", "bogus-cmd"],
+          capture_output=True, text=True,
+      )
+      assert proc.returncode == 2, f"expected exit 2, got {proc.returncode}: {proc.stderr[:300]}"
+      payload = json.loads(proc.stdout)
+      assert payload["success"] is False, payload
+      error = payload["error"]
+      assert error["code"] == "ValidationError", error
+      print("CLI_JSON_UNKNOWN_ENVELOPE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLI_JSON_UNKNOWN_ENVELOPE_OK"]

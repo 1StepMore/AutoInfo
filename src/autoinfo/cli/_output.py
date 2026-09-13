@@ -24,6 +24,7 @@ get byte-identical structure from the MCP surface.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from contextvars import ContextVar
 from typing import Any
 
@@ -55,6 +56,53 @@ def global_json() -> bool:
     return _GLOBAL_JSON.get()
 
 
+def detect_global_json(argv: Sequence[str]) -> bool:
+    """Return ``True`` when the *global* ``--json`` flag leads *argv*.
+
+    The root callback (which calls :func:`set_global_json`) runs *after*
+    ``Group.invoke`` resolves the command, so it never runs for an unknown
+    top-level command or a bad group-level flag.  This argv scan is the only
+    signal available in those cases.
+
+    Only **leading** option tokens are inspected — the scan stops at the first
+    non-``-`` token — so a per-command ``--json`` (e.g. ``domain list --json``)
+    is not misread as the global flag.  The root group has no value-taking
+    option, so stopping at the first positional token is safe.
+    """
+    for token in argv:
+        if not token.startswith("-") or token == "-":
+            return False
+        if token == "--json":
+            return True
+    return False
+
+
+def is_usage_error(exc: BaseException) -> bool:
+    """Return ``True`` when *exc* is a Click/Typer usage error.
+
+    Typer vendors Click under ``typer._click``, so the installed
+    ``click.exceptions.UsageError`` is a **different class** — an ``isinstance``
+    check against it would miss.  Usage errors (``UsageError``, ``BadParameter``,
+    ``NoSuchOption``, …) all carry ``exit_code == 2``; classify structurally.
+    """
+    return getattr(exc, "exit_code", None) == 2
+
+
+def emit_error_envelope(
+    code: str,
+    message: str,
+    actionable: bool = True,
+) -> None:
+    """Write the canonical error envelope unconditionally (no ContextVar gate)."""
+    typer.echo(
+        json.dumps(
+            error_response(code, message, actionable),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
 def emit_if_global(data: Any) -> bool:
     """Emit the canonical success envelope when global ``--json`` is active.
 
@@ -80,11 +128,5 @@ def fail_if_global(
     """
     if not global_json():
         return
-    typer.echo(
-        json.dumps(
-            error_response(code, message, actionable),
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    emit_error_envelope(code, message, actionable)
     raise _EnvelopeExit(exit_code)

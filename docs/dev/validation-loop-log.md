@@ -110,3 +110,58 @@
 **沉淀**（新的 skill/checklist/坑清单条目）:
 - ...
 ```
+
+## 2026-09-14 循环（6 issue 修复 + PR #238 审查）
+
+### 关键事件
+- 审查 2026-09-13 轮（记录在 PR #238 `docs/loop-log-retro-20260913` @ `2c5a100`）提出的 6 个 issue，逐条复现并修复：
+  - **#236** 计划入库：`.omo/plans/agent-oriented-gap-register.md` 提升为 `docs/dev/plans/agent-oriented-gap-register.md`（`<!-- doc-type: plan -->` + Outcome）。
+  - **#237** dry-run 不写 ledger：`collect.py` 的 skipped / SourceFailure / 通用异常三分支的 `_log_run` 加 `not dry_run` 闸；测试侧用 `monkeypatch.chdir(tmp_path)` 隔离。
+  - **#239** 单一权威红预算：`tests/TRIAGE.md` 新增权威段（环境三元组 + 2594/17/2553/24/0），`ci.yml` 改为只引用不复述，新增 `test_known_red_budget_single_source.py` guard。
+  - **#240** 文档再生 + 闸：`render_enduser_coverage_view` 以 `\n\n` 结尾，而 pre-commit 的 `end-of-file-fixer` 每次提交把尾随空行规范化掉，于是产物与生成器永久不一致（真根因，不是手改）；生成器改为只输出单个尾随换行，`make doc-check` + CI 步骤跑 `--check-enduser-doc`。
+  - **#241** 时间炸弹：`test_tutorial_no_placeholder.py` 的绝对 `collected_at` 改为相对时间戳。
+  - **#242** CLI 错误 envelope：`cli/_EnvelopeGroup` 顶层 seam，usage error / 未知命令 / 未捕获异常在全局 `--json` 下都产出规范 envelope。
+- **PR #238 审查**：docs-only（2 commits / 仅 `validation-loop-log.md` / +71），`git merge-tree` 干净（可 fast-forward）。未合并（远端写操作待人工批准）。
+- **两处对 2026-09-13 轮结论的更正**（本轮复现所得）：
+  1. **#242(b) 跨文件泄漏是假阳性**：合规环境（Python 3.11.15 + pytest 8.4.2）下 `test_fault_injection.py` + `test_cli_json_parity.py` 成对跑 **9/9 通过**；上一轮的 3/3 复现来自非合规环境（pytest 9.1.1 + 无插件），即坑 #28/#29 所述。
+  2. **#241 的"gaming TTL 短"不成立**：`DomainConfig.domain_defaults` 未列 gaming，其 TTL 与 general-news 一样是 90；真正触发是 `calculate_freshness_score` 的 `freshness < 0.5`，等价于 `age_days > ttl_days/2`（45 天）。
+
+### 坑清单追加（迭代前必查）
+30. **CLI `--json` 错误路径要覆盖"回调之前"的解析错误**。`click.Group.invoke` 的顺序是 `resolve_command`（未知命令/组级坏 flag 在此报错）→ root callback（`--json` 才置位 ContextVar）→ 子命令 `make_context`（子命令 usage error）。所以未知命令/组级坏 flag 发生时 ContextVar 还没置位，只读 ContextVar 的顶层 handler 会漏。**预防**：从原始 argv 的**前导 option** 探测 `--json`（遇第一个非 `-` token 即停，避免把 `domain list --json` 误判为全局），并强制 `standalone_mode=False` 让 Click 不再自行打印/退出，再在顶层统一发 envelope。注意 Typer 0.27 vendor 了 Click，`typer._click.exceptions.BadParameter` **不是** `click.exceptions.UsageError`，要用 `exit_code` 等结构特征判断。
+31. **"测试写脏被跟踪产物"要两层同修**：产品侧契约（`dry_run` = 无存储副作用）在错误分支上违约，测试侧又没隔离 cwd。只修测试 → 产品继续违约；只修产品 → 其他非 dry_run 测试继续写真实树。**预防**：两层一起修，并把"跑完 `git status --porcelain` 为空"作为回归门槛。
+32. **"已知红预算"只能有一份权威数字**：`ci.yml` 复述 `TRIAGE.md` 的数字必然漂移（本轮发现 ci=12 vs TRIAGE=83+1）。**预防**：单一权威段（TRIAGE.md），其余文档只引用不复述，并加 guard 测试机械拦截"数字复述"。
+33. **验证结论必须区分"环境假红"与"真实缺陷"**。本地 editable 元数据陈旧、pytest 违反 pin、套件不 hermetic，三者都会造出假红。**预防**：报告任何"红"之前，先过三条伪红判据（环境合规？子集/全集一致？产物相对生成器新鲜？），并登记解释器与关键依赖版本。
+34. **生成器输出与 pre-commit 规范化 hook 冲突 → 永久漂移**。`coverage_matrix.py` 的 `\n\n` 结尾每被 `end-of-file-fixer` 规范成 `\n`，于是"再生成"永远和产物不一致（#240 的真根因，不是手改）。**预防**：生成器只输出单个尾随换行；遇到"生成物 vs 手改"类漂移，先检查 pre-commit 规范化 hook（trailing-whitespace / end-of-file-fixer）是否是真正的手。
+
+### 本轮验证（定向，不跑全量）
+- `make doc-check` → exit 0（doc_inventory --check + `--check-enduser-doc` 双绿）
+- `pytest tests/collectors/test_collection.py` → 32 passed；`git status --porcelain -- collections knowledge` 为空
+- `pytest tests/output/test_tutorial_no_placeholder.py` → 7 passed
+- `pytest tests/cli/test_cli_json_parity.py` → 8 passed；`python3 -m autoinfo.cli --json cost dashboard --days abc` → 合法 envelope + exit 2
+- `pytest tests/validation/test_known_red_budget_single_source.py` → 2 passed
+- 场景库 161（86 functional + 75 regression），两个新回归场景可解析
+
+### 复盘（fix-retro @ 2026-09-14）
+**本轮修了什么**（审查 + 修复轮：2026-09-13 轮新增的 6 个 issue 全部闭环）:
+- #236 计划入库；#237 dry-run 闸 + 测试隔离；#239 单一权威红预算 + guard；#240 文档再生 + 双闸；#241 时间炸弹；#242 CLI 全局 `--json` 错误 envelope。
+
+**根因分类统计**:
+| 类型 | 数量 | 例子 |
+|------|------|------|
+| 边界/空值 | 2 | #237 dry_run 错误分支漏闸；#240 生成器与产物差一个尾随空行 |
+| 测试非确定性 | 2 | #241 绝对时间戳 + 新鲜度阈值；#242(b) 跨文件泄漏（实为环境假红） |
+| 文档/可追溯 | 2 | #236 计划未入库；#239 红预算两处矛盾且过期 |
+| 环境/配置 | 1 | 本地 editable/pytest 版本非合规导致的上一轮假红与误判 |
+| 产品契约缺口 | 1 | #242 全局 `--json` 未覆盖回调前的解析错误 |
+
+**模式识别**:
+- **模式 1：明确写入契约的东西没有被机械检查**（≥2 次）：`dry_run` 的"无存储副作用"没有覆盖错误分支；`--json` 的"总是 envelope"没有覆盖回调前的解析错误；`TRIAGE.md` 的单一权威被 `ci.yml` 复述。**系统性解读**：契约需要变成可执行的闸（测试/guard），而非只是注释。
+- **模式 2：验证结论的有效性依赖环境与产物对齐**（继承上一轮）：本轮再次踩到（上一轮 4 条假缺陷 + 本轮更正 2 条结论）。**系统性解读**：伪红三条判据应固化为报告前置步骤。
+
+**预防措施**:
+- 新增 guard：`test_known_red_budget_single_source.py`（数字单一权威）；`make doc-check`（coverage 文档不得漂移）；两个回归场景（#237 dry-run 无 ledger、#242 CLI 错误 envelope）。
+- 报告模板固定"三态分离"（通过 / 未测量 / 失败）与伪红三条判据。
+
+**沉淀**:
+- 坑 30-33（见上）。
+- 可复用 checklist：① 环境合规？② 子集/全集一致？③ 产物相对生成器新鲜？三条全过再把"红"当真。

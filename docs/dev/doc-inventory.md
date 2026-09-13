@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 100 |
-| Total lines | 33457 |
-| Active files | 72 |
+| Total files | 101 |
+| Total lines | 34123 |
+| Active files | 73 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
 | Category — known-limitations | 2 files / 336 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 9 files / 458 lines |
 | Category — specs | 12 files / 9716 lines |
 | Category — validation-reports | 14 files / 3186 lines |
-| Category — docs/dev | 25 files / 9251 lines |
+| Category — docs/dev | 26 files / 9917 lines |
 | Category — docs/root | 3 files / 391 lines |
 
 ## Inventory
@@ -80,12 +80,13 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/cli-mcp-rest-parity.md` | 538 | docs/dev | active | — |
 | `dev/cross-dimensional-catalog.md` | 1034 | docs/dev | active | — |
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
-| `dev/enduser-coverage-matrix.md` | 221 | docs/dev | active | — |
+| `dev/enduser-coverage-matrix.md` | 220 | docs/dev | active | — |
 | `dev/founder-expectations.md` | 471 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 935 | docs/dev | active | — |
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
 | `dev/plans/README.md` | 50 | docs/dev | active | plan-index |
+| `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
 | `dev/required-api-keys.md` | 144 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
@@ -100,9 +101,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/pipeline.md` | 584 | specs | active | — |
 | `dev/specs/quality-gates.md` | 187 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
-| `dev/testing-layers.md` | 257 | docs/dev | active | — |
+| `dev/testing-layers.md` | 261 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
-| `dev/validation-loop-log.md` | 112 | docs/dev | active | — |
+| `dev/validation-loop-log.md` | 167 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 59 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |

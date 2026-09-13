@@ -24,7 +24,6 @@ from autoinfo.collect import _cache_items
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import Item, KBEntry
 
-
 # ======================================================================
 # DedupChecker tests
 # ======================================================================
@@ -145,9 +144,7 @@ class TestDedupChecker:
     def test_pmid_match_no_duplicate_when_different(self):
         """Items with different PMIDs are not flagged."""
         checker = DedupChecker()
-        item = self.make_item(
-            item_id="new-item", source_url="", pmid="11111111"
-        )
+        item = self.make_item(item_id="new-item", source_url="", pmid="11111111")
         existing = [
             self.make_entry(
                 entry_id="existing-pmid",
@@ -301,8 +298,14 @@ class TestRunCollection:
     }
 
     @pytest.fixture
-    def with_config(self, tmp_path: Path) -> Path:
-        """Create a temporary project with a valid config."""
+    def with_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Create a temporary project with a valid config.
+
+        Also chdir into ``tmp_path`` so any relative storage path the code
+        touches (``collections/``, ``knowledge/``) lands in the sandbox rather
+        than the real working tree (issue #237).
+        """
+        monkeypatch.chdir(tmp_path)
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True)
         config_path = config_dir / "config.yaml"
@@ -320,19 +323,29 @@ class TestRunCollection:
     ):
         """Orchestrator calls _build_handler which creates correct types."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         # Build a proper Config object matching SAMPLE_CONFIG
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
-                        SourceConfig(name="nature-rss", type="rss", url="https://feeds.nature.com/nature/rss/current"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                        SourceConfig(
+                            name="nature-rss",
+                            type="rss",
+                            url="https://feeds.nature.com/nature/rss/current",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -367,18 +380,28 @@ class TestRunCollection:
     ):
         """``progress_cb`` fires once per source, in order, with its result."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
-                        SourceConfig(name="nature-rss", type="rss", url="https://feeds.nature.com/nature/rss/current"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                        SourceConfig(
+                            name="nature-rss",
+                            type="rss",
+                            url="https://feeds.nature.com/nature/rss/current",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -399,20 +422,28 @@ class TestRunCollection:
 
     @patch("autoinfo.collect.get_config_path")
     @patch("autoinfo.collect.load_config")
-    def test_progress_cb_optional_when_none(self, mock_load_config, mock_get_config_path, with_config):
+    def test_progress_cb_optional_when_none(
+        self, mock_load_config, mock_get_config_path, with_config
+    ):
         """``progress_cb`` defaults to ``None`` — collection works unchanged."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -437,7 +468,7 @@ class TestRunCollection:
     ):
         """dry_run=True returns estimates and does not cache anything."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         pubmed_item = Item(
             id="pmid-123",
@@ -461,14 +492,24 @@ class TestRunCollection:
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
-                        SourceConfig(name="nature-rss", type="rss", url="https://feeds.nature.com/nature/rss/current"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                        SourceConfig(
+                            name="nature-rss",
+                            type="rss",
+                            url="https://feeds.nature.com/nature/rss/current",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -508,7 +549,7 @@ class TestRunCollection:
     ):
         """When one source fails, other sources still get collected."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         rss_item = Item(
             id="rss-001",
@@ -522,14 +563,24 @@ class TestRunCollection:
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
-                        SourceConfig(name="nature-rss", type="rss", url="https://feeds.nature.com/nature/rss/current"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                        SourceConfig(
+                            name="nature-rss",
+                            type="rss",
+                            url="https://feeds.nature.com/nature/rss/current",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -568,6 +619,63 @@ class TestRunCollection:
 
     @patch("autoinfo.collect.get_config_path")
     @patch("autoinfo.collect.load_config")
+    def test_dry_run_writes_no_run_ledger(
+        self,
+        mock_load_config,
+        mock_get_config_path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """dry_run must not write the run ledger (issue #237).
+
+        A failing source during a dry run previously still appended to
+        ``collections/<domain>/<source>/_runs.json`` (a tracked path), which
+        dirtied the working tree. ``dry_run`` promises no storage side effects,
+        so no ``collections/`` directory may appear under the isolated cwd.
+        """
+        from autoinfo.collect import run_collection
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
+
+        monkeypatch.chdir(tmp_path)
+
+        config = Config(
+            project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    active=True,
+                    sources=[
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                    ],
+                    topics=[],
+                ),
+            ],
+        )
+        mock_get_config_path.return_value = tmp_path / ".autoinfo" / "config.yaml"
+        mock_load_config.return_value = config
+
+        with patch("autoinfo.collect._fetch_items", side_effect=Exception("PubMed down!")):
+            run_collection(domain="medical-research", topic="IVF", limit=5, dry_run=True)
+
+        collections_dir = tmp_path / "collections"
+        leaked = (
+            sorted(str(p.relative_to(tmp_path)) for p in collections_dir.rglob("*"))
+            if collections_dir.exists()
+            else []
+        )
+        assert not collections_dir.exists(), (
+            f"dry_run wrote ledger artifacts (issue #237): {leaked}"
+        )
+
+    @patch("autoinfo.collect.get_config_path")
+    @patch("autoinfo.collect.load_config")
     def test_caches_items_when_not_dry_run(
         self,
         mock_load_config,
@@ -576,7 +684,7 @@ class TestRunCollection:
     ):
         """Items are written to collections/ when dry_run=False."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         pubmed_item = Item(
             id="pmid-123",
@@ -590,13 +698,19 @@ class TestRunCollection:
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -631,18 +745,24 @@ class TestRunCollection:
     ):
         """Non-pubmed API sources are now handled by HttpApiHandler (previously skipped)."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
                     active=True,
                     sources=[
                         SourceConfig(name="arxiv", type="api", url="https://export.arxiv.org/api/"),
-                        SourceConfig(name="pubmed", type="api", url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"),
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
                     ],
                     topics=[],
                 ),
@@ -683,7 +803,7 @@ class TestRunCollection:
     ):
         """Items fetched from tier-3 sources get quality_tier=3 (Fix A — E9)."""
         from autoinfo.collect import run_collection
-        from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
 
         pubmed_item = Item(
             id="pmid-456",
@@ -698,7 +818,9 @@ class TestRunCollection:
 
         config = Config(
             project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
-            llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
             domains=[
                 DomainConfig(
                     name="medical-research",
@@ -896,12 +1018,16 @@ class TestCollectCli:
     @patch.object(Path, "cwd")
     @patch("autoinfo.collect.run_collection")
     def test_cli_all_multi_domain_dispatch(
-        self, mock_run_collection, mock_cwd, cli_runner, tmp_path,
+        self,
+        mock_run_collection,
+        mock_cwd,
+        cli_runner,
+        tmp_path,
     ):
         """``--all`` collects for all active domains in config."""
         import yaml
+
         from autoinfo.cli.collect import app
-        from autoinfo.config import _dict_to_config
 
         # Point cwd to a temp dir so get_config_path finds the test config
         tmp = Path(tmp_path)
@@ -914,8 +1040,20 @@ class TestCollectCli:
             "project": {"name": "test", "created_at": ""},
             "llm": {"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-test"},
             "domains": [
-                {"name": "domain-a", "active": True, "sources": [{"name": "src-a", "type": "rss", "url": "https://a.example.com/rss"}]},
-                {"name": "domain-b", "active": True, "sources": [{"name": "src-b", "type": "rss", "url": "https://b.example.com/rss"}]},
+                {
+                    "name": "domain-a",
+                    "active": True,
+                    "sources": [
+                        {"name": "src-a", "type": "rss", "url": "https://a.example.com/rss"}
+                    ],
+                },
+                {
+                    "name": "domain-b",
+                    "active": True,
+                    "sources": [
+                        {"name": "src-b", "type": "rss", "url": "https://b.example.com/rss"}
+                    ],
+                },
             ],
         }
         config_path.write_text(yaml.dump(config_data))
@@ -1028,7 +1166,9 @@ class TestCacheItemsCrossDateDedup:
 
         # Only B is written under today's date directory.
         today_files = list(
-            (tmp_path / "collections" / "tech" / "gh-trending" / date.today().isoformat()).glob("*.json")
+            (tmp_path / "collections" / "tech" / "gh-trending" / date.today().isoformat()).glob(
+                "*.json"
+            )
         )
         assert [f.name for f in today_files] == ["b.json"], (
             "cross-date duplicate URL re-written under a later date dir"

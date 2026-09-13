@@ -562,16 +562,17 @@ def _collect_from_source(
             extra={"source_name": source_config.name, "error": str(exc)},
         )
         skipped_duration = round(time.time() - src_start, 3)
-        _log_run(
-            domain=domain,
-            source_name=source_config.name,
-            collection_id=collection_id,
-            items_found=0,
-            items_new=0,
-            status="skipped",
-            errors=[{"message": str(exc)}],
-            duration_s=skipped_duration,
-        )
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="skipped",
+                errors=[{"message": str(exc)}],
+                duration_s=skipped_duration,
+            )
         return CollectionResult(
             collection_id=collection_id,
             domain=domain,
@@ -598,16 +599,17 @@ def _collect_from_source(
             "source_failed": True,
             "reason": exc.reason,
         }
-        _log_run(
-            domain=domain,
-            source_name=source_config.name,
-            collection_id=collection_id,
-            items_found=0,
-            items_new=0,
-            status="error",
-            errors=[error_dict],
-            duration_s=error_duration,
-        )
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="error",
+                errors=[error_dict],
+                duration_s=error_duration,
+            )
         return CollectionResult(
             collection_id=collection_id,
             domain=domain,
@@ -631,16 +633,17 @@ def _collect_from_source(
             "source_failed": True,
             "reason": str(exc),
         }
-        _log_run(
-            domain=domain,
-            source_name=source_config.name,
-            collection_id=collection_id,
-            items_found=0,
-            items_new=0,
-            status="error",
-            errors=[error_dict],
-            duration_s=error_duration,
-        )
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="error",
+                errors=[error_dict],
+                duration_s=error_duration,
+            )
         return CollectionResult(
             collection_id=collection_id,
             domain=domain,

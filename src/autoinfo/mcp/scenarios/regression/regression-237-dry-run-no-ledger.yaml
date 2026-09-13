@@ -1,0 +1,56 @@
+# Regression #237: a dry-run collection wrote a run ledger.
+#
+# `run_collection(..., dry_run=True)` promised "return estimated counts without
+# any storage operations", but the skipped / SourceFailure / generic-exception
+# branches in `src/autoinfo/collect.py` still called `_log_run(...)`, which
+# appends to `collections/<domain>/<source>/_runs.json` — a TRACKED path. A
+# failing source under `dry_run=True` therefore dirtied the working tree.
+#
+# The fix gates every early-return `_log_run(...)` on `not dry_run`, mirroring
+# the already-gated success branch. This scenario drives the real code under an
+# isolated cwd and asserts no `collections/` directory is created — no LLM, no
+# network, no project config needed.
+name: regression-237-dry-run-no-ledger
+description: "Regression #237: a dry-run collection with a failing source writes no run ledger"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B1.5
+regression: true
+regression_issue: "#237"
+requires_env: []
+steps:
+  - name: "dry_run collection leaves no collections/**/_runs.json behind"
+    kind: cli
+    command: |-
+      python3 -c "
+      import os, tempfile
+      from unittest.mock import patch
+      from autoinfo.collect import run_collection
+      from autoinfo.config import Config, DomainConfig, SourceConfig, ProjectConfig, LLMConfig
+
+      config = Config(
+          project=ProjectConfig(name='T', created_at='2026-07-01'),
+          llm=LLMConfig(provider='openrouter', model='deepseek/deepseek-chat', api_key='k'),
+          domains=[DomainConfig(
+              name='medical-research', active=True,
+              sources=[SourceConfig(name='pubmed', type='api', url='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/')],
+              topics=[],
+          )],
+      )
+      with tempfile.TemporaryDirectory() as tmp:
+          os.chdir(tmp)
+          with (
+              patch('autoinfo.collect.get_config_path', return_value=os.path.join(tmp, '.autoinfo', 'config.yaml')),
+              patch('autoinfo.collect.load_config', return_value=config),
+              patch('autoinfo.collect._fetch_items', side_effect=Exception('PubMed down!')),
+          ):
+              run_collection(domain='medical-research', topic='IVF', limit=5, dry_run=True)
+          leaked = os.path.join(tmp, 'collections')
+          assert not os.path.exists(leaked), 'dry_run wrote a run ledger: ' + str(os.listdir(leaked))
+      print('DRY_RUN_NO_LEDGER_OK')
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DRY_RUN_NO_LEDGER_OK"]

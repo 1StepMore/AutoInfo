@@ -972,7 +972,9 @@ def render_enduser_coverage_view(spec: dict[str, Any]) -> str:
         f"{len(unvalidated)} — {', '.join(unvalidated) or 'none'}"
     )
     lines.append(f"- Partially covered (⚠️): {len(partial)} — {', '.join(partial) or 'none'}")
-    lines.append("")
+    # End with exactly one newline: the repo-wide end-of-file-fixer hook
+    # normalises a trailing blank line away, so emitting "\n\n" here made the
+    # committed doc and the generator permanently disagree (#240).
     return "\n".join(lines) + "\n"
 
 

@@ -1,4 +1,4 @@
-.PHONY: install dev-install test lint clean stripe-mock backup validate
+.PHONY: install dev-install test lint clean stripe-mock backup validate doc-check
 
 install:
 	pip install -e .
@@ -52,3 +52,10 @@ validate:
 	@echo "L0 gate passed for $(DIR) — optional L1 semantic battery:"
 	@echo "  python3 scripts/agent_review/battery.py $(DIR)              # worklist preview"
 	@echo "  python3 scripts/agent_review/battery.py $(DIR) --semantic   # + LLM verdicts"
+
+# Documentation drift gate (issue #240): the generated end-user coverage view
+# and the doc inventory must both match their generators. Non-zero if either
+# drifts, so CI/humans catch hand-edits before they compound.
+doc-check:
+	python3 scripts/doc_inventory.py --check || exit 1
+	python3 scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md || exit 1

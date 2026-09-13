@@ -78,10 +78,9 @@ jobs:
       # terminal (GITHUB_ACTIONS=true). TERM=dumb forces plain output so
       # help-substring assertions pass identically to local runs.
       TERM: dumb
-    # Required job (was continue-on-error in #116). The suite currently carries
-    # 12 documented M1-deferred envelope failures (tests/TRIAGE.md rows #73,
-    # #74-83, #84) that M1T11-12 clears — read tests/TRIAGE.md before treating
-    # red CI as a regression.
+    # Required job (was continue-on-error in #116). Known-red budget:
+    # see tests/TRIAGE.md §Authoritative known-red budget — do not restate a
+    # number here.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -105,8 +104,7 @@ jobs:
           {
             echo ""
             echo "=== Failure triage pointer ==="
-            echo "See tests/TRIAGE.md for the documented failure table."
-            echo "The 12 M1-deferred envelope rows (#73, #74-83, #84) are cleared by M1T11-12."
+            echo "See tests/TRIAGE.md §Authoritative known-red budget for the documented failure budget."
           } >> pytest-output.log
       - name: Upload pytest output on failure
         if: failure()
@@ -218,3 +216,8 @@ jobs:
           printf 'project:\n  name: ci\n' > .autoinfo/config.yaml
       - name: Record deterministic AX evidence + gate M-01..M-06
         run: python3 scripts/ax_metrics.py --record
+      # #240: the end-user coverage doc is generated from
+      # docs/dev/specs/end-user-matrix.yaml; this check fails on any drift so a
+      # hand-edit can never land silently.
+      - name: "End-user coverage doc drift check (#240)"
+        run: python3 scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md

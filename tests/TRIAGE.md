@@ -1,5 +1,34 @@
 # Failure Triage — 2026-08-05 (Task M0T1)
 
+## Authoritative known-red budget (2026-09-14)
+
+> **Single source of truth.** CI and every other document reference this
+> section; they must not restate a failure number. When the test set changes,
+> update this section in the same change.
+
+**Compliant environment** (the triple the baseline was measured under):
+Python 3.11.15, pytest 8.4.2, pytest-timeout 2.4.0.
+
+**Canonical selection** (the areas the 2026-09-13 round touched):
+
+```
+pytest tests/mcp tests/validation tests/cli tests/output tests/llm
+```
+
+**Baseline**: **2594 tests -> 17 failed / 2553 passed / 24 skipped / 0 errors (519.95s)**.
+
+The 17 failures split into two classes; only the second is deterministic:
+
+| Class | Count | Files | Why |
+|-------|-------|-------|-----|
+| Order-dependent false red | 9 | `tests/llm/test_simplify.py` x7, `tests/llm/test_llm_timeout.py` x2 | Pass in isolation; fail only in the combined run (the suite is not hermetic). |
+| Deterministic | 8 | `tests/llm/test_fallback_config.py` x2, `tests/output/test_magazine_digest.py` x2, `tests/output/test_tutorial_no_placeholder.py` x3 (#241), `tests/validation/test_coverage_matrix.py` x1 (#240) | Depend on the local config or local dataset content, or are time bombs. |
+
+The full suite cannot finish on the current WSL box (>40 min); this selection
+is the 2026-09-13 controlled baseline, not a full-suite floor.
+
+## Historical baseline (2026-08-05, superseded)
+
 Gate artifact for `agent-orientation-plus-coverage` plan. Classifies **every**
 currently-failing test (83 failures + 1 error) so later waves can fix them in
 order. This table **supersedes** the stale CI note in

@@ -80,9 +80,63 @@
 21. **`output report --type column` 不产出 column 模板**——只有 `--product column`（product_template 非 None）才走 column.md.j2（Big Idea/Deep Dive 结构）。`--type column` 是 T40 向后兼容：H1 保持 `{domain} — Report` + 标准 report 结构。**reference 里 `--type column` 的命令是错的**，正确命令：`output report --domain X --product column`。
 22. **厚 KB 域 LLM 分组不稳定**：b2b report 52 themes/24 single-entry、column 47 themes/16 single-entry 触发 #106 chaos guard → 回退 deterministic 分组，分组标题用原始 source 名（HACKERNEWS/RSS/API）→ 产品正文出现非语义 `###` 标题。已提 #113。fallback 分组标题应改用领域主题词。
 
+## 2026-09-13 循环（agent-oriented gap register 落地后的验证闭环审查）
+
+### 关键事件
+- **同步 backup/main `2e1052d`**（+1 commit / 295 文件 / +11833 / -2262）：62-gap agent-oriented register（7 waves / 41 tasks）、场景 138→159、诚实化 harness（error-audit truth gate、checkpoint/resume、per-step timeout）、agent-native surface（canonical envelope + outputSchema 全覆盖、CLI/REST/build/vendor parity）、新增 `scripts/ax_metrics.py` / `category_pyramid_coverage.py` / `build_release_check.py` / `docs/dev/testing-layers.md`。本地 `--ff-only` 至该 sha，三方校验一致（本地 = backup/main = gh api）。
+- **CI 覆盖缺口（本轮前提）**：`AutoInfo_BackUp` 的 GitHub Actions 为 `enabled=false`（维护者有意保留——等主仓解禁；9 月末复核，若仍不解禁则把 backup 提升为 main 并开启）→ commit `2e1052d` 在 CI 侧**零覆盖**（check-runs=0；最近一次 run 为 2026-08-22，且当时含 `CI failure` / `Release failure`）。本轮因此由验证侧在本地**替代 CI** 复跑全部门。
+- **本地替代复跑的门（全绿，逐条实跑）**：
+  - `scripts/doc_inventory.py --check` → pass（149 tools / 35 categories / 5215 tests 全部 match，无 stray 文件）
+  - `scripts/category_pyramid_coverage.py` → 159 场景扫描、14/20 cell 有场景、0 unclassified
+  - `scripts/stage_user_coverage.py` → 126 cells / 126 classified、72 expectations / 72 classified、0 unclassified（`STATUS: OK`）
+  - `scripts/error_message_audit.py` → 220 个错误调用点、raw-exception 站点 **0**、缺 fix hint **0**
+  - `scripts/ax_metrics.py` → `GATE PASSED`（M-03~M-06 PASS；**M-01/M-02 UNMEASURED** 属脚本第 31-35 行文档化的有意行为：缺数据源时不判 pass 也不判 fail）
+  - 测试套件：本地全量在 WSL 上跑不完（I/O 慢，>40 分钟），改为定向跑本轮 commit 改动的测试区（`tests/mcp` / `tests/validation` / `tests/cli` / `tests/output` / `tests/llm`）；全量跑的前 40%（2126 passed / 21 skipped）**零失败**。
+- **提 issue #236**（documentation）：`2e1052d` 的 commit message 把改动集挂在 `.omo/plans/agent-oriented-gap-register.md` 上，但该文件既不在仓库也不在磁盘（`.omo/plans/` 另有 5 份已跟踪 plan）→ 41/41 tasks、F1–F7 APPROVE 在仓库内无法复核。修法二选一：补交该 plan，或按既有先例（`d69cc6b` 把 major-wave plan 提升到 `docs/dev/plans/`）。
+- **提 issue #237**（bug + data）：跑测试会写脏**被跟踪**的 `collections/medical-research/pubmed/_runs.json`（根因 `tests/collectors/test_collection.py:543` 的 mock 失败 `"PubMed down!"` 经 ledger 落盘；该文件未被 gitignore）→ 每次跑测试留下脏树，且交付采集数据被夹具条目污染。
+
+### 坑清单追加
+23. **计划文件不在仓库 → 改动集不可复核**。commit message 引用的 plan（41/41 tasks、F1–F7 APPROVE）在仓库与磁盘都不存在；`.omo/plans/` 已是既定约定（5 份被跟踪），缺的是"提交"这一步。**预防**：任何引用计划的 commit，计划必须先在仓库内可寻址；或 message 指向仓库内真实文件。
+24. **测试写进"真实环境"而不是隔离目录**。`tests/collectors/test_collection.py` 的 mock 采集失败会经 `src/autoinfo/collect.py` 的 ledger 写入落到**被跟踪**的 `collections/medical-research/pubmed/_runs.json`。**预防**：测试侧把 collections 根指向 `tmp_path`（或 monkeypatch ledger 路径）；跑完测试 `git status` 必须为空。
+25. **「已知红预算」必须只有一份权威数字，且随 commit 更新**。`ci.yml` 注释称 12 documented M1-deferred envelope failures（引 TRIAGE.md #73-84），而 `tests/TRIAGE.md` 是 2026-08-05 的 83 failed + 1 error 基线；两者都过期且互相矛盾，本轮 commit 一个也没更新。**预防**：红色预算写在一处（TRIAGE.md 或独立基线文件），CI 注释只引用不复述；数据变更的 PR 必须同步该数字。
+26. **"UNMEASURED" 不等于 "未通过"，验证报告必须如实区分**。`ax_metrics` 在缺数据源时报告 UNMEASURED 且不影响 gate 结论（有意设计，脚本内已文档化）。验证方若把 UNMEASURED 概括成"门在真空通过"就是误报（本轮我第一版汇报即如此措辞，查源码后更正）。**预防**：报告里把「通过 / 未测量 / 失败」三态分开写，不合并成一句结论。
+27. **本地 editable 安装陈旧会伪装成"仓库缺陷"**。`build_release_check.py` 的 "installed version == source version" 一条在本机失败（installed 1.8.1 vs source 1.11.0），根因是本机 `.venv` 的 editable metadata 过期，不是仓库问题。**预防**：跑发布面门前先确认 `pip install -e .` 是最新的，否则该门结论无效。
+
 ## 复盘记录（fix-retro，2026-09-07 起）
 
 > 每轮修复完成后按 `fix-retro` skill 输出复盘块（5 问）追加到此段。目标：不只记坑，沉淀模式——根因分类统计 → 重复模式识别 → 预防措施 → 技能沉淀。复盘块的根因分类基于失败定性协议（validation-governance.md），不凭印象。
+
+## 复盘（fix-retro @ 2026-09-13）
+
+**本轮修了什么**（本轮为**审查轮**：新增 2 个 issue，仓库侧修复待做；门全部复跑）:
+- 新增 issue **#236**: 计划文件 `.omo/plans/agent-oriented-gap-register.md` 未入库 → 41/41 tasks 与 F1–F7 APPROVE 不可复核（文档/可追溯）
+- 新增 issue **#237**: 测试写脏被跟踪的 `collections/medical-research/pubmed/_runs.json`（数据污染 + 脏树）
+- 已确认**无红门**：`doc_inventory --check` / `category_pyramid_coverage` / `stage_user_coverage` / `error_message_audit` / `ax_metrics` 五门全绿；测试全量前 40% 零失败（本地 WSL 跑不完全量，改定向跑）
+
+**根因分类统计**（基于失败定性，非印象）:
+| 类型 | 数量 | 例子 |
+|------|------|------|
+| 文档/可追溯 | 2 | #236 计划未入库；#25 已知红预算两处数字矛盾且过期 |
+| 环境/配置 | 2 | #237 测试写真实 tracked ledger；#27 本地 editable metadata 陈旧（非仓库缺陷） |
+| 过程/治理 | 1 | CI 关闭导致的零覆盖（维护者有意为之，9 月末复核）+ 本轮未按规范记 LOOP-LOG |
+| 报告口径（验证方自身） | 1 | #26 把 UNMEASURED 误述为"门在真空通过"，查源码后更正 |
+
+**模式识别**（重复出现的根因 → 系统性问题）:
+- **模式 1：明确写入规范的东西没有被执行**（出现 2 次）。LOOP-LOG 头部自己写着"每次迭代循环的关键事件/根因/修复/验证结果**必须**记录在此"，本轮 295 文件的改动集却没有记录；`.omo/plans/` 已是既定约定、plan 提升到 `docs/dev/plans/` 也有先例，但被引用的计划没进仓库。
+  **系统性解读**：规范文本与执行之间没有**机械检查**。姊妹仓库（AutoMedia / omni suite）的同类问题都是靠"变成可执行闸"解决的（如 doc_inventory 的 claim sites、pre-commit 入口检查）。本仓库的 doc_inventory 已经很强，但它不检查"本轮是否记了 LOOP-LOG"，也不检查"commit 引用的路径是否存在"——后者是最容易加、也最通用的一条。
+- **模式 2：验证结论的"数据来源"与"数据可信度"没有分开表达**（出现 2 次：#25 的红色预算、#26 的三态混淆）。`ci.yml` 复述了一份别处的、过期的失败清单；验证报告把"未测量"并进"通过"。
+  **系统性解读**：数字一旦被复制到第二个地方就会漂移；门一旦允许"缺数据即跳过"，报告就必须显式暴露"跳过了什么"。这是个**表达纪律**问题，靠规范文本约束，靠报告模板固化。
+
+**预防措施**（哪些可以 gate 预防而非事后修）:
+- **commit message 里的路径必须存在**：加一个轻量 pre-commit / CI 检查（提取 message 中的 `.omo/...` / `docs/...` 路径 → 断言 `git ls-files` 命中）。本轮的 #236 是纯粹可机械拦截的缺陷。
+- **测试不得写脏被跟踪文件**：把"跑完测试后 `git status --porcelain` 为空"纳入验证基准（本轮已人工执行，可固化为脚本）；测试侧一律隔离 collections 根（#237）。
+- **红色预算单一权威源**：把失败清单集中到一处（`tests/TRIAGE.md` 或独立基线文件），`ci.yml` 只引用不复述，并在改动测试的 PR 里要求同步更新该数字。
+- **本地复跑发布面门之前先刷新 editable 安装**（否则 #27 这类假失败会反复出现）。
+- **CI 覆盖缺口显式登记**：Actions 关闭期间，每个改动集都必须在 LOOP-LOG 里留下"本轮门由本地复跑"的记录与本机环境信息（Python/pytest 版本），否则日后无法判断结论的有效性。
+
+**沉淀**（新的 skill/checklist/坑清单条目）:
+- 坑清单 23–27（见上）。
+- 通用工作法（跨项目）：**"验证报告三态分离"**——通过 / 未测量 / 失败必须分开写，禁止合并成一句结论；以及**"门的作用域必须与实际数据来源匹配"**（缺数据时门要么 fail-loud，要么在报告里点名跳过了哪些检查）。
 
 ### 复盘模板（首轮复盘在下一轮修复后追加）
 

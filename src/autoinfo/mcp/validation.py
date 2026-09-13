@@ -18,6 +18,7 @@ import os
 import re
 import signal
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -28,6 +29,48 @@ import yaml
 from autoinfo.llm import call_with_fallback
 
 SCENARIOS_DIR: Path = Path(__file__).resolve().parent / "scenarios"
+
+# Scenario coverage metadata (T-A-01): REQUIRED, enum-validated by
+# ``load_scenarios``.  The 18-stage user union is authoritative per
+# docs/dev/validation-scenario-contract.md §1.2.
+
+PIPELINE_STAGES: frozenset[str] = frozenset({"A1", "A2", "A3", "A4", "A5", "A6", "A7"})
+
+USER_LEVELS: frozenset[str] = frozenset(
+    {
+        "B1.1",
+        "B1.2",
+        "B1.3",
+        "B1.4",
+        "B1.5",
+        "B1.6",
+        "B1.7",
+        "B2.1",
+        "B2.2",
+        "B2.3",
+        "B2.4",
+        "B2.5",
+        "B2.6",
+        "B3.1",
+        "B3.2",
+        "B3.3",
+        "B3.4",
+        "B3.5",
+    }
+)
+
+# Scenario category taxonomy (T-B-01) — the methodology's fixed 5-value set.
+# REQUIRED and enum-validated by ``load_scenarios``; the ad-hoc per-subsystem
+# category values migrated to exactly one of these.
+SCENARIO_CATEGORIES: frozenset[str] = frozenset(
+    {"happy_path", "edge_case", "failure", "agent_interaction", "performance"}
+)
+
+# Validation-pyramid layer (T-B-02) — the methodology's 4 layers.
+# REQUIRED and enum-validated by ``load_scenarios`` and reported as the
+# category×pyramid (5×4) coverage matrix by
+# ``scripts/category_pyramid_coverage.py``.
+PYRAMID_LAYERS: frozenset[str] = frozenset({"unit", "component", "e2e", "red_team"})
 
 # ---------------------------------------------------------------------------
 # Versioned run persistence (fixes #129 P0-3).
@@ -55,12 +98,20 @@ def _run_stamp(dt: datetime.datetime | None = None) -> str:
 def save_scenario_results(
     results: list[dict[str, Any]],
     runs_dir: Path | None = None,
+    *,
+    run_type: str = "single",
+    session_id: str | None = None,
 ) -> Path:
     """Persist scenario results to ``validation-runs/<date>/scenarios.json``.
 
     Each run gets its own directory keyed by timestamp, so successive runs
-    never overwrite each other.  The single-run view (``latest.json``) is
-    refreshed so tooling can find the newest run without globbing.
+    never overwrite each other.  The single-run view (``latest.txt``) is
+    refreshed so tooling can find the newest run without globbing.  The
+    ``scenarios`` array is the single shape ``scripts/validation_report.py``
+    consumes — a per-scenario run stores exactly one envelope, an aggregate
+    suite run (``run_type="suite"``) stores the whole live library as one
+    ``scenarios[]`` array so the report renders from a single run with no
+    external scripting.
 
     Parameters
     ----------
@@ -68,6 +119,15 @@ def save_scenario_results(
         List of scenario result envelopes (as returned by ``run_scenario``).
     runs_dir:
         Base directory; defaults to repo-root ``validation-runs``.
+    run_type:
+        ``"single"`` (default, one scenario) or ``"suite"`` (the aggregate
+        full-library run produced by :func:`run_all_scenarios`).  Persisted
+        in the payload so the report can label the run without guessing.
+    session_id:
+        Optional session/action correlation id shared by every scenario of the
+        run (TR-A-01).  Persisted at the payload top level so
+        ``get_run_decisions`` can recover the correlation id even from a run
+        whose structured report was not separately written.
 
     Returns
     -------
@@ -79,14 +139,29 @@ def save_scenario_results(
     payload = {
         "run_id": run_dir.name,
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "run_type": run_type,
         "scenarios": results,
     }
+    if session_id:
+        payload["session_id"] = session_id
     (run_dir / "scenarios.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     # Refresh the pointer to the newest run.
     (run_dir.parent / "latest.txt").write_text(run_dir.name, encoding="utf-8")
+    if run_type == "suite":
+        # Suite runs accumulate the category x pyramid ledger (TR-B-01/02); a
+        # per-scenario ``single`` run records nothing (it would misrepresent a
+        # cell's N-run rate).
+        record_category_pyramid_history(
+            results,
+            run_id=run_dir.name,
+            timestamp=payload["timestamp"],
+            run_type=run_type,
+            session_id=session_id,
+            runs_dir=runs_dir,
+        )
     return run_dir
 
 
@@ -111,6 +186,247 @@ def load_scenario_results(run_dir: Path) -> dict[str, Any] | None:
         return json.loads(payload_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
     except (json.JSONDecodeError, OSError):
         return None
+
+
+# Category x pyramid result ledger + N-run pass-rate history (TR-B-01/TR-B-02).
+# Gate rule "hard 5/5, soft 4/5" per docs/dev/acceptance-framework.md AC9
+# backlog item 1: hard = every recorded run passed; soft = rate >= 4/5 (0.8).
+
+CATEGORY_PYRAMID_HISTORY_FILE = "category-pyramid-history.json"
+
+CATEGORY_PYRAMID_CATEGORY_ORDER: tuple[str, ...] = (
+    "happy_path",
+    "edge_case",
+    "failure",
+    "agent_interaction",
+    "performance",
+)
+CATEGORY_PYRAMID_LAYER_ORDER: tuple[str, ...] = ("unit", "component", "e2e", "red_team")
+
+#: "hard 5/5, soft 4/5" — every run passed (hard) / >= 80% passed (soft).
+HARD_PASS_RATE = 1.0
+SOFT_PASS_RATE = 0.8
+
+
+def _ordered_members(values: frozenset[str], preferred: tuple[str, ...]) -> list[str]:
+    """Preferred display order first, then any extra enum members sorted."""
+    known = [v for v in preferred if v in values]
+    return known + sorted(values - set(known))
+
+
+def category_pyramid_key(category: str, layer: str) -> str:
+    """Stable ledger key for one category x pyramid cell (``cat|layer``)."""
+    return f"{category}|{layer}"
+
+
+def _cell_verdict(statuses: list[str]) -> str:
+    """Aggregate per-scenario statuses into a cell verdict (never misleading).
+
+    ``failed`` dominates; an all-unconfigured cell is ``unconfigured``; a
+    mixed passed/unconfigured cell is ``partial``; only an all-passed cell is
+    ``passed``.
+    """
+    if any(s == "failed" for s in statuses):
+        return "failed"
+    unconfigured = sum(1 for s in statuses if s == "unconfigured")
+    if unconfigured and unconfigured == len(statuses):
+        return "unconfigured"
+    if unconfigured:
+        return "partial"
+    return "passed"
+
+
+def aggregate_category_pyramid(
+    scenarios: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate a run's ``scenarios[]`` into the 5x4 category x pyramid grid.
+
+    A scenario is *classified* when its ``category`` is one of
+    :data:`SCENARIO_CATEGORIES` and its ``pyramid_layer`` one of
+    :data:`PYRAMID_LAYERS`.  An unclassified scenario lands in
+    ``unclassified`` (with the reason) and is never silently dropped or placed
+    in a cell — zero unclassified is the invariant the coverage report relies
+    on.
+
+    Returns ``{"cells": {key: cell}, "unclassified": [...], "total": N}``
+    where ``cell`` is ``{category, pyramid_layer, scenarios, status, passed,
+    failed, unconfigured, steps_passed, steps_failed, steps_unconfigured,
+    steps_total}``.  ``status`` is derived by :func:`_cell_verdict`.
+    """
+    cells: dict[str, dict[str, Any]] = {}
+    unclassified: list[dict[str, Any]] = []
+    for sc in scenarios:
+        name = str(sc.get("scenario", "?"))
+        category = sc.get("category")
+        layer = sc.get("pyramid_layer")
+        reasons: list[str] = []
+        if not isinstance(category, str) or category not in SCENARIO_CATEGORIES:
+            reasons.append(f"invalid/missing category={category!r}")
+        if not isinstance(layer, str) or layer not in PYRAMID_LAYERS:
+            reasons.append(f"invalid/missing pyramid_layer={layer!r}")
+        if reasons:
+            unclassified.append({"scenario": name, "reason": "; ".join(reasons)})
+            continue
+        cell = cells.setdefault(
+            category_pyramid_key(category, layer),
+            {
+                "category": category,
+                "pyramid_layer": layer,
+                "scenarios": 0,
+                "statuses": [],
+                "steps_passed": 0,
+                "steps_failed": 0,
+                "steps_unconfigured": 0,
+                "steps_total": 0,
+            },
+        )
+        cell["scenarios"] += 1
+        cell["statuses"].append(str(sc.get("status", "unknown")))
+        summary = sc.get("summary") or {}
+        cell["steps_passed"] += int(summary.get("passed", 0) or 0)
+        cell["steps_failed"] += int(summary.get("failed", 0) or 0)
+        cell["steps_unconfigured"] += int(summary.get("unconfigured", 0) or 0)
+        cell["steps_total"] += int(summary.get("total", 0) or 0)
+
+    for cell in cells.values():
+        statuses = cell.pop("statuses")
+        cell["status"] = _cell_verdict(statuses)
+        cell["passed"] = sum(1 for s in statuses if s == "passed")
+        cell["failed"] = sum(1 for s in statuses if s == "failed")
+        cell["unconfigured"] = sum(1 for s in statuses if s == "unconfigured")
+    return {"cells": cells, "unclassified": unclassified, "total": len(scenarios)}
+
+
+def load_category_pyramid_history(runs_dir: Path | None = None) -> dict[str, Any]:
+    """Load the persisted category x pyramid history ledger.
+
+    Returns ``{"version": 1, "runs": [...]}``.  A missing or corrupt ledger
+    returns an empty history — a broken ledger must never take down the report
+    (and an empty history must never be mistaken for a pass).
+    """
+    path = _runs_dir(runs_dir) / CATEGORY_PYRAMID_HISTORY_FILE
+    if not path.exists():
+        return {"version": 1, "runs": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"version": 1, "runs": []}
+    if not isinstance(data, dict) or not isinstance(data.get("runs"), list):
+        return {"version": 1, "runs": []}
+    return data
+
+
+def record_category_pyramid_history(
+    scenarios: list[dict[str, Any]],
+    *,
+    run_id: str,
+    timestamp: str | None = None,
+    run_type: str = "suite",
+    session_id: str | None = None,
+    runs_dir: Path | None = None,
+) -> Path:
+    """Append one run's category x pyramid aggregate to the history ledger.
+
+    The ledger is an append-only list keyed by ``run_id``: existing runs are
+    preserved and only a re-record of the *same* ``run_id`` replaces its own
+    entry, so two successive suite runs accumulate (never overwrite) history.
+
+    Returns the ledger path written.
+    """
+    base = _runs_dir(runs_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    path = base / CATEGORY_PYRAMID_HISTORY_FILE
+    ledger = load_category_pyramid_history(runs_dir)
+    aggregate = aggregate_category_pyramid(scenarios)
+    record = {
+        "run_id": run_id,
+        "timestamp": timestamp or datetime.datetime.now().isoformat(timespec="seconds"),
+        "run_type": run_type,
+        "session_id": session_id,
+        "cells": aggregate["cells"],
+        "unclassified": aggregate["unclassified"],
+    }
+    runs = [r for r in ledger.get("runs", []) if isinstance(r, dict) and r.get("run_id") != run_id]
+    runs.append(record)
+    runs.sort(key=lambda r: str(r.get("run_id", "")))
+    path.write_text(
+        json.dumps({"version": 1, "runs": runs}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def category_pyramid_history_report(
+    runs_dir: Path | None = None,
+    window: int | None = None,
+) -> dict[str, Any]:
+    """Compute per-cell N-run pass rates from the persisted history.
+
+    Returns ``{"total_runs", "window", "runs": [run_id...], "cells": {key:
+    {...}}, "unclassified": [...]}``.  Each cell carries ``history`` (a
+    chronological oldest→newest list of ``{run_id, status}``), ``runs`` (how
+    many recorded suite runs exercised the cell), ``passes`` (runs whose cell
+    verdict was ``passed``), ``rate`` (``passes / runs`` or ``None``),
+    ``meets_hard`` (every run passed — 5/5) and ``meets_soft`` (rate >= 0.8 —
+    4/5).  A cell with zero recorded runs reports ``rate=None`` and both
+    ``meets_*`` ``False`` — an unmeasured cell is never presented as a pass.
+
+    Parameters
+    ----------
+    runs_dir:
+        Base runs directory holding the ledger; defaults to repo-root
+        ``validation-runs``.
+    window:
+        When set and positive, restrict the computation to the newest *window*
+        recorded runs (the full count is still reported under ``total_runs``).
+    """
+    ledger = load_category_pyramid_history(runs_dir)
+    all_runs = [r for r in ledger.get("runs", []) if isinstance(r, dict)]
+    # The ledger only records suite runs by construction; filter defensively so
+    # a single-scenario run can never dilute an N-run rate.
+    all_runs = [r for r in all_runs if str(r.get("run_type", "suite")) == "suite"]
+    total_runs = len(all_runs)
+    if window is not None and window > 0:
+        all_runs = all_runs[-window:]
+
+    unclassified: list[dict[str, Any]] = []
+    for r in all_runs:
+        for entry in r.get("unclassified", []) or []:
+            if isinstance(entry, dict):
+                unclassified.append({**entry, "run_id": r.get("run_id")})
+
+    categories = _ordered_members(SCENARIO_CATEGORIES, CATEGORY_PYRAMID_CATEGORY_ORDER)
+    layers = _ordered_members(PYRAMID_LAYERS, CATEGORY_PYRAMID_LAYER_ORDER)
+    cells: dict[str, dict[str, Any]] = {}
+    for category in categories:
+        for layer in layers:
+            key = category_pyramid_key(category, layer)
+            history: list[dict[str, Any]] = []
+            for r in all_runs:
+                cell = (r.get("cells") or {}).get(key)
+                if not isinstance(cell, dict):
+                    continue
+                history.append({"run_id": r.get("run_id"), "status": cell.get("status")})
+            runs_n = len(history)
+            passes = sum(1 for h in history if h.get("status") == "passed")
+            rate = (passes / runs_n) if runs_n else None
+            cells[key] = {
+                "category": category,
+                "pyramid_layer": layer,
+                "history": history,
+                "runs": runs_n,
+                "passes": passes,
+                "rate": rate,
+                "meets_hard": bool(runs_n and passes == runs_n),
+                "meets_soft": bool(runs_n and rate is not None and rate >= SOFT_PASS_RATE),
+            }
+    return {
+        "total_runs": total_runs,
+        "window": window,
+        "runs": [r.get("run_id") for r in all_runs],
+        "cells": cells,
+        "unclassified": unclassified,
+    }
 
 
 def diff_scenario_runs(
@@ -158,12 +474,15 @@ def diff_scenario_runs(
         elif head_st == "failed":
             if base_st == "passed":
                 regressed.append(name)
-            elif not recovered_case:
+            elif base_st != "failed" and not recovered_case:
                 new_failures.append(name)
         else:  # unconfigured / skipped / error
             if base_st == "passed":
                 regressed.append(name)
-            elif base_st in (None, "failed", "unconfigured", "skipped", "error"):
+            elif (
+                base_st in (None, "failed", "unconfigured", "skipped", "error")
+                and base_st != head_st
+            ):
                 unchanged += 1
         if base_st == head_st:
             unchanged += 1
@@ -197,7 +516,76 @@ def _kill_process_group(proc: subprocess.Popen[Any]) -> None:
         pass
 
 
-def _run_cli_step(command: str, timeout: float = 180.0) -> dict[str, Any]:
+def _close_quietly(client: Any) -> None:
+    try:
+        client.close()
+    except Exception:
+        pass
+
+
+class _StepCancelToken:
+    """Cooperative cancellation handle for a step running in a worker thread.
+
+    ``asyncio.wait_for`` can cancel a coroutine, but it cannot cancel work
+    offloaded through ``asyncio.to_thread`` — the thread keeps running after
+    the step's budget expires.  A token closes that gap: the worker registers
+    the OS resource it blocks on (a subprocess process group, or an
+    ``httpx.Client`` with an in-flight request) and the event loop calls
+    :meth:`cancel` when the step times out.  ``cancel`` then releases the
+    resource from outside the worker — SIGKILLing the process group / closing
+    the HTTP client — which unblocks the thread promptly.
+
+    Registration is race-safe in both directions: a resource registered after
+    ``cancel`` has already been requested is released immediately, so a worker
+    that starts late can never leak.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._cancelled = False
+        self._process: subprocess.Popen[Any] | None = None
+        self._http_client: Any = None
+
+    def register_process(self, proc: subprocess.Popen[Any]) -> None:
+        with self._lock:
+            self._process = proc
+            cancelled = self._cancelled
+        if cancelled:
+            _kill_process_group(proc)
+
+    def clear_process(self, proc: subprocess.Popen[Any]) -> None:
+        with self._lock:
+            if self._process is proc:
+                self._process = None
+
+    def register_http_client(self, client: Any) -> None:
+        with self._lock:
+            self._http_client = client
+            cancelled = self._cancelled
+        if cancelled:
+            _close_quietly(client)
+
+    def clear_http_client(self, client: Any) -> None:
+        with self._lock:
+            if self._http_client is client:
+                self._http_client = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            proc = self._process
+            client = self._http_client
+        if proc is not None:
+            _kill_process_group(proc)
+        if client is not None:
+            _close_quietly(client)
+
+
+def _run_cli_step(
+    command: str,
+    timeout: float = 180.0,
+    cancel_token: _StepCancelToken | None = None,
+) -> dict[str, Any]:
     """Execute a CLI command in a real subprocess and normalize to an envelope.
 
     Returns ``{"success": exit_code == 0, "data": {exit_code, stdout, stderr}}``.
@@ -206,7 +594,10 @@ def _run_cli_step(command: str, timeout: float = 180.0) -> dict[str, Any]:
     The subprocess is spawned in its own session (``start_new_session=True``)
     so that a timeout can SIGKILL the entire process group — including any
     background children the shell may have spawned — instead of leaving
-    orphaned processes behind.
+    orphaned processes behind.  When *cancel_token* is supplied the process is
+    registered with it, so the event loop can reap the group the moment the
+    step's wall-clock budget expires (the thread's own ``communicate`` timeout
+    is a backstop, not the sole defence).
     """
     proc = subprocess.Popen(
         command,
@@ -216,12 +607,17 @@ def _run_cli_step(command: str, timeout: float = 180.0) -> dict[str, Any]:
         text=True,
         start_new_session=True,
     )
+    if cancel_token is not None:
+        cancel_token.register_process(proc)
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         _kill_process_group(proc)
         proc.wait()
         raise
+    finally:
+        if cancel_token is not None:
+            cancel_token.clear_process(proc)
     return {
         "success": proc.returncode == 0,
         "data": {
@@ -236,28 +632,43 @@ def _run_http_step(
     method: str,
     url: str,
     timeout: float = 60.0,
+    cancel_token: _StepCancelToken | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Perform a real HTTP request and normalize to an envelope.
 
     Returns ``{"success": 2xx/3xx, "data": {status_code, json, text}}``.
     Real network call — never mocked.  Raises on connection error.
+
+    The request runs on a persistent ``httpx.Client`` registered with
+    *cancel_token*: httpx's own timeout bounds each read, so a slow-dribbling
+    response can outlive it — closing the client from the event loop on step
+    timeout is what actually aborts such an in-flight request.
     """
     import httpx  # noqa: PLC0415 — deferred import
 
-    resp = httpx.request(method.upper(), url, timeout=timeout, **kwargs)
+    client = httpx.Client(timeout=timeout)
+    if cancel_token is not None:
+        cancel_token.register_http_client(client)
     try:
-        body = resp.json()
-    except Exception:
-        body = None
-    return {
-        "success": 200 <= resp.status_code < 400,
-        "data": {
-            "status_code": resp.status_code,
-            "json": body,
-            "text": resp.text,
-        },
-    }
+        resp = client.request(method.upper(), url, **kwargs)
+        try:
+            body = resp.json()
+        except Exception:
+            body = None
+        return {
+            "success": 200 <= resp.status_code < 400,
+            "data": {
+                "status_code": resp.status_code,
+                "json": body,
+                "text": resp.text,
+            },
+        }
+    finally:
+        if cancel_token is not None:
+            cancel_token.clear_http_client(client)
+        _close_quietly(client)
+
 
 # ---------------------------------------------------------------------------
 # LLM semantic judging (llm_assert) — real calls only, never mocked.
@@ -332,17 +743,12 @@ def _classify_step_exception(exc: Exception) -> str | None:
     """
     import httpx  # noqa: PLC0415 — deferred import
 
-    if (
-        isinstance(exc, ValueError)
-        and "requires client_id and client_secret" in str(exc)
-    ):
+    if isinstance(exc, ValueError) and "requires client_id and client_secret" in str(exc):
         return (
             "Reddit OAuth credentials missing (client_id/client_secret). "
             "Director User must configure them before running this scenario."
         )
-    if isinstance(exc, RuntimeError) and str(exc).startswith(
-        "OpenAI TTS network error"
-    ):
+    if isinstance(exc, RuntimeError) and str(exc).startswith("OpenAI TTS network error"):
         return (
             "OpenAI TTS network error — the TTS service is unreachable. "
             "Check network access and re-run."
@@ -385,11 +791,7 @@ def _resolve_llm_config() -> dict[str, Any]:
     # Resolve api_key consistently (fixes #119): resolve ${ENV} placeholders,
     # fall back to AUTOINFO_LLM_API_KEY env var when config key is empty.
     api_key = config.llm.api_key or ""
-    if (
-        isinstance(api_key, str)
-        and api_key.startswith("${")
-        and api_key.endswith("}")
-    ):
+    if isinstance(api_key, str) and api_key.startswith("${") and api_key.endswith("}"):
         api_key = os.environ.get(api_key[2:-1], "")
     if not api_key:
         api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
@@ -528,8 +930,7 @@ def _step_assert(
             "tool": tool,
             "status": "failed",
             "detail": (
-                f"expected success={expected_success}, "
-                f"got success={env.get('success')}: {env}"
+                f"expected success={expected_success}, got success={env.get('success')}: {env}"
             ),
         }
 
@@ -555,8 +956,7 @@ def _step_assert(
                     "tool": tool,
                     "status": "failed",
                     "detail": (
-                        f"data_has keys missing: {missing}. "
-                        f"Available keys: {list(data.keys())}"
+                        f"data_has keys missing: {missing}. Available keys: {list(data.keys())}"
                     ),
                 }
 
@@ -583,10 +983,7 @@ def _step_assert(
                     "name": step_name,
                     "tool": tool,
                     "status": "failed",
-                    "detail": (
-                        f"stdout missing substrings: {missing}. "
-                        f"stdout: {stdout[:500]}"
-                    ),
+                    "detail": (f"stdout missing substrings: {missing}. stdout: {stdout[:500]}"),
                 }
 
         stderr_has = expect.get("stderr_has")
@@ -598,10 +995,7 @@ def _step_assert(
                     "name": step_name,
                     "tool": tool,
                     "status": "failed",
-                    "detail": (
-                        f"stderr missing substrings: {missing}. "
-                        f"stderr: {stderr[:500]}"
-                    ),
+                    "detail": (f"stderr missing substrings: {missing}. stderr: {stderr[:500]}"),
                 }
 
         status_code = expect.get("status_code")
@@ -638,8 +1032,7 @@ def _step_assert(
                     "tool": tool,
                     "status": "failed",
                     "detail": (
-                        f"json_has keys missing: {missing}. "
-                        f"Available keys: {list(body.keys())}"
+                        f"json_has keys missing: {missing}. Available keys: {list(body.keys())}"
                     ),
                 }
     else:
@@ -653,10 +1046,7 @@ def _step_assert(
                     "name": step_name,
                     "tool": tool,
                     "status": "failed",
-                    "detail": (
-                        f"expected error_code={error_code}, "
-                        f"got {actual}: {env}"
-                    ),
+                    "detail": (f"expected error_code={error_code}, got {actual}: {env}"),
                 }
 
         # error_actionable (issue #141) — verify the actionable boolean
@@ -664,9 +1054,7 @@ def _step_assert(
         expected_actionable = expect.get("error_actionable")
         if expected_actionable is not None:
             error = env.get("error", {})
-            actual_actionable = (
-                error.get("actionable") if isinstance(error, dict) else None
-            )
+            actual_actionable = error.get("actionable") if isinstance(error, dict) else None
             if actual_actionable != expected_actionable:
                 return {
                     "name": step_name,
@@ -691,12 +1079,30 @@ def _step_assert(
 # ---------------------------------------------------------------------------
 
 
+def _validate_artifact_patterns(value: Any, file_name: str, where: str) -> None:
+    """Reject a malformed ``collect_artifacts`` value (R-S-02).
+
+    ``collect_artifacts`` is a list of non-empty glob strings.  A scalar or a
+    list with non-string / empty entries would otherwise be iterated at
+    collection time and silently produce nothing, so the loader rejects it
+    loudly instead.
+    """
+    if not isinstance(value, list) or not all(
+        isinstance(pattern, str) and pattern.strip() for pattern in value
+    ):
+        raise ValueError(
+            f"Scenario file {file_name}, {where}: 'collect_artifacts' must be "
+            f"a list of non-empty glob strings, got {value!r}"
+        )
+
+
 def _validate_steps(
     steps: list[Any],
     file_name: str,
     field: str,
     require_non_empty: bool = True,
     step_label: str = "step",
+    collect_artifacts_allowed: bool = True,
 ) -> None:
     """Validate a list of step mappings (shared by ``steps`` / ``cleanup_steps``).
 
@@ -715,6 +1121,11 @@ def _validate_steps(
     require_non_empty:
         When ``True`` (default) an empty list raises.  ``cleanup_steps``
         is allowed to be empty (treated as no cleanup).
+    collect_artifacts_allowed:
+        When ``False`` a step-level ``collect_artifacts`` is rejected: the
+        step runs *after* the artifact snapshot (``cleanup_steps``), so the
+        declaration could never be honored.  Defaults to ``True``
+        (primary/recovery steps).
 
     Raises
     ------
@@ -722,13 +1133,9 @@ def _validate_steps(
         If any step violates the schema.
     """
     if not isinstance(steps, list):
-        raise ValueError(
-            f"Scenario file {file_name}: '{field}' must be a list"
-        )
+        raise ValueError(f"Scenario file {file_name}: '{field}' must be a list")
     if require_non_empty and len(steps) == 0:
-        raise ValueError(
-            f"Scenario file {file_name}: '{field}' must be a non-empty list"
-        )
+        raise ValueError(f"Scenario file {file_name}: '{field}' must be a non-empty list")
     for i, step in enumerate(steps):
         if not isinstance(step, dict):
             raise ValueError(
@@ -737,8 +1144,7 @@ def _validate_steps(
             )
         if "name" not in step:
             raise ValueError(
-                f"Scenario file {file_name}, {step_label}[{i}]: "
-                f"missing required field 'name'"
+                f"Scenario file {file_name}, {step_label}[{i}]: missing required field 'name'"
             )
         kind = step.get("kind", "mcp")
         if kind == "cli":
@@ -764,6 +1170,49 @@ def _validate_steps(
         step.setdefault("arguments", {})
         step.setdefault("expect", {})
 
+        # R-S-01: per-step wall-clock budget.  Must be a positive number;
+        # ``load_scenarios`` never coerces, so a typo cannot become a silent
+        # no-op.  The runtime falls back to the scenario-level ``timeout``,
+        # then the MCP/global default (see ``_effective_step_timeout``).
+        if "timeout_seconds" in step:
+            declared_timeout = step["timeout_seconds"]
+            if (
+                isinstance(declared_timeout, bool)
+                or not isinstance(declared_timeout, (int, float))
+                or declared_timeout <= 0
+            ):
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}]: "
+                    f"'timeout_seconds' must be a positive number, got "
+                    f"{declared_timeout!r}"
+                )
+
+        # R-S-02: step-level ``collect_artifacts`` is honored on primary and
+        # recovery steps.  A cleanup-step declaration can never be honored
+        # (the artifact snapshot runs before cleanup), so it is rejected
+        # loudly rather than silently dropped — the historic bug.
+        if "collect_artifacts" in step:
+            if not collect_artifacts_allowed:
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}]: "
+                    "'collect_artifacts' is not supported on cleanup_steps — "
+                    "artifacts are snapshotted before cleanup runs. Declare it "
+                    "at scenario level or on a primary/recovery step."
+                )
+            _validate_artifact_patterns(step["collect_artifacts"], file_name, f"{step_label}[{i}]")
+
+        # Unknown placement: ``collect_artifacts`` nested inside the step's
+        # ``expect`` / ``http_options`` mapping is never read by the engine.
+        # Reject it explicitly instead of ignoring the author's intent.
+        for container_name in ("expect", "http_options"):
+            container = step.get(container_name)
+            if isinstance(container, dict) and "collect_artifacts" in container:
+                raise ValueError(
+                    f"Scenario file {file_name}, {step_label}[{i}]: "
+                    f"'collect_artifacts' under '{container_name}' is an "
+                    "unknown placement — declare it directly on the step."
+                )
+
         # Issue #138: per-step recovery steps.  Same shape as ``steps`` —
         # executed only when the primary step fails (assertion mismatch,
         # dispatch exception, or timeout).  Empty lists are allowed (treated
@@ -772,8 +1221,7 @@ def _validate_steps(
         if recovery_steps is not None:
             if not isinstance(recovery_steps, list):
                 raise ValueError(
-                    f"Scenario file {file_name}, {step_label}[{i}]: "
-                    f"'recovery_steps' must be a list"
+                    f"Scenario file {file_name}, {step_label}[{i}]: 'recovery_steps' must be a list"
                 )
             _validate_steps(
                 recovery_steps,
@@ -796,18 +1244,27 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
     Returns
     -------
     list[dict]
-        Each dict has ``name``, ``description``, ``steps``, and optionally
-        ``category`` / ``requires_env``.
+        Each dict has ``name``, ``description``, ``steps``,
+        ``pipeline_stage``, ``user_level``, ``category``,
+        ``pyramid_layer``, and optionally ``requires_env``.
 
     Raises
     ------
     ValueError
         If a YAML file cannot be parsed, or if a scenario is missing the
-        required ``name``, ``description``, or ``steps`` fields, or if any
-        step is missing ``name`` or ``tool``.
+        required ``name``, ``description``, ``steps``, ``pipeline_stage``,
+        ``user_level``, ``category`` or ``pyramid_layer`` fields, if any of
+        those enum fields carries a value outside its allowed set, or if any
+        step is missing ``name`` or ``tool``.  Also raises when two scenarios
+        share a ``name``, when a scenario sets both ``min_passing`` and
+        ``pass_ratio``, or when ``regression: true`` omits ``regression_issue``.
     """
     sd = scenarios_dir or SCENARIOS_DIR
     scenarios: list[dict[str, Any]] = []
+    # TR-S-04: scenario names are the dispatch key (``run_scenario`` selects
+    # ``next(sc for sc in scs if sc["name"] == name)``).  A duplicate name
+    # silently shadows the later file, so the loader rejects it loudly.
+    seen_names: dict[str, str] = {}
 
     if not sd.is_dir():
         return scenarios
@@ -829,27 +1286,41 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
         for field in ("name", "description", "steps"):
             if field not in data:
                 raise ValueError(
-                    f"Scenario file {yaml_path.name} is missing required "
-                    f"field: '{field}'"
+                    f"Scenario file {yaml_path.name} is missing required field: '{field}'"
                 )
 
+        scenario_name = data["name"]
+        if scenario_name in seen_names:
+            raise ValueError(
+                f"Scenario file {yaml_path.name}: duplicate scenario name "
+                f"{scenario_name!r} — already defined in "
+                f"{seen_names[scenario_name]}"
+            )
+        seen_names[scenario_name] = yaml_path.name
+
         _validate_steps(data["steps"], yaml_path.name, "steps")
+
+        # R-S-02: the scenario-level ``collect_artifacts`` baseline is a list of
+        # glob strings too; validate it before any step runs.
+        if "collect_artifacts" in data:
+            _validate_artifact_patterns(data["collect_artifacts"], yaml_path.name, "scenario")
 
         cleanup_steps = data.get("cleanup_steps")
         if cleanup_steps is not None:
             if not isinstance(cleanup_steps, list):
-                raise ValueError(
-                    f"Scenario file {yaml_path.name}: 'cleanup_steps' must be a list"
-                )
+                raise ValueError(f"Scenario file {yaml_path.name}: 'cleanup_steps' must be a list")
             _validate_steps(
-                cleanup_steps, yaml_path.name, "cleanup_steps",
-                require_non_empty=False, step_label="cleanup_step",
+                cleanup_steps,
+                yaml_path.name,
+                "cleanup_steps",
+                require_non_empty=False,
+                step_label="cleanup_step",
+                collect_artifacts_allowed=False,
             )
         else:
             data["cleanup_steps"] = []
 
         # Set defaults for optional fields
-        data.setdefault("category", "general")
         data.setdefault("requires_env", [])
         data.setdefault("requires_domain", [])
         data.setdefault("requires_http", [])
@@ -877,9 +1348,7 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
         # Issue #138: partial-pass policy validation.  Both keys are optional;
         # when absent the scenario keeps ALL-or-nothing semantics.
         min_passing = data.get("min_passing")
-        if min_passing is not None and (
-            not isinstance(min_passing, int) or min_passing <= 0
-        ):
+        if min_passing is not None and (not isinstance(min_passing, int) or min_passing <= 0):
             raise ValueError(
                 f"Scenario file {yaml_path.name}: 'min_passing' must be a "
                 f"positive integer, got {min_passing!r}"
@@ -893,6 +1362,42 @@ def load_scenarios(scenarios_dir: Path | None = None) -> list[dict[str, Any]]:
                 f"float in (0, 1], got {pass_ratio!r}"
             )
 
+        # The two partial-pass policies express the same intent in different
+        # units, so setting both is ambiguous — the runtime could only honour
+        # one.  The loader rejects the ambiguity rather than silently letting
+        # one win.
+        if min_passing is not None and pass_ratio is not None:
+            raise ValueError(
+                f"Scenario file {yaml_path.name}: 'min_passing' and "
+                "'pass_ratio' are mutually exclusive — set at most one "
+                "partial-pass policy"
+            )
+
+        # TR-S-05: a regression scenario must name the issue it guards, so
+        # the bug→scenario link is machine-auditable.
+        if data.get("regression") and not str(data.get("regression_issue") or "").strip():
+            raise ValueError(
+                f"Scenario file {yaml_path.name}: 'regression: true' requires "
+                "a non-empty 'regression_issue' (the tracked issue ID)"
+            )
+
+        for field, allowed in (
+            ("pipeline_stage", PIPELINE_STAGES),
+            ("user_level", USER_LEVELS),
+            ("category", SCENARIO_CATEGORIES),
+            ("pyramid_layer", PYRAMID_LAYERS),
+        ):
+            if field not in data:
+                raise ValueError(
+                    f"Scenario file {yaml_path.name} is missing required field: '{field}'"
+                )
+            value = data[field]
+            if not isinstance(value, str) or value not in allowed:
+                raise ValueError(
+                    f"Scenario file {yaml_path.name}: '{field}' must be one "
+                    f"of {sorted(allowed)}, got {value!r}"
+                )
+
         scenarios.append(data)
 
     return scenarios
@@ -904,9 +1409,11 @@ def list_scenarios(scenarios_dir: Path | None = None) -> dict[str, Any]:
     Returns
     -------
     dict
-        ``{"scenarios": [{name, description, category, step_count,
-        requires_env, requires_http, matrix_domains, regression}, ...],
-        "count": N}``
+        ``{"scenarios": [{name, description, category, pyramid_layer,
+        pipeline_stage, user_level, step_count, requires_env, requires_http,
+        matrix_domains, regression, regression_issue}, ...], "count": N}``.
+        ``regression_issue`` is the tracked issue ID for regression scenarios
+        and ``None`` for functional ones (TR-S-06).
     """
     scs = load_scenarios(scenarios_dir)
     return {
@@ -914,12 +1421,16 @@ def list_scenarios(scenarios_dir: Path | None = None) -> dict[str, Any]:
             {
                 "name": sc["name"],
                 "description": sc["description"],
-                "category": sc.get("category", "general"),
+                "category": sc["category"],
+                "pyramid_layer": sc["pyramid_layer"],
+                "pipeline_stage": sc["pipeline_stage"],
+                "user_level": sc["user_level"],
                 "step_count": len(sc["steps"]),
                 "requires_env": sc.get("requires_env", []),
                 "requires_http": sc.get("requires_http", []),
                 "matrix_domains": sc.get("matrix_domains", []),
                 "regression": bool(sc.get("regression", False)),
+                "regression_issue": sc.get("regression_issue"),
             }
             for sc in scs
         ],
@@ -933,23 +1444,51 @@ def _decorate_step_result(
     step_index: int,
     trace_id: str,
     duration: float,
+    step_id: str | None = None,
 ) -> dict[str, Any]:
     """Attach the per-step execution trace fields to a step result.
 
-    Adds ``step_index`` (1-based position of the step in its scenario),
-    ``duration`` (wall-clock seconds of the execution, including any
-    recovery steps, measured with ``time.monotonic``), ``arguments`` (the
-    step's own arguments dict as invoked), and ``trace_id`` (the scenario-
-    run UUID shared by every step of that run).  All pre-existing keys on
-    *sr* (``name`` / ``tool`` / ``status`` / ``detail`` / ``llm_reason`` /
-    ``recovery`` / ...) are preserved unchanged.
+    Adds ``step_index`` (a run-unique integer — 1-based position for a main
+    step, continuing after the main steps for recovery/cleanup steps),
+    ``step_id`` (a stable string identity unique across the run: ``"3"`` for
+    a main step, ``"3.recovery.1"`` for its recovery step, ``"cleanup.1"``
+    for a cleanup step; TR-S-03), ``duration`` (wall-clock seconds of the
+    execution, including any recovery steps, measured with
+    ``time.monotonic``), ``arguments`` (the step's own arguments dict as
+    invoked), and ``trace_id`` (the scenario-run UUID shared by every step
+    of that run).  All pre-existing keys on *sr* (``name`` / ``tool`` /
+    ``status`` / ``detail`` / ``llm_reason`` / ``recovery`` / ...) are
+    preserved unchanged.
     """
     decorated = dict(sr)
     decorated["step_index"] = step_index
+    decorated["step_id"] = step_id if step_id is not None else str(step_index)
     decorated["duration"] = duration
     decorated["arguments"] = step_def.get("arguments", {})
     decorated["trace_id"] = trace_id
     return decorated
+
+
+class _StepIdentityAllocator:
+    """Allocate run-unique integer ``step_index`` values (TR-S-03).
+
+    A main step keeps its 1-based position (1..N) as ``step_index``.  Every
+    recovery and cleanup step draws the next integer from this allocator
+    (starting at ``N + 1``) so no two steps in one scenario execution share a
+    ``step_index`` — previously a recovery step inherited its primary's index
+    and cleanup restarted at 1, producing duplicate identities in the trace.
+    The stable string identity (``step_id``) is derived by the caller, so a
+    recovery step still reads as ``"<primary>.recovery.<k>"``.
+    """
+
+    def __init__(self, main_step_count: int) -> None:
+        self._next = main_step_count + 1
+
+    def next_index(self) -> int:
+        """Return the next unused integer identity and advance the counter."""
+        idx = self._next
+        self._next += 1
+        return idx
 
 
 async def _execute_step(
@@ -958,13 +1497,16 @@ async def _execute_step(
     step_index: int,
     trace_id: str,
     timeout: float = 180.0,
+    cancel_token: _StepCancelToken | None = None,
+    step_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a single scenario step (kind: mcp|cli|http) and return its result.
 
     The returned result carries the per-step execution trace fields
-    ``step_index`` (1-based), ``duration`` (wall-clock seconds as a float),
-    ``arguments`` (the step's own arguments dict as invoked) and
-    ``trace_id`` (the scenario-run UUID) alongside the pre-existing
+    ``step_index`` (a run-unique integer), ``step_id`` (a stable unique
+    string), ``duration`` (wall-clock seconds as a float), ``arguments``
+    (the step's own arguments dict as invoked) and ``trace_id`` (the
+    scenario-run UUID) alongside the pre-existing
     ``name`` / ``tool`` / ``status`` / ``detail`` keys.  On the
     ``llm_assert`` path the judge observability is embedded as an
     ``llm_meta`` sub-dict (``model`` / ``tokens`` / ``duration``) while the
@@ -986,20 +1528,19 @@ async def _execute_step(
 
     try:
         if kind == "cli":
-            env = await asyncio.to_thread(_run_cli_step, step_def["command"], timeout)
+            env = await asyncio.to_thread(_run_cli_step, step_def["command"], timeout, cancel_token)
         elif kind == "http":
             env = await asyncio.to_thread(
                 _run_http_step,
                 step_def.get("method", "GET"),
                 step_def["url"],
                 timeout=timeout,
+                cancel_token=cancel_token,
                 **step_def.get("http_options", {}),
             )
         else:
             if dispatch is None:
-                raise RuntimeError(
-                    f"mcp step '{step_def['name']}' requires a dispatch callable"
-                )
+                raise RuntimeError(f"mcp step '{step_def['name']}' requires a dispatch callable")
             env = await dispatch(step_def["tool"], step_def.get("arguments", {}))
             if isinstance(env, dict):
                 env = _normalize_envelope(env)
@@ -1018,6 +1559,7 @@ async def _execute_step(
             step_index,
             trace_id,
             time.monotonic() - start,
+            step_id=step_id,
         )
 
     sr = _step_assert(
@@ -1047,9 +1589,7 @@ async def _execute_step(
                 time.monotonic() - start,
             )
         try:
-            verdict = await asyncio.to_thread(
-                _llm_judge, llm_assert, env.get("data")
-            )
+            verdict = await asyncio.to_thread(_llm_judge, llm_assert, env.get("data"))
             llm_meta = {
                 "model": verdict.get("model"),
                 "tokens": verdict.get("tokens"),
@@ -1110,44 +1650,77 @@ async def _execute_step(
     )
 
 
+def _effective_step_timeout(step_def: dict[str, Any], fallback: float) -> float:
+    """Resolve a step's wall-clock budget (R-S-01).
+
+    Precedence: step-level ``timeout_seconds`` → *fallback*, which
+    ``run_scenario`` already resolved as scenario-level ``timeout`` → the
+    MCP/global default.  ``load_scenarios`` guarantees a positive number when
+    ``timeout_seconds`` is declared, so no coercion surprises here.
+    """
+    declared = step_def.get("timeout_seconds")
+    if declared is None:
+        return fallback
+    return float(declared)
+
+
 async def _execute_step_timed(
     step_def: dict[str, Any],
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
     timeout: float,
     step_index: int,
     trace_id: str,
+    step_id: str | None = None,
 ) -> dict[str, Any]:
-    """Execute a step under a per-step timeout (issue #134).
+    """Execute a step under its effective per-step timeout (issues #134, R-S-01).
 
-    On ``asyncio.TimeoutError`` the step is reported as failed with the
-    same result shape ``_execute_step`` uses (including the per-step trace
-    fields), so callers' status derivation (fail if any step failed)
-    applies unchanged.
+    The budget is resolved per step by :func:`_effective_step_timeout`, so a
+    step-level ``timeout_seconds`` overrides the scenario/MCP fallback and a
+    recovery step may declare its own budget.  On ``asyncio.TimeoutError`` the
+    step is reported as failed with the same result shape ``_execute_step``
+    uses (including the per-step trace fields), so callers' status derivation
+    (fail if any step failed) applies unchanged.
+
+    ``asyncio.wait_for`` cancels the coroutine but not a worker thread started
+    by ``asyncio.to_thread``; the step's :class:`_StepCancelToken` is cancelled
+    on timeout so CLI/HTTP resources are released instead of outliving the
+    step (R-S-04).
     """
+    effective_timeout = _effective_step_timeout(step_def, timeout)
+    cancel_token = _StepCancelToken()
     start = time.monotonic()
     try:
-        return await asyncio.wait_for(
-            _execute_step(step_def, dispatch, step_index, trace_id, timeout=timeout),
-            timeout=timeout,
+        result = await asyncio.wait_for(
+            _execute_step(
+                step_def,
+                dispatch,
+                step_index,
+                trace_id,
+                timeout=effective_timeout,
+                cancel_token=cancel_token,
+                step_id=step_id,
+            ),
+            timeout=effective_timeout,
         )
+        if step_id is not None:
+            result["step_id"] = step_id
+        return result
     except asyncio.TimeoutError:
+        cancel_token.cancel()
         kind = step_def.get("kind", "mcp")
-        tool_ref = (
-            step_def.get("tool")
-            or step_def.get("command")
-            or step_def.get("url", kind)
-        )
+        tool_ref = step_def.get("tool") or step_def.get("command") or step_def.get("url", kind)
         return _decorate_step_result(
             {
                 "name": step_def["name"],
                 "tool": tool_ref,
                 "status": "failed",
-                "detail": f"timed out after {timeout}s",
+                "detail": f"timed out after {effective_timeout}s",
             },
             step_def,
             step_index,
             trace_id,
             time.monotonic() - start,
+            step_id=step_id,
         )
 
 
@@ -1174,6 +1747,8 @@ async def _execute_step_with_recovery(
     timeout: float,
     step_index: int,
     trace_id: str,
+    step_id: str | None = None,
+    identity: _StepIdentityAllocator | None = None,
 ) -> dict[str, Any]:
     """Execute a step and, on failure, its ``recovery_steps`` (issue #138).
 
@@ -1187,23 +1762,32 @@ async def _execute_step_with_recovery(
     - ``recovered``: ``True`` iff ``recovery_status == "passed"``.
 
     The primary result's ``duration`` covers the whole wall-clock execution
-    including the recovery steps; recovery results carry the primary's
-    ``step_index`` and the run's ``trace_id``.
+    including the recovery steps; recovery results carry the run's
+    ``trace_id`` and their **own** unique identity (TR-S-03): each recovery
+    step draws the next integer ``step_index`` from *identity* and a stable
+    ``step_id`` of ``"<primary step_id>.recovery.<k>"``, so the per-step trace
+    has no duplicate ``step_index``.
 
     Non-failed primary steps (``passed``/``unconfigured``) never trigger
     recovery and return unchanged.
     """
     start = time.monotonic()
-    sr = await _execute_step_timed(step_def, dispatch, timeout, step_index, trace_id)
+    sr = await _execute_step_timed(
+        step_def, dispatch, timeout, step_index, trace_id, step_id=step_id
+    )
     if sr["status"] != "failed":
         return sr
     recovery_defs = step_def.get("recovery_steps")
     if not recovery_defs:
         return sr
-    recovery_results = [
-        await _execute_step_timed(rdef, dispatch, timeout, step_index, trace_id)
-        for rdef in recovery_defs
-    ]
+    base_id = step_id if step_id is not None else str(step_index)
+    recovery_results = []
+    for k, rdef in enumerate(recovery_defs, start=1):
+        rec_index = identity.next_index() if identity is not None else step_index
+        rec_id = f"{base_id}.recovery.{k}"
+        recovery_results.append(
+            await _execute_step_timed(rdef, dispatch, timeout, rec_index, trace_id, step_id=rec_id)
+        )
     recovered = any(r["status"] == "passed" for r in recovery_results)
     sr = dict(sr)
     sr["recovery"] = recovery_results
@@ -1211,6 +1795,10 @@ async def _execute_step_with_recovery(
     sr["recovered"] = recovered
     sr["duration"] = time.monotonic() - start
     return sr
+
+
+class LeakScanError(RuntimeError):
+    """The scenario leak guard could not inspect the KB store (R-S-07)."""
 
 
 def _scan_autoinfo_test_leaks() -> list[str]:
@@ -1221,13 +1809,16 @@ def _scan_autoinfo_test_leaks() -> list[str]:
     so this marker can never collide with real content.  Any such entry still
     indexed after a scenario run means the scenario's cleanup failed (B-03
     guard): the entry is reported, never auto-deleted.
+
+    Raises :class:`LeakScanError` when the KB store cannot be opened or queried
+    (R-S-07): a broken store must never be silently reported as leak-free.
     """
     try:
         from autoinfo.kb import KBStore
 
         store = KBStore()
-    except Exception:
-        return []
+    except Exception as exc:
+        raise LeakScanError(f"scenario leak guard could not open the KB store: {exc!r}") from exc
     try:
         with store.index._connect() as conn:
             rows = conn.execute(
@@ -1235,13 +1826,16 @@ def _scan_autoinfo_test_leaks() -> list[str]:
                 "WHERE tier = '01-Raw' AND source_url LIKE '%autoinfo.test%' "
                 "ORDER BY entry_id"
             ).fetchall()
-            return [str(r["entry_id"]) for r in rows]
-    except Exception:
-        return []
+    except Exception as exc:
+        raise LeakScanError(f"scenario leak guard could not query the KB store: {exc!r}") from exc
+    return [str(r["entry_id"]) for r in rows]
 
 
 def _unconfigured_scenario_result(
-    scenario: dict[str, Any], trace_id: str, reason: str
+    scenario: dict[str, Any],
+    trace_id: str,
+    reason: str,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Build the whole-scenario ``unconfigured`` early-return result.
 
@@ -1266,10 +1860,16 @@ def _unconfigured_scenario_result(
         )
         for idx, s in enumerate(scenario["steps"], start=1)
     ]
+    session_id = session_id or trace_id
+    for step in unconfigured_steps:
+        step["session_id"] = session_id
     result: dict[str, Any] = {
         "scenario": scenario["name"],
         "description": scenario["description"],
-        "category": scenario.get("category", "general"),
+        "category": scenario["category"],
+        "pipeline_stage": scenario.get("pipeline_stage"),
+        "user_level": scenario.get("user_level"),
+        "pyramid_layer": scenario.get("pyramid_layer"),
         "status": "unconfigured",
         "unconfigured_reason": reason,
         "summary": {
@@ -1281,11 +1881,158 @@ def _unconfigured_scenario_result(
         },
         "steps": unconfigured_steps,
         "trace_id": trace_id,
+        "session_id": session_id,
     }
     for _key in ("regression", "regression_issue"):
         if _key in scenario:
             result[_key] = scenario[_key]
+
     return result
+
+
+# ---------------------------------------------------------------------------
+# Suite-level aggregate run (R-S-05).
+#
+# ``run_scenario`` runs exactly one scenario and ``_handle_run_validation_scenario``
+# persists one run directory per scenario, so ``latest.txt`` pointed at a
+# single-scenario ``scenarios[]`` and the report could only ever render one
+# row.  ``run_all_scenarios`` closes that gap: it runs the full live library
+# once (names from ``load_scenarios``, never a hard-coded count) and persists
+# ONE aggregate run whose ``scenarios[]`` carries every per-scenario result —
+# the exact shape ``scripts/validation_report.py`` consumes.
+# ---------------------------------------------------------------------------
+
+
+def _suite_status(summary: dict[str, int]) -> str:
+    """Aggregate verdict for a suite run — never a misleading success.
+
+    ``failed`` dominates; an all-unconfigured suite is ``unconfigured``; a
+    mix of passed and unconfigured is ``partial``; only a run with zero
+    failures and zero unconfigured scenarios is ``passed``.
+    """
+    if summary["failed"]:
+        return "failed"
+    if summary["unconfigured"]:
+        if summary["unconfigured"] == summary["total"]:
+            return "unconfigured"
+        return "partial"
+    return "passed"
+
+
+async def run_all_scenarios(
+    dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
+    scenarios_dir: Path | None = None,
+    timeout: float = 180.0,
+    runs_dir: Path | None = None,
+    save: bool = True,
+) -> dict[str, Any]:
+    """Run the full live scenario library and persist ONE aggregate run.
+
+    The scenario set is the caller's live ``load_scenarios`` result (baseline
+    143 at the time this tool was added; it grows with new scenario waves) —
+    the count is dynamic, never hard-coded here.  Scenarios run once each in
+    deterministic name order; every per-scenario envelope (as returned by
+    ``run_scenario``) is collected and, when *save* is true, persisted through
+    :func:`save_scenario_results` as a single ``run_type="suite"`` run whose
+    ``scenarios[]`` array is the whole library — so ``latest.txt`` points at a
+    report-ready run and no external aggregation script is required.
+
+    Parameters
+    ----------
+    dispatch:
+        Async callable ``(tool_name, arguments) -> envelope dict`` (same
+        contract as :func:`run_scenario`).
+    scenarios_dir:
+        Directory to load scenarios from; defaults to the packaged library.
+    timeout:
+        Fallback per-step timeout in seconds (forwarded to each run).
+    runs_dir:
+        Base directory for persisted runs; defaults to repo-root
+        ``validation-runs``.
+    save:
+        When true (default) persist the aggregate run and set ``saved_run``;
+        also persists the structured B2.6 run report under
+        ``validation-runs/sessions/<session_id>.json`` and sets
+        ``report_path``.
+
+    Returns
+    -------
+    dict
+        ``{"suite": True, "count": N, "session_id": <uuid>,
+        "status": "passed"|"failed"|"unconfigured"|"partial", "summary":
+        {passed, failed, unconfigured, recovered, total}, "scenarios":
+        [{scenario, status, summary, regression}, ...], ("saved_run"),
+        ("report_path")}``.  ``status`` is the aggregate verdict — it is
+        ``failed`` whenever any scenario failed, so a suite invocation can
+        never report a misleading success.
+
+        ``session_id`` (TR-A-01) is one correlation id generated for the
+        whole suite and threaded into every scenario and step, so one id
+        reconstructs the full action sequence across the live library; it is
+        the key ``get_run_decisions`` queries.
+    """
+    scenarios = load_scenarios(scenarios_dir)
+    names = sorted(sc["name"] for sc in scenarios)
+    session_id = str(uuid.uuid4())
+    started_at = datetime.datetime.now().isoformat(timespec="seconds")
+
+    results: list[dict[str, Any]] = []
+    for name in names:
+        results.append(
+            await run_scenario(
+                name,
+                dispatch=dispatch,
+                scenarios_dir=scenarios_dir,
+                timeout=timeout,
+                session_id=session_id,
+            )
+        )
+
+    summary = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
+    for res in results:
+        status = res.get("status")
+        if status in summary:
+            summary[status] += 1
+        step_summary = res.get("summary") or {}
+        summary["recovered"] += int(step_summary.get("recovered", 0) or 0)
+    summary["total"] = len(results)
+
+    aggregate: dict[str, Any] = {
+        "suite": True,
+        "count": len(results),
+        "session_id": session_id,
+        "status": _suite_status(summary),
+        "summary": summary,
+        "scenarios": [
+            {
+                "scenario": res.get("scenario"),
+                "status": res.get("status"),
+                "summary": res.get("summary", {}),
+                "regression": bool(res.get("regression", False)),
+            }
+            for res in results
+        ],
+    }
+    if save:
+        # Lazy import keeps validation.py standalone at import time (no heavy output package).
+        from autoinfo.output.run_report import build_run_report, persist_run_report
+
+        run_dir = save_scenario_results(
+            results,
+            runs_dir=runs_dir,
+            run_type="suite",
+            session_id=session_id,
+        )
+        aggregate["saved_run"] = str(run_dir)
+        report = build_run_report(
+            session_id,
+            results,
+            kind="suite",
+            started_at=started_at,
+            source_run=str(run_dir),
+        )
+        aggregate["report_path"] = str(persist_run_report(report, runs_dir=runs_dir))
+    return aggregate
 
 
 def is_excluded_artifact(relpath: str) -> bool:
@@ -1338,12 +2085,53 @@ def _scenario_for_domain(scenario: dict[str, Any], domain: str) -> dict[str, Any
     return scenario_d
 
 
+def _prefix_step_ids(step: dict[str, Any], prefix: str) -> None:
+    """Scope a step's ``step_id`` (and nested recovery ids) to a matrix domain.
+
+    TR-S-03: a matrix run concatenates one sub-run per domain, so identical
+    per-domain ``step_id`` values would collide in the aggregate trace.
+    Prefixing keeps every step identity unique across the whole run.
+    """
+    current = step.get("step_id")
+    if current:
+        step["step_id"] = f"{prefix}:{current}"
+    for rec in step.get("recovery", []):
+        _prefix_step_ids(rec, prefix)
+
+
+def _attach_session_id(result: dict[str, Any], session_id: str) -> dict[str, Any]:
+    """Stamp *session_id* on a scenario envelope and every one of its steps.
+
+    TR-A-01: the session/action correlation id must reach every action, not
+    just the envelope, so that querying the id reconstructs the full step
+    sequence.  Covers the main steps, their nested recovery steps, cleanup
+    steps and (for matrix runs) each per-domain sub-run.
+    """
+    result["session_id"] = session_id
+    step_groups: list[list[dict[str, Any]]] = [result.get("steps", []) or []]
+    cleanup = result.get("cleanup")
+    if isinstance(cleanup, dict):
+        step_groups.append(cleanup.get("steps", []) or [])
+    matrix = result.get("matrix")
+    if isinstance(matrix, dict):
+        for sub in (matrix.get("per_domain") or {}).values():
+            if isinstance(sub, dict):
+                step_groups.append(sub.get("steps", []) or [])
+    for steps in step_groups:
+        for step in steps:
+            step["session_id"] = session_id
+            for rec in step.get("recovery", []) or []:
+                rec["session_id"] = session_id
+    return result
+
+
 async def run_scenario(
     name: str,
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
     steps: list[int] | None = None,
     scenarios_dir: Path | None = None,
     timeout: float = 180.0,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a named validation scenario against the given dispatch function.
 
@@ -1364,17 +2152,27 @@ async def run_scenario(
         Directory to load scenarios from.  Defaults to the built-in
         ``scenarios/`` directory.
     timeout:
-        Per-step timeout in seconds (default 180).  Each step — including
-        each cleanup step — may run for at most this long before it is
-        reported as failed with a ``timed out after <timeout>s`` detail.
+        Fallback per-step timeout in seconds (default 180).  The effective
+        budget of each step is resolved step-level ``timeout_seconds`` →
+        scenario-level ``timeout`` → this fallback; each step — including
+        each cleanup step — may then run for at most its budget before it is
+        reported as failed with a ``timed out after <budget>s`` detail.
         Applied per step, not as a whole-scenario budget: a scenario with
         N steps can run up to ~N×timeout.
+    session_id:
+        Optional session/action correlation id (TR-A-01).  When supplied (a
+        suite run passes one id to every scenario), every step and the
+        top-level envelope carry it, so one id reconstructs the full action
+        sequence.  When omitted it defaults to this run's ``trace_id`` — a
+        standalone run is itself a one-scenario session.
 
     Returns
     -------
     dict
-        ``{"scenario", "description", "category", "status", "summary",
-        "steps", "trace_id", ("cleanup"), ("unconfigured_reason")}``.  When
+        ``{"scenario", "description", "category", "pipeline_stage",
+        "user_level", "pyramid_layer", "status", "summary", "steps",
+        "trace_id", "session_id", ("cleanup"), ("unconfigured_reason")}``.
+        When
         the scenario declares ``cleanup_steps``, they run after the main
         steps regardless of outcome (best-effort) and are reported under
         ``cleanup`` — they never influence ``status``.
@@ -1391,7 +2189,9 @@ async def run_scenario(
         pre-matrix harness.
 
         Every step result carries the per-step execution trace fields
-        ``step_index`` (1-based), ``duration`` (wall-clock seconds as a
+        ``step_index`` (a run-unique integer), ``step_id`` (a stable unique
+        string: ``"1"``, ``"1.recovery.1"``, ``"cleanup.1"`` — TR-S-03),
+        ``duration`` (wall-clock seconds as a
         float, including recovery execution), ``arguments`` (the step's own
         arguments dict as invoked), and ``trace_id`` — one UUID per
         scenario run, shared by all steps of that run and surfaced on the
@@ -1400,13 +2200,18 @@ async def run_scenario(
         ``llm_meta`` sub-dict while keeping the top-level ``llm_reason``.
 
         Steps that declare ``recovery_steps`` (issue #138) run them after
-        a primary failure; the step keeps its ``failed`` status and gains
-        ``recovery`` / ``recovery_status`` / ``recovered``.  ``summary``
-        reports ``recovered`` (failed primaries that a recovery step
-        fixed) separately from ``failed``.  Status stays ALL-or-nothing
-        unless the scenario declares ``min_passing`` (int) or
-        ``pass_ratio`` (float), in which case it passes as soon as that
-        many primary steps succeeded (passed or recovered).
+        a primary failure; the step keeps its ``failed`` status (its own
+        assertion is not re-evaluated) and gains ``recovery`` /
+        ``recovery_status`` / ``recovered``.  ``summary`` reports
+        ``recovered`` (failed primaries that a recovery step fixed)
+        separately from ``failed``.  Status stays ALL-or-nothing unless
+        the scenario declares ``min_passing`` (int) or ``pass_ratio``
+        (float), in which case it passes as soon as that many primary
+        steps succeeded (passed or recovered); a met threshold passes even
+        when another step is ``unconfigured`` (R-S-06), which remains
+        counted in ``summary.unconfigured`` and is never a pass.  A broken
+        scenario-leak guard surfaces a ``LEAK_SCAN_ERROR`` warning instead
+        of being silently reported leak-free (R-S-07).
 
     Raises
     ------
@@ -1415,14 +2220,13 @@ async def run_scenario(
         is out of range.
     """
     trace_id = str(uuid.uuid4())
+    session_id = session_id or trace_id
     scs = load_scenarios(scenarios_dir)
     scenario = next((sc for sc in scs if sc["name"] == name), None)
 
     if scenario is None:
         available = ", ".join(sorted(sc["name"] for sc in scs))
-        raise ValueError(
-            f"Unknown validation scenario: {name}. Available: {available}"
-        )
+        raise ValueError(f"Unknown validation scenario: {name}. Available: {available}")
 
     # Scenario-level per-step timeout override (#203): long-running steps
     # such as enterprise-briefing generation exceed the 180s default.
@@ -1441,6 +2245,7 @@ async def run_scenario(
                 "Director User must configure these during onboarding "
                 "(BYOK — see docs/dev/required-api-keys.md)."
             ),
+            session_id=session_id,
         )
 
     # Precondition check: scenarios may declare required domains (fixes #120).
@@ -1459,9 +2264,7 @@ async def run_scenario(
         requires_domain = list(dict.fromkeys(requires_domain + matrix_domains))
     if requires_domain:
         configured_domains = _configured_domain_names()
-        missing_domains = [
-            d for d in requires_domain if d not in configured_domains
-        ]
+        missing_domains = [d for d in requires_domain if d not in configured_domains]
         if missing_domains:
             return _unconfigured_scenario_result(
                 scenario,
@@ -1471,6 +2274,7 @@ async def run_scenario(
                     "Run `autoinfo init --demo <domain>` or add_domain() to "
                     "configure them before running this scenario."
                 ),
+                session_id=session_id,
             )
 
     # Precondition check (fixes #157): scenarios may declare required HTTP
@@ -1486,6 +2290,7 @@ async def run_scenario(
                 f"required HTTP endpoint not reachable: {', '.join(unreachable)}. "
                 "Start the service (e.g. uvicorn on port 8741) and re-run."
             ),
+            session_id=session_id,
         )
 
     # Issue #280: domain-matrix parameterization.  When the scenario declares
@@ -1494,7 +2299,8 @@ async def run_scenario(
     # the key this is exactly one execution with zero substitution — the
     # pre-matrix behaviour.
     if not matrix_domains:
-        return await _execute_scenario(scenario, dispatch, steps, timeout, trace_id)
+        result = await _execute_scenario(scenario, dispatch, steps, timeout, trace_id)
+        return _attach_session_id(result, session_id)
 
     per_domain: dict[str, dict[str, Any]] = {}
     matrix_steps: list[dict[str, Any]] = []
@@ -1512,8 +2318,9 @@ async def run_scenario(
         )
         per_domain[domain] = sub
         for sr in sub["steps"]:
-            labeled = dict(sr)
+            labeled = copy.deepcopy(sr)
             labeled["domain"] = domain
+            _prefix_step_ids(labeled, domain)
             matrix_steps.append(labeled)
         for key in combined_counts:
             combined_counts[key] += sub["summary"].get(key, 0)
@@ -1549,7 +2356,10 @@ async def run_scenario(
     result: dict[str, Any] = {
         "scenario": name,
         "description": scenario["description"],
-        "category": scenario.get("category", "general"),
+        "category": scenario["category"],
+        "pipeline_stage": scenario.get("pipeline_stage"),
+        "user_level": scenario.get("user_level"),
+        "pyramid_layer": scenario.get("pyramid_layer"),
         "status": status,
         "summary": {**combined_counts, "total": len(matrix_steps)},
         "steps": matrix_steps,
@@ -1566,7 +2376,7 @@ async def run_scenario(
         if _key in scenario:
             result[_key] = scenario[_key]
 
-    return result
+    return _attach_session_id(result, session_id)
 
 
 async def _execute_scenario(
@@ -1594,8 +2404,7 @@ async def _execute_scenario(
         for idx in steps:
             if idx < 1 or idx > max_idx:
                 raise ValueError(
-                    f"Step index {idx} out of range (1-{max_idx}) for "
-                    f"scenario '{scenario['name']}'"
+                    f"Step index {idx} out of range (1-{max_idx}) for scenario '{scenario['name']}'"
                 )
         selected = [(idx, scenario["steps"][idx - 1]) for idx in steps]
     else:
@@ -1603,15 +2412,32 @@ async def _execute_scenario(
 
     step_results: list[dict[str, Any]] = []
     counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
+    artifact_step_defs: list[dict[str, Any]] = []
+    # TR-S-03: run-unique identity.  Main steps keep their 1-based position;
+    # recovery/cleanup steps draw from this allocator so no two steps of the
+    # run share a ``step_index``.
+    identity = _StepIdentityAllocator(len(scenario["steps"]))
 
     for step_idx, step_def in selected:
         sr = await _execute_step_with_recovery(
-            step_def, dispatch, timeout, step_idx, trace_id
+            step_def,
+            dispatch,
+            timeout,
+            step_idx,
+            trace_id,
+            step_id=str(step_idx),
+            identity=identity,
         )
         _count_step_result(sr, counts)
         step_results.append(sr)
+        # R-S-02: a primary step's ``collect_artifacts`` contributes patterns,
+        # and so do any recovery steps that actually ran (the ``recovery`` key
+        # is present iff the primary failed and recovery executed).
+        artifact_step_defs.append(step_def)
+        if sr.get("recovery"):
+            artifact_step_defs.extend(step_def.get("recovery_steps") or [])
 
-    # Status derivation (issue #138):
+    # Status derivation (issue #138, R-S-06):
     # - Default (no threshold): ALL-or-nothing — any unrecovered step failure
     #   fails the scenario.  Steps that failed then recovered are counted as
     #   ``recovered``, not ``failed``, so a fully-recovered scenario passes.
@@ -1621,6 +2447,15 @@ async def _execute_scenario(
     #   is declared, the scenario passes as soon as enough primary steps
     #   *succeeded* (passed or recovered) — e.g. 3/7 sources OK is a partial
     #   pass, not an overall failure.
+    #   R-S-06 decision: a met threshold wins even when a step is
+    #   ``unconfigured``.  The partial-pass policy exists for a legitimately
+    #   environment-dependent subset; ``min_passing``/``pass_ratio`` are the
+    #   author's explicit bar.  An ``unconfigured`` step is still never a pass
+    #   — it stays counted in ``summary.unconfigured`` and in the per-step
+    #   trace — but it no longer overrides a threshold the author declared
+    #   sufficient (it merely cannot contribute toward the threshold).  When
+    #   the threshold is *not* met, ``unconfigured`` still outranks ``failed``
+    #   for the scenario verdict, matching the historic partial branch.
     status: str
     min_passing = scenario.get("min_passing")
     pass_ratio = scenario.get("pass_ratio")
@@ -1632,18 +2467,17 @@ async def _execute_scenario(
         else:
             status = "passed"
     else:
-        if counts["unconfigured"] > 0:
+        succeeded = counts["passed"] + counts["recovered"]
+        total = counts["passed"] + counts["failed"] + counts["recovered"] + counts["unconfigured"]
+        threshold_met = min_passing is not None and succeeded >= min_passing
+        if not threshold_met and pass_ratio is not None:
+            threshold_met = total > 0 and (succeeded / total) >= pass_ratio
+        if threshold_met:
+            status = "passed"
+        elif counts["unconfigured"] > 0:
             status = "unconfigured"
         else:
-            succeeded = counts["passed"] + counts["recovered"]
-            total = (
-                counts["passed"] + counts["failed"]
-                + counts["recovered"] + counts["unconfigured"]
-            )
-            threshold_met = min_passing is not None and succeeded >= min_passing
-            if not threshold_met and pass_ratio is not None:
-                threshold_met = total > 0 and (succeeded / total) >= pass_ratio
-            status = "passed" if threshold_met else "failed"
+            status = "failed"
 
     # --- collect_artifacts: gather real data files produced by the scenario ---
     # (fixes #123, #125). Scenarios may declare glob patterns; matching files
@@ -1652,7 +2486,11 @@ async def _execute_scenario(
     # Artifacts give the delivery layer real RAW/PROCESSED/KB data to package
     # for end-user quality review.
     artifacts: list[dict[str, Any]] | None = None
-    collect_patterns = scenario.get("collect_artifacts", [])
+    collect_patterns: list[str] = []
+    for source_def in [scenario, *artifact_step_defs]:
+        for pattern in source_def.get("collect_artifacts", []) or []:
+            if pattern not in collect_patterns:
+                collect_patterns.append(pattern)
     if collect_patterns:
         artifacts = []
         for pattern in collect_patterns:
@@ -1660,12 +2498,14 @@ async def _execute_scenario(
                 # #192: never collect non-deliverable artifacts (rejected
                 # KB promotion drafts under _failed/, coverage-matrix reports).
                 if path.is_file() and not is_excluded_artifact(str(path)):
-                    artifacts.append({
-                        "pattern": pattern,
-                        "path": str(path),
-                        "size": path.stat().st_size,
-                        "name": path.name,
-                    })
+                    artifacts.append(
+                        {
+                            "pattern": pattern,
+                            "path": str(path),
+                            "size": path.stat().st_size,
+                            "name": path.name,
+                        }
+                    )
 
     # --- cleanup_steps: always run after the main steps (best-effort) ----
     # Cleanup is executed regardless of the main steps' outcome so that
@@ -1678,9 +2518,15 @@ async def _execute_scenario(
     if cleanup_defs:
         cleanup_results: list[dict[str, Any]] = []
         cleanup_counts = {"passed": 0, "failed": 0, "unconfigured": 0, "recovered": 0}
-        for step_idx, step_def in enumerate(cleanup_defs, start=1):
+        for cleanup_no, step_def in enumerate(cleanup_defs, start=1):
             sr = await _execute_step_with_recovery(
-                step_def, dispatch, timeout, step_idx, trace_id
+                step_def,
+                dispatch,
+                timeout,
+                identity.next_index(),
+                trace_id,
+                step_id=f"cleanup.{cleanup_no}",
+                identity=identity,
             )
             _count_step_result(sr, cleanup_counts)
             cleanup_results.append(sr)
@@ -1698,7 +2544,10 @@ async def _execute_scenario(
     result: dict[str, Any] = {
         "scenario": scenario["name"],
         "description": scenario["description"],
-        "category": scenario.get("category", "general"),
+        "category": scenario["category"],
+        "pipeline_stage": scenario.get("pipeline_stage"),
+        "user_level": scenario.get("user_level"),
+        "pyramid_layer": scenario.get("pyramid_layer"),
         "status": status,
         "summary": {
             "passed": counts["passed"],
@@ -1719,12 +2568,22 @@ async def _execute_scenario(
     # hostname; any 01-Raw entry still carrying that hostname after cleanup
     # means a scenario leaked a fixture into the user's knowledge base.
     # Reported as a warning (never auto-deleted, never changes status).
-    leaks = _scan_autoinfo_test_leaks()
-    if leaks:
+    # R-S-07: a broken guard is NOT reported as "no leaks" — the swallowed
+    # error is surfaced so the run is never silently mislabelled clean.
+    try:
+        leaks = _scan_autoinfo_test_leaks()
+    except LeakScanError as exc:
         result["warnings"] = [
-            "SCENARIO_LEAK: %d scenario fixture(s) left in 01-Raw: %s"
-            % (len(leaks), ", ".join(leaks))
+            f"LEAK_SCAN_ERROR: scenario leak guard could not inspect the KB "
+            f"store ({exc}). Leak status is UNKNOWN (not clean); fix the KB "
+            "store and re-run."
         ]
+    else:
+        if leaks:
+            result["warnings"] = [
+                "SCENARIO_LEAK: %d scenario fixture(s) left in 01-Raw: %s"
+                % (len(leaks), ", ".join(leaks))
+            ]
     for _key in ("regression", "regression_issue"):
         if _key in scenario:
             result[_key] = scenario[_key]

@@ -9,7 +9,10 @@
 # are patched.  The references list is derived from KB entries (no LLM needed).
 name: regression-references-numbering
 description: "Regression #322: report References numbering increments 1/2/3 (not all 1.)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#322"
 requires_env: []

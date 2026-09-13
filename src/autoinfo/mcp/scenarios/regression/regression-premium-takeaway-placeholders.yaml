@@ -19,7 +19,10 @@
 # derivation must fire.  Runs in an ABSOLUTE temp cwd.
 name: regression-premium-takeaway-placeholders
 description: "Regression #329: premium-briefing takeaway implications/risks/actions are never `_No ..._` placeholders"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#329"
 requires_env: []

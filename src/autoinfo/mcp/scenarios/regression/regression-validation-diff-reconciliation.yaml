@@ -16,7 +16,10 @@
 # Deterministic (requires_env: []): exercises diff_report_cards directly.
 name: regression-validation-diff-reconciliation
 description: "Regression #336: diff buckets include missing/error products and reconcile with the card failure count"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A7
+user_level: B2.5
 regression: true
 regression_issue: "#336"
 requires_env: []

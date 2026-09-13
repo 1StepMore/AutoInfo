@@ -11,7 +11,10 @@
 # NOT contain the test entry ("Get Test" title, example.com URL).
 name: regression-293-test-entry-filter
 description: "Regression #293: digest/report never render test/placeholder KB entries"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#293"
 requires_env: []

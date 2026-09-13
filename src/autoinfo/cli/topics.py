@@ -18,11 +18,15 @@ import typer
 from autoinfo.config import (
     DomainConfig,
     TopicConfig,
-    ensure_config_exists,
     get_config_path,
     load_config,
     save_config,
 )
+from autoinfo.config import (
+    ensure_config_exists as _ensure_config_exists,
+)
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(help="Manage tracked topics")
 
@@ -32,43 +36,66 @@ _NO_CONFIG_MSG = (
 )
 
 
+def _ensure_config() -> None:
+    if get_config_path() is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+    _ensure_config_exists()
+
+
 @app.command()
 def add(
     domain: str = typer.Option(..., "--domain", help="Domain to add topic to"),
     name: str = typer.Option(..., "--name", help="Topic name"),
-    keywords: str = typer.Option(
-        ..., "--keywords", help="Comma-separated topic keywords"
-    ),
+    keywords: str = typer.Option(..., "--keywords", help="Comma-separated topic keywords"),
 ) -> None:
     """Add a new topic to a domain (idempotent by name+domain)."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
     # Idempotency check: same name + domain
     for existing in domain_cfg.topics:
         if existing.name == name:
+            if emit_if_global(
+                {
+                    "domain": domain,
+                    "name": name,
+                    "keywords": builtins.list(existing.keywords),
+                    "created": False,
+                    "already_existed": True,
+                }
+            ):
+                return
             kw_str = ", ".join(existing.keywords)
             typer.echo(f"Topic '{name}' already exists in domain '{domain}' (keywords: {kw_str})")
             return
 
     kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
     if not kw_list:
+        fail_if_global("ValidationError", "At least one keyword is required.")
         typer.echo("Error: At least one keyword is required.", err=True)
         raise typer.Exit(code=1)
     new_topic = TopicConfig(name=name, keywords=kw_list)
     domain_cfg.topics.append(new_topic)
     save_config(config, config_path)
 
+    if emit_if_global({"domain": domain, "name": name, "keywords": kw_list, "created": True}):
+        return
     kw_str = ", ".join(kw_list)
     typer.echo(f"Added topic '{name}' to domain '{domain}' (keywords: {kw_str})")
 
@@ -78,18 +105,36 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
     domain: str = typer.Option(..., "--domain", help="Domain to list topics for"),
 ) -> None:
     """List topics for a domain."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
+
+    items = [
+        {
+            "name": topic.name,
+            "keywords": builtins.list(topic.keywords),
+            "group": topic.group,
+            "relevance_threshold": topic.relevance_threshold,
+        }
+        for topic in domain_cfg.topics
+    ]
+    if emit_if_global({"domain": domain, "topics": items, "count": len(items)}):
+        return
 
     if not domain_cfg.topics:
         typer.echo(f"No topics configured for domain '{domain}'")
@@ -104,21 +149,25 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
 @app.command()
 def remove(
     domain: str = typer.Option(..., "--domain", help="Domain the topic belongs to"),
-    topic_id: str = typer.Option(
-        ..., "--topic-id", help="ID or name of the topic to remove"
-    ),
+    topic_id: str = typer.Option(..., "--topic-id", help="ID or name of the topic to remove"),
 ) -> None:
     """Remove a topic from a domain."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
@@ -126,9 +175,12 @@ def remove(
         if existing.name == topic_id:
             domain_cfg.topics.pop(i)
             save_config(config, config_path)
+            if emit_if_global({"domain": domain, "topic_id": topic_id, "removed": True}):
+                return
             typer.echo(f"Removed topic '{topic_id}' from domain '{domain}'")
             return
 
+    fail_if_global("TopicNotFound", f"Topic '{topic_id}' not found in domain '{domain}'")
     typer.echo(f"Error: Topic '{topic_id}' not found in domain '{domain}'", err=True)
     raise typer.Exit(code=1)
 
@@ -163,15 +215,17 @@ def topic_group_add(
     ),
 ) -> None:
     """Assign a group to one or more topics (mirrors MCP topic_group_add)."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
         typer.echo(_NO_CONFIG_MSG, err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
     domain_cfg = _resolve_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
@@ -191,14 +245,22 @@ def topic_group_add(
     if assigned:
         save_config(config, config_path)
 
+    if emit_if_global(
+        {
+            "domain": domain_cfg.name,
+            "group": group,
+            "assigned": assigned,
+            "not_found": not_found,
+        }
+    ):
+        return
+
     for name in assigned:
         typer.echo(f"Assigned topic '{name}' to group '{group}' in domain '{domain_cfg.name}'")
     for name in not_found:
         typer.echo(f"Topic '{name}' not found in domain '{domain_cfg.name}' (skipped)")
     if not assigned:
-        typer.echo(
-            f"No topics assigned to group '{group}' in domain '{domain_cfg.name}'"
-        )
+        typer.echo(f"No topics assigned to group '{group}' in domain '{domain_cfg.name}'")
 
 
 @topic_group_app.command("remove")
@@ -219,15 +281,17 @@ def topic_group_remove(
     ),
 ) -> None:
     """Remove a group assignment from topics (mirrors MCP topic_group_remove)."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
         typer.echo(_NO_CONFIG_MSG, err=True)
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
     domain_cfg = _resolve_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
@@ -260,19 +324,25 @@ def topic_group_remove(
     if cleared:
         save_config(config, config_path)
 
+    if emit_if_global(
+        {
+            "domain": domain_cfg.name,
+            "group": group,
+            "cleared": cleared,
+            "skipped": skipped,
+        }
+    ):
+        return
+
     for name in cleared:
         typer.echo(f"Removed group '{group}' from topic '{name}' in domain '{domain_cfg.name}'")
     for note in skipped:
         typer.echo(f"Skipped {note} in domain '{domain_cfg.name}'")
     if not cleared:
         if topic:
-            typer.echo(
-                f"No topics in group '{group}' were removed in domain '{domain_cfg.name}'"
-            )
+            typer.echo(f"No topics in group '{group}' were removed in domain '{domain_cfg.name}'")
         else:
-            typer.echo(
-                f"No topics are assigned to group '{group}' in domain '{domain_cfg.name}'"
-            )
+            typer.echo(f"No topics are assigned to group '{group}' in domain '{domain_cfg.name}'")
 
 
 # ---------------------------------------------------------------------------
@@ -286,23 +356,46 @@ def keywords(
     topic: str = typer.Option(None, "--topic", help="Optional topic name filter"),
 ) -> None:
     """List keywords with topic grouping and scoring info."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
+    selected = [t for t in domain_cfg.topics if not topic or t.name == topic]
+    if emit_if_global(
+        {
+            "domain": domain,
+            "topic": topic,
+            "items": [
+                {
+                    "name": t.name,
+                    "keywords": builtins.list(t.keywords),
+                    "group": t.group,
+                    "relevance_threshold": t.relevance_threshold,
+                }
+                for t in selected
+            ],
+            "count": len(selected),
+        }
+    ):
+        return
+
     found = False
-    for t in domain_cfg.topics:
-        if topic and t.name != topic:
-            continue
+    for t in selected:
         found = True
         kw_display = t.keywords if t.keywords else "(none)"
         group_info = f" [group: {t.group}]" if t.group else ""
@@ -332,15 +425,21 @@ def group_add(
     group: str = typer.Option(..., "--group", help="Group name to assign"),
 ) -> None:
     """Assign a group to a topic."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
@@ -348,9 +447,12 @@ def group_add(
         if t.name == topic:
             t.group = group
             save_config(config, config_path)
+            if emit_if_global({"domain": domain, "topic": topic, "group": group, "removed": False}):
+                return
             typer.echo(f"Set group '{group}' on topic '{topic}' in domain '{domain}'")
             return
 
+    fail_if_global("TopicNotFound", f"Topic '{topic}' not found in domain '{domain}'")
     typer.echo(f"Error: Topic '{topic}' not found in domain '{domain}'", err=True)
     raise typer.Exit(code=1)
 
@@ -361,29 +463,44 @@ def group_remove(
     topic: str = typer.Argument(..., help="Topic name"),
 ) -> None:
     """Remove group assignment from a topic."""
-    ensure_config_exists()
+    _ensure_config()
     config_path = get_config_path()
     if config_path is None:
-        typer.echo("Error: No configuration file found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global("ConfigNotFound", _NO_CONFIG_MSG.removeprefix("Error: "))
+        typer.echo(
+            "Error: No configuration file found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     config = load_config(config_path)
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(code=1)
 
     for t in domain_cfg.topics:
         if t.name == topic:
             if not t.group:
+                if emit_if_global(
+                    {"domain": domain, "topic": topic, "group": None, "removed": False}
+                ):
+                    return
                 typer.echo(f"Topic '{topic}' in domain '{domain}' has no group set")
                 return
             old_group = t.group
             t.group = ""
             save_config(config, config_path)
+            if emit_if_global(
+                {"domain": domain, "topic": topic, "group": old_group, "removed": True}
+            ):
+                return
             typer.echo(f"Removed group '{old_group}' from topic '{topic}' in domain '{domain}'")
             return
 
+    fail_if_global("TopicNotFound", f"Topic '{topic}' not found in domain '{domain}'")
     typer.echo(f"Error: Topic '{topic}' not found in domain '{domain}'", err=True)
     raise typer.Exit(code=1)
 

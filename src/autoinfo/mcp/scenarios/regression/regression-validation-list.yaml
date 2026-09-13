@@ -17,7 +17,10 @@
 # regression flywheel grows the library.
 name: regression-validation-list
 description: "P1-1: autoinfo validation list/--summary output matches list_scenarios() live counts (runtime-derived, no hardcoded totals)"
-category: regression
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 regression: true
 regression_issue: "#concierge-wave-task-10"
 requires_env: []

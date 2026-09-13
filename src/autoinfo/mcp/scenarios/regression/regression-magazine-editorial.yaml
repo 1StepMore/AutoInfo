@@ -21,7 +21,10 @@
 # Failure means the editorial feature regressed — never a silent skip.
 name: regression-magazine-editorial
 description: "Regression #313: magazine-digest renders Editor's Note + The Feature when the synthesis carries them, and hides them when it does not"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#313"
 requires_env: []

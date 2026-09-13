@@ -13,18 +13,18 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 98 |
-| Total lines | 32014 |
-| Active files | 71 |
-| Archived files | 27 |
-| Category — archive | 27 files / 8627 lines |
+| Total files | 100 |
+| Total lines | 33457 |
+| Active files | 72 |
+| Archived files | 28 |
+| Category — archive | 28 files / 8937 lines |
 | Category — known-limitations | 2 files / 336 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
-| Category — adr | 9 files / 424 lines |
-| Category — specs | 12 files / 8832 lines |
+| Category — adr | 9 files / 458 lines |
+| Category — specs | 12 files / 9716 lines |
 | Category — validation-reports | 14 files / 3186 lines |
-| Category — docs/dev | 24 files / 9036 lines |
+| Category — docs/dev | 25 files / 9251 lines |
 | Category — docs/root | 3 files / 391 lines |
 
 ## Inventory
@@ -35,7 +35,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0002-draft-to-wiki-agent-promotion.md` | 46 | adr | active | adr |
 | `adr/0003-llm-fallback-chain.md` | 44 | adr | active | adr |
 | `adr/0004-reasoning-model-json-mode-thinking.md` | 48 | adr | active | adr |
-| `adr/0005-unified-success-error-envelope.md` | 49 | adr | active | adr |
+| `adr/0005-unified-success-error-envelope.md` | 83 | adr | active | adr |
 | `adr/0006-dev-process-workflow-charter.md` | 72 | adr | active | adr |
 | `adr/0007-release-please-version-truth.md` | 39 | adr | active | adr |
 | `adr/README.md` | 53 | adr | active | adr-index |
@@ -57,11 +57,12 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/demo-package-root-cause-20260817.md` | 85 | archive | archived | — |
 | `archive/end-user-sla.md` | 126 | archive | archived | — |
 | `archive/enduser-capabilities-guide.md` | 372 | archive | archived | — |
+| `archive/enduser-coverage-matrix-analysis.md` | 295 | archive | archived | analysis |
 | `archive/epics-issue-97-coverage-verdict.md` | 109 | archive | archived | — |
 | `archive/founder-expectations-pre-split.md` | 2112 | archive | archived | — |
 | `archive/issue-kw-seed.md` | 18 | archive | archived | — |
 | `archive/issue-source-gaps.md` | 14 | archive | archived | — |
-| `archive/kb-pipeline-reference.md` | 249 | archive | archived | — |
+| `archive/kb-pipeline-reference.md` | 264 | archive | archived | — |
 | `archive/launch-validation-framework.md` | 369 | archive | archived | — |
 | `archive/launch-validation-report.md` | 273 | archive | archived | — |
 | `archive/migration-v1.9.md` | 58 | archive | archived | — |
@@ -69,17 +70,17 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
 | `demo-release-standard.md` | 42 | docs/root | active | — |
 | `dev/2026-08-30-graph-engineering-调研与三项目落地-修正版.md` | 139 | docs/dev | active | — |
-| `dev/acceptance-framework.md` | 494 | docs/dev | active | — |
+| `dev/acceptance-framework.md` | 496 | docs/dev | active | — |
 | `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
 | `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
 | `dev/autoinfo-dev-roadmap-20260902.md` | 135 | docs/dev | active | — |
 | `dev/best-practice-review.md` | 388 | docs/dev | active | best-practice-review |
-| `dev/cli-mcp-rest-parity.md` | 467 | docs/dev | active | — |
-| `dev/cross-dimensional-catalog.md` | 997 | docs/dev | active | — |
+| `dev/cli-mcp-rest-parity.md` | 538 | docs/dev | active | — |
+| `dev/cross-dimensional-catalog.md` | 1034 | docs/dev | active | — |
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
-| `dev/enduser-coverage-matrix.md` | 483 | docs/dev | active | — |
+| `dev/enduser-coverage-matrix.md` | 221 | docs/dev | active | — |
 | `dev/founder-expectations.md` | 471 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 935 | docs/dev | active | — |
@@ -89,18 +90,19 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
 | `dev/specs/delivery.md` | 1268 | specs | active | — |
-| `dev/specs/end-user-matrix.yaml` | 1110 | specs | active | — |
-| `dev/specs/expectations.md` | 1188 | specs | active | — |
+| `dev/specs/end-user-matrix.yaml` | 1920 | specs | active | — |
+| `dev/specs/expectations.md` | 1228 | specs | active | — |
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
 | `dev/specs/mcp-tools.md` | 85 | specs | active | — |
-| `dev/specs/multi-tenancy-auth.md` | 770 | specs | active | — |
+| `dev/specs/multi-tenancy-auth.md` | 799 | specs | active | — |
 | `dev/specs/operations.md` | 972 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
 | `dev/specs/pipeline.md` | 584 | specs | active | — |
-| `dev/specs/quality-gates.md` | 191 | specs | active | — |
-| `dev/specs/user-lifecycle-definition.md` | 441 | specs | active | — |
+| `dev/specs/quality-gates.md` | 187 | specs | active | — |
+| `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
+| `dev/testing-layers.md` | 257 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
-| `dev/validation-loop-log.md` | 81 | docs/dev | active | — |
+| `dev/validation-loop-log.md` | 112 | docs/dev | active | — |
 | `dev/validation-reports/README.md` | 59 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
@@ -115,7 +117,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/evidence-2026-08-12/ac5-report-standard.md` | 813 | validation-reports | active | — |
 | `dev/validation-reports/evidence-2026-08-12/ac5-tutorial-student.md` | 501 | validation-reports | active | — |
 | `dev/validation-reports/final-report-backup-issues-19-38.md` | 62 | validation-reports | active | — |
-| `dev/validation-scenario-contract.md` | 800 | docs/dev | active | — |
+| `dev/validation-scenario-contract.md` | 879 | docs/dev | active | — |
 | `dev/workflow-charter.md` | 67 | docs/dev | active | workflow-charter |
 | `dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md` | 234 | docs/dev | active | methodology |
 | `glossary.md` | 61 | docs/root | active | glossary |

@@ -13,7 +13,10 @@
 # requested source produces a warning + non-zero exit code.
 name: regression-296-multi-source
 description: "Regression #296: collect --source accumulates + unknown source exits non-zero"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#296"
 requires_env: []

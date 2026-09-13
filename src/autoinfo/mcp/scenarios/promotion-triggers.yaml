@@ -22,7 +22,10 @@
 # path as process_collection), real MCP calls for draft/promote/force/sweep.
 name: promotion-triggers
 description: "Promotion triggers: agent promote, unresolvable-source fail-fast, re-promotion idempotency, director force bypass, curated-first consumption"
-category: kb
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 collect_artifacts:

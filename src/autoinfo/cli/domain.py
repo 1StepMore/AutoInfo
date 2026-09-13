@@ -29,6 +29,8 @@ from autoinfo.config import (
     save_config,
 )
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 # Directory containing bundled demo domain definitions
 _HERE = Path(__file__).resolve().parent
 _DEMO_DOMAINS_DIR = _HERE.parent / "data" / "domains"
@@ -53,10 +55,34 @@ def _load() -> tuple[Path, Config]:
     """
     cfg_path = get_config_path()
     if cfg_path is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_ERROR.removeprefix("Error: "))
         typer.echo(_NO_CONFIG_ERROR, err=True)
         raise typer.Exit(1)
     config = load_config(cfg_path)
     return cfg_path, config
+
+
+def _domain_dict(domain_cfg: DomainConfig) -> dict:
+    return {
+        "name": domain_cfg.name,
+        "description": domain_cfg.description,
+        "active": domain_cfg.active,
+        "search_mode": domain_cfg.search_mode,
+        "source_count": len(domain_cfg.sources),
+        "topic_count": len(domain_cfg.topics),
+        "extract_fields": list(domain_cfg.extract_fields),
+        "sources": [
+            {
+                "name": s.name,
+                "type": s.type,
+                "url": s.url,
+                "quality_tier": s.quality_tier,
+                "tos_classification": s.tos_classification,
+            }
+            for s in domain_cfg.sources
+        ],
+        "topics": [{"name": t.name, "keywords": list(t.keywords)} for t in domain_cfg.topics],
+    }
 
 
 def _find_domain(config: Config, name: str) -> DomainConfig | None:
@@ -82,12 +108,16 @@ def add(
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is not None:
+        if emit_if_global({"name": name, "created": False, "active": domain_cfg.active}):
+            return
         typer.echo(f"Domain '{name}' already exists (active={domain_cfg.active}), skipped.")
         return
 
     new_domain = DomainConfig(name=name, description=description, active=True)
     config.domains.append(new_domain)
     save_config(config, cfg_path)
+    if emit_if_global({"name": name, "created": True, "active": True}):
+        return
     typer.echo(f"Domain '{name}' added.")
 
 
@@ -98,17 +128,20 @@ def list_domains(
     """List all configured domains."""
     _, config = _load()
 
+    domains_data = [
+        {
+            "name": d.name,
+            "active": d.active,
+            "source_count": len(d.sources),
+            "topic_count": len(d.topics),
+            "description": d.description,
+        }
+        for d in config.domains
+    ]
+    if emit_if_global({"domains": domains_data, "count": len(domains_data)}):
+        return
+
     if json_output:
-        domains_data = [
-            {
-                "name": d.name,
-                "active": d.active,
-                "source_count": len(d.sources),
-                "topic_count": len(d.topics),
-                "description": d.description,
-            }
-            for d in config.domains
-        ]
         typer.echo(json.dumps({"domains": domains_data, "count": len(domains_data)}, indent=2))
         return
 
@@ -134,8 +167,12 @@ def show(
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{name}' is not configured")
         typer.echo(f"Error: Domain '{name}' is not configured", err=True)
         raise typer.Exit(1)
+
+    if emit_if_global(_domain_dict(domain_cfg)):
+        return
 
     typer.echo(f"Domain:        {domain_cfg.name}")
     typer.echo(f"Description:   {domain_cfg.description}")
@@ -144,8 +181,7 @@ def show(
     typer.echo(f"Sources:       {len(domain_cfg.sources)}")
     for s in domain_cfg.sources:
         typer.echo(
-            f"  - {s.name} ({s.type}, tier={s.quality_tier},"
-            f" tos={s.tos_classification}): {s.url}"
+            f"  - {s.name} ({s.type}, tier={s.quality_tier}, tos={s.tos_classification}): {s.url}"
         )
     typer.echo(f"Topics:        {len(domain_cfg.topics)}")
     for t in domain_cfg.topics:
@@ -164,11 +200,14 @@ def remove(
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{name}' is not configured")
         typer.echo(f"Error: Domain '{name}' is not configured", err=True)
         raise typer.Exit(1)
 
     config.domains.remove(domain_cfg)
     save_config(config, cfg_path)
+    if emit_if_global({"name": name, "removed": True}):
+        return
     typer.echo(f"Domain '{name}' removed (collected data preserved).")
 
 
@@ -181,15 +220,20 @@ def activate(
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{name}' is not configured")
         typer.echo(f"Error: Domain '{name}' is not configured", err=True)
         raise typer.Exit(1)
 
     if domain_cfg.active:
+        if emit_if_global({"name": name, "active": True, "changed": False}):
+            return
         typer.echo(f"Domain '{name}' is already active.")
         return
 
     domain_cfg.active = True
     save_config(config, cfg_path)
+    if emit_if_global({"name": name, "active": True, "changed": True}):
+        return
     typer.echo(f"Domain '{name}' activated.")
 
 
@@ -202,23 +246,26 @@ def deactivate(
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{name}' is not configured")
         typer.echo(f"Error: Domain '{name}' is not configured", err=True)
         raise typer.Exit(1)
 
     if not domain_cfg.active:
+        if emit_if_global({"name": name, "active": False, "changed": False}):
+            return
         typer.echo(f"Domain '{name}' is already inactive.")
         return
 
     domain_cfg.active = False
     save_config(config, cfg_path)
+    if emit_if_global({"name": name, "active": False, "changed": True}):
+        return
     typer.echo(f"Domain '{name}' deactivated.")
 
 
 @app.command(name="import")
 def import_cmd(
-    from_demo: str = typer.Option(
-        ..., "--from-demo", help="Name of the demo domain to import"
-    ),
+    from_demo: str = typer.Option(..., "--from-demo", help="Name of the demo domain to import"),
 ) -> None:
     """Import a demo domain into the current project configuration (idempotent)."""
     source_core_keys = frozenset(
@@ -235,11 +282,14 @@ def import_cmd(
                 if d.is_dir() and (d / "sources.yaml").is_file()
             )
         )
+        fail_if_global("NotFound", f"Unknown demo domain '{from_demo}'. Available: {available}")
         typer.echo(f"Unknown demo domain '{from_demo}'. Available: {available}", err=True)
         raise typer.Exit(1)
 
     cfg_path, config = _load()
     if _find_domain(config, from_demo) is not None:
+        if emit_if_global({"name": from_demo, "imported": False, "already_existed": True}):
+            return
         typer.echo(f"Domain '{from_demo}' already exists")
         return
 
@@ -284,6 +334,15 @@ def import_cmd(
     )
     config.domains.append(new_domain)
     save_config(config, cfg_path)
+    if emit_if_global(
+        {
+            "name": from_demo,
+            "imported": True,
+            "sources": len(sources),
+            "topics": len(topics),
+        }
+    ):
+        return
     typer.echo(f"Domain '{from_demo}' imported.")
 
 
@@ -320,6 +379,7 @@ def _resolve_seed_name(name: str) -> str:
             if d.is_dir() and (d / "sources.yaml").is_file()
         )
     )
+    fail_if_global("NotFound", f"Unknown demo domain '{name}'. Available: {available}")
     typer.echo(f"Unknown demo domain '{name}'. Available: {available}", err=True)
     raise typer.Exit(1)
 
@@ -346,6 +406,7 @@ def init(
 
     cfg_path = get_config_path()
     if cfg_path is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_ERROR.removeprefix("Error: "))
         typer.echo(_NO_CONFIG_ERROR, err=True)
         raise typer.Exit(1)
     with open(cfg_path, "r", encoding="utf-8") as f:
@@ -362,6 +423,16 @@ def init(
         raw.setdefault("domains", []).append(seed_block)
         with open(cfg_path, "w", encoding="utf-8") as f:
             yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        if emit_if_global(
+            {
+                "name": demo_name,
+                "seeded": True,
+                "sources": len(seed_block.get("sources", [])),
+                "topics": len(seed_block.get("topics", [])),
+                "extract_fields": len(seed_block.get("extract_fields", [])),
+            }
+        ):
+            return
         typer.echo(
             f"Domain '{demo_name}' seeded "
             f"({len(seed_block.get('sources', []))} sources, "
@@ -371,10 +442,14 @@ def init(
         return
 
     if existing.get("extract_fields"):
+        if emit_if_global({"name": demo_name, "seeded": False, "already_existed": True}):
+            return
         typer.echo(f"Domain '{demo_name}' already seeded")
         return
 
     existing["extract_fields"] = domain_data.get("extract_fields", [])
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    if emit_if_global({"name": demo_name, "seeded": True, "backfilled": True}):
+        return
     typer.echo(f"Domain '{demo_name}' already exists — extract_fields backfilled.")

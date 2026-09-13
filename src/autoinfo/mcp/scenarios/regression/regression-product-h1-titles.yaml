@@ -32,7 +32,10 @@
 # Failure means the product-aware H1 titles regressed — never a silent skip.
 name: regression-product-h1-titles
 description: "Regression #318/#99: 8 product families render distinct product-aware H1 titles (period prefix + product word + domain) on digest and report paths"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#318/#99"
 requires_env: []

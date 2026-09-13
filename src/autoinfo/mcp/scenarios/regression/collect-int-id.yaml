@@ -13,7 +13,10 @@
 # a mutated cwd.  Path math is done against the absolute Path(tmp) base only.
 name: regression-collect-int-id
 description: "Regression #104: _cache_items survives int item ids (GitHub Trending)"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#104"
 requires_env: []

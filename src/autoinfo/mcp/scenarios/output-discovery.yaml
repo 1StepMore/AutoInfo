@@ -1,7 +1,10 @@
 # Output discovery — verify output/product/config tools in real project context.
 name: output-discovery
 description: "Output and config tool discovery in real project context"
-category: output
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.1
 requires_env: []
 collect_artifacts:
   - "outputs/**/*"
@@ -27,4 +30,3 @@ steps:
     expect:
       success: true
       data_has: ["models"]
-

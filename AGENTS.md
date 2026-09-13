@@ -17,7 +17,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio (SSE transport is future work)
-2. **All capabilities** are exposed as MCP tools (146 tools across 35 categories)
+2. **All capabilities** are exposed as MCP tools (149 tools across 35 categories)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -86,7 +86,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 146 MCP tools across 35 categories
+│   │   │   ├── mcp-tools.md        # 149 MCP tools across 35 categories
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── user-lifecycle-definition.md # Foundational user type definitions (B1/B2/B3)
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
@@ -102,7 +102,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 31 CLI command groups
-│       ├── mcp/                     # MCP server (146 tools)
+│       ├── mcp/                     # MCP server (149 tools)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap)
@@ -218,19 +218,19 @@ available sources" is CORRECT behavior (#179/#191) — never flag it.
 
 ## Tool Discovery Guidance
 
-**146 MCP tools across 35 categories** — full catalog in `README.md` (MCP Tools table)
+**149 MCP tools across 35 categories** — full catalog in `README.md` (MCP Tools table)
 and discoverable at runtime via `health_check()` → `tools/list` → `get_tool_count()`.
 Category → key-tool mapping is maintained in the README, not duplicated here.
 
 **Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
-**Validation**: `list_validation_scenarios` / `run_validation_scenario` — 138 scenarios
- (65 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`); per-scenario timeout,
+**Validation**: `list_validation_scenarios` / `run_validation_scenario` — 159 scenarios
+ (86 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`); per-scenario timeout,
 recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel;
 env-gated steps report `unconfigured` (never silently pass); `llm_assert` runs a real
 model call. Scenario authoring contract: `docs/dev/validation-scenario-contract.md`.
 
-**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. `actionable` is a boolean flag; the remediation guidance itself lives in `message`. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 30 values). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
+**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. `actionable` is a boolean flag; the remediation guidance itself lives in `message`. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 26 values, all CamelCase; never-emitted codes retired — T-S-05). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
 
 ## Common Patterns
 
@@ -325,13 +325,13 @@ Key counts the agent must know without opening README:
 
 | Fact | Value |
 |------|-------|
-| MCP tools | **146 tools across 35 categories** |
+| MCP tools | **149 tools across 35 categories** |
 | CLI command groups | **31 command groups** |
 | Delivery channels | **13 channels** |
-| Validation scenarios | **138 scenarios** (65 functional + 73 regression) |
+| Validation scenarios | **159 scenarios** (86 functional + 73 regression) |
 | Demo domains | **21 demo domains** |
 | LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~4925 tests** |
+| Test suite | **~5215 tests** |
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):
@@ -348,8 +348,8 @@ Operational invariants (full rules in Architecture Rules above and
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
 - `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
-- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (42 cells, 5 gap types). Supersedes archived gap-audit docs.
-- `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (keystone reference)
+- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (126 cells = 7×18; 42 catalogued gaps, 5 gap types). Supersedes archived gap-audit docs.
+- `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (A–E, 99 items); **generated** from `docs/dev/specs/end-user-matrix.yaml` (`report_demand`) by `scripts/coverage_matrix.py --render-enduser-doc`. Historical analysis: `docs/archive/enduser-coverage-matrix-analysis.md`.
 - `docs/dev/acceptance-framework.md` — **Acceptance mechanism (keystone, AC1-AC9)**: user model integrity, data-layer integrity, dual orientation (agent-operated tool / human-first results), coverage commitment, quality, commercial viability, process governance, documentation health (AC8), test & validation suite health (AC9). Supersedes `launch-validation-framework.md` as the top-level validation charter (D1-D5 now archived at `docs/archive/launch-validation-framework.md`; evidence machinery retained as tooling).
 - `docs/dev/validation-scenario-contract.md` — Scenario authoring **and agent-tester execution** how-to (real MCP/CLI/REST calls, real artifacts); authoring + execution merged into one doc 2026-08-08 (former runbook archived at `docs/archive/agent-tester-validation.md`); graded against `acceptance-framework.md` (AC1-AC9)
 - `docs/adr/` — Architecture Decision Records: the *why* behind architecture rules (01-Raw sole entry, agent promotion without human gate, LLM fallback chain, reasoning-model JSON control, unified envelope, release-please version truth). Template: `docs/adr/TEMPLATE.md`.

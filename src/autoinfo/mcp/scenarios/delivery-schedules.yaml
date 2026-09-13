@@ -8,7 +8,10 @@
 # leaked by older scenario versions.
 name: delivery-schedules
 description: "Delivery schedule lifecycle: add, list, and remove. Cleanup runs via cleanup_steps (a CLI subprocess matching the exact scenario signature) so schedules created by this scenario are removed even when a main step fails. NOTE: the CLI cleanup runs `python3` verbatim through the shell — the harness must ensure `python3` resolves to the interpreter that has autoinfo installed (e.g. activate the venv or put .venv/bin on PATH), because the scenario engine does not substitute the server's own interpreter."
-category: delivery
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.4
 requires_env: []
 steps:
   - name: "add_delivery_schedule for medical-research"

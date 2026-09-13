@@ -19,7 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
+from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
@@ -132,8 +132,8 @@ class TestListDomains:
     def test_handles_missing_config(self) -> None:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_domains()
-            assert result["count"] == 0
-            assert "error_code" in result
+            assert result["success"] is False
+            assert result["error"]["code"] == "InternalError"
 
 
 class TestGetDomainSchema:
@@ -185,7 +185,8 @@ class TestListAvailableModels:
     def test_handles_missing_config(self) -> None:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_available_models()
-            assert result["count"] == 0
+            assert result["success"] is False
+            assert result["error"]["code"] == "InternalError"
 
 
 class TestGetEffectiveLLMConfig:
@@ -208,7 +209,8 @@ class TestGetEffectiveLLMConfig:
     @patch("autoinfo.config.get_config_path", return_value=None)
     def test_raises_on_no_config(self, mock_path: MagicMock) -> None:
         result = _handle_get_effective_llm_config(task="extraction")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
 
 
 # ======================================================================
@@ -250,11 +252,9 @@ class TestAddSource:
         assert r2["source_id"] == first_id
 
     def test_unknown_domain_returns_error(self, tmp_config: Path) -> None:
-        result = _handle_add_source(
-            name="test", url="https://example.com", domain="nonexistent"
-        )
-        assert "error_code" in result
-        assert result["error_code"] == "DomainNotFound"
+        result = _handle_add_source(name="test", url="https://example.com", domain="nonexistent")
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
     def test_persists_to_config(self, tmp_config: Path) -> None:
         _handle_add_source(
@@ -326,13 +326,13 @@ class TestRemoveSource:
 
     def test_returns_error_for_nonexistent_source(self, tmp_config: Path) -> None:
         result = _handle_remove_source(source_id="medical-research:nonexistent", confirm=True)
-        assert "error_code" in result
-        assert result["error_code"] == "SourceNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == "SourceNotFound"
 
     def test_returns_error_for_malformed_id(self, tmp_config: Path) -> None:
         result = _handle_remove_source(source_id="no-colon-here", confirm=True)
-        assert "error_code" in result
-        assert "InvalidSourceId" in result["error_code"]
+        assert result["success"] is False
+        assert "InvalidSourceId" in result["error"]["code"]
 
     def test_removed_source_no_longer_in_config(self, tmp_config: Path) -> None:
         _handle_add_source(
@@ -366,7 +366,8 @@ class TestListSources:
 
     def test_unknown_domain_returns_error(self, tmp_config: Path) -> None:
         result = _handle_list_sources(domain="nonexistent")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
 
 class TestTestSource:
@@ -429,12 +430,11 @@ class TestAddTopic:
 
     def test_unknown_domain_returns_error(self, tmp_config: Path) -> None:
         result = _handle_add_topic(domain="nonexistent", name="Topic")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
     def test_persists_to_config(self, tmp_config: Path) -> None:
-        _handle_add_topic(
-            domain="medical-research", name="New Topic", keywords=["new"]
-        )
+        _handle_add_topic(domain="medical-research", name="New Topic", keywords=["new"])
         from autoinfo.config import load_config
 
         config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
@@ -462,8 +462,8 @@ class TestRemoveTopic:
         result = _handle_remove_topic(
             domain="medical-research", topic_id="nonexistent", confirm=True
         )
-        assert "error_code" in result
-        assert result["error_code"] == "TopicNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == "TopicNotFound"
 
     def test_removed_topic_no_longer_in_config(self, tmp_config: Path) -> None:
         _handle_add_topic(domain="medical-research", name="Remove Me")
@@ -510,16 +510,12 @@ class TestSearchKnowledgeBaseStub:
     def test_returns_result_not_stub(self, mock_status: MagicMock) -> None:
         from autoinfo.mcp.server import _handle_search_knowledge_base
 
-        result = _handle_search_knowledge_base(
-            query="test", domain="medical-research"
-        )
+        result = _handle_search_knowledge_base(query="test", domain="medical-research")
         assert "entries" in result
         assert "count" in result
 
     @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
-    def test_forwards_custom_fields_filter(
-        self, mock_status: MagicMock
-    ) -> None:
+    def test_forwards_custom_fields_filter(self, mock_status: MagicMock) -> None:
         """output-quality-mega todo 25: the faceted filter key
         ``filter_custom_fields`` must reach ``KBStore.search_knowledge_base``
         through the existing tool — no new tool is added."""
@@ -537,15 +533,11 @@ class TestSearchKnowledgeBaseStub:
             )
 
             kwargs = kb.search_knowledge_base.call_args.kwargs
-            assert kwargs["filter_custom_fields"] == {
-                "product_analysis.action_required": ""
-            }
+            assert kwargs["filter_custom_fields"] == {"product_analysis.action_required": ""}
             assert kwargs["query"] == "IVF"
 
     @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
-    def test_without_custom_fields_filter_defaults_none(
-        self, mock_status: MagicMock
-    ) -> None:
+    def test_without_custom_fields_filter_defaults_none(self, mock_status: MagicMock) -> None:
         """Default search behaviour unchanged: no filter_custom_fields is sent."""
         from autoinfo.mcp.server import _handle_search_knowledge_base
 
@@ -751,6 +743,7 @@ class TestNewToolDispatch:
         assert "entries" in data["data"]
         assert "count" in data["data"]
 
+
 # ======================================================================
 # Error response format verification
 # ======================================================================
@@ -764,37 +757,33 @@ class TestErrorResponseV2:
         exc = ValueError("Test error")
         result = _error_response(exc)
 
-        assert len(result) == 1
-        content = result[0]
-        assert isinstance(content, TextContent)
-
-        data = json.loads(content.text)
+        assert isinstance(result, dict)
         # Envelope shape
-        assert data["success"] is False
-        assert "error" in data
-        assert data["error"]["code"] == "ValidationError"
-        assert "message" in data["error"]
-        assert "actionable" in data["error"]
+        assert result["success"] is False
+        assert "error" in result
+        assert result["error"]["code"] == "ValidationError"
+        assert "message" in result["error"]
+        assert "actionable" in result["error"]
 
     def test_add_source_domain_not_found(self, tmp_config: Path) -> None:
-        result = _handle_add_source(
-            name="x", url="https://x.com", domain="missing-domain"
-        )
-        assert "error_code" in result
-        assert result["error_code"] == "DomainNotFound"
+        result = _handle_add_source(name="x", url="https://x.com", domain="missing-domain")
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
     def test_remove_source_not_found(self, tmp_config: Path) -> None:
         result = _handle_remove_source(source_id="medical-research:ghost", confirm=True)
-        assert "error_code" in result
-        assert result["error_code"] == "SourceNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == "SourceNotFound"
 
     def test_add_topic_domain_not_found(self, tmp_config: Path) -> None:
         result = _handle_add_topic(domain="missing", name="t")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
     def test_remove_topic_not_found(self, tmp_config: Path) -> None:
         result = _handle_remove_topic(domain="medical-research", topic_id="ghost", confirm=True)
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "TopicNotFound"
 
 
 # ======================================================================
@@ -807,4 +796,4 @@ class TestHealthCheckV2:
         from autoinfo.mcp.server import _handle_health_check
 
         result = _handle_health_check()
-        assert result["tools_count"] >= 70
+        assert result["data"]["tools_count"] >= 70

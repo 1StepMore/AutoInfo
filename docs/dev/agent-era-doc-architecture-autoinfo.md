@@ -51,10 +51,10 @@
    → commit
 ```
 
-**The 7 drift-prone facts** (checked README ↔ AGENTS ↔ skill): MCP tools **146**
-/ CLI groups **31** / delivery channels **13** / validation scenarios **138**
-(65 functional + 73 regression) / demo domains **21** / LLM-required tools **16**
-/ test count **~4925**.
+**The 7 drift-prone facts** (checked README ↔ AGENTS ↔ skill): MCP tools **149**
+/ CLI groups **31** / delivery channels **13** / validation scenarios **159**
+(86 functional + 73 regression) / demo domains **21** / LLM-required tools **16**
+/ test count **~5172**.
 
 **Additional facts to keep consistent manually** (not checker-gated): source
 types 29, collector handlers 30, output templates 8, REST port 8741, schemas 4.

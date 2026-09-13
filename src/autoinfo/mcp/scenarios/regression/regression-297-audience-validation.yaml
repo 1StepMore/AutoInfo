@@ -13,7 +13,10 @@
 # audience must pass.
 name: regression-297-audience-validation
 description: "Regression #297: audience validation consistent across report/digest/tutorial/presentation"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#297"
 requires_env: []

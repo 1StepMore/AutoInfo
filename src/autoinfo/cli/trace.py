@@ -13,6 +13,8 @@ from pathlib import Path
 import typer
 import yaml
 
+from ._output import emit_if_global  # noqa: E402
+
 app = typer.Typer(help="Query pipeline history for a trace_id")
 
 
@@ -72,26 +74,31 @@ def trace(
             except Exception:
                 continue
             if isinstance(fm, dict) and fm.get("trace_id") == trace_id:
-                kb_entries.append({
-                    "entry_id": fm.get("entry_id", ""),
-                    "title": fm.get("title", ""),
-                    "domain": fm.get("domain", ""),
-                    "tier": fm.get("tier", ""),
-                    "file_path": str(md_file),
-                    "collected_at": fm.get("collected_at", ""),
-                    "language": fm.get("language", ""),
-                    "dedup_status": fm.get("dedup_status", ""),
-                })
+                kb_entries.append(
+                    {
+                        "entry_id": fm.get("entry_id", ""),
+                        "title": fm.get("title", ""),
+                        "domain": fm.get("domain", ""),
+                        "tier": fm.get("tier", ""),
+                        "file_path": str(md_file),
+                        "collected_at": fm.get("collected_at", ""),
+                        "language": fm.get("language", ""),
+                        "dedup_status": fm.get("dedup_status", ""),
+                    }
+                )
 
     # -- Output -----------------------------------------------------------
+    data = {
+        "trace_id": trace_id,
+        "pipeline_events": pipeline_events,
+        "kb_entries": kb_entries,
+        "event_count": len(pipeline_events),
+        "kb_entry_count": len(kb_entries),
+    }
+    if emit_if_global(data):
+        return
     if json_output:
-        typer.echo(json.dumps({
-            "trace_id": trace_id,
-            "pipeline_events": pipeline_events,
-            "kb_entries": kb_entries,
-            "event_count": len(pipeline_events),
-            "kb_entry_count": len(kb_entries),
-        }, ensure_ascii=False, indent=2))
+        typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
         return
 
     # Human-readable output

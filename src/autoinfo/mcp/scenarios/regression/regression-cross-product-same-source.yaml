@@ -24,7 +24,10 @@
 # canned content, breaking the fixture-content assertions.
 name: regression-cross-product-same-source
 description: "Regression #119: digest + presentation share >=0.5 source-host overlap on the same fixture domain; drifted sources absent from both"
-category: output
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#119"
 requires_env: []

@@ -3,7 +3,10 @@
 # silently skipped.  Director User must configure the key during onboarding.
 name: cli-llm
 description: "CLI LLM-dependent groups: process, cefr"
-category: cli
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 steps:
   - name: "process medical-research"

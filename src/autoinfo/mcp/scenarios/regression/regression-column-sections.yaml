@@ -22,7 +22,10 @@
 # Failure means the column Deep Dive regressed — never a silent skip.
 name: regression-column-sections
 description: "Regression #316: column digest renders >=8 deep-dive subsections, never the empty placeholder"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#316"
 requires_env: []

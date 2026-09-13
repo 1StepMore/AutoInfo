@@ -1,0 +1,84 @@
+# R-A-01 / R-B-01: the real `autoinfo collect --resume-from` CLI surface.
+# Three offline RSS sources (local files) — the third is missing on the first
+# run, so its source errors and stays pending in the checkpoint.  The file is
+# then restored and `--resume-from auto` skips the two completed sources and
+# completes the run.  No network, no LLM key.
+name: recover-cli-resume-from
+description: "autoinfo collect --resume-from start/auto checkpoints per source, skips completed sources, retries the failed one (R-A-01)"
+category: failure
+pyramid_layer: e2e
+pipeline_stage: A1
+user_level: B2.5
+requires_env: []
+steps:
+  - name: "collect --resume-from auto skips completed sources and completes the run"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import os, shutil, subprocess, sys, tempfile
+      from pathlib import Path
+
+      from autoinfo.checkpoint import CheckpointStore
+
+      tmp = tempfile.mkdtemp(prefix="recover-cli-")
+      try:
+          os.chdir(tmp)
+          (Path(tmp) / ".autoinfo").mkdir()
+
+          xml = (
+              '<?xml version="1.0"?><rss version="2.0"><channel>'
+              "<title>t</title><link>http://example.com</link>"
+              "<description>d</description>"
+              "<item><title>Item</title><link>http://example.com/1</link>"
+              "<description>hello world</description></item>"
+              "</channel></rss>"
+          )
+          feed1 = str(Path(tmp) / "s1.xml")
+          feed2 = str(Path(tmp) / "s2.xml")
+          missing = str(Path(tmp) / "s3-missing.xml")
+          Path(feed1).write_text(xml, encoding="utf-8")
+          Path(feed2).write_text(xml, encoding="utf-8")
+
+          config = (
+              "project:\n  name: recover\n"
+              "domains:\n"
+              "  - name: recover-demo\n"
+              "    active: true\n"
+              "    sources:\n"
+              f"      - {{name: s1, type: rss, url: {feed1}, quality_tier: 2}}\n"
+              f"      - {{name: s2, type: rss, url: {feed2}, quality_tier: 2}}\n"
+              f"      - {{name: s3, type: rss, url: {missing}, quality_tier: 2}}\n"
+          )
+          (Path(tmp) / ".autoinfo" / "config.yaml").write_text(
+              config, encoding="utf-8"
+          )
+
+          def collect(*extra):
+              return subprocess.run(
+                  [sys.executable, "-m", "autoinfo.cli", "collect",
+                   "--domain", "recover-demo", *extra],
+                  capture_output=True, text=True, timeout=120,
+              )
+
+          first = collect("--resume-from", "start")
+          assert first.returncode == 0, (first.returncode, first.stdout, first.stderr)
+          cp = CheckpointStore().load("recover-demo", "collect")
+          assert cp is not None, "checkpoint must be written in resume mode"
+          # s3 errored (missing file) -> not durable -> stays pending.
+          assert cp.completed_steps() == ["s1", "s2"], cp.completed_steps()
+
+          Path(missing).write_text(xml, encoding="utf-8")
+          second = collect("--resume-from", "auto")
+          assert second.returncode == 0, (second.returncode, second.stdout, second.stderr)
+          assert "skipped 2 completed source(s)" in second.stdout, second.stdout
+          done = CheckpointStore().load("recover-demo", "collect")
+          assert done.completed_steps() == ["s1", "s2", "s3"], done.completed_steps()
+          assert done.status == "complete", done.status
+          print("RECOVER_CLI_RESUME_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RECOVER_CLI_RESUME_OK"]

@@ -25,7 +25,10 @@
 # deterministic regardless of the ambient environment.
 name: regression-grouping-degradation-honesty
 description: "Regression #120: group:fail renders the pinned 'This edition groups developments by source' marker + config-resolved keyword labels, never bare keyword headers"
-category: output
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#120"
 requires_env:

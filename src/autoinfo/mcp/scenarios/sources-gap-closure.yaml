@@ -5,7 +5,10 @@
 # pattern). The type values are validated against VALID_SOURCE_TYPES (29).
 name: sources-gap-closure
 description: "M2 — add/remove sources for the new registry types (akshare, sec_edgar, edx_sitemap)"
-category: source
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

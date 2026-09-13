@@ -30,5 +30,21 @@
       }
     ],
     "duration_ms": 502.0
+  },
+  {
+    "collection_id": "col-20260913T111644-69e41dae",
+    "timestamp": "2026-09-13T11:17:03.221097+00:00",
+    "status": "error",
+    "items_found": 0,
+    "items_new": 0,
+    "items_filtered": 0,
+    "errors": [
+      {
+        "message": "Semantic Scholar API rate-limited (HTTP 429) without an API key — set AUTOINFO_S2_API_KEY for a higher rate limit",
+        "source_failed": true,
+        "reason": "Semantic Scholar API rate-limited (HTTP 429) without an API key — set AUTOINFO_S2_API_KEY for a higher rate limit"
+      }
+    ],
+    "duration_ms": 464.0
   }
 ]

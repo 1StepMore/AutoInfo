@@ -105,9 +105,12 @@ def test_non_required_no_evidence_is_not_applicable(spec):
 
 def test_classify_cell_accepts_tuple_form(spec):
     # not-implemented cell → NOT_APPLICABLE (capability boundary, not a gap)
-    assert cm.classify_cell(
-        ("medical-research", "tutorial", "html"), EMPTY_PRODUCED, llm_available=True, spec=spec
-    ) == cm.NOT_APPLICABLE
+    assert (
+        cm.classify_cell(
+            ("medical-research", "tutorial", "html"), EMPTY_PRODUCED, llm_available=True, spec=spec
+        )
+        == cm.NOT_APPLICABLE
+    )
 
 
 def test_capability_boundary_required_cell_is_not_applicable(spec):
@@ -116,16 +119,14 @@ def test_capability_boundary_required_cell_is_not_applicable(spec):
     未配置unconfigured, whether or not the LLM is available."""
     cell = {"domain": "medical-research", "product": "tutorial", "format": "html"}
     assert ("medical-research", "tutorial", "html") in cm.not_implemented_cells_set(spec)
-    assert cm.classify_cell(
-        cell, EMPTY_PRODUCED, llm_available=True, spec=spec
-    ) == cm.NOT_APPLICABLE
-    assert cm.classify_cell(
-        cell, EMPTY_PRODUCED, llm_available=False, spec=spec
-    ) == cm.NOT_APPLICABLE
+    assert (
+        cm.classify_cell(cell, EMPTY_PRODUCED, llm_available=True, spec=spec) == cm.NOT_APPLICABLE
+    )
+    assert (
+        cm.classify_cell(cell, EMPTY_PRODUCED, llm_available=False, spec=spec) == cm.NOT_APPLICABLE
+    )
     assert cm.classify_cell(cell, EMPTY_PRODUCED, llm_available=True, spec=spec) != cm.GAP
-    assert cm.classify_cell(
-        cell, EMPTY_PRODUCED, llm_available=False, spec=spec
-    ) != cm.UNCONFIGURED
+    assert cm.classify_cell(cell, EMPTY_PRODUCED, llm_available=False, spec=spec) != cm.UNCONFIGURED
 
 
 def test_capability_boundary_with_evidence_is_produced(spec):
@@ -209,8 +210,14 @@ def test_spec_required_cells_cover_oracle_r8_shape(spec):
 
 def test_spec_llm_gated_products_listed(spec):
     gated = set(spec["llm_gated_products"])
-    assert {"premium-briefing", "column", "magazine-digest", "enterprise-briefing",
-            "tutorial", "presentation"} <= gated
+    assert {
+        "premium-briefing",
+        "column",
+        "magazine-digest",
+        "enterprise-briefing",
+        "tutorial",
+        "presentation",
+    } <= gated
     assert "digest" not in gated and "report" not in gated
 
 
@@ -250,9 +257,8 @@ def test_required_sources_all_configured_in_demo_domains(spec, demo_domain_sourc
         for r in spec.get("required_sources", [])
         if r["source"] not in demo_domain_sources.get(r["domain"], set())
     ]
-    assert not missing, (
-        "required_sources entries with no demo sources.yaml match: "
-        + ", ".join(f"{domain}/{source}" for domain, source in missing)
+    assert not missing, "required_sources entries with no demo sources.yaml match: " + ", ".join(
+        f"{domain}/{source}" for domain, source in missing
     )
 
 
@@ -270,9 +276,11 @@ def test_required_kb_tier_domains_have_demo_configs(spec, demo_domain_sources):
 
 
 def test_parse_persisted_path():
-    assert cm.parse_persisted_path(
-        "outputs/medical-research/digest-json-20260806-120000.json"
-    ) == ("medical-research", "digest", "json")
+    assert cm.parse_persisted_path("outputs/medical-research/digest-json-20260806-120000.json") == (
+        "medical-research",
+        "digest",
+        "json",
+    )
     assert cm.parse_persisted_path(
         "outputs/tech-ai-developer/magazine-digest-markdown-20260806-120000.md"
     ) == ("tech-ai-developer", "magazine-digest", "markdown")
@@ -317,19 +325,24 @@ def test_scan_evidence_outputs_and_manifests(tmp_path):
         deliveries / "manifest.json",
         [
             _manifest_entry("outputs/medical-research/digest-html-20260806-120000.html"),
-            _manifest_entry("outputs/medical-research/column-markdown-20260806-120000.md",
-                            quality="FAIL"),  # rejected at delivery gates — excluded
+            _manifest_entry(
+                "outputs/medical-research/column-markdown-20260806-120000.md", quality="FAIL"
+            ),  # rejected at delivery gates — excluded
         ],
     )
     with zipfile.ZipFile(deliveries / "validation-delivery-20260806-120000.zip", "w") as zf:
         zf.writestr(
             "manifest.json",
-            json.dumps({
-                "files": [
-                    _manifest_entry("outputs/tech-ai-developer/report-json-20260806-120000.json")
-                ],
-                "rejected": [],
-            }),
+            json.dumps(
+                {
+                    "files": [
+                        _manifest_entry(
+                            "outputs/tech-ai-developer/report-json-20260806-120000.json"
+                        )
+                    ],
+                    "rejected": [],
+                }
+            ),
         )
 
     produced = cm.scan_evidence(tmp_path)
@@ -345,6 +358,13 @@ def test_scan_evidence_outputs_and_manifests(tmp_path):
 
 def test_scan_evidence_missing_dir_returns_empty(tmp_path):
     assert cm.scan_evidence(tmp_path / "does-not-exist") == set()
+
+
+def test_cells_from_manifest_skips_non_dict():
+    """A manifest that is not a dict (e.g. a bare list from outputs/localized/)
+    is skipped like an unparseable file — scan_evidence must not crash on it."""
+    assert cm._cells_from_manifest([]) == set()
+    assert cm._cells_from_manifest({"files": []}) == set()
 
 
 # ---------------------------------------------------------------------------
@@ -373,17 +393,13 @@ def test_scan_source_evidence_runs_json_is_not_evidence(
     def _write_runs(path: Path, status: str = "error", items_found: int = 0) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(
-                [{"status": status, "items_found": items_found, "items_new": 0}]
-            ),
+            json.dumps([{"status": status, "items_found": items_found, "items_new": 0}]),
             encoding="utf-8",
         )
 
     coll = tmp_path / "collections"
     _write_runs(coll / "medical-research" / "pubmed" / "_runs.json")
-    _write_runs(
-        coll / "general-news" / "wired" / "_runs.json", status="ok", items_found=3
-    )
+    _write_runs(coll / "general-news" / "wired" / "_runs.json", status="ok", items_found=3)
 
     assert cm.scan_source_evidence(tmp_path) == set()
 
@@ -474,18 +490,29 @@ def test_render_report_gap_summary_present_but_not_silent_when_no_gaps(spec):
 
 def test_cli_exit_2_on_missing_spec():
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--spec", "/nonexistent.yaml",
-         "--evidence", str(ROOT)],
-        cwd=ROOT, capture_output=True, text=True, timeout=60,
+        [sys.executable, str(SCRIPT), "--spec", "/nonexistent.yaml", "--evidence", str(ROOT)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert result.returncode == 2
 
 
 def test_cli_exit_2_on_missing_evidence(tmp_path):
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--spec", str(SPEC),
-         "--evidence", str(tmp_path / "missing-evidence")],
-        cwd=ROOT, capture_output=True, text=True, timeout=60,
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--spec",
+            str(SPEC),
+            "--evidence",
+            str(tmp_path / "missing-evidence"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert result.returncode == 2
 
@@ -496,9 +523,21 @@ def test_cli_end_to_end_writes_report(tmp_path):
     (out / "digest-json-20260806-120000.json").touch()
 
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), "--spec", str(SPEC),
-         "--evidence", str(tmp_path), "--no-llm", "--output", str(tmp_path / "report")],
-        cwd=ROOT, capture_output=True, text=True, timeout=60,
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--spec",
+            str(SPEC),
+            "--evidence",
+            str(tmp_path),
+            "--no-llm",
+            "--output",
+            str(tmp_path / "report"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert result.returncode == 0, result.stderr
     report_path = tmp_path / "report" / "matrix-report.md"
@@ -510,3 +549,68 @@ def test_cli_end_to_end_writes_report(tmp_path):
     assert "未配置unconfigured" in report
     # with --no-llm the empty tutorial/presentation cells must NOT be gaps
     assert "| tutorial | 空gap |" not in report
+
+
+# ---------------------------------------------------------------------------
+# Single-source 99-item view (T-A-05 / VT-01) — the hand-maintained doc is gone;
+# the committed view is generated from the spec's `report_demand` block and a
+# hand edit is detected as drift.
+# ---------------------------------------------------------------------------
+
+ENDUSER_DOC = ROOT / "docs" / "dev" / "enduser-coverage-matrix.md"
+
+
+def test_report_demand_dimensions_and_total(spec):
+    """The 99-item surface is the spec's authored source: 29+25+14+16+15."""
+    stats = cm.report_demand_stats(spec)
+    assert [d["items"] for d in stats["dimensions"]] == [29, 25, 14, 16, 15]
+    assert stats["total"]["items"] == 99
+    for key in ("code", "validation", "two_way", "uncovered"):
+        assert stats["total"][key] == sum(d[key] for d in stats["dimensions"])
+    # every count is a subset of the item rows (coverage can never exceed 99)
+    assert stats["total"]["code"] <= stats["total"]["items"]
+    assert stats["total"]["two_way"] <= stats["total"]["code"]
+
+
+def test_enduser_coverage_doc_is_generated_from_spec(spec):
+    """The committed view is byte-identical to the render from the spec."""
+    assert ENDUSER_DOC.is_file(), f"missing generated view: {ENDUSER_DOC}"
+    committed = ENDUSER_DOC.read_text(encoding="utf-8")
+    generated = cm.render_enduser_coverage_view(spec)
+    assert committed == generated
+    assert committed.startswith("<!-- AUTO-GENERATED by scripts/coverage_matrix.py")
+
+
+def test_enduser_coverage_view_renders_derived_totals(spec):
+    """The totals in the view are the derived ones, never hand-written."""
+    stats = cm.report_demand_stats(spec)
+    total = stats["total"]
+    view = cm.render_enduser_coverage_view(spec)
+    assert (
+        f"Code {cm._pct(total['code'], total['items'])} ({total['code']}/{total['items']})"
+    ) in view
+    assert f"| **总计** | **{total['items']}** | **{total['code']}** |" in view
+
+
+def test_check_enduser_doc_detects_out_of_band_edit(tmp_path, spec):
+    """A hand edit (spec unchanged) makes --check-enduser-doc exit non-zero."""
+    doc = tmp_path / "enduser-coverage-matrix.md"
+    doc.write_text(cm.render_enduser_coverage_view(spec), encoding="utf-8")
+    assert cm.main(["--check-enduser-doc", str(doc), "--spec", str(SPEC)]) == 0
+
+    doc.write_text(
+        doc.read_text(encoding="utf-8").replace("Code 90%", "Code 100%"),
+        encoding="utf-8",
+    )
+    assert cm.main(["--check-enduser-doc", str(doc), "--spec", str(SPEC)]) == 1
+
+
+def test_check_enduser_doc_fails_when_spec_drifts(tmp_path, spec):
+    """Editing the spec without re-rendering also fails the check."""
+    doc = tmp_path / "enduser-coverage-matrix.md"
+    doc.write_text(cm.render_enduser_coverage_view(spec), encoding="utf-8")
+    drifted = yaml.safe_load(SPEC.read_text(encoding="utf-8"))
+    drifted["report_demand"]["dimensions"][0]["items"][0]["cells"][-1] = "❌"
+    drifted_spec = tmp_path / "drifted-spec.yaml"
+    drifted_spec.write_text(yaml.safe_dump(drifted, allow_unicode=True), encoding="utf-8")
+    assert cm.main(["--check-enduser-doc", str(doc), "--spec", str(drifted_spec)]) == 1

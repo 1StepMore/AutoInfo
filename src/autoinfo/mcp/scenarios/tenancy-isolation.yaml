@@ -1,0 +1,101 @@
+# T-A-09: cross-tenant isolation guard + honest v1 boundary record.
+#
+# v1 is a single-tenant, stdio-only, assumed-trusted process (see
+# docs/dev/specs/multi-tenancy-auth.md — "Never Designed — spec only, zero
+# implementation"; F58/F59 dispositions are `blocked-with-record`, gated on the
+# SSE transport milestone).  Tenant isolation is NOT implemented; this scenario
+# must never claim it is.  What it does assert is the committed boundary:
+# there is no tenant-scoped tool and no tenant parameter on the agent surface,
+# so a cross-tenant access attempt cannot be expressed and is rejected as an
+# UnknownTool, and the spec records the boundary (stdio-trusted,
+# blocked-with-record).  A cross-tenant guard that cannot run would be a
+# failure, never a silent pass.
+name: tenancy-isolation
+description: "Cross-tenant guard: no tenant-scoped tool or tenant parameter on the agent surface; tenant tool calls are rejected as UnknownTool, and the stdio-trusted v1 boundary is recorded (T-A-09)"
+category: edge_case
+pyramid_layer: red_team
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "cross-tenant provisioning attempt is rejected (create_tenant)"
+    tool: create_tenant
+    arguments:
+      name: Acme Corp
+      slug: acme-corp
+    expect:
+      success: false
+      error_code: "UnknownTool"
+
+  - name: "cross-tenant listing attempt is rejected (list_tenants)"
+    tool: list_tenants
+    arguments: {}
+    expect:
+      success: false
+      error_code: "UnknownTool"
+
+  - name: "cross-tenant config write attempt is rejected (set_tenant_config)"
+    tool: set_tenant_config
+    arguments:
+      tenant: acme-corp
+      quota:
+        requests_per_minute: 1
+    expect:
+      success: false
+      error_code: "UnknownTool"
+
+  - name: "cross-tenant API-key provisioning attempt is rejected (create_api_key)"
+    tool: create_api_key
+    arguments:
+      tenant: acme-corp
+      name: Production Agent
+    expect:
+      success: false
+      error_code: "UnknownTool"
+
+  - name: "no tenant-scoped tool or tenant parameter is exposed on the agent surface"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.mcp.server import _full_tool_list
+      tools = _full_tool_list()
+      names = [t.name for t in tools]
+      proposed = (
+          "create_tenant", "get_tenant", "list_tenants", "update_tenant",
+          "suspend_tenant", "reactivate_tenant", "delete_tenant",
+          "set_tenant_config", "create_api_key", "revoke_api_key",
+      )
+      present = [n for n in proposed if n in names]
+      assert not present, "tenant-scoped tools exposed on the agent surface: " + str(present)
+      with_tenant_param = []
+      for t in tools:
+          props = (getattr(t, "inputSchema", None) or {}).get("properties", {})
+          if any("tenant" in key.lower() for key in props):
+              with_tenant_param.append(t.name)
+      assert not with_tenant_param, "tools expose a tenant parameter: " + str(with_tenant_param)
+      print("TENANCY_ISOLATION_UNAVAILABLE tools=" + str(len(tools)))
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["TENANCY_ISOLATION_UNAVAILABLE"]
+
+  - name: "the stdio-trusted v1 boundary is recorded in the multi-tenancy spec"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      text = Path("docs/dev/specs/multi-tenancy-auth.md").read_text(encoding="utf-8")
+      for needle in (
+          "Never Designed",
+          "stdio",
+          "blocked-with-record",
+          "| `F58` Multi-tenancy isolation | `blocked-with-record` |",
+      ):
+          assert needle in text, "v1 boundary record missing: " + needle
+      print("TENANCY_BOUNDARY_RECORDED stdio-trusted")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["TENANCY_BOUNDARY_RECORDED"]

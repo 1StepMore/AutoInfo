@@ -12,7 +12,10 @@
 # regression-11-producthunt-ref-description.yaml.
 name: regression-free-tier-limit
 description: "Regression todo 12: named free user over product/frequency quota gets explicit FREE_TIER_LIMIT error; user_id='' batch path unblocked; premium unaffected"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.2
 regression: true
 regression_issue: "#todo-12 free-tier enforcement (roadmap:64)"
 requires_env: []

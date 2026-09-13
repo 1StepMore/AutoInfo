@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import difflib
 import json
 import re
 import sys
@@ -51,21 +52,57 @@ _ALL_STATUSES = (PRODUCED, GAP, NOT_APPLICABLE, UNCONFIGURED)
 
 # Scenario-library capability tokens scanned from scenario yaml (issue #156).
 SCENARIO_PRODUCTS = {
-    "digest", "report", "tutorial", "presentation",
-    "premium-briefing", "column", "magazine-digest",
+    "digest",
+    "report",
+    "tutorial",
+    "presentation",
+    "premium-briefing",
+    "column",
+    "magazine-digest",
     "enterprise-briefing",
 }
 SCENARIO_FORMATS = {
-    "markdown", "html", "json", "agent", "audio", "video",
-    "epub", "audiobook",
+    "markdown",
+    "html",
+    "json",
+    "agent",
+    "audio",
+    "video",
+    "epub",
+    "audiobook",
 }
 # Well-known source tokens appearing in scenario yaml (name/step values).
 SCENARIO_SOURCES = {
-    "pubmed", "openalex", "crossref", "dblp", "arxiv", "semantic-scholar",
-    "reddit", "spotify", "youtube", "bilibili", "sec", "gdelt",
-    "huggingface", "kaggle", "github", "hacker", "yahoo", "quandl",
-    "ssrn", "unpaywall", "akshare", "nyt", "reuters", "core",
-    "apple", "edx", "stack", "producthunt", "substack", "uspto",
+    "pubmed",
+    "openalex",
+    "crossref",
+    "dblp",
+    "arxiv",
+    "semantic-scholar",
+    "reddit",
+    "spotify",
+    "youtube",
+    "bilibili",
+    "sec",
+    "gdelt",
+    "huggingface",
+    "kaggle",
+    "github",
+    "hacker",
+    "yahoo",
+    "quandl",
+    "ssrn",
+    "unpaywall",
+    "akshare",
+    "nyt",
+    "reuters",
+    "core",
+    "apple",
+    "edx",
+    "stack",
+    "producthunt",
+    "substack",
+    "uspto",
 }
 
 # format -> extension, mirrors _PERSIST_EXT_BY_FORMAT in src/autoinfo/mcp/server.py
@@ -192,6 +229,8 @@ def _cells_from_manifest(data: dict[str, Any]) -> set[Cell]:
     them from the manifest's ``files`` list (E7).
     """
     cells: set[Cell] = set()
+    if not isinstance(data, dict):
+        return cells  # not a validation_delivery manifest (e.g. a bare list)
     for entry in data.get("files", []):
         if entry.get("quality") == "FAIL":
             continue
@@ -407,6 +446,7 @@ def scan_kb_tier_evidence(evidence_dir: str | Path) -> set[tuple[str, str]]:
 # never touches is invisible to acceptance even when the code implements it.
 # ---------------------------------------------------------------------------
 
+
 def scan_scenario_library(
     scenarios_dir: str | Path, source_tokens: set[str] | None = None
 ) -> dict[str, set[str]]:
@@ -530,8 +570,7 @@ def render_report(
     lines.append(f"- Spec version: {spec.get('version', 1)}")
     lines.append(f"- Evidence dir: `{evidence_dir or '(none — no evidence scanned)'}`")
     llm_note = (
-        "yes" if llm_available
-        else "no (llm_gated products are 未配置unconfigured, not gaps)"
+        "yes" if llm_available else "no (llm_gated products are 未配置unconfigured, not gaps)"
     )
     lines.append(f"- LLM available: {llm_note}")
     lines.append(f"- Generated: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
@@ -549,12 +588,9 @@ def render_report(
     lines.append("|--------|--------|---------|")
     lines.append(f"| 有 | {PRODUCED} | Evidence found for this domain x product x format |")
     lines.append(
-        f"| 空 | {GAP} | Required cell with no evidence "
-        "(LLM available or product not LLM-gated) |"
+        f"| 空 | {GAP} | Required cell with no evidence (LLM available or product not LLM-gated) |"
     )
-    lines.append(
-        f"| 不适用 | {NOT_APPLICABLE} | Non-required cell with no evidence |"
-    )
+    lines.append(f"| 不适用 | {NOT_APPLICABLE} | Non-required cell with no evidence |")
     lines.append(
         f"| 未配置 | {UNCONFIGURED} | Required LLM-gated cell while the "
         "LLM key is unavailable (not a gap) |"
@@ -596,8 +632,7 @@ def render_report(
             lines.append(f"| {domain} | {product} | {fmt} |")
     else:
         lines.append(
-            "No required-empty gap cells — every required cell is "
-            "有produced or 未配置unconfigured."
+            "No required-empty gap cells — every required cell is 有produced or 未配置unconfigured."
         )
     lines.append("")
 
@@ -718,6 +753,230 @@ def render_report(
 
 
 # ---------------------------------------------------------------------------
+# End-user 99-item coverage view — rendered from the spec's `report_demand`
+# block (the single authored source; VT-01 / T-A-05)
+# ---------------------------------------------------------------------------
+
+_STATUS_TOKENS = ("✅", "⚠️", "❌", "➖")
+
+
+def _leading_status(text: str) -> str:
+    """Return the leading status token of a table cell (``?`` if none)."""
+    cell = str(text).strip()
+    for token in _STATUS_TOKENS:
+        if cell.startswith(token):
+            return token
+    return "?"
+
+
+def report_demand_stats(spec: dict[str, Any]) -> dict[str, Any]:
+    """Derive per-dimension + total coverage counts from ``report_demand``.
+
+    Counts are computed from the item ``cells`` status tokens, so the totals are
+    never hand-maintained: Code/Validation coverage count every item whose
+    respective status is not ``❌``; two-way additionally requires a demo-domain
+    basis (D rows without a dedicated domain — ``demo_domain: false`` — do not
+    count); uncovered means both statuses are ``❌``.
+    """
+    dimensions = spec.get("report_demand", {}).get("dimensions", [])
+    dim_rows: list[dict[str, Any]] = []
+    total = {"items": 0, "code": 0, "validation": 0, "two_way": 0, "uncovered": 0}
+    for dim in dimensions:
+        columns = list(dim.get("columns", []))
+        code_col = dim.get("code_column", "AutoInfo Code")
+        val_col = dim.get("validation_column", "Validation Plan")
+        code_idx = columns.index(code_col) if code_col in columns else max(len(columns) - 3, 0)
+        val_idx = columns.index(val_col) if val_col in columns else max(len(columns) - 2, 0)
+        items = dim.get("items", [])
+        code = validation = two_way = uncovered = 0
+        for it in items:
+            cells = it["cells"]
+            c_ok = _leading_status(cells[code_idx]) != "❌"
+            v_ok = _leading_status(cells[val_idx]) != "❌"
+            code += int(c_ok)
+            validation += int(v_ok)
+            if c_ok and v_ok and it.get("demo_domain", True):
+                two_way += 1
+            if not c_ok and not v_ok:
+                uncovered += 1
+        n = len(items)
+        dim_rows.append(
+            {
+                "key": dim["key"],
+                "title": dim["title"],
+                "report_ref": dim.get("report_ref", ""),
+                "note": dim.get("note", ""),
+                "items": n,
+                "code": code,
+                "validation": validation,
+                "two_way": two_way,
+                "uncovered": uncovered,
+            }
+        )
+        total["items"] += n
+        total["code"] += code
+        total["validation"] += validation
+        total["two_way"] += two_way
+        total["uncovered"] += uncovered
+    return {"dimensions": dim_rows, "total": total}
+
+
+def _pct(part: int, whole: int) -> str:
+    return f"{round(100 * part / whole)}%" if whole else "0%"
+
+
+def render_enduser_coverage_view(spec: dict[str, Any]) -> str:
+    """Render the A–E 99-item end-user coverage view from ``report_demand``.
+
+    Deterministic (no timestamps) so the committed file is byte-comparable and a
+    hand edit is detectable by ``--check-enduser-doc``.
+    """
+    rd = spec.get("report_demand")
+    if not rd:
+        raise ValueError("spec has no 'report_demand' block")
+    stats = report_demand_stats(spec)
+    dims = stats["dimensions"]
+    total = stats["total"]
+
+    lines: list[str] = []
+    lines.append(
+        "<!-- AUTO-GENERATED by scripts/coverage_matrix.py --render-enduser-doc "
+        "— do not edit by hand."
+    )
+    lines.append("     Regenerate: python3 scripts/coverage_matrix.py --render-enduser-doc -->")
+    lines.append("")
+    lines.append("# End-User Service Coverage Matrix (A–E, 99 items)")
+    lines.append("")
+    lines.append(
+        "> **Generated** from the single authored source "
+        "`docs/dev/specs/end-user-matrix.yaml` (`report_demand`). Do not edit by "
+        "hand — regenerate it. Drift is failed by "
+        "`python3 scripts/coverage_matrix.py --check-enduser-doc`."
+    )
+    lines.append(">")
+    lines.append(f"> Basis: `{rd.get('source', '')}`.")
+    lines.append(
+        "> Historical update log, feasibility verdicts and the gap roadmap are "
+        "preserved in the archived snapshot "
+        "`docs/archive/enduser-coverage-matrix-analysis.md` (H-section also "
+        "absorbed into `docs/dev/cross-dimensional-catalog.md` §Feasibility Verdicts)."
+    )
+    lines.append("")
+    lines.append(
+        f"**Code {_pct(total['code'], total['items'])} "
+        f"({total['code']}/{total['items']}) · "
+        f"Validation {_pct(total['validation'], total['items'])} "
+        f"({total['validation']}/{total['items']}) · "
+        f"Two-way {_pct(total['two_way'], total['items'])} "
+        f"({total['two_way']}/{total['items']})**"
+    )
+    lines.append("")
+    lines.append(
+        "*(The D dimension's two-way figure counts its 13 rows with a dedicated "
+        "demo domain; its 16 rows are report use-case rows, not 16 domains. The "
+        "matrix domain basis is the 13 `domains:` in the spec.)*"
+    )
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    for dim, meta in zip(rd.get("dimensions", []), dims):
+        ref = f"（{meta['report_ref']}）" if meta["report_ref"] else ""
+        lines.append(f"## {meta['key']}. {meta['title']}{ref}")
+        lines.append("")
+        if meta["note"]:
+            lines.append(f"> {meta['note']}")
+            lines.append("")
+        columns = list(dim.get("columns", []))
+        lines.append("| # | " + " | ".join(columns) + " |")
+        lines.append("|:-:|" + "|".join("---" for _ in columns) + "|")
+        for it in dim.get("items", []):
+            lines.append("| " + it["id"] + " | " + " | ".join(it["cells"]) + " |")
+        lines.append("")
+        lines.append(f"### {meta['key']} 维度覆盖率统计")
+        lines.append("")
+        lines.append("| 指标 | 数值 |")
+        lines.append("|------|:----:|")
+        lines.append(f"| 报告维度数（item 行） | {meta['items']} |")
+        lines.append(
+            f"| AutoInfo Code 已覆盖 | {meta['code']}/{meta['items']} "
+            f"({_pct(meta['code'], meta['items'])}) |"
+        )
+        lines.append(
+            f"| Validation Plan 已测试 | {meta['validation']}/{meta['items']} "
+            f"({_pct(meta['validation'], meta['items'])}) |"
+        )
+        lines.append(
+            f"| 双向覆盖（Code + Plan） | {meta['two_way']}/{meta['items']} "
+            f"({_pct(meta['two_way'], meta['items'])}) |"
+        )
+        lines.append(
+            f"| 完全未覆盖 | {meta['uncovered']}/{meta['items']} "
+            f"({_pct(meta['uncovered'], meta['items'])}) |"
+        )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    lines.append("## 总覆盖率矩阵")
+    lines.append("")
+    lines.append("| 维度 | item 行 | Code 覆盖 | Code % | Plan 覆盖 | Plan % | 双向覆盖 | 双向 % |")
+    lines.append(
+        "|:----|:---------:|:---------:|:------:|:---------:|:------:|:--------:|:------:|"
+    )
+    for meta in dims:
+        lines.append(
+            f"| **{meta['key']}. {meta['title']}** | {meta['items']} "
+            f"| {meta['code']} | **{_pct(meta['code'], meta['items'])}** "
+            f"| {meta['validation']} | **{_pct(meta['validation'], meta['items'])}** "
+            f"| {meta['two_way']} | **{_pct(meta['two_way'], meta['items'])}** |"
+        )
+    lines.append(
+        f"| **总计** | **{total['items']}** | **{total['code']}** "
+        f"| **{_pct(total['code'], total['items'])}** | **{total['validation']}** "
+        f"| **{_pct(total['validation'], total['items'])}** | **{total['two_way']}** "
+        f"| **{_pct(total['two_way'], total['items'])}** |"
+    )
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("## Gap summary (derived)")
+    lines.append("")
+
+    uncovered: list[str] = []
+    partial: list[str] = []
+    unvalidated: list[str] = []
+    for dim in rd.get("dimensions", []):
+        columns = list(dim.get("columns", []))
+        code_col = dim.get("code_column", "AutoInfo Code")
+        val_col = dim.get("validation_column", "Validation Plan")
+        code_idx = columns.index(code_col) if code_col in columns else max(len(columns) - 3, 0)
+        val_idx = columns.index(val_col) if val_col in columns else max(len(columns) - 2, 0)
+        for it in dim.get("items", []):
+            cells = it["cells"]
+            c = _leading_status(cells[code_idx])
+            v = _leading_status(cells[val_idx])
+            if c == "❌" and v == "❌":
+                uncovered.append(it["id"])
+            elif c != "❌" and v == "❌":
+                unvalidated.append(it["id"])
+            if _leading_status(cells[-1]) == "⚠️":
+                partial.append(it["id"])
+
+    lines.append(
+        f"- Fully uncovered (Code ❌ + Validation ❌): {len(uncovered)} — "
+        f"{', '.join(uncovered) or 'none'}"
+    )
+    lines.append(
+        f"- Implemented but unvalidated (Code non-❌, Validation ❌): "
+        f"{len(unvalidated)} — {', '.join(unvalidated) or 'none'}"
+    )
+    lines.append(f"- Partially covered (⚠️): {len(partial)} — {', '.join(partial) or 'none'}")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -737,8 +996,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--evidence",
-        required=True,
-        help="Directory to scan for produced artifacts (outputs/** + manifest.json)",
+        default=None,
+        help="Directory to scan for produced artifacts (outputs/** + manifest.json). "
+        "Required for the evidence matrix; not needed with --render-enduser-doc/"
+        "--check-enduser-doc.",
     )
     llm = parser.add_mutually_exclusive_group()
     llm.add_argument(
@@ -770,7 +1031,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Validation scenario library dir to scan for capability coverage "
         "(default: src/autoinfo/mcp/scenarios)",
     )
+    parser.add_argument(
+        "--render-enduser-doc",
+        default=None,
+        metavar="PATH",
+        help="Render the 99-item end-user coverage view from the spec's "
+        "`report_demand` block to PATH (default: docs/dev/enduser-coverage-matrix.md)",
+    )
+    parser.add_argument(
+        "--check-enduser-doc",
+        default=None,
+        metavar="PATH",
+        help="Verify PATH matches the view rendered from the spec; exit 1 on "
+        "divergence (hand edit / spec drift)",
+    )
     return parser.parse_args(argv)
+
+
+def _load_spec(spec_path: Path) -> dict[str, Any]:
+    try:
+        return yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"cannot parse spec {spec_path}: {exc}") from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -780,16 +1062,58 @@ def main(argv: list[str] | None = None) -> int:
     if not spec_path.is_file():
         print(f"ERROR: spec file not found: {args.spec}", file=sys.stderr)
         return 2
+    try:
+        spec = _load_spec(spec_path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
+    if args.render_enduser_doc:
+        doc_path = Path(args.render_enduser_doc)
+        doc_path.parent.mkdir(parents=True, exist_ok=True)
+        doc_path.write_text(render_enduser_coverage_view(spec), encoding="utf-8")
+        print(f"Wrote {doc_path} (99-item end-user coverage view from {args.spec}).")
+        return 0
+
+    if args.check_enduser_doc:
+        doc_path = Path(args.check_enduser_doc)
+        expected = render_enduser_coverage_view(spec)
+        if not doc_path.is_file():
+            print(f"ERROR: end-user coverage doc not found: {doc_path}", file=sys.stderr)
+            return 1
+        actual = doc_path.read_text(encoding="utf-8")
+        if actual == expected:
+            print(f"OK: {doc_path} matches the rendered view from {args.spec}.")
+            return 0
+        diff = list(
+            difflib.unified_diff(
+                expected.splitlines(),
+                actual.splitlines(),
+                fromfile=f"rendered-from:{args.spec}",
+                tofile=str(doc_path),
+                lineterm="",
+            )
+        )
+        print(
+            f"DRIFT: {doc_path} differs from the view rendered from {args.spec}.",
+            file=sys.stderr,
+        )
+        for line in diff[:40]:
+            print(line, file=sys.stderr)
+        if len(diff) > 40:
+            print(f"... ({len(diff) - 40} more diff lines)", file=sys.stderr)
+        return 1
+
+    if args.evidence is None:
+        print(
+            "ERROR: --evidence is required for the evidence matrix "
+            "(or use --render-enduser-doc/--check-enduser-doc).",
+            file=sys.stderr,
+        )
+        return 2
     evidence_dir = Path(args.evidence)
     if not evidence_dir.is_dir():
         print(f"ERROR: evidence directory not found: {args.evidence}", file=sys.stderr)
-        return 2
-
-    try:
-        spec = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as exc:
-        print(f"ERROR: cannot parse spec {args.spec}: {exc}", file=sys.stderr)
         return 2
 
     produced = scan_evidence(evidence_dir)
@@ -823,8 +1147,10 @@ def main(argv: list[str] | None = None) -> int:
     source_gaps = classify_source_coverage(spec, source_evidence)
     kb_gaps = classify_kb_tier_coverage(spec, kb_evidence)
     print(f"MATRIX: {report_path}")
-    print(f"cells={sum(counts.values())} (domains x products x formats), "
-          f"llm_available={llm_available}")
+    print(
+        f"cells={sum(counts.values())} (domains x products x formats), "
+        f"llm_available={llm_available}"
+    )
     for status in _ALL_STATUSES:
         print(f"  {status}: {counts[status]}")
     print(f"source_gaps: {len(source_gaps)} / required_sources")

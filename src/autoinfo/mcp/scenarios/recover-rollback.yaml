@@ -1,0 +1,79 @@
+# R-B-02: an aborted pipeline leaves no partial state once rolled back.
+# A collect step writes a partial cache file and journals it; the next step
+# fails; explicit rollback removes both the checkpoint and the partial file,
+# and a fresh run afterwards completes cleanly.
+name: recover-rollback
+description: "Rollback removes the checkpoint and journaled partial writes, leaving no partial state (R-B-02)"
+category: failure
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.4
+requires_env: []
+steps:
+  - name: "aborted pipeline rollback removes partial files and checkpoint"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import os, shutil, tempfile
+      from pathlib import Path
+      from autoinfo.pipeline import (
+          PipelineStep, pipeline_status, rollback_pipeline, run_pipeline,
+      )
+
+      tmp = tempfile.mkdtemp(prefix="recover-rollback-")
+      try:
+          os.chdir(tmp)
+          target = Path("collections") / "recover-demo" / "src1"
+
+          def collect(ctx):
+              target.mkdir(parents=True, exist_ok=True)
+              item = target / "item1.json"
+              item.write_text("{}", encoding="utf-8")
+              ctx["journal"].append(str(item))
+              return {"created": str(item)}
+
+          def process(ctx):
+              raise RuntimeError("simulated network failure at process step")
+
+          def kb(ctx):
+              return {"ok": True}
+
+          fail_steps = [
+              PipelineStep("collect", collect),
+              PipelineStep("process", process),
+              PipelineStep("kb", kb),
+          ]
+          aborted = run_pipeline("recover-demo", steps=fail_steps, resume_from="start")
+          assert aborted.status == "partial", aborted.status
+          assert aborted.failed_step == "process", aborted.failed_step
+          assert (target / "item1.json").is_file(), "partial write expected"
+
+          report = rollback_pipeline("recover-demo")
+          assert report["rolled_back"] is True, report
+          assert not (target / "item1.json").exists(), "partial file must be removed"
+          assert pipeline_status("recover-demo")["status"] == "none"
+
+          # Rollback restores a clean slate: a fresh run succeeds.
+          def collect_ok(ctx):
+              target.mkdir(parents=True, exist_ok=True)
+              (target / "item1.json").write_text("{}", encoding="utf-8")
+              return {"ok": True}
+
+          def process_ok(ctx):
+              return {"ok": True}
+
+          fresh = [
+              PipelineStep("collect", collect_ok),
+              PipelineStep("process", process_ok),
+              PipelineStep("kb", kb),
+          ]
+          done = run_pipeline("recover-demo", steps=fresh, resume_from="start")
+          assert done.status == "complete", done.status
+          print("RECOVER_ROLLBACK_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RECOVER_ROLLBACK_OK"]

@@ -1,0 +1,21 @@
+name: surface-rest-parity
+description: >-
+  T-S-10: every FastAPI REST endpoint is accounted for by a real scenario HTTP
+  step, a real test artifact, or a documented framework disposition (zero
+  unaccounted); the historical 8 REST endpoints are each covered by a scenario.
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "REST surface parity audit (0 unaccounted endpoints)"
+    kind: cli
+    command: python3 scripts/surface_parity.py --check
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "REST endpoints enumerated:"
+        - "unaccounted endpoints: 0"
+        - "SURFACE_PARITY_OK"

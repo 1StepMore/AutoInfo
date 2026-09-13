@@ -1,15 +1,20 @@
 """Tests for the standardised error response module (``autoinfo.mcp.errors``).
 
 Covers:
-    - All 19 ``ErrorCode`` enum members have correct string values
+    - All 26 ``ErrorCode`` enum members have correct (CamelCase) string values
+    - No SCREAMING_SNAKE casing outliers (T-S-05)
+    - Retired dead codes are gone; ``PROCESSING_FAILED`` is retained + emitted
     - ``error_dict()`` returns the expected shape (``error_code``, ``message``,
       ``actionable``; no bare ``"error"`` key)
-    - ``error_response()`` returns ``list[TextContent]`` with valid JSON
+    - ``error_response()`` returns the canonical envelope with valid JSON
     - ``ErrorCode.INTERNAL_ERROR`` for unknown exception types
     - Re-exports from ``autoinfo.mcp`` work correctly
 """
 
 from __future__ import annotations
+
+import re
+from pathlib import Path
 
 import pytest
 
@@ -41,7 +46,14 @@ class TestErrorCodeEnumValues:
             (ErrorCode.PROCESSING_FAILED, "ProcessingFailed"),
             (ErrorCode.INVALID_SECTION, "InvalidSection"),
             (ErrorCode.UNKNOWN_TOOL, "UnknownTool"),
+            (ErrorCode.CONFIRMATION_REQUIRED, "ConfirmationRequired"),
             (ErrorCode.INTERNAL_ERROR, "InternalError"),
+            (ErrorCode.LLM_NOT_CONFIGURED, "LLMNotConfigured"),
+            (ErrorCode.EMPTY_RESULT, "EmptyResult"),
+            (ErrorCode.CONFIG_NOT_FOUND, "ConfigNotFound"),
+            (ErrorCode.DIRECTOR_ONLY, "DirectorOnly"),
+            (ErrorCode.READ_ONLY_SERVER, "ReadOnlyServer"),
+            (ErrorCode.FREE_TIER_LIMIT, "FreeTierLimit"),
         ],
     )
     def test_value(self, member: ErrorCode, expected: str) -> None:
@@ -49,7 +61,33 @@ class TestErrorCodeEnumValues:
 
     def test_total_members(self) -> None:
         """Ensure the enum member count stays pinned (grows only with new codes)."""
-        assert len(ErrorCode) == 30
+        assert len(ErrorCode) == 26
+
+    def test_values_are_camel_case(self) -> None:
+        """T-S-05: every emitted code value is CamelCase, no SCREAMING_SNAKE.
+
+        The enum *member* names stay SCREAMING_SNAKE (Python identifier
+        convention); only the *values* are normalized.
+        """
+        pattern = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+        outliers = [m.name for m in ErrorCode if not pattern.match(m.value)]
+        assert outliers == [], f"non-CamelCase ErrorCode values: {outliers}"
+
+    def test_retired_dead_codes_are_removed(self) -> None:
+        """T-S-05: codes with no emission site were removed, not left dead.
+
+        ``NO_CACHED_ITEMS`` is a documented ``{status: "noop"}`` success, not
+        an error; ``AUTH_REQUIRED``/``SESSION_EXPIRED`` have no auth path yet;
+        ``RATE_LIMITED`` has no emitting surface.
+        """
+        retired = {
+            "AUTH_REQUIRED",
+            "RATE_LIMITED",
+            "SESSION_EXPIRED",
+            "NO_CACHED_ITEMS",
+        }
+        assert retired.isdisjoint(m.name for m in ErrorCode)
+        assert ErrorCode.PROCESSING_FAILED.value == "ProcessingFailed"
 
 
 class TestErrorResponseTypedDict:
@@ -181,13 +219,32 @@ class TestInternalErrorForUnknownExceptions:
         if not hasattr(ErrorCode, code_name):
             result = error_response(ErrorCode.INTERNAL_ERROR, message=str(exc))
         else:
-            result = error_response(
-                getattr(ErrorCode, code_name), message=str(exc)
-            )
+            result = error_response(getattr(ErrorCode, code_name), message=str(exc))
 
         error = result["error"]
         assert error["code"] == "InternalError"
         assert error["message"] == "broken pipe"
+
+
+class TestProcessingFailedEmission:
+    """``PROCESSING_FAILED`` is the retained dead code, wired into emission."""
+
+    def test_processing_failure_emits_processing_failed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        from autoinfo.mcp import server as mcp_server
+
+        def _boom(**kwargs: object) -> object:
+            raise RuntimeError("synthetic processing failure")
+
+        monkeypatch.setattr("autoinfo.process.run_processing", _boom)
+        result = mcp_server._handle_process_collection(domain="medical-research")
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "ProcessingFailed"
+        assert result["error"]["code"] == ErrorCode.PROCESSING_FAILED.value
+        assert result["error"]["actionable"] is True
 
 
 class TestReExports:

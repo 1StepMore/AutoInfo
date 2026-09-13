@@ -8,7 +8,10 @@
 # present on the error envelope — the hint agents use to remediate.
 name: error-boundary
 description: "Error boundary testing for unknown tools and nonexistent resources"
-category: errors
+category: failure
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
 requires_env: []
 steps:
   - name: "unknown tool returns UnknownTool"

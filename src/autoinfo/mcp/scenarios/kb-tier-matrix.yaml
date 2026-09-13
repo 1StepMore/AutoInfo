@@ -42,7 +42,10 @@
 # store.delete_entry(eid, actor="director").
 name: kb-tier-matrix
 description: "KB-tier write matrix: 13 demo domains x {01-Raw seed, create_kb_draft -> 02-Draft, promote_kb_draft -> 03-Wiki} via real pipeline calls"
-category: kb
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain:
   - medical-research

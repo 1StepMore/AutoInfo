@@ -1,0 +1,57 @@
+# T-B-05 (performance scenarios absent, S1): concurrency.
+#
+# PINNED CRITERION: wall time of 10 concurrent runs < 2.0 x wall time of a
+# single run.  A "run" is a real AutoInfo workload subprocess (import the
+# real MCP server and build the full live tool list via _full_tool_list());
+# the unit is real, CPU+I/O bound, and needs no LLM or network.
+#   T1 = wall time of one run (single).
+#   T10 = wall time of 10 runs launched together and waited on (concurrent).
+#   PASS requires T10 < 2.0 * T1.  Process-level concurrency exercises
+#   multiple cores; a serialized/blocked implementation regresses past 2x.
+# The comparison is measured live, never a hard-coded latency.
+name: perf-concurrency
+description: >-
+  Performance concurrency with a pinned threshold: 10 concurrent real
+  AutoInfo runs (full live MCP tool-list build) must complete in < 2x the
+  wall time of a single run. Deterministic, no LLM/network; the ratio is
+  measured live in-process.
+category: performance
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
+requires_env: []
+steps:
+  - name: "10 concurrent runs wall time < 2.0x single-run wall time"
+    kind: cli
+    timeout_seconds: 300
+    command: |-
+      python3 -c '
+      import subprocess, sys, time
+
+      WORKLOAD = [sys.executable, "-c",
+                  "from autoinfo.mcp.server import _full_tool_list as L; print(len(L()))"]
+
+      def run_once():
+          start = time.monotonic()
+          subprocess.run(WORKLOAD, capture_output=True, check=True)
+          return time.monotonic() - start
+
+      CONCURRENCY = 10
+      # Single-run baseline = median of 3 runs, so an anomalously fast warm
+      # sample cannot inflate the concurrent/single ratio.
+      single = sorted(run_once() for _ in range(3))[1]
+      procs = [subprocess.Popen(WORKLOAD, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL) for _ in range(CONCURRENCY)]
+      start = time.monotonic()
+      for p in procs:
+          assert p.wait() == 0, p.returncode
+      concurrent = time.monotonic() - start
+      ratio = concurrent / single
+      print(f"PERF_CONCURRENCY_OK single={single:.3f}s concurrent={concurrent:.3f}s ratio={ratio:.2f} threshold=2.00")
+      assert single > 0, single
+      assert ratio < 2.0, (single, concurrent, ratio)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PERF_CONCURRENCY_OK"]

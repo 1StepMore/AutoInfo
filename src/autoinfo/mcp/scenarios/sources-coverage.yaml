@@ -15,7 +15,10 @@
 # autoinfo/collect.py), so steps pass whenever the domain is configured.
 name: sources-coverage
 description: "Issue #156 — source-type coverage: ap_api, api, apple_podcasts, bilibili, dblp, edx_sitemap, email, huggingface, kaggle, pdf, quandl, rss, sec_edgar, unpaywall, web, webhook, yahoo_finance"
-category: source
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

@@ -39,9 +39,7 @@ class TestToolRegistration:
 
     async def test_tool_schema(self) -> None:
         tools: list[Tool] = await list_tools()
-        tool = next(
-            t for t in tools if t.name == "generate_cross_domain_report"
-        )
+        tool = next(t for t in tools if t.name == "generate_cross_domain_report")
         schema = tool.inputSchema
         properties = schema.get("properties", {})
 
@@ -67,34 +65,28 @@ class TestValidation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        result = _handle_generate_cross_domain_report(
-            domains=["medical-research"]
-        )
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
-        assert "At least 2 domains" in result["message"]
+        result = _handle_generate_cross_domain_report(domains=["medical-research"])
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
+        assert "At least 2 domains" in result["error"]["message"]
 
-    def test_rejects_empty_domains(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rejects_empty_domains(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_generate_cross_domain_report(domains=[])
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
 
-    def test_rejects_unknown_domain(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rejects_unknown_domain(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         # Initialize project so config exists
         _handle_init_project_direct(tmp_path, monkeypatch)
         result = _handle_generate_cross_domain_report(
             domains=["medical-research", "nonexistent-xyz"]
         )
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
-        assert "Unknown domain(s)" in result["message"]
-        assert "nonexistent-xyz" in result["message"]
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
+        assert "Unknown domain(s)" in result["error"]["message"]
+        assert "nonexistent-xyz" in result["error"]["message"]
 
 
 # ======================================================================
@@ -121,12 +113,8 @@ class TestDelegation:
         mock_config.domains = [mock_domain_a, mock_domain_b]
 
         with patch("autoinfo.mcp.server._load_config", return_value=mock_config):
-            with patch(
-                "autoinfo.output.generate_report", autospec=True
-            ) as mock_gen:
-                mock_gen.return_value = (
-                    "# Cross-Domain Report\n\n## executive summary\n\nTest."
-                )
+            with patch("autoinfo.output.generate_report", autospec=True) as mock_gen:
+                mock_gen.return_value = "# Cross-Domain Report\n\n## executive summary\n\nTest."
                 result = _handle_generate_cross_domain_report(
                     domains=["medical-research", "ai-commercial"],
                     format="markdown",
@@ -149,11 +137,11 @@ class TestDelegation:
 
         # Verify result structure
         assert result["success"] is True
-        assert result["domain"] == "medical-research"
-        assert result["domains"] == ["medical-research", "ai-commercial"]
-        assert result["format"] == "markdown"
-        assert result["period"] == "monthly"
-        assert result["content"] == mock_gen.return_value
+        assert result["data"]["domain"] == "medical-research"
+        assert result["data"]["domains"] == ["medical-research", "ai-commercial"]
+        assert result["data"]["format"] == "markdown"
+        assert result["data"]["period"] == "monthly"
+        assert result["data"]["content"] == mock_gen.return_value
 
     async def test_dispatches_via_call_tool(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -171,9 +159,7 @@ class TestDelegation:
         mock_config.domains = [mock_domain_a, mock_domain_b]
 
         with patch("autoinfo.mcp.server._load_config", return_value=mock_config):
-            with patch(
-                "autoinfo.output.generate_report", autospec=True
-            ) as mock_gen:
+            with patch("autoinfo.output.generate_report", autospec=True) as mock_gen:
                 mock_gen.return_value = (
                     "# Cross-Domain Report\n\n## executive summary\n\nTest via dispatch."
                 )
@@ -181,9 +167,7 @@ class TestDelegation:
                 # generate_cross_domain_report is LLM-required; the guard in
                 # call_tool reads the real config, not the mock above — patch
                 # _is_llm_configured so the guard passes.
-                with patch(
-                    "autoinfo.mcp.server._is_llm_configured", return_value=True
-                ):
+                with patch("autoinfo.mcp.server._is_llm_configured", return_value=True):
                     result_list = await call_tool(
                         "generate_cross_domain_report",
                         {
@@ -194,13 +178,13 @@ class TestDelegation:
                         },
                     )
 
-        assert len(result_list) == 1
-        assert isinstance(result_list[0], TextContent)
-        body = json.loads(result_list[0].text)
+        assert len(result_list[0]) == 1
+        assert isinstance(result_list[0][0], TextContent)
+        body = json.loads(result_list[0][0].text)
         assert body["success"] is True
-        assert body["domain"] == "medical-research"
-        assert body["domains"] == ["medical-research", "ai-commercial"]
-        assert body["content"] == mock_gen.return_value
+        assert body["data"]["domain"] == "medical-research"
+        assert body["data"]["domains"] == ["medical-research", "ai-commercial"]
+        assert body["data"]["content"] == mock_gen.return_value
 
 
 # ======================================================================
@@ -208,9 +192,7 @@ class TestDelegation:
 # ======================================================================
 
 
-def _handle_init_project_direct(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> dict[str, Any]:
+def _handle_init_project_direct(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Initialize the project in tmp_path so domain config exists."""
     monkeypatch.chdir(tmp_path)
     from autoinfo.mcp.server import _handle_init_project

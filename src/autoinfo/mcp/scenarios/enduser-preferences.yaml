@@ -1,6 +1,9 @@
 name: enduser-preferences
 description: "End-user trial, preferences, and subscription status lifecycle. Cleanup deletes the created user so interrupted runs do not leak a profile that blocks re-runs (create_profile IntegrityError on duplicate user_id)."
-category: enduser
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A6
+user_level: B1.5
 requires_env: []
 steps:
   - name: "enduser_create for prefs test"

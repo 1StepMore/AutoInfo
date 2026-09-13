@@ -10,7 +10,10 @@
 # plus one real MCP call against the live KB to pin the tier surface.
 name: curated-priority-consumption
 description: "Curated-priority consumption: processed_only selects 03-Wiki first with source_tier badge, Draft fallback, raw_only/both unchanged"
-category: output
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A6
+user_level: B1.4
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

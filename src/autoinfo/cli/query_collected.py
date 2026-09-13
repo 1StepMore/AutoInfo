@@ -18,6 +18,8 @@ import json
 
 import typer
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(
     name="query-collected",
     help="Q&A over collected content (FTS5 + LLM) — mirrors MCP query_collected",
@@ -26,9 +28,7 @@ app = typer.Typer(
 
 @app.callback(invoke_without_command=True)
 def query_collected(  # noqa: A001 — mirrors the MCP tool name
-    query: str = typer.Option(
-        ..., "--query", help="Natural-language question to answer"
-    ),
+    query: str = typer.Option(..., "--query", help="Natural-language question to answer"),
     domain: str = typer.Option(
         ..., "--domain", help="Domain to scope the search to (e.g. medical-research)"
     ),
@@ -68,6 +68,7 @@ def query_collected(  # noqa: A001 — mirrors the MCP tool name
             "docs/dev/required-api-keys.md for the full list of API keys "
             "and environment variables."
         )
+        fail_if_global("LLMNotConfigured", message)
         if json_output:
             typer.echo(
                 json.dumps(
@@ -91,6 +92,9 @@ def query_collected(  # noqa: A001 — mirrors the MCP tool name
     from autoinfo.qa import query_collected as _qa
 
     result = _qa(query=query, domain=domain, content_ids=content_ids or None)
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))

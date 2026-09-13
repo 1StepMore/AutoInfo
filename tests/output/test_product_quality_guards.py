@@ -331,9 +331,7 @@ class TestDeliveryGateConfigResolution:
             DomainConfig(
                 name="medical-research",
                 delivery_gates={
-                    "D1": DeliveryGateConfig(
-                        name="D1", enabled=True, action_on_failure="block"
-                    ),
+                    "D1": DeliveryGateConfig(name="D1", enabled=True, action_on_failure="block"),
                 },
             )
         ]
@@ -350,9 +348,7 @@ class TestDeliveryGateConfigResolution:
     def test_resolve_falls_back_to_global_config(self) -> None:
         cfg = Config()
         cfg.delivery_gates = {
-            "D2": DeliveryGateConfig(
-                name="D2", enabled=True, action_on_failure="fallback"
-            ),
+            "D2": DeliveryGateConfig(name="D2", enabled=True, action_on_failure="fallback"),
         }
         with (
             patch(
@@ -394,9 +390,7 @@ class TestDeliveryGateConfigResolution:
             DomainConfig(
                 name="medical-research",
                 delivery_gates={
-                    "D1": DeliveryGateConfig(
-                        name="D1", enabled=True, action_on_failure="block"
-                    ),
+                    "D1": DeliveryGateConfig(name="D1", enabled=True, action_on_failure="block"),
                 },
             )
         ]
@@ -407,9 +401,7 @@ class TestDeliveryGateConfigResolution:
             ),
             patch("autoinfo.output.load_config", return_value=cfg),
         ):
-            result = generate_digest(
-                domain="medical-research", period="weekly", format="json"
-            )
+            result = generate_digest(domain="medical-research", period="weekly", format="json")
 
         assert isinstance(result, DeliveryOutput)
         assert "D1-ProductCompleteness" in result.gate_results
@@ -427,12 +419,10 @@ class TestDeliveryGateConfigResolution:
         """Default generate_report resolves delivery-gate config from the domain
         config when present -> returns DeliveryOutput with populated gate_results."""
         mock_synthesis.return_value = "Executive summary for the report."
-        mock_extract.side_effect = (
-            lambda extractor, prompt, field: (
-                [{"theme": "General", "description": "All entries", "entry_ids": ["real-001"]}]
-                if field == "groups"
-                else "Executive summary for the report."
-            )
+        mock_extract.side_effect = lambda extractor, prompt, field: (
+            [{"theme": "General", "description": "All entries", "entry_ids": ["real-001"]}]
+            if field == "groups"
+            else "Executive summary for the report."
         )
         mock_store = MagicMock()
         mock_store.list_entries.return_value = [_REAL_ENTRY, _REAL_ENTRY_2]
@@ -443,9 +433,7 @@ class TestDeliveryGateConfigResolution:
             DomainConfig(
                 name="medical-research",
                 delivery_gates={
-                    "D1": DeliveryGateConfig(
-                        name="D1", enabled=True, action_on_failure="block"
-                    ),
+                    "D1": DeliveryGateConfig(name="D1", enabled=True, action_on_failure="block"),
                 },
             )
         ]
@@ -456,18 +444,14 @@ class TestDeliveryGateConfigResolution:
             ),
             patch("autoinfo.output.load_config", return_value=cfg),
         ):
-            result = generate_report(
-                domain="medical-research", format="markdown", period="weekly"
-            )
+            result = generate_report(domain="medical-research", format="markdown", period="weekly")
 
         assert isinstance(result, DeliveryOutput)
         assert "D1-ProductCompleteness" in result.gate_results
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_digest_no_config_returns_str(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_digest_no_config_returns_str(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """When config resolution yields nothing, generate_digest returns a plain str."""
         mock_llm.return_value = _SAMPLE_LLM_SYNTHESIS
         mock_store = MagicMock()
@@ -653,8 +637,8 @@ class TestMcpFalseNoopGate:
             )
 
         assert result["success"] is True
-        assert result.get("status") != "noop"
-        assert "# Weekly Digest" in result["content"]
+        assert result["data"].get("status") != "noop"
+        assert "# Weekly Digest" in result["data"]["content"]
 
     def test_report_handler_not_noop_when_stale_fallback_would_produce_content(
         self,
@@ -681,8 +665,8 @@ class TestMcpFalseNoopGate:
             )
 
         assert result["success"] is True
-        assert result.get("status") != "noop"
-        assert "# Monthly Report" in result["content"]
+        assert result["data"].get("status") != "noop"
+        assert "# Monthly Report" in result["data"]["content"]
 
     def test_digest_handler_still_noop_when_domain_has_no_entries(self) -> None:
         """When the domain genuinely has NO entries at all, 'noop' is preserved."""
@@ -698,7 +682,7 @@ class TestMcpFalseNoopGate:
                 domain="medical-research", period="weekly", format="markdown"
             )
 
-        assert result.get("status") == "noop"
+        assert result["data"].get("status") == "noop"
 
 
 # ---------------------------------------------------------------------------

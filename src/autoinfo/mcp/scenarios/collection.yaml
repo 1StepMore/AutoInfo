@@ -2,7 +2,10 @@
 # real network calls.  clean_cache uses dry_run to avoid deleting artifacts.
 name: collection
 description: "Collection execution, progress, status, processing progress, and cache cleanup"
-category: collection
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

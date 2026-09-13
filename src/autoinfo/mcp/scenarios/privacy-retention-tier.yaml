@@ -1,0 +1,137 @@
+# T-A-08: retention by tier.
+#
+# Honest v1 boundary recorded by this scenario: per-tier retention WINDOWS are
+# documented (Free 30d / Premium 90d / Enterprise 180d, operations.md §2.5) and
+# modelled on UserProfile/Subscription (`tier`), but per-tier retention
+# ENFORCEMENT is spec-only — no shipped code filters or purges by tier, and no
+# automatic timer purges soft-deleted entries.  The shipped v1 mechanism is the
+# soft-delete -> restore window plus an explicit operator purge
+# (`delete_user_data(purge=True)` / `soft_delete_entry(purge=True)`), which is
+# what this scenario asserts at the code boundary.  No silent pass: every step
+# is a real assertion against the live code/doc surface.
+name: privacy-retention-tier
+description: "Retention by tier: per-tier windows documented, tier modelled, and v1 enforcement is explicit soft-delete/restore + operator purge, not automatic (T-A-08)"
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.6
+requires_env: []
+steps:
+  - name: "per-tier retention windows are documented (Free 30 / Premium 90 / Enterprise 180)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      text = Path("docs/dev/specs/operations.md").read_text(encoding="utf-8")
+      assert "### 2.5 Retention by Tier" in text, "retention-by-tier spec section missing"
+      for row, window in (
+          ("| **Free** | 30 days", "free=30"),
+          ("| **Premium** | 90 days", "premium=90"),
+          ("| **Enterprise** | 180 days", "enterprise=180"),
+      ):
+          assert row in text, "retention window row missing: " + row
+      assert "Per-tier retention enforcement is spec-only" in text, "spec-only boundary note missing"
+      print("TIER_WINDOWS_DOCUMENTED free=30 premium=90 enterprise=180")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["TIER_WINDOWS_DOCUMENTED"]
+
+  - name: "the user model carries a tier but no retention-enforcement field"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.user_store import UserProfile, Subscription
+      assert "tier" in UserProfile.__annotations__, "UserProfile.tier missing"
+      assert "tier" in Subscription.__annotations__, "Subscription.tier missing"
+      for forbidden in ("retention_window_expired", "retention_days", "enforce_retention"):
+          assert forbidden not in UserProfile.__annotations__, forbidden
+          assert forbidden not in Subscription.__annotations__, forbidden
+      print("TIER_MODELLED_ENFORCEMENT_ABSENT")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["TIER_MODELLED_ENFORCEMENT_ABSENT"]
+
+  - name: "soft-delete is the v1 retention anchor and restore stays available"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import uuid
+      from datetime import datetime, timezone
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      store = KBStore()
+      item = Item(
+          id=str(uuid.uuid4()),
+          source_name="web",
+          source_type="web",
+          source_url="https://privacy-retention.autoinfo.test/retention-tier-entry",
+          source_platform="web",
+          title="Privacy Retention Tier Fixture Entry",
+          content="Fixture entry owned by the privacy-retention-tier scenario.",
+          domain="medical-research",
+          topic_tags=[],
+          collected_at=datetime.now(timezone.utc).isoformat(),
+          content_type="text",
+          quality_tier=1,
+      )
+      entry = store.store_entry(item=item, tier="01-Raw", user_id="validation-privacy-retention-user")
+      eid = entry.entry_id
+      deleted = store.soft_delete_entry(eid)
+      assert deleted.get("deleted") is True, deleted
+      meta = store.index.get_entry(eid)
+      assert meta.get("deleted_at"), "retention anchor deleted_at missing"
+      assert Path(meta["file_path"]).is_file(), "soft-delete must not remove the file"
+      restored = store.restore_entry(eid)
+      assert restored.get("restored") is True, restored
+      assert store.index.get_entry(eid).get("deleted") in (0, False)
+      print("RETENTION_ANCHOR_OK " + eid)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RETENTION_ANCHOR_OK", "medical-research-general-privacy-retention-tier-fixture-entry"]
+
+  - name: "no automatic tier-based purge exists in shipped code"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      root = Path("src/autoinfo")
+      offenders = []
+      for token in ("enforce_retention", "purge_expired", "purge-expired", "auto_cleanup", "automatic_cleanup"):
+          for path in root.rglob("*.py"):
+              if token in path.read_text(encoding="utf-8"):
+                  offenders.append(f"{token}:{path}")
+      assert not offenders, "automatic/tier retention enforcement found: " + str(offenders)
+      print("RETENTION_BOUNDARY_RECORDED explicit-purge-only")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RETENTION_BOUNDARY_RECORDED"]
+
+cleanup_steps:
+  - name: "purge retention-tier fixture entry"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      eid = "medical-research-general-privacy-retention-tier-fixture-entry"
+      meta = store.index.get_entry(eid)
+      if meta is not None:
+          store.delete_entry(eid)
+      for p in list(Path("knowledge/medical-research/01-Raw/general").glob("*privacy-retention-tier-fixture-entry*")):
+          p.unlink(missing_ok=True)
+      print("CLEANED")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

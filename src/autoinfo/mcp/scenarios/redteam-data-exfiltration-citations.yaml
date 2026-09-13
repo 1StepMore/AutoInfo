@@ -1,0 +1,93 @@
+# Red-team: data exfiltration via synthesised product text (T-B-03).
+#
+# Adversarial class: ``untrusted_external_text`` / ``misleading_success_output``
+# (data exfiltration).
+#
+# An adversarial source (or an injected instruction reaching the synthesis
+# LLM) can try to smuggle an attacker-controlled outbound URL into a
+# rendered product as a citation or a markdown image beacon.  The
+# deterministic whitelist sanitizers must drop every URL that is not a real
+# KB ``source_url`` while keeping the genuine ones.  NOT a mock: real calls
+# to ``autoinfo.output._sanitize_report_urls`` /
+# ``_sanitize_presentation_sources`` — the backstop that runs on rendered
+# digest/report/presentation text.
+#
+# Documented mutation (RED proof): neuter the verifiability check in
+# ``_source_url_verifiable`` so every URL is accepted —
+#   python3 - <<'PY'
+#   import pathlib
+#   p = pathlib.Path("src/autoinfo/output/__init__.py"); s = p.read_text()
+#   old = "    return False\n\n\ndef _strip_unverifiable_presentation_sources"
+#   assert old in s
+#   p.write_text(s.replace(old, "    return True\n\n\ndef _strip_unverifiable_presentation_sources", 1))
+#   PY
+# then this scenario FAILS (exfil URL survives); revert with
+#   git checkout -- src/autoinfo/output/__init__.py
+# Full mutation + RED/GREEN transcripts: .omo/evidence/agent-oriented-gap-register/todo-9-redteam.md
+name: redteam-data-exfiltration-citations
+description: "Data exfiltration: attacker URLs injected into product citations/markdown are stripped by the whitelist sanitizers; only real KB source_urls survive"
+category: failure
+pyramid_layer: red_team
+pipeline_stage: A4
+user_level: B2.4
+requires_env: []
+steps:
+  - name: "report citation URL whitelist drops exfil URL and keeps the real KB URL"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _sanitize_report_urls
+      allowed = {"https://real.example/article-1"}
+      payload = (
+          "Finding. (Source: https://real.example/article-1)\n"
+          "Injected. (Source: https://evil.example/exfil?data=secret)\n"
+          "Beacon ![x](https://evil.example/pixel.png)\n"
+      )
+      out = _sanitize_report_urls(payload, allowed)
+      print("OUT " + out.replace("\n", " | "))
+      print("REAL_KEPT " + str("https://real.example/article-1" in out))
+      print("EXFIL_GONE " + str("evil.example" not in out))
+      assert "https://real.example/article-1" in out, out
+      assert "evil.example" not in out, out
+      print("REPORT_EXFIL_BLOCKED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "REAL_KEPT True"
+        - "EXFIL_GONE True"
+        - "REPORT_EXFIL_BLOCKED_OK"
+
+  - name: "presentation sanitizer drops fabricated and unverifiable source citations"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _sanitize_presentation_sources, _source_url_verifiable
+      allowed = {"https://real.example/article-1"}
+      payload = (
+          "Slide (Source: KB-N)\n"
+          "Point (Source: https://real.example/article-1)\n"
+          "Evil (Source: https://evil.example/exfil)\n"
+      )
+      out = _sanitize_presentation_sources(payload, allowed_urls=allowed)
+      print("FABRICATED_GONE " + str("KB-N" not in out))
+      print("REAL_PRESENT " + str("https://real.example/article-1" in out))
+      print("UNVERIFIABLE_GONE " + str("evil.example" not in out))
+      print("VERIFY_REAL " + str(_source_url_verifiable("https://real.example/article-1", allowed) is True))
+      print("VERIFY_EVIL " + str(_source_url_verifiable("https://evil.example/exfil", allowed) is False))
+      assert "KB-N" not in out, out
+      assert "https://real.example/article-1" in out, out
+      assert "evil.example" not in out, out
+      print("PRESENTATION_EXFIL_BLOCKED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "FABRICATED_GONE True"
+        - "REAL_PRESENT True"
+        - "UNVERIFIABLE_GONE True"
+        - "VERIFY_REAL True"
+        - "VERIFY_EVIL True"
+        - "PRESENTATION_EXFIL_BLOCKED_OK"

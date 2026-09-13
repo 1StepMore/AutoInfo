@@ -18,7 +18,10 @@
 # ABSOLUTE temp cwd.
 name: regression-tutorial-entry-cap
 description: "Regression #103: generate_tutorial caps KB entries in the LLM prompt at 10 (#178)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#103"
 requires_env: []

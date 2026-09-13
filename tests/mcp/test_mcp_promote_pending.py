@@ -137,7 +137,7 @@ def _file_path(store: KBStore, entry_id: str) -> str:
 
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one tool call through ``call_tool`` and parse the envelope."""
-    text = anyio.run(call_tool, name, arguments)[0].text
+    text = anyio.run(call_tool, name, arguments)[0][0].text
     env = json.loads(text)
     assert isinstance(env, dict)
     return env
@@ -214,9 +214,7 @@ class TestHandlePromotePending:
         # Draft untouched
         _assert_tier(store, draft.entry_id, "02-Draft")
 
-    def test_handler_unknown_domain_empty_summary(
-        self, kb_dir: Path
-    ) -> None:
+    def test_handler_unknown_domain_empty_summary(self, kb_dir: Path) -> None:
         result = _handle_promote_pending(domain="no-such-domain")
         assert result["domain"] == "no-such-domain"
         assert result["total"] == 0
@@ -242,9 +240,7 @@ class TestDispatch:
             title="MCP dispatched draft",
         )
 
-        env = _call_tool(
-            "promote_pending", {"domain": "medical-research", "actor": "agent"}
-        )
+        env = _call_tool("promote_pending", {"domain": "medical-research", "actor": "agent"})
 
         assert env["success"] is True
         assert env["data"]["promoted"][0]["entry_id"] == draft.entry_id
@@ -263,9 +259,7 @@ class TestDispatch:
             title="MCP actor draft",
         )
 
-        env = _call_tool(
-            "promote_pending", {"domain": "medical-research", "actor": "scheduler"}
-        )
+        env = _call_tool("promote_pending", {"domain": "medical-research", "actor": "scheduler"})
 
         assert env["success"] is True
         wiki_path = _file_path(store, draft.entry_id)

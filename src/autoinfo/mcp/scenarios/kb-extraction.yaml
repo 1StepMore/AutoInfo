@@ -10,7 +10,10 @@
 # entry (source_url matches the scenario marker), never real user data.
 name: kb-extraction
 description: "LLM-required extraction and Q&A tools with real model calls"
-category: extraction
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
 steps:

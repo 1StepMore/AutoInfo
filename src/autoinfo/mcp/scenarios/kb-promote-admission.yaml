@@ -22,7 +22,10 @@
 # 03-Wiki entries are refused (DirectorOnlyError / WIKI_PROTECTED).
 name: kb-promote-admission
 description: "Promotion admission gate: G1/G3 threshold rejection with typed reasons, _failed marker, draft preserved; eligible draft passes"
-category: kb
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 collect_artifacts:

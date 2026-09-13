@@ -13,7 +13,10 @@
 # (no LLM, no network) and renders the report template with the derived label.
 name: regression-source-label-nondigest
 description: "Regression #325: report-path References render specific source name, not generic (RSS)"
-category: regression
+category: happy_path
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#325"
 requires_env: []

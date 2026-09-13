@@ -1,0 +1,67 @@
+# R-B-01 (methodology §4.2 Category-3 failure scenario): a 5-step pipeline
+# fails at step 3, the durable prefix is checkpointed, and resume completes
+# from the checkpoint without re-executing the completed steps.
+#
+# The 5 step names mirror the real production pipeline (collect/process/
+# kb-verify/kb-index/finalize); step functions are deterministic stand-ins so
+# the recovery engine is proven offline (no network/LLM) — the real collect
+# surface is exercised end-to-end by recover-cli-resume-from.yaml.
+name: recover-pipeline-resume
+description: "Checkpoint/resume: pipeline fails at step 3/5, checkpoint persists, resume completes and skips completed steps (R-A-01, R-B-01)"
+category: failure
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.4
+requires_env: []
+steps:
+  - name: "fail at step 3/5 then resume from the partial checkpoint to completion"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import os, shutil, tempfile
+      from autoinfo.pipeline import (
+          FAULT_ENV, PipelineStep, pipeline_status, run_pipeline,
+      )
+
+      tmp = tempfile.mkdtemp(prefix="recover-resume-")
+      try:
+          os.chdir(tmp)
+          calls = {}
+
+          def make(name):
+              def run(ctx):
+                  calls[name] = calls.get(name, 0) + 1
+                  return {"step": name, "executions": calls[name]}
+              return PipelineStep(name, run)
+
+          names = ["collect", "process", "kb-verify", "kb-index", "finalize"]
+          steps = [make(n) for n in names]
+
+          # -- Phase 1: interrupt at step 3 of 5 -----------------------------
+          os.environ[FAULT_ENV] = "kb-verify"
+          first = run_pipeline("recover-demo", steps=steps, resume_from="start")
+          assert first.status == "partial", first.status
+          assert first.failed_step == "kb-verify", first.failed_step
+          assert first.executed == ["collect", "process"], first.executed
+          assert calls == {"collect": 1, "process": 1}, calls
+
+          status = pipeline_status("recover-demo")
+          assert status["last_completed"] == "process", status
+          assert status["completed"] == ["collect", "process"], status
+
+          # -- Phase 2: restore and resume -----------------------------------
+          os.environ.pop(FAULT_ENV, None)
+          second = run_pipeline("recover-demo", steps=steps, resume_from="auto")
+          assert second.status == "complete", second.status
+          assert second.skipped == ["collect", "process"], second.skipped
+          assert second.executed == ["kb-verify", "kb-index", "finalize"], second.executed
+          # Idempotent retry: completed steps were NOT re-executed.
+          assert calls == {n: 1 for n in names}, calls
+          print("RECOVER_PIPELINE_RESUME_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RECOVER_PIPELINE_RESUME_OK"]

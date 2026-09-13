@@ -29,7 +29,10 @@
 # an ABSOLUTE temp cwd.
 name: regression-no-placeholder-magazine-tutorial
 description: "Regression #342: magazine-digest and tutorial products never render placeholder empty-states"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#342"
 requires_env: []

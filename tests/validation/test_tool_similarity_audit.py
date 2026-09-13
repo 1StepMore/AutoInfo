@@ -3,7 +3,7 @@
 Locks the behavior of ``scripts/tool_similarity_audit.py`` so the D-工-7
 boundary-health evidence stays deterministic:
 
-1. All 146 tools are parsed.
+1. Every declared tool is parsed (count matches ``_full_tool_list()``).
 2. **Zero name-boundary collisions** — no two tools share the same
    first-segment + noun-stem (no ``same_stem_verb_pairs``): every tool
    name is uniquely distinguishable by name alone.
@@ -15,6 +15,7 @@ boundary-health evidence stays deterministic:
    regression floor.
 5. Family and per-tool row shapes are stable.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,6 +24,8 @@ from typing import Any
 
 import pytest
 
+from autoinfo.mcp.server import _full_tool_list
+
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_SRC = ROOT / "src" / "autoinfo" / "mcp" / "server.py"
 AUDIT_SCRIPT = ROOT / "scripts" / "tool_similarity_audit.py"
@@ -30,9 +33,7 @@ AUDIT_SCRIPT = ROOT / "scripts" / "tool_similarity_audit.py"
 
 @pytest.fixture(scope="module")
 def similarity_audit() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "tool_similarity_audit", AUDIT_SCRIPT
-    )
+    spec = importlib.util.spec_from_file_location("tool_similarity_audit", AUDIT_SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -41,13 +42,11 @@ def similarity_audit() -> Any:
 
 @pytest.fixture(scope="module")
 def result(similarity_audit: Any) -> Any:
-    return similarity_audit.audit_similarity(
-        SERVER_SRC.read_text(encoding="utf-8")
-    )
+    return similarity_audit.audit_similarity(SERVER_SRC.read_text(encoding="utf-8"))
 
 
-def test_all_146_tools_parsed(result: dict[str, Any]) -> None:
-    assert result["total"] == 146
+def test_all_declared_tools_parsed(result: dict[str, Any]) -> None:
+    assert result["total"] == len(_full_tool_list())
 
 
 def test_zero_same_stem_verb_name_collisions(result: dict[str, Any]) -> None:
@@ -67,13 +66,14 @@ def test_generate_family_has_distinct_stems(result: dict[str, Any]) -> None:
     # generate_presentation / generate_cross_domain_report each carries a
     # distinct noun stem, so no same-stem family exists for them — names
     # alone disambiguate.
-    stems = {
-        t["stem"] for t in result["tools"]
-        if t["first"] == "generate"
-    }
+    stems = {t["stem"] for t in result["tools"] if t["first"] == "generate"}
     assert len(stems) == 5
     assert stems == {
-        "digest", "report", "tutorial", "presentation", "cross_domain_report",
+        "digest",
+        "report",
+        "tutorial",
+        "presentation",
+        "cross_domain_report",
     }
 
 

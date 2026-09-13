@@ -165,22 +165,18 @@ quality_gates:
 
 ## 8. ErrorCode & Error Response System
 
-The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all 146 MCP tools. The `ErrorCode` enum (30 values) covers all known failure modes and includes ten codes added since v1.8 (incl. `DIRECTOR_ONLY`):
+The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all MCP tools. The `ErrorCode` enum (26 values) covers all known failure modes; every value follows one **CamelCase** convention and every retained code is emitted somewhere (T-S-05). The 20 baseline codes include `ProcessingFailed` (now emitted on a processing-run failure by `_handle_process_collection`); the 6 retained extended codes are:
 
 | Code | Value | Purpose |
 |------|-------|---------|
-| `AUTH_REQUIRED` | `"AuthRequired"` | Future SSE authentication — returned when an SSE client attempts to connect without valid credentials |
-| `RATE_LIMITED` | `"RateLimited"` | Future rate limiting — returned when a client exceeds configured rate limits for MCP tool calls |
-| `SESSION_EXPIRED` | `"SessionExpired"` | Future session management — returned when an SSE session token has expired and requires re-authentication |
 | `LLM_NOT_CONFIGURED` | `"LLMNotConfigured"` | LLM-required tool dispatched with no API key configured (v1.8.1) |
-| `NO_CACHED_ITEMS` | `"NoCachedItems"` | No cached collection items to process (v1.8.1) |
 | `EMPTY_RESULT` | `"EmptyResult"` | Operation produced an empty result (v1.8.1) |
 | `CONFIG_NOT_FOUND` | `"ConfigNotFound"` | Project configuration not found (v1.8.1) |
-| `DIRECTOR_ONLY` | `"DIRECTOR_ONLY"` | Director-only tool dispatched to a non-director actor — e.g. `force_promote` / `demote_kb_wiki` / `soft_delete_entry` purge (actor whitelist `AUTOINFO_DIRECTOR_ACTORS`, default `director`) |
-| `READ_ONLY_SERVER` | `"READ_ONLY_SERVER"` | Mutating tool dispatched on a read-only server (`autoinfo serve --agent`, 4 read-only tools) — the server refuses state-changing calls |
-| `FreeTierLimit` | `"FreeTierLimit"` | Free-tier end user hit a Subscription platform limit (concurrency/products/channels) — freemium gating (G15) |
+| `DIRECTOR_ONLY` | `"DirectorOnly"` | Director-only tool dispatched to a non-director actor — e.g. `force_promote` / `demote_kb_wiki` / `soft_delete_entry` purge (actor whitelist `AUTOINFO_DIRECTOR_ACTORS`, default `director`) |
+| `READ_ONLY_SERVER` | `"ReadOnlyServer"` | Mutating tool dispatched on a read-only server (`autoinfo serve --agent`, 4 read-only tools) — the server refuses state-changing calls |
+| `FREE_TIER_LIMIT` | `"FreeTierLimit"` | Free-tier end user hit a Subscription platform limit (concurrency/products/channels) — freemium gating (G15) |
 
-These ten codes extend the existing 20 error codes (`NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`). The three v1.8 codes (`AuthRequired`, `RateLimited`, `SessionExpired`) remain reserved for future use; the four v1.8.1 codes (`LLMNotConfigured`, `NoCachedItems`, `EmptyResult`, `ConfigNotFound`) are actively thrown — `LLM_NOT_CONFIGURED` is dispatched centrally by `call_tool` for all 16 LLM-required tools.
+The baseline 20 are `NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`. `LLM_NOT_CONFIGURED` is dispatched centrally by `call_tool` for all 16 LLM-required tools; `PROCESSING_FAILED` is emitted when a processing run raises. Four never-emitted values were retired in T-S-05 rather than left dead: `AuthRequired`/`SessionExpired` (no auth/session path — re-add with the SSE transport), `RateLimited` (no rate-limiting surface emits it — re-add together with retry/backoff guidance), and `NoCachedItems` (`process_collection` returns `{success: true, data: {status: "noop"}}`, never an error).
 
 **Dual-format responses**: Error responses are backward-compatible via two formats:
 

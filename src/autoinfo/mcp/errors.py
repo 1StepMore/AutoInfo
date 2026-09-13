@@ -16,6 +16,28 @@ class ErrorCode(str, Enum):
 
     Each member maps to a string value used as the ``error_code`` field
     in error dicts.  Unknown/unexpected exceptions map to ``INTERNAL_ERROR``.
+
+    **Casing convention (T-S-05):** every *value* is **CamelCase**
+    (``PascalCase``) — the enum *member* name stays SCREAMING_SNAKE as the
+    Python identifier.  No SCREAMING_SNAKE values remain; a guard test in
+    ``tests/mcp/test_errors.py`` enforces this.
+
+    **Retired codes (T-S-05):** four values that were never emitted have
+    been removed rather than left as dead enum members:
+
+    - ``AuthRequired`` / ``SessionExpired`` — no auth/session primitives
+      exist (multi-tenancy auth is spec-only, gated on the SSE-transport
+      milestone).  Re-add them together with the implementation.
+    - ``RateLimited`` — no rate-limit code path emits it on the MCP
+      surface; the shared LLM limiter surfaces 429s as ordinary
+      ``INTERNAL_ERROR``/retry-backoff internally.  ``RATE_LIMITED`` can be
+      re-introduced with retry/backoff guidance when a surface emits it.
+    - ``NoCachedItems`` — never an error: ``process_collection`` returns
+      ``{success: true, data: {status: "noop"}}`` when there is nothing
+      cached.
+
+    ``PROCESSING_FAILED`` is retained and emitted by
+    ``_handle_process_collection`` on a processing-run failure.
     """
 
     NOT_FOUND = "NotFound"
@@ -38,15 +60,11 @@ class ErrorCode(str, Enum):
     UNKNOWN_TOOL = "UnknownTool"
     CONFIRMATION_REQUIRED = "ConfirmationRequired"
     INTERNAL_ERROR = "InternalError"
-    AUTH_REQUIRED = "AuthRequired"
-    RATE_LIMITED = "RateLimited"
-    SESSION_EXPIRED = "SessionExpired"
     LLM_NOT_CONFIGURED = "LLMNotConfigured"
-    NO_CACHED_ITEMS = "NoCachedItems"
     EMPTY_RESULT = "EmptyResult"
     CONFIG_NOT_FOUND = "ConfigNotFound"
-    DIRECTOR_ONLY = "DIRECTOR_ONLY"
-    READ_ONLY_SERVER = "READ_ONLY_SERVER"
+    DIRECTOR_ONLY = "DirectorOnly"
+    READ_ONLY_SERVER = "ReadOnlyServer"
     FREE_TIER_LIMIT = "FreeTierLimit"
 
 

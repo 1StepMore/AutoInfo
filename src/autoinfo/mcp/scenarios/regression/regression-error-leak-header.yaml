@@ -18,7 +18,10 @@
 # the report + accepts clean markdown.
 name: regression-error-leak-header
 description: "Regression #328: product header must not carry litellm error text or ANSI color codes"
-category: regression
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#328"
 requires_env: []

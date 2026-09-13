@@ -24,7 +24,10 @@
 # an ABSOLUTE temp cwd; KBStore and _call_llm_for_digest are patched.
 name: regression-sections-real-path
 description: "Regression #326: column/report products from real-KB entries render non-empty Deep Dive / Sections"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#326"
 requires_env: []

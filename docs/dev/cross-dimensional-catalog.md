@@ -53,7 +53,7 @@
 |-----------|-----------------|
 | **B1 End User** (paying customer) | B1.1 Discover → B1.2 Subscribe → B1.3 Onboard → B1.4 Consume → B1.5 Modify Config → B1.6 Churn → B1.7 Reactivate |
 | **B2 Direct User** (agent/MCP operator) | B2.1 Discover → B2.2 Connect → B2.3 Configure → B2.4 Operate → B2.5 Monitor → B2.6 Report |
-| **B3 Director User** (human commander) | B3.1 Configure → B3.2 Monitor → B3.3 Intervene |
+| **B3 Director User** (human commander) | B3.1 Configure → B3.2 Monitor → B3.3 Intervene → B3.4 Iterate → B3.5 Scale. B3.4/B3.5 were ratified into `user-lifecycle-definition.md` §4.2 by T-A-07, so this catalog and the root spec agree at **18 lifecycle stages** (7×18 = **126** cells). Each of the two forward-looking stages carries a committed disposition in §2's "Committed Dispositions" table below; cells reflect the underlying per-stage capabilities. |
 
 ### The Matrix: Value Delivery Score
 
@@ -61,9 +61,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A1 Collection
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A1 Collection** | ⚪ | 🟢 Trial user gets same collection | ⚪ | 🟢 Content is flowing | ⚪ | ⚪ |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A1 Collection** | ⚪ | 🟢 Trial user gets same collection | ⚪ | 🟢 Content is flowing | ⚪ | ⚪ | ⚪ |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -75,9 +75,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A2 Extraction
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A2 Extraction** | ⚪ | 🟢 Trial user gets processed content | ⚪ | 🟢 LLM extraction works | ⚪ | ⚪ |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A2 Extraction** | ⚪ | 🟢 Trial user gets processed content | ⚪ | 🟢 LLM extraction works | ⚪ | ⚪ | ⚪ |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -89,9 +89,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A3 Knowledge Base
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A3 Knowledge Base** | ⚪ | 🟡 KB is usable but no tenant isolation | ⚪ | 🟢 Search, Q&A, graph | ⚪ | 🟢 GDPR export and deletion MCP tools exist |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A3 Knowledge Base** | ⚪ | 🟡 KB is usable but no tenant isolation | ⚪ | 🟢 Search, Q&A, graph | ⚪ | 🟢 GDPR export and deletion MCP tools exist | 🔴 No reactivation data restore (no pre-churn config snapshot) |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -103,9 +103,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A4 Products
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A4 Products** | 🔴 No product catalog / storefront | 🔴 No trial product preview | 🟢 8 templates (5 free + 2 premium + 1 enterprise) with free/premium/enterprise tiers, `check_access` gates delivery (B24 column premium + D11 magazine-digest added 2026-08-05; premium-briefing/enterprise-briefing now render differentiated layouts with per-product LLM synthesis fields implications/risks/action_required/key_metrics, 2026-08-11; report `format="video"` via HyperFrames HTML+GSAP→MP4 with 36+8 themes, 2026-08-13) | 🟡 Products deliver but lifecycle is not tracked | 🔴 No renewal product regeneration | 🔴 No product archive on churn |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A4 Products** | 🔴 No product catalog / storefront | 🔴 No trial product preview | 🟢 8 templates (5 free + 2 premium + 1 enterprise) with free/premium/enterprise tiers, `check_access` gates delivery (B24 column premium + D11 magazine-digest added 2026-08-05; premium-briefing/enterprise-briefing now render differentiated layouts with per-product LLM synthesis fields implications/risks/action_required/key_metrics, 2026-08-11; report `format="video"` via HyperFrames HTML+GSAP→MP4 with 36+8 themes, 2026-08-13) | 🟡 Products deliver but lifecycle is not tracked | 🔴 No renewal product regeneration | 🔴 No product archive on churn | 🔴 No reactivation snapshot / restored product archive |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -117,9 +117,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A5 Delivery
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A5 Delivery** | ⚪ | 🟢 Trial delivery works (same channels) | 🟡 Subscription→channel linking is disconnected | 🟡 Delivery works but no read tracking | 🟡 Renewal delivery continues | 🔴 No cancellation delivery receipt |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A5 Delivery** | ⚪ | 🟢 Trial delivery works (same channels) | 🟡 Subscription→channel linking is disconnected | 🟡 Delivery works but no read tracking | 🟡 Renewal delivery continues | 🔴 No cancellation delivery receipt | 🔴 No reactivation welcome delivery |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -131,9 +131,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A6 Consumption
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A6 Consumption** | ⚪ | ⚪ | ⚪ | 🟢 `ConsumptionEvent` + `ConsumptionStore` with auto-record on delivery (delivered/opened/clicked) | 🟡 Events auto-recorded, no renewal-specific analytics | 🔴 No churn analysis |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A6 Consumption** | ⚪ | ⚪ | ⚪ | 🟢 `ConsumptionEvent` + `ConsumptionStore` with auto-record on delivery (delivered/opened/clicked) | 🟡 Events auto-recorded, no renewal-specific analytics | 🔴 No churn analysis | 🔴 No reactivation-continuity analytics |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -145,9 +145,9 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 #### A7 Operations
 
-| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn |
-|-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A7 Operations** | ⚪ | ⚪ | 🟢 Billing/cost operations | ⚪ | ⚪ | 🟢 Soft-delete, retention, GDPR export |
+| Lifecycle → | B1.1 Discover | B1.2 Subscribe | B1.3 Onboard | B1.4 Consume | B1.5 Modify Config | B1.6 Churn | B1.7 Reactivate |
+|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A7 Operations** | ⚪ | ⚪ | 🟢 Billing/cost operations | ⚪ | ⚪ | 🟢 Soft-delete, retention, GDPR export | 🔴 No reactivation record (cancellation is terminal) |
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -161,11 +161,11 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Metric | Count |
 |--------|-------|
-| Total cells | 119 (7×17 lifecycle stages) |
-| 🟢 Fully delivered | 60 (50.4%) |
-| 🟡 Partially delivered | 18 (15.1%) |
-| 🔴 Not delivered | 17 (14.3%) |
-| ⚪ Not applicable | 24 (20.2%) |
+| Total cells | 126 (7×18 lifecycle stages) |
+| 🟢 Fully delivered | 60 (47.6%) |
+| 🟡 Partially delivered | 18 (14.3%) |
+| 🔴 Not delivered | 22 (17.5%) |
+| ⚪ Not applicable | 26 (20.6%) |
 
 ---
 
@@ -549,6 +549,43 @@ Gaps that are not about missing features but about how the system is architected
 | CD-022 | 🟡 Spec'd Not Impl | 🟡 Partially Resolved | `get_product`/`list_products` registered; lifecycle tools still missing (2026-08-12) |
 | CD-039 | 🟠 Architecture | 🟡 Partially Resolved | Channel `validate_config` exists (13/13 adapters) but never called; config-level validator used by doctor only (2026-08-12) |
 
+### Committed Dispositions — Unimplemented User Levels (T-A-06)
+
+> **Purpose:** Records exactly one committed disposition for every currently-unimplemented
+> user level (expectations F58-F69, the B1.2 payment chain, and the B3.4/B3.5 stages
+> ratified by T-A-07) so the stage×user coverage report (register T-A-02) has zero
+> unclassified items.
+> **This section is disposition-only: no matrix cell in §1 is flipped; the 42-gap count is
+> untouched (the matrix is 126 cells after the T-A-07 B1.7-column addition).**
+>
+> **Disposition format (machine-readable, consumed by the T-A-02 coverage report):**
+> values are exactly one of `out-of-scope` | `blocked-with-record` | `documented-limit`
+> (mirroring `docs/dev/acceptance-framework.md` §4 AC4 committed states), in a
+> `| Level | Disposition | Rationale |` table. `out-of-scope` = deliberately excluded
+> from the V1 boundary (alternative/shipped surface or V2+ roadmap rationale recorded);
+> `blocked-with-record` = cannot be validated until a named, recorded gate lands;
+> `documented-limit` = a partial implementation ships and the remainder is a documented
+> ceiling. Statuses verified from `src/` on 2026-09-13 (see `expectations.md` §3.17 and
+> `.omo/evidence/agent-oriented-gap-register/todo-23-dispositions.md`).
+
+| Level | Disposition | Rationale |
+|-------|-------------|-----------|
+| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement (`user_id` advisory only); gated on the recorded SSE-transport milestone (CD-001, `multi-tenancy-auth.md`). |
+| `F59` End-user authentication | `blocked-with-record` | Zero auth primitives; gated on the recorded SSE-transport milestone (CD-002); the `AuthRequired`/`SessionExpired` codes were retired until that implementation lands (T-S-05). |
+| `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source limits, and tier/free-tier quotas shipped (CD-003 partial 2026-08-13); API-surface quotas (429+Retry-After, `batch_run` cap) are the documented ceiling. |
+| `F61` Cron reliability & backup | `documented-limit` | Heartbeat/missed-detection/alerts/`get_schedule_status` + backup/restore shipped (CD-004, CD-014 resolved); backfill and crond-health-in-`diagnose_system()` are the documented ceiling. |
+| `F62` Admin dashboard | `out-of-scope` | V1 ops surface is CLI/MCP; web admin console is P2 roadmap (CD-005), outside the V1 boundary. |
+| `F63` Unified notification framework | `documented-limit` | Trial-ending/content-ready/budget-alert notifications shipped per-subsystem; unified model/templates/routing/preferences are the documented ceiling (CD-006/CD-038 partial). |
+| `F64` Product catalog / storefront | `documented-limit` | End-user `/storefront` + agent-facing `list_products`/`get_product` shipped (CD-010 resolved); self-service trial signup + final pricing are the documented ceiling. |
+| `F65` B1.1 Discovery | `out-of-scope` | V1 discovery is agent-intro-led; self-service storefront + referral funnel is V2+ scope (depends on F59). |
+| `F66` B1.3 Onboarding | `out-of-scope` | No structured onboarding flow; B1 direct-consumer onboarding is V2+ scope. |
+| `F67` B1.5 NL→Config modification | `documented-limit` | Direct MCP/CLI config edit shipped (`update_preferences`, `enduser_update`); the NL→Config modification pipeline is the documented ceiling. |
+| `F68` B1.7 Reactivation | `out-of-scope` | `cancelled` is terminal (`user_store.py`); F38 90-day window spec-only; V1 treats churned users as new signups; reactivation is V2+ scope. |
+| `F69` B2.6 Structured execution reporting | `blocked-with-record` | Only per-tool observability exists; owned by register TR-A-02 (Todo 20 of the gap-register plan) — cannot be validated until that lands. |
+| `B1.2` Subscribe (payment chain) | `out-of-scope` | Payment chain explicitly V2-deferred (AC6 phase split, `acceptance-framework.md` §6); subscription-record layer + tier-gating ship as V2 prep. |
+| `B3.4` Iterate | `documented-limit` | Per-stage iteration capabilities ship (editable sources/gates/templates, backup/restore); A4 product A/B-testing and A6 consumption-driven iteration are the documented ceilings; ratified into the root spec by T-A-07. |
+| `B3.5` Scale | `out-of-scope` | Scale-out cells (A3 multi-tenant KB isolation, A4 catalog scaling, A7 horizontal scaling) are V2+ on single-node SQLite; partial batch/LLM-rate-limit capabilities are the shipped alternative. |
+
 ---
 
 ## Section 3: Gap-to-Doc Mapping
@@ -773,7 +810,7 @@ Priorities are assigned based on:
 
 ## 2026-08-02 V1 更新
 
-This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-02) that were not previously cataloged as CD-NNN gaps. The 119-cell matrix (A1-A7 × 17 lifecycle stages); 42 is the CD gap count) tracks **pipeline stages × user lifecycle**, not individual features, so none of these additions flip any cell status. Where a feature arguably strengthens a cell, that is noted without changing the cell's 🟢/🟡/🔴 value.
+This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-02) that were not previously cataloged as CD-NNN gaps. The 126-cell matrix (A1-A7 × 18 lifecycle stages); 42 is the CD gap count) tracks **pipeline stages × user lifecycle**, not individual features, so none of these additions flip any cell status. Where a feature arguably strengthens a cell, that is noted without changing the cell's 🟢/🟡/🔴 value.
 
 ### New features landed
 
@@ -791,7 +828,7 @@ This section documents V1 feature completions (v1.8.1–v1.8.4, landed 2026-08-0
 
 ### Cell-impact statement
 
-**No matrix cell flips.** The 119-cell matrix (A1-A7 × 17 lifecycle stages); 42 is the CD gap count) evaluates pipeline-stage completeness against user-lifecycle stages. The features above are enhancements within already-evaluated stages, not new stages or lifecycle transitions. Two cells arguably gained strength without changing status:
+**No matrix cell flips.** The 126-cell matrix (A1-A7 × 18 lifecycle stages); 42 is the CD gap count) evaluates pipeline-stage completeness against user-lifecycle stages. The features above are enhancements within already-evaluated stages, not new stages or lifecycle transitions. Two cells arguably gained strength without changing status:
 
 - **A4 Products (B2.4 Operate, B2.6 Report):** RAW product `variants` field (E11) makes the RAW/PROCESSED product model more expressive. The cells remain 🟡 (product lifecycle state machine still 0% implemented — CD-017/CD-022 open).
 - **A5 Delivery (B3.1 Configure, B3.5 Scale):** Podcast RSS channel (C11) adds a 13th delivery channel with audio persistence. The cells remain 🟢 (delivery channels were already 🟢; podcast RSS is an additive channel, not a structural change).
@@ -983,9 +1020,9 @@ Maps existing gap IDs from other (now archived) documents to CD-NNN. Kept for hi
 
 Post-concierge-wave count refresh (source of truth: on-disk reality, re-derived 2026-09-05):
 
-- **Scenario suite: 138 scenario YAMLs** (65 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`) — up from 116 at the 2026-08-03 entry; the suite grew through the #351/#357 security-assertions wave (116), #9-reopened (117), #14-#18 output-quality wave (124), #119/#120 cross-product-coherence wave (129), and the 2026-09-04 concierge wave (137). Coverage remains 146/146 MCP tools + 8 REST endpoints; `all 28 CLI groups` from the 2026-08-03 entry is now **all 31 CLI groups** (3 new groups: `validation`, `serve`, `mvp`).
+- **Scenario suite: 159 scenario YAMLs** (86 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`) — up from 116 at the 2026-08-03 entry; the suite grew through the #351/#357 security-assertions wave (116), #9-reopened (117), #14-#18 output-quality wave (124), #119/#120 cross-product-coherence wave (129), the 2026-09-04 concierge wave (137), the red-team layer (143), the agent-interaction + performance wave (148), the recoverability wave (152), the Toolability surface wave (155: rest-parity, build-release, vendor-agnosticism), and the privacy/tenancy coverage wave (159: privacy-soft-delete-restore, privacy-gdpr-export, privacy-retention-tier, tenancy-isolation). Coverage remains 100% of the live MCP tool surface + all REST endpoints; `all 28 CLI groups` from the 2026-08-03 entry is now **all 31 CLI groups** (3 new groups: `validation`, `serve`, `mvp`).
 - **CLI: 31 command groups** — added `validation` (`autoinfo validation list [--summary]`, MCP `list_validation_scenarios` parity), `serve` (`autoinfo serve --agent`, read-only MCP over stdio), `mvp` (`autoinfo mvp init|list`, concierge MVP pilot provisioning).
-- **Read-only server mode: 4 read-only tools** — `autoinfo serve --agent` exposes a read-only MCP surface; mutating dispatch returns `READ_ONLY_SERVER`.
+- **Read-only server mode: 4 read-only tools** — `autoinfo serve --agent` exposes a read-only MCP surface; mutating dispatch returns `ReadOnlyServer`.
 - **01-QA-GATES**: QA-gates directory workflow scenario (`regression-qa-gates-dir`) + `autoinfo mvp init` first-product gating.
 - **Free tier + MVP CLI**: free-tier usage gating via `FREE_TIER_LIMIT` error code (`regression-free-tier-limit`), concierge MVP pilots provisioned via `autoinfo mvp init|list` (`regression-mvp-init`).
 - **New concierge-wave regression scenarios (10)**: regression-qa-gates-dir, regression-mvp-init, regression-free-tier-limit, regression-readonly-mcp, regression-domain-seed-flagship, regression-sources-sections, regression-validation-list, regression-product-quality-all-templates, regression-report-entries-cap, regression-tutorial-entry-cap.
@@ -994,4 +1031,4 @@ Post-concierge-wave count refresh (source of truth: on-disk reality, re-derived 
 
 ---
 
-*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-05 (concierge-wave counts: 138 scenarios, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-13 (counts: 159 scenarios, 149 MCP tools / 35 categories, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI, REST surface parity). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

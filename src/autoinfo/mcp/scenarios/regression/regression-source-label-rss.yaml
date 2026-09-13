@@ -10,7 +10,10 @@
 # item's source_platform.
 name: regression-source-label-rss
 description: "Regression #323: RSS items carry configured source name as source_platform"
-category: regression
+category: happy_path
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#323"
 requires_env: []

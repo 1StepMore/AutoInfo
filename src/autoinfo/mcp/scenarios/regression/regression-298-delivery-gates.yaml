@@ -31,7 +31,10 @@
 # regardless of whether AUTOINFO_LLM_API_KEY is exported.
 name: regression-298-delivery-gates
 description: "Regression #298: generate_digest resolves domain delivery_gates from config and runs D1-D3 by default"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.5
 regression: true
 regression_issue: "#298"
 requires_env: []

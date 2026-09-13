@@ -9,12 +9,13 @@ three commands:
 | Surface | Derivation command |
 |---------|-------------------|
 | CLI | `.venv/bin/autoinfo --help` + per-group `autoinfo <group> --help` (31 groups, all subcommands) |
-| MCP | `list_tools()` on `autoinfo.mcp.server` (146 tools, runtime registry) |
-| REST | FastAPI `app.routes` + `router.routes` on `autoinfo.api.server` (3 routers: routes/portal/storefront + app-level) |
+| MCP | `list_tools()` on `autoinfo.mcp.server` (149 tools, runtime registry) |
+| REST | `python3 scripts/surface_parity.py` — enumerates `autoinfo.api.server:app` and expands the `_IncludedRouter` deferral through `original_router.routes` + `include_context.prefix` (previously `app.routes` + the three router objects: routes/portal/storefront) |
 
 Derivation date: 2026-08-05 (re-derived 2026-09-05 after the concierge wave:
-CLI 28→31 groups, validation scenarios 116→138). Re-derive with the commands
-above whenever the surface set changes; do not edit cells by hand.
+CLI 28→31 groups, validation scenarios 116→138; REST re-derived 2026-09-13 by
+`scripts/surface_parity.py`). Re-derive with the commands above whenever the
+surface set changes; do not edit cells by hand.
 
 ## Status legend
 
@@ -59,9 +60,17 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 ## Global `--json` (T50) + per-command `--json` coverage
 
-- **Global `--json`**: the root callback (`src/autoinfo/cli/__init__.py:49`)
-  accepts `--json` before any command (e.g. `autoinfo --json status`) and sets
-  `ctx.obj = {"json": True}`. Verified running: `autoinfo --json status`.
+- **Global `--json` (T-S-07)**: the root callback
+  (`src/autoinfo/cli/__init__.py:49`) accepts `--json` before any command
+  (e.g. `autoinfo --json status`), sets `ctx.obj = {"json": True}`, and records
+  the flag for `src/autoinfo/cli/_output.py`. Every **data-returning**
+  command group then emits the canonical MCP envelope
+  (`{"success": true, "data": ...}` /
+  `{"success": false, "error": {code, message, actionable}}`) from
+  `emit_if_global` / `fail_if_global`, and the parity test
+  `tests/cli/test_cli_json_parity.py` runs one representative command per
+  group and asserts the envelope shape (guarding the
+  `misleading_success_output` class — human text under `--json` fails).
 - **Per-command `--json`**: 21 of the 31 groups declare their own `--json`
   option at the group level or on individual subcommands (grep of `"--json"`
   in `src/autoinfo/cli/`): `sources`, `topics` (via `keywords`/`topic-group`),
@@ -73,9 +82,14 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 - Groups without per-command `--json` (global flag only): `init`,
   `topic-group` (inherits `topics` JSON output on subcommands). `clean` and
   `doctor` expose `--dry-run` / `--verbose` as their structured-output flags.
-- Convention: `--json` emits the **same envelope** the MCP tool returns
-  (`{success, data}` or the documented noop shape), so script consumers get
-  identical structure from either surface.
+- Convention: the **global** `--json` emits the same envelope the MCP tool
+  returns (`{success, data}` or the documented noop shape), so script
+  consumers get identical structure from either surface. A per-command
+  `--json` (after the subcommand) keeps its historical bespoke shape.
+- Param-name aliases for MCP parity: `output report` accepts `--report-type`
+  (`report_type`) and `--target-audience` (`--audience`); `output tutorial`
+  and `output presentation` accept `--target-audience` next to `--audience`;
+  `agent-callback remove` accepts `--callback-id` next to `--id`.
 
 ---
 
@@ -385,7 +399,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Capability | CLI | MCP | REST | Status | Notes |
 |------------|-----|-----|------|--------|-------|
-| List validation scenarios | `autoinfo validation list [--summary]` | `list_validation_scenarios` | — | MCP + CLI (validation list) | 138 scenarios (65 functional + 73 regression) |
+| List validation scenarios | `autoinfo validation list [--summary]` | `list_validation_scenarios` | — | MCP + CLI (validation list) | 159 scenarios (86 functional + 73 regression) |
 | Run validation scenario | — | `run_validation_scenario` | — | MCP-only | Scenario steps may invoke CLI/REST internally |
 
 ### REST-only endpoints (no CLI / MCP counterpart)
@@ -415,6 +429,63 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 | `/metrics` | GET | ✓ | Prometheus metrics (→ `get_prometheus_metrics`) |
 | `/media/{file_path:path}` | GET | REST-only | Media file serving |
 | `/openapi.json`, `/docs`, `/redoc` | GET | REST-only | OpenAPI docs |
+
+### REST surface coverage (T-S-10 — every endpoint accounted)
+
+Derived by **`scripts/surface_parity.py`** (T-S-10). It enumerates every route
+mounted on `autoinfo.api.server:app`, expands the `_IncludedRouter` deferral,
+and classifies each endpoint by its evidence:
+
+- **scenario** — a real `kind: http` validation-scenario step (a live HTTP call);
+- **artifact** — a real test file that drives the endpoint (verified to exist
+  and to reference the route at audit time, so a moved test fails loudly);
+- **disposition** — a documented reason it needs neither (framework docs).
+
+The audit exits non-zero when any endpoint is unaccounted, when a declared
+artifact is missing, or when the doc/route sets diverge. The historical
+**eight** endpoints the REST parity claim names (the `rest-api.yaml` HTTP
+steps) are pinned and must each be **scenario**-covered — never merely
+artifact-backed. Counts are live, never hard-coded.
+
+| Endpoint | Evidence kind | Evidence |
+|----------|---------------|----------|
+| `DELETE /api/v1/entries/{entry_id}` | artifact | `tests/api/test_error_responses.py` |
+| `GET /` | scenario | `rest-api.yaml` HTTP step |
+| `GET /api/v1/entries` | scenario | `rest-api.yaml` HTTP step |
+| `GET /api/v1/entries/{entry_id}` | artifact | `tests/api/test_error_responses.py` |
+| `GET /api/v1/feeds` | scenario | `rest-api.yaml` HTTP step |
+| `GET /api/v1/portal/delivery-history` | artifact | `tests/api/test_portal_delivery_history_api.py` |
+| `GET /api/v1/portal/preferences` | artifact | `tests/integration/test_b11_fixes.py` |
+| `GET /api/v1/search` | scenario | `rest-api.yaml` HTTP step |
+| `GET /dashboard` | scenario | `rest-api.yaml` HTTP step |
+| `GET /docs` | disposition | FastAPI Swagger UI (framework) |
+| `GET /docs/oauth2-redirect` | disposition | FastAPI OAuth2 redirect helper (framework) |
+| `GET /health` | scenario | `rest-api.yaml` HTTP step |
+| `GET /media/{file_path:path}` | artifact | `tests/delivery/test_podcast_rss.py` |
+| `GET /metrics` | scenario | `rest-api.yaml` HTTP step |
+| `GET /openapi.json` | disposition | FastAPI-generated OpenAPI schema (framework) |
+| `GET /portal/{user_id}` | artifact | `tests/user/test_portal.py` |
+| `GET /portal/{user_id}/history` | artifact | `tests/user/test_portal.py` |
+| `GET /portal/{user_id}/preferences` | artifact | `tests/user/test_portal.py` |
+| `GET /portal/{user_id}/products` | artifact | `tests/user/test_portal.py` |
+| `GET /redoc` | disposition | FastAPI ReDoc UI (framework) |
+| `GET /storefront` | artifact | `tests/api/test_storefront.py` |
+| `GET /storefront/products` | scenario | `rest-api.yaml` HTTP step |
+| `GET /storefront/products/{product_id}` | artifact | `tests/api/test_storefront.py` |
+| `POST /api/v1/entries` | artifact | `tests/api/test_v1_5_feed_api.py` |
+| `POST /api/v1/webhook/stripe` | artifact | `tests/cost/test_stripe.py` |
+| `POST /storefront/subscriptions` | artifact | `tests/api/test_storefront.py` |
+| `PUT /api/v1/portal/preferences` | artifact | `tests/integration/test_b11_fixes.py` |
+
+Run:
+
+```bash
+python3 scripts/surface_parity.py          # write validation-runs/rest-surface/rest-parity-*.json
+python3 scripts/surface_parity.py --check  # audit only; non-zero exit on any gap
+```
+
+The audit is asserted by `tests/validation/test_surface_parity.py` and driven
+end-to-end by the `surface-rest-parity` validation scenario.
 
 ### CLI-only commands (no MCP / REST counterpart)
 

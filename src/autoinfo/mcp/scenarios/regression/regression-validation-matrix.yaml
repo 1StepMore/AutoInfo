@@ -13,7 +13,10 @@
 # regression diff keyword classification.
 name: regression-validation-matrix
 description: "Regression #331: validate --matrix assertion set + report-card/diff machinery"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#331"
 requires_env: []

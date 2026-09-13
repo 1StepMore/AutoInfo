@@ -15,7 +15,10 @@
 # diagnose handler is driven with a patched config carrying 1 fallback entry.
 name: regression-290-init-fallback
 description: "Regression #290: init prints fallback-chain guidance; diagnose_system returns fallback_health"
-category: regression
+category: failure
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
 regression: true
 regression_issue: "#290"
 requires_env: []

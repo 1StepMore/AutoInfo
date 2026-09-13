@@ -1,6 +1,9 @@
 name: enduser-lifecycle
 description: "End-user CRUD lifecycle: create, get, update, list, delete with delivery and portal query. Cleanup deletes the created user and removes the file_export artifact it writes to cwd (scenario-test@example.com). NOT re-run-safe after a mid-scenario failure: a leftover profile with the same user_id makes enduser_create fail with an IntegrityError on duplicate user_id — delete the user store row before re-running."
-category: enduser
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A6
+user_level: B1.2
 requires_env: []
 steps:
   - name: "enduser_create test user"

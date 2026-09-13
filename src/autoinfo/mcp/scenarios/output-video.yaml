@@ -23,7 +23,10 @@ description: "V1 — report format='video' via HyperFrames (HTML+GSAP -> MP4)"
 # defaults to 1200s now. Raise the cap so a slow-but-healthy render is not
 # killed (WSL ffmpeg environments are slower than native).
 timeout: 1200
-category: output
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 matrix_domains:
   - online-video

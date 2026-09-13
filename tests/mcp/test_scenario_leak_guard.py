@@ -38,12 +38,16 @@ def _write_scenario(
     tmp_path: Path, marker_url: str, marker_id: str, title: str, cleanup: bool
 ) -> tuple[Path, str]:
     cleanup_cmd = (
-        "python3 -c 'from autoinfo.kb import KBStore; "
-        f'KBStore().delete_entry("{marker_id}")\''
-    ) if cleanup else "true"
+        (f"python3 -c 'from autoinfo.kb import KBStore; KBStore().delete_entry(\"{marker_id}\")'")
+        if cleanup
+        else "true"
+    )
     yaml = f"""name: leak-guard-scenario
 description: "B-03 guard: fixture written under the reserved *.autoinfo.test hostname"
-category: kb
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 steps:
   - name: "write marker entry"
@@ -86,8 +90,11 @@ def _fake_dispatch(tool: str, arguments: dict, trace_id: str) -> dict:
 
 async def test_leak_scenario_reports_warning(tmp_path: Path) -> None:
     _, scenario_name = _write_scenario(
-        tmp_path, LEAK_MARKER_URL, LEAK_MARKER_ID,
-        title="Leak Guard Leak A", cleanup=False,
+        tmp_path,
+        LEAK_MARKER_URL,
+        LEAK_MARKER_ID,
+        title="Leak Guard Leak A",
+        cleanup=False,
     )
     result = await run_scenario(scenario_name, _fake_dispatch, scenarios_dir=tmp_path)
     assert result["status"] == "passed", result
@@ -102,8 +109,11 @@ async def test_leak_scenario_reports_warning(tmp_path: Path) -> None:
 
 async def test_clean_scenario_has_no_warning(tmp_path: Path) -> None:
     _, scenario_name = _write_scenario(
-        tmp_path, CLEAN_MARKER_URL, CLEAN_MARKER_ID,
-        title="Leak Guard Clean B", cleanup=True,
+        tmp_path,
+        CLEAN_MARKER_URL,
+        CLEAN_MARKER_ID,
+        title="Leak Guard Clean B",
+        cleanup=True,
     )
     result = await run_scenario(scenario_name, _fake_dispatch, scenarios_dir=tmp_path)
     assert result["status"] == "passed", result

@@ -15,7 +15,10 @@
 # Deterministic (requires_env: []): runs in a temp cwd with generation mocked.
 name: regression-validation-batch-isolation
 description: "Regression #335: validate matrix products + snapshots are isolated per batch; re-runs never overwrite the previous batch"
-category: regression
+category: happy_path
+pyramid_layer: unit
+pipeline_stage: A7
+user_level: B2.5
 regression: true
 regression_issue: "#335"
 requires_env: []

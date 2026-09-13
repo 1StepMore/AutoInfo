@@ -3,7 +3,10 @@
 # nonexistent user returns a graceful rc=1 error — asserted as expected failure.
 name: cli-extra
 description: "CLI: init, collect (dry-run), portal"
-category: cli
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

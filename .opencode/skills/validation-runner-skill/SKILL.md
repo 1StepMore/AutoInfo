@@ -24,7 +24,7 @@ the loadable procedure — read the contract doc when authoring scenarios.
   auto-loads them).
 - **Acceptance run** → produce `docs/dev/validation-reports/acceptance-*.md`.
 
-## Scenario library (137 = 65 functional + 72 regression)
+## Scenario library (159 = 86 functional + 73 regression)
 
 Functional (`src/autoinfo/mcp/scenarios/*.yaml`): system-health, discovery,
 domain-management, source-management, topic-management, keyword-management,
@@ -39,9 +39,13 @@ output-tutorial-presentation, output-simplify-recommend, output-agent-interactio
 output-discovery, delivery-channels, delivery-schedules, cron-schedules,
 webhooks-alerts, agent-callbacks, enduser-journey, enduser-lifecycle,
 enduser-preferences, products-billing, projects-config, cost-budget,
-data-privacy, data-lifecycle-e2e, llm-gated, llm-failure-recovery,
+data-privacy, data-lifecycle-e2e, privacy-soft-delete-restore, privacy-gdpr-export,
+privacy-retention-tier, tenancy-isolation, llm-gated, llm-failure-recovery,
 observability, quality-gate-config, curated-priority-consumption,
-sources-coverage, sources-a6-keyed, sources-gap-closure, fault-injection, … (65 total — run `list_validation_scenarios()` for the live list).
+sources-coverage, sources-a6-keyed, sources-gap-closure, fault-injection,
+redteam-prompt-injection-feed, redteam-prompt-escape-frontmatter,
+redteam-data-exfiltration-citations, redteam-tool-argument-abuse,
+redteam-media-path-traversal, … (86 total — run `list_validation_scenarios()` for the live list).
 
 Regression (`src/autoinfo/mcp/scenarios/regression/`, `regression: true` key):
 collect-int-id (#104), llm-key-resolution (#119), period-enum (#126),
@@ -72,7 +76,7 @@ regression-internal-log-leak (#338), regression-crossdomain-noise-filter-tutoria
 regression-15-presentation-language-provenance (#15), regression-16-relevance-tags (#16),
 regression-17-column-value-drain (#17), regression-18-ai-commercial-english-drift (#18),
 regression-8-enterprise-cjk-header (#8), regression-11-producthunt-ref-description (#11).
-(72 total — run `list_validation_scenarios()` for the live list).
+(73 total — run `list_validation_scenarios()` for the live list).
 
 ## Execution discipline
 

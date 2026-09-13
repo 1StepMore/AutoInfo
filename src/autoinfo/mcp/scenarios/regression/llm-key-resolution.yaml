@@ -9,7 +9,10 @@
 # This scenario verifies all three resolution paths via a deterministic CLI step.
 name: regression-llm-key-resolution
 description: "Regression #119: llm.py resolves AUTOINFO_LLM_API_KEY / ${ENV} placeholder consistently"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A7
+user_level: B3.1
 regression: true
 regression_issue: "#119"
 requires_env: []

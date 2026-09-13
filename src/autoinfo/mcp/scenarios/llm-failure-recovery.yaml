@@ -7,7 +7,10 @@
 # path is what this scenario exists to exercise.
 name: llm-failure-recovery
 description: "LLM-required step failure recovers via a deterministic fallback step (issue #138)"
-category: llm
+category: failure
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.5
 requires_env: []
 min_passing: 2
 steps:

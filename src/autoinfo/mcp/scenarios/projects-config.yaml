@@ -6,7 +6,10 @@
 # Other tools: read-only.
 name: projects-config
 description: "Projects, config, init, LLM, clean, archive — safe reads and guarded ops"
-category: system
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B3.1
 requires_env: []
 steps:
   - name: "list_projects returns project list"

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import typer
 
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
 app = typer.Typer(help="Remove cached artifacts and temporary files.")
 
 _DEFAULT_DIRS = {
@@ -24,7 +26,8 @@ def _rmtree(path: Path, dry_run: bool) -> int:
     count = 0
     for child in path.iterdir():
         if dry_run:
-            typer.echo(f"  would remove  {child}")
+            if not global_json():
+                typer.echo(f"  would remove  {child}")
         else:
             if child.is_dir():
                 shutil.rmtree(child)
@@ -50,7 +53,8 @@ def _clean_db(dry_run: bool = False) -> bool:
     if not _DB_PATH.is_file():
         return False
     if dry_run:
-        typer.echo(f"  would remove  {_DB_PATH}")
+        if not global_json():
+            typer.echo(f"  would remove  {_DB_PATH}")
     else:
         _DB_PATH.unlink()
     return True
@@ -61,9 +65,7 @@ def clean(
     collections: bool = typer.Option(
         False, "--collections", help="Remove cached collections/ contents"
     ),
-    outputs: bool = typer.Option(
-        False, "--outputs", help="Remove outputs/ contents"
-    ),
+    outputs: bool = typer.Option(False, "--outputs", help="Remove outputs/ contents"),
     everything: bool = typer.Option(
         False,
         "--everything",
@@ -79,9 +81,11 @@ def clean(
     """
     # Safety: --everything requires confirmation (unless --dry-run)
     if everything and not dry_run:
-        typer.echo(
-            "⚠️  This will delete all collected data, KB entries, and the database."
+        fail_if_global(
+            "ConfirmationRequired",
+            "--everything requires interactive confirmation; re-run with --dry-run.",
         )
+        typer.echo("⚠️  This will delete all collected data, KB entries, and the database.")
         confirm = typer.prompt("Are you sure? [y/N]", default="n")
         if confirm.lower() != "y":
             typer.echo("Cancelled.")
@@ -97,6 +101,9 @@ def clean(
         total += _clean_knowledge(dry_run=dry_run)
         if _clean_db(dry_run=dry_run):
             total += 1
+
+    if emit_if_global({"dry_run": dry_run, "removed": total}):
+        return
 
     if dry_run:
         typer.echo(f"Would remove {total} item(s).")

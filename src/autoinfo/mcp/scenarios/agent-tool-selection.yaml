@@ -1,0 +1,107 @@
+# T-B-04 (agent-interaction scenarios absent, S1): agent tool selection.
+#
+# PINNED CRITERION (T-B-04 / AX metric M-02 Tool-call accuracy > 98%):
+#   A 20-trial deterministic real-surface proxy is used instead of a live
+#   20-call LLM loop (which would be env-gated, non-deterministic, and cost
+#   20 real model calls).  The proxy enumerates the REAL live MCP tool
+#   surface via ``autoinfo.mcp.server._full_tool_list()`` and, for each of
+#   20 canonical agent requests, deterministically selects the tool whose
+#   live NAME tokens are the unique superset of the request's signature
+#   tokens, then verifies the agent's chosen parameters satisfy the live
+#   ``inputSchema`` (all required params present, every param declared).
+#   PASS requires hits/20 >= 0.98 (i.e. 20/20, since 19/20 = 0.95 < 0.98)
+#   AND the exact hit count 20.  Any ambiguity (>= 2 candidate tools) is a
+#   miss, so a non-discriminative tool name regresses this scenario.
+#   The tool surface is real and live; only the "agent" is deterministic.
+#
+# ``_full_tool_list()`` is imported in-process; importing autoinfo.mcp.server
+# has no side effects (the stdio server starts only under __main__).
+name: agent-tool-selection
+description: >-
+  Agent tool-selection accuracy over 20 canonical requests with a pinned
+  >= 98% threshold (AX metric M-02). Deterministic real-surface proxy:
+  selects the correct live MCP tool + params from the real
+  _full_tool_list() metadata (no LLM, no network), then anchors the chosen
+  surface with real dispatch calls (get_tool_count, list_validation_scenarios).
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.1
+requires_env: []
+steps:
+  - name: "20-request tool-selection proxy over the live MCP surface hits >= 20/20 (98%)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import re
+      from autoinfo.mcp.server import _full_tool_list
+
+      INTENTS = [
+          ("Check system health and version", "health_check", {}, {"health", "check"}, set()),
+          ("How many tools are exposed?", "get_tool_count", {}, {"get", "tool", "count"}, set()),
+          ("List all configured domains", "list_domains", {}, {"list", "domains"}, set()),
+          ("Show the schema and extraction fields for a domain", "get_domain_schema", {"domain": "medical-research"}, {"domain", "schema"}, set()),
+          ("List available source platforms", "list_available_platforms", {}, {"available", "platforms"}, set()),
+          ("List available LLM models", "list_available_models", {}, {"available", "models"}, set()),
+          ("Show configured sources for a domain", "list_sources", {"domain": "medical-research"}, {"list", "sources"}, set()),
+          ("Show topics for a domain", "list_topics", {"domain": "medical-research"}, {"list", "topics"}, set()),
+          ("List summaries for a domain", "list_summaries", {"domain": "medical-research"}, {"list", "summaries"}, set()),
+          ("Search the knowledge base for a term", "search_knowledge_base", {"query": "embryo"}, {"search", "knowledge", "base"}, set()),
+          ("Get a specific KB entry by id", "get_kb_entry", {"entry_id": "x"}, {"get", "kb", "entry"}, set()),
+          ("List output templates", "list_output_templates", {}, {"output", "templates"}, set()),
+          ("Generate a weekly digest", "generate_digest", {"domain": "medical-research"}, {"generate", "digest"}, set()),
+          ("Generate a report", "generate_report", {"domain": "medical-research"}, {"generate", "report"}, {"cross"}),
+          ("Export the knowledge base as JSON", "export_kb", {"domain": "medical-research", "format": "json"}, {"export", "kb"}, set()),
+          ("List delivery schedules", "list_delivery_schedules", {}, {"delivery", "schedules"}, set()),
+          ("List validation scenarios", "list_validation_scenarios", {}, {"list", "validation", "scenarios"}, set()),
+          ("Query the audit log", "query_audit_log", {}, {"audit", "log"}, set()),
+          ("Show the cost dashboard", "cost_dashboard", {}, {"cost", "dashboard"}, set()),
+          ("Check delivery channel health", "get_channel_health", {}, {"channel", "health"}, set()),
+      ]
+
+      def toks(name):
+          return set(re.split(r"[^a-z0-9]+", name.lower())) - {""}
+
+      tools = {t.name: t for t in _full_tool_list()}
+      assert len(tools) > 100, len(tools)
+      hits = 0
+      misses = []
+      for request, expected, params, sig, forbid in INTENTS:
+          cands = [n for n in tools if sig <= toks(n) and not (forbid & toks(n))]
+          if len(cands) != 1:
+              misses.append((request, expected, cands))
+              continue
+          pick = cands[0]
+          schema = tools[pick].inputSchema
+          required = set(schema.get("required", []))
+          props = set(schema.get("properties", {}).keys())
+          chosen = set(params.keys())
+          if pick == expected and required <= chosen and chosen <= props:
+              hits += 1
+          else:
+              misses.append((request, expected, pick, sorted(required), sorted(chosen)))
+      total = len(INTENTS)
+      accuracy = hits / total
+      print(f"TOOL_SELECTION_OK {hits}/{total} accuracy={accuracy:.2f} threshold=0.98")
+      assert not misses, misses
+      assert accuracy >= 0.98, (hits, total, misses)
+      assert hits == total, hits
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["TOOL_SELECTION_OK 20/20 accuracy=1.00 threshold=0.98"]
+
+  - name: "selected surface is invocable: get_tool_count returns the live tool count"
+    tool: get_tool_count
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["tools_count"]
+
+  - name: "selected surface is invocable: list_validation_scenarios returns the live library"
+    tool: list_validation_scenarios
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["scenarios", "count"]

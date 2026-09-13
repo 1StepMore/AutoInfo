@@ -15,7 +15,10 @@
 # operational demo scenario, not a CI assertion.
 name: regression-domain-seed-flagship
 description: "Regression (task 15): domain init --seed seeds flagship domains with 7 sources/6 topics + extract_fields, idempotent, byte-reproducible"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.3
 regression: true
 regression_issue: "#concierge-wave-task-15"
 requires_env: []

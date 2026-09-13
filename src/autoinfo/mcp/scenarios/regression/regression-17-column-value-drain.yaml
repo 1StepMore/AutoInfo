@@ -28,7 +28,10 @@
 # (tempfile.mkdtemp, try/finally cleanup).
 name: regression-17-column-value-drain
 description: "Regression #17: column product renders a capped What Changed delta (never the full reference dump), per-section Implications so-what phrasing (never verbatim section content), and substantive Reader Takeaways (never the 3 hardcoded meta lines)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#17"
 requires_env: []

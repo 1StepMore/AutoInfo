@@ -12,7 +12,10 @@
 # NOT contain "No content provided" or the empty-summary entry.
 name: regression-294-empty-summary
 description: "Regression #294: digest/report never render 'No content provided' or blank summary cells"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#294"
 requires_env: []

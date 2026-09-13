@@ -37,22 +37,30 @@ def mock_litellm_with_custom() -> MagicMock:
     """Mock litellm that includes custom fields in the response."""
     m = MagicMock()
     response = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=json.dumps({
-            "tl_dr": (
-                "Time-lapse embryo imaging improves live birth rates "
-                "(48.2% vs 39.5%) in IVF patients."
-            ),
-            "key_points": [
-                "Multicenter RCT with 1,200 IVF patients",
-                "Live birth rate: 48.2% vs 39.5%, p=0.006",
-            ],
-            "entities": [
-                {"name": "Time-lapse embryo imaging", "type": "technology"},
-            ],
-            "relevance_score": 92,
-            "methodology": "Randomized controlled trial",
-            "findings": "Significant improvement in live birth rate",
-        })))]
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "tl_dr": (
+                                "Time-lapse embryo imaging improves live birth rates "
+                                "(48.2% vs 39.5%) in IVF patients."
+                            ),
+                            "key_points": [
+                                "Multicenter RCT with 1,200 IVF patients",
+                                "Live birth rate: 48.2% vs 39.5%, p=0.006",
+                            ],
+                            "entities": [
+                                {"name": "Time-lapse embryo imaging", "type": "technology"},
+                            ],
+                            "relevance_score": 92,
+                            "methodology": "Randomized controlled trial",
+                            "findings": "Significant improvement in live birth rate",
+                        }
+                    )
+                )
+            )
+        ]
     )
     # TRIAGE #63 (regression): cost-meter MagicMock binding
     # (`process.py:690` → `cost.py:159`) — real int token counters.
@@ -68,12 +76,20 @@ def mock_litellm_default_only() -> MagicMock:
     """Mock litellm that returns ONLY default fields (no custom)."""
     m = MagicMock()
     response = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=json.dumps({
-            "tl_dr": "Default extraction only.",
-            "key_points": ["Point one", "Point two"],
-            "entities": [],
-            "relevance_score": 50,
-        })))]
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "tl_dr": "Default extraction only.",
+                            "key_points": ["Point one", "Point two"],
+                            "entities": [],
+                            "relevance_score": 50,
+                        }
+                    )
+                )
+            )
+        ]
     )
     response.usage.prompt_tokens = 100
     response.usage.completion_tokens = 50
@@ -118,9 +134,7 @@ class TestExtractWithCustomSchema:
     ) -> None:
         """Multiple custom fields are returned in custom_fields."""
         with patch.object(LLMExtractor, "_get_litellm", return_value=mock_litellm_with_custom):
-            result = extractor.extract(
-                sample_item, schema=["methodology", "findings"]
-            )
+            result = extractor.extract(sample_item, schema=["methodology", "findings"])
 
         assert "methodology" in result.custom_fields
         assert "findings" in result.custom_fields
@@ -149,9 +163,7 @@ class TestExtractWithCustomSchema:
     ) -> None:
         """When LLM does not return a custom field, it is absent from custom_fields."""
         with patch.object(LLMExtractor, "_get_litellm", return_value=mock_litellm_default_only):
-            result = extractor.extract(
-                sample_item, schema=["methodology", "nonexistent_field"]
-            )
+            result = extractor.extract(sample_item, schema=["methodology", "nonexistent_field"])
 
         # Default fields still work
         assert result.tl_dr != ""
@@ -169,16 +181,12 @@ class TestExtractWithCustomSchema:
 class TestPromptCustomSchema:
     """``LLMExtractor.dry_run()`` with custom schema."""
 
-    def test_custom_field_in_prompt(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_custom_field_in_prompt(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """Custom field name appears in the prompt."""
         prompt = extractor.dry_run(sample_item, schema=["methodology"])
         assert "methodology" in prompt
 
-    def test_extract_additionally_section(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_extract_additionally_section(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """Custom fields appear under 'Extract additionally' section."""
         prompt = extractor.dry_run(sample_item, schema=["methodology", "sample_size"])
         assert "Extract additionally" in prompt
@@ -235,10 +243,12 @@ class TestKBFrontmatterCustomFields:
 
         config = Config(
             llm=LLMConfig(provider="openrouter", model="deepseek/deepseek-chat"),
-            domains=[DomainConfig(
-                name="medical-research",
-                extract_fields=["methodology"],
-            )],
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    extract_fields=["methodology"],
+                )
+            ],
         )
 
         extractor = LLMExtractor(config=config)
@@ -296,9 +306,7 @@ class TestKBFrontmatterCustomFields:
         kb_base = tmp_path / "knowledge"
         extractor = LLMExtractor()
         with patch.object(LLMExtractor, "_get_litellm", return_value=mock_litellm_default_only):
-            extraction = extractor.extract(
-                sample_item, schema=["methodology"]
-            )
+            extraction = extractor.extract(sample_item, schema=["methodology"])
 
         store = KBStore(base_path=kb_base)
         entry = store.store_entry(sample_item, extraction)
@@ -334,13 +342,15 @@ class TestProcessingWithExtractFields:
         config_data = {
             "project": {"name": "Test", "created_at": "2026-07-20"},
             "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat"},
-            "domains": [{
-                "name": "medical-research",
-                "active": True,
-                "sources": [{"name": "pubmed", "type": "api", "url": "https://example.com"}],
-                "topics": [],
-                "extract_fields": ["methodology", "findings"],
-            }],
+            "domains": [
+                {
+                    "name": "medical-research",
+                    "active": True,
+                    "sources": [{"name": "pubmed", "type": "api", "url": "https://example.com"}],
+                    "topics": [],
+                    "extract_fields": ["methodology", "findings"],
+                }
+            ],
         }
         config_path = config_dir / "config.yaml"
         with open(config_path, "w", encoding="utf-8") as fh:
@@ -414,9 +424,7 @@ class TestBackwardCompat:
         assert result.tl_dr != ""
         assert result.custom_fields == {}
 
-    def test_dry_run_no_schema(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_dry_run_no_schema(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """dry_run() without schema produces prompt with only default fields."""
         prompt = extractor.dry_run(sample_item)
         assert "AutoInfo" in prompt
@@ -556,15 +564,19 @@ class TestMcpGetExtraction:
 
         meta = store.index.get_entry(entry.entry_id)
         mock_kb = MagicMock(spec=KBStore)
-        mock_kb.get_entry.return_value = {
-            "entry_id": entry.entry_id,
-            "title": entry.title,
-            "summary": extraction.tl_dr,
-            "relevance_score": 0.0,
-            "dedup_status": "unique",
-            "quality_tier": 1,
-            "file_path": entry.file_path,
-        } if meta else None
+        mock_kb.get_entry.return_value = (
+            {
+                "entry_id": entry.entry_id,
+                "title": entry.title,
+                "summary": extraction.tl_dr,
+                "relevance_score": 0.0,
+                "dedup_status": "unique",
+                "quality_tier": 1,
+                "file_path": entry.file_path,
+            }
+            if meta
+            else None
+        )
 
         with patch("autoinfo.kb.KBStore", return_value=mock_kb):
             result = _handle_get_extraction(content_id=entry.entry_id)
@@ -580,4 +592,4 @@ class TestMcpGetExtraction:
 
         with patch("autoinfo.kb.KBStore", return_value=mock_kb):
             result = _handle_get_extraction(content_id="nonexistent-id")
-        assert result.get("error_code") == "NotFound"
+        assert result["error"]["code"] == "NotFound"

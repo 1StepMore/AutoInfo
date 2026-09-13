@@ -35,9 +35,9 @@ class TestInitProjectDispatch:
             "init_project",
             {"domain": "medical-research"},
         )
-        assert len(result_list) == 1
-        assert isinstance(result_list[0], TextContent)
-        body = json.loads(result_list[0].text)
+        assert len(result_list[0]) == 1
+        assert isinstance(result_list[0][0], TextContent)
+        body = json.loads(result_list[0][0].text)
         # Success envelope — NOT an error_response
         assert body["success"] is True
         assert body["data"]["status"] == "success"
@@ -60,7 +60,7 @@ class TestInitProjectDispatch:
             "init_project",
             {"domain": "medical-research"},
         )
-        init_body = json.loads(init_result[0].text)
+        init_body = json.loads(init_result[0][0].text)
         assert init_body["success"] is True
 
         # The generated config must contain exactly one domain: medical-research
@@ -78,7 +78,7 @@ class TestInitProjectDispatch:
             "get_domain_webhooks",
             {"domain": "medical-research"},
         )
-        hook_body = json.loads(hook_result[0].text)
+        hook_body = json.loads(hook_result[0][0].text)
         assert hook_body["success"] is True
         assert hook_body["data"]["domain"] == "medical-research"
 
@@ -97,7 +97,7 @@ class TestGetDomainWebhooksDispatch:
             "init_project",
             {"domain": "medical-research"},
         )
-        init_body = json.loads(init_result[0].text)
+        init_body = json.loads(init_result[0][0].text)
         assert init_body["success"] is True
 
         # Now call get_domain_webhooks — before the fix this would
@@ -107,9 +107,9 @@ class TestGetDomainWebhooksDispatch:
             "get_domain_webhooks",
             {"domain": "medical-research"},
         )
-        assert len(result_list) == 1
-        assert isinstance(result_list[0], TextContent)
-        body = json.loads(result_list[0].text)
+        assert len(result_list[0]) == 1
+        assert isinstance(result_list[0][0], TextContent)
+        body = json.loads(result_list[0][0].text)
 
         # Must be a success response with webhook data
         assert body["success"] is True

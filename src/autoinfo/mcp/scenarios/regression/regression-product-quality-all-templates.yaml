@@ -31,7 +31,10 @@
 # ABSOLUTE temp cwd.
 name: regression-product-quality-all-templates
 description: "Regression #150: all 8 product templates render clean of R1-R13 quality defects (no slug/count/term/double-word/microsecond/placeholder/brand residue)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#150"
 requires_env: []

@@ -13,7 +13,10 @@
 # (_export_agent_json) and must return the JSON-LD @type with zero entries.
 name: regression-readonly-mcp
 description: "Read-only MCP mode: tools/list returns exactly the 4 whitelisted tools and non-whitelisted calls return READ_ONLY_SERVER"
-category: regression
+category: failure
+pyramid_layer: red_team
+pipeline_stage: A7
+user_level: B2.2
 regression: true
 regression_issue: "#readonly-mcp"
 requires_env: []

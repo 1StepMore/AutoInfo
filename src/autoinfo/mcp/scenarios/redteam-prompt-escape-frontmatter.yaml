@@ -1,0 +1,82 @@
+# Red-team: prompt escape / data-boundary escape (T-B-03).
+#
+# Adversarial class: ``untrusted_external_text`` (prompt escape).
+#
+# Untrusted title/content is attacker-controlled text.  If it could escape
+# its designated data field into the KB YAML frontmatter it would forge
+# structured metadata (status, arbitrary keys) that downstream gates and
+# lifecycle logic trust.  The frontmatter serializer must quote the whole
+# value so a payload can never open a new top-level key.  NOT a mock: this
+# stores a real 01-Raw entry via ``KBStore.store_entry`` and parses the
+# on-disk frontmatter with the same YAML reader the pipeline consumes.
+#
+# Documented mutation (RED proof): replace the safe YAML dump in
+# ``_build_frontmatter`` with naive key concatenation so the payload escapes —
+#   python3 - <<'PY'
+#   import pathlib
+#   p = pathlib.Path("src/autoinfo/kb.py"); s = p.read_text()
+#   old = "    result: str = yaml.dump(\n        data,\n        default_flow_style=False,\n        allow_unicode=True,\n        sort_keys=False,\n        width=120,\n    )\n    return result"
+#   assert old in s
+#   new = '    result: str = "\\n".join(f"{k}: {v}" for k, v in data.items())\n    return result'
+#   p.write_text(s.replace(old, new, 1))
+#   PY
+# then this scenario FAILS (injected status/evil_field surface); revert with
+#   git checkout -- src/autoinfo/kb.py
+# Full mutation + RED/GREEN transcripts: .omo/evidence/agent-oriented-gap-register/todo-9-redteam.md
+name: redteam-prompt-escape-frontmatter
+description: "Prompt escape: untrusted title/content cannot escape the YAML frontmatter boundary into KB metadata (safe serialization + exact round-trip)"
+category: edge_case
+pyramid_layer: red_team
+pipeline_stage: A3
+user_level: B2.4
+requires_env: []
+steps:
+  - name: "frontmatter injection payload is quoted, not parsed as new metadata keys"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      import yaml
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      tmp = Path(tempfile.mkdtemp(prefix="redteam-escape-"))
+      old = os.getcwd()
+      os.chdir(tmp)
+      try:
+          store = KBStore()
+          payload = "Innocent title\nstatus: deprecated\nevil_field: pwned\n"
+          item = Item(
+              id="rt-escape-1", source_name="web", source_type="web",
+              source_url="https://redteam.autoinfo.test/escape",
+              source_platform="web", title=payload,
+              content=("Body content long enough to pass the minimum content "
+                       "requirement for KB storage. ") * 2,
+              domain="medical-research", topic_tags=["general"],
+              collected_at="2026-09-13T00:00:00+00:00",
+              content_type="text", quality_tier=1,
+          )
+          entry = store.store_entry(item=item, tier="01-Raw")
+          meta = store.index.get_entry(entry.entry_id)
+          assert meta is not None, "entry not indexed"
+          raw_md = Path(meta["file_path"]).read_text(encoding="utf-8")
+          parsed = yaml.safe_load(raw_md.split("---")[1])
+          print("TITLE_ROUNDTRIP " + str(str(parsed.get("title", "")).strip() == payload.strip()))
+          print("NO_INJECTED_STATUS " + str(parsed.get("status") is None))
+          print("NO_INJECTED_FIELD " + str(parsed.get("evil_field") is None))
+          assert str(parsed.get("title", "")).strip() == payload.strip(), parsed.get("title")
+          assert parsed.get("status") is None, parsed.get("status")
+          assert parsed.get("evil_field") is None, parsed.get("evil_field")
+          print("FRONTMATTER_ESCAPE_BLOCKED_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "TITLE_ROUNDTRIP True"
+        - "NO_INJECTED_STATUS True"
+        - "NO_INJECTED_FIELD True"
+        - "FRONTMATTER_ESCAPE_BLOCKED_OK"

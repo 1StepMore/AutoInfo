@@ -109,8 +109,23 @@ here.
 ```yaml
 name: kebab-case-unique-id          # required
 description: "human readable"       # required
+pipeline_stage: A1                 # REQUIRED — pipeline stage this scenario
+                                   # exercises.  One of A1..A7:
+                                   #   A1 Collection | A2 Extraction |
+                                   #   A3 Knowledge Base | A4 Products |
+                                   #   A5 Delivery | A6 Consumption |
+                                   #   A7 Operations
+user_level: B2.4                   # REQUIRED — user-lifecycle level this
+                                   # scenario targets.  One of the 18-stage
+                                   # union: B1.1..B1.7 (end user),
+                                   # B2.1..B2.6 (agent operator),
+                                   # B3.1..B3.5 (director).
 category: <one of: system|discovery|source|topic|collection|kb|output|delivery|
                     enduser|cost|privacy|lifecycle|observability|quality|cli|http|errors>
+pyramid_layer: component            # REQUIRED: validation-pyramid layer this scenario
+                                    # targets.  One of: unit | component | e2e |
+                                    # red_team.  See docs/dev/testing-layers.md for
+                                    # what each layer covers and the selection rule.
 requires_env: []                    # optional list of env var names; if ANY missing
                                     # the WHOLE scenario reports status=unconfigured
                                     # (Director User BYOK obligation — never skipped)
@@ -137,6 +152,14 @@ pass_ratio: 0.8                     # optional float (0.0-1.0): alternative part
                                     # policy — fraction of main steps that must pass.
                                     # Only one of min_passing / pass_ratio should be
                                     # set; when neither is set, ALL steps must pass.
+timeout: 300                        # optional number: scenario-level per-step wall-clock
+                                    # budget (seconds) applied to every step that does
+                                    # not declare its own `timeout_seconds`; overrides
+                                    # the MCP/global default (180s).  Must be positive.
+collect_artifacts:                  # optional list of glob patterns (relative to the
+                                    # project root) collected as run artifacts for the
+                                    # whole run; a step-level list adds to this default.
+  - "outputs/medical-research/**/*.md"
 regression: true                    # optional bool: marks this scenario as a
                                     # regression scenario.  True for files placed in
                                     # the scenarios/regression/ subdirectory (auto-
@@ -152,15 +175,26 @@ regression_issue: "#NNN"            # optional (required when regression: true):
 steps:
   - name: "human readable step name"   # required
     kind: mcp                         # optional: mcp (default) | cli | http
-    timeout_seconds: 30               # optional int: per-step wall-clock budget; a
-                                      # step exceeding it fails fast instead of
-                                      # hanging the whole run (default: no timeout).
+    timeout_seconds: 30               # optional number: per-step wall-clock budget in
+                                      # seconds.  Precedence: this value → scenario
+                                      # `timeout` → MCP/global default (180s).  A step
+                                      # exceeding its budget fails fast with a
+                                      # `timed out after Ns` detail instead of hanging
+                                      # the run.  Must be a positive number.
     recovery_steps:                   # optional list of steps (same schema as this
                                       # step); run AFTER this step's primary failure
-                                      # in an attempt to recover, then re-evaluate.
-    collect_artifacts:                # optional list of output artifacts to persist
-                                      # for post-run inspection (e.g. file paths the
-                                      # step wrote); used on output scenarios.
+                                      # in an attempt to recover.  If any passes, the
+                                      # step is reported as `recovered` — the primary
+                                      # keeps its failed status and its original
+                                      # failure detail; its assertion is NOT
+                                      # re-evaluated.
+    collect_artifacts:                # optional list of glob patterns this step adds to
+                                      # the scenario-level default (deduped, order
+                                      # preserved); honored on primary and recovery
+                                      # steps.  Rejected on cleanup_steps (the artifact
+                                      # snapshot precedes cleanup) and in unknown
+                                      # placements (e.g. nested under `expect`).
+      - "outputs/medical-research/**/*.md"
     # --- for kind=mcp ---
     tool: add_source                  # required: real MCP tool name
     arguments: {...}                  # required: real args the handler accepts
@@ -193,6 +227,14 @@ steps:
 
 - **`success`**: envelope `{success: bool}`. For cli: exit_code==0 ⇒ success=True.
   For http: 2xx/3xx ⇒ success=True.
+- **`pipeline_stage` / `user_level`**: both are **REQUIRED** — a scenario
+  missing either key, or carrying a value outside its allowed enum, fails to
+  load (`load_scenarios` raises `ValueError`; the fields are never defaulted).
+  `pipeline_stage` names the stage the scenario's steps exercise; `user_level`
+  names the lifecycle actor whose stage it validates (B1 end user, B2 agent
+  operating the pipeline, B3 director).  Together they make the A1-A7 × 18
+  stage×user coverage spine machine-measurable; `list_validation_scenarios`
+  surfaces both per scenario.
 - **`requires_env`**: if any listed env var is unset, the scenario returns
   `status: unconfigured` with per-step unconfigured results (see §0.3 — the Director
   User's BYOK obligation; never silently skip).
@@ -209,20 +251,36 @@ steps:
   so cleanup is skipped. Scenarios that create persistent state MUST clean up after
   themselves (verify-before-delete provenance checks are strongly recommended so real
   user data is never touched).
-- **`timeout_seconds`** (per step, optional): wall-clock budget in seconds. A step
-  exceeding its budget is marked failed with a timeout reason and the executor moves
-  on — a runaway step can no longer hang the whole run (default: no timeout).
+- **`timeout_seconds`** (per step, optional): wall-clock budget in seconds.  A step
+  exceeding its budget is marked failed with a `timed out after Ns` reason and the
+  executor moves on — a runaway step can no longer hang the whole run.  The effective
+  budget per step is resolved **step-level `timeout_seconds` → scenario-level `timeout`
+  → the MCP/global default (180s)**; primary and recovery steps each resolve their own
+  budget.  The value must be a positive number (a non-positive/non-numeric value fails
+  to load).
+- **`timeout`** (scenario-level, optional): per-step budget in seconds applied to every
+  step that does not declare its own `timeout_seconds`; overrides the MCP/global default.
+  Must be positive.
 - **`recovery_steps`** (per step, optional): steps using the same step schema, run
   **after the primary step fails** in an attempt to recover; each is a real call,
-  asserted the same way. If they pass, the step is reported as recovered (the failure
-  is still recorded in the per-step trace); if they fail, the step fails. Reported
-  under the step's `recovery` key; never inflate the pass count on their own.
+  asserted the same way. If any passes, the step is reported as `recovered`: the
+  primary keeps its `failed` status and its original failure detail — its assertion is
+  **not re-evaluated** (matching the engine's `_execute_step_with_recovery`); the
+  failure is still recorded in the per-step trace. If none passes, the step stays
+  `failed`. Reported under the step's `recovery` key; recovery never inflates the pass
+  count on its own.
 - **`min_passing` / `pass_ratio`** (top-level, optional): partial-pass policy.
   `min_passing` (int) = minimum main steps that must pass; `pass_ratio` (float
   0.0-1.0) = fraction that must pass. Set at most one; when neither is set, ALL main
   steps must pass. A scenario meeting the policy is `passed` even when some steps
   failed (they still surface in the report). Use where a subset of steps is
-  legitimately environment-dependent.
+  legitimately environment-dependent. **`unconfigured` vs partial-pass**: a met
+  threshold wins even when another step is `unconfigured` — the scenario is `passed`,
+  while that step remains counted in `summary.unconfigured` and is never treated as a
+  pass; `unconfigured` only outranks `failed` for the scenario verdict when the
+  threshold is *not* met (the missing credential/service is then the honest reason the
+  bar was not reached).  When a missing key must gate the whole scenario, use
+  `requires_env` instead (the scenario then reports `unconfigured` outright).
 - **`regression` / `regression_issue`**: `regression: true` requires a
   `regression_issue` beginning with `#` — an issue/PR number (`"#NNN"`) or, when
   no issue was filed, a #-prefixed wave/task tag (`"#concierge-wave-task-7"`).
@@ -230,9 +288,15 @@ steps:
   recursive glob and conventionally set both fields. Reports show regression scenarios
   with a "(regression)" suffix in the verdicts table and a dedicated `## Regression
   failures` section (root cause + guarded issue).
-- **`collect_artifacts`** (per step, optional): artifact references the step produced
-  (e.g. written file paths); output scenarios use it so generated digests/reports/
-  exports persist for post-run inspection in validation delivery.
+- **`collect_artifacts`** (scenario-level and per step, optional): a list of glob
+  patterns (relative to the project root) naming real files to persist for post-run
+  inspection.  The scenario-level list is the baseline for the whole run; a step-level
+  list **adds** to it (deduped, order preserved) and is honored on primary and recovery
+  steps that execute.  Patterns are snapshotted **before** `cleanup_steps` run, so
+  output scenarios' generated digests/reports/exports survive self-cleaning scenarios.
+  A non-list / non-string value fails to load; declaring it on a `cleanup_steps` entry
+  or nesting it under `expect` / `http_options` is rejected as an unknown/ambiguous
+  placement instead of being silently ignored.
 - **`llm_assert`**: when present and structural assertions passed, the executor makes a
   REAL LiteLLM call (model from config) to judge the tool output against the NL
   assertion; no LLM key → step reports `unconfigured`. Add
@@ -241,6 +305,13 @@ steps:
   from project root (`autoinfo ...` installed console script).
 - **`kind: http`**: real HTTP request via httpx; the REST server must be running
   (`uvicorn autoinfo.api.server:app --port 8741`) for these to pass.
+- **Scenario-leak guard** (engine, after every run): the executor scans 01-Raw for
+  fixtures under the reserved `*.autoinfo.test` hostname. Any hit is reported as a
+  `SCENARIO_LEAK` warning (the entry is never auto-deleted, and the warning never
+  changes the scenario status). If the guard cannot inspect the KB store it raises
+  `LeakScanError`, and the run surfaces a `LEAK_SCAN_ERROR` warning stating leak status
+  is **UNKNOWN (not clean)** — a broken guard is never silently reported as leak-free
+  (R-S-07).
 
 ## 1.4 Status aggregation
 
@@ -402,15 +473,15 @@ row:
 
 | Phase | Area | Rows |
 |-------|------|------|
-| A | System / config / discovery / error envelope | A1-A4 |
-| B | Domain / source / topic / keyword / webhooks | B1-B7 |
-| C | Collection pipeline, dedup, cache | C1-C3 |
-| D | Processing, LLM extraction, quality gates | D1-D4 |
-| E | KB pipeline, lifecycle, graph, search, Q&A | E1-E8 |
-| F | Output generation, all formats, schema validation | F1-F9 |
-| G | Delivery, scheduling, cron, agent callbacks | G1-G5 |
-| H | End-user lifecycle, cost, billing, privacy | H1-H5 |
-| I | Governance, observability, REST, validation meta | I1-I6 |
+| A | System / config / discovery / error envelope | EV-A1-EV-A4 |
+| B | Domain / source / topic / keyword / webhooks | EV-B1-EV-B7 |
+| C | Collection pipeline, dedup, cache | EV-C1-EV-C3 |
+| D | Processing, LLM extraction, quality gates | EV-D1-EV-D4 |
+| E | KB pipeline, lifecycle, graph, search, Q&A | EV-E1-EV-E8 |
+| F | Output generation, all formats, schema validation | EV-F1-EV-F9 |
+| G | Delivery, scheduling, cron, agent callbacks | EV-G1-EV-G5 |
+| H | End-user lifecycle, cost, billing, privacy | EV-H1-EV-H5 |
+| I | Governance, observability, REST, validation meta | EV-I1-EV-I6 |
 
 ## 2.2 The Evidence Contract
 
@@ -496,7 +567,7 @@ Key env vars (full names in `docs/dev/required-api-keys.md`):
 
 ## 2.5 Full-Coverage Validation Matrix
 
-The keystone. Nine phases, one table per phase. Columns:
+The keystone. Nine phases, one table per phase. Row IDs are namespaced `EV-*` (e.g. `EV-A1`, `EV-I6`) to avoid collision with the keystone pipeline stages `A1-A7` and user levels `B1-B3`. Columns:
 
 ```
 # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s)
@@ -504,7 +575,7 @@ The keystone. Nine phases, one table per phase. Columns:
 
 Legend for **LLM key**: `no` = callable without a key; `yes` = needs a real LLM call;
 `LLM-not-configured` = the tool returns `LLM_NOT_CONFIGURED` until the key is set (this
-is itself a proof, see A4). Legend for **Scenario(s)**: the `src/autoinfo/mcp/scenarios/`
+is itself a proof, see EV-A4). Legend for **Scenario(s)**: the `src/autoinfo/mcp/scenarios/`
 file(s) exercising the same feature (see §1.8); `run_validation_scenario` executes them,
 but the matrix row additionally requires the real call and the artifact.
 
@@ -512,97 +583,97 @@ but the matrix row additionally requires the real call and the artifact.
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| A1 | System health + phase | MCP `diagnose_system()` **and** CLI `autoinfo doctor --verbose` | The JSON with `health_score` (0-100) + `phase` (`uninitialized` / `llm_unconfigured` / `no_sources` / `ready_to_collect` / `operational`) | no | system-health |
-| A2 | BYOK LLM config | MCP `configure_llm(provider, model, api_key, base_url)` then read `.autoinfo/config.yaml` `llm:` block | The config.yaml `llm:` block with the key **redacted as `${AUTOINFO_LLM_API_KEY}`** (never the raw key) | no | projects-config |
-| A3 | Discovery inventory | MCP `list_domains()`, `get_domain_schema("<domain>")`, `list_available_models()`, `list_available_platforms()`, `get_tool_count()` (also `get_effective_llm_config()`, `list_output_templates()`) | The JSON responses, including `get_tool_count` returning the **live tool count (146)** | no | discovery, output-discovery, system-health, domain-management, error-boundary |
-| A4 | Error envelope probe | MCP `run_validation_scenario("error-boundary")` plus a direct probe: call an unknown tool and a missing-domain tool | The `{success:false, error:{code, message, actionable}}` JSON, e.g. `UnknownTool` and `DOMAIN_NOT_FOUND`; also an LLM-required tool (`suggest_keywords`) returning `LLM_NOT_CONFIGURED` while the key is unset | no | error-boundary, llm-gated |
+| EV-A1 | System health + phase | MCP `diagnose_system()` **and** CLI `autoinfo doctor --verbose` | The JSON with `health_score` (0-100) + `phase` (`uninitialized` / `llm_unconfigured` / `no_sources` / `ready_to_collect` / `operational`) | no | system-health |
+| EV-A2 | BYOK LLM config | MCP `configure_llm(provider, model, api_key, base_url)` then read `.autoinfo/config.yaml` `llm:` block | The config.yaml `llm:` block with the key **redacted as `${AUTOINFO_LLM_API_KEY}`** (never the raw key) | no | projects-config |
+| EV-A3 | Discovery inventory | MCP `list_domains()`, `get_domain_schema("<domain>")`, `list_available_models()`, `list_available_platforms()`, `get_tool_count()` (also `get_effective_llm_config()`, `list_output_templates()`) | The JSON responses, including `get_tool_count` returning the **live tool count (146)** | no | discovery, output-discovery, system-health, domain-management, error-boundary |
+| EV-A4 | Error envelope probe | MCP `run_validation_scenario("error-boundary")` plus a direct probe: call an unknown tool and a missing-domain tool | The `{success:false, error:{code, message, actionable}}` JSON, e.g. `UnknownTool` and `DOMAIN_NOT_FOUND`; also an LLM-required tool (`suggest_keywords`) returning `LLM_NOT_CONFIGURED` while the key is unset | no | error-boundary, llm-gated |
 
 ### Phase B: Domain, Source, Topic, Keyword, Webhooks
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| B1 | Domain/source/topic CRUD | MCP `add_domain(name, description)`, `add_source(name, url, type, domain, ...)`, `add_topic(domain, name, keywords)`; confirm with `list_sources(domain)` and `list_topics(domain)` | New `domain:` / `source:` / `topic:` blocks in `.autoinfo/config.yaml` plus the list responses | no | domain-management, source-management, topic-management |
-| B2 | Keyless collector real fetch | MCP `collect_sources(domain="<d>", topic="<t>", dry_run=false)` against a keyless source (rss, pubmed, hackernews, openalex, dblp, ssrn, sec_edgar, gdelt, etc.) | `collections/<domain>/<source>/*.json` raw cache files with real `source_url`, `source_type`, `source_platform`, plus the collection log line | no | collection, collectors-e2e |
-| B3 | Keyed collector with env set | Export the source key (e.g. `AUTOINFO_NYT_API_KEY`), MCP `collect_sources` on that source | `collections/<domain>/<source>/*.json` raw cache from the keyed source | no | sources-a6-keyed |
-| B4 | Source reachability + health + rating | MCP `test_source(source_id)`, `get_source_health(source_id)`, `rate_item(item_id, rating)` | The reachability JSON (status/items/error) for each source; rating persisted (visible in later search/ranking output) | no | source-management, collectors-e2e |
-| B5 | LLM keyword suggestions | MCP `suggest_keywords(domain, topic, ...)` (real LLM) then `approve_keyword(domain, keyword)` / `reject_keyword(...)`, confirm `list_keywords(domain)` | The suggested-keyword JSON (LLM output) and the updated keyword list showing approve/reject took effect | yes | llm-gated, keyword-management |
-| B6 | Topic grouping | MCP `topic_group_add(domain, group_name, topics)` then `list_topics(domain)` | JSON showing the new group and its members | no | topic-management |
-| B7 | Domain webhook push | MCP `set_domain_webhooks(domain, webhook_urls=["http://127.0.0.1:8787/hook"])`; run a **local HTTP sink** (e.g. `python -m http.server`-style capture or a small listener) and `collect_sources` | The sink-captured POST body: per-item JSON with source provenance, delivered to the local sink | no | webhooks-alerts |
+| EV-B1 | Domain/source/topic CRUD | MCP `add_domain(name, description)`, `add_source(name, url, type, domain, ...)`, `add_topic(domain, name, keywords)`; confirm with `list_sources(domain)` and `list_topics(domain)` | New `domain:` / `source:` / `topic:` blocks in `.autoinfo/config.yaml` plus the list responses | no | domain-management, source-management, topic-management |
+| EV-B2 | Keyless collector real fetch | MCP `collect_sources(domain="<d>", topic="<t>", dry_run=false)` against a keyless source (rss, pubmed, hackernews, openalex, dblp, ssrn, sec_edgar, gdelt, etc.) | `collections/<domain>/<source>/*.json` raw cache files with real `source_url`, `source_type`, `source_platform`, plus the collection log line | no | collection, collectors-e2e |
+| EV-B3 | Keyed collector with env set | Export the source key (e.g. `AUTOINFO_NYT_API_KEY`), MCP `collect_sources` on that source | `collections/<domain>/<source>/*.json` raw cache from the keyed source | no | sources-a6-keyed |
+| EV-B4 | Source reachability + health + rating | MCP `test_source(source_id)`, `get_source_health(source_id)`, `rate_item(item_id, rating)` | The reachability JSON (status/items/error) for each source; rating persisted (visible in later search/ranking output) | no | source-management, collectors-e2e |
+| EV-B5 | LLM keyword suggestions | MCP `suggest_keywords(domain, topic, ...)` (real LLM) then `approve_keyword(domain, keyword)` / `reject_keyword(...)`, confirm `list_keywords(domain)` | The suggested-keyword JSON (LLM output) and the updated keyword list showing approve/reject took effect | yes | llm-gated, keyword-management |
+| EV-B6 | Topic grouping | MCP `topic_group_add(domain, group_name, topics)` then `list_topics(domain)` | JSON showing the new group and its members | no | topic-management |
+| EV-B7 | Domain webhook push | MCP `set_domain_webhooks(domain, webhook_urls=["http://127.0.0.1:8787/hook"])`; run a **local HTTP sink** (e.g. `python -m http.server`-style capture or a small listener) and `collect_sources` | The sink-captured POST body: per-item JSON with source provenance, delivered to the local sink | no | webhooks-alerts |
 
 ### Phase C: Collection Pipeline, Dedup, Cache
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| C1 | Collection preview + progress + stats | MCP `collect_sources(domain, dry_run=true)` (preview, no writes) then a real run; poll `get_collection_progress(job_id)`; then `get_collection_stats(period)` and `get_collection_diff()` | The dry-run preview JSON, the real-run job JSON, progress updates, and the stats/diff JSON with item counts | no | collection, collection-monitor |
-| C2 | Dedup | `collect_sources` the **same URL twice** (or a second source emitting the same URL) and inspect the collection log | The dedup log line (`duplicate` / `skipped`), proving the second fetch was not stored | no | collection, collectors-e2e |
-| C3 | Cache cleanup | MCP `clean_cache()` (also `autoinfo clean` CLI) | The cleanup result JSON and a directory listing showing the temp/cache dir emptied | no | collection, projects-config |
+| EV-C1 | Collection preview + progress + stats | MCP `collect_sources(domain, dry_run=true)` (preview, no writes) then a real run; poll `get_collection_progress(job_id)`; then `get_collection_stats(period)` and `get_collection_diff()` | The dry-run preview JSON, the real-run job JSON, progress updates, and the stats/diff JSON with item counts | no | collection, collection-monitor |
+| EV-C2 | Dedup | `collect_sources` the **same URL twice** (or a second source emitting the same URL) and inspect the collection log | The dedup log line (`duplicate` / `skipped`), proving the second fetch was not stored | no | collection, collectors-e2e |
+| EV-C3 | Cache cleanup | MCP `clean_cache()` (also `autoinfo clean` CLI) | The cleanup result JSON and a directory listing showing the temp/cache dir emptied | no | collection, projects-config |
 
 ### Phase D: Processing, LLM Extraction, Quality Gates
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| D1 | Process with extraction | MCP `process_collection(domain, check_factual=true, check_translation=true)` (real LLM), poll `get_processing_progress(job_id)` | `knowledge/<domain>/01-Raw/*.md` files whose frontmatter contains `tl_dr`, `key_points`, `entities`, `summary`, `relevance`, `source_url` | yes | processing, collection |
-| D2 | Quality gates G0-G5 + config | MCP `get_gate_config(domain)`, `set_gate_config(domain, gate, action, threshold)` then re-read; inspect processing output for gate outcomes and any `_failed/` item | The gate config JSON before/after, gate outcome lines in the processing log, and any `knowledge/<domain>/_failed/` item (if a gate blocked) | no | quality-gate-config |
-| D3 | Custom extraction | MCP `extract_fields(domain, text, fields=[...])` (real LLM) and `get_extraction(entry_id)` | The extracted JSON with the requested fields; the stored extraction for a real entry | yes | kb-extraction, kb-lifecycle |
-| D4 | G4 factual + translation QA flags | MCP `process_collection(domain, check_factual=true, check_translation=true)` | Log lines / KB frontmatter showing G4 factual-consistency verification and translation-QA flags on the processed entries | yes | processing, llm-gated |
+| EV-D1 | Process with extraction | MCP `process_collection(domain, check_factual=true, check_translation=true)` (real LLM), poll `get_processing_progress(job_id)` | `knowledge/<domain>/01-Raw/*.md` files whose frontmatter contains `tl_dr`, `key_points`, `entities`, `summary`, `relevance`, `source_url` | yes | processing, collection |
+| EV-D2 | Quality gates G0-G5 + config | MCP `get_gate_config(domain)`, `set_gate_config(domain, gate, action, threshold)` then re-read; inspect processing output for gate outcomes and any `_failed/` item | The gate config JSON before/after, gate outcome lines in the processing log, and any `knowledge/<domain>/_failed/` item (if a gate blocked) | no | quality-gate-config |
+| EV-D3 | Custom extraction | MCP `extract_fields(domain, text, fields=[...])` (real LLM) and `get_extraction(entry_id)` | The extracted JSON with the requested fields; the stored extraction for a real entry | yes | kb-extraction, kb-lifecycle |
+| EV-D4 | G4 factual + translation QA flags | MCP `process_collection(domain, check_factual=true, check_translation=true)` | Log lines / KB frontmatter showing G4 factual-consistency verification and translation-QA flags on the processed entries | yes | processing, llm-gated |
 
 ### Phase E: KB Pipeline, Lifecycle, Graph, Search, Q&A
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| E1 | 4-tier pipeline Raw→Draft→Wiki | MCP `list_kb_tier(domain, tier)`; MCP `create_kb_draft(raw_ids=[...], title=..., summary=..., tags=[...])` (Raw→Draft only); MCP `promote_kb_draft` (agent promotion Draft→Wiki, KB-tier guard, no human gate) | The `knowledge/` tree showing `01-Raw/`, `02-Draft/`, `03-Wiki/` with real entries at each reached tier | no | kb-access, kb-draft |
-| E2 | KB import | MCP `import_kb(domain, format, data)` for markdown / pdf / html / json (CLI parity: `autoinfo import-kb --file <f>`) | The new entries landed in `knowledge/<domain>/01-Raw/*.md` with provenance | no | kb-import-export |
-| E3 | Versioning | MCP `get_entry_history(entry_id)`, `compare_versions(entry_id, version_a, version_b)`, `restore_entry_version(entry_id, version)` | History/diff JSON showing version deltas, and a restore confirming the content reverted | no | kb-versioning |
-| E4 | Knowledge graph | MCP `query_knowledge_graph(domain, entity=...)` and `knowledge_graph_export(domain, format=...)` | The graph query JSON and the exported GraphML file on disk | no | kb-graph |
-| E5 | Item relations | MCP `link_items(source_id, target_id, relation)` and `get_item_relations(entry_id)` | The link response and relations JSON | no | kb-graph |
-| E6 | Knowledge lifecycle | MCP `mark_stale(entry_id)`, `calculate_freshness_score(domain)`, `get_domain_decay(domain)`, `find_similar_items(entry_id)`, `merge_items(ids, strategy)`, `recommend_content(user_id, ...)`, `simplify_content(content, target_level)` | The staleness/decay JSON, similarity ranking, merge result, recommendation list, and the simplified text (original vs target CEFR) | recommend + simplify: yes; rest: no | kb-lifecycle, output-simplify-recommend |
-| E7 | Hybrid/vector/faceted/cross-domain search | MCP `search_knowledge_base(domain, query, mode="hybrid"\|"vector"\|"faceted", filters={...})`; omit `domain` for cross-domain | The ranked JSON results with scores, plus faceted filter counts and cross-domain hits | no | kb-access |
-| E8 | Q&A with citations | MCP `query_collected(query)` (real LLM) | The synthesized answer with source citations referencing real 01-Raw entries | yes | kb-extraction |
+| EV-E1 | 4-tier pipeline Raw→Draft→Wiki | MCP `list_kb_tier(domain, tier)`; MCP `create_kb_draft(raw_ids=[...], title=..., summary=..., tags=[...])` (Raw→Draft only); MCP `promote_kb_draft` (agent promotion Draft→Wiki, KB-tier guard, no human gate) | The `knowledge/` tree showing `01-Raw/`, `02-Draft/`, `03-Wiki/` with real entries at each reached tier | no | kb-access, kb-draft |
+| EV-E2 | KB import | MCP `import_kb(domain, format, data)` for markdown / pdf / html / json (CLI parity: `autoinfo import-kb --file <f>`) | The new entries landed in `knowledge/<domain>/01-Raw/*.md` with provenance | no | kb-import-export |
+| EV-E3 | Versioning | MCP `get_entry_history(entry_id)`, `compare_versions(entry_id, version_a, version_b)`, `restore_entry_version(entry_id, version)` | History/diff JSON showing version deltas, and a restore confirming the content reverted | no | kb-versioning |
+| EV-E4 | Knowledge graph | MCP `query_knowledge_graph(domain, entity=...)` and `knowledge_graph_export(domain, format=...)` | The graph query JSON and the exported GraphML file on disk | no | kb-graph |
+| EV-E5 | Item relations | MCP `link_items(source_id, target_id, relation)` and `get_item_relations(entry_id)` | The link response and relations JSON | no | kb-graph |
+| EV-E6 | Knowledge lifecycle | MCP `mark_stale(entry_id)`, `calculate_freshness_score(domain)`, `get_domain_decay(domain)`, `find_similar_items(entry_id)`, `merge_items(ids, strategy)`, `recommend_content(user_id, ...)`, `simplify_content(content, target_level)` | The staleness/decay JSON, similarity ranking, merge result, recommendation list, and the simplified text (original vs target CEFR) | recommend + simplify: yes; rest: no | kb-lifecycle, output-simplify-recommend |
+| EV-E7 | Hybrid/vector/faceted/cross-domain search | MCP `search_knowledge_base(domain, query, mode="hybrid"\|"vector"\|"faceted", filters={...})`; omit `domain` for cross-domain | The ranked JSON results with scores, plus faceted filter counts and cross-domain hits | no | kb-access |
+| EV-E8 | Q&A with citations | MCP `query_collected(query)` (real LLM) | The synthesized answer with source citations referencing real 01-Raw entries | yes | kb-extraction |
 
 ### Phase F: Output Generation, All Formats, Schema Validation
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| F1 | Digest, all 7 formats | MCP `generate_digest(domain, format="markdown"\|"html"\|"json"\|"agent"\|"audio"\|"epub"\|"audiobook")` (7 calls, real LLM) | `outputs/digests/*.md`, `*.html`, `*.json`, agent JSON-LD, MP3, EPUB, audiobook ZIP | yes | output-digest-report, output-ebook |
-| F2 | Report, all report types + formats | MCP `generate_report(domain, report_type="industry"\|"competitive"\|"trend"\|"daily-briefing"\|"column"\|"standard", format="markdown"\|"json"\|"html"\|"audio"\|"agent"\|"epub"\|"audiobook")` (7 MCP-valid formats; see Appendix A for the `video` nuance) | `outputs/` report artifacts for each type/format combination exercised | yes | output-digest-report, output-column, output-ebook |
-| F3 | Cross-domain report | MCP `generate_cross_domain_report(domains=[...])` | The cross-domain report artifact whose content aggregates multiple domains | yes | output-digest-report |
-| F4 | Tutorial | MCP `generate_tutorial(domain, format="markdown"\|"agent")` | `outputs/` tutorial md + agent JSON-LD | yes | output-tutorial-presentation |
-| F5 | Presentation | MCP `generate_presentation(domain, format="markdown"\|"html"\|"mkslides"\|"agent")` (4 calls) | `outputs/` presentation md, standalone HTML (Reveal.js CDN), mkslides build, agent JSON-LD | yes | output-tutorial-presentation |
-| F6 | Localization | MCP `localize_content(domain, text, target_language)` (real LLM) | The translated text artifact | yes | output-tutorial-presentation |
-| F7 | Export, all 12 formats | MCP `export_kb(domain, format="markdown"\|"json"\|"sqlite"\|"csv"\|"pdf"\|"graphml"\|"rss"\|"agent"\|"bundle"\|"sitemap"\|"epub"\|"mobi")` (12 calls; `sitemap` requires `base_url`) | `exports/autoinfo-export-<domain>-<ts>.*` artifacts for every format (bundle = ZIP with PDF+JSON+MD+YAML) | no | kb-import-export |
-| F8 | Agent JSON-LD schema validation | Run `jsonschema` against the const-pinned schemas for all 4 agent artifacts: `python3 -m jsonschema -i <digest>.json docs/schemas/knowledge-digest-v1.json` (likewise tutorial / presentation / base-export) | The 4 validated JSON-LD artifacts, each passing its `docs/schemas/*-v1.json` (const-pinned `@context` / `@type`) | no | evidence-only (no dedicated scenario; graded via the acceptance framework's agent-format evidence A7) |
-| F9 | Audio / audiobook | MCP `generate_digest(domain, format="audio")` and `format="audiobook"` (chaptered MP3 + ZIP with ID3v2.3 CHAP/CTOC) | The MP3 file (playable / size non-zero), the audiobook ZIP, and the chapter metadata | yes | output-ebook |
+| EV-F1 | Digest, all 7 formats | MCP `generate_digest(domain, format="markdown"\|"html"\|"json"\|"agent"\|"audio"\|"epub"\|"audiobook")` (7 calls, real LLM) | `outputs/digests/*.md`, `*.html`, `*.json`, agent JSON-LD, MP3, EPUB, audiobook ZIP | yes | output-digest-report, output-ebook |
+| EV-F2 | Report, all report types + formats | MCP `generate_report(domain, report_type="industry"\|"competitive"\|"trend"\|"daily-briefing"\|"column"\|"standard", format="markdown"\|"json"\|"html"\|"audio"\|"agent"\|"epub"\|"audiobook")` (7 MCP-valid formats; see Appendix A for the `video` nuance) | `outputs/` report artifacts for each type/format combination exercised | yes | output-digest-report, output-column, output-ebook |
+| EV-F3 | Cross-domain report | MCP `generate_cross_domain_report(domains=[...])` | The cross-domain report artifact whose content aggregates multiple domains | yes | output-digest-report |
+| EV-F4 | Tutorial | MCP `generate_tutorial(domain, format="markdown"\|"agent")` | `outputs/` tutorial md + agent JSON-LD | yes | output-tutorial-presentation |
+| EV-F5 | Presentation | MCP `generate_presentation(domain, format="markdown"\|"html"\|"mkslides"\|"agent")` (4 calls) | `outputs/` presentation md, standalone HTML (Reveal.js CDN), mkslides build, agent JSON-LD | yes | output-tutorial-presentation |
+| EV-F6 | Localization | MCP `localize_content(domain, text, target_language)` (real LLM) | The translated text artifact | yes | output-tutorial-presentation |
+| EV-F7 | Export, all 12 formats | MCP `export_kb(domain, format="markdown"\|"json"\|"sqlite"\|"csv"\|"pdf"\|"graphml"\|"rss"\|"agent"\|"bundle"\|"sitemap"\|"epub"\|"mobi")` (12 calls; `sitemap` requires `base_url`) | `exports/autoinfo-export-<domain>-<ts>.*` artifacts for every format (bundle = ZIP with PDF+JSON+MD+YAML) | no | kb-import-export |
+| EV-F8 | Agent JSON-LD schema validation | Run `jsonschema` against the const-pinned schemas for all 4 agent artifacts: `python3 -m jsonschema -i <digest>.json docs/schemas/knowledge-digest-v1.json` (likewise tutorial / presentation / base-export) | The 4 validated JSON-LD artifacts, each passing its `docs/schemas/*-v1.json` (const-pinned `@context` / `@type`) | no | evidence-only (no dedicated scenario; graded via the acceptance framework's agent-format evidence A7) |
+| EV-F9 | Audio / audiobook | MCP `generate_digest(domain, format="audio")` and `format="audiobook"` (chaptered MP3 + ZIP with ID3v2.3 CHAP/CTOC) | The MP3 file (playable / size non-zero), the audiobook ZIP, and the chapter metadata | yes | output-ebook |
 
 ### Phase G: Delivery, Scheduling, Cron, Agent Callbacks
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| G1 | Channel health, 13 channels | MCP `get_channel_health()` | The health JSON covering smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push with health + latency | no | delivery-channels |
-| G2 | Email digest to local SMTP sink | MCP `email_config(...)` then `generate_digest(domain, format="html")` then `send_email_digest(domain, period)` pointed at a **local SMTP sink**; then MCP `query_delivery_log()` / `get_delivery_log()` | The sink-captured message (headers + html body) and the delivery-log rows for the send | no | delivery-channels |
-| G3 | Delivery schedule CRUD | MCP `add_delivery_schedule(domain, cron_expression, output_type, channel, output_format, ...)`, `list_delivery_schedules()`, `remove_delivery_schedule(...)` | The schedule list JSON before/after add and after remove | no | delivery-schedules |
-| G4 | Cron schedules + health | MCP `add_schedule(name, cron, command)`, `run_schedules()`, `get_schedule_status()`, `list_schedules()`, `remove_schedule()`; CLI `autoinfo cron install` and `autoinfo cron health` | The schedule status JSON, the heartbeat JSON from `cron health`, and the crontab line (if installed) | no | cron-schedules |
-| G5 | Agent push callback | MCP `set_agent_callback(agent_url="http://127.0.0.1:8788/cb", events=[...])`; generate/deliver to trigger; read the callback with a **local HTTP sink** | The sink-captured payload `{event, payload, schema_version: 1, trace_id, product_id}` plus `agent_outbox` rows in `autoinfo.db` | no | agent-callbacks |
+| EV-G1 | Channel health, 13 channels | MCP `get_channel_health()` | The health JSON covering smtp, webhook, rest_api, file_export, discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, social_publish, push with health + latency | no | delivery-channels |
+| EV-G2 | Email digest to local SMTP sink | MCP `email_config(...)` then `generate_digest(domain, format="html")` then `send_email_digest(domain, period)` pointed at a **local SMTP sink**; then MCP `query_delivery_log()` / `get_delivery_log()` | The sink-captured message (headers + html body) and the delivery-log rows for the send | no | delivery-channels |
+| EV-G3 | Delivery schedule CRUD | MCP `add_delivery_schedule(domain, cron_expression, output_type, channel, output_format, ...)`, `list_delivery_schedules()`, `remove_delivery_schedule(...)` | The schedule list JSON before/after add and after remove | no | delivery-schedules |
+| EV-G4 | Cron schedules + health | MCP `add_schedule(name, cron, command)`, `run_schedules()`, `get_schedule_status()`, `list_schedules()`, `remove_schedule()`; CLI `autoinfo cron install` and `autoinfo cron health` | The schedule status JSON, the heartbeat JSON from `cron health`, and the crontab line (if installed) | no | cron-schedules |
+| EV-G5 | Agent push callback | MCP `set_agent_callback(agent_url="http://127.0.0.1:8788/cb", events=[...])`; generate/deliver to trigger; read the callback with a **local HTTP sink** | The sink-captured payload `{event, payload, schema_version: 1, trace_id, product_id}` plus `agent_outbox` rows in `autoinfo.db` | no | agent-callbacks |
 
 ### Phase H: End-User Lifecycle, Cost, Billing, Privacy
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| H1 | End-user lifecycle | MCP `enduser_create(user_id, name, email, ...)` → `activate_trial(end_user_id, days)` → `get_subscription_status(end_user_id)` → `check_trial_expiry(end_user_id)` → `update_preferences(end_user_id, ...)` / `get_preferences(end_user_id)` → suspend → cancel; CLI `autoinfo enduser list` | The lifecycle JSON at each stage (trial → active → suspended → cancelled) and `get_enduser_history(end_user_id)` | no | enduser-lifecycle, enduser-preferences |
-| H2 | End-user delivery | MCP `send_to_enduser(end_user_id, product_id, channel)` then `query_delivery_log(end_user_id)` / `get_delivery_log(end_user_id)` | The delivery-log rows for that end user | no | enduser-lifecycle, delivery-channels |
-| H3 | Cost governance | MCP `cost_dashboard(period)`, `cost_allocation(domain)`, `get_billing_summary()`, `get_budget_thresholds()`, `set_budget_thresholds(...)`; then `sqlite3 autoinfo.db "SELECT * FROM cost_log ORDER BY created_at DESC LIMIT 5;"` | The dashboard/allocation JSON and the raw `cost_log` rows (LLM tokens, storage, API calls) | no | cost-budget, products-billing |
-| H4 | Checkout (billing) | MCP `create_checkout_session(product_id, end_user_id, mode="subscription"\|"payment", article_id=...)` against **stripe-mock** (`STRIPE_API_BASE` defaults to `http://localhost:12111`, key `sk_test_mock`); label as mock in evidence | The checkout-session JSON returned by stripe-mock | no | products-billing |
-| H5 | Data privacy / GDPR | MCP `soft_delete_entry(entry_id, purge=false)` then `restore_entry(entry_id)`; `export_user_data(user_id)` → GDPR export JSON; `delete_user_data(user_id)`; then `soft_delete_entry(entry_id, purge=true)` | The restore confirmation, the GDPR export JSON file, and the purge confirmation; deletion-log / audit rows | no | data-privacy |
+| EV-H1 | End-user lifecycle | MCP `enduser_create(user_id, name, email, ...)` → `activate_trial(end_user_id, days)` → `get_subscription_status(end_user_id)` → `check_trial_expiry(end_user_id)` → `update_preferences(end_user_id, ...)` / `get_preferences(end_user_id)` → suspend → cancel; CLI `autoinfo enduser list` | The lifecycle JSON at each stage (trial → active → suspended → cancelled) and `get_enduser_history(end_user_id)` | no | enduser-lifecycle, enduser-preferences |
+| EV-H2 | End-user delivery | MCP `send_to_enduser(end_user_id, product_id, channel)` then `query_delivery_log(end_user_id)` / `get_delivery_log(end_user_id)` | The delivery-log rows for that end user | no | enduser-lifecycle, delivery-channels |
+| EV-H3 | Cost governance | MCP `cost_dashboard(period)`, `cost_allocation(domain)`, `get_billing_summary()`, `get_budget_thresholds()`, `set_budget_thresholds(...)`; then `sqlite3 autoinfo.db "SELECT * FROM cost_log ORDER BY created_at DESC LIMIT 5;"` | The dashboard/allocation JSON and the raw `cost_log` rows (LLM tokens, storage, API calls) | no | cost-budget, products-billing |
+| EV-H4 | Checkout (billing) | MCP `create_checkout_session(product_id, end_user_id, mode="subscription"\|"payment", article_id=...)` against **stripe-mock** (`STRIPE_API_BASE` defaults to `http://localhost:12111`, key `sk_test_mock`); label as mock in evidence | The checkout-session JSON returned by stripe-mock | no | products-billing |
+| EV-H5 | Data privacy / GDPR | MCP `soft_delete_entry(entry_id, purge=false)` then `restore_entry(entry_id)`; `export_user_data(user_id)` → GDPR export JSON; `delete_user_data(user_id)`; then `soft_delete_entry(entry_id, purge=true)` | The restore confirmation, the GDPR export JSON file, and the purge confirmation; deletion-log / audit rows | no | data-privacy |
 
 ### Phase I: Governance, Observability, REST, Validation Meta
 
 | # | Feature | Real-call method | Artifact to show director | LLM key | Scenario(s) |
 |---|---------|------------------|---------------------------|:---:|-------------|
-| I1 | Audit log | MCP `query_audit_log(actor=..., action=...)` and CLI `autoinfo audit query` | The audit rows (actor / action / tool / resource / trace_id) pulled from `autoinfo.db`, proving dispatch-level audit | no | observability |
-| I2 | Per-item trace | MCP `trace_item(trace_id)` and CLI `autoinfo trace <trace_id>` | The full journey for one trace_id: collection → gates → KB → delivery | no | observability |
-| I3 | Metrics | MCP `get_metrics()` and `get_prometheus_metrics()`; REST `curl http://localhost:8741/metrics` | The metrics JSON and the Prometheus text exposition from the REST endpoint | no | observability |
-| I4 | Alert rules | MCP `add_alert_rule(domain, topic_keywords, relevance_threshold, channel, kind)` → `get_alert_rules()` → trigger a rule → `remove_alert_rule(...)` | The rules YAML file (persisted), the alert list JSON, and the dispatch log line when the rule fired | no | webhooks-alerts |
-| I5 | REST API | Start `uvicorn autoinfo.api.server:app --port 8741`; `curl` each endpoint: `GET /health`, `GET /api/v1/entries`, `POST /api/v1/entries`, `GET /api/v1/entries/{id}`, `DELETE /api/v1/entries/{id}`, `GET /api/v1/search`, `GET /dashboard`, `GET /metrics` | The envelope JSON for each endpoint (success + error envelopes) and the dashboard HTML | no | rest-api |
-| I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 138; then `python3 scripts/coverage_audit.py` | The 138-scenario inventory JSON, per-scenario results, and the audit report showing **146/146** covered with zero MISSING | no | meta-validation |
+| EV-I1 | Audit log | MCP `query_audit_log(actor=..., action=...)` and CLI `autoinfo audit query` | The audit rows (actor / action / tool / resource / trace_id) pulled from `autoinfo.db`, proving dispatch-level audit | no | observability |
+| EV-I2 | Per-item trace | MCP `trace_item(trace_id)` and CLI `autoinfo trace <trace_id>` | The full journey for one trace_id: collection → gates → KB → delivery | no | observability |
+| EV-I3 | Metrics | MCP `get_metrics()` and `get_prometheus_metrics()`; REST `curl http://localhost:8741/metrics` | The metrics JSON and the Prometheus text exposition from the REST endpoint | no | observability |
+| EV-I4 | Alert rules | MCP `add_alert_rule(domain, topic_keywords, relevance_threshold, channel, kind)` → `get_alert_rules()` → trigger a rule → `remove_alert_rule(...)` | The rules YAML file (persisted), the alert list JSON, and the dispatch log line when the rule fired | no | webhooks-alerts |
+| EV-I5 | REST API | Start `uvicorn autoinfo.api.server:app --port 8741`; `curl` each endpoint: `GET /health`, `GET /api/v1/entries`, `POST /api/v1/entries`, `GET /api/v1/entries/{id}`, `DELETE /api/v1/entries/{id}`, `GET /api/v1/search`, `GET /dashboard`, `GET /metrics` | The envelope JSON for each endpoint (success + error envelopes) and the dashboard HTML | no | rest-api |
+| EV-I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 138; then `python3 scripts/coverage_audit.py` | The 138-scenario inventory JSON, per-scenario results, and the audit report showing **146/146** covered with zero MISSING | no | meta-validation |
 
 ## 2.6 Step-by-Step Walkthrough
 
@@ -627,7 +698,7 @@ Run from the project root (`<repo-root>`). The venv interpreter is
 
 ### 2.6.2 Per-matrix-row loop
 
-For **every** row in §2.5 (A1 → I6):
+For **every** row in §2.5 (EV-A1 → EV-I6):
 
 ```
 RED   → record the honest negative (unconfigured / absent artifact / failing call)
@@ -639,8 +710,8 @@ CLEAN → run the paired cleanup for every mutating call; verify with list_* + g
 
 Rules inside the loop:
 
-- Execute rows in order A → I where a row depends on earlier state (e.g. D1 needs C1's
-  collected items; E1 needs D1's processed raws).
+- Execute rows in order A → I where a row depends on earlier state (e.g. EV-D1 needs EV-C1's
+  collected items; EV-E1 needs EV-D1's processed raws).
 - One mutating call, one cleanup. Every `add_*` / `create_*` / `set_*` /
   `soft_delete_entry` has a paired `remove_*` / `delete_*` / `restore_*` / `reject_*`,
   verified by the corresponding `list_*` and a clean `git status --porcelain`.
@@ -731,7 +802,7 @@ Plus the two hard meta-results:
 
 Before handing off to the director, verify all of the following:
 
-- [ ] Every row in §2.5 (A1 through I6) was executed with a real call. No row skipped.
+- [ ] Every row in §2.5 (EV-A1 through EV-I6) was executed with a real call. No row skipped.
 - [ ] RED was recorded before GREEN for every row.
 - [ ] Every GREEN has a real artifact on disk / DB / log / sink, and that artifact was shown to the director (pasted or absolute path).
 - [ ] No `unconfigured` row was graded as a pass; each missing key was surfaced as a BYOK obligation.
@@ -796,6 +867,10 @@ presentation, premium-briefing, column, magazine-digest, enterprise-briefing.
   evidence-production tooling (SUSPECT table, run-report skeleton)
 - `docs/dev/required-api-keys.md`: every environment variable (31 `AUTOINFO_*` + provider keys)
 - `docs/dev/mcp-usage-examples.md`: worked MCP workflows
+- `docs/dev/testing-layers.md`: the four validation-pyramid layers (`unit` /
+  `component` / `e2e` / `red_team`), where each one lives (`tests/` unit tests vs
+  the scenario `pyramid_layer` field), their live distribution, and the rule for
+  choosing a layer.
 - `docs/dev/cross-dimensional-catalog.md`: keystone product matrix (A1-A7 × B1/B2/B3)
 - `docs/dev/enduser-coverage-matrix.md`: end-user feature coverage matrix
 - `docs/dev/specs/mcp-tools.md`, `docs/dev/specs/pipeline.md`,

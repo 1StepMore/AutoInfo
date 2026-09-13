@@ -18,6 +18,12 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+# NOTE: CLI tests use a standalone Typer app instead of autoinfo.cli.app
+# because Typer 0.27.0 has a Python 3.14 compatibility issue when
+# inspecting functions whose parameters shadow builtins (e.g. ``def list``
+# with ``list[str]`` annotations in kb.py).  This is a pre-existing
+# codebase issue, not introduced here.
+from autoinfo.cli.sources import app as _sources_app
 from autoinfo.config import load_config
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
@@ -27,13 +33,6 @@ from autoinfo.mcp.server import (
     _handle_remove_source,
     _handle_test_source,
 )
-
-# NOTE: CLI tests use a standalone Typer app instead of autoinfo.cli.app
-# because Typer 0.27.0 has a Python 3.14 compatibility issue when
-# inspecting functions whose parameters shadow builtins (e.g. ``def list``
-# with ``list[str]`` annotations in kb.py).  This is a pre-existing
-# codebase issue, not introduced here.
-from autoinfo.cli.sources import app as _sources_app
 
 # ======================================================================
 # Sample config for tests
@@ -191,21 +190,20 @@ class TestMCPAddSource:
         result = _handle_add_source(
             name="bad", url="not-a-url", type="api", domain="medical-research"
         )
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
 
     def test_rejects_invalid_type(self, tmp_config: Path) -> None:
         result = _handle_add_source(
             name="bad", url="https://example.com", type="smtp", domain="medical-research"
         )
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
 
     def test_unknown_domain(self, tmp_config: Path) -> None:
-        result = _handle_add_source(
-            name="test", url="https://example.com", domain="nonexistent"
-        )
-        assert result["error_code"] == "DomainNotFound"
+        result = _handle_add_source(name="test", url="https://example.com", domain="nonexistent")
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
     def test_persists_to_config(self, tmp_config: Path) -> None:
         _handle_add_source(
@@ -240,7 +238,8 @@ class TestMCPListSources:
 
     def test_unknown_domain_returns_error(self, tmp_config: Path) -> None:
         result = _handle_list_sources(domain="nope")
-        assert result.get("error_code") == "DomainNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
 
 # ======================================================================
@@ -251,7 +250,10 @@ class TestMCPListSources:
 class TestMCPRemoveSource:
     def test_removes_existing_source(self, tmp_config: Path) -> None:
         _handle_add_source(
-            name="to-remove", url="https://example.com/remove", type="api", domain="medical-research"
+            name="to-remove",
+            url="https://example.com/remove",
+            type="api",
+            domain="medical-research",
         )
         result = _handle_remove_source(source_id="medical-research:to-remove")
         assert result["removed"] is True
@@ -268,11 +270,13 @@ class TestMCPRemoveSource:
 
     def test_returns_error_for_nonexistent(self, tmp_config: Path) -> None:
         result = _handle_remove_source(source_id="medical-research:ghost")
-        assert result.get("error_code") == "SourceNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.SOURCE_NOT_FOUND.value
 
     def test_rejects_malformed_id(self, tmp_config: Path) -> None:
         result = _handle_remove_source(source_id="bad-id-no-colon")
-        assert "InvalidSourceId" in result.get("error_code", "")
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.INVALID_SOURCE_ID.value
 
 
 # ======================================================================
@@ -327,26 +331,32 @@ class TestCLIAdd:
             _sources_app,
             [
                 "add",
-                "--name", "cli-feed",
-                "--url", "https://cli.example.com/rss",
-                "--type", "rss",
-                "--domain", "medical-research",
+                "--name",
+                "cli-feed",
+                "--url",
+                "https://cli.example.com/rss",
+                "--type",
+                "rss",
+                "--domain",
+                "medical-research",
             ],
         )
         assert result.exit_code == 0, result.stdout
         assert "added" in result.stdout.lower()
 
-    def test_add_persists_to_yaml(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_add_persists_to_yaml(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         cli_runner.invoke(
             _sources_app,
             [
                 "add",
-                "--name", "yaml-check",
-                "--url", "https://yaml.example.com",
-                "--type", "web",
-                "--domain", "medical-research",
+                "--name",
+                "yaml-check",
+                "--url",
+                "https://yaml.example.com",
+                "--type",
+                "web",
+                "--domain",
+                "medical-research",
             ],
         )
         config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
@@ -359,10 +369,14 @@ class TestCLIAdd:
             _sources_app,
             [
                 "add",
-                "--name", "dup-cli",
-                "--url", "https://dup.example.com",
-                "--type", "api",
-                "--domain", "medical-research",
+                "--name",
+                "dup-cli",
+                "--url",
+                "https://dup.example.com",
+                "--type",
+                "api",
+                "--domain",
+                "medical-research",
             ],
         )
         assert r1.exit_code == 0, r1.stdout
@@ -371,59 +385,69 @@ class TestCLIAdd:
             _sources_app,
             [
                 "add",
-                "--name", "dup-cli-2",
-                "--url", "https://dup.example.com",
-                "--type", "api",
-                "--domain", "medical-research",
+                "--name",
+                "dup-cli-2",
+                "--url",
+                "https://dup.example.com",
+                "--type",
+                "api",
+                "--domain",
+                "medical-research",
             ],
         )
         assert r2.exit_code == 0, r2.stdout
         assert "already exists" in r2.stdout.lower()
 
-    def test_rejects_invalid_url(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_rejects_invalid_url(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         result = cli_runner.invoke(
             _sources_app,
             [
                 "add",
-                "--name", "bad",
-                "--url", "not-a-url",
-                "--type", "api",
-                "--domain", "medical-research",
+                "--name",
+                "bad",
+                "--url",
+                "not-a-url",
+                "--type",
+                "api",
+                "--domain",
+                "medical-research",
             ],
         )
         assert result.exit_code != 0
         output = result.output.lower()
         assert "http" in output or "error" in output
 
-    def test_rejects_invalid_type(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_rejects_invalid_type(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         result = cli_runner.invoke(
             _sources_app,
             [
                 "add",
-                "--name", "bad",
-                "--url", "https://example.com",
-                "--type", "invalid-type",
-                "--domain", "medical-research",
+                "--name",
+                "bad",
+                "--url",
+                "https://example.com",
+                "--type",
+                "invalid-type",
+                "--domain",
+                "medical-research",
             ],
         )
         assert result.exit_code != 0
         assert "error" in result.output.lower()
 
-    def test_unknown_domain(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_unknown_domain(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         result = cli_runner.invoke(
             _sources_app,
             [
                 "add",
-                "--name", "test",
-                "--url", "https://example.com",
-                "--type", "api",
-                "--domain", "nonexistent",
+                "--name",
+                "test",
+                "--url",
+                "https://example.com",
+                "--type",
+                "api",
+                "--domain",
+                "nonexistent",
             ],
         )
         assert result.exit_code != 0
@@ -437,16 +461,12 @@ class TestCLIAdd:
 
 class TestCLIList:
     def test_lists_sources(self, cli_runner: CliRunner, tmp_config: Path) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["list", "--domain", "medical-research"]
-        )
+        result = cli_runner.invoke(_sources_app, ["list", "--domain", "medical-research"])
         assert result.exit_code == 0, result.stdout
         assert "pubmed" in result.stdout
 
     def test_json_output(self, cli_runner: CliRunner, tmp_config: Path) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["list", "--domain", "medical-research", "--json"]
-        )
+        result = cli_runner.invoke(_sources_app, ["list", "--domain", "medical-research", "--json"])
         assert result.exit_code == 0, result.stdout
         data = json.loads(result.stdout)
         assert "domain" in data
@@ -454,16 +474,12 @@ class TestCLIList:
         assert data["count"] >= 1
 
     def test_empty_list(self, cli_runner: CliRunner, empty_domain_config: Path) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["list", "--domain", "test-domain"]
-        )
+        result = cli_runner.invoke(_sources_app, ["list", "--domain", "test-domain"])
         assert result.exit_code == 0, result.stdout
         assert "no sources" in result.stdout.lower()
 
     def test_unknown_domain(self, cli_runner: CliRunner, tmp_config: Path) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["list", "--domain", "unknown"]
-        )
+        result = cli_runner.invoke(_sources_app, ["list", "--domain", "unknown"])
         assert result.exit_code != 0
         assert "not configured" in result.output.lower()
 
@@ -480,10 +496,14 @@ class TestCLIRemove:
             _sources_app,
             [
                 "add",
-                "--name", "to-delete",
-                "--url", "https://delete.example.com",
-                "--type", "api",
-                "--domain", "medical-research",
+                "--name",
+                "to-delete",
+                "--url",
+                "https://delete.example.com",
+                "--type",
+                "api",
+                "--domain",
+                "medical-research",
             ],
         )
         # Then remove
@@ -494,21 +514,15 @@ class TestCLIRemove:
         assert result.exit_code == 0, result.stdout
         assert "removed" in result.stdout.lower()
 
-    def test_remove_nonexistent(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_remove_nonexistent(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         result = cli_runner.invoke(
             _sources_app,
             ["remove", "--source-id", "medical-research:phantom"],
         )
         assert result.exit_code != 0
 
-    def test_remove_bad_format(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["remove", "--source-id", "bad-format"]
-        )
+    def test_remove_bad_format(self, cli_runner: CliRunner, tmp_config: Path) -> None:
+        result = cli_runner.invoke(_sources_app, ["remove", "--source-id", "bad-format"])
         assert result.exit_code != 0
 
 
@@ -519,9 +533,7 @@ class TestCLIRemove:
 
 class TestCLITest:
     def test_rejects_invalid_url(self, cli_runner: CliRunner) -> None:
-        result = cli_runner.invoke(
-            _sources_app, ["test", "--url", "bad", "--type", "api"]
-        )
+        result = cli_runner.invoke(_sources_app, ["test", "--url", "bad", "--type", "api"])
         assert result.exit_code != 0
         assert "error" in result.output.lower()
 
@@ -534,9 +546,7 @@ class TestCLITest:
         assert "error" in result.output.lower()
 
     @patch("httpx.get")
-    def test_successful_test(
-        self, mock_get: MagicMock, cli_runner: CliRunner
-    ) -> None:
+    def test_successful_test(self, mock_get: MagicMock, cli_runner: CliRunner) -> None:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.headers = {"content-type": "application/json"}
@@ -561,22 +571,28 @@ class TestCLITest:
 class TestCLIAddSources:
     def test_batch_add(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         sources = [
-            {"name": "batch-a", "url": "https://a.example.com", "type": "api", "domain": "medical-research"},
-            {"name": "batch-b", "url": "https://b.example.com", "type": "rss", "domain": "medical-research"},
+            {
+                "name": "batch-a",
+                "url": "https://a.example.com",
+                "type": "api",
+                "domain": "medical-research",
+            },
+            {
+                "name": "batch-b",
+                "url": "https://b.example.com",
+                "type": "rss",
+                "domain": "medical-research",
+            },
         ]
         json_path = Path.cwd() / "batch_sources.json"
         json_path.write_text(json.dumps(sources), encoding="utf-8")
 
-        result = cli_runner.invoke(
-            _sources_app, ["add-sources", "--file", str(json_path)]
-        )
+        result = cli_runner.invoke(_sources_app, ["add-sources", "--file", str(json_path)])
         assert result.exit_code == 0, result.stdout
         assert "added" in result.stdout.lower()
         assert "batch" in result.stdout.lower()
 
-    def test_batch_add_invalid_source(
-        self, cli_runner: CliRunner, tmp_config: Path
-    ) -> None:
+    def test_batch_add_invalid_source(self, cli_runner: CliRunner, tmp_config: Path) -> None:
         sources = [
             {"name": "good", "url": "https://good.example.com", "domain": "medical-research"},
             {"name": "bad", "url": "bad-url", "domain": "medical-research"},
@@ -584,9 +600,7 @@ class TestCLIAddSources:
         json_path = Path.cwd() / "batch_mixed.json"
         json_path.write_text(json.dumps(sources), encoding="utf-8")
 
-        result = cli_runner.invoke(
-            _sources_app, ["add-sources", "--file", str(json_path)]
-        )
+        result = cli_runner.invoke(_sources_app, ["add-sources", "--file", str(json_path)])
         assert result.exit_code == 0, result.stdout
         assert "added" in result.stdout.lower()
 
@@ -601,9 +615,7 @@ class TestCLIAddSources:
         json_path = Path.cwd() / "bad.json"
         json_path.write_text("not json", encoding="utf-8")
 
-        result = cli_runner.invoke(
-            _sources_app, ["add-sources", "--file", str(json_path)]
-        )
+        result = cli_runner.invoke(_sources_app, ["add-sources", "--file", str(json_path)])
         assert result.exit_code != 0
         output = result.output.lower()
         assert "invalid json" in output or "error" in output

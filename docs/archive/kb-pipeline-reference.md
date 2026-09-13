@@ -1,5 +1,20 @@
 # KB Pipeline Reference Model — 基于 Obsidian 的知识库系统
 
+> ## ⚠️ SUPERSEDED (2026-08-08), historical reference only
+>
+> This document describes an **external** Obsidian knowledge base
+> (`D:\Hermes-KnowledgeBase\`) as of 2026-07-20. It is retained for history and
+> **must not be cited as a current AutoInfo authority**.
+>
+> The promotion rule stated below, "Draft → Wiki 只能用户放行，agent 不得代劳"
+> ("agent must not write Wiki"), is **superseded**. AutoInfo's current rule is:
+> Draft→Wiki promotion is an **agent operation** via `promote_kb_draft`, with
+> **no human gate** (director decision 2026-08-08). See
+> `docs/adr/0002-draft-to-wiki-agent-promotion.md` and
+> `docs/dev/specs/expectations.md` F20 for the live rule.
+>
+> ---
+
 > **位置**：`D:\Hermes-KnowledgeBase\`
 > **引擎**：Obsidian + remotely-save 插件（自动同步）
 > **规模**：905 篇 `.md` 文件 · 4 级流水线 · 受控关键词表 · Git 版本管理

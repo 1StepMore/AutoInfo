@@ -19,7 +19,10 @@
 # cwd (tempfile.mkdtemp, try/finally cleanup).
 name: regression-11-producthunt-ref-description
 description: "Regression #11: title-only ProductHunt references render a description fallback, never a bare title+platform line"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#11"
 requires_env: []

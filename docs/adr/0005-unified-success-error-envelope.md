@@ -22,10 +22,40 @@ Every MCP tool and REST endpoint returns the **same envelope**:
 - Success: `{success: true, data: ...}`
 - Failure: `{success: false, error: {code, message, actionable}}`
 
-`error.code` comes from the `ErrorCode` enum (30 values); `message` carries the
+`error.code` comes from the `ErrorCode` enum (26 values); every enum *value*
+follows one **CamelCase** convention (the enum member name stays
+SCREAMING_SNAKE), and every retained code is emitted somewhere. Codes never
+emitted are removed rather than left dead: `AuthRequired`/`SessionExpired`
+(no auth path yet), `RateLimited` (no emitting surface), and `NoCachedItems`
+(a `{status: "noop"}` success, not an error). `message` carries the
 remediation guidance; `actionable` flags that a hint exists. The LLM guard
-centralizes `LLM_NOT_CONFIGURED` at `call_tool` dispatch. `error_dict()` is
-deprecated. Dashboard JS unwraps the envelope transparently.
+centralizes `LLM_NOT_CONFIGURED` at `call_tool` dispatch, and
+`_handle_process_collection` emits `PROCESSING_FAILED` on a processing-run
+failure. `error_dict()` is deprecated. Dashboard JS unwraps the envelope
+transparently.
+
+## Addendum — text-format payloads are self-describing (2026-09-13, T-S-09)
+
+The envelope answers *"is this data or an error?"*, but a second ambiguity
+remained: within a success ``data`` object, some tools returned raw text
+(Prometheus exposition text, RSS XML) under an opaque key an agent could not
+route without sniffing the bytes.  The rule is now: **no tool returns an
+unlabelled raw-text payload.**
+
+- ``get_prometheus_metrics`` → ``data`` = ``{format, content_type, encoding,
+  length, bytes, metrics_text}``; ``content_type`` =
+  ``text/plain; version=0.0.4; charset=utf-8``.
+- ``get_feeds(format="rss")`` → ``data`` = ``{domain, format, content_type,
+  encoding, length, bytes, content, pagination}``; ``content_type`` =
+  ``application/rss+xml; charset=utf-8``.
+- ``length`` is the character count and ``bytes`` the UTF-8 encoded size, so
+  a consumer can pre-allocate / verify truncation without decoding twice.
+
+**Intentional exception:** ``health_check`` returns ``data`` as a structured
+object (``status`` / ``version`` / ``tools_count``) — there is no text
+payload to label, so it carries no text-metadata block.  The same holds for
+every JSON-structured tool (``get_feeds(format="json")``, ``get_metrics``,
+...).  The metadata requirement applies only where the payload *is* text.
 
 ## Alternatives considered
 
@@ -47,3 +77,7 @@ deprecated. Dashboard JS unwraps the envelope transparently.
   error-boundary scenarios assert `actionable` presence.
 - Breaking change for v1.8 consumers — migration path documented and shipped
   with the v1.9 archive note (dashboard unwrapping transparent).
+- Text-format tool payloads (``get_prometheus_metrics``, ``get_feeds`` RSS)
+  additionally carry ``format``/``content_type``/``encoding``/``length``/
+  ``bytes`` metadata beside the text (T-S-09, 2026-09-13); ``health_check``'s
+  structured ``data`` is the documented exception.

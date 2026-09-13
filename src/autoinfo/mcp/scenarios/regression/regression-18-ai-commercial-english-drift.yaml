@@ -23,7 +23,10 @@
 # seed edit effective for live projects without a config migration.
 name: regression-18-ai-commercial-english-drift
 description: "Regression #18: ai-commercial reports exclude English topic-drift entries (Peacock/Fairphone/Einride/Plask/Grounded) while keeping legit AI entries"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#18"
 requires_env: []

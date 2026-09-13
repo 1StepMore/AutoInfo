@@ -1,0 +1,71 @@
+# Red-team: tool-argument abuse (T-B-03).
+#
+# Adversarial class: ``untrusted_external_text`` (tool-argument abuse).
+#
+# Every MCP tool value is attacker-influencable by the calling agent or by
+# content that steers it.  Parameters used as filesystem/selector arguments
+# must be validated against a closed set and refused with a typed error
+# envelope — never silently accepted (which would turn a bad argument into
+# a path read or a misleading success).  NOT a mock: real ``call_tool``
+# dispatches on the live MCP surface.
+#
+# Documented mutation (RED proof): disable the import-format allow-list in
+# ``autoinfo.importer.import_kb`` so a traversal-shaped format falls through
+# to an untyped success body —
+#   python3 - <<'PY'
+#   import pathlib
+#   p = pathlib.Path("src/autoinfo/importer.py"); s = p.read_text()
+#   old = "    if format not in _IMPORT_FORMATS:"
+#   assert old in s
+#   p.write_text(s.replace(old, "    if False:  # MUTATION", 1))
+#   PY
+# then this scenario FAILS (import_kb step no longer reports success=false);
+# revert with
+#   git checkout -- src/autoinfo/importer.py
+# Full mutation + RED/GREEN transcripts: .omo/evidence/agent-oriented-gap-register/todo-9-redteam.md
+name: redteam-tool-argument-abuse
+description: "Tool-argument abuse: traversal-shaped arguments to import_kb/export_kb/get_kb_entry/run_validation_scenario are refused with typed error envelopes"
+category: failure
+pyramid_layer: red_team
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "import_kb rejects a traversal-shaped format with ValidationError"
+    tool: import_kb
+    arguments:
+      domain: medical-research
+      format: ../../secret.txt
+      data: "x"
+    expect:
+      success: false
+      error_code: "ValidationError"
+      error_actionable: true
+
+  - name: "export_kb rejects a traversal-shaped format with ValidationError"
+    tool: export_kb
+    arguments:
+      domain: medical-research
+      format: ../../secret.txt
+    expect:
+      success: false
+      error_code: "ValidationError"
+      error_actionable: true
+
+  - name: "get_kb_entry refuses a traversal-shaped entry_id (NotFound, no file read)"
+    tool: get_kb_entry
+    arguments:
+      entry_id: ../../secret.txt
+    expect:
+      success: false
+      error_code: "NotFound"
+      error_actionable: true
+
+  - name: "run_validation_scenario refuses a traversal-shaped scenario name"
+    tool: run_validation_scenario
+    arguments:
+      scenario: ../../secret.txt
+    expect:
+      success: false
+      error_code: "ValidationError"
+      error_actionable: true

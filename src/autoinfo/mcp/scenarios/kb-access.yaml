@@ -1,7 +1,10 @@
 # KB access — verify KB search and tier listing in the real project (has populated 01-Raw).
 name: kb-access
 description: "KB search and tier listing in real project context"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 steps:
   - name: "search_knowledge_base returns entries"
@@ -28,4 +31,3 @@ steps:
     expect:
       success: true
       data_has: ["entries", "count"]
-

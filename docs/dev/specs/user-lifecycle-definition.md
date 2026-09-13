@@ -48,7 +48,7 @@
 │         configs, executes the full pipeline on behalf of B1:     │
 │         collect → extract → KB → generate → deliver.            │
 │                                                                  │
-│  Interacts via: MCP tools (146 tools across 35 categories)      │
+│  Interacts via: MCP tools (147 tools across 35 categories)      │
 │                                                                  │
 │  Does NOT: Handle money or pricing decisions.                    │
 │            Accept ad-hoc instructions from B1.                   │
@@ -216,7 +216,7 @@ B1 modifies config
 The **B2 Direct User** is an AI agent that serves as the **primary operator** of the AutoInfo platform. B2:
 
 - Connects to AutoInfo via the MCP protocol (stdio; SSE is future work)
-- Uses 146 MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
+- Uses 147 MCP tools to configure sources, run collection, manage the KB, generate products, and orchestrate delivery
 - Reads B1 subscription configs to determine what to collect, process, and deliver for each B1 user
 - Operates autonomously on a schedule — executing the full pipeline for all active subscriptions
 - Reports execution status and anomalies to B3 (Director) for oversight
@@ -245,7 +245,7 @@ B2 **does not**:
 
 ### 3.3 B2 MCP Tool Gaps
 
-> ✅ **Resolved 2026-08-04** — all tools previously listed as "backend exists, MCP not registered" in this gap table are now registered (146/146 tools). This includes `compare_versions` (Knowledge Lifecycle), `get_schedule_status` (Cron), and the End User tools `get_delivery_log`, `send_to_enduser`, `activate_trial`, `check_trial_expiry`, `update_preferences`. No MCP surface gaps remain.
+> ✅ **Resolved 2026-08-04** — all tools previously listed as "backend exists, MCP not registered" in this gap table are now registered (147/147 tools). This includes `compare_versions` (Knowledge Lifecycle), `get_schedule_status` (Cron), and the End User tools `get_delivery_log`, `send_to_enduser`, `activate_trial`, `check_trial_expiry`, `update_preferences`. No MCP surface gaps remain.
 
 ---
 
@@ -267,20 +267,29 @@ B3 **does not**:
 ### 4.2 Lifecycle Stages
 
 ```
-┌──────────┐   ┌──────────┐   ┌──────────┐
-│ Configure│──→│ Monitor  │──→│Intervene │
-└──────────┘   └──────────┘   └──────────┘
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ Configure│──→│ Monitor  │──→│Intervene │──→│ Iterate  │──→│  Scale   │
+└──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
      │              │              │
      │ (done once   │ (ongoing,    │ (rare — only on
      │  at deploy)  │  passive)    │  critical error)
      ▼              ▼              ▼
 ```
 
+> **T-A-07 ratification (2026-09-13):** **B3.4 Iterate** and **B3.5 Scale** are
+> ratified as stages of the B3 lifecycle so this root spec defines **18**
+> lifecycle stages (B1.1–B1.7, B2.1–B2.6, B3.1–B3.5), matching
+> `docs/dev/cross-dimensional-catalog.md` (7×18 = **126** cells). Before this,
+> the root spec defined 16 stages while the catalog carried B3.4/B3.5 as
+> catalog-only.
+
 | Stage | Trigger | Description | Current Status |
 |-------|---------|-------------|----------------|
 | **B3.1 Configure** | Deploy / upgrade | B3 sets: pricing tier definitions (placeholder values), domain-to-tier mapping, per-domain quality thresholds (source tier minimums, relevance score minimums), delivery SLA targets, data retention policies. In demo phase, these are code-level constants or config file values. | 🟡 Partially done. Some thresholds exist as constants in code. No unified "B3 config" that bundles pricing + quality + SLA + retention. |
 | **B3.2 Monitor** | Ongoing | B3 reviews: B2 periodic execution reports, dashboard (system health, collection stats, delivery success rates, cost burn, anomaly flags), alert notifications (cron failure, budget threshold breached, source unreachable). B3 does NOT proactively intervene unless alerted. | 🟡 Dashboard exists (Web UI Bootstrap 5) but limited to collection stats + KB search. No execution reports. No anomaly alerting beyond budget alerts. |
 | **B3.3 Intervene** | Critical error or blocking issue | B3 takes manual action: repair broken source config, restore deleted entries, clear disk space, restart failed services. (Note: promote Draft→Wiki is **no longer** a B3 action — 2026-08-08 director decision: promotion is an agent operation, the KB being a database for raw/processed production.) | 🟡 Manual CLI operations exist (`soft_delete_entry`, `restore_entry`). No structured incident response workflow. No "intervention mode" in the UI. |
+| **B3.4 Iterate** | Periodic or evidence-triggered review | B3 evolves the deployed configuration and pipeline based on monitoring evidence and execution reports: refine source sets, tune quality-gate thresholds, rotate output templates, and roll out versioned policy changes. Iteration is a governed, versioned change to deploy-time configuration — not runtime micro-management of B2's operational logic (§6.3). | 🟡 Partial. Editable sources/gates/templates and backup/restore (`backup-db.sh`, `restore-db.sh`) exist; product A/B testing and consumption-driven iteration are not implemented. Disposition `documented-limit` (`expectations.md` §3.17). |
+| **B3.5 Scale** | Growth beyond single-node capacity | B3 plans and executes scale-out as B1 volume grows: multi-tenant KB isolation, product-catalog scaling, horizontal workers, and cost/throughput capacity planning. | 🔴 Not implemented. Single-node SQLite; no horizontal scaling strategy. V2+ scope. Disposition `out-of-scope` (`expectations.md` §3.17). |
 
 ### 4.3 B3 Configuration Scope (Demo Phase)
 
@@ -434,7 +443,7 @@ This document is the **root specification** for the AutoInfo user model. All oth
 | `expectations.md` | This doc (entire) | All B1/B2/B3 stages (mapped to F01-F72) | Founder expectations indexed to lifecycle stages. §3 preamble defines B1/B2/B3 terminology. F65-F68 cover B1 lifecycle gaps, F69 covers B2 Report, F70-F72 cover B3 lifecycle. |
 | `delivery.md` | This doc §2.2 (B1 Lifecycle), §2.3 (B1 Config), §2.4 (Config Change) | B1.2 Subscribe, B1.3 Onboard, B1.4 Consume, B1.5 Modify Config, B1.7 Reactivate | Delivery channel behavior per B1 subscription config. §4 (End User Lifecycle), §11 (B1 Lifecycle Integration: Onboarding, NL→Config, Reactivation). |
 | `pipeline.md` | This doc §3 (B2 Operate lifecycle) | B2.1-B2.6 (all B2 stages) | Pipeline execution model for B2. §2 (KB Pipeline) executes in B2.4 Operate. §9 (B2 Lifecycle Integration) maps all 6 B2 stages. |
-| `operations.md` | This doc §4 (B3 lifecycle) | B3.1 Configure, B3.2 Monitor, B3.3 Intervene | B3 monitoring, intervention, and configuration. §7 (B3 Lifecycle Integration) creates unified config scope, dashboard spec, and incident response workflow. |
+| `operations.md` | This doc §4 (B3 lifecycle) | B3.1 Configure, B3.2 Monitor, B3.3 Intervene, B3.4 Iterate, B3.5 Scale | B3 monitoring, intervention, configuration, and governed iteration/scaling. §7 (B3 Lifecycle Integration) creates unified config scope, dashboard spec, and incident response workflow. |
 | `data-models.md` | This doc §2.3 (Subscription Config Model), §2.1 (NL→Config pipeline) | B1.2 Subscribe, B1.3 Onboard, B1.5 Modify Config | Data model schemas: `SubscriptionConfig` (§4.9), `ReferralRecord`/`OnboardingRecord`/`ReactivationRecord`/`NLConfigAuditEntry` (§4.10-4.13). |
 | `quality-gates.md` | This doc §4.3 (Quality thresholds) | B3.1 Configure | Gate configuration by B3. Per-domain quality thresholds are part of B3 unified configuration. |
 | `docs/dev/cross-dimensional-catalog.md` | This doc (entire) | All B1/B2/B3 stages | Keystone product matrix — B1/B2/B3 user rows mapped against A1-A7 pipeline stages (supersedes the archived comprehensive gap audit). Covers all lifecycle stages. |

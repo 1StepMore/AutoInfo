@@ -129,11 +129,15 @@ def _config_with_timeout(timeout: float):
 
 def _mock_litellm_response() -> MagicMock:
     return MagicMock(
-        choices=[MagicMock(
-            message=MagicMock(
-                content='{"tl_dr": "x", "key_points": [], "entities": [], "relevance_score": 80}'
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=(
+                        '{"tl_dr": "x", "key_points": [], "entities": [], "relevance_score": 80}'
+                    )
+                )
             )
-        )]
+        ]
     )
 
 
@@ -204,9 +208,11 @@ class TestQualityTimeout:
 
         mock_lm = MagicMock()
         mock_lm.completion.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(content='{"contradiction": false, "explanation": "ok"}')
-            )]
+            choices=[
+                MagicMock(
+                    message=MagicMock(content='{"contradiction": false, "explanation": "ok"}')
+                )
+            ]
         )
         extraction = _dummy_extraction(sample_item)
         gate = G4FactualConsistency(
@@ -226,9 +232,13 @@ class TestQualityTimeout:
 
         mock_lm = MagicMock()
         mock_lm.completion.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(content='{"faithful": true, "explanation": "ok", "issues": []}')
-            )]
+            choices=[
+                MagicMock(
+                    message=MagicMock(
+                        content='{"faithful": true, "explanation": "ok", "issues": []}'
+                    )
+                )
+            ]
         )
         extraction = _dummy_extraction(sample_item)
         extraction.custom_fields["translation"] = "Some translated text."
@@ -245,14 +255,16 @@ class TestQualityTimeout:
 
         mock_lm = MagicMock()
         mock_lm.completion.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(
-                content=(
-                    '{"faithfulness": 90, "terminology": 80, '
-                    '"style": 70, "readability": 60, "issues": []}'
+            choices=[
+                MagicMock(
+                    message=MagicMock(
+                        content=(
+                            '{"faithfulness": 90, "terminology": 80, '
+                            '"style": 70, "readability": 60, "issues": []}'
+                        )
+                    )
                 )
-                )
-            )]
+            ]
         )
         with patch.dict(sys.modules, {"litellm": mock_lm}):
             llm_judge("source", "target", "en", "zh", timeout=33.0)
@@ -311,9 +323,9 @@ class TestTranslationQaTimeout:
 
         mock_lm = MagicMock()
         mock_lm.completion.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(content='{"faithfulness_score": 80, "issues": []}')
-            )]
+            choices=[
+                MagicMock(message=MagicMock(content='{"faithfulness_score": 80, "issues": []}'))
+            ]
         )
         with patch(
             "autoinfo.translation_qa.call_with_fallback",
@@ -458,9 +470,7 @@ class TestProcessParallelism:
         mock_store.list_entries.return_value = []
 
         monkeypatch.setenv("AUTOINFO_PROCESS_WORKERS", "2")
-        runner = threading.Thread(
-            target=run_processing, kwargs={"domain": "medical-research"}
-        )
+        runner = threading.Thread(target=run_processing, kwargs={"domain": "medical-research"})
         try:
             with (
                 patch("autoinfo.process.load_cached_items", return_value=sample_items),
@@ -487,9 +497,7 @@ class TestProcessParallelism:
 class TestProgressOutput:
     """Per-item progress lines are printed to stdout (flushed)."""
 
-    def test_progress_lines_printed(
-        self, sample_items: list[Item], monkeypatch, capsys
-    ) -> None:
+    def test_progress_lines_printed(self, sample_items: list[Item], monkeypatch, capsys) -> None:
         from autoinfo.kb import KBStore
         from autoinfo.models import KBEntry
         from autoinfo.process import run_processing
@@ -558,8 +566,8 @@ class TestCallToolOffload:
         from autoinfo.mcp.server import call_tool
 
         result = await call_tool(name, args)
-        assert len(result) == 1
-        return result[0].text
+        assert len(result[0]) == 1
+        return result[0][0].text
 
     async def test_heavy_handlers_dispatched_via_to_thread(self) -> None:
         from autoinfo.mcp import server as mcp_server
@@ -616,9 +624,7 @@ class TestCallToolOffload:
             patch.object(mcp_server, "_handle_process_collection", side_effect=slow_handler),
             patch.object(mcp_server, "_is_llm_configured", return_value=True),
         ):
-            task = asyncio.create_task(
-                self._call("process_collection", {"domain": "med"})
-            )
+            task = asyncio.create_task(self._call("process_collection", {"domain": "med"}))
             # Yield to the loop so the task can reach asyncio.to_thread
             for _ in range(100):
                 if started.is_set():

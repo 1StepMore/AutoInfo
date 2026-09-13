@@ -1,6 +1,9 @@
 name: cost-budget
 description: "Budget thresholds, cost dashboard, and cost allocation. Pre-existing custom thresholds are captured to /tmp/autoinfo-cost-budget-prior.json before the scenario's set_budget_thresholds calls and restored by cleanup_steps afterwards, so a run never leaves custom thresholds clobbered. Requires an initialized project (init_project creates .autoinfo/config.yaml which cost_alerts reads/writes)."
-category: cost
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B3.2
 requires_env: []
 steps:
   - name: "get_budget_thresholds returns current thresholds"

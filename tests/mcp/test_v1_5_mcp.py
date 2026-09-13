@@ -13,17 +13,16 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from autoinfo.mcp.errors import ErrorCode, success_response
+from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
+    _handle_add_alert_rule,
+    _handle_get_alert_rules,
     _handle_get_gate_config,
-    _handle_set_gate_config,
     _handle_get_product,
     _handle_list_products,
-    _handle_get_alert_rules,
-    _handle_add_alert_rule,
     _handle_remove_alert_rule,
+    _handle_set_gate_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # Config helpers
@@ -39,7 +38,14 @@ def _make_config_yaml(project_dir: Path, overrides: dict | None = None) -> None:
             {
                 "name": "medical-research",
                 "active": True,
-                "sources": [{"name": "pubmed", "type": "api", "url": "https://example.com/api", "quality_tier": 1}],
+                "sources": [
+                    {
+                        "name": "pubmed",
+                        "type": "api",
+                        "url": "https://example.com/api",
+                        "quality_tier": 1,
+                    }
+                ],
                 "topics": [{"name": "IVF", "keywords": ["IVF", "embryo"]}],
                 "quality_gates": {
                     "G0": {"category": "hard", "retries": 2, "action": "block"},
@@ -189,7 +195,7 @@ class TestSetGateConfig:
             gate="G0",
             config={"action": "block"},
         )
-        assert result.get("error_code") == ErrorCode.DOMAIN_NOT_FOUND.value
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
 
 # ===================================================================
@@ -223,7 +229,8 @@ class TestProductTools:
     def test_get_product_invalid_type(self, cwd_patch: Path) -> None:
         """Invalid product_type returns validation error."""
         result = _handle_get_product(domain="medical-research", product_type="INVALID")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
 
     def test_list_products(self, cwd_patch: Path) -> None:
         """list_products returns both RAW and PROCESSED with RAW variants."""
@@ -242,7 +249,7 @@ class TestProductTools:
     def test_list_products_nonexistent_domain(self, cwd_patch_no_domain: Path) -> None:
         """list_products on missing domain returns error."""
         result = _handle_list_products(domain="missing-domain")
-        assert result.get("error_code") == ErrorCode.DOMAIN_NOT_FOUND.value
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
 
 # ===================================================================
@@ -322,14 +329,19 @@ class TestToolManifest:
     def test_new_tools_in_health_check_count(self) -> None:
         """Number of tools reported by health_check should be >= 75 (68 existing + 7 new)."""
         from autoinfo.mcp.server import _handle_health_check
+
         result = _handle_health_check()
         # 68 existing + 7 new = 75 minimum
-        assert result["tools_count"] >= 75, f"Expected >=75 tools, got {result['tools_count']}"
+        assert result["data"]["tools_count"] >= 75, (
+            f"Expected >=75 tools, got {result['data']['tools_count']}"
+        )
 
     def test_new_tools_listed(self) -> None:
         """Verify all 7 new tools are returned by list_tools."""
         import anyio
+
         from autoinfo.mcp.server import list_tools
+
         tools = anyio.run(list_tools)
         tool_names = {t.name for t in tools}
         expected = {
@@ -353,24 +365,24 @@ class TestToolManifest:
 class TestMCPEdgeCases:
     """Edge cases for MCP handlers — missing configs, unusual states."""
 
-    def test_get_gate_config_no_domain_gates_no_global(
-        self, cwd_patch: Path
-    ) -> None:
+    def test_get_gate_config_no_domain_gates_no_global(self, cwd_patch: Path) -> None:
         """When gate exists neither at domain nor global level, error is returned."""
         result = _handle_get_gate_config(domain="medical-research", gate="G9")
         assert "error" in result
         assert result["error"]["code"] != ErrorCode.DOMAIN_NOT_FOUND.value
 
-    def test_set_gate_on_domain_without_existing_gates(
-        self, tmp_path: Path
-    ) -> None:
+    def test_set_gate_on_domain_without_existing_gates(self, tmp_path: Path) -> None:
         """set_gate_config can add a gate to a domain that has no gates section."""
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "config.yaml"
         config_data = {
             "project": {"name": "Test", "created_at": "2026-07-01"},
-            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "llm": {
+                "provider": "openrouter",
+                "model": "deepseek/deepseek-chat",
+                "api_key": "test-key",
+            },
             "domains": [{"name": "bare-domain", "active": True, "sources": []}],
         }
         with open(config_path, "w", encoding="utf-8") as fh:
@@ -385,16 +397,18 @@ class TestMCPEdgeCases:
         assert "error_code" not in result, f"Unexpected error: {result}"
         assert result["updated"] is True
 
-    def test_set_gate_unknown_type_uses_quality_by_default(
-        self, tmp_path: Path
-    ) -> None:
+    def test_set_gate_unknown_type_uses_quality_by_default(self, tmp_path: Path) -> None:
         """When gate name is unknown (not G0-G5 or D1-D3), defaults to quality."""
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "config.yaml"
         config_data = {
             "project": {"name": "Test", "created_at": "2026-07-01"},
-            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "llm": {
+                "provider": "openrouter",
+                "model": "deepseek/deepseek-chat",
+                "api_key": "test-key",
+            },
             "domains": [{"name": "bare-domain", "active": True, "sources": []}],
         }
         with open(config_path, "w", encoding="utf-8") as fh:
@@ -412,24 +426,29 @@ class TestMCPEdgeCases:
     def test_health_check_exact_tools_count(self) -> None:
         """health_check reports tools count (>= 75)."""
         from autoinfo.mcp.server import _handle_health_check
-        result = _handle_health_check()
-        assert result["tools_count"] >= 75
 
-    def test_get_gate_config_global_fallback_for_missing_domain_gate(
-        self, tmp_path: Path
-    ) -> None:
+        result = _handle_health_check()
+        assert result["data"]["tools_count"] >= 75
+
+    def test_get_gate_config_global_fallback_for_missing_domain_gate(self, tmp_path: Path) -> None:
         """When gate is at global level (not domain), it's returned as fallback."""
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "config.yaml"
         config_data = {
             "project": {"name": "Test", "created_at": "2026-07-01"},
-            "llm": {"provider": "openrouter", "model": "deepseek/deepseek-chat", "api_key": "test-key"},
+            "llm": {
+                "provider": "openrouter",
+                "model": "deepseek/deepseek-chat",
+                "api_key": "test-key",
+            },
             "domains": [
                 {
                     "name": "medical-research",
                     "active": True,
-                    "sources": [{"name": "pubmed", "type": "api", "url": "https://example.com/api"}],
+                    "sources": [
+                        {"name": "pubmed", "type": "api", "url": "https://example.com/api"}
+                    ],
                     "topics": [],
                 }
             ],

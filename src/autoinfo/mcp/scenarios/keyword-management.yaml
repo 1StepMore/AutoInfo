@@ -12,7 +12,10 @@
 # suggest_keywords is LLM-required and covered by the llm-gated scenario.
 name: keyword-management
 description: "Keyword lifecycle: list, approve, reject (self-cleaning via backup/restore)"
-category: topic
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

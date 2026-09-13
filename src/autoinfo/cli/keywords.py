@@ -20,6 +20,8 @@ import typer
 from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import call_with_fallback
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(help="Manage per-domain keyword lifecycle")
 
 
@@ -30,9 +32,12 @@ def _find_state(status: str | None) -> KeywordState | None:
     try:
         return KeywordState(status.lower())
     except ValueError:
+        fail_if_global(
+            "ValidationError",
+            f"Invalid status '{status}'. Valid: verified, auto_added, deprecated",
+        )
         typer.echo(
-            f"Error: Invalid status '{status}'. "
-            f"Valid: verified, auto_added, deprecated",
+            f"Error: Invalid status '{status}'. Valid: verified, auto_added, deprecated",
             err=True,
         )
         raise typer.Exit(code=1) from None
@@ -50,6 +55,19 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
     kf = KeywordsFile()
     entries = kf.list_keywords(domain=domain, status=state)
 
+    items = [
+        {
+            "domain": domain,
+            "keyword": e.keyword,
+            "state": e.state.value,
+            "source": e.source,
+            "created_at": e.created_at,
+        }
+        for e in entries
+    ]
+    if emit_if_global({"domain": domain, "items": items, "count": len(items)}):
+        return
+
     if not entries:
         msg = f"No keywords found for domain '{domain}'"
         if status:
@@ -62,10 +80,7 @@ def list(  # noqa: A001 — shadowing built-in list is intentional for CLI
     state_width = max(len(e.state.value) for e in entries) + 2
     source_width = max((len(e.source) if e.source else 4) for e in entries) + 2
 
-    header = (
-        f"{'Keyword':<{kw_width}} {'State':<{state_width}} "
-        f"{'Source':<{source_width}} Created"
-    )
+    header = f"{'Keyword':<{kw_width}} {'State':<{state_width}} {'Source':<{source_width}} Created"
     typer.echo(header)
     typer.echo("-" * len(header))
     for e in entries:
@@ -85,19 +100,17 @@ def approve(
     kf = KeywordsFile()
     result = kf.approve_keyword(domain=domain, keyword=keyword)
     if result is None:
+        fail_if_global("KeywordNotFound", f"Keyword '{keyword}' not found in domain '{domain}'")
         typer.echo(
             f"Error: Keyword '{keyword}' not found in domain '{domain}'",
             err=True,
         )
         raise typer.Exit(code=1)
+    data = {"domain": domain, "keyword": keyword, "state": result.state.value}
+    if emit_if_global(data):
+        return
     if json_output:
-        typer.echo(
-            json.dumps(
-                {"domain": domain, "keyword": keyword, "state": result.state.value},
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
         return
     typer.echo(f"Approved keyword '{keyword}' in domain '{domain}' (→ verified)")
 
@@ -112,19 +125,17 @@ def reject(
     kf = KeywordsFile()
     result = kf.deprecate_keyword(domain=domain, keyword=keyword)
     if result is None:
+        fail_if_global("KeywordNotFound", f"Keyword '{keyword}' not found in domain '{domain}'")
         typer.echo(
             f"Error: Keyword '{keyword}' not found in domain '{domain}'",
             err=True,
         )
         raise typer.Exit(code=1)
+    data = {"domain": domain, "keyword": keyword, "state": result.state.value}
+    if emit_if_global(data):
+        return
     if json_output:
-        typer.echo(
-            json.dumps(
-                {"domain": domain, "keyword": keyword, "state": result.state.value},
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
         return
     typer.echo(f"Rejected keyword '{keyword}' in domain '{domain}' (→ deprecated)")
 
@@ -132,12 +143,8 @@ def reject(
 @app.command()
 def suggest(
     domain: str = typer.Option(..., "--domain", help="Domain name for context"),
-    text: str | None = typer.Option(
-        None, "--text", help="Text to extract keywords from"
-    ),
-    limit: int = typer.Option(
-        10, "--limit", help="Maximum number of suggestions (default 10)"
-    ),
+    text: str | None = typer.Option(None, "--text", help="Text to extract keywords from"),
+    limit: int = typer.Option(10, "--limit", help="Maximum number of suggestions (default 10)"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Suggest keywords from a text via the LLM (mirrors MCP suggest_keywords).
@@ -146,18 +153,14 @@ def suggest(
     instead of failing.
     """
     if not text:
+        empty = {"domain": domain, "suggestions": [], "count": 0}
+        if emit_if_global(empty):
+            return
         if json_output:
-            typer.echo(
-                json.dumps(
-                    {"domain": domain, "suggestions": [], "count": 0},
-                    indent=2,
-                    ensure_ascii=False,
-                )
-            )
+            typer.echo(json.dumps(empty, indent=2, ensure_ascii=False))
             return
         typer.echo(
-            "No text provided. Pass --text '<content>' to suggest keywords "
-            f"for domain '{domain}'."
+            f"No text provided. Pass --text '<content>' to suggest keywords for domain '{domain}'."
         )
         return
 
@@ -181,8 +184,7 @@ def suggest(
             json_mode = config.llm.json_mode
         else:
             raise JudgmentModelNotConfiguredError(
-                "LLM not configured: set AUTOINFO_LLM_API_KEY or run "
-                "'autoinfo init'."
+                "LLM not configured: set AUTOINFO_LLM_API_KEY or run 'autoinfo init'."
             )
     except Exception:
         model = ""
@@ -191,6 +193,12 @@ def suggest(
         json_mode = True
 
     if not api_key:
+        fail_if_global(
+            "LLMNotConfigured",
+            "LLM is not configured. Set AUTOINFO_LLM_API_KEY or run "
+            "'autoinfo init' with an LLM config. See "
+            "docs/dev/required-api-keys.md for the full list of API keys.",
+        )
         typer.echo(
             "Error: LLM is not configured. Set AUTOINFO_LLM_API_KEY or run "
             "'autoinfo init' with an LLM config. See "
@@ -223,15 +231,19 @@ def suggest(
         )
         content: str = response.choices[0].message.content or ""
     except Exception as exc:
+        fail_if_global("InternalError", f"keyword suggestion failed: {exc}")
         typer.echo(f"Error: keyword suggestion failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
+        fail_if_global(
+            "InternalError",
+            "keyword suggestion failed: LLM returned empty or non-JSON content.",
+        )
         typer.echo(
-            "Error: keyword suggestion failed: LLM returned empty or "
-            "non-JSON content.",
+            "Error: keyword suggestion failed: LLM returned empty or non-JSON content.",
             err=True,
         )
         raise typer.Exit(code=1) from None
@@ -251,14 +263,11 @@ def suggest(
     suggestions = [str(s).strip() for s in suggestions if s]
     suggestions = suggestions[:limit]
 
+    data = {"domain": domain, "suggestions": suggestions, "count": len(suggestions)}
+    if emit_if_global(data):
+        return
     if json_output:
-        typer.echo(
-            json.dumps(
-                {"domain": domain, "suggestions": suggestions, "count": len(suggestions)},
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
         return
     if not suggestions:
         typer.echo(f"No keywords suggested for domain '{domain}'.")

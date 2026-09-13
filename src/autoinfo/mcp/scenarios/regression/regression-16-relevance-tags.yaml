@@ -21,7 +21,10 @@
 # Runs inside an ABSOLUTE temp cwd (tempfile.mkdtemp, try/finally cleanup).
 name: regression-16-relevance-tags
 description: "Regression #16: digest renders real entries with no flat 100.0/100 relevance leak and no internal Tags/Relevance row (#85)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#16"
 requires_env: []

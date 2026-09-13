@@ -10,14 +10,12 @@ Covers:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
-from mcp.types import TextContent, Tool
+from mcp.types import Tool
 
 from autoinfo.mcp.server import _handle_init_project, list_tools
-
 
 # ======================================================================
 # Tool registration
@@ -67,7 +65,9 @@ class TestInitSuccess:
         assert (tmp_path / ".autoinfo" / "config.yaml").is_file()
         assert (tmp_path / "knowledge" / "01-Raw").is_dir()
 
-    def test_creates_with_project_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_creates_with_project_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="medical-research", project_name="My Project")
         assert result["status"] == "success"
@@ -79,7 +79,9 @@ class TestInitSuccess:
         assert result["status"] == "success"
         assert (tmp_path / ".autoinfo" / "config.yaml").is_file()
 
-    def test_language_learning_domain(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_language_learning_domain(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="language-learning")
         assert result["status"] == "success"
@@ -94,7 +96,9 @@ class TestInitSuccess:
 class TestInitIdempotent:
     """Calling ``init_project`` twice should skip the second time."""
 
-    def test_second_call_returns_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_second_call_returns_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         # First call
         first = _handle_init_project(domain="medical-research")
@@ -105,7 +109,9 @@ class TestInitIdempotent:
         assert second["status"] == "skipped"
         assert "Already initialized" in second["message"]
 
-    def test_skipped_does_not_overwrite(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skipped_does_not_overwrite(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         _handle_init_project(domain="medical-research")
 
@@ -127,18 +133,23 @@ class TestInitIdempotent:
 class TestInitInvalidDomain:
     """Invalid domain should produce a graceful error, not a crash."""
 
-    def test_unknown_domain_returns_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_domain_returns_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="nonexistent-domain")
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
         # .autoinfo should NOT have been created
         assert not (tmp_path / ".autoinfo").exists()
 
-    def test_empty_domain_returns_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_empty_domain_returns_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
 
     def test_error_is_not_exit(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """The error should NOT be a typer.Exit or sys.exit — it must be
@@ -146,8 +157,9 @@ class TestInitInvalidDomain:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="garbage")
         assert isinstance(result, dict)
-        assert "error_code" in result
-        assert "message" in result
+        assert result["success"] is False
+        assert "error" in result
+        assert "message" in result["error"]
 
 
 # ======================================================================
@@ -165,7 +177,9 @@ class TestInitDryRun:
         assert ".autoinfo" in str(result.get("autoinfo_dir", ""))
         assert "would_create_dirs" in result or "would_create_files" in result
 
-    def test_dry_run_does_not_create_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_does_not_create_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         _handle_init_project(domain="medical-research", dry_run=True)
         # No files should have been created
@@ -196,12 +210,15 @@ class TestInitDryRun:
 class TestInitErrorHandling:
     """Exceptions during init should be caught and returned as error dicts."""
 
-    def test_exception_returns_internal_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_exception_returns_internal_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """If _run_init raises, the handler should catch and return an error dict."""
         monkeypatch.chdir(tmp_path)
 
         # Patch _ensure_dir to raise an OSError
         import autoinfo.cli.init as cli_init
+
         original = cli_init._ensure_dir
 
         def failing_mkdir(path: Path) -> bool:
@@ -210,9 +227,9 @@ class TestInitErrorHandling:
         monkeypatch.setattr(cli_init, "_ensure_dir", failing_mkdir)
 
         result = _handle_init_project(domain="medical-research")
-        assert "error_code" in result
-        assert result["error_code"] == "InternalError"
-        assert "message" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
+        assert "message" in result["error"]
 
         # Restore
         monkeypatch.setattr(cli_init, "_ensure_dir", original)
@@ -237,6 +254,7 @@ class TestInitLlmOverride:
         assert result["llm_provider"] == "openai"
 
         import yaml
+
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
@@ -254,6 +272,7 @@ class TestInitLlmOverride:
         assert result["llm_model"] == "gpt-4"
 
         import yaml
+
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
@@ -270,6 +289,7 @@ class TestInitLlmOverride:
         assert result["llm_base_url"] == "http://localhost:11434/v1"
 
         import yaml
+
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
@@ -286,6 +306,7 @@ class TestInitLlmOverride:
         assert result["status"] == "success"
 
         import yaml
+
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
@@ -293,7 +314,9 @@ class TestInitLlmOverride:
         assert cfg["llm"]["model"] == "claude-3-opus"
         assert cfg["llm"]["base_url"] == "https://api.anthropic.com"
 
-    def test_no_overrides_backwards_compatible(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_overrides_backwards_compatible(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Calling without LLM params should leave defaults intact."""
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(domain="medical-research")
@@ -303,6 +326,7 @@ class TestInitLlmOverride:
         assert result["llm_base_url"] == "(default)"
 
         import yaml
+
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
@@ -310,7 +334,9 @@ class TestInitLlmOverride:
         assert cfg["llm"]["model"] == "deepseek-v4-flash"
         assert "base_url" not in cfg["llm"]
 
-    def test_dry_run_includes_llm_values(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_includes_llm_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         result = _handle_init_project(
             domain="medical-research",

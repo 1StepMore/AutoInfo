@@ -21,7 +21,10 @@
 # persistence/search contract regressed — never a silent skip.
 name: output-agent-interaction
 description: "Output-quality-mega Phase C: product-analysis metadata searchable via faceted filter + end-to-end agent interaction (premium-briefing agent render → filter by action_required → follow-up query_collected with citations)"
-category: output
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 requires_env: []
 steps:
   - name: "premium-briefing agent render persists product analysis; faceted filter returns the action_required subset"

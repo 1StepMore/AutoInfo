@@ -14,6 +14,8 @@ from typing import List, Optional
 import typer
 import yaml
 
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
 app = typer.Typer(help="Initialize AutoInfo project skeleton.")
 
 # Paths to bundled data files (relative to this source file)
@@ -80,9 +82,7 @@ def _list_demo_domains() -> list[str]:
     if not _DEMO_DOMAINS_DIR.is_dir():
         return []
     return sorted(
-        d.name
-        for d in _DEMO_DOMAINS_DIR.iterdir()
-        if d.is_dir() and (d / "sources.yaml").is_file()
+        d.name for d in _DEMO_DOMAINS_DIR.iterdir() if d.is_dir() and (d / "sources.yaml").is_file()
     )
 
 
@@ -152,26 +152,90 @@ def _generate_config(
                     seed_kw = domain_data.get("exclude_keywords")
                     if seed_kw:
                         for d in config.get("domains", []):
-                            if (
-                                d.get("name") == domain_name
-                                and "exclude_keywords" not in d
-                            ):
+                            if d.get("name") == domain_name and "exclude_keywords" not in d:
                                 d["exclude_keywords"] = seed_kw
                                 backfilled.append(domain_name)
                     seed_ef = domain_data.get("extract_fields")
                     if seed_ef:
                         for d in config.get("domains", []):
-                            if (
-                                d.get("name") == domain_name
-                                and not d.get("extract_fields")
-                            ):
+                            if d.get("name") == domain_name and not d.get("extract_fields"):
                                 d["extract_fields"] = seed_ef
                                 backfilled.append(domain_name)
                 continue
             if demo_sources_path.is_file():
                 with open(demo_sources_path) as f:
                     domain_data = yaml.safe_load(f)
-                config.setdefault("domains", []).append({
+                config.setdefault("domains", []).append(
+                    {
+                        "name": domain_name,
+                        "active": True,
+                        "sources": domain_data.get("sources", []),
+                        "topics": domain_data.get("topics", []),
+                        **(
+                            {"default_language": domain_data["default_language"]}
+                            if domain_data.get("default_language")
+                            else {}
+                        )
+                        | (
+                            {"exclude_keywords": domain_data["exclude_keywords"]}
+                            if domain_data.get("exclude_keywords")
+                            else {}
+                        )
+                        | (
+                            {"extract_fields": domain_data["extract_fields"]}
+                            if domain_data.get("extract_fields")
+                            else {}
+                        ),
+                    }
+                )
+            else:
+                config.setdefault("domains", []).append(
+                    {
+                        "name": domain_name,
+                        "active": True,
+                        "sources": [],
+                        "topics": [],
+                    }
+                )
+            added.append(domain_name)
+
+        if project_name:
+            proj = config.setdefault("project", {})
+            proj["name"] = project_name
+            proj["project_name"] = project_name
+
+        if model:
+            config.setdefault("llm", {})["model"] = model
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with open(dst, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        if added:
+            typer.echo(f"  MERGE  {dst}  (added domains: {', '.join(added)})")
+        elif backfilled:
+            typer.echo(
+                f"  MERGE  {dst}  (backfilled exclude_keywords for: {', '.join(backfilled)})"
+            )
+        else:
+            typer.echo(f"  SKIP  {dst}  (already exists, no new domains to add)")
+        return bool(added or backfilled)
+
+    if not _DEFAULT_CONFIG.is_file():
+        typer.echo(f"  ERROR  default config template missing: {_DEFAULT_CONFIG}", err=True)
+        raise typer.Exit(code=1)
+
+    with open(_DEFAULT_CONFIG, "r") as f:
+        config = yaml.safe_load(f)
+
+    config["domains"] = []
+    for domain_name in domain_names:
+        demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
+        if demo_sources_path.is_file():
+            with open(demo_sources_path) as f:
+                domain_data = yaml.safe_load(f)
+            config["domains"].append(
+                {
                     "name": domain_name,
                     "active": True,
                     "sources": domain_data.get("sources", []),
@@ -191,80 +255,17 @@ def _generate_config(
                         if domain_data.get("extract_fields")
                         else {}
                     ),
-                })
-            else:
-                config.setdefault("domains", []).append({
+                }
+            )
+        else:
+            config["domains"].append(
+                {
                     "name": domain_name,
                     "active": True,
                     "sources": [],
                     "topics": [],
-                })
-            added.append(domain_name)
-
-        if project_name:
-            proj = config.setdefault("project", {})
-            proj["name"] = project_name
-            proj["project_name"] = project_name
-
-        if model:
-            config.setdefault("llm", {})["model"] = model
-
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        with open(dst, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
-        if added:
-            typer.echo(f"  MERGE  {dst}  (added domains: {', '.join(added)})")
-        elif backfilled:
-            typer.echo(
-                f"  MERGE  {dst}  (backfilled exclude_keywords for: "
-                f"{', '.join(backfilled)})"
+                }
             )
-        else:
-            typer.echo(f"  SKIP  {dst}  (already exists, no new domains to add)")
-        return bool(added or backfilled)
-
-    if not _DEFAULT_CONFIG.is_file():
-        typer.echo(f"  ERROR  default config template missing: {_DEFAULT_CONFIG}", err=True)
-        raise typer.Exit(code=1)
-
-    with open(_DEFAULT_CONFIG, "r") as f:
-        config = yaml.safe_load(f)
-
-    config["domains"] = []
-    for domain_name in domain_names:
-        demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
-        if demo_sources_path.is_file():
-            with open(demo_sources_path) as f:
-                domain_data = yaml.safe_load(f)
-            config["domains"].append({
-                "name": domain_name,
-                "active": True,
-                "sources": domain_data.get("sources", []),
-                "topics": domain_data.get("topics", []),
-                **(
-                    {"default_language": domain_data["default_language"]}
-                    if domain_data.get("default_language")
-                    else {}
-                )
-                | (
-                    {"exclude_keywords": domain_data["exclude_keywords"]}
-                    if domain_data.get("exclude_keywords")
-                    else {}
-                )
-                | (
-                    {"extract_fields": domain_data["extract_fields"]}
-                    if domain_data.get("extract_fields")
-                    else {}
-                ),
-            })
-        else:
-            config["domains"].append({
-                "name": domain_name,
-                "active": True,
-                "sources": [],
-                "topics": [],
-            })
 
     if project_name:
         proj = config.setdefault("project", {})
@@ -324,8 +325,7 @@ def _run_init(
     typer.echo("  5. Collect from sources:")
     if first_topic:
         typer.echo(
-            f"     autoinfo collect --domain {first_domain} --topic "
-            f"\"{first_topic}\" --limit 5"
+            f'     autoinfo collect --domain {first_domain} --topic "{first_topic}" --limit 5'
         )
     else:
         typer.echo(f"     autoinfo collect --domain {first_domain} --limit 5")
@@ -390,6 +390,9 @@ def init(
     interactive prompt).
     """
     if list_domains:
+        if global_json():
+            emit_if_global({"domains": _list_demo_domains()})
+            return
         _print_demo_domains()
         return
 
@@ -402,6 +405,11 @@ def init(
             d = d.strip()
             demo_sources = _DEMO_DOMAINS_DIR / d / "sources.yaml"
             if not demo_sources.is_file():
+                fail_if_global(
+                    "NotFound",
+                    f"unknown demo domain: '{d}'. Run `autoinfo init --list-domains` "
+                    "to see available domains.",
+                )
                 typer.echo(
                     f"  ERROR  unknown demo domain: '{d}'. "
                     f"Run `autoinfo init --list-domains` to see available domains.",
@@ -410,17 +418,35 @@ def init(
                 raise typer.Exit(code=1)
             validated.append(d)
 
-        _run_init(
-            validated,
-            autoinfo_dir,
-            project_name=name or "",
-            # Direct calls may leave `model` as a truthy OptionInfo object
-            # (Typer default) — only a real string is an override.
-            model=model if isinstance(model, str) else "",
+        import contextlib
+        import io
+
+        _redirect = (
+            contextlib.redirect_stdout(io.StringIO()) if global_json() else contextlib.nullcontext()
         )
+        with _redirect:
+            _run_init(
+                validated,
+                autoinfo_dir,
+                project_name=name or "",
+                # Direct calls may leave `model` as a truthy OptionInfo object
+                # (Typer default) — only a real string is an override.
+                model=model if isinstance(model, str) else "",
+            )
+        if emit_if_global(
+            {
+                "initialized": True,
+                "domains": validated,
+                "project_name": name or "",
+                "config_path": (autoinfo_dir / "config.yaml").as_posix(),
+            }
+        ):
+            return
         return
 
     if not interactive:
+        if emit_if_global({"initialized": False, "domains": _list_demo_domains()}):
+            return
         _print_demo_domains()
         typer.echo()
         typer.echo(
@@ -431,6 +457,12 @@ def init(
             "    autoinfo init --list-domains  (to see available domains)"
         )
         return
+
+    fail_if_global(
+        "ConfirmationRequired",
+        "interactive init is not available with --json; use --demo <domain> to "
+        "initialize non-interactively.",
+    )
 
     # Interactive mode — ensure a real terminal is available
     if not sys.stdin.isatty():

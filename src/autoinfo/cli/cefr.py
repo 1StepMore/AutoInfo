@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """CEFR classification CLI — classify text difficulty levels (A1-C2).
 
 Usage::
@@ -8,11 +6,15 @@ Usage::
     autoinfo cefr classify "今天天气很好" --lang zh
 """
 
+from __future__ import annotations
+
 import json
 
 import typer
 
 from autoinfo.cefr import classify_text
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(
     name="cefr",
@@ -32,13 +34,17 @@ def classify(
         "confidence": result["confidence"],
         "text_preview": text[:100] + "..." if len(text) > 100 else text,
     }
+    if emit_if_global(output):
+        return
     typer.echo(json.dumps(output, indent=2, ensure_ascii=False))
 
 
 @app.command()
 def batch(
     texts: list[str] = typer.Option([], "--texts", help="Text(s) to classify (repeatable)"),
-    input: str | None = typer.Option(None, "--input", help="File path to read texts from (one per line)"),
+    input: str | None = typer.Option(
+        None, "--input", help="File path to read texts from (one per line)"
+    ),
     lang: str = typer.Option("en", "--lang", help="Language code: en, zh, ja"),
     output: str | None = typer.Option(None, "--output", help="Output file path (JSON array)"),
 ) -> None:
@@ -59,13 +65,16 @@ def batch(
                     if stripped:
                         all_texts.append(stripped)
         except FileNotFoundError:
+            fail_if_global("NotFound", f"Input file not found: {input}")
             typer.echo(json.dumps({"error": f"Input file not found: {input}"}))
             raise typer.Exit(code=1)
         except OSError as exc:
+            fail_if_global("ValidationError", f"Cannot read input file {input}: {exc}")
             typer.echo(json.dumps({"error": f"Cannot read input file {input}: {exc}"}))
             raise typer.Exit(code=1)
 
     if not all_texts:
+        fail_if_global("ValidationError", "No texts provided. Use --texts or --input.")
         typer.echo(json.dumps({"error": "No texts provided. Use --texts or --input."}))
         raise typer.Exit(code=1)
 
@@ -74,22 +83,30 @@ def batch(
     for t in all_texts:
         try:
             result = classify_text(text=t, lang=lang)
-            results.append({
-                "text": t,
-                "cefr_level": result["cefr_level"],
-                "confidence": result["confidence"],
-            })
+            results.append(
+                {
+                    "text": t,
+                    "cefr_level": result["cefr_level"],
+                    "confidence": result["confidence"],
+                }
+            )
         except Exception as exc:
-            results.append({
-                "text": t,
-                "error": str(exc),
-            })
+            results.append(
+                {
+                    "text": t,
+                    "error": str(exc),
+                }
+            )
 
     # --- Output ---------------------------------------------------------------
     payload = json.dumps(results, indent=2, ensure_ascii=False)
     if output is not None:
         with open(output, "w", encoding="utf-8") as fh:
             fh.write(payload)
+        if emit_if_global({"written": output, "count": len(results)}):
+            return
         typer.echo(json.dumps({"written": output, "count": len(results)}))
     else:
+        if emit_if_global(results):
+            return
         typer.echo(payload)

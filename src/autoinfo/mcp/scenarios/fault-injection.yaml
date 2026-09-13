@@ -10,7 +10,10 @@
 # call_with_fallback (same pattern as regression-validation-batch-isolation.yaml).
 name: fault-injection
 description: "Issue #352.3: forced LLM faults at product-generation seams fall back deterministically"
-category: validation
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
 requires_env: []
 steps:
   - name: "digest seam faulted: deterministic fallback fires, no placeholder/error text"

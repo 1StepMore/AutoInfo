@@ -22,7 +22,10 @@
 # is asserted free of CJK with scope counts matching the rendered sections.
 name: regression-8-enterprise-cjk-header
 description: "Regression #8 residual: enterprise-briefing scope label has no CJK leak and selected-N-of-M counts match the rendered Key Findings / References sections"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#8"
 requires_env: []

@@ -20,7 +20,10 @@
 # ABSOLUTE temp cwd.
 name: regression-report-entries-cap
 description: "Regression #106: generate_report caps KB entries at 200 before grouping + grouping chaos guard"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#106"
 requires_env: []

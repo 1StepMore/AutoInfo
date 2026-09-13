@@ -19,7 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mcp.types import CallToolRequest, CallToolRequestParams, TextContent
+from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.config import Config, DomainConfig
 from autoinfo.mcp import server as mcp_server
@@ -59,15 +59,15 @@ from autoinfo.mcp.server import (
 class TestHealthCheck:
     def test_returns_status_ok(self) -> None:
         result = _handle_health_check()
-        assert result["status"] == "ok"
-        assert "version" in result
-        assert result["tools_count"] >= 23
+        assert result["data"]["status"] == "ok"
+        assert "version" in result["data"]
+        assert result["data"]["tools_count"] >= 23
 
     def test_version_matches_package(self) -> None:
         from autoinfo import __version__
 
         result = _handle_health_check()
-        assert result["version"] == __version__
+        assert result["data"]["version"] == __version__
 
 
 # ======================================================================
@@ -215,25 +215,19 @@ class TestErrorResponse:
         exc = ValueError("Invalid domain name")
         result = _error_response(exc)
 
-        assert len(result) == 1
-        content = result[0]
-        assert isinstance(content, TextContent)
-        assert content.type == "text"
-
-        data = json.loads(content.text)
+        assert isinstance(result, dict)
         # Envelope shape
-        assert data["success"] is False
+        assert result["success"] is False
         # ValueError maps to VALIDATION_ERROR via exception→ErrorCode mapping
-        assert data["error"]["code"] == "ValidationError"
-        assert "Invalid domain name" in data["error"]["message"]
-        assert data["error"]["actionable"] is True
+        assert result["error"]["code"] == "ValidationError"
+        assert "Invalid domain name" in result["error"]["message"]
+        assert result["error"]["actionable"] is True
 
     def test_handles_arbitrary_exception_types(self) -> None:
         exc = RuntimeError("Connection refused")
         result = _error_response(exc)
-        data = json.loads(result[0].text)
-        assert data["success"] is False
-        assert data["error"]["code"] == "InternalError"
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
 
 
 # ======================================================================
@@ -294,8 +288,10 @@ class TestToolRegistration:
         by_name = {t.name: t for t in tools}
 
         # Tools with no required params
-        assert "required" not in by_name["health_check"].inputSchema or \
-               by_name["health_check"].inputSchema["required"] is None
+        assert (
+            "required" not in by_name["health_check"].inputSchema
+            or by_name["health_check"].inputSchema["required"] is None
+        )
 
         # TRIAGE #56 (stale): collect_sources domain is now intentionally
         # optional (domain-less collection) — schema has required: []
@@ -333,7 +329,7 @@ class TestToolDispatch:
         call_result = result.root
         assert len(call_result.content) == 1
         data = json.loads(call_result.content[0].text)
-        assert data["status"] == "ok"
+        assert data["data"]["status"] == "ok"
 
     @pytest.mark.asyncio
     async def test_unknown_tool_returns_error(self) -> None:
@@ -404,16 +400,12 @@ class TestCollectSources:
         return_value=Config(domains=[DomainConfig(name="medical-research")]),
     )
     @patch("autoinfo.collect.run_collection")
-    def test_dry_run_passed_through(
-        self, mock_run: MagicMock, mock_config: MagicMock
-    ) -> None:
+    def test_dry_run_passed_through(self, mock_run: MagicMock, mock_config: MagicMock) -> None:
         _handle_collect_sources(domain="medical-research", dry_run=True)
         mock_run.assert_called_once_with(domain="medical-research", dry_run=True)
 
     @patch("autoinfo.mcp.server._load_config", return_value=Config())
-    def test_nonexistent_domain_returns_not_found(
-        self, mock_config: MagicMock
-    ) -> None:
+    def test_nonexistent_domain_returns_not_found(self, mock_config: MagicMock) -> None:
         result = _handle_collect_sources(domain="nonexistent-domain")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -467,13 +459,9 @@ class TestProcessCollection:
             is_complete=False,
         )
 
-        result = _handle_process_collection(
-            domain="medical-research", batch_size=3
-        )
+        result = _handle_process_collection(domain="medical-research", batch_size=3)
 
-        mock_proc.assert_called_once_with(
-            domain="medical-research", batch_size=3
-        )
+        mock_proc.assert_called_once_with(domain="medical-research", batch_size=3)
         assert result["total_items"] == 10
         assert result["processed_count"] == 3
         assert result["remaining_count"] == 7
@@ -543,9 +531,7 @@ class TestListSummaries:
 
     @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
     @patch("autoinfo.kb.KBStore")
-    def test_empty_result(
-        self, mock_kb: MagicMock, mock_status: MagicMock
-    ) -> None:
+    def test_empty_result(self, mock_kb: MagicMock, mock_status: MagicMock) -> None:
         mock_instance = mock_kb.return_value
         mock_instance.list_entries.return_value = []
 
@@ -598,14 +584,21 @@ class TestCollectionProgressStatus:
     def test_get_collection_progress_all(self) -> None:
         from autoinfo.mcp.server import _save_job_state
 
-        _save_job_state("job-test-all", "collection", "test-all-progress", "running", 50.0, {
-            "started_at": "2026-01-01T00:00:00",
-            "completed_at": "",
-            "items_collected": 5,
-            "errors": 1,
-            "items_per_source": {"src1": 3},
-            "duration_s": 0.0,
-        })
+        _save_job_state(
+            "job-test-all",
+            "collection",
+            "test-all-progress",
+            "running",
+            50.0,
+            {
+                "started_at": "2026-01-01T00:00:00",
+                "completed_at": "",
+                "items_collected": 5,
+                "errors": 1,
+                "items_per_source": {"src1": 3},
+                "duration_s": 0.0,
+            },
+        )
         result = _handle_get_collection_progress(domain="")
         assert result["count"] >= 1
         domains = result["domains"]
@@ -616,14 +609,21 @@ class TestCollectionProgressStatus:
     def test_get_collection_status_with_state(self) -> None:
         from autoinfo.mcp.server import _save_job_state
 
-        _save_job_state("job-test-status", "collection", "test-status-domain", "completed", 100.0, {
-            "started_at": "2026-01-01T00:00:00",
-            "completed_at": "2026-01-01T01:00:00",
-            "items_collected": 10,
-            "errors": 0,
-            "items_per_source": {"pubmed": 10},
-            "duration_s": 0.0,
-        })
+        _save_job_state(
+            "job-test-status",
+            "collection",
+            "test-status-domain",
+            "completed",
+            100.0,
+            {
+                "started_at": "2026-01-01T00:00:00",
+                "completed_at": "2026-01-01T01:00:00",
+                "items_collected": 10,
+                "errors": 0,
+                "items_per_source": {"pubmed": 10},
+                "duration_s": 0.0,
+            },
+        )
         result = _handle_get_collection_status(domain="test-status-domain")
         assert result["domain"] == "test-status-domain"
         assert result["status"] == "completed"
@@ -661,7 +661,8 @@ class TestDomainLifecycle:
     def test_activate_nonexistent_domain(self) -> None:
         with patch("autoinfo.config.get_config_path", return_value=None):
             result = _handle_activate_domain(name="nonexistent")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
     def test_deactivate_existing_domain(self, tmp_path: Path) -> None:
         config_dir = tmp_path / ".autoinfo"
@@ -709,7 +710,8 @@ class TestDomainLifecycle:
     def test_get_domain_config_nonexistent(self) -> None:
         with patch("autoinfo.config.get_config_path", return_value=None):
             result = _handle_get_domain_config(name="nonexistent")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
 
 # ======================================================================
@@ -770,7 +772,8 @@ class TestListKeywords:
     def test_list_keywords_domain_not_found(self) -> None:
         with patch("autoinfo.config.get_config_path", return_value=None):
             result = _handle_list_keywords(domain="nonexistent")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "DomainNotFound"
 
 
 # ======================================================================
@@ -788,8 +791,8 @@ class TestGenerateOutput:
             format="markdown",
         )
         assert result["success"] is True
-        assert result["domain"] == "medical-research"
-        assert "# Tutorial" in result["content"]
+        assert result["data"]["domain"] == "medical-research"
+        assert "# Tutorial" in result["data"]["content"]
 
         mock_gen.assert_called_once_with(
             domain="medical-research", format="markdown", custom_instructions="", user_id=""
@@ -799,7 +802,8 @@ class TestGenerateOutput:
     def test_generate_tutorial_error(self, mock_gen: MagicMock) -> None:
         mock_gen.side_effect = ValueError("Invalid domain")
         result = _handle_generate_tutorial(domain="bad")
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
 
     @patch("autoinfo.output.generate_presentation")
     def test_generate_presentation(self, mock_gen: MagicMock) -> None:
@@ -810,9 +814,9 @@ class TestGenerateOutput:
             slides=10,
         )
         assert result["success"] is True
-        assert result["domain"] == "medical-research"
-        assert result["slides"] == 10
-        assert "# Slide 1" in result["content"]
+        assert result["data"]["domain"] == "medical-research"
+        assert result["data"]["slides"] == 10
+        assert "# Slide 1" in result["data"]["content"]
 
         mock_gen.assert_called_once_with(
             domain="medical-research",
@@ -849,12 +853,10 @@ class TestGenerateOutputPreviewFallback:
         ]
         mock_gen.return_value = "# Digest\n\ncontent"
 
-        result = _handle_generate_digest(
-            domain="medical-research", format="markdown"
-        )
+        result = _handle_generate_digest(domain="medical-research", format="markdown")
         assert result["success"] is True
-        assert result.get("status") != "noop"
-        assert "# Digest" in result["content"]
+        assert result["data"].get("status") != "noop"
+        assert "# Digest" in result["data"]["content"]
 
         calls = mock_kb.return_value.list_entries.call_args_list
         assert len(calls) == 2
@@ -870,11 +872,9 @@ class TestGenerateOutputPreviewFallback:
         """Both queries empty -> noop, generator never called."""
         mock_kb.return_value.list_entries.return_value = []
 
-        result = _handle_generate_digest(
-            domain="medical-research", format="markdown"
-        )
-        assert result["status"] == "noop"
-        assert result["content"] == ""
+        result = _handle_generate_digest(domain="medical-research", format="markdown")
+        assert result["data"]["status"] == "noop"
+        assert result["data"]["content"] == ""
         assert mock_kb.return_value.list_entries.call_count == 2
         mock_gen.assert_not_called()
 
@@ -889,9 +889,7 @@ class TestGenerateOutputPreviewFallback:
         ]
         mock_gen.return_value = "# Digest\n\ncontent"
 
-        result = _handle_generate_digest(
-            domain="medical-research", format="markdown"
-        )
+        result = _handle_generate_digest(domain="medical-research", format="markdown")
         assert result["success"] is True
         assert mock_kb.return_value.list_entries.call_count == 1
         mock_gen.assert_called_once()
@@ -908,12 +906,10 @@ class TestGenerateOutputPreviewFallback:
         ]
         mock_gen.return_value = "# Report\n\ncontent"
 
-        result = _handle_generate_report(
-            domain="medical-research", format="markdown"
-        )
+        result = _handle_generate_report(domain="medical-research", format="markdown")
         assert result["success"] is True
-        assert result.get("status") != "noop"
-        assert "# Report" in result["content"]
+        assert result["data"].get("status") != "noop"
+        assert "# Report" in result["data"]["content"]
 
         calls = mock_kb.return_value.list_entries.call_args_list
         assert len(calls) == 2
@@ -929,11 +925,9 @@ class TestGenerateOutputPreviewFallback:
         """Both queries empty -> noop, generator never called."""
         mock_kb.return_value.list_entries.return_value = []
 
-        result = _handle_generate_report(
-            domain="medical-research", format="markdown"
-        )
-        assert result["status"] == "noop"
-        assert result["content"] == ""
+        result = _handle_generate_report(domain="medical-research", format="markdown")
+        assert result["data"]["status"] == "noop"
+        assert result["data"]["content"] == ""
         assert mock_kb.return_value.list_entries.call_count == 2
         mock_gen.assert_not_called()
 
@@ -1294,14 +1288,10 @@ class TestAddSourceRequiresKey:
             assert result["source"]["requires_key"] is True
 
             schema = _handle_get_domain_schema("fin")
-            source_schema = next(
-                s for s in schema["sources"] if s["name"] == "alpha-vantage"
-            )
+            source_schema = next(s for s in schema["sources"] if s["name"] == "alpha-vantage")
             assert source_schema["requires_key"] is True
 
-    def test_add_sources_batch_forwards_settings_and_requires_key(
-        self, tmp_path: Path
-    ) -> None:
+    def test_add_sources_batch_forwards_settings_and_requires_key(self, tmp_path: Path) -> None:
         """Batch add forwards per-source settings and requires_key to add_source."""
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir()
@@ -1442,7 +1432,7 @@ class TestCollectSourcesOffload:
                 {"domain": "medical-research", "limit": 3, "dry_run": True},
             )
 
-        assert json.loads(result[0].text)["success"] is True
+        assert json.loads(result[0][0].text)["success"] is True
         assert recorded["func"] is mock_handler
         kwargs = dict(recorded["args"][1])
         assert kwargs["limit"] == 3
@@ -1483,9 +1473,7 @@ class TestCreateKBEntryContentGuard:
 
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
-        assert result["error"]["message"] == (
-            "content must be at least 50 characters"
-        )
+        assert result["error"]["message"] == ("content must be at least 50 characters")
         assert result["error"]["actionable"] is True
 
     def test_whitespace_only_content_rejected(self) -> None:
@@ -1500,7 +1488,4 @@ class TestCreateKBEntryContentGuard:
 
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
-        assert result["error"]["message"] == (
-            "content must be at least 50 characters"
-        )
-
+        assert result["error"]["message"] == ("content must be at least 50 characters")

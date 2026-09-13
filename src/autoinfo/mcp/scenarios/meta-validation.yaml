@@ -14,7 +14,10 @@
 # substitution is a no-op and the self-check stays deterministic.
 name: meta-validation
 description: "Validation toolset self-check: list and run scenarios"
-category: system
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 requires_env: []
 matrix_domains: ["ai-commercial", "b2b"]
 steps:
@@ -74,3 +77,12 @@ steps:
     expect:
       success: true
       data_has: ["scenario", "status", "summary"]
+
+  # T-A-02: the stage×user coverage report must classify the whole spine
+  # (126 cells + 72 expectations) with zero unclassified items.
+  - name: "get_coverage_report classifies the spine with zero unclassified"
+    tool: get_coverage_report
+    arguments: {}
+    expect:
+      success: true
+      data_has: ["status", "cells", "expectations", "unclassified", "spine"]

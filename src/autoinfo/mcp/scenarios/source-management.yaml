@@ -2,7 +2,10 @@
 # Uses medical-research domain with add-then-remove to leave no side effects.
 name: source-management
 description: "Source lifecycle: test, add (single+batch), health, feeds, rate, remove"
-category: source
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

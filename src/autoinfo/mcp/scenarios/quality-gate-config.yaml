@@ -8,7 +8,10 @@
 # avoid touching real G0-SchemaIntegrity configuration.
 name: quality-gate-config
 description: "Quality gate config: read, set, verify, restore"
-category: quality
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B3.1
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

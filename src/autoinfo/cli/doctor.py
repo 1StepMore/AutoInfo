@@ -13,6 +13,8 @@ from typing import Any  # noqa: E402
 
 import typer  # noqa: E402
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer()
 
 
@@ -20,7 +22,8 @@ app = typer.Typer()
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
     verbose: bool = typer.Option(
-        False, "--verbose",
+        False,
+        "--verbose",
         help="Extended diagnostics (run history, error rates, latency, source health, cost)",
     ),
 ) -> None:
@@ -33,8 +36,16 @@ def doctor(
             result["_verbose"] = diagnose_pipeline(deep=True)
             result["_verbose"]["health_score"] = calculate_health_score(result)
     except ImportError as exc:
+        fail_if_global("InternalError", f"doctor module not available: {exc}")
         typer.echo(f"Error: doctor module not available: {exc}", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global(result):
+        if result.get("python", {}).get("status") == "error":
+            raise typer.Exit(code=1)
+        if result.get("config", {}).get("status") == "error":
+            raise typer.Exit(code=1)
+        return
 
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
@@ -76,16 +87,13 @@ def _print_human(result: dict[str, Any]) -> None:
         )
     else:
         typer.echo(
-            "  ❌ LLM: no API key configured "
-            "(set AUTOINFO_LLM_API_KEY or configure llm.api_key)"
+            "  ❌ LLM: no API key configured (set AUTOINFO_LLM_API_KEY or configure llm.api_key)"
         )
         typer.echo(
             "       Agents: use the MCP tool configure_llm() to set up the LLM "
             "(or set the AUTOINFO_LLM_API_KEY env var)"
         )
-        typer.echo(
-            "       See docs/dev/required-api-keys.md for API key setup"
-        )
+        typer.echo("       See docs/dev/required-api-keys.md for API key setup")
 
     # --- LLM fallback chain ---
     fh = result.get("fallback_health", {})
@@ -102,8 +110,7 @@ def _print_human(result: dict[str, Any]) -> None:
                 typer.echo(f"       ↳ {entry.get('model', '?')}{inherit_str}")
         else:
             typer.echo(
-                "  ⚠ LLM fallback chain: not configured "
-                "(add llm.fallback to .autoinfo/config.yaml)"
+                "  ⚠ LLM fallback chain: not configured (add llm.fallback to .autoinfo/config.yaml)"
             )
         primary = fh.get("primary", {})
         if primary:
@@ -199,7 +206,7 @@ def _print_verbose(v: dict[str, Any]) -> None:
     typer.echo("  ── Source Health ─────────────────────────────────────")
     if health:
         typer.echo(f"    {'Source':<30} {'Status':<12} {'Errors':>6} {'Avg RT':>8}")
-        typer.echo(f"    {'─'*30} {'─'*12} {'─'*6} {'─'*8}")
+        typer.echo(f"    {'─' * 30} {'─' * 12} {'─' * 6} {'─' * 8}")
         for s in health:
             name = s.get("name", s.get("source_id", "?"))
             status_icon = {

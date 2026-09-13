@@ -25,7 +25,10 @@
 # regression-mvp-init.yaml.
 name: regression-billing-create-free
 description: "Regression concierge-wave-task-11: billing create-free provisions active profile + free-tier subscription (1 domain / 1 product / weekly / no custom) hermetically; idempotent; clean error path; over-limit generate_digest raises FreeTierLimitError"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.2
 regression: true
 regression_issue: "#concierge-wave-task-11"
 requires_env: []

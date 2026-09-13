@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Summaries CLI — browse, flag, and inspect collected summaries.
 
 Usage::
@@ -12,6 +10,7 @@ Usage::
     autoinfo summaries show <entry-id>
 """
 
+from __future__ import annotations
 
 import json
 from typing import Any
@@ -19,6 +18,8 @@ from typing import Any
 import typer
 
 from autoinfo.config import get_config_path
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer()
 
@@ -42,8 +43,14 @@ def list_(
 
         config_path = get_config_path()
         if config_path is None:
+            fail_if_global(
+                "ConfigNotFound",
+                "No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
+            )
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
+                "Error: No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -57,17 +64,25 @@ def list_(
             offset=offset,
         )
     except FileNotFoundError as exc:
+        fail_if_global("NotFound", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ImportError as exc:
+        fail_if_global("InternalError", f"summaries module not available: {exc}")
         typer.echo(f"Error: summaries module not available: {exc}", err=True)
         raise typer.Exit(code=1)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
+    if emit_if_global({"items": entries, "count": len(entries)}):
+        return
+
     if json_output:
-        typer.echo(json.dumps({"items": entries, "count": len(entries)}, ensure_ascii=False, indent=2))
+        typer.echo(
+            json.dumps({"items": entries, "count": len(entries)}, ensure_ascii=False, indent=2)
+        )
     else:
         _print_human(entries)
 
@@ -75,12 +90,8 @@ def list_(
 @app.command()
 def flag(
     entry_id: str = typer.Argument(..., help="Entry ID to flag for KB inclusion"),
-    tag: list[str] = typer.Option(
-        [], "--tag", help="Tags to apply (can be repeated)"
-    ),
-    importance: int = typer.Option(
-        3, "--importance", help="Importance rating 1-5", min=1, max=5
-    ),
+    tag: list[str] = typer.Option([], "--tag", help="Tags to apply (can be repeated)"),
+    importance: int = typer.Option(3, "--importance", help="Importance rating 1-5", min=1, max=5),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Flag a summary for knowledge base inclusion."""
@@ -89,20 +100,28 @@ def flag(
 
         config_path = get_config_path()
         if config_path is None:
+            fail_if_global(
+                "ConfigNotFound",
+                "No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
+            )
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
+                "Error: No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)
 
         kb_base = config_path.parent.parent / "knowledge"
         store = KBStore(base_path=kb_base)
-        result = store.flag_for_knowledge_base(
-            summary_id=entry_id, tags=tag, importance=importance
-        )
+        result = store.flag_for_knowledge_base(summary_id=entry_id, tags=tag, importance=importance)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
@@ -113,6 +132,7 @@ def flag(
                 f"(tags: {result['tags']}, importance: {result['importance']})"
             )
         else:
+            fail_if_global("NotFound", f"{result.get('error', 'Unknown error')}: {entry_id}")
             typer.echo(
                 f"Error: {result.get('error', 'Unknown error')}: {entry_id}",
                 err=True,
@@ -131,8 +151,14 @@ def show(
 
         config_path = get_config_path()
         if config_path is None:
+            fail_if_global(
+                "ConfigNotFound",
+                "No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
+            )
             typer.echo(
-                "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",
+                "Error: No configuration found. Run 'autoinfo init' first. "
+                "See docs/dev/required-api-keys.md for API key setup.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -141,12 +167,17 @@ def show(
         store = KBStore(base_path=kb_base)
         result = store.get_summary(summary_id=entry_id)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
     if "error" in result:
+        fail_if_global("NotFound", f"{result['error']}: {entry_id}")
         typer.echo(f"Error: {result['error']}: {entry_id}", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
@@ -160,9 +191,7 @@ def _print_human(entries) -> None:
         typer.echo("No entries found.")
         return
 
-    typer.echo(
-        f"{'ID':<36} {'Title':<50} {'TL;DR':<60} {'Rel':>5}  {'Date':<12}"
-    )
+    typer.echo(f"{'ID':<36} {'Title':<50} {'TL;DR':<60} {'Rel':>5}  {'Date':<12}")
     typer.echo("-" * 170)
 
     for e in entries:
@@ -172,9 +201,7 @@ def _print_human(entries) -> None:
         relevance = e.get("relevance_score", 0)
         date_str = (e.get("collected_at") or "?")[:10]
 
-        typer.echo(
-            f"{entry_id:<36} {title:<50} {tldr:<60} {relevance:>5.0f}  {date_str:<12}"
-        )
+        typer.echo(f"{entry_id:<36} {title:<50} {tldr:<60} {relevance:>5.0f}  {date_str:<12}")
 
 
 def _print_summary_human(result: dict[str, Any]) -> None:
@@ -191,9 +218,7 @@ def _print_summary_human(result: dict[str, Any]) -> None:
         typer.echo(f"Tags:       {', '.join(tags)}")
 
     sp = result.get("source_provenance", {})
-    typer.echo(
-        f"Source:     {sp.get('source_platform', '?')} — {sp.get('source_url', '?')}"
-    )
+    typer.echo(f"Source:     {sp.get('source_platform', '?')} — {sp.get('source_url', '?')}")
     typer.echo(f"Collected:  {sp.get('collected_at', '?')}")
 
     kp = result.get("key_points", [])

@@ -49,6 +49,8 @@ import typer
 
 from autoinfo.config import get_config_path
 
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
 app = typer.Typer(help="Concierge MVP pilots: provision and list paying pilot users")
 
 _VALID_PRODUCTS = ("digest", "report", "premium-briefing")
@@ -62,9 +64,7 @@ _NO_CONFIG_ERROR = (
 
 def _existing_product_files(user_dir: Path) -> list[Path]:
     """Product markdown files in *user_dir* (gate reports excluded)."""
-    return [
-        p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")
-    ]
+    return [p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")]
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +164,7 @@ def _generate_first_product(
     group = [
         {
             "theme": "Clinical Developments",
-            "description": (
-                "Recent peer-reviewed findings tracked for this pilot domain."
-            ),
+            "description": ("Recent peer-reviewed findings tracked for this pilot domain."),
             "entries": entries,
         }
     ]
@@ -228,9 +226,7 @@ def _generate_first_product(
                 )
 
     if not isinstance(out, str) or not out.strip():
-        raise ValueError(
-            f"hermetic generation produced no output for product '{product}'"
-        )
+        raise ValueError(f"hermetic generation produced no output for product '{product}'")
     product_path = user_dir / file_name
     product_path.write_text(out, encoding="utf-8")
     return product_path, entries
@@ -280,9 +276,7 @@ def _write_provenance(
         },
     }
     path = user_dir / "provenance.json"
-    path.write_text(
-        json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    path.write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 
@@ -314,13 +308,20 @@ def init(
     report + provenance + user.json).
     """
     if product not in _VALID_PRODUCTS:
+        fail_if_global(
+            "ValidationError",
+            f"Unknown product '{product}'. Valid products: {', '.join(_VALID_PRODUCTS)}",
+        )
         typer.echo(
-            f"Error: Unknown product '{product}'. "
-            f"Valid products: {', '.join(_VALID_PRODUCTS)}",
+            f"Error: Unknown product '{product}'. Valid products: {', '.join(_VALID_PRODUCTS)}",
             err=True,
         )
         raise typer.Exit(code=1)
     if frequency not in _VALID_FREQUENCIES:
+        fail_if_global(
+            "ValidationError",
+            f"Unknown frequency '{frequency}'. Valid frequencies: {', '.join(_VALID_FREQUENCIES)}",
+        )
         typer.echo(
             f"Error: Unknown frequency '{frequency}'. "
             f"Valid frequencies: {', '.join(_VALID_FREQUENCIES)}",
@@ -328,6 +329,10 @@ def init(
         )
         raise typer.Exit(code=1)
     if not user or "/" in user or "\\" in user or user in (".", ".."):
+        fail_if_global(
+            "ValidationError",
+            f"invalid user id {user!r} — must be a non-empty path-safe identifier (no slashes)",
+        )
         typer.echo(
             f"Error: invalid user id {user!r} — must be a non-empty path-safe "
             f"identifier (no slashes)",
@@ -336,8 +341,13 @@ def init(
         raise typer.Exit(code=1)
 
     if get_config_path() is None:
+        fail_if_global("ConfigNotFound", _NO_CONFIG_ERROR.removeprefix("Error: "))
         typer.echo(_NO_CONFIG_ERROR, err=True)
         raise typer.Exit(code=1)
+
+    def _echo(*args: Any, **kwargs: Any) -> None:
+        if not global_json():
+            typer.echo(*args, **kwargs)
 
     # --- (1) Domain import FIRST (clean early error before any user writes).
     # Reuses domain.py import_cmd verbatim — the --from-demo source of truth.
@@ -361,20 +371,16 @@ def init(
             status="active",
             tier="premium",
         )
-        typer.echo(f"Profile '{user}' created (tier=premium, status=active).")
+        _echo(f"Profile '{user}' created (tier=premium, status=active).")
     else:
-        typer.echo(
+        _echo(
             f"Profile '{user}' already exists "
             f"(tier={profile.tier}, status={profile.status}) — skipping."
         )
 
     # --- (3) Premium subscription (no Stripe) -------------------------------
     sub = next(
-        (
-            s
-            for s in list_subscriptions(user)
-            if s.plan == "premium" and s.tier == "premium"
-        ),
+        (s for s in list_subscriptions(user) if s.plan == "premium" and s.tier == "premium"),
         None,
     )
     if sub is None:
@@ -395,24 +401,21 @@ def init(
             max_frequency="daily",
             allow_custom=True,
         )
-        typer.echo(
+        _echo(
             f"Subscription created: {sub.subscription_id} "
             f"(plan=premium, tier=premium, status=active)."
         )
     else:
-        typer.echo(
-            f"Subscription already exists ({sub.subscription_id}, "
-            f"plan=premium) — skipping."
-        )
+        _echo(f"Subscription already exists ({sub.subscription_id}, plan=premium) — skipping.")
 
     # --- (4) First product via the hermetic seam ----------------------------
     user_dir = Path.cwd() / "mvp" / user
-    existing_products = (
-        _existing_product_files(user_dir) if user_dir.is_dir() else []
-    )
+    existing_products = _existing_product_files(user_dir) if user_dir.is_dir() else []
 
+    generated_product_path: Path | None = None
+    gate: dict[str, Any] | None = None
     if existing_products:
-        typer.echo(
+        _echo(
             f"Pilot '{user}' already has a first product "
             f"({existing_products[-1].name}) — generation skipped."
         )
@@ -427,9 +430,8 @@ def init(
                 user_dir=user_dir,
             )
         except Exception as exc:  # noqa: BLE001 — clean CLI error, no traceback
-            typer.echo(
-                f"Error: first product generation failed: {exc}", err=True
-            )
+            fail_if_global("InternalError", f"first product generation failed: {exc}")
+            typer.echo(f"Error: first product generation failed: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
         from autoinfo.delivery.gate_report import write_gate_report  # noqa: PLC0415
@@ -442,6 +444,7 @@ def init(
         except ValueError:
             key_path = product_path
         gate = write_gate_report(user_dir, key_path, kind="PROCESSED")
+        generated_product_path = product_path
         _write_provenance(
             user_dir,
             product_path,
@@ -452,7 +455,7 @@ def init(
             user_id=user,
             gate=gate,
         )
-        typer.echo(
+        _echo(
             f"First product generated: {product_path.as_posix()} "
             f"(gate: {gate['quality']}, hermetic seam: no LLM call)."
         )
@@ -474,9 +477,22 @@ def init(
         "mvp_dir": user_dir.as_posix(),
         "placeholder": True,
     }
-    meta_path.write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if emit_if_global(
+        {
+            "user_id": user,
+            "domain": domain,
+            "product": product,
+            "frequency": frequency,
+            "subscription_id": sub.subscription_id,
+            "mvp_dir": user_dir.as_posix(),
+            "product_path": (generated_product_path.as_posix() if generated_product_path else None),
+            "gate": gate,
+            "already_existed": bool(existing_products),
+        }
+    ):
+        return
 
     typer.echo(
         f"MVP pilot ready: {user_dir.as_posix()} (user={user}, domain={domain}, "
@@ -507,6 +523,33 @@ def list_cmd() -> None:
                 if isinstance(meta, dict):
                     pilots.append((d, meta))
 
+    items: list[dict[str, Any]] = []
+    for d, meta in pilots:
+        uid = str(meta.get("user_id") or d.name)
+        profile = get_profile(uid)
+        tier = (profile.tier if profile else None) or str(meta.get("tier", "?"))
+        status = (profile.status if profile else None) or str(meta.get("status", "?"))
+        subs = list_subscriptions(uid)
+        plan = subs[0].plan if subs else str(meta.get("plan", "?"))
+        sub_status = subs[0].status if subs else "?"
+        products = _existing_product_files(d)
+        latest = max(products, key=lambda p: p.stat().st_mtime) if products else None
+        items.append(
+            {
+                "user_id": uid,
+                "tier": tier,
+                "plan": plan,
+                "status": status,
+                "subscription_status": sub_status,
+                "product": meta.get("product", "?"),
+                "frequency": meta.get("frequency", "?"),
+                "latest_product": latest.as_posix() if latest else None,
+            }
+        )
+
+    if emit_if_global({"items": items, "count": len(items)}):
+        return
+
     if not pilots:
         typer.echo(
             "No MVP pilot users yet. Run 'autoinfo mvp init --user <id> "
@@ -515,28 +558,13 @@ def list_cmd() -> None:
         return
 
     typer.echo(f"MVP pilot users ({len(pilots)}):")
-    for d, meta in pilots:
-        uid = str(meta.get("user_id") or d.name)
-        profile = get_profile(uid)
-        tier = (profile.tier if profile else None) or str(meta.get("tier", "?"))
-        status = (profile.status if profile else None) or str(
-            meta.get("status", "?")
-        )
-        subs = list_subscriptions(uid)
-        plan = subs[0].plan if subs else str(meta.get("plan", "?"))
-        sub_status = subs[0].status if subs else "?"
-        products = _existing_product_files(d)
-        latest = (
-            max(products, key=lambda p: p.stat().st_mtime) if products else None
-        )
-        latest_rel = latest.as_posix() if latest else "none"
+    for item in items:
         typer.echo(
-            f"  {uid}: tier={tier} plan={plan} status={status} "
-            f"subscription={sub_status} "
-            f"product={meta.get('product', '?')} "
-            f"frequency={meta.get('frequency', '?')}"
+            f"  {item['user_id']}: tier={item['tier']} plan={item['plan']} "
+            f"status={item['status']} subscription={item['subscription_status']} "
+            f"product={item['product']} frequency={item['frequency']}"
         )
-        typer.echo(f"      latest product: {latest_rel}")
+        typer.echo(f"      latest product: {item['latest_product'] or 'none'}")
 
 
 if __name__ == "__main__":

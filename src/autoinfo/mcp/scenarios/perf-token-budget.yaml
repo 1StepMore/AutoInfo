@@ -1,0 +1,75 @@
+# T-B-05 (performance scenarios absent, S1): token budget.
+#
+# PINNED CRITERION: a declared 1000-token budget is enforced at two pinned
+# boundaries via the REAL token ledger + budget-threshold surface:
+#   * at 900 tokens (90%) the real CostMeter budget surface reports
+#     pct_used == 90.0 with breached == False  -> FLAG;
+#   * at 1000 tokens (100%) it reports pct_used == 100.0 with
+#     breached == True                           -> DEGRADE/block.
+# The budget is declared as the cost of exactly 1000 tokens at the meter's
+# configured rate (the meter records real token counts; the threshold
+# surface compares real spend).  Both boundaries and both exact token
+# counts must hold, so an off-by-one or a broken threshold regresses.
+# Deterministic, no LLM/network; uses a real temp SQLite cost ledger.
+name: perf-token-budget
+description: >-
+  Performance token budget with a pinned threshold: a declared 1000-token
+  budget is flagged at 90% consumption (pct_used 90.0, not breached) and
+  degraded at 100% (breached), measured by the real CostMeter token ledger
+  and budget-threshold surface in a temp SQLite DB (no LLM/network).
+category: performance
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.3
+requires_env: []
+steps:
+  - name: "90% of the declared 1000-token budget flags, 100% degrades"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from autoinfo.cost import CostMeter
+
+      tmp = Path(tempfile.mkdtemp(prefix="perf-token-budget-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          meter = CostMeter(db_path=Path("cost.db"))
+
+          # 900 tokens = 90% of the declared 1000-token budget.
+          meter.log_llm_tokens(model="budget-probe", input_tokens=900,
+                               output_tokens=0, domain="medical-research")
+          report = meter.get_report()
+          tokens_90 = report["llm_models"]["budget-probe"]["total_tokens"]
+          cost_90 = report["llm_models"]["budget-probe"]["cost"]
+          budget = cost_90 / 0.9  # the spend equivalent of 1000 tokens
+          st_90 = meter.get_report(thresholds=[budget])["threshold_status"][0]
+
+          # +100 tokens = 100% of the declared budget.
+          meter.log_llm_tokens(model="budget-probe", input_tokens=100,
+                               output_tokens=0, domain="medical-research")
+          tokens_100 = meter.get_report()["llm_models"]["budget-probe"]["total_tokens"]
+          st_100 = meter.get_report(thresholds=[budget])["threshold_status"][0]
+
+          pct_90 = st_90["pct_used"]
+          breached_90 = st_90["breached"]
+          pct_100 = st_100["pct_used"]
+          breached_100 = st_100["breached"]
+          print(f"PERF_TOKEN_BUDGET_OK tokens_90={int(tokens_90)} pct_90={pct_90:.1f} "
+                f"breached_90={breached_90} tokens_100={int(tokens_100)} "
+                f"pct_100={pct_100:.1f} breached_100={breached_100}")
+          assert int(tokens_90) == 900, tokens_90
+          assert st_90["pct_used"] == 90.0, st_90
+          assert st_90["breached"] is False, st_90
+          assert int(tokens_100) == 1000, tokens_100
+          assert st_100["pct_used"] == 100.0, st_100
+          assert st_100["breached"] is True, st_100
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PERF_TOKEN_BUDGET_OK"]

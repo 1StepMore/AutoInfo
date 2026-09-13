@@ -1,0 +1,74 @@
+# Red-team: tool-argument abuse on the REST media route (T-B-03).
+#
+# Adversarial class: ``untrusted_external_text`` (tool-argument abuse).
+#
+# The ``GET /media/{file_path:path}`` route takes a caller-controlled path.
+# It must only serve files inside its allowed media roots and must refuse
+# every path that escapes them (traversal), so a request can never read an
+# arbitrary file.  NOT a mock: this invokes the real FastAPI route handler
+# ``autoinfo.api.server.serve_media`` in a scratch cwd with a real
+# traversal target that EXISTS outside the allowed root — the exact
+# condition a naive row would leak.
+#
+# Documented mutation (RED proof): disable the root-membership guard —
+#   python3 - <<'PY'
+#   import pathlib
+#   p = pathlib.Path("src/autoinfo/api/server.py"); s = p.read_text()
+#   old = "    if not allowed:"
+#   assert old in s
+#   p.write_text(s.replace(old, "    if False:  # MUTATION", 1))
+#   PY
+# then the existing out-of-root secret is served (or the handler crashes on
+# a nonexistent path) and this scenario FAILS; revert with
+#   git checkout -- src/autoinfo/api/server.py
+# Full mutation + RED/GREEN transcripts: .omo/evidence/agent-oriented-gap-register/todo-9-redteam.md
+name: redteam-media-path-traversal
+description: "Tool-argument abuse: the /media route serves files under the allowed roots but refuses path-traversal arguments that escape them (404)"
+category: failure
+pyramid_layer: red_team
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "serve_media serves an allowed file and refuses traversal to an existing out-of-root file"
+    kind: cli
+    command: |-
+      python3 -c '
+      import asyncio, os, shutil, tempfile
+      from pathlib import Path
+      from fastapi import HTTPException
+      from autoinfo.api.server import serve_media
+      tmp = Path(tempfile.mkdtemp(prefix="redteam-media-"))
+      old = os.getcwd()
+      os.chdir(tmp)
+      try:
+          (tmp / "data").mkdir(parents=True, exist_ok=True)
+          (tmp / "data" / "ok.bin").write_bytes(b"podcast")
+          (tmp / "secret.txt").write_text("TOPSECRET", encoding="utf-8")
+          async def main():
+              resp = await serve_media("data/ok.bin")
+              print("ALLOWED_SERVED " + str(resp is not None))
+              refused = 0
+              for bad in ("data/../secret.txt", "../secret.txt"):
+                  try:
+                      await serve_media(bad)
+                  except (HTTPException, RuntimeError) as exc:
+                      if isinstance(exc, HTTPException) and exc.status_code == 404:
+                          refused += 1
+                      elif isinstance(exc, RuntimeError):
+                          refused += 1
+              print("TRAVERSAL_REFUSED " + str(refused))
+          asyncio.run(main())
+          assert (tmp / "secret.txt").read_text(encoding="utf-8") == "TOPSECRET"
+          print("TRAVERSAL_BLOCKED_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "ALLOWED_SERVED True"
+        - "TRAVERSAL_REFUSED 2"
+        - "TRAVERSAL_BLOCKED_OK"

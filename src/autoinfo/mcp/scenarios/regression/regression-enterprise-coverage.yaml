@@ -26,7 +26,10 @@
 # regression that reverts either fix fails here.
 name: regression-enterprise-coverage
 description: "Regression #314: enterprise-briefing coverage claim matches key-findings count (prompt guard + In-this-briefing scope line)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#314"
 requires_env: []

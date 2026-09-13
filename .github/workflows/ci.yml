@@ -166,3 +166,55 @@ jobs:
       - name: Full scenario library parses
         run: |
           python3 -c "from autoinfo.mcp.validation import load_scenarios; print(len(load_scenarios()))"
+
+  surface-parity:
+    name: Surface parity (REST / build / vendor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: "REST surface parity (T-S-10)"
+        run: python3 scripts/surface_parity.py --check
+      - name: "Build/release surface (T-S-11)"
+        run: python3 scripts/build_release_check.py
+      - name: "Model/vendor agnosticism (T-S-12)"
+        run: python3 scripts/vendor_agnosticism_check.py
+
+  # Todo 21 (plan §6): the six AX verification metrics (M-01..M-06) are gated.
+  # `--record` runs the deterministic, LLM-free scenario subset that feeds
+  # M-01/M-02/M-03/M-06 (and persists it as one suite run), then the report
+  # measures every metric from live sources and exits non-zero on any breach.
+  # M-05 (token efficiency) is measured WITHOUT an LLM key from the keyless
+  # deterministic product-text benchmark in scripts/ax_metrics.py, gated against
+  # the tracked `scripts/ax_token_baseline.json` (NOT gitignored runtime state);
+  # `llm_meta.tokens` is additionally gated when a run carries it. M-04 runs
+  # scripts/doc_inventory.py --check.
+  ax-metrics:
+    name: AX metrics gate
+    runs-on: ubuntu-latest
+    env:
+      TERM: dumb
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e ".[dev,ebook]"
+      # Fresh checkouts have no `.autoinfo/` (gitignored). The seed scenarios
+      # are LLM-free but error-boundary exercises the real get_domain_schema
+      # DomainNotFound path, which needs a config file to exist.
+      - name: Seed minimal project config
+        run: |
+          mkdir -p .autoinfo
+          printf 'project:\n  name: ci\n' > .autoinfo/config.yaml
+      - name: Record deterministic AX evidence + gate M-01..M-06
+        run: python3 scripts/ax_metrics.py --record

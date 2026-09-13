@@ -6,7 +6,8 @@ Hermetic tests for the plan todo-14 deliverable:
    read-only tools; ``set_readonly_mode()`` toggles the gate.
 2. **Double gate, gate 1 (tools/list)** — in readonly mode ``list_tools()``
    lists ONLY the 4 whitelisted tools; the default (full) mode still lists
-   all 146 (regression assertion).
+   every declared tool (regression assertion, live count from
+   ``_full_tool_list()``).
 3. **Double gate, gate 2 (call dispatch)** — non-whitelisted tool calls in
    readonly mode return an explicit error envelope with
    ``code=READ_ONLY_SERVER`` (never silent), and the attempt is still
@@ -33,12 +34,14 @@ from autoinfo.mcp.errors import ErrorCode
 
 # The 4 read-only tools (plan todo-14).  run_validation_scenario is
 # EXPLICITLY EXCLUDED — its steps contain write ops (collect/promote/delete).
-READONLY_TOOLS = frozenset({
-    "search_knowledge_base",
-    "get_kb_entry",
-    "export_kb",
-    "list_validation_scenarios",
-})
+READONLY_TOOLS = frozenset(
+    {
+        "search_knowledge_base",
+        "get_kb_entry",
+        "export_kb",
+        "list_validation_scenarios",
+    }
+)
 
 
 @pytest.fixture(autouse=True)
@@ -77,14 +80,33 @@ class TestReadonlyListTools:
         assert names == sorted(READONLY_TOOLS)
         assert len(tools) == 4
 
-    async def test_default_mode_still_lists_all_146_tools(
+    async def test_default_mode_lists_all_non_director_tools(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Regression: full (default) server mode is unchanged — 146 tools."""
+        """Regression: a default agent lists every declared tool except the
+        director-only ones.
+
+        The expected set is derived live from ``_full_tool_list()`` minus
+        ``_DIRECTOR_ONLY_TOOLS`` (T-S-08), never a hard-coded number —
+        adding/removing a tool must not require editing this test.
+        """
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("AUTOINFO_ACTOR", raising=False)
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
         assert mcp_server._is_readonly() is False
         tools = await mcp_server.list_tools()
-        assert len(tools) == 146
+        visible = {t.name for t in tools}
+        all_names = {t.name for t in mcp_server._full_tool_list()}
+        assert visible == all_names - mcp_server._DIRECTOR_ONLY_TOOLS
+
+    async def test_director_mode_lists_all_declared_tools(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        tools = await mcp_server.list_tools()
+        assert len(tools) == len(mcp_server._full_tool_list())
 
 
 class TestReadonlyCallGate:
@@ -95,12 +117,10 @@ class TestReadonlyCallGate:
     ) -> None:
         monkeypatch.chdir(tmp_path)
         mcp_server.set_readonly_mode(True)
-        result = await mcp_server.call_tool(
-            "collect_sources", {"domain": "medical-research"}
-        )
-        assert len(result) == 1
-        assert isinstance(result[0], TextContent)
-        body = json.loads(result[0].text)
+        result = await mcp_server.call_tool("collect_sources", {"domain": "medical-research"})
+        assert len(result[0]) == 1
+        assert isinstance(result[0][0], TextContent)
+        body = json.loads(result[0][0].text)
         assert body["success"] is False
         assert body["error"]["code"] == ErrorCode.READ_ONLY_SERVER.value
         assert body["error"]["message"], "error message must not be empty"
@@ -115,7 +135,7 @@ class TestReadonlyCallGate:
         result = await mcp_server.call_tool(
             "run_validation_scenario", {"scenario": "system-health"}
         )
-        body = json.loads(result[0].text)
+        body = json.loads(result[0][0].text)
         assert body["success"] is False
         assert body["error"]["code"] == ErrorCode.READ_ONLY_SERVER.value
 
@@ -125,17 +145,10 @@ class TestReadonlyCallGate:
         """Audit: readonly-mode calls still write the dispatch audit row."""
         monkeypatch.chdir(tmp_path)
         mcp_server.set_readonly_mode(True)
-        await mcp_server.call_tool(
-            "collect_sources", {"domain": "medical-research"}
-        )
+        await mcp_server.call_tool("collect_sources", {"domain": "medical-research"})
         rows = _read_audit_rows(tmp_path / "autoinfo.db")
-        collect_rows = [
-            r for r in rows
-            if r["resource_type"] == "collect_sources"
-        ]
-        assert collect_rows, (
-            f"expected an audit row for collect_sources, got: {rows}"
-        )
+        collect_rows = [r for r in rows if r["resource_type"] == "collect_sources"]
+        assert collect_rows, f"expected an audit row for collect_sources, got: {rows}"
         assert collect_rows[0]["action"] == "tool_call"
         details = json.loads(collect_rows[0]["details"])
         assert details["result_code"] == "read_only"
@@ -147,7 +160,7 @@ class TestReadonlyCallGate:
         monkeypatch.chdir(tmp_path)
         mcp_server.set_readonly_mode(True)
         result = await mcp_server.call_tool("list_validation_scenarios", {})
-        body = json.loads(result[0].text)
+        body = json.loads(result[0][0].text)
         assert body["success"] is True
 
 
@@ -164,10 +177,8 @@ class TestExportAgentPureFunction:
         # every dispatch) auto-create a bare autoinfo.db WITHOUT the entries
         # table, so rebuild a proper empty index db — the agent branch then
         # runs the pure _export_agent_json path with zero entries.
-        init = await mcp_server.call_tool(
-            "init_project", {"domain": "medical-research"}
-        )
-        assert json.loads(init[0].text)["success"] is True
+        init = await mcp_server.call_tool("init_project", {"domain": "medical-research"})
+        assert json.loads(init[0][0].text)["success"] is True
         from autoinfo.kb import SQLiteIndex
 
         SQLiteIndex(tmp_path / "autoinfo.db").init_db()
@@ -176,12 +187,13 @@ class TestExportAgentPureFunction:
         result = await mcp_server.call_tool(
             "export_kb", {"domain": "medical-research", "format": "agent"}
         )
-        body = json.loads(result[0].text)
-        # export_kb's agent dict carries success=True → passes through the
-        # call_tool envelope unwrapped; the JSON-LD @type must be present.
-        assert body.get("@type") == "KnowledgeBaseExport", body
-        assert body.get("@context"), body
-        assert body.get("stats", {}).get("total_entries") == 0
+        body = json.loads(result[0][0].text)
+        # export_kb's agent dict is wrapped in the canonical success envelope;
+        # the JSON-LD @type must be present under ``data``.
+        assert body["success"] is True
+        assert body["data"].get("@type") == "KnowledgeBaseExport", body
+        assert body["data"].get("@context"), body
+        assert body["data"].get("stats", {}).get("total_entries") == 0
 
 
 def _read_audit_rows(db_path: Path) -> list[dict[str, object]]:
@@ -190,9 +202,7 @@ def _read_audit_rows(db_path: Path) -> list[dict[str, object]]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            "SELECT * FROM audit_log ORDER BY rowid"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM audit_log ORDER BY rowid").fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()

@@ -20,7 +20,10 @@
 # on defect + clean bodies — no LLM, no network.
 name: regression-351-year-hallucination-tuning
 description: "Regression #351: _no_year_hallucination no longer flags plausible month-year prose (March 2020 / June 1995 / current year), while future and pre-1950 month-years still fail"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#351"
 requires_env: []

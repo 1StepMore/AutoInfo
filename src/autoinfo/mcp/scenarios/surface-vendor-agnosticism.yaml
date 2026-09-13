@@ -1,0 +1,20 @@
+name: surface-vendor-agnosticism
+description: >-
+  T-S-12 (AGENTS #194/#195): the judge/battery paths carry no hardcoded
+  vendor/model literal, every L1 blind-spot check_desc is vendor-free, the
+  battery uses the config-driven channel, and judgment resolution is
+  config-first (llm.judgment_model -> llm.model -> JudgmentModelNotConfiguredError).
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "vendor/model agnosticism contract holds"
+    kind: cli
+    command: python3 scripts/vendor_agnosticism_check.py
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "VENDOR_AGNOSTICISM_OK"

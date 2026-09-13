@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,12 +23,20 @@ from mcp.types import CallToolRequest, CallToolRequestParams
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp import validation as validation_mod
 from autoinfo.mcp.validation import (
+    CATEGORY_PYRAMID_HISTORY_FILE,
+    PYRAMID_LAYERS,
+    SCENARIO_CATEGORIES,
     _normalize_envelope,
+    aggregate_category_pyramid,
+    category_pyramid_history_report,
     diff_scenario_runs,
     list_scenarios,
     list_validation_runs,
+    load_category_pyramid_history,
     load_scenario_results,
     load_scenarios,
+    record_category_pyramid_history,
+    run_all_scenarios,
     run_scenario,
     save_scenario_results,
 )
@@ -63,7 +74,14 @@ class TestLoadScenarios:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "my-test.yaml").write_text(
-            "name: my-test\ndescription: Test\nsteps:\n"
+            "name: my-test\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step1\n    tool: health_check\n",
             encoding="utf-8",
         )
@@ -86,7 +104,13 @@ class TestLoadScenarios:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "no-name.yaml").write_text(
-            "description: Test\nsteps:\n  - name: s\n    tool: health_check\n",
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            ""
+            "steps:\n  - name: s\n    tool: health_check\n",
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="no-name\\.yaml.*missing.*'name'"):
@@ -108,7 +132,14 @@ class TestLoadScenarios:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "empty-steps.yaml").write_text(
-            "name: test\ndescription: Test\nsteps: []\n",
+            "name: test\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps: []\n"
+            "",
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="empty-steps\\.yaml.*non-empty"):
@@ -119,7 +150,14 @@ class TestLoadScenarios:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "bad-step.yaml").write_text(
-            "name: test\ndescription: Test\nsteps:\n  - tool: health_check\n",
+            "name: test\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            ""
+            "steps:\n  - tool: health_check\n",
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="bad-step\\.yaml.*step\\[0\\].*'name'"):
@@ -130,7 +168,14 @@ class TestLoadScenarios:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "bad-step.yaml").write_text(
-            "name: test\ndescription: Test\nsteps:\n  - name: s\n",
+            "name: test\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            ""
+            "steps:\n  - name: s\n",
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="bad-step\\.yaml.*step\\[0\\].*'tool'"):
@@ -172,15 +217,10 @@ class TestKeywordManagementScenario:
         raise AssertionError(f"no seed step calls add_keyword for {keyword!r}")
 
     @staticmethod
-    def _mutate_step_index(
-        steps: list[dict[str, Any]], keyword: str, tool: str
-    ) -> int:
+    def _mutate_step_index(steps: list[dict[str, Any]], keyword: str, tool: str) -> int:
         """Index of the mcp step that approves/rejects *keyword* via *tool*."""
         for i, step in enumerate(steps):
-            if (
-                step.get("tool") == tool
-                and step.get("arguments", {}).get("keyword") == keyword
-            ):
+            if step.get("tool") == tool and step.get("arguments", {}).get("keyword") == keyword:
                 return i
         raise AssertionError(f"no {tool} step found for keyword {keyword!r}")
 
@@ -298,8 +338,11 @@ class TestRunScenarioFakeDispatch:
     SCENARIO_YAML = """\
 name: fake-scenario
 description: "Fake scenario for unit testing"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "all-pass step"
     tool: fake_tool
@@ -326,8 +369,11 @@ steps:
     SCENARIO_LLM_YAML = """\
 name: llm-scenario
 description: "LLM-assert scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "llm-pass step"
     tool: fake_tool
@@ -347,8 +393,11 @@ steps:
     SCENARIO_ENV_GATED_YAML = """\
 name: env-gated
 description: "Env-gated scenario"
-category: test
+category: happy_path
 requires_env: ["MISSING_VAR_XYZ"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "should report unconfigured"
     tool: health_check
@@ -408,6 +457,7 @@ steps:
             tmp_path,
             "artifact-glob",
             "name: artifact-glob\ndescription: Test\n"
+            "category: happy_path\npyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             'collect_artifacts: ["knowledge/**/*.md", "outputs/**/*.md"]\n'
             "steps:\n"
             "  - name: step\n    tool: fake_tool\n    arguments: {}\n"
@@ -425,9 +475,7 @@ steps:
         matrix.write_text("# Coverage Matrix\n", encoding="utf-8")
 
         monkeypatch.chdir(cwd)
-        result = await run_scenario(
-            "artifact-glob", dispatch=self._fake_dispatch, scenarios_dir=sd
-        )
+        result = await run_scenario("artifact-glob", dispatch=self._fake_dispatch, scenarios_dir=sd)
         artifact_paths = {a["path"] for a in result["artifacts"]}
         assert str(legit) in artifact_paths, f"legit artifact missing: {artifact_paths}"
         assert not any("_failed" in p for p in artifact_paths), (
@@ -467,7 +515,14 @@ steps:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "bad-code.yaml").write_text(
-            "name: bad-code\ndescription: Test\nsteps:\n"
+            "name: bad-code\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: fake_error\n    arguments: {}\n"
             "    expect:\n      success: false\n      error_code: WrongCode\n",
             encoding="utf-8",
@@ -481,14 +536,19 @@ steps:
         assert result["steps"][0]["status"] == "failed"
         assert "WrongCode" in result["steps"][0].get("detail", "")
 
-    async def test_error_actionable_check_passes_when_actionable(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_error_actionable_check_passes_when_actionable(self, tmp_path: Path) -> None:
         """error_actionable: true passes when the envelope carries actionable."""
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "act-ok.yaml").write_text(
-            "name: act-ok\ndescription: Test\nsteps:\n"
+            "name: act-ok\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: fake_error_actionable\n    arguments: {}\n"
             "    expect:\n      success: false\n      error_code: Timeout\n"
             "      error_actionable: true\n",
@@ -502,14 +562,19 @@ steps:
         assert result["status"] == "passed"
         assert result["steps"][0]["status"] == "passed"
 
-    async def test_error_actionable_check_fails_when_missing(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_error_actionable_check_fails_when_missing(self, tmp_path: Path) -> None:
         """error_actionable: true fails when the envelope omits actionable."""
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "act-bad.yaml").write_text(
-            "name: act-bad\ndescription: Test\nsteps:\n"
+            "name: act-bad\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: fake_error\n    arguments: {}\n"
             "    expect:\n      success: false\n      error_code: Timeout\n"
             "      error_actionable: true\n",
@@ -546,7 +611,8 @@ steps:
     async def test_llm_assert_pass(self, scenario_dir: Path, monkeypatch) -> None:
         """llm_assert step should PASS when the real LLM judge says PASS."""
         monkeypatch.setattr(
-            os.environ, "get",
+            os.environ,
+            "get",
             lambda k, d=None: "sk-test" if k == "AUTOINFO_LLM_API_KEY" else d,
         )
         monkeypatch.setattr(
@@ -620,9 +686,7 @@ steps:
         assert result["steps"][0]["status"] == "unconfigured"
         assert "LLM API key" in result["steps"][0]["detail"]
 
-    async def test_llm_assert_judge_error_fails(
-        self, scenario_dir: Path, monkeypatch
-    ) -> None:
+    async def test_llm_assert_judge_error_fails(self, scenario_dir: Path, monkeypatch) -> None:
         """A judge exception should surface as FAIL — no silent swallowing."""
         monkeypatch.setattr(
             "autoinfo.mcp.validation._is_llm_configured",
@@ -691,7 +755,14 @@ steps:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "exc.yaml").write_text(
-            "name: exc-test\ndescription: Test\nsteps:\n"
+            "name: exc-test\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: will_raise\n    arguments: {}\n",
             encoding="utf-8",
         )
@@ -713,8 +784,11 @@ steps:
     HTTP_REQUIRED_YAML = """\
 name: http-required
 description: "Scenario requiring a reachable HTTP endpoint"
-category: test
+category: happy_path
 requires_http: ["http://127.0.0.1:9/health"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "all-pass step"
     tool: fake_tool
@@ -736,101 +810,96 @@ steps:
         """A scenario whose requires_http endpoint is unreachable reports
         'unconfigured' with the URL in the reason — not 'failed' (#157)."""
         sd = self._write_scenario(tmp_path, "http-required", self.HTTP_REQUIRED_YAML)
-        monkeypatch.setattr(
-            "autoinfo.mcp.validation._http_reachable", lambda url: False
-        )
-        result = await run_scenario(
-            "http-required", dispatch=self._fake_dispatch, scenarios_dir=sd
-        )
+        monkeypatch.setattr("autoinfo.mcp.validation._http_reachable", lambda url: False)
+        result = await run_scenario("http-required", dispatch=self._fake_dispatch, scenarios_dir=sd)
         assert result["status"] == "unconfigured"
         assert "http://127.0.0.1:9/health" in result["unconfigured_reason"]
         assert result["summary"]["unconfigured"] == result["summary"]["total"]
         assert result["summary"]["failed"] == 0
-        assert all(
-            step["status"] == "unconfigured" for step in result["steps"]
-        )
+        assert all(step["status"] == "unconfigured" for step in result["steps"])
 
-    async def test_requires_http_reachable_runs_steps(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    async def test_requires_http_reachable_runs_steps(self, tmp_path: Path, monkeypatch) -> None:
         """When the requires_http endpoint is reachable the steps run and are
         NOT marked unconfigured (#157)."""
         sd = self._write_scenario(tmp_path, "http-required", self.HTTP_REQUIRED_YAML)
-        monkeypatch.setattr(
-            "autoinfo.mcp.validation._http_reachable", lambda url: True
-        )
-        result = await run_scenario(
-            "http-required", dispatch=self._fake_dispatch, scenarios_dir=sd
-        )
+        monkeypatch.setattr("autoinfo.mcp.validation._http_reachable", lambda url: True)
+        result = await run_scenario("http-required", dispatch=self._fake_dispatch, scenarios_dir=sd)
         assert result["status"] == "passed"
         assert result["steps"][0]["status"] == "passed"
         assert result["summary"]["unconfigured"] == 0
 
-    async def test_reddit_oauth_missing_classified_unconfigured(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_reddit_oauth_missing_classified_unconfigured(self, tmp_path: Path) -> None:
         """A dispatch raising Reddit-OAuth-missing ValueError is classified
         as unconfigured, not failed (#157)."""
         sd = self._write_scenario(
             tmp_path,
             "reddit-oauth",
-            "name: reddit-oauth\ndescription: Test\nsteps:\n"
+            "name: reddit-oauth\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: reddit_tool\n    arguments: {}\n",
         )
 
         async def raise_dispatch(name: str, arguments: dict) -> dict:
-            raise ValueError(
-                "Reddit OAuth2 requires client_id and client_secret in config."
-            )
+            raise ValueError("Reddit OAuth2 requires client_id and client_secret in config.")
 
-        result = await run_scenario(
-            "reddit-oauth", dispatch=raise_dispatch, scenarios_dir=sd
-        )
+        result = await run_scenario("reddit-oauth", dispatch=raise_dispatch, scenarios_dir=sd)
         step = result["steps"][0]
         assert step["status"] == "unconfigured"
         assert "Reddit" in step["detail"]
         assert result["status"] == "unconfigured"
 
-    async def test_tts_network_error_classified_unconfigured(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_tts_network_error_classified_unconfigured(self, tmp_path: Path) -> None:
         """A dispatch raising the TTS network RuntimeError is classified as
         unconfigured, not failed (#157)."""
         sd = self._write_scenario(
             tmp_path,
             "tts-net",
-            "name: tts-net\ndescription: Test\nsteps:\n"
+            "name: tts-net\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: tts_tool\n    arguments: {}\n",
         )
 
         async def raise_dispatch(name: str, arguments: dict) -> dict:
             raise RuntimeError("OpenAI TTS network error: Network is unreachable")
 
-        result = await run_scenario(
-            "tts-net", dispatch=raise_dispatch, scenarios_dir=sd
-        )
+        result = await run_scenario("tts-net", dispatch=raise_dispatch, scenarios_dir=sd)
         step = result["steps"][0]
         assert step["status"] == "unconfigured"
         assert "TTS" in step["detail"]
 
-    async def test_connect_error_classified_unconfigured(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_connect_error_classified_unconfigured(self, tmp_path: Path) -> None:
         """An httpx connection error raised from dispatch is classified as
         unconfigured, not failed (#157)."""
         sd = self._write_scenario(
             tmp_path,
             "connect-err",
-            "name: connect-err\ndescription: Test\nsteps:\n"
+            "name: connect-err\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: http_tool\n    arguments: {}\n",
         )
 
         async def raise_dispatch(name: str, arguments: dict) -> dict:
             raise httpx.ConnectError("connection refused")
 
-        result = await run_scenario(
-            "connect-err", dispatch=raise_dispatch, scenarios_dir=sd
-        )
+        result = await run_scenario("connect-err", dispatch=raise_dispatch, scenarios_dir=sd)
         step = result["steps"][0]
         assert step["status"] == "unconfigured"
         assert "connect" in step["detail"].lower()
@@ -841,16 +910,21 @@ steps:
         sd = self._write_scenario(
             tmp_path,
             "generic-boom",
-            "name: generic-boom\ndescription: Test\nsteps:\n"
+            "name: generic-boom\n"
+            "description: Test\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: step\n    tool: boom_tool\n    arguments: {}\n",
         )
 
         async def raise_dispatch(name: str, arguments: dict) -> dict:
             raise RuntimeError("boom")
 
-        result = await run_scenario(
-            "generic-boom", dispatch=raise_dispatch, scenarios_dir=sd
-        )
+        result = await run_scenario("generic-boom", dispatch=raise_dispatch, scenarios_dir=sd)
         step = result["steps"][0]
         assert step["status"] == "failed"  # NOT unconfigured
         assert "dispatch exception" in step["detail"]
@@ -863,8 +937,11 @@ class TestRunScenarioCliHttp:
     CLI_SCENARIO_YAML = """\
 name: cli-scenario
 description: "CLI execution scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "echo success"
     kind: cli
@@ -884,8 +961,11 @@ steps:
     HTTP_SCENARIO_YAML = """\
 name: http-scenario
 description: "HTTP execution scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "example.com reachable"
     kind: http
@@ -899,8 +979,11 @@ steps:
     HTTP_JSON_SCENARIO_YAML = """\
 name: http-json-scenario
 description: "HTTP JSON body assertion"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "jsonplaceholder returns json"
     kind: http
@@ -926,7 +1009,16 @@ steps:
         assert result["summary"]["passed"] == 2
 
     async def test_cli_missing_command_raises(self, tmp_path: Path) -> None:
-        yaml_text = "name: bad\ndescription: T\nsteps:\n  - name: s\n    kind: cli\n"
+        yaml_text = (
+            "name: bad\n"
+            "description: T\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            ""
+            "steps:\n  - name: s\n    kind: cli\n"
+        )
         sd = self._write(tmp_path, "bad", yaml_text)
         with pytest.raises(ValueError, match="kind=cli.*'command'"):
             load_scenarios(sd)
@@ -945,8 +1037,16 @@ steps:
 
     async def test_http_missing_url_raises(self, tmp_path: Path) -> None:
         sd = self._write(
-            tmp_path, "badhttp",
-            "name: badhttp\ndescription: T\nsteps:\n"
+            tmp_path,
+            "badhttp",
+            "name: badhttp\n"
+            "description: T\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: s\n    kind: http\n    method: GET\n",
         )
         with pytest.raises(ValueError, match="kind=http.*'url'"):
@@ -960,8 +1060,11 @@ class TestRunScenarioCleanupSteps:
     CLEANUP_SCENARIO_YAML = """\
 name: cleanup-scenario
 description: "Cleanup-steps scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "main pass step"
     tool: fake_tool
@@ -981,8 +1084,11 @@ cleanup_steps:
     FAILING_CLEANUP_SCENARIO_YAML = """\
 name: cleanup-fail-scenario
 description: "Cleanup-steps scenario with failing main step"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "main fail step"
     tool: fake_error
@@ -1002,8 +1108,11 @@ cleanup_steps:
     FAILING_CLEANUP_STEP_YAML = """\
 name: cleanup-bad-step-scenario
 description: "Cleanup-steps scenario with failing cleanup step"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "main pass step"
     tool: fake_tool
@@ -1023,8 +1132,11 @@ cleanup_steps:
     ENV_GATED_CLEANUP_YAML = """\
 name: env-gated-cleanup
 description: "Env-gated scenario with cleanup"
-category: test
+category: happy_path
 requires_env: ["MISSING_VAR_XYZ"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "should report unconfigured"
     tool: health_check
@@ -1039,18 +1151,14 @@ cleanup_steps:
     def cleanup_scenario_dir(self, tmp_path: Path) -> Path:
         sd = tmp_path / "scenarios"
         sd.mkdir()
-        (sd / "cleanup-scenario.yaml").write_text(
-            self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
-        )
+        (sd / "cleanup-scenario.yaml").write_text(self.CLEANUP_SCENARIO_YAML, encoding="utf-8")
         (sd / "cleanup-fail-scenario.yaml").write_text(
             self.FAILING_CLEANUP_SCENARIO_YAML, encoding="utf-8"
         )
         (sd / "cleanup-bad-step-scenario.yaml").write_text(
             self.FAILING_CLEANUP_STEP_YAML, encoding="utf-8"
         )
-        (sd / "env-gated-cleanup.yaml").write_text(
-            self.ENV_GATED_CLEANUP_YAML, encoding="utf-8"
-        )
+        (sd / "env-gated-cleanup.yaml").write_text(self.ENV_GATED_CLEANUP_YAML, encoding="utf-8")
         return sd
 
     @pytest.fixture
@@ -1070,9 +1178,7 @@ cleanup_steps:
         cleanup_calls.append(name)
         return await self._fake_dispatch(name, arguments)
 
-    async def test_cleanup_runs_and_is_reported(
-        self, cleanup_scenario_dir: Path
-    ) -> None:
+    async def test_cleanup_runs_and_is_reported(self, cleanup_scenario_dir: Path) -> None:
         """Cleanup steps run after a passing scenario and are reported."""
         result = await run_scenario(
             "cleanup-scenario",
@@ -1086,9 +1192,7 @@ cleanup_steps:
         assert result["cleanup"]["summary"]["total"] == 1
         assert result["cleanup"]["steps"][0]["status"] == "passed"
 
-    async def test_cleanup_runs_after_main_failure(
-        self, cleanup_scenario_dir: Path
-    ) -> None:
+    async def test_cleanup_runs_after_main_failure(self, cleanup_scenario_dir: Path) -> None:
         """Cleanup runs even when a main step failed (state may exist)."""
         result = await run_scenario(
             "cleanup-fail-scenario",
@@ -1100,9 +1204,7 @@ cleanup_steps:
         assert "cleanup" in result
         assert result["cleanup"]["summary"]["passed"] == 1
 
-    async def test_cleanup_failure_does_not_flip_status(
-        self, cleanup_scenario_dir: Path
-    ) -> None:
+    async def test_cleanup_failure_does_not_flip_status(self, cleanup_scenario_dir: Path) -> None:
         """A failing cleanup step is reported but never flips scenario status."""
         result = await run_scenario(
             "cleanup-bad-step-scenario",
@@ -1119,6 +1221,7 @@ cleanup_steps:
         self, cleanup_scenario_dir: Path, cleanup_calls: list[str]
     ) -> None:
         """steps=[1] still triggers cleanup (partial runs create state too)."""
+
         async def dispatch(name: str, arguments: dict) -> dict:
             return await self._tracking_dispatch(name, arguments, cleanup_calls)
 
@@ -1134,9 +1237,7 @@ cleanup_steps:
         assert result["cleanup"]["summary"]["total"] == 1
         assert cleanup_calls.count("fake_tool") == 2  # main + cleanup
 
-    async def test_cleanup_skipped_when_unconfigured(
-        self, cleanup_scenario_dir: Path
-    ) -> None:
+    async def test_cleanup_skipped_when_unconfigured(self, cleanup_scenario_dir: Path) -> None:
         """Env-gated early return runs nothing, so cleanup must not run."""
         env_before = os.environ.pop("MISSING_VAR_XYZ", None)
         try:
@@ -1151,38 +1252,44 @@ cleanup_steps:
             if env_before is not None:
                 os.environ["MISSING_VAR_XYZ"] = env_before
 
-    async def test_cleanup_step_missing_tool_raises(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_cleanup_step_missing_tool_raises(self, tmp_path: Path) -> None:
         """cleanup_steps are schema-validated like steps."""
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "bad-cleanup.yaml").write_text(
-            "name: bad-cleanup\ndescription: T\nsteps:\n"
+            "name: bad-cleanup\n"
+            "description: T\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: s\n    tool: fake_tool\n"
             "cleanup_steps:\n  - name: no-tool-step\n",
             encoding="utf-8",
         )
-        with pytest.raises(
-            ValueError, match="cleanup_step\\[0\\].*'tool'"
-        ):
+        with pytest.raises(ValueError, match="cleanup_step\\[0\\].*'tool'"):
             load_scenarios(sd)
 
-    async def test_cleanup_cli_step_validates_command(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_cleanup_cli_step_validates_command(self, tmp_path: Path) -> None:
         """kind=cli cleanup steps require a command."""
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "bad-cli-cleanup.yaml").write_text(
-            "name: bad-cli-cleanup\ndescription: T\nsteps:\n"
+            "name: bad-cli-cleanup\n"
+            "description: T\n"
+            "category: happy_path\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            ""
             "  - name: s\n    tool: fake_tool\n"
             "cleanup_steps:\n  - name: no-command\n    kind: cli\n",
             encoding="utf-8",
         )
-        with pytest.raises(
-            ValueError, match="cleanup_step\\[0\\].*kind=cli.*'command'"
-        ):
+        with pytest.raises(ValueError, match="cleanup_step\\[0\\].*kind=cli.*'command'"):
             load_scenarios(sd)
 
 
@@ -1198,8 +1305,11 @@ class TestRunScenarioRecovery:
     RECOVERY_SCENARIO_YAML = """\
 name: recovery-scenario
 description: "Recovery-steps scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "primary fails, recovery succeeds"
     tool: flaky_tool
@@ -1246,9 +1356,12 @@ steps:
     PARTIAL_SCENARIO_YAML = """\
 name: partial-recovery-scenario
 description: "Partial-pass policy scenario"
-category: test
+category: happy_path
 requires_env: []
 min_passing: 2
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "primary fails, recovery succeeds"
     tool: flaky_tool
@@ -1279,9 +1392,12 @@ steps:
     STRICT_PARTIAL_SCENARIO_YAML = """\
 name: strict-partial-recovery-scenario
 description: "Strict partial-pass policy scenario"
-category: test
+category: happy_path
 requires_env: []
 min_passing: 3
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "primary fails, recovery succeeds"
     tool: flaky_tool
@@ -1312,9 +1428,12 @@ steps:
     RATIO_SCENARIO_YAML = """\
 name: ratio-recovery-scenario
 description: "Pass-ratio policy scenario"
-category: test
+category: happy_path
 requires_env: []
 pass_ratio: 0.5
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "primary fails, recovery succeeds"
     tool: flaky_tool
@@ -1338,9 +1457,12 @@ steps:
     RATIO_STRICT_SCENARIO_YAML = """\
 name: ratio-strict-recovery-scenario
 description: "Strict pass-ratio policy scenario"
-category: test
+category: happy_path
 requires_env: []
 pass_ratio: 0.9
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "primary fails, recovery succeeds"
     tool: flaky_tool
@@ -1364,8 +1486,11 @@ steps:
     TIMEOUT_RECOVERY_SCENARIO_YAML = """\
 name: timeout-recovery-scenario
 description: "Timeout-triggered recovery scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "hanging primary triggers recovery"
     tool: slow_tool
@@ -1381,6 +1506,75 @@ steps:
           data_has: ["result"]
 """
 
+    UNCONFIGURED_PARTIAL_SCENARIO_YAML = """\
+name: unconfigured-partial-scenario
+description: "Partial-pass with an unconfigured step (R-S-06)"
+category: happy_path
+requires_env: []
+min_passing: 1
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
+steps:
+  - name: "plain pass"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "environment-gated step"
+    tool: unconfigured_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    UNCONFIGURED_STRICT_SCENARIO_YAML = """\
+name: unconfigured-strict-scenario
+description: "Partial-pass threshold not met with an unconfigured step (R-S-06)"
+category: happy_path
+requires_env: []
+min_passing: 2
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
+steps:
+  - name: "plain pass"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "environment-gated step"
+    tool: unconfigured_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
+    UNCONFIGURED_RATIO_SCENARIO_YAML = """\
+name: unconfigured-ratio-scenario
+description: "Pass-ratio met alongside an unconfigured step (R-S-06)"
+category: happy_path
+requires_env: []
+pass_ratio: 0.5
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
+steps:
+  - name: "plain pass"
+    tool: fake_tool
+    arguments: {}
+    expect:
+      success: true
+
+  - name: "environment-gated step"
+    tool: unconfigured_tool
+    arguments: {}
+    expect:
+      success: true
+"""
+
     @pytest.fixture
     def recovery_dir(self, tmp_path: Path) -> Path:
         sd = tmp_path / "scenarios"
@@ -1392,6 +1586,9 @@ steps:
             "ratio-recovery-scenario.yaml": self.RATIO_SCENARIO_YAML,
             "ratio-strict-recovery-scenario.yaml": self.RATIO_STRICT_SCENARIO_YAML,
             "timeout-recovery-scenario.yaml": self.TIMEOUT_RECOVERY_SCENARIO_YAML,
+            "unconfigured-partial-scenario.yaml": self.UNCONFIGURED_PARTIAL_SCENARIO_YAML,
+            "unconfigured-strict-scenario.yaml": self.UNCONFIGURED_STRICT_SCENARIO_YAML,
+            "unconfigured-ratio-scenario.yaml": self.UNCONFIGURED_RATIO_SCENARIO_YAML,
         }
         for name, content in files.items():
             (sd / name).write_text(content, encoding="utf-8")
@@ -1404,14 +1601,14 @@ steps:
             return {"success": False, "error": {"code": "Timeout", "message": "timeout"}}
         if name == "flaky_tool":
             return {"success": False, "error": {"code": "SourceUnreachable", "message": "boom"}}
+        if name == "unconfigured_tool":
+            raise httpx.ConnectError("simulated unreachable service")
         if name == "slow_tool":
             await asyncio.sleep(5)
             return {"success": True, "data": {}}
         return {"success": True, "data": {}}
 
-    async def test_recovery_step_runs_and_expect_is_evaluated(
-        self, recovery_dir: Path
-    ) -> None:
+    async def test_recovery_step_runs_and_expect_is_evaluated(self, recovery_dir: Path) -> None:
         """A failed primary runs its recovery step; the recovery step's own
         expect assertions are evaluated (data_has on fake_tool passes)."""
         result = await run_scenario(
@@ -1468,9 +1665,7 @@ steps:
         assert result["summary"]["recovered"] == 0
         assert result["status"] == "passed"
 
-    async def test_mixed_scenario_counts_recovered_not_failed(
-        self, recovery_dir: Path
-    ) -> None:
+    async def test_mixed_scenario_counts_recovered_not_failed(self, recovery_dir: Path) -> None:
         """Recovered + failed mix: summary separates them; one unrecovered
         failure still fails the default all-or-nothing policy."""
         result = await run_scenario(
@@ -1492,8 +1687,11 @@ steps:
             scenarios_dir=recovery_dir,
         )
         assert result["summary"] == {
-            "passed": 1, "failed": 1, "unconfigured": 0,
-            "recovered": 1, "total": 3,
+            "passed": 1,
+            "failed": 1,
+            "unconfigured": 0,
+            "recovered": 1,
+            "total": 3,
         }
         assert result["status"] == "passed"
 
@@ -1542,17 +1740,130 @@ steps:
         assert result["summary"]["recovered"] == 1
         assert result["status"] == "passed"
 
+    async def test_recovery_does_not_reevaluate_primary_assertion(self, recovery_dir: Path) -> None:
+        """R-S-03: recovery is recovered-only — the primary keeps its original
+        failure detail; its assertion is never re-evaluated into a pass."""
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[1],
+            scenarios_dir=recovery_dir,
+        )
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert step["recovered"] is True
+        # The primary's detail is its own assertion failure, not the recovery's
+        # successful payload — proof the primary was not re-evaluated.
+        assert "expected success=True, got success=False" in step["detail"]
+        assert "result" not in step["detail"]
+        assert step["recovery"][0]["detail"]["data"] == {"result": "ok"}
+
+    def test_contract_recovery_semantics_recovered_only(self) -> None:
+        """R-S-03: the contract must describe recovered-only recovery (no
+        re-evaluation of the primary), matching the engine."""
+        contract = (
+            Path(__file__).resolve().parents[2] / "docs" / "dev" / "validation-scenario-contract.md"
+        ).read_text(encoding="utf-8")
+        assert "then re-evaluate" not in contract
+        assert "not re-evaluated" in contract
+
+    async def test_unconfigured_does_not_block_met_threshold(self, recovery_dir: Path) -> None:
+        """R-S-06: a met min_passing threshold passes even when another step is
+        unconfigured; the unconfigured step is never counted as a pass."""
+        result = await run_scenario(
+            "unconfigured-partial-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"] == {
+            "passed": 1,
+            "failed": 0,
+            "unconfigured": 1,
+            "recovered": 0,
+            "total": 2,
+        }
+        assert result["status"] == "passed"
+        assert result["steps"][1]["status"] == "unconfigured"
+
+    async def test_unconfigured_outranks_when_threshold_not_met(self, recovery_dir: Path) -> None:
+        """R-S-06: when the threshold is not met, an unconfigured step makes the
+        scenario unconfigured (not failed)."""
+        result = await run_scenario(
+            "unconfigured-strict-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["summary"]["unconfigured"] == 1
+        assert result["summary"]["passed"] == 1
+        assert result["status"] == "unconfigured"
+
+    async def test_unconfigured_does_not_block_met_pass_ratio(self, recovery_dir: Path) -> None:
+        """R-S-06: a met pass_ratio also wins over an unconfigured step."""
+        result = await run_scenario(
+            "unconfigured-ratio-scenario",
+            dispatch=self._fake_dispatch,
+            scenarios_dir=recovery_dir,
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["unconfigured"] == 1
+
+    def test_leak_scan_raises_on_broken_store(self, monkeypatch) -> None:
+        """R-S-07: a broken KB store must fail loudly, not report no leaks."""
+        import autoinfo.kb as kb_mod
+
+        def _boom(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("kb store unavailable")
+
+        monkeypatch.setattr(kb_mod, "KBStore", _boom)
+        with pytest.raises(validation_mod.LeakScanError):
+            validation_mod._scan_autoinfo_test_leaks()
+
+    async def test_run_scenario_surfaces_leak_scan_error(
+        self, recovery_dir: Path, monkeypatch
+    ) -> None:
+        """R-S-07: a failed leak scan surfaces as a LEAK_SCAN_ERROR warning so a
+        passing run is never silently reported leak-free."""
+
+        def _boom() -> list[str]:
+            raise validation_mod.LeakScanError("kb store unavailable")
+
+        monkeypatch.setattr(validation_mod, "_scan_autoinfo_test_leaks", _boom)
+        result = await run_scenario(
+            "recovery-scenario",
+            dispatch=self._fake_dispatch,
+            steps=[3],
+            scenarios_dir=recovery_dir,
+        )
+        assert result["status"] == "passed"
+        warnings = result.get("warnings", [])
+        assert any("LEAK_SCAN_ERROR" in w for w in warnings)
+        assert any("UNKNOWN" in w for w in warnings)
+
     async def test_recovery_schema_validation(self, tmp_path: Path) -> None:
         """recovery_steps must be a list of valid steps (same schema)."""
         bad_cases = {
             "bad-recovery-list.yaml": (
-                "name: bad-recovery-list\ndescription: T\nsteps:\n"
+                "name: bad-recovery-list\n"
+                "description: T\n"
+                "category: happy_path\n"
+                "pyramid_layer: component\n"
+                "pipeline_stage: A7\n"
+                ""
+                "user_level: B2.5\n"
+                "steps:\n"
                 "  - name: s\n    tool: fake_tool\n"
                 "    recovery_steps: {}\n",
                 "recovery_steps.*must be a list",
             ),
             "bad-recovery-tool.yaml": (
-                "name: bad-recovery-tool\ndescription: T\nsteps:\n"
+                "name: bad-recovery-tool\n"
+                "description: T\n"
+                "category: happy_path\n"
+                "pyramid_layer: component\n"
+                "pipeline_stage: A7\n"
+                ""
+                "user_level: B2.5\n"
+                "steps:\n"
                 "  - name: s\n    tool: fake_tool\n"
                 "    recovery_steps:\n      - name: no-tool-step\n",
                 r"recovery_steps\[0\].*'tool'",
@@ -1578,25 +1889,41 @@ steps:
     def test_diff_populates_recovered_bucket(self, tmp_path) -> None:
         """A step failed in base but passing-with-recovery in head shows up
         in the recovered bucket — the previously-dead wiring (issue #138)."""
+
         def result(status: str, steps: list[dict]) -> dict:
             return {
-                "scenario": "rec", "status": status,
-                "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
-                            "recovered": 0, "total": 1},
+                "scenario": "rec",
+                "status": status,
+                "summary": {
+                    "passed": 0,
+                    "failed": 1,
+                    "unconfigured": 0,
+                    "recovered": 0,
+                    "total": 1,
+                },
                 "steps": steps,
             }
 
         base = save_scenario_results(
-            [result("failed", [{"name": "collect", "tool": "test_source",
-                                "status": "failed"}])],
+            [result("failed", [{"name": "collect", "tool": "test_source", "status": "failed"}])],
             runs_dir=tmp_path,
         )
         head = save_scenario_results(
-            [result("passed", [{"name": "collect", "tool": "test_source",
-                                "status": "failed", "recovered": True,
-                                "recovery_status": "passed",
-                                "recovery": [{"name": "fallback", "tool": "echo",
-                                              "status": "passed"}]}])],
+            [
+                result(
+                    "passed",
+                    [
+                        {
+                            "name": "collect",
+                            "tool": "test_source",
+                            "status": "failed",
+                            "recovered": True,
+                            "recovery_status": "passed",
+                            "recovery": [{"name": "fallback", "tool": "echo", "status": "passed"}],
+                        }
+                    ],
+                )
+            ],
             runs_dir=tmp_path,
         )
         diff = diff_scenario_runs(base, head)
@@ -1609,18 +1936,24 @@ steps:
     def test_diff_recovered_requires_base_failure(self, tmp_path) -> None:
         """Head-passed-with-recovery against a base that was not failed is a
         new pass, not a recovery."""
+
         def result(status: str, steps: list[dict]) -> dict:
             return {
-                "scenario": "rec", "status": status,
-                "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
-                            "recovered": 0, "total": 1},
+                "scenario": "rec",
+                "status": status,
+                "summary": {
+                    "passed": 0,
+                    "failed": 1,
+                    "unconfigured": 0,
+                    "recovered": 0,
+                    "total": 1,
+                },
                 "steps": steps,
             }
 
         base = save_scenario_results([result("passed", [])], runs_dir=tmp_path)
         head = save_scenario_results(
-            [result("passed", [{"name": "collect", "status": "failed",
-                                "recovered": True}])],
+            [result("passed", [{"name": "collect", "status": "failed", "recovered": True}])],
             runs_dir=tmp_path,
         )
         diff = diff_scenario_runs(base, head)
@@ -1629,27 +1962,199 @@ steps:
 
     def test_diff_without_recovery_data_unchanged(self, tmp_path) -> None:
         """Diff of runs without recovery metadata behaves as before."""
-        base = save_scenario_results([
-            {"scenario": "a", "status": "passed",
-             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
-                         "recovered": 0, "total": 1}},
-            {"scenario": "b", "status": "failed",
-             "summary": {"passed": 0, "failed": 1, "unconfigured": 0,
-                         "recovered": 0, "total": 1}},
-        ], runs_dir=tmp_path)
-        head = save_scenario_results([
-            {"scenario": "a", "status": "passed",
-             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
-                         "recovered": 0, "total": 1}},
-            {"scenario": "b", "status": "passed",
-             "summary": {"passed": 1, "failed": 0, "unconfigured": 0,
-                         "recovered": 0, "total": 1}},
-        ], runs_dir=tmp_path)
+        base = save_scenario_results(
+            [
+                {
+                    "scenario": "a",
+                    "status": "passed",
+                    "summary": {
+                        "passed": 1,
+                        "failed": 0,
+                        "unconfigured": 0,
+                        "recovered": 0,
+                        "total": 1,
+                    },
+                },
+                {
+                    "scenario": "b",
+                    "status": "failed",
+                    "summary": {
+                        "passed": 0,
+                        "failed": 1,
+                        "unconfigured": 0,
+                        "recovered": 0,
+                        "total": 1,
+                    },
+                },
+            ],
+            runs_dir=tmp_path,
+        )
+        head = save_scenario_results(
+            [
+                {
+                    "scenario": "a",
+                    "status": "passed",
+                    "summary": {
+                        "passed": 1,
+                        "failed": 0,
+                        "unconfigured": 0,
+                        "recovered": 0,
+                        "total": 1,
+                    },
+                },
+                {
+                    "scenario": "b",
+                    "status": "passed",
+                    "summary": {
+                        "passed": 1,
+                        "failed": 0,
+                        "unconfigured": 0,
+                        "recovered": 0,
+                        "total": 1,
+                    },
+                },
+            ],
+            runs_dir=tmp_path,
+        )
         diff = diff_scenario_runs(base, head)
         assert sorted(diff["new_passes"]) == ["b"]
         assert diff["recovered"] == []
         assert diff["recovered_steps"] == {}
         assert diff["unchanged"] == 1
+
+
+class TestPerStepTimeoutAndArtifacts:
+    """Todo 11 (R-S-01, R-S-02): the engine honors a step-level
+    ``timeout_seconds`` (step → scenario ``timeout`` → MCP/global default) and
+    a step-level ``collect_artifacts`` list, and rejects unknown/ambiguous
+    placements instead of silently ignoring them.
+    """
+
+    _META = "category: happy_path\npyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
+
+    async def _dispatch(self, name: str, arguments: dict) -> dict:
+        if name == "slow_tool":
+            await asyncio.sleep(5)
+            return {"success": True, "data": {}}
+        return {"success": True, "data": {"result": "ok"}}
+
+    def _write(self, tmp_path: Path, name: str, body: str) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir(exist_ok=True)
+        (sd / f"{name}.yaml").write_text(body, encoding="utf-8")
+        return sd
+
+    async def test_step_timeout_seconds_cuts_hanging_step(self, tmp_path: Path) -> None:
+        """A step declaring ``timeout_seconds: 1`` is cut at ~1s even though the
+        dispatch hangs for 5s and the MCP/global default is 180s (R-S-01)."""
+        sd = self._write(
+            tmp_path,
+            "step-timeout",
+            "name: step-timeout\ndescription: d\n" + self._META + "steps:\n"
+            "  - name: hang\n    tool: slow_tool\n    timeout_seconds: 1\n"
+            "    arguments: {}\n    expect:\n      success: true\n",
+        )
+        start = time.monotonic()
+        result = await run_scenario("step-timeout", dispatch=self._dispatch, scenarios_dir=sd)
+        elapsed = time.monotonic() - start
+        step = result["steps"][0]
+        assert step["status"] == "failed"
+        assert step["detail"] == "timed out after 1.0s"
+        assert elapsed < 3.0, f"per-step timeout ignored: ran {elapsed:.2f}s"
+        assert result["status"] == "failed"
+
+    async def test_step_timeout_falls_back_to_scenario_timeout(self, tmp_path: Path) -> None:
+        """With no step-level budget, the scenario-level ``timeout`` bounds the
+        step — the middle rung of the inheritance chain."""
+        sd = self._write(
+            tmp_path,
+            "scenario-timeout",
+            "name: scenario-timeout\ndescription: d\n" + self._META + "timeout: 1\n"
+            "steps:\n"
+            "  - name: hang\n    tool: slow_tool\n"
+            "    arguments: {}\n    expect:\n      success: true\n",
+        )
+        start = time.monotonic()
+        result = await run_scenario("scenario-timeout", dispatch=self._dispatch, scenarios_dir=sd)
+        elapsed = time.monotonic() - start
+        assert result["steps"][0]["status"] == "failed"
+        assert result["steps"][0]["detail"] == "timed out after 1.0s"
+        assert elapsed < 3.0
+
+    async def test_step_level_collect_artifacts_is_honored(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A step-level ``collect_artifacts`` list is collected, additively with
+        the scenario-level default (R-S-02)."""
+        sd = self._write(
+            tmp_path,
+            "step-artifacts",
+            "name: step-artifacts\ndescription: d\n"
+            + self._META
+            + 'collect_artifacts: ["outputs/**/*.md"]\n'
+            "steps:\n"
+            "  - name: emits\n    tool: fake_tool\n"
+            '    collect_artifacts: ["knowledge/**/*.md"]\n'
+            "    arguments: {}\n    expect:\n      success: true\n",
+        )
+        cwd = tmp_path / "cwd"
+        baseline = cwd / "outputs" / "medical-research" / "digest.md"
+        baseline.parent.mkdir(parents=True)
+        baseline.write_text("# digest\n", encoding="utf-8")
+        step_artifact = cwd / "knowledge" / "medical-research" / "01-Raw" / "e.md"
+        step_artifact.parent.mkdir(parents=True)
+        step_artifact.write_text("# entry\n", encoding="utf-8")
+        monkeypatch.chdir(cwd)
+
+        result = await run_scenario("step-artifacts", dispatch=self._dispatch, scenarios_dir=sd)
+        paths = {a["path"] for a in result["artifacts"]}
+        assert str(step_artifact) in paths, f"step artifact missing: {paths}"
+        assert str(baseline) in paths, f"scenario baseline missing: {paths}"
+
+    def test_cleanup_step_collect_artifacts_rejected(self, tmp_path: Path) -> None:
+        """A cleanup-step ``collect_artifacts`` cannot be honored (the artifact
+        snapshot precedes cleanup) — the loader rejects it instead of dropping
+        it (R-S-02)."""
+        sd = self._write(
+            tmp_path,
+            "cleanup-artifacts",
+            "name: cleanup-artifacts\ndescription: d\n"
+            + self._META
+            + "steps:\n  - name: s\n    tool: fake_tool\n    arguments: {}\n"
+            "cleanup_steps:\n"
+            "  - name: c\n    tool: fake_tool\n"
+            '    collect_artifacts: ["outputs/**/*.md"]\n',
+        )
+        with pytest.raises(ValueError, match="collect_artifacts.*cleanup"):
+            load_scenarios(sd)
+
+    def test_nested_collect_artifacts_is_unknown_placement(self, tmp_path: Path) -> None:
+        """``collect_artifacts`` nested under ``expect`` is never read — reject
+        it as an unknown placement rather than silently ignoring it."""
+        sd = self._write(
+            tmp_path,
+            "nested-artifacts",
+            "name: nested-artifacts\ndescription: d\n"
+            + self._META
+            + "steps:\n  - name: s\n    tool: fake_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n"
+            '      collect_artifacts: ["outputs/**/*.md"]\n',
+        )
+        with pytest.raises(ValueError, match="collect_artifacts.*unknown"):
+            load_scenarios(sd)
+
+    def test_malformed_collect_artifacts_rejected(self, tmp_path: Path) -> None:
+        """A non-list ``collect_artifacts`` value fails to load."""
+        sd = self._write(
+            tmp_path,
+            "bad-artifacts",
+            "name: bad-artifacts\ndescription: d\n"
+            + self._META
+            + 'collect_artifacts: "outputs/**/*.md"\n'
+            "steps:\n  - name: s\n    tool: fake_tool\n    arguments: {}\n",
+        )
+        with pytest.raises(ValueError, match="collect_artifacts.*list"):
+            load_scenarios(sd)
 
 
 class TestRunScenarioRecoveryPackaged:
@@ -1720,9 +2225,7 @@ class TestValidationToolsDispatch:
         handler = mcp_server.app.request_handlers[CallToolRequest]
         request = CallToolRequest(
             method="tools/call",
-            params=CallToolRequestParams(
-                name="list_validation_scenarios", arguments={}
-            ),
+            params=CallToolRequestParams(name="list_validation_scenarios", arguments={}),
         )
         result = await handler(request)
         call_result = result.root
@@ -1759,9 +2262,7 @@ class TestValidationToolsDispatch:
         assert data["data"]["summary"]["failed"] == 0
 
     @pytest.mark.asyncio
-    async def test_run_llm_gated_reports_unconfigured_without_key(
-        self, monkeypatch
-    ) -> None:
+    async def test_run_llm_gated_reports_unconfigured_without_key(self, monkeypatch) -> None:
         """llm-gated scenario should report 'unconfigured' when
         AUTOINFO_LLM_API_KEY is absent — never silently skipped."""
         # Ensure the key is not set for this test
@@ -1818,9 +2319,16 @@ class TestValidationRunPersistence:
 
     def _result(self, status: str, total: int = 1) -> dict:
         passed = 1 if status == "passed" else 0
-        return {"scenario": "unused", "status": status,
-                "summary": {"passed": passed, "failed": total - passed,
-                            "unconfigured": 0, "total": total}}
+        return {
+            "scenario": "unused",
+            "status": status,
+            "summary": {
+                "passed": passed,
+                "failed": total - passed,
+                "unconfigured": 0,
+                "total": total,
+            },
+        }
 
     def test_save_writes_scenarios_json_and_latest_pointer(self, tmp_path) -> None:
         run_dir = save_scenario_results(
@@ -1848,21 +2356,382 @@ class TestValidationRunPersistence:
         assert loaded["scenarios"][0]["scenario"] == "a"
 
     def test_diff_detects_regression_and_new_pass(self, tmp_path) -> None:
-        base = save_scenario_results([
-            {"scenario": "a", "status": "passed", "summary": {}},
-            {"scenario": "b", "status": "failed", "summary": {}},
-            {"scenario": "c", "status": "passed", "summary": {}},
-        ], runs_dir=tmp_path)
-        head = save_scenario_results([
-            {"scenario": "a", "status": "passed", "summary": {}},
-            {"scenario": "b", "status": "passed", "summary": {}},
-            {"scenario": "c", "status": "failed", "summary": {}},
-        ], runs_dir=tmp_path)
+        base = save_scenario_results(
+            [
+                {"scenario": "a", "status": "passed", "summary": {}},
+                {"scenario": "b", "status": "failed", "summary": {}},
+                {"scenario": "c", "status": "passed", "summary": {}},
+            ],
+            runs_dir=tmp_path,
+        )
+        head = save_scenario_results(
+            [
+                {"scenario": "a", "status": "passed", "summary": {}},
+                {"scenario": "b", "status": "passed", "summary": {}},
+                {"scenario": "c", "status": "failed", "summary": {}},
+            ],
+            runs_dir=tmp_path,
+        )
         diff = diff_scenario_runs(base, head)
         assert sorted(diff["regressed"]) == ["c"]
         assert sorted(diff["new_passes"]) == ["b"]
         assert diff["head_passed"] == 2
         assert diff["head_failed"] == 1
+
+
+class TestDiffScenarioClassification:
+    """TR-S-01: ``diff_scenario_runs`` must classify persistent non-passed
+    statuses as unchanged — never as fresh ``new_failures`` — and must count
+    each unchanged scenario exactly once."""
+
+    @staticmethod
+    def _run(tmp_path: Path, name: str, scenarios: list[tuple[str, str]]) -> Path:
+        return save_scenario_results(
+            [{"scenario": n, "status": s, "summary": {}} for n, s in scenarios],
+            runs_dir=tmp_path / name,
+        )
+
+    def test_identical_failed_and_unconfigured_not_new_failures(self, tmp_path) -> None:
+        """Two identical runs of {failed, unconfigured} are fully unchanged."""
+        scenarios = [("f", "failed"), ("u", "unconfigured")]
+        base = self._run(tmp_path, "base", scenarios)
+        head = self._run(tmp_path, "head", scenarios)
+        diff = diff_scenario_runs(base, head)
+        assert diff["new_failures"] == []
+        assert diff["new_passes"] == []
+        assert diff["regressed"] == []
+        assert diff["unchanged"] == 2
+
+    def test_same_status_same_status_is_unchanged(self, tmp_path) -> None:
+        for status in ("passed", "failed", "unconfigured", "skipped", "error"):
+            base = self._run(tmp_path, "base", [("s", status)])
+            head = self._run(tmp_path, "head", [("s", status)])
+            diff = diff_scenario_runs(base, head)
+            assert diff["unchanged"] == 1, status
+            assert diff["new_failures"] == [], status
+            assert diff["new_passes"] == [], status
+            assert diff["regressed"] == [], status
+
+    def test_persistent_failure_is_not_new_failure(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [("s", "failed")])
+        head = self._run(tmp_path, "head", [("s", "failed")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["new_failures"] == []
+        assert diff["unchanged"] == 1
+
+    def test_failed_to_passed_is_new_pass(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [("s", "failed")])
+        head = self._run(tmp_path, "head", [("s", "passed")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["new_passes"] == ["s"]
+        assert diff["new_failures"] == []
+        assert diff["regressed"] == []
+        assert diff["unchanged"] == 0
+
+    def test_passed_to_failed_is_regression(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [("s", "passed")])
+        head = self._run(tmp_path, "head", [("s", "failed")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["regressed"] == ["s"]
+        assert diff["new_passes"] == []
+        assert diff["new_failures"] == []
+        assert diff["unchanged"] == 0
+
+    def test_new_scenario_failed_is_new_failure(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [])
+        head = self._run(tmp_path, "head", [("s", "failed")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["new_failures"] == ["s"]
+        assert diff["new_passes"] == []
+        assert diff["regressed"] == []
+        assert diff["unchanged"] == 0
+
+    def test_new_scenario_passed_is_new_pass(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [])
+        head = self._run(tmp_path, "head", [("s", "passed")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["new_passes"] == ["s"]
+        assert diff["new_failures"] == []
+        assert diff["regressed"] == []
+        assert diff["unchanged"] == 0
+
+    def test_passed_to_unconfigured_is_regression(self, tmp_path) -> None:
+        base = self._run(tmp_path, "base", [("s", "passed")])
+        head = self._run(tmp_path, "head", [("s", "unconfigured")])
+        diff = diff_scenario_runs(base, head)
+        assert diff["regressed"] == ["s"]
+        assert diff["new_passes"] == []
+        assert diff["new_failures"] == []
+        assert diff["unchanged"] == 0
+
+
+# ============================================================================
+# Unit tests: run_all_scenarios aggregate suite run (R-S-05)
+# ============================================================================
+
+
+class TestRunAllScenariosAggregate:
+    """R-S-05: one suite invocation runs the whole live library and persists a
+    single aggregate run whose ``scenarios[]`` carries every scenario result.
+
+    The per-scenario ``run_validation_scenario`` save path stays a single-
+    scenario run (``run_type="single"``); the suite path must not change it.
+    """
+
+    SCENARIO_TMPL = """\
+name: {name}
+description: "aggregate {name}"
+category: happy_path
+requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
+steps:
+  - name: "step"
+    tool: {tool}
+    arguments: {{}}
+    expect:
+      success: true
+"""
+
+    def _scenarios_dir(self, tmp_path: Path) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        for name, tool in (
+            ("alpha-ok", "ok_tool"),
+            ("beta-ok", "ok_tool"),
+            ("gamma-fail", "fail_tool"),
+        ):
+            (sd / f"{name}.yaml").write_text(
+                self.SCENARIO_TMPL.format(name=name, tool=tool), encoding="utf-8"
+            )
+        return sd
+
+    async def _dispatch(self, name: str, arguments: dict) -> dict:
+        if name == "ok_tool":
+            return {"success": True, "data": {"result": "ok"}}
+        if name == "fail_tool":
+            return {"success": False, "error": {"code": "X", "message": "boom"}}
+        return {"success": True, "data": {}}
+
+    async def test_aggregate_run_runs_library_and_persists_one_run(self, tmp_path: Path) -> None:
+        sd = self._scenarios_dir(tmp_path)
+        runs_dir = tmp_path / "runs"
+
+        result = await run_all_scenarios(
+            self._dispatch, scenarios_dir=sd, runs_dir=runs_dir, save=True
+        )
+
+        assert result["suite"] is True
+        assert result["count"] == 3
+        assert result["status"] == "failed"  # gamma-fail — never misleading
+        assert result["summary"]["total"] == 3
+        assert result["summary"]["passed"] == 2
+        assert result["summary"]["failed"] == 1
+        assert sorted(s["scenario"] for s in result["scenarios"]) == [
+            "alpha-ok",
+            "beta-ok",
+            "gamma-fail",
+        ]
+
+        saved = Path(result["saved_run"])
+        assert saved.parent == runs_dir
+        assert (runs_dir / "latest.txt").read_text().strip() == saved.name
+        # ONE aggregate run only — not one directory per scenario.
+        assert len(list_validation_runs(runs_dir)) == 1
+        payload = load_scenario_results(saved)
+        assert payload is not None
+        assert payload["run_type"] == "suite"
+        assert payload["scenarios"][0]["scenario"] == "alpha-ok"
+        assert len(payload["scenarios"]) == 3
+
+    async def test_aggregate_all_pass_reports_passed(self, tmp_path: Path) -> None:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        for name in ("alpha-ok", "beta-ok"):
+            (sd / f"{name}.yaml").write_text(
+                self.SCENARIO_TMPL.format(name=name, tool="ok_tool"),
+                encoding="utf-8",
+            )
+        result = await run_all_scenarios(
+            self._dispatch, scenarios_dir=sd, runs_dir=tmp_path / "runs"
+        )
+        assert result["status"] == "passed"
+        assert result["summary"]["failed"] == 0
+        assert result["summary"]["unconfigured"] == 0
+
+    async def test_aggregate_save_false_writes_no_run(self, tmp_path: Path) -> None:
+        sd = self._scenarios_dir(tmp_path)
+        runs_dir = tmp_path / "runs"
+        result = await run_all_scenarios(
+            self._dispatch, scenarios_dir=sd, runs_dir=runs_dir, save=False
+        )
+        assert "saved_run" not in result
+        assert not runs_dir.exists()
+
+    def test_save_defaults_to_single_run_type(self, tmp_path: Path) -> None:
+        run_dir = save_scenario_results(
+            [{"scenario": "a", "status": "passed", "summary": {}}],
+            runs_dir=tmp_path,
+        )
+        payload = load_scenario_results(run_dir)
+        assert payload is not None
+        assert payload["run_type"] == "single"
+
+
+# ============================================================================
+# Unit tests: category x pyramid ledger + N-run pass-rate history
+# (TR-B-01 / TR-B-02)
+# ============================================================================
+
+
+class TestCategoryPyramidLedger:
+    """TR-B-01/TR-B-02: per-scenario results aggregate into the 5x4
+    category x pyramid grid, and pass history accumulates across suite runs
+    (never overwritten) so N-run pass rates can be gated hard 5/5 / soft 4/5.
+    """
+
+    @staticmethod
+    def _scenario(name: str, category: str, layer: str, status: str) -> dict:
+        return {
+            "scenario": name,
+            "category": category,
+            "pyramid_layer": layer,
+            "status": status,
+            "summary": {
+                "passed": 1 if status == "passed" else 0,
+                "failed": 1 if status == "failed" else 0,
+                "unconfigured": 1 if status == "unconfigured" else 0,
+                "recovered": 0,
+                "total": 1,
+            },
+        }
+
+    def test_aggregate_grid_and_unclassified(self) -> None:
+        agg = aggregate_category_pyramid(
+            [
+                self._scenario("a", "happy_path", "component", "passed"),
+                self._scenario("b", "happy_path", "e2e", "failed"),
+                self._scenario("c", "failure", "component", "passed"),
+                {"scenario": "bad", "category": "nope", "status": "passed"},
+            ]
+        )
+        assert set(agg["cells"]) == {
+            "happy_path|component",
+            "happy_path|e2e",
+            "failure|component",
+        }
+        hp = agg["cells"]["happy_path|component"]
+        assert hp["scenarios"] == 1
+        assert hp["status"] == "passed"
+        assert hp["passed"] == 1
+        assert agg["cells"]["happy_path|e2e"]["status"] == "failed"
+        assert [u["scenario"] for u in agg["unclassified"]] == ["bad"]
+        assert agg["total"] == 4
+
+    def test_cell_verdict_unconfigured_semantics(self) -> None:
+        all_gated = aggregate_category_pyramid(
+            [
+                self._scenario("u1", "happy_path", "unit", "unconfigured"),
+            ]
+        )
+        assert all_gated["cells"]["happy_path|unit"]["status"] == "unconfigured"
+        mixed = aggregate_category_pyramid(
+            [
+                self._scenario("p", "happy_path", "unit", "passed"),
+                self._scenario("u", "happy_path", "unit", "unconfigured"),
+            ]
+        )
+        assert mixed["cells"]["happy_path|unit"]["status"] == "partial"
+
+    def test_suite_save_records_ledger_single_does_not(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        save_scenario_results(
+            [self._scenario("a", "happy_path", "component", "passed")],
+            runs_dir=runs,
+            run_type="single",
+        )
+        assert not (runs / CATEGORY_PYRAMID_HISTORY_FILE).exists()
+        save_scenario_results(
+            [self._scenario("a", "happy_path", "component", "passed")],
+            runs_dir=runs,
+            run_type="suite",
+        )
+        ledger = load_category_pyramid_history(runs)
+        assert len(ledger["runs"]) == 1
+        assert ledger["runs"][0]["run_type"] == "suite"
+        assert ledger["runs"][0]["cells"]["happy_path|component"]["status"] == "passed"
+
+    async def test_two_suite_runs_accumulate_not_overwrite(self, tmp_path: Path) -> None:
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "one.yaml").write_text(
+            TestRunAllScenariosAggregate.SCENARIO_TMPL.format(name="one", tool="ok_tool"),
+            encoding="utf-8",
+        )
+
+        async def dispatch(tool: str, arguments: dict) -> dict:
+            return {"success": True, "data": {}}
+
+        runs = tmp_path / "runs"
+        await run_all_scenarios(dispatch, scenarios_dir=sd, runs_dir=runs)
+        assert len(load_category_pyramid_history(runs)["runs"]) == 1
+        await run_all_scenarios(dispatch, scenarios_dir=sd, runs_dir=runs)
+        entries = load_category_pyramid_history(runs)["runs"]
+        assert len(entries) == 2
+        assert len({r["run_id"] for r in entries}) == 2
+
+    def test_n_run_rates_hard_soft_and_unmeasured(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        for i, status in enumerate(["passed", "passed", "passed", "passed", "failed"]):
+            record_category_pyramid_history(
+                [self._scenario("a", "happy_path", "component", status)],
+                run_id=f"2026-01-0{i + 1}_000000_000000",
+                runs_dir=runs,
+            )
+        rep = category_pyramid_history_report(runs)
+        cell = rep["cells"]["happy_path|component"]
+        assert rep["total_runs"] == 5
+        assert cell["runs"] == 5
+        assert cell["passes"] == 4
+        assert cell["rate"] == pytest.approx(0.8)
+        assert cell["meets_hard"] is False
+        assert cell["meets_soft"] is True
+        assert sum(1 for h in cell["history"] if h["status"] == "passed") == 4
+        unmeasured = rep["cells"]["performance|red_team"]
+        assert unmeasured["runs"] == 0
+        assert unmeasured["rate"] is None
+        assert unmeasured["meets_hard"] is False
+        assert unmeasured["meets_soft"] is False
+
+    def test_five_of_five_meets_hard(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        for i in range(5):
+            record_category_pyramid_history(
+                [self._scenario("a", "happy_path", "component", "passed")],
+                run_id=f"2026-02-0{i + 1}_000000_000000",
+                runs_dir=runs,
+            )
+        cell = category_pyramid_history_report(runs)["cells"]["happy_path|component"]
+        assert cell["passes"] == 5
+        assert cell["rate"] == 1.0
+        assert cell["meets_hard"] is True
+        assert cell["meets_soft"] is True
+
+    def test_window_restricts_rate_but_reports_total(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        for i, status in enumerate(["failed", "passed", "passed", "passed", "passed"]):
+            record_category_pyramid_history(
+                [self._scenario("a", "happy_path", "component", status)],
+                run_id=f"2026-03-0{i + 1}_000000_000000",
+                runs_dir=runs,
+            )
+        rep = category_pyramid_history_report(runs, window=4)
+        assert rep["total_runs"] == 5
+        cell = rep["cells"]["happy_path|component"]
+        assert cell["runs"] == 4
+        assert cell["passes"] == 4
+        assert cell["meets_hard"] is True
 
 
 # ============================================================================
@@ -1876,8 +2745,11 @@ class TestRunScenarioTimeout:
     SCENARIO_YAML = """\
 name: timeout-scenario
 description: "Scenario with a hang-prone step"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "fast step"
     tool: fast_tool
@@ -1901,8 +2773,11 @@ steps:
     CLEANUP_SCENARIO_YAML = """\
 name: timeout-cleanup-scenario
 description: "Scenario whose cleanup step hangs"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "fast step"
     tool: fast_tool
@@ -1921,9 +2796,7 @@ cleanup_steps:
     def scenario_dir(self, tmp_path: Path) -> Path:
         sd = tmp_path / "scenarios"
         sd.mkdir()
-        (sd / "timeout-scenario.yaml").write_text(
-            self.SCENARIO_YAML, encoding="utf-8"
-        )
+        (sd / "timeout-scenario.yaml").write_text(self.SCENARIO_YAML, encoding="utf-8")
         (sd / "timeout-cleanup-scenario.yaml").write_text(
             self.CLEANUP_SCENARIO_YAML, encoding="utf-8"
         )
@@ -1935,9 +2808,7 @@ cleanup_steps:
             await asyncio.sleep(5)
         return {"success": True, "data": {"result": "ok"}}
 
-    async def test_hanging_step_times_out_and_fails_scenario(
-        self, scenario_dir: Path
-    ) -> None:
+    async def test_hanging_step_times_out_and_fails_scenario(self, scenario_dir: Path) -> None:
         """A step exceeding the per-step timeout reports failed with 'timed out'."""
         result = await run_scenario(
             "timeout-scenario",
@@ -2029,9 +2900,7 @@ class TestMCPRunValidationScenarioTimeout:
         ) as mock_rs:
             from autoinfo.mcp.server import _handle_run_validation_scenario
 
-            result = await _handle_run_validation_scenario(
-                scenario="test-scene", timeout=60.0
-            )
+            result = await _handle_run_validation_scenario(scenario="test-scene", timeout=60.0)
             mock_rs.assert_called_once()
             call_kwargs = mock_rs.call_args.kwargs
             assert call_kwargs.get("timeout") == 60.0
@@ -2069,8 +2938,11 @@ class TestStepExecutionTrace:
     TRACE_SCENARIO_YAML = """\
 name: trace-scenario
 description: "Trace-field scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "pass with args"
     tool: fake_tool
@@ -2089,8 +2961,11 @@ steps:
     LLM_TRACE_SCENARIO_YAML = """\
 name: llm-trace-scenario
 description: "LLM trace-field scenario"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "llm pass with meta"
     tool: fake_tool
@@ -2111,14 +2986,11 @@ steps:
     def trace_dir(self, tmp_path: Path) -> Path:
         sd = tmp_path / "scenarios"
         sd.mkdir()
-        (sd / "trace-scenario.yaml").write_text(
-            self.TRACE_SCENARIO_YAML, encoding="utf-8"
-        )
-        (sd / "llm-trace-scenario.yaml").write_text(
-            self.LLM_TRACE_SCENARIO_YAML, encoding="utf-8"
-        )
+        (sd / "trace-scenario.yaml").write_text(self.TRACE_SCENARIO_YAML, encoding="utf-8")
+        (sd / "llm-trace-scenario.yaml").write_text(self.LLM_TRACE_SCENARIO_YAML, encoding="utf-8")
         (sd / "env-gated.yaml").write_text(
-            "name: env-gated\ndescription: T\ncategory: test\n"
+            "name: env-gated\ndescription: T\ncategory: happy_path\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "requires_env: [MISSING_VAR_XYZ]\n"
             "steps:\n  - name: gated\n    tool: health_check\n    arguments: {}\n",
             encoding="utf-8",
@@ -2166,13 +3038,9 @@ steps:
         ids = {step["trace_id"] for step in result["steps"]}
         assert ids == {result["trace_id"]}
 
-    async def test_llm_meta_embedded_on_llm_assert_pass(
-        self, trace_dir: Path, monkeypatch
-    ) -> None:
+    async def test_llm_meta_embedded_on_llm_assert_pass(self, trace_dir: Path, monkeypatch) -> None:
         """llm_assert PASS path embeds llm_meta while keeping llm_reason."""
-        monkeypatch.setattr(
-            "autoinfo.mcp.validation._is_llm_configured", lambda: True
-        )
+        monkeypatch.setattr("autoinfo.mcp.validation._is_llm_configured", lambda: True)
         monkeypatch.setattr(
             "autoinfo.mcp.validation._llm_judge",
             lambda assertion, output: {
@@ -2200,13 +3068,9 @@ steps:
         assert step["step_index"] == 1
         assert step["trace_id"] == result["trace_id"]
 
-    async def test_llm_meta_embedded_on_llm_assert_fail(
-        self, trace_dir: Path, monkeypatch
-    ) -> None:
+    async def test_llm_meta_embedded_on_llm_assert_fail(self, trace_dir: Path, monkeypatch) -> None:
         """llm_assert FAIL path embeds llm_meta alongside llm_reason."""
-        monkeypatch.setattr(
-            "autoinfo.mcp.validation._is_llm_configured", lambda: True
-        )
+        monkeypatch.setattr("autoinfo.mcp.validation._is_llm_configured", lambda: True)
         monkeypatch.setattr(
             "autoinfo.mcp.validation._llm_judge",
             lambda assertion, output: {
@@ -2230,9 +3094,7 @@ steps:
         assert step["llm_meta"]["duration"] == 0.25
         assert step["trace_id"] == result["trace_id"]
 
-    async def test_unconfigured_early_return_carries_trace_fields(
-        self, trace_dir: Path
-    ) -> None:
+    async def test_unconfigured_early_return_carries_trace_fields(self, trace_dir: Path) -> None:
         """Env-gated early return decorates its steps with trace fields."""
         env_before = os.environ.pop("MISSING_VAR_XYZ", None)
         try:
@@ -2258,7 +3120,8 @@ steps:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "rec-trace.yaml").write_text(
-            "name: rec-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "name: rec-trace\ndescription: T\ncategory: happy_path\nrequires_env: []\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "steps:\n"
             "  - name: flaky primary\n    tool: flaky_tool\n    arguments: {retry: 2}\n"
             "    expect:\n      success: true\n"
@@ -2281,22 +3144,78 @@ steps:
         step = result["steps"][0]
         assert step["recovered"] is True
         assert step["step_index"] == 1
+        assert step["step_id"] == "1"
         assert step["arguments"] == {"retry": 2}
         assert step["trace_id"] == result["trace_id"]
         rec = step["recovery"][0]
-        assert rec["step_index"] == 1
+        assert rec["step_index"] != step["step_index"]
+        assert rec["step_id"] == "1.recovery.1"
         assert rec["trace_id"] == result["trace_id"]
         assert rec["arguments"] == {}
         assert isinstance(rec["duration"], float)
         # Primary duration covers the recovery execution too.
         assert step["duration"] >= rec["duration"]
 
+    async def test_step_identity_unique_across_recovery_and_cleanup(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """TR-S-03: no recovery/cleanup step collides with any other identity."""
+        monkeypatch.setattr("autoinfo.mcp.validation._scan_autoinfo_test_leaks", lambda: [])
+        sd = tmp_path / "scenarios"
+        sd.mkdir()
+        (sd / "identity.yaml").write_text(
+            "name: identity\ndescription: T\ncategory: happy_path\nrequires_env: []\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
+            "steps:\n"
+            "  - name: primary one\n    tool: bad_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n"
+            "    recovery_steps:\n"
+            "      - name: rec one\n        tool: ok_tool\n        arguments: {}\n"
+            "        expect:\n          success: true\n"
+            "      - name: rec two\n        tool: bad_tool\n        arguments: {}\n"
+            "        expect:\n          success: true\n"
+            "  - name: primary two\n    tool: bad_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n"
+            "cleanup_steps:\n"
+            "  - name: cleanup one\n    tool: ok_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n"
+            "  - name: cleanup two\n    tool: bad_tool\n    arguments: {}\n"
+            "    expect:\n      success: true\n",
+            encoding="utf-8",
+        )
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            if name == "bad_tool":
+                return {"success": False, "error": {"code": "X", "message": "boom"}}
+            return {"success": True, "data": {"result": "ok"}}
+
+        result = await run_scenario("identity", dispatch=dispatch, scenarios_dir=sd)
+        identities: list[dict[str, Any]] = []
+        for step in result["steps"]:
+            identities.append(step)
+            identities.extend(step.get("recovery", []))
+        identities.extend(result.get("cleanup", {}).get("steps", []))
+
+        indexes = [s["step_index"] for s in identities]
+        step_ids = [s["step_id"] for s in identities]
+        assert len(indexes) == len(set(indexes)), indexes
+        assert len(step_ids) == len(set(step_ids)), step_ids
+        assert set(step_ids) == {
+            "1",
+            "1.recovery.1",
+            "1.recovery.2",
+            "2",
+            "cleanup.1",
+            "cleanup.2",
+        }
+
     async def test_timeout_step_carries_trace_fields(self, tmp_path: Path) -> None:
         """A timed-out step still carries the per-step trace fields."""
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "slow-trace.yaml").write_text(
-            "name: slow-trace\ndescription: T\ncategory: test\nrequires_env: []\n"
+            "name: slow-trace\ndescription: T\ncategory: happy_path\nrequires_env: []\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "steps:\n  - name: hang\n    tool: slow_tool\n    arguments: {}\n"
             "    expect:\n      success: true\n",
             encoding="utf-8",
@@ -2411,10 +3330,11 @@ class TestRegressionScenarios:
         (sd / "regression").mkdir()
         (sd / "regression" / "fake-regression.yaml").write_text(
             "name: fake-regression\n"
-            "description: \"Regression test\"\n"
-            "category: regression\n"
+            'description: "Regression test"\n'
+            "category: happy_path\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "regression: true\n"
-            "regression_issue: \"#999\"\n"
+            'regression_issue: "#999"\n'
             "requires_env: []\n"
             "steps:\n"
             "  - name: step1\n"
@@ -2427,7 +3347,8 @@ class TestRegressionScenarios:
         )
         (sd / "functional.yaml").write_text(
             "name: functional\n"
-            "description: \"Functional test\"\n"
+            'description: "Functional test"\n'
+            "category: happy_path\npyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "requires_env: []\n"
             "steps:\n"
             "  - name: step1\n"
@@ -2458,9 +3379,7 @@ class TestRegressionScenarios:
         async def dispatch(name: str, args: dict) -> dict:
             return {"success": True, "data": {}}
 
-        result = await run_scenario(
-            "functional", dispatch, scenarios_dir=regression_scenario_dir
-        )
+        result = await run_scenario("functional", dispatch, scenarios_dir=regression_scenario_dir)
         assert "regression" not in result
         assert "regression_issue" not in result
 
@@ -2470,10 +3389,11 @@ class TestRegressionScenarios:
         """Env-gated regression scenario: unconfigured result carries regression fields."""
         (regression_scenario_dir / "regression" / "env-gated-reg.yaml").write_text(
             "name: env-gated-reg\n"
-            "description: \"Env gated regression\"\n"
-            "category: regression\n"
+            'description: "Env gated regression"\n'
+            "category: happy_path\n"
+            "pyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
             "regression: true\n"
-            "regression_issue: \"#888\"\n"
+            'regression_issue: "#888"\n'
             "requires_env: [MISSING_VAR_XYZ_888]\n"
             "steps:\n"
             "  - name: gated\n"
@@ -2486,3 +3406,426 @@ class TestRegressionScenarios:
         assert result["status"] == "unconfigured"
         assert result["regression"] is True
         assert result["regression_issue"] == "#888"
+
+
+# ============================================================================
+# Unit tests: category taxonomy + required pyramid_layer (T-B-01 / T-B-02)
+# ============================================================================
+
+
+class TestScenarioCategoryPyramidMetadata:
+    """Every scenario declares one of the 5 fixed categories and a pyramid layer.
+
+    The category taxonomy (happy_path / edge_case / failure /
+    agent_interaction / performance) and the 4-layer validation pyramid
+    (unit / component / e2e / red_team) are only machine-measurable when the
+    loader enforces them.  ``load_scenarios`` rejects a missing/unknown
+    ``pyramid_layer`` and an unknown (or missing) ``category``.
+    """
+
+    _STEPS = "steps:\n  - name: s\n    tool: health_check\n"
+
+    def _write(self, tmp_path: Path, name: str, body: str) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir(parents=True, exist_ok=True)
+        (sd / f"{name}.yaml").write_text(body, encoding="utf-8")
+        return sd
+
+    def test_missing_pyramid_layer_fails_to_load(self, tmp_path: Path) -> None:
+        sd = self._write(
+            tmp_path,
+            "no-pyramid",
+            "name: no-pyramid\ndescription: d\ncategory: happy_path\n"
+            "pipeline_stage: A3\nuser_level: B2.4\n" + self._STEPS,
+        )
+        with pytest.raises(ValueError, match="no-pyramid\\.yaml.*'pyramid_layer'"):
+            load_scenarios(sd)
+
+    def test_unknown_pyramid_layer_fails_to_load(self, tmp_path: Path) -> None:
+        sd = self._write(
+            tmp_path,
+            "bad-pyramid",
+            "name: bad-pyramid\ndescription: d\ncategory: happy_path\n"
+            "pyramid_layer: pyramid\n"
+            "pipeline_stage: A3\nuser_level: B2.4\n" + self._STEPS,
+        )
+        with pytest.raises(ValueError, match="bad-pyramid\\.yaml.*'pyramid_layer'"):
+            load_scenarios(sd)
+
+    def test_unknown_category_fails_to_load(self, tmp_path: Path) -> None:
+        sd = self._write(
+            tmp_path,
+            "bad-category",
+            "name: bad-category\ndescription: d\ncategory: general\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A3\nuser_level: B2.4\n" + self._STEPS,
+        )
+        with pytest.raises(ValueError, match="bad-category\\.yaml.*'category'"):
+            load_scenarios(sd)
+
+    def test_missing_category_fails_to_load(self, tmp_path: Path) -> None:
+        sd = self._write(
+            tmp_path,
+            "no-category",
+            "name: no-category\ndescription: d\npyramid_layer: component\n"
+            "pipeline_stage: A3\nuser_level: B2.4\n" + self._STEPS,
+        )
+        with pytest.raises(ValueError, match="no-category\\.yaml.*'category'"):
+            load_scenarios(sd)
+
+    def test_valid_metadata_loads(self, tmp_path: Path) -> None:
+        sd = self._write(
+            tmp_path,
+            "good",
+            "name: good\ndescription: d\ncategory: failure\n"
+            "pyramid_layer: red_team\n"
+            "pipeline_stage: A4\nuser_level: B2.4\n" + self._STEPS,
+        )
+        scs = load_scenarios(sd)
+        assert len(scs) == 1
+        assert scs[0]["category"] == "failure"
+        assert scs[0]["pyramid_layer"] == "red_team"
+
+    def test_all_on_disk_scenarios_carry_valid_category_and_layer(self) -> None:
+        scs = load_scenarios()
+        assert scs, "load_scenarios() returned no scenarios"
+        for sc in scs:
+            assert sc["category"] in SCENARIO_CATEGORIES, (
+                f"scenario {sc['name']!r}: invalid category {sc.get('category')!r}"
+            )
+            assert sc["pyramid_layer"] in PYRAMID_LAYERS, (
+                f"scenario {sc['name']!r}: invalid pyramid_layer {sc.get('pyramid_layer')!r}"
+            )
+
+    def test_list_scenarios_surfaces_category_and_layer(self) -> None:
+        result = list_scenarios()
+        assert result["count"] == len(result["scenarios"])
+        assert result["count"] > 0
+        for sc in result["scenarios"]:
+            assert sc["category"] in SCENARIO_CATEGORIES, (
+                f"list_scenarios item {sc['name']!r} missing/invalid category"
+            )
+            assert sc["pyramid_layer"] in PYRAMID_LAYERS, (
+                f"list_scenarios item {sc['name']!r} missing/invalid pyramid_layer"
+            )
+
+
+class TestLoaderInvariants:
+    """Todo 13 (TR-S-04/05/06): loader rejects ambiguous/unsafe scenario sets.
+
+    - duplicate ``name`` (would silently shadow the later file),
+    - ``regression: true`` without ``regression_issue`` (link unenforceable),
+    - both ``min_passing`` and ``pass_ratio`` (contradictory partial policy).
+    ``list_scenarios`` surfaces ``regression_issue`` so the bug→scenario link
+    is auditable.
+    """
+
+    _META = "category: happy_path\npyramid_layer: component\npipeline_stage: A7\nuser_level: B2.5\n"
+
+    def _write(self, tmp_path: Path, filenames_to_bodies: dict[str, str]) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir(parents=True, exist_ok=True)
+        for filename, body in filenames_to_bodies.items():
+            (sd / filename).write_text(body, encoding="utf-8")
+        return sd
+
+    def test_duplicate_scenario_name_fails_to_load(self, tmp_path: Path) -> None:
+        """Two files declaring the same ``name`` must fail to load (TR-S-04)."""
+        first = (
+            "name: same-name\ndescription: d\n"
+            + self._META
+            + "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        second = (
+            "name: same-name\ndescription: d\n"
+            + self._META
+            + "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        sd = self._write(tmp_path, {"a.yaml": first, "b.yaml": second})
+        with pytest.raises(ValueError, match="duplicate scenario name.*same-name"):
+            load_scenarios(sd)
+
+    def test_regression_without_issue_fails_to_load(self, tmp_path: Path) -> None:
+        """``regression: true`` without ``regression_issue`` fails (TR-S-05)."""
+        body = (
+            "name: reg-no-issue\ndescription: d\n" + self._META + "regression: true\n"
+            "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        sd = self._write(tmp_path, {"reg.yaml": body})
+        with pytest.raises(ValueError, match="reg\\.yaml.*regression.*requires.*regression_issue"):
+            load_scenarios(sd)
+
+    def test_min_passing_and_pass_ratio_are_exclusive(self, tmp_path: Path) -> None:
+        """A scenario cannot set both partial-pass policies."""
+        body = (
+            "name: both-policies\ndescription: d\n" + self._META + "min_passing: 2\n"
+            "pass_ratio: 0.5\n"
+            "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        sd = self._write(tmp_path, {"both.yaml": body})
+        with pytest.raises(ValueError, match="both\\.yaml.*mutually exclusive"):
+            load_scenarios(sd)
+
+    def test_valid_regression_and_functional_load_and_are_surfaced(self, tmp_path: Path) -> None:
+        """A valid regression scenario loads; ``list_scenarios`` surfaces the
+        issue ID for regression and ``None`` for functional scenarios."""
+        reg = (
+            "name: valid-reg\ndescription: d\n" + self._META + "regression: true\n"
+            'regression_issue: "#4242"\n'
+            "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        func = (
+            "name: valid-func\ndescription: d\n"
+            + self._META
+            + "steps:\n  - name: s\n    tool: health_check\n"
+        )
+        sd = self._write(tmp_path, {"reg.yaml": reg, "func.yaml": func})
+        scs = load_scenarios(sd)
+        assert len(scs) == 2
+
+        result = list_scenarios(sd)
+        by_name = {sc["name"]: sc for sc in result["scenarios"]}
+        assert by_name["valid-reg"]["regression"] is True
+        assert by_name["valid-reg"]["regression_issue"] == "#4242"
+        assert by_name["valid-func"]["regression"] is False
+        assert by_name["valid-func"]["regression_issue"] is None
+
+
+class TestUniversalTimeoutCancellation:
+    """A timed-out step must actually stop its worker, for every step kind.
+
+    ``asyncio.wait_for`` cancels the coroutine, but it cannot cancel work
+    offloaded through ``asyncio.to_thread`` — the worker thread (and the
+    subprocess / HTTP request it owns) keeps running after the step's budget
+    expired.  These tests assert the resource is released on timeout:
+
+    - ``kind: cli``  — the spawned process group is gone (no orphan);
+    - ``kind: http`` — the in-flight request is aborted (no dribbling reader);
+    - ``kind: mcp``  — the coroutine dispatch receives ``CancelledError``.
+    """
+
+    CLI_ORPHAN_SLEEP = 31337
+    CLI_LONG_INNER_SLEEP = 31338
+
+    @staticmethod
+    def _write(tmp_path: Path, name: str, yaml_text: str) -> Path:
+        sd = tmp_path / "scenarios"
+        sd.mkdir(exist_ok=True)
+        (sd / f"{name}.yaml").write_text(yaml_text, encoding="utf-8")
+        return sd
+
+    @staticmethod
+    def _pgrep(pattern: str) -> str:
+        """Return matching PIDs (``pgrep -f``); raise if pgrep is unavailable.
+
+        ``pgrep`` exits 1 when there is no match (expected) and 0 when it
+        matched.  Any other status means the probe itself failed — raising
+        keeps a broken probe from being mistaken for "no orphan".
+        """
+        proc = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
+        if proc.returncode not in (0, 1):
+            raise RuntimeError(f"pgrep probe failed (rc={proc.returncode}): {proc.stderr!r}")
+        return proc.stdout.strip()
+
+    async def _wait_until_no_process(self, pattern: str, budget: float) -> str:
+        """Poll ``pgrep`` until *pattern* disappears; return the last match."""
+        deadline = time.monotonic() + budget
+        remaining = self._pgrep(pattern)
+        while remaining and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+            remaining = self._pgrep(pattern)
+        return remaining
+
+    @staticmethod
+    def _http_step_yaml(name: str, url: str, timeout: float) -> str:
+        return (
+            f"name: {name}\n"
+            f"description: {name}\n"
+            "category: happy_path\n"
+            "requires_env: []\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            "  - name: probe\n"
+            "    kind: http\n"
+            "    method: GET\n"
+            f'    url: "{url}"\n'
+            f"    timeout_seconds: {timeout}\n"
+            "    expect:\n"
+            "      success: true\n"
+        )
+
+    @staticmethod
+    def _cli_step_yaml(name: str, command: str, timeout: float) -> str:
+        return (
+            f"name: {name}\n"
+            f"description: {name}\n"
+            "category: happy_path\n"
+            "requires_env: []\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            "  - name: probe\n"
+            "    kind: cli\n"
+            f'    command: "{command}"\n'
+            f"    timeout_seconds: {timeout}\n"
+            "    expect:\n"
+            "      success: true\n"
+        )
+
+    async def test_http_slow_drip_request_aborted_on_timeout(self, tmp_path: Path) -> None:
+        """A dribbling response evades httpx's per-read timeout; the harness
+        must abort the request itself when the step budget expires.
+        """
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        state = {"active": 0, "aborted": 0, "finished": 0}
+        lock = threading.Lock()
+
+        class DripHandler(BaseHTTPRequestHandler):
+            def log_message(self, *args: Any) -> None:  # noqa: ANN002
+                pass
+
+            def do_GET(self) -> None:  # noqa: N802
+                with lock:
+                    state["active"] += 1
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self.send_header("Content-Length", "200")
+                    self.end_headers()
+                    # One byte every 0.2s — below httpx's read timeout, so the
+                    # request never self-times-out; only explicit cancellation
+                    # can stop it.
+                    for _ in range(100):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.2)
+                    with lock:
+                        state["finished"] += 1
+                except (BrokenPipeError, ConnectionResetError):
+                    with lock:
+                        state["aborted"] += 1
+                finally:
+                    with lock:
+                        state["active"] -= 1
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), DripHandler)
+        server.daemon_threads = True
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        sd = self._write(
+            tmp_path,
+            "http-drip",
+            self._http_step_yaml("http-drip", f"http://127.0.0.1:{port}/drip", 0.5),
+        )
+        try:
+            result = await run_scenario("http-drip", dispatch=None, scenarios_dir=sd)
+            assert result["status"] == "failed"
+            assert "timed out" in result["steps"][0]["detail"]
+
+            with lock:
+                remaining = state["active"]
+            deadline = time.monotonic() + 3.0
+            while remaining and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+                with lock:
+                    remaining = state["active"]
+            with lock:
+                assert remaining == 0, (
+                    "HTTP request survived the step timeout (orphan reader still dribbling)"
+                )
+                assert state["aborted"] >= 1, "server never saw the aborted connection"
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    async def test_cli_step_no_orphan_after_timeout(self, tmp_path: Path) -> None:
+        """A real ``sleep`` CLI step is killed when the step budget expires."""
+        sd = self._write(
+            tmp_path,
+            "cli-orphan",
+            self._cli_step_yaml("cli-orphan", f"sleep {self.CLI_ORPHAN_SLEEP}", 0.5),
+        )
+        result = await run_scenario("cli-orphan", dispatch=None, scenarios_dir=sd)
+        assert result["status"] == "failed"
+        assert "timed out" in result["steps"][0]["detail"]
+
+        remaining = await self._wait_until_no_process(f"sleep {self.CLI_ORPHAN_SLEEP}", 3.0)
+        assert remaining == "", f"orphan CLI subprocess survived the timeout: pids={remaining!r}"
+
+    async def test_cli_worker_cancelled_even_with_long_internal_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The harness must cancel the worker; it must not depend on the
+        worker's own ``communicate(timeout=...)``.
+
+        The root cause (R-S-04) is that ``asyncio.wait_for`` cannot cancel a
+        ``to_thread`` worker.  This test invokes the real CLI runner with a
+        30s internal timeout while the step budget is 0.5s: a correctly
+        universal cancellation mechanism still reaps the process group,
+        because the harness releases it directly on timeout.
+        """
+        real_cli = validation_mod._run_cli_step
+
+        def long_inner(
+            command: str, timeout: float = 180.0, cancel_token: Any = None
+        ) -> dict[str, Any]:
+            try:
+                return real_cli(command, timeout=30.0, cancel_token=cancel_token)
+            except TypeError:
+                # Pre-fix signature has no cancel_token parameter.
+                return real_cli(command, timeout=30.0)
+
+        monkeypatch.setattr(validation_mod, "_run_cli_step", long_inner)
+        sd = self._write(
+            tmp_path,
+            "cli-long-inner",
+            self._cli_step_yaml("cli-long-inner", f"sleep {self.CLI_LONG_INNER_SLEEP}", 0.5),
+        )
+        result = await run_scenario("cli-long-inner", dispatch=None, scenarios_dir=sd)
+        assert result["status"] == "failed"
+        assert "timed out" in result["steps"][0]["detail"]
+
+        remaining = await self._wait_until_no_process(f"sleep {self.CLI_LONG_INNER_SLEEP}", 3.0)
+        assert remaining == "", f"harness did not cancel the CLI worker: orphan pids={remaining!r}"
+
+    async def test_mcp_step_cancelled_on_timeout(self, tmp_path: Path) -> None:
+        """The MCP coroutine dispatch receives CancelledError on timeout."""
+        cancelled = {"flag": False}
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            try:
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                cancelled["flag"] = True
+                raise
+            return {"success": True, "data": {}}
+
+        yaml_text = (
+            "name: mcp-cancel\n"
+            "description: mcp-cancel\n"
+            "category: happy_path\n"
+            "requires_env: []\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            "  - name: probe\n"
+            "    tool: slow_tool\n"
+            "    arguments: {}\n"
+            "    timeout_seconds: 0.3\n"
+            "    expect:\n"
+            "      success: true\n"
+        )
+        sd = self._write(tmp_path, "mcp-cancel", yaml_text)
+        result = await run_scenario("mcp-cancel", dispatch=dispatch, scenarios_dir=sd)
+        assert result["status"] == "failed"
+        assert "timed out" in result["steps"][0]["detail"]
+        for _ in range(10):
+            if cancelled["flag"]:
+                break
+            await asyncio.sleep(0.01)
+        assert cancelled["flag"] is True, "MCP dispatch was not cancelled"

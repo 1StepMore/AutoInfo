@@ -9,7 +9,10 @@
 # cascades to relations/entry_versions/entities/files, leaving zero residue.
 name: kb-lifecycle
 description: "KB lifecycle tools: decay, staleness, freshness, merge, similarity, extraction (self-contained, self-cleaning)"
-category: lifecycle
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.5
 requires_env: []
 steps:
   - name: "create_kb_entry writes fixture item A to 01-Raw"

@@ -26,7 +26,10 @@
 # defect + clean premium-briefing bodies — no LLM, no network.
 name: regression-357-paid-tier-weak-assertions
 description: "Regression #357: paid-tier semantic weak assertions fire on defect premium-briefing and pass a clean one"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#357"
 requires_env: []

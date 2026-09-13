@@ -21,7 +21,6 @@ import pytest
 
 from autoinfo.output import localize_content
 
-
 # ---------------------------------------------------------------------------
 # Sample data
 # ---------------------------------------------------------------------------
@@ -138,10 +137,10 @@ def test_localize_content_from_kb(
     """Content-ID mode translates KB entry and writes translated file."""
     mock_translate.return_value = _MOCK_TRANSLATION
 
-    with patch("autoinfo.kb.KBStore") as MockKBStore:
+    with patch("autoinfo.kb.KBStore") as mock_kb_store:
         store_instance = MagicMock()
         store_instance.get_entry.return_value = kb_entry_with_file
-        MockKBStore.return_value = store_instance
+        mock_kb_store.return_value = store_instance
 
         result = localize_content(
             content_id="med-ivf-001",
@@ -169,10 +168,10 @@ def test_localize_content_from_kb_not_found(
     mock_translate: MagicMock,
 ) -> None:
     """Content-ID mode with non-existent entry raises ValueError."""
-    with patch("autoinfo.kb.KBStore") as MockKBStore:
+    with patch("autoinfo.kb.KBStore") as mock_kb_store:
         store_instance = MagicMock()
         store_instance.get_entry.return_value = None
-        MockKBStore.return_value = store_instance
+        mock_kb_store.return_value = store_instance
 
         with pytest.raises(ValueError, match="not found"):
             localize_content(content_id="nonexistent", target_lang="zh")
@@ -245,15 +244,11 @@ def test_mcp_handle_localize_content() -> None:
             "target_lang": "zh",
         }
 
-        result = _handle_localize_content(
-            content="Test", source_lang="en", target_lang="zh"
-        )
+        result = _handle_localize_content(content="Test", source_lang="en", target_lang="zh")
 
-        mock_localize.assert_called_once_with(
-            content="Test", source_lang="en", target_lang="zh"
-        )
+        mock_localize.assert_called_once_with(content="Test", source_lang="en", target_lang="zh")
         assert result["success"] is True
-        assert result["translated_body"] == "测试"
+        assert result["data"]["translated_body"] == "测试"
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +258,9 @@ def test_mcp_handle_localize_content() -> None:
 
 def test_cli_translate_direct() -> None:
     """CLI `autoinfo output translate` with direct content works."""
-    from autoinfo.cli.output import app
     from typer.testing import CliRunner
+
+    from autoinfo.cli.output import app
 
     runner = CliRunner()
 
@@ -295,8 +291,9 @@ def test_cli_translate_direct() -> None:
 
 def test_cli_translate_content_id() -> None:
     """CLI `autoinfo output translate --content-id` works."""
-    from autoinfo.cli.output import app
     from typer.testing import CliRunner
+
+    from autoinfo.cli.output import app
 
     runner = CliRunner()
 
@@ -323,8 +320,9 @@ def test_cli_translate_content_id() -> None:
 
 def test_cli_translate_failure() -> None:
     """CLI reports errors when translation fails."""
-    from autoinfo.cli.output import app
     from typer.testing import CliRunner
+
+    from autoinfo.cli.output import app
 
     runner = CliRunner()
 

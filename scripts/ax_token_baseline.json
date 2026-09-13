@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "signal": "deterministic_product_text_tokens_per_task",
+  "baseline_tokens_per_task": 318.25,
+  "sample_tasks": 4,
+  "products": [
+    "digest",
+    "premium-briefing",
+    "enterprise-briefing",
+    "magazine-digest"
+  ],
+  "tokenizer": "word+punct regex (deterministic, keyless)",
+  "llm_tokens_per_task": null,
+  "captured_at": "2026-09-13T19:28:14"
+}

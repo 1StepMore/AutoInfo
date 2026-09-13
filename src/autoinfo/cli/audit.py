@@ -16,6 +16,8 @@ import typer
 
 from autoinfo.models import AuditLog
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(help="Query the immutable audit log (append-only).")
 
 
@@ -56,20 +58,19 @@ def query_audit(
             offset=offset,
         )
     except Exception as exc:
+        fail_if_global("InternalError", f"audit log query failed: {exc}")
         typer.echo(f"Error: audit log query failed: {exc}", err=True)
         raise typer.Exit(code=1)
 
+    data = {
+        "entries": [e.to_dict() for e in entries],
+        "count": len(entries),
+    }
+    if emit_if_global(data):
+        return
+
     if json_output:
-        typer.echo(
-            json.dumps(
-                {
-                    "entries": [e.to_dict() for e in entries],
-                    "count": len(entries),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
     else:
         if not entries:
             typer.echo("No audit log entries found.")
@@ -80,7 +81,10 @@ def query_audit(
 
 def _print_table(entries: list[AuditLog]) -> None:
     """Print audit log entries as a human-readable table."""
-    header = f"{'LOG ID':<38} {'TIMESTAMP':<26} {'ACTOR':<20} {'ACTION':<30} {'RESOURCE TYPE':<18} {'RESOURCE ID':<22}"
+    header = (
+        f"{'LOG ID':<38} {'TIMESTAMP':<26} {'ACTOR':<20} "
+        f"{'ACTION':<30} {'RESOURCE TYPE':<18} {'RESOURCE ID':<22}"
+    )
     typer.echo(header)
     typer.echo("-" * len(header))
     for e in entries:

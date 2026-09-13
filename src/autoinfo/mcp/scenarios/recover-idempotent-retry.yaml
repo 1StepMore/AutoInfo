@@ -1,0 +1,83 @@
+# R-B-02: retried operations are side-effect-free.  Two real retry paths are
+# proven: (1) the checkpointed pipeline re-executes zero completed steps, and
+# (2) run_collection(resume_from="auto") re-fetches zero completed sources.
+name: recover-idempotent-retry
+description: "Retry is side-effect-free: completed pipeline steps and completed collection sources are never re-executed (R-B-02)"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.4
+requires_env: []
+steps:
+  - name: "completed pipeline and collection retries re-execute nothing"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import os, shutil, tempfile
+      from pathlib import Path
+      from unittest.mock import patch
+
+      from autoinfo.collect import run_collection
+      from autoinfo.config import Config, DomainConfig, SourceConfig
+      from autoinfo.models import CollectionResult
+      from autoinfo.pipeline import PipelineStep, run_pipeline
+
+      tmp = tempfile.mkdtemp(prefix="recover-idem-")
+      try:
+          os.chdir(tmp)
+
+          # (1) Pipeline retry: a completed run re-runs nothing.
+          calls = {}
+
+          def make(name):
+              def run(ctx):
+                  calls[name] = calls.get(name, 0) + 1
+                  return {"executions": calls[name]}
+              return PipelineStep(name, run)
+
+          steps = [make(n) for n in ["collect", "process", "kb"]]
+          first = run_pipeline("recover-demo", steps=steps, resume_from="start")
+          assert first.status == "complete", first.status
+          retry = run_pipeline("recover-demo", steps=steps, resume_from="auto")
+          assert retry.executed == [], retry.executed
+          assert retry.skipped == ["collect", "process", "kb"], retry.skipped
+          assert calls == {"collect": 1, "process": 1, "kb": 1}, calls
+
+          # (2) Collection retry: completed sources are never re-fetched.
+          sources = [
+              SourceConfig(name=n, type="rss", url="http://example.com")
+              for n in ["s1", "s2"]
+          ]
+          cfg = Config(domains=[DomainConfig(name="demo", sources=sources)])
+          fetches = []
+
+          def fake_fetch(source_config, domain, topic, limit, dry_run,
+                         existing_entries, collection_id, checker,
+                         new_items_collector=None, force_full=False, keywords=None):
+              fetches.append(source_config.name)
+              return CollectionResult(
+                  collection_id=collection_id,
+                  domain=domain,
+                  source=source_config.name,
+                  status="success",
+                  items_new=1,
+              )
+
+          with patch("autoinfo.collect.get_config_path",
+                     lambda: str(Path(tmp) / ".autoinfo/config.yaml")), \
+               patch("autoinfo.collect.load_config", lambda p: cfg), \
+               patch("autoinfo.collect._collect_from_source", fake_fetch):
+              run_collection(domain="demo", resume_from="start")
+              seen = len(fetches)
+              again = run_collection(domain="demo", resume_from="auto")
+
+          assert again["resumed_skipped"] == ["s1", "s2"], again["resumed_skipped"]
+          assert fetches[seen:] == [], "retry must not re-fetch completed sources"
+          print("RECOVER_IDEMPOTENT_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RECOVER_IDEMPOTENT_OK"]

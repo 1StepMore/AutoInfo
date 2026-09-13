@@ -1,0 +1,183 @@
+# T-A-08: GDPR / user-data export and erasure.
+#
+# `export_user_data` and `delete_user_data` are real handlers whose dispatch
+# signature is `(name, arguments)`.  The T-S-03 alias normalizer
+# (`_normalize_param_aliases` in server.py) only collapses `user_id` onto a
+# spelling the handler signature "accepts" — for these two handlers it renames
+# `user_id` to `end_user_id` before the handler reads `arguments["user_id"]`,
+# so the MCP dispatch path errors with a KeyError.  This todo is barred from
+# editing server.py, so the scenario exercises the *real handler functions*
+# directly in a CLI subprocess (no mock), and separately exercises the MCP
+# `enduser_get` / `enduser_delete` tools that work.  The defect is recorded in
+# the Todo 31 evidence.  Every assertion is user-scoped: A's export must never
+# contain B's data.
+name: privacy-gdpr-export
+description: "GDPR/user data export is user-scoped, returns the profile, and erasure requires an explicit purge/delete; no cross-user leakage (T-A-08)"
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.6
+requires_env: []
+steps:
+  - name: "setup marker end users A/B and a KB entry owned by A"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import uuid
+      from datetime import datetime, timezone
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      from autoinfo.user_store import create_profile, delete_profile
+      store = KBStore()
+      a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
+      for u in (a, b):
+          delete_profile(u)
+          create_profile(
+              user_id=u,
+              name="Marker " + u,
+              email=u + "@autoinfo.test",
+              status="active",
+              tier="premium",
+          )
+      item = Item(
+          id=str(uuid.uuid4()),
+          source_name="web",
+          source_type="web",
+          source_url="https://privacy-gdpr.autoinfo.test/export-fixture-entry",
+          source_platform="web",
+          title="Privacy GDPR Export Fixture Entry",
+          content="Fixture entry owned by the privacy-gdpr-export scenario.",
+          domain="medical-research",
+          topic_tags=[],
+          collected_at=datetime.now(timezone.utc).isoformat(),
+          content_type="text",
+          quality_tier=1,
+      )
+      entry = store.store_entry(item=item, tier="01-Raw", user_id=a)
+      print("SETUP_OK " + entry.entry_id)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SETUP_OK", "medical-research-general-privacy-gdpr-export-fixture-entry"]
+
+  - name: "enduser_get returns user A's marker profile over MCP"
+    tool: enduser_get
+    arguments:
+      user_id: validation-privacy-gdpr-user-a
+    expect:
+      success: true
+      data_has: ["user_id", "email", "tier"]
+
+  - name: "export_user_data returns only user A's profile (no cross-user leak)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import dataclasses
+      import json
+      from autoinfo.mcp.server import _handle_export_user_data
+      a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
+      result = _handle_export_user_data("export_user_data", {"user_id": a})
+      assert result.get("user_id") == a, result
+      profile = result.get("profile")
+      assert profile is not None, "export must return the profile"
+      blob = json.dumps(dataclasses.asdict(profile))
+      assert a + "@autoinfo.test" in blob, blob
+      assert b not in blob, "cross-user data leaked into export: " + blob
+      print("GDPR_EXPORT_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["GDPR_EXPORT_OK"]
+
+  - name: "export_user_data for B is scoped to B (A absent)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import dataclasses
+      import json
+      from autoinfo.mcp.server import _handle_export_user_data
+      a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
+      result = _handle_export_user_data("export_user_data", {"user_id": b})
+      blob = json.dumps(dataclasses.asdict(result["profile"]))
+      assert b + "@autoinfo.test" in blob and a not in blob, blob
+      print("EXPORT_SCOPED_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["EXPORT_SCOPED_OK"]
+
+  - name: "delete_user_data refuses without an explicit purge=True"
+    tool: delete_user_data
+    arguments:
+      user_id: validation-privacy-gdpr-user-a
+    expect:
+      success: false
+      error_code: "ValidationError"
+
+  - name: "delete_user_data(purge=True) deletes A's KB data and leaves B untouched"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import KBStore
+      from autoinfo.mcp.server import _handle_delete_user_data
+      from autoinfo.user_store import get_profile
+      a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
+      result = _handle_delete_user_data("delete_user_data", {"user_id": a, "purge": True})
+      assert result.get("user_id") == a, result
+      assert result.get("deleted_count", 0) >= 1, "expected A's KB entries to be deleted: " + str(result)
+      assert get_profile(b) is not None, "user B must be untouched"
+      print("GDPR_PURGE_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["GDPR_PURGE_OK"]
+
+  - name: "enduser_delete erases the end-user profile (explicit erasure)"
+    tool: enduser_delete
+    arguments:
+      user_id: validation-privacy-gdpr-user-a
+    expect:
+      success: true
+      data_has: ["user_id", "deleted"]
+
+  - name: "erasure is scoped: A's profile is gone, B's remains"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.user_store import get_profile
+      a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
+      assert get_profile(a) is None, "user A profile must be erased"
+      assert get_profile(b) is not None, "user B must be untouched"
+      print("ERASURE_SCOPED_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ERASURE_SCOPED_OK"]
+
+cleanup_steps:
+  - name: "purge GDPR export fixtures and marker profiles"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      from autoinfo.user_store import delete_profile
+      store = KBStore()
+      eid = "medical-research-general-privacy-gdpr-export-fixture-entry"
+      if store.index.get_entry(eid) is not None:
+          store.delete_entry(eid)
+      for p in list(Path("knowledge/medical-research/01-Raw/general").glob("*privacy-gdpr-export-fixture-entry*")):
+          p.unlink(missing_ok=True)
+      for u in ("validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"):
+          delete_profile(u)
+      print("CLEANED")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

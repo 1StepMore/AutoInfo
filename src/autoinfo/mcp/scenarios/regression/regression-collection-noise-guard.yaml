@@ -12,7 +12,10 @@
 # directly on Item objects (no network, no LLM).
 name: regression-collection-noise-guard
 description: "Regression #332-B: collection-layer domain noise guard drops wrong-domain items at ingest"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#332"
 requires_env: []

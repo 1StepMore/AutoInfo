@@ -27,7 +27,10 @@
 # regression-domain-seed-flagship.yaml.
 name: regression-mvp-init
 description: "Regression task 13: mvp init provisions premium/active pilot + mvp/u1 artifacts hermetically; mvp list shows it; idempotent; clean error paths"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B1.3
 regression: true
 regression_issue: "#concierge-wave-task-13"
 requires_env: []

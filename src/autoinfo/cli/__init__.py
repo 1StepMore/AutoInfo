@@ -54,6 +54,9 @@ def main(
 ) -> None:
     """AutoInfo CLI — collect, process, and manage your information."""
     ctx.obj = {"json": json}
+    from ._output import set_global_json  # T-S-07 canonical envelope flag
+
+    set_global_json(json)
 
 
 # Register subcommand modules as top-level commands

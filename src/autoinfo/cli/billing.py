@@ -14,6 +14,8 @@ import json
 
 import typer
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(help="Read-only billing summary (usage + subscription)")
 
 
@@ -29,6 +31,7 @@ def create_free(
     Idempotent: an existing subscription for the user is left untouched.
     """
     if not user_id.strip():
+        fail_if_global("ValidationError", "--user-id is required")
         typer.echo("Error: --user-id is required", err=True)
         raise typer.Exit(code=1)
 
@@ -40,6 +43,7 @@ def create_free(
         if existing is None:
             create_profile(user_id=user_id, name=user_id, status="active")
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
@@ -64,6 +68,7 @@ def create_free(
             )
             created = True
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
@@ -79,17 +84,17 @@ def create_free(
         },
     }
 
+    if emit_if_global(result):
+        return
+
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
     elif created:
         typer.echo(f"Created free subscription for '{user_id}'")
-        typer.echo(
-            "  Limits: 1 domain / 1 product / weekly / no custom products"
-        )
+        typer.echo("  Limits: 1 domain / 1 product / weekly / no custom products")
     else:
         typer.echo(
-            f"Subscription for '{user_id}' already exists (plan: {sub.plan}) — "
-            "left unchanged"
+            f"Subscription for '{user_id}' already exists (plan: {sub.plan}) — left unchanged"
         )
 
 
@@ -116,6 +121,7 @@ def summary(
         usage = meter.get_enduser_usage(end_user_id=user_id, period=period)
         subscription = get_subscription_status(end_user_id=user_id)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
@@ -134,6 +140,9 @@ def summary(
             "customer_id": subscription.get("customer_id", ""),
         },
     }
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))

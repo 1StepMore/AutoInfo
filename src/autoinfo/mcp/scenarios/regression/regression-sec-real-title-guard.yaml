@@ -14,7 +14,10 @@
 # the handler's form filtering directly (no network, no LLM).
 name: regression-sec-real-title-guard
 description: "Regression #332-B: real SEC 8-K/10-K titles caught by the collection noise guard + configurable SEC forms allowlist"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#332"
 requires_env: []

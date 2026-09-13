@@ -18,7 +18,10 @@
 # LLM key (requires_env).
 name: data-lifecycle-e2e
 description: "Real production loop: collect (no dry-run) -> cache -> process -> KB write -> LLM extraction"
-category: collection
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A1
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research", "tech-ai-developer"]
 collect_artifacts:
@@ -89,4 +92,3 @@ cleanup_steps:
       dry_run: false
     expect:
       success: true
-

@@ -2,7 +2,10 @@
 # Uses a temporary test domain with add-then-remove to leave no side effects.
 name: domain-management
 description: "Domain lifecycle: add, configure, activate, deactivate, remove"
-category: domain
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:
@@ -51,6 +54,7 @@ steps:
     tool: remove_domain
     arguments:
       name: __val_test_domain__
+      actor: director
     expect:
       success: true
       data_has: ["removed", "domain"]

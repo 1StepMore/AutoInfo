@@ -20,7 +20,10 @@
 # ABSOLUTE temp cwd.
 name: regression-source-label-all-surfaces
 description: "Regression #325: specific source labels render on every product surface (digest table, magazine byline/clusters, json/agent, report agent) + whole-body matrix scan"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#325"
 requires_env: []

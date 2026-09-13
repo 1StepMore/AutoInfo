@@ -12,7 +12,10 @@
 # one. A regression that reverts to skipping existing domains fails here.
 name: regression-291-demo-merge
 description: "Regression #291: merge_demo_domains.py merges sources/topics into existing domains"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.3
 regression: true
 regression_issue: "#291"
 requires_env: []

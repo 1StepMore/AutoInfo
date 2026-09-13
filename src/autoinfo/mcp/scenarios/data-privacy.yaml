@@ -9,7 +9,10 @@
 # run after every run (pass or fail) and hard-purge the fixture.
 name: data-privacy
 description: "Data privacy: soft-delete, restore, export, and GDPR delete guard (self-contained, self-cleaning)"
-category: privacy
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.6
 requires_env: []
 steps:
   - name: "create scenario fixture entry owned by marker user"

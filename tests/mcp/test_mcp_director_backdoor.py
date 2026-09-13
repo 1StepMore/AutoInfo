@@ -3,8 +3,8 @@
 Covers the MCP surface:
   1. Tool manifest registration — ``demote_kb_wiki`` and ``force_promote``
      are registered; ``soft_delete_entry`` carries an ``actor`` param.
-  2. ``DIRECTOR_ONLY`` error envelope — non-whitelisted actors get
-     ``{success: false, error: {code: "DIRECTOR_ONLY", message, actionable: true}}``
+  2. ``DirectorOnly`` error envelope — non-whitelisted actors get
+     ``{success: false, error: {code: "DirectorOnly", message, actionable: true}}``
      from both the dispatch guard (``call_tool``) and the handlers.
   3. The existing ``soft_delete_entry`` tool wires the same guard for
      tier==03-Wiki targets (store-level ``DirectorOnlyError`` → envelope).
@@ -25,6 +25,8 @@ import pytest
 
 from autoinfo.kb import KBStore
 from autoinfo.mcp.server import (
+    _DIRECTOR_ONLY_TOOLS,
+    DIRECTOR_ONLY_MARKER,
     _handle_demote_kb_wiki,
     _handle_force_promote,
     call_tool,
@@ -79,7 +81,7 @@ def _parse_envelope(text: str) -> dict[str, Any]:
 
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one tool call through ``call_tool`` and parse the envelope."""
-    text = anyio.run(call_tool, name, arguments)[0].text
+    text = anyio.run(call_tool, name, arguments)[0][0].text
     return _parse_envelope(text)
 
 
@@ -89,11 +91,12 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 class TestToolManifest:
-    def test_backdoor_tools_registered(self) -> None:
+    def test_backdoor_tools_registered_for_director(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
         tools = anyio.run(list_tools)
         names = {t.name for t in tools}
-        assert "demote_kb_wiki" in names
-        assert "force_promote" in names
+        assert _DIRECTOR_ONLY_TOOLS <= names
 
     def test_soft_delete_entry_carries_actor_param(self) -> None:
         tools = anyio.run(list_tools)
@@ -101,65 +104,156 @@ class TestToolManifest:
         soft = by_name["soft_delete_entry"]
         assert "actor" in soft.inputSchema["properties"]
 
-    def test_backdoor_tool_schemas_require_actor(self) -> None:
+    def test_backdoor_tool_schemas_require_actor(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Actor is required on the backdoor tools — omitting it must be
         rejected, never silently defaulted to a privileged role."""
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
         tools = anyio.run(list_tools)
         by_name = {t.name: t for t in tools}
         assert by_name["demote_kb_wiki"].inputSchema["required"] == ["entry_id", "actor"]
         assert by_name["force_promote"].inputSchema["required"] == ["draft_id", "actor"]
+        assert by_name["remove_domain"].inputSchema["required"] == [
+            "name",
+            "confirm",
+            "actor",
+        ]
 
 
 # ===================================================================
-# 2. DIRECTOR_ONLY envelope — dispatch-level guard
+# 1b. Discovery gating — default agent must not see director tools
+# ===================================================================
+
+
+class TestDiscoveryGating:
+    """T-S-08 / AC1.3: a default agent cannot discover director-only tools."""
+
+    def test_default_agent_does_not_see_director_tools(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_ACTOR", raising=False)
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        names = {t.name for t in anyio.run(list_tools)}
+        assert _DIRECTOR_ONLY_TOOLS.isdisjoint(names)
+        assert "health_check" in names
+
+    def test_director_whitelist_env_exposes_director_tools(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_ACTOR", raising=False)
+        monkeypatch.setenv("AUTOINFO_DIRECTOR_ACTORS", "alice")
+        names = {t.name for t in anyio.run(list_tools)}
+        assert _DIRECTOR_ONLY_TOOLS <= names
+
+    def test_director_actor_env_exposes_director_tools(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        names = {t.name for t in anyio.run(list_tools)}
+        assert _DIRECTOR_ONLY_TOOLS <= names
+
+    def test_actor_outside_whitelist_stays_hidden(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.setenv("AUTOINFO_DIRECTOR_ACTORS", "alice")
+        names = {t.name for t in anyio.run(list_tools)}
+        assert _DIRECTOR_ONLY_TOOLS.isdisjoint(names)
+
+    def test_director_visible_tools_carry_machine_readable_marker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_ACTOR", raising=False)
+        monkeypatch.setenv("AUTOINFO_DIRECTOR_ACTORS", "alice")
+        by_name = {t.name: t for t in anyio.run(list_tools)}
+        for tool_name in _DIRECTOR_ONLY_TOOLS:
+            assert by_name[tool_name].inputSchema[DIRECTOR_ONLY_MARKER] is True
+
+
+# ===================================================================
+# 2. DirectorOnly envelope — dispatch-level guard
 # ===================================================================
 
 
 class TestDispatchGuard:
     def test_dispatch_force_promote_refused_for_non_director(self) -> None:
-        text = anyio.run(call_tool, "force_promote", {"draft_id": "x", "actor": "agent"})[0].text
+        text = anyio.run(call_tool, "force_promote", {"draft_id": "x", "actor": "agent"})[0][0].text
         env = _parse_envelope(text)
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
         assert "agent" in env["error"]["message"]
         assert env["error"]["actionable"] is True
 
     def test_dispatch_demote_refused_for_non_director(self) -> None:
-        text = anyio.run(
-            call_tool, "demote_kb_wiki", {"entry_id": "x", "actor": "not-director"}
-        )[0].text
+        text = anyio.run(call_tool, "demote_kb_wiki", {"entry_id": "x", "actor": "not-director"})[
+            0
+        ][0].text
         env = _parse_envelope(text)
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
 
     def test_dispatch_default_actor_refused(self, kb_dir: Path) -> None:
         """No actor argument → defaults to non-privileged 'agent' → the
-        dispatch guard refuses with DIRECTOR_ONLY (never silently treated
+        dispatch guard refuses with DirectorOnly (never silently treated
         as director)."""
-        text = anyio.run(call_tool, "force_promote", {"draft_id": "ghost"})[0].text
+        text = anyio.run(call_tool, "force_promote", {"draft_id": "ghost"})[0][0].text
         env = _parse_envelope(text)
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
 
-    def test_dispatch_actor_env_whitelist(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dispatch_actor_env_whitelist(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """AUTOINFO_DIRECTOR_ACTORS controls who passes the dispatch guard."""
         monkeypatch.setenv("AUTOINFO_DIRECTOR_ACTORS", "alice")
-        text = anyio.run(call_tool, "force_promote", {"draft_id": "x", "actor": "director"})[0].text
+        text = anyio.run(call_tool, "force_promote", {"draft_id": "x", "actor": "director"})[0][
+            0
+        ].text
         env = _parse_envelope(text)
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
         # Alice passes the guard and hits the store (entry not found error)
-        text = anyio.run(
-            call_tool, "force_promote", {"draft_id": "ghost", "actor": "alice"}
-        )[0].text
+        text = anyio.run(call_tool, "force_promote", {"draft_id": "ghost", "actor": "alice"})[0][
+            0
+        ].text
         env = _parse_envelope(text)
-        assert env["error"]["code"] != "DIRECTOR_ONLY"
+        assert env["error"]["code"] != "DirectorOnly"
+
+
+class TestBypassResistance:
+    """An arbitrary actor string cannot smuggle past the whitelist."""
+
+    def test_arbitrary_actor_refused_when_not_whitelisted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AUTOINFO_DIRECTOR_ACTORS", "alice")
+        env = _call_tool("force_promote", {"draft_id": "ghost", "actor": "director"})
+        assert env["success"] is False
+        assert env["error"]["code"] == "DirectorOnly"
+
+    def test_remove_domain_refused_for_non_director(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        env = _call_tool(
+            "remove_domain",
+            {"name": "medical-research", "confirm": True, "actor": "agent"},
+        )
+        assert env["success"] is False
+        assert env["error"]["code"] == "DirectorOnly"
+
+    def test_remove_domain_default_actor_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        env = _call_tool("remove_domain", {"name": "medical-research"})
+        assert env["success"] is False
+        assert env["error"]["code"] == "DirectorOnly"
+
+    def test_remove_domain_director_passes_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
+        env = _call_tool(
+            "remove_domain",
+            {"name": "ghost-domain", "confirm": True, "actor": "director"},
+        )
+        assert env.get("error", {}).get("code") != "DirectorOnly"
 
 
 # ===================================================================
-# 3. DIRECTOR_ONLY envelope — handler level
+# 3. DirectorOnly envelope — handler level
 # ===================================================================
 
 
@@ -167,13 +261,13 @@ class TestHandlerEnvelope:
     def test_handle_force_promote_refused_for_non_director(self) -> None:
         result = _handle_force_promote(draft_id="x", actor="agent")
         assert result["success"] is False
-        assert result["error"]["code"] == "DIRECTOR_ONLY"
+        assert result["error"]["code"] == "DirectorOnly"
         assert result["error"]["actionable"] is True
 
     def test_handle_demote_refused_for_non_director(self) -> None:
         result = _handle_demote_kb_wiki(entry_id="x", actor="agent-editor")
         assert result["success"] is False
-        assert result["error"]["code"] == "DIRECTOR_ONLY"
+        assert result["error"]["code"] == "DirectorOnly"
         assert "AUTOINFO_DIRECTOR_ACTORS" in result["error"]["message"]
 
     def test_handle_force_promote_success_path(
@@ -182,9 +276,7 @@ class TestHandlerEnvelope:
         """Director actor: force-promote succeeds end to end via the handler."""
         store = KBStore()
         raw = make_scored_raw(store)
-        draft = store.create_kb_draft(
-            raw_ids=[raw.entry_id], title="MCP force promote draft"
-        )
+        draft = store.create_kb_draft(raw_ids=[raw.entry_id], title="MCP force promote draft")
 
         result = _handle_force_promote(draft_id=draft.entry_id, actor="director")
 
@@ -235,7 +327,7 @@ class TestSoftDeleteMcpGuard:
         eid = self._wiki_entry(kb_dir)
         env = _call_tool("soft_delete_entry", {"entry_id": eid, "actor": "agent"})
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
         # Entry remains
         store = KBStore()
         meta = store.index.get_entry(eid)
@@ -249,23 +341,17 @@ class TestSoftDeleteMcpGuard:
         meta = store.index.get_entry(eid)
         assert meta is not None and meta["deleted"] == 1
 
-    def test_soft_delete_purge_wiki_refused_for_non_director(
-        self, kb_dir: Path
-    ) -> None:
+    def test_soft_delete_purge_wiki_refused_for_non_director(self, kb_dir: Path) -> None:
         eid = self._wiki_entry(kb_dir)
-        env = _call_tool(
-            "soft_delete_entry", {"entry_id": eid, "purge": True, "actor": "agent"}
-        )
+        env = _call_tool("soft_delete_entry", {"entry_id": eid, "purge": True, "actor": "agent"})
         assert env["success"] is False
-        assert env["error"]["code"] == "DIRECTOR_ONLY"
+        assert env["error"]["code"] == "DirectorOnly"
         store = KBStore()
         assert store.index.get_entry(eid) is not None
 
     def test_soft_delete_purge_wiki_allowed_for_director(self, kb_dir: Path) -> None:
         eid = self._wiki_entry(kb_dir)
-        env = _call_tool(
-            "soft_delete_entry", {"entry_id": eid, "purge": True, "actor": "director"}
-        )
+        env = _call_tool("soft_delete_entry", {"entry_id": eid, "purge": True, "actor": "director"})
         assert env["success"] is True
         store = KBStore()
         assert store.index.get_entry(eid) is None
@@ -274,9 +360,7 @@ class TestSoftDeleteMcpGuard:
         """01-Raw soft-delete keeps working for non-director actors."""
         store = KBStore()
         raw = make_scored_raw(store)
-        env = _call_tool(
-            "soft_delete_entry", {"entry_id": raw.entry_id, "actor": "agent"}
-        )
+        env = _call_tool("soft_delete_entry", {"entry_id": raw.entry_id, "actor": "agent"})
         assert env["success"] is True
         meta = store.index.get_entry(raw.entry_id)
         assert meta is not None and meta["deleted"] == 1

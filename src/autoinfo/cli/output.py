@@ -24,7 +24,11 @@ import typer
 
 from autoinfo.output import PRODUCT_TEMPLATES, ProductTemplate, export_kb
 
-app = typer.Typer(help="Generate digests, reports, tutorials, presentations, exports, and translations")
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
+app = typer.Typer(
+    help="Generate digests, reports, tutorials, presentations, exports, and translations"
+)
 
 
 def _resolve_product_template(product: str) -> ProductTemplate | None:
@@ -40,6 +44,7 @@ def _resolve_product_template(product: str) -> ProductTemplate | None:
         if row["name"] == product:
             return cast(ProductTemplate, row["template"])
     valid = ", ".join(row["name"] for row in PRODUCT_TEMPLATES)
+    fail_if_global("ValidationError", f"Unknown product '{product}'. Valid products: {valid}")
     typer.echo(f"Error: Unknown product '{product}'. Valid products: {valid}", err=True)
     raise typer.Exit(code=1)
 
@@ -50,7 +55,10 @@ def localize(
     product: str = typer.Option(
         "digest",
         "--product",
-        help="Product template name (digest/report/column/premium-briefing/enterprise-briefing/magazine-digest)",
+        help=(
+            "Product template name (digest/report/column/"
+            "premium-briefing/enterprise-briefing/magazine-digest)"
+        ),
     ),
     period: str = typer.Option(
         "weekly", "--period", help="Product period (daily, weekly, monthly)"
@@ -99,11 +107,23 @@ def localize(
             include_stale=include_stale,
         )
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    if emit_if_global(
+        {
+            "domain": domain,
+            "product": product,
+            "target_lang": target_lang,
+            "file_path": result.get("file_path"),
+            "qa": result["qa"],
+        }
+    ):
+        return
     qa = result["qa"]
     typer.echo(
         f"Localized {domain}/{product} -> {target_lang}: {result['file_path']} "
@@ -114,17 +134,15 @@ def localize(
 
 @app.command(name="list-templates")
 def list_templates(
-    domain: str = typer.Option(
-        "", "--domain", help="Optional domain filter"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    domain: str = typer.Option("", "--domain", help="Optional domain filter"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List available output templates."""
     from autoinfo.mcp.server import _handle_list_output_templates
 
     result = _handle_list_output_templates(domain=domain)
+    if emit_if_global(result):
+        return
     if json_output:
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
         return
@@ -142,9 +160,7 @@ def list_templates(
 @app.command()
 def digest(
     domain: str = typer.Option(..., "--domain", help="Domain to generate digest for"),
-    period: str = typer.Option(
-        "weekly", "--period", help="Digest period (daily, weekly, monthly)"
-    ),
+    period: str = typer.Option("weekly", "--period", help="Digest period (daily, weekly, monthly)"),
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, html, json, agent)"
     ),
@@ -166,7 +182,10 @@ def digest(
     target_audience: str = typer.Option(
         "",
         "--target-audience",
-        help="Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
+        help=(
+            "Optional target audience description to tailor output tone and depth "
+            '(e.g. "healthcare professionals", "general public")'
+        ),
     ),
     include_stale: bool = typer.Option(
         False,
@@ -176,7 +195,10 @@ def digest(
     recipients: list[str] | None = typer.Option(
         None,
         "--recipients",
-        help="Email recipient addresses for direct digest delivery (repeatable, e.g. --recipients a@x.com --recipients b@y.com)",
+        help=(
+            "Email recipient addresses for direct digest delivery "
+            "(repeatable, e.g. --recipients a@x.com --recipients b@y.com)"
+        ),
     ),
     max_items: int = typer.Option(
         0,
@@ -186,10 +208,7 @@ def digest(
     ref_limit: int | None = typer.Option(
         None,
         "--ref-limit",
-        help=(
-            "Maximum number of KB references to render "
-            "(default: output.ref_limit = 60)"
-        ),
+        help=("Maximum number of KB references to render (default: output.ref_limit = 60)"),
     ),
     persist: bool = typer.Option(
         False,
@@ -223,6 +242,7 @@ def digest(
         if product_template is not None:
             kwargs["product_template"] = product_template
         result = generate_digest(**kwargs)
+        persisted_path: str | None = None
         if persist:
             import base64
             from datetime import datetime
@@ -256,12 +276,26 @@ def digest(
                 _path.write_bytes(base64.b64decode(result))
             else:
                 _path.write_text(str(result), encoding="utf-8")
-            typer.echo(f"Persisted to {_path}")
+            persisted_path = str(_path)
+            if not global_json():
+                typer.echo(f"Persisted to {_path}")
+        if emit_if_global(
+            {
+                "domain": domain,
+                "period": period,
+                "format": format,
+                "persisted_path": persisted_path,
+                "content": result,
+            }
+        ):
+            return
         typer.echo(result)
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -272,16 +306,24 @@ def report(
         "", "--domain", help="Domain to generate report for (single-domain mode)"
     ),
     collection_id: str = typer.Option(
-        None, "--collection-id", help="Optional collection ID to scope the report",
+        None,
+        "--collection-id",
+        help="Optional collection ID to scope the report",
     ),
     format: str = typer.Option(
         "markdown", "--format", help="Output format (markdown, json, agent)"
     ),
     audience: str = typer.Option(
-        "", "--audience", help="Target audience: researcher, clinician, executive, student, investor",
+        "",
+        "--audience",
+        "--target-audience",
+        help="Target audience: researcher, clinician, executive, student, investor",
     ),
     report_type: str = typer.Option(
-        "standard", "--type", help="Report type: standard, industry, competitive, trend, daily-briefing, column",
+        "standard",
+        "--type",
+        "--report-type",
+        help="Report type: standard, industry, competitive, trend, daily-briefing, column",
     ),
     domains: list[str] = typer.Option(
         [],
@@ -301,10 +343,7 @@ def report(
     ref_limit: int | None = typer.Option(
         None,
         "--ref-limit",
-        help=(
-            "Maximum number of KB references to render "
-            "(default: output.ref_limit = 60)"
-        ),
+        help=("Maximum number of KB references to render (default: output.ref_limit = 60)"),
     ),
 ) -> None:
     """Generate a structured report with themed sections and executive summary.
@@ -319,6 +358,7 @@ def report(
     from autoinfo.output import generate_report
 
     if not domain and not domains:
+        fail_if_global("ValidationError", "Provide --domain or --domains to specify report scope.")
         typer.echo("Error: Provide --domain or --domains to specify report scope.", err=True)
         raise typer.Exit(code=1)
 
@@ -341,11 +381,23 @@ def report(
             kwargs["domains"] = domains
 
         result = generate_report(**kwargs)
+        if emit_if_global(
+            {
+                "domain": kwargs["domain"],
+                "domains": domains or [kwargs["domain"]],
+                "format": format,
+                "report_type": report_type,
+                "content": result,
+            }
+        ):
+            return
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -366,26 +418,22 @@ def export(
     """
     try:
         result = export_kb(domain=domain, format=format)
+        if emit_if_global({"domain": domain, "format": format, **result}):
+            return
         typer.echo(
-            f"Exported {result.get('entries_count', 0)} entries "
-            f"to {result.get('path', 'unknown')}"
+            f"Exported {result.get('entries_count', 0)} entries to {result.get('path', 'unknown')}"
         )
     except (FileNotFoundError, ValueError) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
 
 @app.command()
 def translate(
-    content_id: str | None = typer.Option(
-        None, "--content-id", help="KB entry ID to translate"
-    ),
-    content: str | None = typer.Option(
-        None, "--content", help="Raw text to translate directly"
-    ),
-    source_lang: str = typer.Option(
-        "", "--source-lang", help="Source language code (e.g. en, zh)"
-    ),
+    content_id: str | None = typer.Option(None, "--content-id", help="KB entry ID to translate"),
+    content: str | None = typer.Option(None, "--content", help="Raw text to translate directly"),
+    source_lang: str = typer.Option("", "--source-lang", help="Source language code (e.g. en, zh)"),
     target_lang: str = typer.Option(
         ..., "--target-lang", help="Target language code (e.g. zh, fr, ja)"
     ),
@@ -414,24 +462,30 @@ def translate(
             target_lang=target_lang,
             domain=domain,
         )
-        if result.get("success"):
-            typer.echo("Translation successful!")
-            if result.get("translated_title"):
-                typer.echo(f"  Title: {result['translated_title']}")
-            if result.get("file_path"):
-                typer.echo(f"  Saved to: {result['file_path']}")
-            if result.get("translated_body"):
-                # Print first 500 chars as preview
-                body = result["translated_body"]
-                preview = body[:500] + ("..." if len(body) > 500 else "")
-                typer.echo(f"  Preview: {preview}")
-        else:
+        if not result.get("success"):
+            fail_if_global(
+                "InternalError", f"Translation failed: {result.get('error', 'Unknown error')}"
+            )
             typer.echo(f"Translation failed: {result.get('error', 'Unknown error')}", err=True)
             raise typer.Exit(code=1)
+        if emit_if_global(result):
+            return
+        typer.echo("Translation successful!")
+        if result.get("translated_title"):
+            typer.echo(f"  Title: {result['translated_title']}")
+        if result.get("file_path"):
+            typer.echo(f"  Saved to: {result['file_path']}")
+        if result.get("translated_body"):
+            # Print first 500 chars as preview
+            body = result["translated_body"]
+            preview = body[:500] + ("..." if len(body) > 500 else "")
+            typer.echo(f"  Preview: {preview}")
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -442,14 +496,15 @@ def tutorial(
     target_audience: str = typer.Option(
         "student",
         "--audience",
+        "--target-audience",
         help="Target audience: researcher, clinician, executive, student",
     ),
     collection_id: str = typer.Option(
-        None, "--collection-id", help="Optional collection ID to scope the tutorial",
+        None,
+        "--collection-id",
+        help="Optional collection ID to scope the tutorial",
     ),
-    format: str = typer.Option(
-        "markdown", "--format", help="Output format (markdown, agent)"
-    ),
+    format: str = typer.Option("markdown", "--format", help="Output format (markdown, agent)"),
     user_id: str = typer.Option(
         "",
         "--user-id",
@@ -478,11 +533,22 @@ def tutorial(
             user_id=user_id,
             include_stale=include_stale,
         )
+        if emit_if_global(
+            {
+                "domain": domain,
+                "target_audience": target_audience,
+                "format": format,
+                "content": result,
+            }
+        ):
+            return
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -491,12 +557,11 @@ def tutorial(
 def presentation(
     domain: str = typer.Option(..., "--domain", help="Domain to scope the presentation"),
     topic: str = typer.Option(..., "--topic", help="Presentation topic"),
-    slide_count: int = typer.Option(
-        10, "--slides", help="Number of slides (3-30, default: 10)"
-    ),
+    slide_count: int = typer.Option(10, "--slides", help="Number of slides (3-30, default: 10)"),
     target_audience: str = typer.Option(
         "executive",
         "--audience",
+        "--target-audience",
         help="Target audience: researcher, clinician, executive, student",
     ),
     format: str = typer.Option(
@@ -530,11 +595,24 @@ def presentation(
             user_id=user_id,
             include_stale=include_stale,
         )
+        if emit_if_global(
+            {
+                "domain": domain,
+                "topic": topic,
+                "slide_count": slide_count,
+                "target_audience": target_audience,
+                "format": format,
+                "content": result,
+            }
+        ):
+            return
         typer.echo(result)
     except (ValueError, FileNotFoundError) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -554,6 +632,12 @@ def sitemap(
     from autoinfo.output import export_kb
 
     if not base_url:
+        fail_if_global(
+            "ValidationError",
+            "sitemap generation requires an explicit base URL. Provide it with "
+            "--base-url, e.g. autoinfo output sitemap --domain medical-research "
+            "--base-url https://your-site.example",
+        )
         typer.echo(
             "Error: sitemap generation requires an explicit base URL. "
             "Provide it with --base-url, e.g. "
@@ -581,6 +665,10 @@ def sitemap(
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(xml)
+        if emit_if_global(
+            {"domain": domain, "path": out_path, "entries_count": 0, "placeholder": True}
+        ):
+            return
         typer.echo(f"Sitemap written to {out_path} (no KB entries — placeholder only)")
         return
 
@@ -594,4 +682,13 @@ def sitemap(
         shutil.copy2(out_path, dest)
         out_path = dest
 
+    if emit_if_global(
+        {
+            "domain": domain,
+            "path": out_path,
+            "entries_count": result.get("entries_count", 0),
+            "placeholder": False,
+        }
+    ):
+        return
     typer.echo(f"Sitemap written to {out_path} ({result.get('entries_count', 0)} entries)")

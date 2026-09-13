@@ -60,9 +60,7 @@ V011_CONFIG = {
         "model": "deepseek/deepseek-chat",
         "api_key": "sk-new-key",
         # New v0.1.1 fields
-        "fallback": [
-            {"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-fallback"}
-        ],
+        "fallback": [{"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-fallback"}],
         "tasks": {
             "extraction": {
                 "model": "gpt-4o",
@@ -138,9 +136,7 @@ class TestOldConfigStillLoads:
         cfg = load_config(cfg_path)
 
         # tasks and fallback are new v0.1.1 fields — absent in old configs
-        assert cfg.llm.tasks == {}, (
-            f"Expected tasks to default to {{}}, got {cfg.llm.tasks!r}"
-        )
+        assert cfg.llm.tasks == {}, f"Expected tasks to default to {{}}, got {cfg.llm.tasks!r}"
         assert cfg.llm.fallback == [], (
             f"Expected fallback to default to [], got {cfg.llm.fallback!r}"
         )
@@ -275,8 +271,7 @@ class TestAllV01TestsPass:
             print(result.stderr[-2000:])
 
         assert result.returncode == 0, (
-            f"v0.1 test suite exited with code {result.returncode}, "
-            f"expected 0. See output above."
+            f"v0.1 test suite exited with code {result.returncode}, expected 0. See output above."
         )
 
         # Verify all tests were collected (sanity check)
@@ -306,32 +301,26 @@ class TestCliStubsRegister:
         """``autoinfo --help`` lists all v0.1 commands."""
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0, (
-            f"CLI --help exited with code {result.exit_code}\n"
-            f"stderr: {result.stderr}"
+            f"CLI --help exited with code {result.exit_code}\nstderr: {result.stderr}"
         )
 
         output = result.stdout
         for cmd in sorted(self.EXPECTED_COMMANDS):
-            assert cmd in output, (
-                f"Command '{cmd}' not found in --help output"
-            )
+            assert cmd in output, f"Command '{cmd}' not found in --help output"
 
     def test_each_command_has_help(self, cli_runner: Any) -> None:
         """Each subcommand has its own ``--help`` that returns exit code 0."""
         for cmd in sorted(self.EXPECTED_COMMANDS):
             result = cli_runner.invoke(app, [cmd, "--help"])
             assert result.exit_code == 0, (
-                f"'{cmd} --help' exited with code {result.exit_code}\n"
-                f"stderr: {result.stderr}"
+                f"'{cmd} --help' exited with code {result.exit_code}\nstderr: {result.stderr}"
             )
 
     def test_global_json_flag_listed(self, cli_runner: Any) -> None:
         """Global ``--json`` flag appears in top-level help."""
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "--json" in result.stdout, (
-            "Global --json flag not listed in --help"
-        )
+        assert "--json" in result.stdout, "Global --json flag not listed in --help"
 
 
 # ===================================================================
@@ -355,9 +344,7 @@ class TestMcpNewTools:
     async def test_tool_count(self) -> None:
         """MCP server lists the expected number of tools."""
         tools = await mcp_server.list_tools()
-        assert len(tools) >= 6, (
-            f"Expected at least 6 tools, got {len(tools)}"
-        )
+        assert len(tools) >= 6, f"Expected at least 6 tools, got {len(tools)}"
 
     @pytest.mark.asyncio
     async def test_tool_names(self) -> None:
@@ -373,18 +360,14 @@ class TestMcpNewTools:
         """Every tool has a non-empty description."""
         tools = await mcp_server.list_tools()
         for tool in tools:
-            assert tool.description, (
-                f"Tool '{tool.name}' has empty description"
-            )
+            assert tool.description, f"Tool '{tool.name}' has empty description"
 
     @pytest.mark.asyncio
     async def test_each_tool_has_input_schema(self) -> None:
         """Every tool declares an input schema."""
         tools = await mcp_server.list_tools()
         for tool in tools:
-            assert tool.inputSchema is not None, (
-                f"Tool '{tool.name}' has no inputSchema"
-            )
+            assert tool.inputSchema is not None, f"Tool '{tool.name}' has no inputSchema"
             assert tool.inputSchema.get("type") == "object", (
                 f"Tool '{tool.name}' inputSchema type is not 'object'"
             )
@@ -393,8 +376,8 @@ class TestMcpNewTools:
     async def test_health_check_tools_count(self) -> None:
         """``health_check`` tool returns a tools_count >= 6."""
         result = mcp_server._handle_health_check()
-        assert result["tools_count"] >= 6, (
-            f"Expected tools_count >= 6, got {result['tools_count']}"
+        assert result["data"]["tools_count"] >= 6, (
+            f"Expected tools_count >= 6, got {result['data']['tools_count']}"
         )
 
 
@@ -450,12 +433,8 @@ class TestInitIntegration:
         assert "deepseek" in cfg.llm.model
 
         # New fields have defaults
-        assert cfg.llm.tasks == {}, (
-            f"Expected tasks={{}}, got {cfg.llm.tasks!r}"
-        )
-        assert cfg.llm.fallback == [], (
-            f"Expected fallback=[], got {cfg.llm.fallback!r}"
-        )
+        assert cfg.llm.tasks == {}, f"Expected tasks={{}}, got {cfg.llm.tasks!r}"
+        assert cfg.llm.fallback == [], f"Expected fallback=[], got {cfg.llm.fallback!r}"
 
         # Domain structure is intact
         assert len(cfg.domains) == 1
@@ -562,12 +541,14 @@ class TestCollectProcessPipeline:
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps({
-            "tl_dr": "Test backward compat summary.",
-            "key_points": ["Point 1", "Point 2"],
-            "entities": [],
-            "relevance_score": 85.0,
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "tl_dr": "Test backward compat summary.",
+                "key_points": ["Point 1", "Point 2"],
+                "entities": [],
+                "relevance_score": 85.0,
+            }
+        )
         # TRIAGE #62 (regression): cost-meter MagicMock binding
         # (`process.py:690` → `cost.py:159`) — real int token counters so
         # `CostMeter().log_llm_tokens` gets ints, not MagicMocks.

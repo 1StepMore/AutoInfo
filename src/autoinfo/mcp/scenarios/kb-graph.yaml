@@ -9,7 +9,10 @@
 # and filesystem are left with zero residue.
 name: kb-graph
 description: "KB graph operations: link items, get relations, query graph, export (self-contained, self-cleaning)"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 steps:
   - name: "create_kb_entry writes fixture item A to 01-Raw"

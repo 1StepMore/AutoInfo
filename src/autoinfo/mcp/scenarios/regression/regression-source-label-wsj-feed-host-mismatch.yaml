@@ -15,7 +15,10 @@
 # on synthetic entries — no LLM, no network.
 name: regression-source-label-wsj-feed-host-mismatch
 description: "Regression #325: article_hosts config resolves feed-host mismatch (WSJ feeds.a.dj.com -> www.wsj.com label)"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#325"
 requires_env: []

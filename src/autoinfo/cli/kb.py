@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Knowledge Base CLI — search, list, and manage KB entries.
 
 Usage::
@@ -10,10 +8,13 @@ Usage::
     autoinfo kb promote --entry-id kb-001
 """
 
+from __future__ import annotations
 
 import json
 
 import typer
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(help="Knowledge base operations")
 
@@ -24,56 +25,48 @@ def search(
     domain: str = typer.Option("", "--domain", help="Domain to search in"),
     limit: int = typer.Option(20, "--limit", min=1, help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Search the knowledge base using FTS5 full-text search."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    result = store.search_knowledge_base(
-        query=query, domain=domain, limit=limit, offset=offset
-    )
+    result = store.search_knowledge_base(query=query, domain=domain, limit=limit, offset=offset)
+    if emit_if_global(result):
+        return
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 @app.command(name="list")
 def list_entries(
     domain: str = typer.Option(..., "--domain", help="Domain to list entries for"),
-    tier: str = typer.Option(
-        "01-Raw", "--tier", help="KB tier (01-Raw, 02-Draft, 03-Wiki)"
-    ),
+    tier: str = typer.Option("01-Raw", "--tier", help="KB tier (01-Raw, 02-Draft, 03-Wiki)"),
     limit: int = typer.Option(20, "--limit", min=1, help="Max entries"),
     offset: int = typer.Option(0, "--offset", help="Pagination offset"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List KB entries in a given tier."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    entries = store.list_kb_tier(
-        domain=domain, tier=tier, limit=limit, offset=offset
-    )
+    entries = store.list_kb_tier(domain=domain, tier=tier, limit=limit, offset=offset)
+    if emit_if_global(entries):
+        return
     typer.echo(json.dumps(entries, indent=2, ensure_ascii=False))
 
 
 @app.command()
 def reindex(
-    domain: str = typer.Option(
-        "", "--domain", help="Domain to reindex (empty = all)"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    domain: str = typer.Option("", "--domain", help="Domain to reindex (empty = all)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Rebuild the FTS5 search index from knowledge/ files."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
     result = store.reindex_knowledge_base(domain=domain or None)
+    if emit_if_global(result):
+        return
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
 
@@ -84,23 +77,20 @@ def create_draft(
     ),
     title: str = typer.Option(..., "--title", help="Title for the new Draft entry"),
     summary: str = typer.Option("", "--summary", help="Optional summary text"),
-    tags: list[str] = typer.Option(
-        [], "--tag", help="Optional tag (repeatable)"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    tags: list[str] = typer.Option([], "--tag", help="Optional tag (repeatable)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Create a Draft entry from one or more Raw entries."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
     try:
-        entry = store.create_kb_draft(
-            raw_ids=raw_ids, title=title, summary=summary, tags=tags
-        )
+        entry = store.create_kb_draft(raw_ids=raw_ids, title=title, summary=summary, tags=tags)
+        if emit_if_global(entry.to_dict()):
+            return
         typer.echo(json.dumps(entry.to_dict(), indent=2, ensure_ascii=False))
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -112,20 +102,19 @@ def reject_draft(
     action: str = typer.Option(
         "back_to_raw", "--action", help="'back_to_raw' (default) or 'archive'"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Reject a Draft, moving it back to 01-Raw or archiving."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
     try:
-        result = store.reject_kb_draft(
-            draft_id=draft_id, reason=reason, action=action
-        )
+        result = store.reject_kb_draft(draft_id=draft_id, reason=reason, action=action)
+        if emit_if_global(result):
+            return
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
     except (ValueError, FileNotFoundError) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -133,12 +122,8 @@ def reject_draft(
 @app.command(name="list-tiers")
 def list_tiers(
     ctx: typer.Context,
-    domain: str = typer.Option(
-        ..., "--domain", help="Domain to list tiers for"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    domain: str = typer.Option(..., "--domain", help="Domain to list tiers for"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List available KB tiers with entry counts for a domain."""
     json_output = json_output or bool((ctx.obj or {}).get("json"))
@@ -149,27 +134,32 @@ def list_tiers(
     tier_info = []
     for tier in tiers:
         entry_count = store.count_entries_by_tier(domain=domain, tier=tier)
-        tier_info.append({
-            "tier": tier,
-            "description": {
-                "01-Raw": "Sole entry point for collected content",
-                "02-Draft": "Agent-created drafts from Raw entries",
-                "03-Wiki": "Admission-gated agent-promoted curated entries (append-only)",
-            }.get(tier, ""),
-            "entry_count": entry_count,
-        })
+        tier_info.append(
+            {
+                "tier": tier,
+                "description": {
+                    "01-Raw": "Sole entry point for collected content",
+                    "02-Draft": "Agent-created drafts from Raw entries",
+                    "03-Wiki": "Admission-gated agent-promoted curated entries (append-only)",
+                }.get(tier, ""),
+                "entry_count": entry_count,
+            }
+        )
+
+    if emit_if_global({"items": tier_info, "count": len(tier_info)}):
+        return
 
     if json_output:
-        typer.echo(json.dumps({"items": tier_info, "count": len(tier_info)}, indent=2, ensure_ascii=False))
+        typer.echo(
+            json.dumps({"items": tier_info, "count": len(tier_info)}, indent=2, ensure_ascii=False)
+        )
         return
 
     typer.echo(f"KB tiers for domain '{domain}':")
     typer.echo("")
     for t in tier_info:
         desc = t["description"]
-        typer.echo(
-            f"  {t['tier']:<12} ({t['entry_count']:>4} entries)  {desc}"
-        )
+        typer.echo(f"  {t['tier']:<12} ({t['entry_count']:>4} entries)  {desc}")
 
 
 @app.command(name="wiki-links")
@@ -177,9 +167,7 @@ def wiki_links(
     rebuild: bool = typer.Option(
         False, "--rebuild", help="Scan all entries and update Linked References sections"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Rebuild [[wiki link]] cross-references across the knowledge base.
 
@@ -188,6 +176,8 @@ def wiki_links(
     ``## Linked References`` sections with outgoing links and backlinks.
     """
     if not rebuild:
+        if emit_if_global({"rebuilt": False}):
+            return
         typer.echo("Use --rebuild to scan and update wiki links.")
         raise typer.Exit(0)
 
@@ -195,21 +185,17 @@ def wiki_links(
 
     store = KBStore()
     result = store.rebuild_wiki_links()
+    if emit_if_global(result):
+        return
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 @app.command()
 def decay(
     ctx: typer.Context,
-    domain: str = typer.Option(
-        ..., "--domain", help="Domain to compute decay metrics for"
-    ),
-    ttl_days: int = typer.Option(
-        30, "--ttl-days", help="Days before an entry is considered stale"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    domain: str = typer.Option(..., "--domain", help="Domain to compute decay metrics for"),
+    ttl_days: int = typer.Option(30, "--ttl-days", help="Days before an entry is considered stale"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Compute decay / staleness metrics for a domain.
 
@@ -221,6 +207,9 @@ def decay(
 
     store = KBStore()
     result = store.get_domain_decay(domain=domain, ttl_days=ttl_days)
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
@@ -249,9 +238,7 @@ def promote(
     entry_id: str = typer.Option(
         ..., "--entry-id", help="Entry ID of the Draft to promote to 03-Wiki"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Promote a Draft entry to 03-Wiki (admission-gated agent promotion, append-only).
 
@@ -264,8 +251,11 @@ def promote(
     store = KBStore()
     try:
         result = store.promote_kb_draft(draft_id=entry_id)
+        if emit_if_global(result):
+            return
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
     except (ValueError, FileNotFoundError, PromotionRejected) as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -275,9 +265,7 @@ def promote_pending(
     domain: str = typer.Option(
         ..., "--domain", help="Domain whose eligible 02-Draft entries to promote"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Promote all eligible Draft entries for a domain (batch sweep).
 
@@ -299,6 +287,9 @@ def promote_pending(
 
     store = KBStore()
     result = store.promote_pending_drafts(domain=domain, config=config, caller="sweep")
+
+    if emit_if_global(result):
+        return
 
     if json_output:
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
@@ -325,9 +316,7 @@ def history(
     show_git: bool = typer.Option(
         False, "--show-git", help="Show git commit SHAs alongside version history"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show version history for a KB entry."""
     json_output = json_output or bool((ctx.obj or {}).get("json"))
@@ -335,6 +324,8 @@ def history(
 
     store = KBStore()
     versions = store.get_entry_history(entry_id=entry_id)
+    if emit_if_global({"entry_id": entry_id, "versions": versions, "count": len(versions)}):
+        return
     if not versions:
         if json_output:
             typer.echo(json.dumps([], indent=2, ensure_ascii=False))
@@ -347,10 +338,7 @@ def history(
         return
 
     for v in versions:
-        line = (
-            f"  v{v['version_num']}  {v['created_at']}"
-            f"  {v['comment'] or ''}"
-        )
+        line = f"  v{v['version_num']}  {v['created_at']}  {v['comment'] or ''}"
         if show_git:
             sha = v.get("git_sha", "") or ""
             line += f"  git:{sha[:12] if sha else '—'}"
@@ -363,9 +351,7 @@ def recommend(
     query: str = typer.Option("", "--query", help="Recommendation query"),
     domain: str = typer.Option("", "--domain", help="Domain to recommend from"),
     limit: int = typer.Option(10, "--limit", min=1, help="Max recommendations"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Recommend KB content using FTS5 + vector scoring.
 
@@ -383,23 +369,26 @@ def recommend(
         limit=limit,
     )
 
+    result = {
+        "query": query,
+        "domain": domain,
+        "items": [
+            {
+                "entry_id": item.entry_id,
+                "title": item.title,
+                "score": item.score,
+                "reason": item.reason,
+                "source_url": item.source_url,
+                "domain": item.domain,
+            }
+            for item in items
+        ],
+        "count": len(items),
+    }
+    if emit_if_global(result):
+        return
+
     if json_output:
-        result = {
-            "query": query,
-            "domain": domain,
-            "items": [
-                {
-                    "entry_id": item.entry_id,
-                    "title": item.title,
-                    "score": item.score,
-                    "reason": item.reason,
-                    "source_url": item.source_url,
-                    "domain": item.domain,
-                }
-                for item in items
-            ],
-            "count": len(items),
-        }
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
         return
 

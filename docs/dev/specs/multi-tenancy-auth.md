@@ -9,7 +9,7 @@
 > **Date:** 2026-07-27
 > **Version:** v1.0-draft (Never Designed — spec only, zero implementation)
 > **Status:** 🔴 Never Designed — Type 1 Gap. All content in this document is architectural specification for yet-to-be-built systems.
-> **Forward status:** Planned. F58-F69 (multi-tenancy, auth, rate limiting, admin dashboard, notification framework; see [`expectations.md`](./expectations.md)) are deliberately deferred, not merely un-designed: `user_id` fields exist as advisory foundation only. Full multi-tenancy/auth/RBAC is a roadmap item, not a current capability. Implementation remains gated on the SSE transport milestone.
+> **Forward status:** Planned. F58-F69 (multi-tenancy, auth, rate limiting, admin dashboard, notification framework; see [`expectations.md`](./expectations.md)) are deliberately deferred, not merely un-designed: `user_id` fields exist as advisory foundation only. Full multi-tenancy/auth/RBAC is a roadmap item, not a current capability. Implementation remains gated on the SSE transport milestone. **Committed dispositions for F58/F59/F60/F62 are recorded in the "Committed boundary" table below (T-A-06).**
 >
 > This spec covers four cross-cutting concerns that are entirely absent from the AutoInfo codebase:
 > multi-tenancy data isolation, end-user authentication, API rate limiting, and a web-based admin dashboard.
@@ -27,8 +27,37 @@
 
 ---
 
+## Committed boundary (T-A-06) — dispositions for the four concerns
+
+> **Classification only — nothing here changes the implementation status above.** Each of
+> this spec's four concerns carries exactly one committed disposition so the stage×user
+> coverage report (register T-A-02) has zero unclassified items.
+>
+> **Disposition format (machine-readable, consumed by the T-A-02 coverage report):**
+> values are exactly one of `out-of-scope` | `blocked-with-record` | `documented-limit`
+> (mirroring `docs/dev/acceptance-framework.md` §4 AC4 committed states), in a
+> `| Level | Disposition | Rationale |` table. `blocked-with-record` = cannot be validated
+> until a named, recorded gate lands (here: the SSE-transport milestone this spec records
+> as the implementation gate); `documented-limit` = a partial implementation ships and the
+> remainder is a documented ceiling. Statuses verified from `src/` on 2026-09-13.
+
+| Level | Disposition | Rationale |
+|-------|-------------|-----------|
+| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement (`user_id` advisory only; CD-001/CD-042); gated on this spec's recorded SSE-transport milestone — the stdio-only server cannot carry tenant context. |
+| `F59` End-user authentication | `blocked-with-record` | Zero auth primitives (no sessions/tokens/passwords; CD-002); gated on the recorded SSE-transport milestone; the `AuthRequired`/`SessionExpired` error codes were retired until that implementation lands (T-S-05). |
+| `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source limits, and tier/free-tier quotas shipped (CD-003 partial 2026-08-13); this spec's sliding-window API-surface quotas (429 + Retry-After) are the documented ceiling, dependent on F59. |
+| `F62` Admin dashboard | `out-of-scope` | V1 operations surface is CLI/MCP (`status`, `cost dashboard`, `doctor`, `diagnose_system`, `get_metrics`, Prometheus); this spec's `/admin` console (CD-005/CD-013) is P2 roadmap, outside the V1 boundary. |
+
+> Related: `F63` unified notification framework also carries a `documented-limit`
+> disposition (per-subsystem notifications shipped; unified bus is the ceiling) — see
+> [`expectations.md`](./expectations.md) §3.17 and
+> [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md).
+
+---
+
 ## Table of Contents
 
+0. [Committed boundary (T-A-06) — dispositions for the four concerns](#committed-boundary-t-a-06--dispositions-for-the-four-concerns)
 1. [§1: Multi-Tenancy Model](#1-multi-tenancy-model)
 2. [§2: End-User Authentication](#2-end-user-authentication)
    - [§2.6: Agent Identity](#26-agent-identity)

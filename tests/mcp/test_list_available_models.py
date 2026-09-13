@@ -45,9 +45,7 @@ def _mock_load_config(config_dict: dict[str, Any]) -> Any:
     """Patch ``_load_config`` to return a config built from *config_dict*."""
     from autoinfo.config import _dict_to_config
 
-    return patch.object(
-        mcp_server, "_load_config", return_value=_dict_to_config(config_dict)
-    )
+    return patch.object(mcp_server, "_load_config", return_value=_dict_to_config(config_dict))
 
 
 class TestListAvailableModelsFullPool:
@@ -118,9 +116,7 @@ class TestListAvailableModelsFullPool:
 
     def test_task_inherits_primary_provider(self) -> None:
         """Task with only a model → empty provider + inherits_provider True."""
-        with _mock_load_config(
-            _config_dict(tasks={"summarization": {"model": "claude-3"}})
-        ):
+        with _mock_load_config(_config_dict(tasks={"summarization": {"model": "claude-3"}})):
             result = _handle_list_available_models()
 
         assert result["count"] == 2
@@ -130,9 +126,7 @@ class TestListAvailableModelsFullPool:
         assert task["provider"] == ""
         assert task["inherits_provider"] is True
 
-    def test_api_key_configured_reflects_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_api_key_configured_reflects_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Fallback entries inherit the primary key → api_key_configured True."""
         monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test")
         with _mock_load_config(_config_dict(fallback=[{"model": "mimo-v2.5"}])):
@@ -142,14 +136,11 @@ class TestListAvailableModelsFullPool:
         assert result["models"][1]["api_key_configured"] is True
 
     def test_error_branch_preserved(self) -> None:
-        """Missing config → existing error envelope, count == 0."""
-        with patch.object(
-            mcp_server, "_load_config", side_effect=FileNotFoundError("no config")
-        ):
+        """Missing config → canonical error envelope."""
+        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_available_models()
 
-        assert result["count"] == 0
-        assert result["models"] == []
-        assert "error_code" in result
-        assert "message" in result
-        assert result["actionable"] is True
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
+        assert "message" in result["error"]
+        assert result["error"]["actionable"] is True

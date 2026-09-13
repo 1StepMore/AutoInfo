@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Portal CLI — end-user self-service for preferences and delivery history.
 
 Usage::
@@ -9,6 +7,7 @@ Usage::
     autoinfo portal history --user alice
 """
 
+from __future__ import annotations
 
 import json
 from typing import Any
@@ -21,6 +20,8 @@ from autoinfo.user_store import (
     list_subscriptions,
     update_profile,
 )
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(help="End-user self-service portal")
 
@@ -42,8 +43,20 @@ def preferences_show(
     """Show delivery preferences for an end-user."""
     profile = get_profile(user_id)
     if profile is None:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"Error: End-user '{user_id}' not found", err=True)
         raise typer.Exit(code=1)
+
+    data = {
+        "user_id": profile.user_id,
+        "name": profile.name,
+        "email": profile.email,
+        "tier": profile.tier,
+        "status": profile.status,
+        "delivery_preferences": profile.delivery_preferences,
+    }
+    if emit_if_global(data):
+        return
 
     if json_output:
         typer.echo(json.dumps(profile.delivery_preferences, indent=2, ensure_ascii=False))
@@ -75,6 +88,7 @@ def preferences_update(
     try:
         prefs: dict[str, Any] = json.loads(delivery_prefs)
     except json.JSONDecodeError as exc:
+        fail_if_global("ValidationError", f"invalid JSON for --delivery-prefs: {exc}")
         typer.echo(f"Error: invalid JSON for --delivery-prefs: {exc}", err=True)
         raise typer.Exit(code=1)
 
@@ -84,8 +98,14 @@ def preferences_update(
 
     profile = update_profile(user_id=user_id, **kwargs)
     if profile is None:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"Error: End-user '{user_id}' not found", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global(
+        {"user_id": profile.user_id, "delivery_preferences": profile.delivery_preferences}
+    ):
+        return
 
     typer.echo(f"Updated preferences for end-user: {profile.user_id}")
     typer.echo(json.dumps(profile.delivery_preferences, indent=2, ensure_ascii=False))
@@ -101,13 +121,12 @@ def history(
     user_id: str = typer.Option(..., "--user", help="End-user ID"),
     limit: int = typer.Option(50, "--limit", help="Max entries to return"),
     channel: str = typer.Option(None, "--channel", help="Filter by channel (smtp, webhook, ...)"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON array (default: table)"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON array (default: table)"),
 ) -> None:
     """Show delivery history for an end-user."""
     profile = get_profile(user_id)
     if profile is None:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"Error: End-user '{user_id}' not found", err=True)
         raise typer.Exit(code=1)
 
@@ -115,6 +134,8 @@ def history(
     sub_ids = [s.subscription_id for s in subscriptions if s.subscription_id]
 
     if not sub_ids:
+        if emit_if_global({"user_id": user_id, "items": [], "count": 0}):
+            return
         typer.echo(f"No subscriptions found for end-user '{user_id}'")
         return
 
@@ -132,7 +153,12 @@ def history(
     page = all_entries[:limit]
 
     if not page:
+        if emit_if_global({"user_id": user_id, "items": [], "count": 0}):
+            return
         typer.echo(f"No delivery history for end-user '{user_id}'")
+        return
+
+    if emit_if_global({"user_id": user_id, "items": page, "count": len(page)}):
         return
 
     if json_output:
@@ -140,7 +166,10 @@ def history(
         return
 
     # Pretty table
-    header = f"{'Log ID':<40} {'Channel':<12} {'Type':<12} {'Status':<10} {'Attempt':<8} {'Last Attempt':<30}"
+    header = (
+        f"{'Log ID':<40} {'Channel':<12} {'Type':<12} "
+        f"{'Status':<10} {'Attempt':<8} {'Last Attempt':<30}"
+    )
     sep = "-" * len(header)
     typer.echo(f"Delivery history for '{user_id}' ({len(page)} entries):")
     typer.echo(header)

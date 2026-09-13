@@ -1,6 +1,9 @@
 name: rest-api
 description: REST API endpoints via real HTTP requests
-category: http
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A7
+user_level: B2.2
 requires_env: []
 requires_domain: ["medical-research"]
 requires_http: ["http://127.0.0.1:8741/health"]

@@ -4,7 +4,10 @@
 # list_agent_callbacks returns a list as data (not dict), so no data_has.
 name: agent-callbacks
 description: "Agent callbacks: register, list, and remove (cleanup via CLI)"
-category: system
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.5
 requires_env: []
 steps:
   - name: "set_agent_callback registers a test callback"

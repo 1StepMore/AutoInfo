@@ -16,23 +16,20 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-import yaml
-from mcp.types import TextContent, Tool
 
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
-    _error_response,
     _handle_archive_project,
     _handle_batch_run,
     _handle_get_config,
     _handle_get_project_assets,
     _handle_get_tool_count,
+    _handle_health_check,
     _handle_list_active_collections,
     _handle_list_projects,
-    _handle_health_check,
 )
 
 # ======================================================================
@@ -116,14 +113,16 @@ class TestToolCount:
     def test_tools_count_matches_runtime(self) -> None:
         result = _handle_health_check()
         runtime_count = _handle_get_tool_count()["tools_count"]
-        assert result["tools_count"] == runtime_count
-        assert result["tools_count"] >= 100, (
-            f"Expected at least 100 tools, got {result['tools_count']}"
+        assert result["data"]["tools_count"] == runtime_count
+        assert result["data"]["tools_count"] >= 100, (
+            f"Expected at least 100 tools, got {result['data']['tools_count']}"
         )
 
     @pytest.mark.asyncio
-    async def test_new_tool_names_are_declared(self) -> None:
+    async def test_new_tool_names_are_declared(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify expected tool names are present in list_tools declarations."""
+        monkeypatch.setenv("AUTOINFO_ACTOR", "director")
+        monkeypatch.delenv("AUTOINFO_DIRECTOR_ACTORS", raising=False)
         tools_list = await mcp_server.list_tools()
         assert isinstance(tools_list, list)
         assert len(tools_list) == _handle_get_tool_count()["tools_count"]
@@ -165,8 +164,8 @@ class TestListProjects:
     def test_handles_missing_config(self) -> None:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_list_projects()
-            assert result["count"] == 0
-            assert "error_code" in result
+            assert result["success"] is False
+            assert result["error"]["code"] == "InternalError"
 
     def test_includes_llm_info(self, tmp_config: Path) -> None:
         result = _handle_list_projects()
@@ -214,8 +213,8 @@ class TestGetProjectAssets:
 class TestArchiveProject:
     def test_refuses_when_not_published(self) -> None:
         """archive_project must refuse unless entries exist in 03-Wiki."""
-        with patch("autoinfo.kb.KBStore") as MockStore:
-            instance = MockStore.return_value
+        with patch("autoinfo.kb.KBStore") as mock_store:
+            instance = mock_store.return_value
             # Simulate no wiki entries
             instance.index.count_entries.return_value = 0
             instance.index.list_entries_by_tier.return_value = []
@@ -235,8 +234,8 @@ class TestArchiveProject:
 
     def test_says_human_only_when_published(self) -> None:
         """With wiki entries present, archive is still human-only."""
-        with patch("autoinfo.kb.KBStore") as MockStore:
-            instance = MockStore.return_value
+        with patch("autoinfo.kb.KBStore") as mock_store:
+            instance = mock_store.return_value
             instance.index.count_entries.return_value = 10
             instance.index.list_entries_by_tier.return_value = [{"entry_id": "wiki-001"}]
 
@@ -247,8 +246,8 @@ class TestArchiveProject:
         assert result["actionable"] is False
 
     def test_default_reason(self) -> None:
-        with patch("autoinfo.kb.KBStore") as MockStore:
-            instance = MockStore.return_value
+        with patch("autoinfo.kb.KBStore") as mock_store:
+            instance = mock_store.return_value
             instance.index.count_entries.return_value = 0
             instance.index.list_entries_by_tier.return_value = []
 
@@ -265,7 +264,8 @@ class TestArchiveProject:
 
 class TestBatchRun:
     def test_collect_phase_failure_returns_phases(self) -> None:
-        """If collection fails, batch_run should return phases with collection failed and processing skipped."""
+        """If collection fails, batch_run should return phases with collection
+        failed and processing skipped."""
         with (
             patch("autoinfo.collect.run_collection") as mock_collect,
         ):
@@ -362,26 +362,31 @@ class TestListActiveCollections:
         runs_dir = tmp_path / "collections"
         runs_dir.mkdir(exist_ok=True)
         runs_path = runs_dir / "_runs.json"
-        runs_path.write_text(json.dumps([
-            {
-                "collection_id": "col-001",
-                "timestamp": "2026-07-20T10:00:00Z",
-                "status": "in_progress",
-                "items_found": 3,
-                "items_new": 2,
-                "errors": [],
-                "duration_ms": 1200.0,
-            },
-            {
-                "collection_id": "col-002",
-                "timestamp": "2026-07-20T09:00:00Z",
-                "status": "completed",
-                "items_found": 10,
-                "items_new": 10,
-                "errors": [],
-                "duration_ms": 5000.0,
-            },
-        ]), encoding="utf-8")
+        runs_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "collection_id": "col-001",
+                        "timestamp": "2026-07-20T10:00:00Z",
+                        "status": "in_progress",
+                        "items_found": 3,
+                        "items_new": 2,
+                        "errors": [],
+                        "duration_ms": 1200.0,
+                    },
+                    {
+                        "collection_id": "col-002",
+                        "timestamp": "2026-07-20T09:00:00Z",
+                        "status": "completed",
+                        "items_found": 10,
+                        "items_new": 10,
+                        "errors": [],
+                        "duration_ms": 5000.0,
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         cwd = Path.cwd()
         os.chdir(tmp_path)
@@ -397,18 +402,23 @@ class TestListActiveCollections:
         runs_dir = tmp_path / "collections"
         runs_dir.mkdir(exist_ok=True)
         runs_path = runs_dir / "_runs.json"
-        runs_path.write_text(json.dumps([
-            {
-                "collection_id": f"col-{i:03d}",
-                "timestamp": f"2026-07-{10 + i:02d}T10:00:00Z",
-                "status": "completed",
-                "items_found": i,
-                "items_new": i,
-                "errors": [],
-                "duration_ms": 1000.0 * i,
-            }
-            for i in range(1, 8)
-        ]), encoding="utf-8")
+        runs_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "collection_id": f"col-{i:03d}",
+                        "timestamp": f"2026-07-{10 + i:02d}T10:00:00Z",
+                        "status": "completed",
+                        "items_found": i,
+                        "items_new": i,
+                        "errors": [],
+                        "duration_ms": 1000.0 * i,
+                    }
+                    for i in range(1, 8)
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         cwd = Path.cwd()
         os.chdir(tmp_path)
@@ -461,14 +471,15 @@ class TestGetConfig:
 
     def test_invalid_section_returns_error(self, tmp_config: Path) -> None:
         result = _handle_get_config(section="nonexistent")
-        assert "error_code" in result
-        assert result["error_code"] == "InvalidSection"
-        assert "actionable" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "InvalidSection"
+        assert result["error"]["actionable"] is True
 
     def test_handles_config_load_error(self) -> None:
         with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
             result = _handle_get_config(section="")
-            assert "error_code" in result
+            assert result["success"] is False
+            assert result["error"]["code"] == "InternalError"
 
 
 # ======================================================================
@@ -481,18 +492,18 @@ class TestConfirmParam:
 
     def test_remove_source_refuses_without_confirm(self) -> None:
         result = mcp_server._handle_remove_source(source_id="test:src", confirm=False)
-        assert result["error_code"] == "ConfirmationRequired"
-        assert result["actionable"] is True
+        assert result["error"]["code"] == "ConfirmationRequired"
+        assert result["error"]["actionable"] is True
 
     def test_remove_topic_refuses_without_confirm(self) -> None:
         result = mcp_server._handle_remove_topic(domain="test", topic_id="t", confirm=False)
-        assert result["error_code"] == "ConfirmationRequired"
-        assert result["actionable"] is True
+        assert result["error"]["code"] == "ConfirmationRequired"
+        assert result["error"]["actionable"] is True
 
     def test_remove_schedule_refuses_without_confirm(self) -> None:
         result = mcp_server._handle_remove_schedule(name="test-sched", confirm=False)
-        assert result["error_code"] == "ConfirmationRequired"
-        assert result["actionable"] is True
+        assert result["error"]["code"] == "ConfirmationRequired"
+        assert result["error"]["actionable"] is True
 
     def test_archive_project_refuses_without_confirm(self) -> None:
         result = mcp_server._handle_archive_project(reason="test", confirm=False)
@@ -522,10 +533,13 @@ class TestJobId:
 
     def test_process_collection_returns_job_id(self) -> None:
         from autoinfo.process import ProcessResult
+
         with patch("autoinfo.process.run_processing") as mock_process:
             mock_process.return_value = ProcessResult(
-                domain="test", total_items=5,
-                kb_entries_created=3, duration_s=1.0,
+                domain="test",
+                total_items=5,
+                kb_entries_created=3,
+                duration_s=1.0,
             )
             result = mcp_server._handle_process_collection(domain="test-domain")
         assert "job_id" in result
@@ -552,10 +566,13 @@ class TestJobId:
 
     def test_get_processing_progress_by_job_id(self) -> None:
         from autoinfo.process import ProcessResult
+
         with patch("autoinfo.process.run_processing") as mock_process:
             mock_process.return_value = ProcessResult(
-                domain="test", total_items=5,
-                kb_entries_created=3, duration_s=1.0,
+                domain="test",
+                total_items=5,
+                kb_entries_created=3,
+                duration_s=1.0,
             )
             result = mcp_server._handle_process_collection(domain="test-progress-2")
         job_id = result["job_id"]

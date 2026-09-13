@@ -18,7 +18,10 @@
 # exit contract directly.
 name: regression-validation-diff-multidomain
 description: "Regression #340: diff buckets keyed by (domain, product, assertion) reconcile with the card failure count; reconciliation mismatch is a hard non-zero exit"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A7
+user_level: B2.5
 regression: true
 regression_issue: "#340"
 requires_env: []

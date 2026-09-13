@@ -17,7 +17,10 @@
 # silent skip.
 name: regression-crossdomain-noise-filter-tutorial-presentation
 description: "Regression #319: ai-commercial tutorial + presentation exclude medical entries via per-domain exclude_keywords + seed fallback"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#319"
 requires_env: []

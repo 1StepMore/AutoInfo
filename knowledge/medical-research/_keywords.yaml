@@ -1,601 +1,253 @@
 keywords:
-  crispr:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.515643+00:00'
-    updated_at: '2026-08-24T05:53:09.474852+00:00'
-    source: auto-discovery:pubmed
-  gene therapy:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.525123+00:00'
-    updated_at: '2026-08-24T05:53:09.536561+00:00'
-    source: auto-discovery:pubmed
-  gene-editing:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.535207+00:00'
-    updated_at: '2026-08-24T05:53:09.594777+00:00'
-    source: auto-discovery:pubmed
-  tool.:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.545762+00:00'
-    updated_at: '2026-08-24T05:53:09.659543+00:00'
-    source: auto-discovery:pubmed
-  crispr gene-editing:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.557301+00:00'
-    updated_at: '2026-08-24T05:53:09.722430+00:00'
-    source: auto-discovery:pubmed
-  gene-editing tool.:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.568854+00:00'
-    updated_at: '2026-08-24T05:53:09.784836+00:00'
-    source: auto-discovery:pubmed
-  crispr gene-editing tool.:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:25.580993+00:00'
-    updated_at: '2026-08-24T05:53:09.857547+00:00'
-    source: auto-discovery:pubmed
-  ivf:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.141176+00:00'
-    updated_at: '2026-08-26T04:11:49.038591+00:00'
-    source: auto-discovery:pubmed
-  key:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.152769+00:00'
-    updated_at: '2026-08-26T04:11:49.083681+00:00'
-    source: auto-discovery:pubmed
-  treatment:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.165045+00:00'
-    updated_at: '2026-08-26T04:11:49.127724+00:00'
-    source: auto-discovery:pubmed
-  ivf key:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.176566+00:00'
-    updated_at: '2026-08-26T04:11:49.178472+00:00'
-    source: auto-discovery:pubmed
-  key treatment:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.188324+00:00'
-    updated_at: '2026-08-26T04:11:49.225973+00:00'
-    source: auto-discovery:pubmed
-  ivf key treatment:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.200613+00:00'
-    updated_at: '2026-08-26T04:11:49.271919+00:00'
-    source: auto-discovery:pubmed
-  outcomes:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.213089+00:00'
-    updated_at: '2026-08-26T04:11:49.317244+00:00'
-    source: auto-discovery:pubmed
-  depend:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.226484+00:00'
-    updated_at: '2026-08-26T04:11:49.362694+00:00'
-    source: auto-discovery:pubmed
-  many:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.243297+00:00'
-    updated_at: '2026-08-26T04:11:49.407840+00:00'
-    source: auto-discovery:pubmed
-  factors:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.260615+00:00'
-    updated_at: '2026-08-26T04:11:49.452107+00:00'
-    source: auto-discovery:pubmed
-  outcomes depend:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.279003+00:00'
-    updated_at: '2026-08-26T04:11:49.495687+00:00'
-    source: auto-discovery:pubmed
-  depend many:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.297095+00:00'
-    updated_at: '2026-08-26T04:11:49.540556+00:00'
-    source: auto-discovery:pubmed
-  many factors:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.314292+00:00'
-    updated_at: '2026-08-26T04:11:49.585885+00:00'
-    source: auto-discovery:pubmed
-  outcomes depend many:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.331954+00:00'
-    updated_at: '2026-08-26T04:11:49.629553+00:00'
-    source: auto-discovery:pubmed
-  depend many factors:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.348888+00:00'
-    updated_at: '2026-08-26T04:11:49.673355+00:00'
-    source: auto-discovery:pubmed
-  neuroplasticity:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.373779+00:00'
-    updated_at: '2026-08-26T04:11:46.415112+00:00'
-    source: auto-discovery:pubmed
-  neuroplasticity key:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.409571+00:00'
-    updated_at: '2026-08-26T04:11:46.514852+00:00'
-    source: auto-discovery:pubmed
-  synaptic:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.427458+00:00'
-    updated_at: '2026-08-26T04:11:46.558792+00:00'
-    source: auto-discovery:pubmed
-  plasticity:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.446215+00:00'
-    updated_at: '2026-08-26T04:11:46.604026+00:00'
-    source: auto-discovery:pubmed
-  matters:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.463938+00:00'
-    updated_at: '2026-08-26T04:11:46.650789+00:00'
-    source: auto-discovery:pubmed
-  synaptic plasticity:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.482893+00:00'
-    updated_at: '2026-08-26T04:11:46.696193+00:00'
-    source: auto-discovery:pubmed
-  plasticity matters:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.502171+00:00'
-    updated_at: '2026-08-26T04:11:46.747947+00:00'
-    source: auto-discovery:pubmed
-  synaptic plasticity matters:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:26.522283+00:00'
-    updated_at: '2026-08-26T04:11:46.865756+00:00'
-    source: auto-discovery:pubmed
-  point:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:27.980246+00:00'
-    updated_at: '2026-08-26T04:11:31.711081+00:00'
-    source: auto-discovery:pubmed
-  time-lapse embryo imaging:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.694918+00:00'
-    updated_at: '2026-08-26T04:11:18.945262+00:00'
-    source: auto-discovery:pubmed
-  multicenter:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.716101+00:00'
-    updated_at: '2026-08-26T04:11:18.991197+00:00'
-    source: auto-discovery:pubmed
-  rct:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.738411+00:00'
-    updated_at: '2026-08-26T04:11:19.035135+00:00'
-    source: auto-discovery:pubmed
-  patients:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.783736+00:00'
-    updated_at: '2026-08-26T04:11:19.128949+00:00'
-    source: auto-discovery:pubmed
-  multicenter rct:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.807264+00:00'
-    updated_at: '2026-08-26T04:11:19.174304+00:00'
-    source: auto-discovery:pubmed
-  rct with:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.830841+00:00'
-    updated_at: '2026-08-26T04:11:19.221115+00:00'
-    source: auto-discovery:pubmed
-  ivf patients:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.855017+00:00'
-    updated_at: '2026-08-26T04:11:19.269412+00:00'
-    source: auto-discovery:pubmed
-  multicenter rct with:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.879896+00:00'
-    updated_at: '2026-08-26T04:11:19.314170+00:00'
-    source: auto-discovery:pubmed
-  live:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.904507+00:00'
-    updated_at: '2026-08-26T04:11:19.359621+00:00'
-    source: auto-discovery:pubmed
-  birth:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.928831+00:00'
-    updated_at: '2026-08-26T04:11:19.404207+00:00'
-    source: auto-discovery:pubmed
-  'rate:':
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.952446+00:00'
-    updated_at: '2026-08-26T04:11:19.449068+00:00'
-    source: auto-discovery:pubmed
-  p=0.006:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:37.977843+00:00'
-    updated_at: '2026-08-26T04:11:19.492199+00:00'
-    source: auto-discovery:pubmed
-  live birth:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:38.002771+00:00'
-    updated_at: '2026-08-26T04:11:19.536539+00:00'
-    source: auto-discovery:pubmed
-  'birth rate:':
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:38.027420+00:00'
-    updated_at: '2026-08-26T04:11:19.580558+00:00'
-    source: auto-discovery:pubmed
-  'live birth rate:':
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:38.052543+00:00'
-    updated_at: '2026-08-26T04:11:19.625113+00:00'
-    source: auto-discovery:pubmed
-  key point:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-12T07:55:51.619060+00:00'
-    updated_at: '2026-08-26T04:11:31.754575+00:00'
-    source: auto-discovery:pubmed
   effective:
     state: auto_added
     aliases: []
-    created_at: '2026-08-12T07:55:54.986027+00:00'
-    updated_at: '2026-08-26T04:11:36.489862+00:00'
+    created_at: '2026-09-11T18:49:36.931769+00:00'
+    updated_at: '2026-09-12T22:42:22.278025+00:00'
     source: auto-discovery:pubmed
   ivf effective:
     state: auto_added
     aliases: []
-    created_at: '2026-08-12T07:55:55.014769+00:00'
-    updated_at: '2026-08-26T04:11:36.532534+00:00'
+    created_at: '2026-09-11T18:49:36.937284+00:00'
+    updated_at: '2026-09-12T22:42:22.306681+00:00'
     source: auto-discovery:pubmed
-  oocyte vitrification:
+  ivf:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.513308+00:00'
-    updated_at: '2026-08-15T18:07:32.071813+00:00'
+    created_at: '2026-09-11T18:49:37.075567+00:00'
+    updated_at: '2026-09-13T08:44:45.727873+00:00'
     source: auto-discovery:pubmed
-  aneuploidy:
+  key:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.548632+00:00'
-    updated_at: '2026-08-15T18:08:20.845413+00:00'
+    created_at: '2026-09-11T18:49:37.392800+00:00'
+    updated_at: '2026-09-13T08:44:45.752913+00:00'
     source: auto-discovery:pubmed
-  advanced maternal age:
+  point:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.583920+00:00'
-    updated_at: '2026-08-15T18:08:07.942751+00:00'
+    created_at: '2026-09-11T18:49:37.464327+00:00'
+    updated_at: '2026-09-13T08:44:45.777566+00:00'
     source: auto-discovery:pubmed
-  preimplantation genetic testing for aneuploidies (pgt-a):
+  key point:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.618734+00:00'
-    updated_at: '2026-08-13T14:46:54.618734+00:00'
+    created_at: '2026-09-11T18:49:37.499596+00:00'
+    updated_at: '2026-09-13T08:44:45.803879+00:00'
     source: auto-discovery:pubmed
-  euploidy:
+  neuroplasticity:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.654040+00:00'
-    updated_at: '2026-08-15T18:07:32.270117+00:00'
+    created_at: '2026-09-11T19:06:52.977530+00:00'
+    updated_at: '2026-09-12T22:21:20.899899+00:00'
     source: auto-discovery:pubmed
-  chromosome-specific aneuploidy:
+  neuroplasticity key:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.689429+00:00'
-    updated_at: '2026-08-13T14:46:54.689429+00:00'
+    created_at: '2026-09-11T19:06:53.012093+00:00'
+    updated_at: '2026-09-12T22:21:20.954814+00:00'
     source: auto-discovery:pubmed
-  blastocyst:
+  synaptic:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.727610+00:00'
-    updated_at: '2026-08-15T18:07:42.235054+00:00'
+    created_at: '2026-09-11T19:06:53.030298+00:00'
+    updated_at: '2026-09-12T22:21:20.979823+00:00'
     source: auto-discovery:pubmed
-  metaphase ii (mii) oocyte:
+  plasticity:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.764246+00:00'
-    updated_at: '2026-08-13T14:46:54.764246+00:00'
+    created_at: '2026-09-11T19:06:53.048852+00:00'
+    updated_at: '2026-09-12T22:21:21.003863+00:00'
     source: auto-discovery:pubmed
-  oocyte:
+  matters:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.800492+00:00'
-    updated_at: '2026-08-15T18:08:19.644354+00:00'
+    created_at: '2026-09-11T19:06:53.072442+00:00'
+    updated_at: '2026-09-12T22:21:21.031019+00:00'
     source: auto-discovery:pubmed
-  vitrification:
+  synaptic plasticity:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.838888+00:00'
-    updated_at: '2026-08-15T18:08:05.065683+00:00'
+    created_at: '2026-09-11T19:06:53.089774+00:00'
+    updated_at: '2026-09-12T22:21:21.057547+00:00'
     source: auto-discovery:pubmed
-  alter:
+  plasticity matters:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.876961+00:00'
-    updated_at: '2026-08-13T14:46:54.876961+00:00'
+    created_at: '2026-09-11T19:06:53.109481+00:00'
+    updated_at: '2026-09-12T22:21:21.086619+00:00'
     source: auto-discovery:pubmed
-  global:
+  synaptic plasticity matters:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.915687+00:00'
-    updated_at: '2026-08-15T18:07:32.864108+00:00'
+    created_at: '2026-09-11T19:06:53.127674+00:00'
+    updated_at: '2026-09-12T22:21:21.112545+00:00'
     source: auto-discovery:pubmed
-  chromosome-specific:
+  treatment:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.954023+00:00'
-    updated_at: '2026-08-15T18:07:32.931271+00:00'
+    created_at: '2026-09-11T19:06:53.197751+00:00'
+    updated_at: '2026-09-12T22:21:22.221458+00:00'
     source: auto-discovery:pubmed
-  distribution:
+  ivf key:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:54.993804+00:00'
-    updated_at: '2026-08-15T18:07:33.006078+00:00'
+    created_at: '2026-09-11T19:06:53.219295+00:00'
+    updated_at: '2026-09-12T22:21:22.248309+00:00'
     source: auto-discovery:pubmed
-  aneuploidies:
+  key treatment:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.033729+00:00'
-    updated_at: '2026-08-13T14:46:55.033729+00:00'
+    created_at: '2026-09-11T19:06:53.248471+00:00'
+    updated_at: '2026-09-12T22:21:22.277321+00:00'
     source: auto-discovery:pubmed
-  blastocysts:
+  ivf key treatment:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.073308+00:00'
-    updated_at: '2026-08-13T14:46:55.073308+00:00'
+    created_at: '2026-09-11T19:06:53.269814+00:00'
+    updated_at: '2026-09-12T22:21:22.304375+00:00'
     source: auto-discovery:pubmed
-  advanced:
+  outcomes:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.114470+00:00'
-    updated_at: '2026-08-15T18:07:45.647681+00:00'
+    created_at: '2026-09-11T19:06:53.294780+00:00'
+    updated_at: '2026-09-12T22:21:22.330679+00:00'
     source: auto-discovery:pubmed
-  maternal:
+  depend:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.152856+00:00'
-    updated_at: '2026-08-15T18:08:16.998207+00:00'
+    created_at: '2026-09-11T19:06:53.318129+00:00'
+    updated_at: '2026-09-12T22:21:22.354868+00:00'
     source: auto-discovery:pubmed
-  age:
+  many:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.199468+00:00'
-    updated_at: '2026-08-15T18:08:17.044416+00:00'
+    created_at: '2026-09-11T19:06:53.342560+00:00'
+    updated_at: '2026-09-12T22:21:22.381084+00:00'
     source: auto-discovery:pubmed
-  patients.:
+  factors:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.241825+00:00'
-    updated_at: '2026-08-15T18:07:34.078315+00:00'
+    created_at: '2026-09-11T19:06:53.367906+00:00'
+    updated_at: '2026-09-12T22:21:22.405372+00:00'
     source: auto-discovery:pubmed
-  vitrification did:
+  outcomes depend:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.283905+00:00'
-    updated_at: '2026-08-15T18:07:33.054426+00:00'
+    created_at: '2026-09-11T19:06:53.394832+00:00'
+    updated_at: '2026-09-12T22:21:22.429930+00:00'
     source: auto-discovery:pubmed
-  not alter:
+  depend many:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.326712+00:00'
-    updated_at: '2026-08-13T14:46:55.326712+00:00'
+    created_at: '2026-09-11T19:06:53.424224+00:00'
+    updated_at: '2026-09-12T22:21:22.471602+00:00'
     source: auto-discovery:pubmed
-  alter the:
+  many factors:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.368992+00:00'
-    updated_at: '2026-08-13T14:46:55.368992+00:00'
+    created_at: '2026-09-11T19:06:53.451330+00:00'
+    updated_at: '2026-09-12T22:21:22.497899+00:00'
     source: auto-discovery:pubmed
-  the global:
+  outcomes depend many:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.412738+00:00'
-    updated_at: '2026-08-15T18:07:33.107399+00:00'
+    created_at: '2026-09-11T19:06:53.479978+00:00'
+    updated_at: '2026-09-12T22:21:22.526896+00:00'
     source: auto-discovery:pubmed
-  global chromosome-specific:
+  depend many factors:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.457196+00:00'
-    updated_at: '2026-08-15T18:07:33.214248+00:00'
+    created_at: '2026-09-11T19:06:53.507215+00:00'
+    updated_at: '2026-09-12T22:21:22.553571+00:00'
     source: auto-discovery:pubmed
-  chromosome-specific distribution:
+  time-lapse embryo imaging:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.499211+00:00'
-    updated_at: '2026-08-15T18:07:33.264357+00:00'
+    created_at: '2026-09-12T22:08:08.792821+00:00'
+    updated_at: '2026-09-12T22:42:00.307460+00:00'
     source: auto-discovery:pubmed
-  distribution aneuploidies:
+  multicenter:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.543686+00:00'
-    updated_at: '2026-08-13T14:46:55.543686+00:00'
+    created_at: '2026-09-12T22:08:08.811014+00:00'
+    updated_at: '2026-09-12T22:42:00.334815+00:00'
     source: auto-discovery:pubmed
-  aneuploidies blastocysts:
+  rct:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.592153+00:00'
-    updated_at: '2026-08-13T14:46:55.592153+00:00'
+    created_at: '2026-09-12T22:08:08.831420+00:00'
+    updated_at: '2026-09-12T22:42:00.362309+00:00'
     source: auto-discovery:pubmed
-  blastocysts from:
+  patients:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.638303+00:00'
-    updated_at: '2026-08-13T14:46:55.638303+00:00'
+    created_at: '2026-09-12T22:08:08.869930+00:00'
+    updated_at: '2026-09-12T22:42:00.420610+00:00'
     source: auto-discovery:pubmed
-  from advanced:
+  multicenter rct:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.682274+00:00'
-    updated_at: '2026-08-13T14:46:55.682274+00:00'
+    created_at: '2026-09-12T22:08:08.889403+00:00'
+    updated_at: '2026-09-12T22:42:00.448523+00:00'
     source: auto-discovery:pubmed
-  advanced maternal:
+  rct with:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.728475+00:00'
-    updated_at: '2026-08-15T18:07:33.736510+00:00'
+    created_at: '2026-09-12T22:08:08.908845+00:00'
+    updated_at: '2026-09-12T22:42:00.475180+00:00'
     source: auto-discovery:pubmed
-  maternal age:
+  ivf patients:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.776914+00:00'
-    updated_at: '2026-08-15T18:08:16.948882+00:00'
+    created_at: '2026-09-12T22:08:08.930066+00:00'
+    updated_at: '2026-09-12T22:42:00.502552+00:00'
     source: auto-discovery:pubmed
-  age patients.:
+  multicenter rct with:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.822794+00:00'
-    updated_at: '2026-08-15T18:07:33.807749+00:00'
+    created_at: '2026-09-12T22:08:08.952673+00:00'
+    updated_at: '2026-09-12T22:42:00.530579+00:00'
     source: auto-discovery:pubmed
-  oocyte vitrification did:
+  live:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.870587+00:00'
-    updated_at: '2026-08-15T18:07:33.312425+00:00'
+    created_at: '2026-09-12T22:08:08.975464+00:00'
+    updated_at: '2026-09-12T22:42:00.557731+00:00'
     source: auto-discovery:pubmed
-  vitrification did not:
+  birth:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:55.918755+00:00'
-    updated_at: '2026-08-15T18:07:33.359618+00:00'
+    created_at: '2026-09-12T22:08:08.996293+00:00'
+    updated_at: '2026-09-12T22:42:00.600816+00:00'
     source: auto-discovery:pubmed
-  did not alter:
+  'rate:':
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:56.111700+00:00'
-    updated_at: '2026-08-13T14:46:56.111700+00:00'
+    created_at: '2026-09-12T22:08:09.017990+00:00'
+    updated_at: '2026-09-12T22:42:00.630514+00:00'
     source: auto-discovery:pubmed
-  not alter the:
+  p=0.006:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:56.160466+00:00'
-    updated_at: '2026-08-13T14:46:56.160466+00:00'
+    created_at: '2026-09-12T22:08:09.040107+00:00'
+    updated_at: '2026-09-12T22:42:00.657071+00:00'
     source: auto-discovery:pubmed
-  alter the global:
+  live birth:
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:56.211784+00:00'
-    updated_at: '2026-08-13T14:46:56.211784+00:00'
+    created_at: '2026-09-12T22:08:09.062415+00:00'
+    updated_at: '2026-09-12T22:42:00.683554+00:00'
     source: auto-discovery:pubmed
-  the global chromosome-specific:
+  'birth rate:':
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:56.264769+00:00'
-    updated_at: '2026-08-15T18:07:33.414132+00:00'
+    created_at: '2026-09-12T22:08:09.084413+00:00'
+    updated_at: '2026-09-12T22:42:00.713482+00:00'
     source: auto-discovery:pubmed
-  global chromosome-specific distribution:
+  'live birth rate:':
     state: auto_added
     aliases: []
-    created_at: '2026-08-13T14:46:56.321306+00:00'
-    updated_at: '2026-08-15T18:07:33.468532+00:00'
-    source: auto-discovery:pubmed
-  chromosome-specific distribution aneuploidies:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.374623+00:00'
-    updated_at: '2026-08-13T14:46:56.374623+00:00'
-    source: auto-discovery:pubmed
-  distribution aneuploidies blastocysts:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.426562+00:00'
-    updated_at: '2026-08-13T14:46:56.426562+00:00'
-    source: auto-discovery:pubmed
-  aneuploidies blastocysts from:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.481187+00:00'
-    updated_at: '2026-08-13T14:46:56.481187+00:00'
-    source: auto-discovery:pubmed
-  blastocysts from advanced:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.598740+00:00'
-    updated_at: '2026-08-13T14:46:56.598740+00:00'
-    source: auto-discovery:pubmed
-  from advanced maternal:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.650460+00:00'
-    updated_at: '2026-08-13T14:46:56.650460+00:00'
-    source: auto-discovery:pubmed
-  maternal age patients.:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.704352+00:00'
-    updated_at: '2026-08-15T18:07:33.854514+00:00'
-    source: auto-discovery:pubmed
-  rates:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.759072+00:00'
-    updated_at: '2026-08-15T18:08:47.927078+00:00'
-    source: auto-discovery:pubmed
-  declined:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.813793+00:00'
-    updated_at: '2026-08-15T18:07:41.620929+00:00'
-    source: auto-discovery:pubmed
-  increasing:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.867988+00:00'
-    updated_at: '2026-08-15T18:08:01.952880+00:00'
-    source: auto-discovery:pubmed
-  similarly:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.923259+00:00'
-    updated_at: '2026-08-15T18:07:35.197902+00:00'
-    source: auto-discovery:pubmed
-  both:
-    state: auto_added
-    aliases: []
-    created_at: '2026-08-13T14:46:56.978686+00:00'
-    updated_at: '2026-08-13T14:48:04.430836+00:00'
+    created_at: '2026-09-12T22:08:09.106546+00:00'
+    updated_at: '2026-09-12T22:42:00.743144+00:00'
     source: auto-discovery:pubmed

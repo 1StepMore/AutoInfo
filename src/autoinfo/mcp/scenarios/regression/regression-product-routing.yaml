@@ -25,7 +25,10 @@
 # Failure means the routing/normalization regressed — never a silent skip.
 name: regression-product-routing
 description: "Regression output-quality-mega: premium-briefing/magazine-digest render non-empty and structurally distinct on the digest path"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#output-quality-mega"
 requires_env: []

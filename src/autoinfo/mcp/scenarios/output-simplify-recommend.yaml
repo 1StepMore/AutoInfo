@@ -15,7 +15,10 @@
 # declarations.
 name: output-simplify-recommend
 description: "Content simplification and recommendation"
-category: output
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 matrix_domains:
   - b2b

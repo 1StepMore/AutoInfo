@@ -15,7 +15,10 @@
 # rebuild the search index from the on-disk frontmatter before asserting.
 name: search-tier-boost
 description: "Search tier soft-boost: results carry tier field; wiki entry ranks before equal-scored draft"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

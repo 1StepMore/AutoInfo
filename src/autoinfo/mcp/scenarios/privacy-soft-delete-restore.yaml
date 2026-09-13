@@ -1,0 +1,150 @@
+# T-A-08: per-user-level privacy lifecycle — soft-delete -> restore (within the
+# retention window) -> permanent purge, exercised through the real MCP tools
+# (soft_delete_entry / restore_entry).  Self-contained: it creates exactly one
+# fixture entry owned by a scenario-only marker user and hard-purges it in
+# cleanup_steps, so real user data is never touched.  The soft-delete sets the
+# `deleted_at` retention-window anchor; restore clears it; the explicit
+# purge=True flag is the only path to permanent removal (never automatic).
+name: privacy-soft-delete-restore
+description: "Per-user-level privacy lifecycle: soft-delete -> restore within retention window -> permanent purge via soft_delete_entry/restore_entry (T-A-08)"
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A7
+user_level: B1.6
+requires_env: []
+steps:
+  - name: "create scenario fixture entry owned by marker user"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      import uuid
+      from datetime import datetime, timezone
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+      store = KBStore()
+      marker = "https://privacy-lifecycle.autoinfo.test/soft-delete-restore-entry"
+      item = Item(
+          id=str(uuid.uuid4()),
+          source_name="web",
+          source_type="web",
+          source_url=marker,
+          source_platform="web",
+          title="Privacy Lifecycle Fixture Entry",
+          content="Fixture entry owned by the privacy-soft-delete-restore scenario.",
+          domain="medical-research",
+          topic_tags=[],
+          collected_at=datetime.now(timezone.utc).isoformat(),
+          content_type="text",
+          quality_tier=1,
+      )
+      entry = store.store_entry(item=item, tier="01-Raw", user_id="validation-privacy-lifecycle-user")
+      print("ENTRY_ID " + entry.entry_id)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-general-privacy-lifecycle-fixture-entry"]
+
+  - name: "soft_delete_entry marks the entry deleted and records the retention anchor"
+    tool: soft_delete_entry
+    arguments:
+      entry_id: medical-research-general-privacy-lifecycle-fixture-entry
+      actor: agent
+    expect:
+      success: true
+      data_has: ["deleted", "entry_id", "deleted_at"]
+
+  - name: "soft-deleted entry stays on disk and is recoverable"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      eid = "medical-research-general-privacy-lifecycle-fixture-entry"
+      meta = store.index.get_entry(eid)
+      assert meta is not None, "entry vanished after soft-delete"
+      assert meta.get("deleted") in (1, True), meta
+      assert meta.get("deleted_at"), "retention anchor deleted_at missing"
+      assert Path(meta["file_path"]).is_file(), "soft-delete must not remove the file"
+      print("SOFT_DELETED_RECOVERABLE")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SOFT_DELETED_RECOVERABLE"]
+
+  - name: "restore_entry revives the entry within the retention window"
+    tool: restore_entry
+    arguments:
+      entry_id: medical-research-general-privacy-lifecycle-fixture-entry
+      actor: agent
+    expect:
+      success: true
+      data_has: ["restored", "entry_id"]
+
+  - name: "restored entry is live again (deleted flag cleared)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      meta = store.index.get_entry("medical-research-general-privacy-lifecycle-fixture-entry")
+      assert meta is not None and meta.get("deleted") in (0, False), meta
+      print("RESTORED_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RESTORED_OK"]
+
+  - name: "permanent purge removes the entry (soft_delete_entry purge=True)"
+    tool: soft_delete_entry
+    arguments:
+      entry_id: medical-research-general-privacy-lifecycle-fixture-entry
+      purge: true
+      actor: agent
+    expect:
+      success: true
+      data_has: ["deleted", "entry_id"]
+
+  - name: "purged entry is gone from the index"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      assert store.index.get_entry("medical-research-general-privacy-lifecycle-fixture-entry") is None
+      print("PURGED_OK")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PURGED_OK"]
+
+# Always-run best-effort cleanup: only the fixture whose source_url matches the
+# scenario marker is removed, so real user data is never touched.
+cleanup_steps:
+  - name: "purge scenario privacy lifecycle fixture"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      store = KBStore()
+      eid = "medical-research-general-privacy-lifecycle-fixture-entry"
+      marker = "https://privacy-lifecycle.autoinfo.test/soft-delete-restore-entry"
+      meta = store.index.get_entry(eid)
+      if meta is not None:
+          if meta.get("source_url") != marker:
+              print("REFUSE " + eid)
+          else:
+              store.delete_entry(eid)
+      for p in list(Path("knowledge/medical-research/01-Raw/general").glob("*privacy-lifecycle-fixture-entry*")):
+          p.unlink(missing_ok=True)
+      print("CLEANED")
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CLEANED"]

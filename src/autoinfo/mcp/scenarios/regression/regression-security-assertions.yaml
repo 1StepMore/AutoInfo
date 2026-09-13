@@ -20,7 +20,10 @@
 # defect + clean bodies — no LLM, no network.
 name: regression-security-assertions
 description: "Regression #351: year-hallucination / code-key-leak / broken-reference / external-error-text assertions fire on defect products and pass clean products"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#351"
 requires_env: []

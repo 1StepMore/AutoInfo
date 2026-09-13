@@ -93,6 +93,7 @@ def isolated_kb(tmp_path: Path) -> Path:
 def cli_runner():
     """Return a CliRunner for CLI tests."""
     from typer.testing import CliRunner
+
     return CliRunner()
 
 
@@ -153,6 +154,7 @@ class TestVectorSearch:
         # is_available is computed at module import time, so we patch it directly
         with patch("autoinfo.embeddings.is_available", False):
             from autoinfo.embeddings import search_embeddings
+
             conn = sqlite3.connect(":memory:")
             result = search_embeddings(conn, [0.0] * 1536, limit=10)
             assert result == []
@@ -161,6 +163,7 @@ class TestVectorSearch:
         """search_embeddings returns [] gracefully when is_available is False."""
         with patch("autoinfo.embeddings.is_available", False):
             from autoinfo.embeddings import search_embeddings
+
             conn = sqlite3.connect(":memory:")
             result = search_embeddings(conn, [0.0] * 1536, limit=10)
             assert result == []
@@ -169,39 +172,46 @@ class TestVectorSearch:
         """load_vec_extension returns False when sqlite-vec is not installed."""
         with patch("autoinfo.embeddings._sqlite_vec_available", False):
             from autoinfo.embeddings import load_vec_extension
+
             conn = sqlite3.connect(":memory:")
             assert load_vec_extension(conn) is False
 
     def test_cosine_similarity_identical(self):
         """identical vectors have cosine similarity 1.0."""
         from autoinfo.embeddings import cosine_similarity
+
         v = [1.0, 0.0, 0.0]
         assert cosine_similarity(v, v) == 1.0
 
     def test_cosine_similarity_orthogonal(self):
         """orthogonal vectors have cosine similarity 0.0."""
         from autoinfo.embeddings import cosine_similarity
+
         assert cosine_similarity([1.0, 0.0], [0.0, 1.0]) == 0.0
 
     def test_cosine_similarity_mismatched_length_returns_zero(self):
         """mismatched vector lengths return 0.0."""
         from autoinfo.embeddings import cosine_similarity
+
         assert cosine_similarity([1.0, 0.0], [1.0]) == 0.0
 
     def test_cosine_similarity_empty_returns_zero(self):
         """empty vectors return 0.0."""
         from autoinfo.embeddings import cosine_similarity
+
         assert cosine_similarity([], []) == 0.0
 
     def test_generate_embedding_empty_text_returns_zero_vector(self):
         """empty text yields a zero vector without calling litellm."""
         from autoinfo.embeddings import generate_embedding
+
         result = generate_embedding("")
         assert result == [0.0] * 1536
 
     def test_generate_embedding_whitespace_text_returns_zero_vector(self):
         """whitespace-only text yields a zero vector."""
         from autoinfo.embeddings import generate_embedding
+
         result = generate_embedding("   ")
         assert result == [0.0] * 1536
 
@@ -215,6 +225,7 @@ class TestVectorSearch:
             {"litellm": _litellm_stub(embedding=MagicMock(side_effect=Exception("API down")))},
         ):
             from autoinfo.embeddings import generate_embedding
+
             result = generate_embedding("test text")
             assert result == [0.0] * 1536
 
@@ -226,6 +237,7 @@ class TestVectorSearch:
                 search_embeddings,
                 store_embedding,
             )
+
             conn = sqlite3.connect(":memory:")
             ensure_embedding_table(conn)
             store_embedding(conn, "entry-1", [1.0, 0.0, 0.0] * 512, "test-model")
@@ -236,6 +248,7 @@ class TestVectorSearch:
     def test_ensure_embedding_table_idempotent(self):
         """calling ensure_embedding_table twice does not error."""
         from autoinfo.embeddings import ensure_embedding_table
+
         conn = sqlite3.connect(":memory:")
         ensure_embedding_table(conn)
         ensure_embedding_table(conn)  # second call
@@ -263,6 +276,7 @@ class TestRestAPI:
         import autoinfo.api.routes as routes
         from autoinfo.api.routes import _get_store
         from autoinfo.api.server import app
+
         routes._store = None
 
         store = _get_store()
@@ -490,6 +504,7 @@ class TestCEFRClassification:
     def test_classify_text_returns_known_level(self):
         """classify_text parses a valid LLM response into a recognised level."""
         from autoinfo.cefr import classify_text
+
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "B2"
         # TRIAGE #25 — retargeted from patch("litellm.completion") (AttributeError
@@ -506,6 +521,7 @@ class TestCEFRClassification:
     def test_classify_text_unknown_on_empty(self):
         """classify_text returns unknown for empty text without calling LLM."""
         from autoinfo.cefr import classify_text
+
         # TRIAGE #26 — same seam retarget as #25.
         completion = MagicMock()
         with patch.dict("sys.modules", {"litellm": _litellm_stub(completion=completion)}):
@@ -517,6 +533,7 @@ class TestCEFRClassification:
     def test_classify_text_unknown_on_llm_failure(self):
         """classify_text returns unknown when litellm raises."""
         from autoinfo.cefr import classify_text
+
         # TRIAGE #27 — same seam retarget as #25.
         with patch.dict(
             "sys.modules",
@@ -529,6 +546,7 @@ class TestCEFRClassification:
     def test_classify_text_zh_lang(self):
         """classify_text accepts 'zh' language parameter."""
         from autoinfo.cefr import classify_text
+
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "A2"
         # TRIAGE #28 — same seam retarget as #25.
@@ -542,6 +560,7 @@ class TestCEFRClassification:
     def test_parse_level_exact_match(self):
         """_parse_level matches exact level strings."""
         from autoinfo.cefr import _parse_level
+
         result = _parse_level("C1")
         assert result["cefr_level"] == "C1"
         assert result["confidence"] == 0.85
@@ -549,6 +568,7 @@ class TestCEFRClassification:
     def test_parse_level_substring_match(self):
         """_parse_level matches substrings containing level names."""
         from autoinfo.cefr import _parse_level
+
         result = _parse_level("The level is B2")
         assert result["cefr_level"] == "B2"
         assert result["confidence"] == 0.75
@@ -556,12 +576,14 @@ class TestCEFRClassification:
     def test_parse_level_regex_fallback(self):
         """_parse_level falls back to regex for embedded level patterns."""
         from autoinfo.cefr import _parse_level
+
         result = _parse_level("Text classified as C2.")
         assert result["cefr_level"] == "C2"
 
     def test_parse_level_unknown(self):
         """_parse_level returns unknown for unrecognisable input."""
         from autoinfo.cefr import _parse_level
+
         result = _parse_level("not a level at all")
         assert result["cefr_level"] == "unknown"
         assert result["confidence"] == 0.0
@@ -569,6 +591,7 @@ class TestCEFRClassification:
     def test_cli_classify_command(self, cli_runner):
         """autoinfo cefr classify outputs JSON with cefr_level."""
         from autoinfo.cli import app
+
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "A1"
         # TRIAGE #29 — same seam retarget as #25 (CLI routes through
@@ -587,6 +610,7 @@ class TestCEFRClassification:
         """_handle_classify_cefr returns cefr_level key."""
         from autoinfo.llm import LLMExtractor
         from autoinfo.mcp.server import _handle_classify_cefr
+
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "B1"
         completion = MagicMock(return_value=mock_response)
@@ -702,6 +726,7 @@ class TestEmailSender:
     def test_build_subject_format(self):
         """_build_subject returns correctly formatted subject line."""
         from autoinfo.email_sender import _build_subject
+
         subject = _build_subject("medical-research", "weekly")
         assert "[AutoInfo]" in subject
         assert "Weekly" in subject
@@ -710,9 +735,11 @@ class TestEmailSender:
     def test_md_to_html_with_markdown_lib(self):
         """_md_to_html converts markdown to HTML when markdown lib is available."""
         from autoinfo.email_sender import _md_to_html
+
         md = "# Title\n\n**bold** text"
         with patch.dict("sys.modules", {"markdown": MagicMock()}):
             import markdown as mock_md
+
             mock_md.markdown.return_value = "<h1>Title</h1><p><strong>bold</strong> text</p>"
             html = _md_to_html(md)
         assert "<h1>" in html
@@ -731,6 +758,7 @@ class TestKeywordsLifecycle:
     def kf(self, tmp_path: Path):
         """Create a KeywordsFile instance backed by a temp directory."""
         from autoinfo.keywords import KeywordsFile
+
         return KeywordsFile(base_dir=tmp_path)
 
     def test_add_keyword(self, kf):
@@ -781,6 +809,7 @@ class TestKeywordsLifecycle:
     def test_list_keywords_filtered_by_status(self, kf):
         """list_keywords filters by state when status is provided."""
         from autoinfo.keywords import KeywordState
+
         kf.add_keyword("medical-research", "IVF")
         kf.add_keyword("medical-research", "outdated")
         kf.deprecate_keyword("medical-research", "outdated")
@@ -800,6 +829,7 @@ class TestKeywordsLifecycle:
         kf.approve_keyword("medical-research", "gene-therapy")
         # Reload from a new instance
         from autoinfo.keywords import KeywordsFile
+
         kf2 = KeywordsFile(base_dir=kf._base_dir)
         entries = kf2.load("medical-research")
         assert len(entries) == 1
@@ -811,6 +841,7 @@ class TestKeywordsLifecycle:
         """autoinfo keywords list --domain outputs keywords."""
         from autoinfo.cli import app
         from autoinfo.keywords import KeywordsFile
+
         # Invoke from tmp_path so that KeywordsFile reads from there
         kf = KeywordsFile(base_dir=tmp_path)
         kf.add_keyword("medical-research", "IVF")
@@ -822,6 +853,7 @@ class TestKeywordsLifecycle:
     def test_cli_keywords_approve(self, cli_runner, tmp_path):
         """autoinfo keywords approve transitions keyword to verified."""
         from autoinfo.keywords import KeywordsFile, KeywordState
+
         kf = KeywordsFile(base_dir=tmp_path)
         kf.add_keyword("medical-research", "IVF")
         # Direct test (not via CLI) since CLI CWD may differ
@@ -832,6 +864,7 @@ class TestKeywordsLifecycle:
     def test_cli_keywords_reject(self, cli_runner, tmp_path):
         """autoinfo keywords reject transitions keyword to deprecated."""
         from autoinfo.keywords import KeywordsFile, KeywordState
+
         kf = KeywordsFile(base_dir=tmp_path)
         kf.add_keyword("medical-research", "IVF")
         # Direct test (not via CLI) since CLI CWD may differ
@@ -842,6 +875,7 @@ class TestKeywordsLifecycle:
     def test_cli_keywords_approve_nonexistent(self, cli_runner, tmp_path):
         """autoinfo keywords approve on missing keyword returns error."""
         from autoinfo.cli import app
+
         result = cli_runner.invoke(app, ["keywords", "approve", "medical-research", "ghost"])
         assert result.exit_code != 0
 
@@ -857,6 +891,7 @@ class TestCrontabInstaller:
     def test_install_crontab(self):
         """install adds a crontab line marked with the managed marker."""
         from autoinfo.cli.cron import CRONTAB_MARKER, install
+
         mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
         with patch("shutil.which", return_value="/usr/bin/crontab"):
             with patch("subprocess.run", mock_run):
@@ -872,6 +907,7 @@ class TestCrontabInstaller:
     def test_install_idempotent(self):
         """install is idempotent when an entry already exists."""
         from autoinfo.cli.cron import CRONTAB_MARKER, install
+
         mock_run = MagicMock(
             return_value=MagicMock(
                 returncode=0, stdout=f"0 6 * * * cd /tmp && cmd {CRONTAB_MARKER}"
@@ -884,6 +920,7 @@ class TestCrontabInstaller:
     def test_uninstall_removes_marked_lines(self):
         """uninstall removes lines containing the managed marker."""
         from autoinfo.cli.cron import CRONTAB_MARKER, uninstall
+
         existing = f"0 6 * * * cd /tmp && cmd {CRONTAB_MARKER}"
         mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=existing))
         with patch("shutil.which", return_value="/usr/bin/crontab"):
@@ -899,6 +936,7 @@ class TestCrontabInstaller:
     def test_uninstall_noop_when_no_marker(self):
         """uninstall does nothing when no autoinfo entries exist."""
         from autoinfo.cli.cron import uninstall
+
         mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
         with patch("shutil.which", return_value="/usr/bin/crontab"):
             with patch("subprocess.run", mock_run):
@@ -909,6 +947,7 @@ class TestCrontabInstaller:
         import subprocess
 
         from autoinfo.cli.cron import _get_crontab_lines
+
         with patch(
             "subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="crontab -l", timeout=15),
@@ -922,6 +961,7 @@ class TestCrontabInstaller:
         import typer
 
         from autoinfo.cli.cron import _set_crontab_lines
+
         with patch(
             "subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="crontab -", timeout=30),
@@ -933,6 +973,7 @@ class TestCrontabInstaller:
     def test_check_crontab_missing_binary(self, cli_runner):
         """install raises when crontab binary is missing."""
         from autoinfo.cli import app
+
         with patch("shutil.which", return_value=None):
             result = cli_runner.invoke(app, ["cron", "install"])
         assert result.exit_code != 0
@@ -942,6 +983,7 @@ class TestCrontabInstaller:
     def test_cli_cron_list_schedules(self, cli_runner, tmp_path):
         """autoinfo cron list-schedules when no schedules exist."""
         from autoinfo.cli import app
+
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             result = cli_runner.invoke(app, ["cron", "list-schedules"])
         assert result.exit_code == 0
@@ -949,13 +991,21 @@ class TestCrontabInstaller:
     def test_cli_cron_add_schedule(self, cli_runner, tmp_path):
         """autoinfo cron add-schedule creates a new schedule."""
         from autoinfo.cli import app
+
         with patch("pathlib.Path.cwd", return_value=tmp_path):
-            result = cli_runner.invoke(app, [
-                "cron", "add-schedule",
-                "--name", "nightly",
-                "--expression", "0 2 * * *",
-                "--domain", "medical-research",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "cron",
+                    "add-schedule",
+                    "--name",
+                    "nightly",
+                    "--expression",
+                    "0 2 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
+            )
         assert result.exit_code == 0
         assert "added" in result.stdout.lower()
 
@@ -972,6 +1022,7 @@ class TestPDFExport:
         """_export_pdf raises ValueError when weasyprint is missing."""
 
         from autoinfo.output import _export_pdf
+
         knowledge_dir = tmp_project / "knowledge"
         knowledge_dir.mkdir(exist_ok=True)
         export_dir = tmp_project / "exports"
@@ -990,6 +1041,7 @@ class TestPDFExport:
     def test_export_kb_unsupported_format_raises(self):
         """export_kb raises ValueError for unsupported formats."""
         from autoinfo.output import export_kb
+
         with patch(
             "autoinfo.output.get_config_path",
             return_value=Path("/nonexistent/config.yaml"),
@@ -1000,6 +1052,7 @@ class TestPDFExport:
     def test_export_kb_no_config_raises(self):
         """export_kb raises FileNotFoundError when config is missing."""
         from autoinfo.output import export_kb
+
         with patch("autoinfo.output.get_config_path", return_value=None):
             with pytest.raises(FileNotFoundError, match="No configuration found"):
                 export_kb(domain="medical-research", format="json")
@@ -1016,6 +1069,7 @@ class TestWikiLinks:
     def test_rebuild_wiki_links_no_entries(self, tmp_path):
         """rebuild_wiki_links is a no-op with no KB entries."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         (tmp_path / "knowledge").mkdir(parents=True, exist_ok=True)
         result = store.rebuild_wiki_links()
@@ -1025,6 +1079,7 @@ class TestWikiLinks:
     def test_rebuild_wiki_links_with_wikilinks(self, tmp_path):
         """rebuild_wiki_links finds [[wikilinks]] and creates backlinks."""
         from autoinfo.kb import KBStore
+
         # Create two markdown entries with wiki links
         kb_dir = tmp_path / "knowledge" / "medical-research" / "01-Raw" / "IVF"
         kb_dir.mkdir(parents=True, exist_ok=True)
@@ -1058,6 +1113,7 @@ class TestWikiLinks:
     def test_rebuild_wiki_links_skips_03_wiki(self, tmp_path):
         """rebuild_wiki_links does not modify 03-Wiki entries."""
         from autoinfo.kb import KBStore
+
         wiki_dir = tmp_path / "knowledge" / "medical-research" / "03-Wiki"
         wiki_dir.mkdir(parents=True, exist_ok=True)
         entry = wiki_dir / "2026-07-20-final.md"
@@ -1088,6 +1144,7 @@ class TestMultiUser:
     def test_store_entry_with_user_id(self, isolated_kb, sample_item):
         """store_entry persists user_id on entries."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=isolated_kb / "knowledge")
         # Use unique title so entry_id is unique
         item = sample_item
@@ -1099,6 +1156,7 @@ class TestMultiUser:
     def test_list_entries_filters_by_user_id(self, isolated_kb, sample_item):
         """list_entries filters results when user_id is provided."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=isolated_kb / "knowledge")
 
         # Use unique titles so entry_ids are unique
@@ -1119,6 +1177,7 @@ class TestMultiUser:
     def test_search_knowledge_base_filters_by_user_id(self, isolated_kb, sample_item):
         """search_knowledge_base respects filter_user_id."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=isolated_kb / "knowledge")
 
         item_alice = sample_item
@@ -1143,6 +1202,7 @@ class TestMultiUser:
     def test_list_kb_tier_with_user_id(self, isolated_kb, sample_item):
         """list_kb_tier respects user_id filter."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=isolated_kb / "knowledge")
 
         item_alice = sample_item
@@ -1158,6 +1218,7 @@ class TestMultiUser:
     def test_mcp_get_kb_entry_with_user_id(self):
         """_handle_get_kb_entry accepts optional user_id parameter."""
         from autoinfo.mcp.server import _handle_get_kb_entry
+
         # KBStore is imported inside the function body (from autoinfo.kb import KBStore)
         with patch("autoinfo.kb.KBStore") as mock_kb:
             mock_instance = MagicMock()
@@ -1178,6 +1239,7 @@ class TestSchemaVersioning:
     def test_ensure_schema_version_table(self):
         """ensure_schema_version_table creates the tracking table idempotently."""
         from autoinfo.schema import ensure_schema_version_table
+
         conn = sqlite3.connect(":memory:")
         ensure_schema_version_table(conn)
         ensure_schema_version_table(conn)  # second call is idempotent
@@ -1189,12 +1251,14 @@ class TestSchemaVersioning:
     def test_get_schema_version_returns_zero_for_fresh_db(self):
         """get_schema_version returns 0 for a fresh/empty database."""
         from autoinfo.schema import get_schema_version
+
         conn = sqlite3.connect(":memory:")
         assert get_schema_version(conn) == 0
 
     def test_apply_migrations_upgrades_to_target(self):
         """apply_migrations runs migrations sequentially."""
         from autoinfo.schema import SCHEMA_VERSION, apply_migrations, get_schema_version
+
         conn = sqlite3.connect(":memory:")
         apply_migrations(conn, SCHEMA_VERSION)
         assert get_schema_version(conn) == SCHEMA_VERSION
@@ -1202,6 +1266,7 @@ class TestSchemaVersioning:
     def test_check_schema_auto_migrates(self):
         """check_schema auto-migrates a fresh database to SCHEMA_VERSION."""
         from autoinfo.schema import SCHEMA_VERSION, check_schema, get_schema_version
+
         conn = sqlite3.connect(":memory:")
         check_schema(conn)
         assert get_schema_version(conn) == SCHEMA_VERSION
@@ -1209,6 +1274,7 @@ class TestSchemaVersioning:
     def test_apply_migrations_downgrade_raises(self):
         """apply_migrations raises SchemaVersionError on downgrade attempt."""
         from autoinfo.schema import SchemaVersionError, apply_migrations
+
         conn = sqlite3.connect(":memory:")
         apply_migrations(conn, 1)
         with pytest.raises(SchemaVersionError, match="downgrade"):
@@ -1217,6 +1283,7 @@ class TestSchemaVersioning:
     def test_check_schema_newer_db_raises(self):
         """check_schema raises when DB is newer than code."""
         from autoinfo.schema import SchemaVersionError, check_schema
+
         conn = sqlite3.connect(":memory:")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS _schema_version ("
@@ -1233,6 +1300,7 @@ class TestSchemaVersioning:
     def test_kbstore_init_calls_check_schema(self, tmp_path):
         """KBStore.__init__ calls check_schema (auto-migration)."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         # Verify the schema table exists in the created DB
         db_path = store.index.db_path
@@ -1252,6 +1320,7 @@ class TestFacetedSearch:
     def test_search_with_tag_filter(self, tmp_path, sample_item):
         """search_knowledge_base accepts filter_tags parameter."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         store.store_entry(item=item)
@@ -1265,6 +1334,7 @@ class TestFacetedSearch:
     def test_search_with_date_range_filter(self, tmp_path, sample_item):
         """search_knowledge_base accepts filter_date_from and filter_date_to."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         store.store_entry(item=item)
@@ -1279,6 +1349,7 @@ class TestFacetedSearch:
     def test_search_with_quality_tier_filter(self, tmp_path, sample_item):
         """search_knowledge_base accepts quality tier range filters."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         store.store_entry(item=item)
@@ -1293,6 +1364,7 @@ class TestFacetedSearch:
     def test_search_with_language_filter(self, tmp_path, sample_item):
         """search_knowledge_base accepts filter_language."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         store.store_entry(item=item)
@@ -1306,6 +1378,7 @@ class TestFacetedSearch:
     def test_search_with_no_matching_filters(self, tmp_path, sample_item):
         """search_knowledge_base returns empty when filters exclude all."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         store.store_entry(item=item)
@@ -1323,6 +1396,7 @@ class TestFacetedSearch:
         import autoinfo.api.routes as routes
         from autoinfo.api.routes import _get_store
         from autoinfo.api.server import app
+
         routes._store = None
 
         store = _get_store()
@@ -1379,6 +1453,7 @@ class TestJSONReport:
     def test_generate_report_json_empty_domain(self):
         """generate_report JSON with no entries returns structured empty report."""
         from autoinfo.output import generate_report
+
         with patch("autoinfo.output.KBStore") as mock_store:
             mock_instance = MagicMock()
             mock_instance.list_entries.return_value = []
@@ -1393,6 +1468,7 @@ class TestJSONReport:
     def test_generate_report_invalid_format_raises(self):
         """generate_report raises ValueError for unsupported format."""
         from autoinfo.output import generate_report
+
         with pytest.raises(ValueError, match="Unsupported output format"):
             generate_report(domain="medical-research", format="pdf")
 
@@ -1408,6 +1484,7 @@ class TestMCPGenerateReport:
     def test_handle_generate_report_empty_domain(self):
         """_handle_generate_report handles empty domain gracefully."""
         from autoinfo.mcp.server import _handle_generate_report
+
         with patch("autoinfo.output.generate_report") as mock_gen:
             mock_gen.side_effect = ValueError("No entries found for domain ''")
             result = _handle_generate_report(domain="", format="markdown", period="monthly")
@@ -1416,61 +1493,73 @@ class TestMCPGenerateReport:
     def test_handle_generate_report_success(self):
         """_handle_generate_report returns success with content."""
         from autoinfo.mcp.server import _handle_generate_report
+
         # KB must have at least one entry for the handler to reach the
         # generate_report call (otherwise it returns the noop early-exit).
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report", return_value="# Report\n\nContent"):
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch("autoinfo.output.generate_report", return_value="# Report\n\nContent"),
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
                 period="monthly",
             )
         assert result["success"] is True
-        assert result["domain"] == "medical-research"
-        assert result["format"] == "markdown"
-        assert "# Report" in result["content"]
+        assert result["data"]["domain"] == "medical-research"
+        assert result["data"]["format"] == "markdown"
+        assert "# Report" in result["data"]["content"]
 
     def test_handle_generate_report_json_format(self):
         """_handle_generate_report with json format returns success."""
         from autoinfo.mcp.server import _handle_generate_report
+
         json_report = json.dumps({"title": "Report", "entries": [], "metadata": {"format": "json"}})
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report", return_value=json_report):
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch("autoinfo.output.generate_report", return_value=json_report),
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="json",
                 period="monthly",
             )
         assert result["success"] is True
-        assert result["format"] == "json"
+        assert result["data"]["format"] == "json"
 
     def test_handle_generate_report_exception(self):
         """_handle_generate_report catches unexpected exceptions."""
         from autoinfo.mcp.server import _handle_generate_report
+
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report", side_effect=RuntimeError("Unexpected error")):
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch("autoinfo.output.generate_report", side_effect=RuntimeError("Unexpected error")),
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
                 period="monthly",
             )
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
 
     def test_handle_generate_report_with_product_passes_registry_template(self):
         """product='premium-briefing' forwards the registry template to generate_report."""
         from autoinfo.mcp.server import _handle_generate_report
         from autoinfo.output import PRODUCT_TEMPLATES
 
-        _row = next(
-            r for r in PRODUCT_TEMPLATES if r["name"] == "premium-briefing"
-        )
+        _row = next(r for r in PRODUCT_TEMPLATES if r["name"] == "premium-briefing")
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report",
-                   return_value="# Premium Briefing\n\nDeep analysis") as mock_gen:
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch(
+                "autoinfo.output.generate_report",
+                return_value="# Premium Briefing\n\nDeep analysis",
+            ) as mock_gen,
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
@@ -1478,7 +1567,7 @@ class TestMCPGenerateReport:
                 product="premium-briefing",
             )
         assert result["success"] is True
-        assert "# Premium Briefing" in result["content"]
+        assert "# Premium Briefing" in result["data"]["content"]
         assert mock_gen.call_args.kwargs["product_template"] is _row["template"]
 
     def test_handle_generate_report_unknown_product_returns_error_envelope(self):
@@ -1507,9 +1596,10 @@ class TestMCPGenerateReport:
 
         _row = next(r for r in PRODUCT_TEMPLATES if r["name"] == "column")
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report",
-                   return_value="# Column\n\nbody") as mock_gen:
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch("autoinfo.output.generate_report", return_value="# Column\n\nbody") as mock_gen,
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
@@ -1524,9 +1614,12 @@ class TestMCPGenerateReport:
         from autoinfo.mcp.server import _handle_generate_report
 
         fake_entry = {"id": "x", "title": "t", "content": "c"}
-        with patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]), \
-             patch("autoinfo.output.generate_report",
-                   return_value="# Report\n\nContent") as mock_gen:
+        with (
+            patch("autoinfo.kb.KBStore.list_entries", return_value=[fake_entry]),
+            patch(
+                "autoinfo.output.generate_report", return_value="# Report\n\nContent"
+            ) as mock_gen,
+        ):
             result = _handle_generate_report(
                 domain="medical-research",
                 format="markdown",
@@ -1538,8 +1631,9 @@ class TestMCPGenerateReport:
     def test_mcp_tool_registered(self):
         """generate_report is listed in the health_check tools_count."""
         from autoinfo.mcp.server import _handle_health_check
+
         result = _handle_health_check()
-        assert result["tools_count"] >= 23
+        assert result["data"]["tools_count"] >= 23
 
 
 # ======================================================================
@@ -1602,6 +1696,7 @@ class TestKBVersioningGitSHA:
     def test_save_entry_version_records_metadata(self, tmp_path, sample_item):
         """save_entry_version creates a version record with metadata."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         entry = store.store_entry(item=item)
@@ -1610,6 +1705,7 @@ class TestKBVersioningGitSHA:
     def test_get_entry_history_returns_list(self, tmp_path, sample_item):
         """get_entry_history returns a list of version records."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         item = sample_item
         entry = store.store_entry(item=item)
@@ -1620,6 +1716,7 @@ class TestKBVersioningGitSHA:
     def test_entry_versions_table_exists(self, tmp_path):
         """KBStore initialisation creates the entry_versions table."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         conn = sqlite3.connect(str(store.index.db_path))
         rows = conn.execute(
@@ -1630,6 +1727,7 @@ class TestKBVersioningGitSHA:
     def test_entry_versions_has_git_sha_column(self, tmp_path):
         """entry_versions table has git_sha column after migration."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         conn = sqlite3.connect(str(store.index.db_path))
         columns = [row[1] for row in conn.execute("PRAGMA table_info(entry_versions)")]
@@ -1638,6 +1736,7 @@ class TestKBVersioningGitSHA:
     def test_entry_versions_has_version_num_column(self, tmp_path):
         """entry_versions table has version_num for ordering."""
         from autoinfo.kb import KBStore
+
         store = KBStore(base_path=tmp_path / "knowledge")
         conn = sqlite3.connect(str(store.index.db_path))
         columns = [row[1] for row in conn.execute("PRAGMA table_info(entry_versions)")]
@@ -1655,6 +1754,7 @@ class TestConfigSchemaDefaults:
     def test_empty_config_has_all_sections(self):
         """Empty config initialisation populates all sections with defaults."""
         from autoinfo.config import Config
+
         config = Config()
         # v1.2 sections
         assert config.cefr is not None
@@ -1680,6 +1780,7 @@ class TestConfigSchemaDefaults:
     def test_load_config_populates_defaults(self, tmp_path):
         """Loading a minimal config populates v1.2 sections with defaults."""
         from autoinfo.config import get_config_path, load_config
+
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         minimal = {
@@ -1702,6 +1803,7 @@ class TestConfigSchemaDefaults:
     def test_load_config_with_v1_2_sections(self, tmp_path):
         """Loading a config with v1.2 sections populated uses provided values."""
         from autoinfo.config import get_config_path, load_config
+
         config_dir = tmp_path / ".autoinfo"
         config_dir.mkdir(parents=True, exist_ok=True)
         full = {
@@ -1741,6 +1843,7 @@ class TestConfigSchemaDefaults:
     def test_create_default_config_structure(self):
         """create_default_config produces expected dict structure."""
         from autoinfo.config import create_default_config
+
         cfg = create_default_config("medical-research")
         assert cfg["project"]["name"] == "autoinfo-medical-research"
         assert cfg["llm"]["provider"] == "openai"
@@ -1750,6 +1853,7 @@ class TestConfigSchemaDefaults:
     def test_config_to_dict_includes_v1_2_sections(self):
         """config_to_dict serialises v1.2 config sections."""
         from autoinfo.config import Config, config_to_dict
+
         config = Config()
         d = config_to_dict(config)
         # v1.2 sections may not be included if default/empty; at minimum the

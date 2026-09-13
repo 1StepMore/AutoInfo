@@ -1,0 +1,74 @@
+# T-B-05 (performance scenarios absent, S1): end-to-end product latency.
+#
+# PINNED CRITERION: p95 wall-clock latency, nearest-rank over N=5 runs, for
+# real product generation in the medical-research domain, weekly period,
+# default configured model:
+#   * digest (generate_digest, markdown)  p95 <= 120 s
+#   * report (generate_report, markdown)  p95 <= 300 s
+# With N=5 the nearest-rank p95 is the 5th ordered sample (the max), i.e. a
+# conservative upper bound on the 95th percentile.  Domain scope is pinned:
+# medical-research only (7 curated sources, weekly window) — a different
+# domain/period is explicitly out of scope for these bounds.
+#
+# Real LLM calls are required, so the scenario is env-gated on
+# AUTOINFO_LLM_API_KEY and domain-gated on medical-research: without either
+# it reports unconfigured (never a silent pass).  Override N with
+# PERF_LATENCY_N for a cheaper smoke run while keeping the same thresholds.
+name: perf-latency
+description: >-
+  Performance latency with pinned p95 bounds: real digest generation
+  (medical-research, weekly, markdown) p95 <= 120s and real report
+  generation p95 <= 300s, nearest-rank over 5 runs each. Real LLM calls, so
+  env-gated on AUTOINFO_LLM_API_KEY and domain-gated on medical-research
+  (reports unconfigured without them); domain scope documented and pinned.
+category: performance
+pyramid_layer: e2e
+pipeline_stage: A4
+user_level: B2.4
+requires_env: ["AUTOINFO_LLM_API_KEY"]
+requires_domain: ["medical-research"]
+timeout: 3600
+steps:
+  - name: "digest p95 <= 120s and report p95 <= 300s over the medical-research domain"
+    kind: cli
+    timeout_seconds: 3600
+    command: |-
+      python3 -c '
+      import os, time
+      from autoinfo.output import generate_digest, generate_report
+
+      DOMAIN = "medical-research"
+      PERIOD = "weekly"
+      N = int(os.environ.get("PERF_LATENCY_N", "5"))
+      DIGEST_BOUND = 120.0
+      REPORT_BOUND = 300.0
+
+      def p95(values):
+          ordered = sorted(values)
+          rank = max(1, min(len(ordered), int(-(-0.95 * len(ordered) // 1))))
+          return ordered[rank - 1]
+
+      digest_times = []
+      for _ in range(N):
+          start = time.monotonic()
+          generate_digest(domain=DOMAIN, period=PERIOD, format="markdown")
+          digest_times.append(time.monotonic() - start)
+
+      report_times = []
+      for _ in range(N):
+          start = time.monotonic()
+          generate_report(domain=DOMAIN, period=PERIOD, format="markdown")
+          report_times.append(time.monotonic() - start)
+
+      digest_p95 = p95(digest_times)
+      report_p95 = p95(report_times)
+      print(f"PERF_LATENCY_OK domain={DOMAIN} n={N} digest_p95={digest_p95:.1f}s "
+            f"digest_bound={DIGEST_BOUND:.0f} report_p95={report_p95:.1f}s "
+            f"report_bound={REPORT_BOUND:.0f}")
+      assert digest_p95 <= DIGEST_BOUND, (digest_times, digest_p95)
+      assert report_p95 <= REPORT_BOUND, (report_times, report_p95)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PERF_LATENCY_OK"]

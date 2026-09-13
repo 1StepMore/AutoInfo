@@ -5,7 +5,10 @@
 # cefr_batch(texts, lang), suggest_keywords(domain, text, limit).
 name: llm-gated
 description: "LLM-required tools with real model calls"
-category: llm
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
 steps:

@@ -6,7 +6,10 @@
 # from failed, so this is a partial pass, not an overall failure.
 name: collect-failure-recovery
 description: "Collect failure against an unreachable source recovers via a fallback step (issue #138)"
-category: collection
+category: failure
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.5
 requires_env: []
 min_passing: 2
 steps:

@@ -22,6 +22,16 @@ from typing import Any, Callable
 import httpx
 
 from autoinfo.alerts import check_alerts, check_source_alerts, check_source_credentials
+from autoinfo.checkpoint import (
+    RUN_COMPLETE,
+    RUN_PARTIAL,
+    RUN_RUNNING,
+    STEP_COMPLETED,
+    CheckpointStore,
+    PipelineCheckpoint,
+    StepCheckpoint,
+    make_signature,
+)
 from autoinfo.collectors.base import SourceFailure
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
@@ -32,6 +42,9 @@ logger = logging.getLogger(__name__)
 from autoinfo.logging import get_pipeline_logger  # noqa: E402
 
 plog = get_pipeline_logger("collect")
+
+#: Checkpoint namespace for a collection run (per-source resume cursor).
+_COLLECT_PIPELINE = "collect"
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +138,7 @@ def run_collection(
     dry_run: bool = False,
     force_full: bool = False,
     progress_cb: Callable[[CollectionResult], None] | None = None,
+    resume_from: str | None = None,
 ) -> dict[str, Any]:
     """Execute a full collection run for a domain.
 
@@ -147,6 +161,22 @@ def run_collection(
         as soon as that source finishes. CLI-only, human-facing progress
         reporting — the MCP surface never passes one (its results are
         polled asynchronously; see docs/dev/cli-mcp-rest-parity.md).
+    resume_from : str | None
+        Optional checkpoint/resume mode for a long collection run
+        (R-A-01).  When set, per-source completion is checkpointed to
+        ``collections/<domain>/_checkpoint/collect.json`` and the run skips
+        work already recorded:
+
+        * ``"auto"`` — load the checkpoint and skip every source already
+          recorded ``completed`` (the interrupted run's cursor).
+        * ``"start"`` — run every source but enable checkpointing (a fresh
+          run that can be resumed on the next invocation).
+        * ``"<source-name>"`` — start at that source, skipping the sources
+          declared before it.
+
+        Sources that errored during a prior run are **not** marked completed
+        and are therefore retried on resume.  ``None`` (default) keeps the
+        legacy behaviour byte-identical and writes no checkpoint.
 
     Returns
     -------
@@ -161,6 +191,7 @@ def run_collection(
                 "duration_s": float,
                 "per_source": [CollectionResult, ...],
                 "unknown_sources": [str, ...],  # requested names not in config
+                "resumed_skipped": [str, ...],  # sources skipped by resume
                 "dry_run": bool,
             }
 
@@ -169,7 +200,8 @@ def run_collection(
     FileNotFoundError
         If no configuration file is found.
     ValueError
-        If *domain* is not found in config, or has no active sources.
+        If *domain* is not found in config, or has no active sources, or
+        *resume_from* names a source that is not part of this run.
     """
     start_time = time.time()
     collection_id = _make_collection_id()
@@ -204,11 +236,55 @@ def run_collection(
     # a shared event is skipped (backup issue #109).
     existing_entries = checker.load_all_domains_entries()
 
+    # -- Checkpoint/resume setup (R-A-01) ----------------------------------
+    # Opt-in only: ``resume_from`` must be set, so a legacy run writes no
+    # checkpoint file and behaves byte-identically to before.
+    cp_store = CheckpointStore()
+    cp: PipelineCheckpoint | None = None
+    skip_sources: set[str] = set()
+    source_names = [s.name for s in source_configs]
+    if resume_from:
+        signature = make_signature(domain=domain, topic=topic, sources=source_names, limit=limit)
+        cp = cp_store.load(domain, _COLLECT_PIPELINE)
+        if resume_from == "auto":
+            if cp is not None and cp.signature == signature:
+                skip_sources = set(cp.completed_steps())
+            else:
+                # No usable checkpoint — start fresh but keep checkpointing.
+                cp = None
+        elif resume_from != "start":
+            if resume_from not in source_names:
+                raise ValueError(
+                    f"Cannot resume from unknown source '{resume_from}'. "
+                    f"Available sources: {', '.join(source_names)}"
+                )
+            skip_sources = set(source_names[: source_names.index(resume_from)])
+        if cp is None or cp.signature != signature:
+            cp = PipelineCheckpoint(
+                domain=domain,
+                pipeline=_COLLECT_PIPELINE,
+                signature=signature,
+                steps=[StepCheckpoint(name=n) for n in source_names],
+            )
+        cp.status = RUN_RUNNING
+        cp_store.save(cp)
+
     # -- Per-source collection ---------------------------------------------
     per_source: list[CollectionResult] = []
     all_new_items: list[Item] = []
+    resumed_skipped: list[str] = []
 
     for src_cfg in source_configs:
+        if src_cfg.name in skip_sources:
+            plog.info(
+                "Skipping completed source (resume)",
+                source_type=src_cfg.type,
+                extra={"source_name": src_cfg.name},
+                trace_id=collection_id,
+            )
+            resumed_skipped.append(src_cfg.name)
+            continue
+
         plog.info(
             "Collecting from source",
             source_type=src_cfg.type,
@@ -232,6 +308,17 @@ def run_collection(
         per_source.append(src_result)
         if progress_cb is not None:
             progress_cb(src_result)
+
+        # Mark a source completed only on a real fetch success; an errored
+        # source stays pending so the next resume retries it.
+        if cp is not None and src_result.status in ("success", "partial"):
+            cp.mark(src_cfg.name, STEP_COMPLETED)
+            cp_store.save(cp)
+
+    if cp is not None:
+        pending = [s.name for s in cp.steps if s.status not in (STEP_COMPLETED,)]
+        cp.status = RUN_COMPLETE if not pending else RUN_PARTIAL
+        cp_store.save(cp)
 
     # -- Aggregate totals --------------------------------------------------
     total_found = sum(r.items_found for r in per_source)
@@ -281,6 +368,7 @@ def run_collection(
         "duration_s": round(elapsed, 3),
         "per_source": [r.to_dict() for r in per_source],
         "unknown_sources": unknown_sources,
+        "resumed_skipped": resumed_skipped,
         "dry_run": dry_run,
     }
 

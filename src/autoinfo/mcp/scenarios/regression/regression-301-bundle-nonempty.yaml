@@ -13,7 +13,10 @@
 # and the populated bundle must not.
 name: regression-301-bundle-nonempty
 description: "Regression #301: bundle export warns on empty-entry exports instead of silently shipping an empty deliverable"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 regression: true
 regression_issue: "#301"
 requires_env: []

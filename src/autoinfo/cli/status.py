@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Status CLI — system and collection status.
 
 Usage::
@@ -7,10 +5,13 @@ Usage::
     autoinfo status [--domain medical-research] [--json]
 """
 
+from __future__ import annotations
 
 import json
 
 import typer
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer()
 
@@ -20,9 +21,7 @@ def status(
     ctx: typer.Context,
     domain: str = typer.Option(None, "--domain", help="Domain filter"),
     json_output: bool = typer.Option(False, "--json", help="JSON output"),
-    metrics: bool = typer.Option(
-        False, "--metrics", help="Output Prometheus-formatted metrics"
-    ),
+    metrics: bool = typer.Option(False, "--metrics", help="Output Prometheus-formatted metrics"),
 ) -> None:
     """Show collection overview and system status."""
     if metrics:
@@ -30,8 +29,11 @@ def status(
             from autoinfo.metrics import format_prometheus, get_metrics
 
             data = get_metrics()
+            if emit_if_global({"format": "prometheus", "content": format_prometheus(data)}):
+                return
             typer.echo(format_prometheus(data))
         except Exception as exc:
+            fail_if_global("InternalError", str(exc))
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
         return
@@ -41,14 +43,20 @@ def status(
 
         result = show_status(domain=domain)
     except FileNotFoundError as exc:
+        fail_if_global("NotFound", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ImportError as exc:
+        fail_if_global("InternalError", f"status module not available: {exc}")
         typer.echo(f"Error: status module not available: {exc}", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global(result):
+        return
 
     if json_output or bool((ctx.obj or {}).get("json")):
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))

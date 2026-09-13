@@ -10,7 +10,10 @@
 # and reads all go through the real MCP tools.
 name: promotion-provenance
 description: "Promotion provenance: agent promote writes promotion_source=agent / promoted_by / promoted_at, never human_promoted; re-promotion refused"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 collect_artifacts:

@@ -15,7 +15,10 @@
 # items, nothing written).
 name: processing
 description: "LLM-gated processing, batch run, and G4/G5 quality gates"
-category: collection
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
 steps:

@@ -21,6 +21,8 @@ from rich.table import Table
 
 from autoinfo.mcp.validation import list_scenarios
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(
     name="validation",
     help="Browse the validation scenario library (list_validation_scenarios parity)",
@@ -32,7 +34,8 @@ console = Console()
 @app.command(name="list")
 def list_cmd(
     summary: bool = typer.Option(
-        False, "--summary",
+        False,
+        "--summary",
         help="Group scenarios by category with functional/regression counts",
     ),
 ) -> None:
@@ -41,6 +44,10 @@ def list_cmd(
     scenarios = result["scenarios"]
 
     if not scenarios:
+        fail_if_global(
+            "EmptyResult",
+            "No validation scenarios found — the scenarios directory is missing or empty.",
+        )
         console.print(
             "[red]No validation scenarios found — the scenarios directory is "
             "missing or empty.[/red]"
@@ -48,7 +55,25 @@ def list_cmd(
         raise typer.Exit(code=1)
 
     if summary:
+        by_category: dict[str, int] = {}
+        for sc in scenarios:
+            by_category[sc.get("category", "general")] = (
+                by_category.get(sc.get("category", "general"), 0) + 1
+            )
+        functional = sum(1 for sc in scenarios if not sc.get("regression"))
+        regression = sum(1 for sc in scenarios if sc.get("regression"))
+        summary_data = {
+            "total": len(scenarios),
+            "functional": functional,
+            "regression": regression,
+            "by_category": by_category,
+        }
+        if emit_if_global(summary_data):
+            return
         _render_summary(scenarios)
+        return
+
+    if emit_if_global(result):
         return
 
     # Plain one-line-per-scenario output (long names must never wrap or be

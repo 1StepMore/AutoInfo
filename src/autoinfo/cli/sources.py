@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Sources CLI — manage collection sources.
 
 Usage::
@@ -10,6 +8,7 @@ Usage::
     autoinfo sources test --url https://... --type api
 """
 
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -20,15 +19,17 @@ import typer
 
 from autoinfo.config import (
     SOURCE_KEY_ENV_VARS,
+    VALID_SOURCE_TYPES,
     Config,
     DomainConfig,
     SourceConfig,
-    VALID_SOURCE_TYPES,
     get_config_path,
     load_config,
     save_config,
 )
 from autoinfo.status import get_source_health
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(help="Manage collection sources")
 
@@ -47,7 +48,16 @@ def _load() -> tuple[Path, Config]:
     """
     cfg_path = get_config_path()
     if cfg_path is None:
-        typer.echo("Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.", err=True)
+        fail_if_global(
+            "ConfigNotFound",
+            "No configuration found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+        )
+        typer.echo(
+            "Error: No configuration found. Run 'autoinfo init' first. "
+            "See docs/dev/required-api-keys.md for API key setup.",
+            err=True,
+        )
         raise typer.Exit(1)
     config = load_config(cfg_path)
     return cfg_path, config
@@ -131,12 +141,17 @@ def add(
     settings: str = typer.Option(
         "",
         "--settings",
-        help="Optional JSON object string with key-value configuration (stored in SourceConfig.settings)",
+        help=(
+            "Optional JSON object string with key-value configuration "
+            "(stored in SourceConfig.settings)"
+        ),
     ),
     requires_key: bool | None = typer.Option(
         None,
         "--requires-key/--no-requires-key",
-        help="Whether this source requires an API key/credential (default: derived from source type)",
+        help=(
+            "Whether this source requires an API key/credential (default: derived from source type)"
+        ),
     ),
     imap_server: str | None = typer.Option(
         None, "--imap-server", help="Email type only: IMAP server hostname (e.g. imap.gmail.com)"
@@ -154,18 +169,22 @@ def add(
         None, "--imap-mailbox", help="Email type only: IMAP mailbox name (default INBOX)"
     ),
     webhook_secret: str | None = typer.Option(
-        None, "--webhook-secret", help="Webhook type only: HMAC shared secret for payload verification"
+        None,
+        "--webhook-secret",
+        help="Webhook type only: HMAC shared secret for payload verification",
     ),
 ) -> None:
     """Add a new source to a domain (idempotent by url + type + domain)."""
     # --- Validate arguments ---
     url_error = _validate_url(url, type)
     if url_error:
+        fail_if_global("ValidationError", url_error)
         typer.echo(f"Error: {url_error}", err=True)
         raise typer.Exit(1)
 
     type_error = _validate_type(type)
     if type_error:
+        fail_if_global("ValidationError", type_error)
         typer.echo(f"Error: {type_error}", err=True)
         raise typer.Exit(1)
 
@@ -174,15 +193,25 @@ def add(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(1)
 
     # --- Idempotency check ---
     for existing in domain_cfg.sources:
         if existing.url == url and existing.type == type:
-            typer.echo(
-                f"Source already exists (domain={domain}, url={url}, type={type}), skipped."
-            )
+            if emit_if_global(
+                {
+                    "name": name,
+                    "domain": domain,
+                    "url": url,
+                    "type": type,
+                    "created": False,
+                    "already_existed": True,
+                }
+            ):
+                return
+            typer.echo(f"Source already exists (domain={domain}, url={url}, type={type}), skipped.")
             return
 
     merged_settings: dict[str, Any] = {}
@@ -190,9 +219,11 @@ def add(
         try:
             parsed_settings = json.loads(settings)
         except json.JSONDecodeError as exc:
+            fail_if_global("ValidationError", f"--settings must be valid JSON: {exc}")
             typer.echo(f"Error: --settings must be valid JSON: {exc}", err=True)
             raise typer.Exit(1)
         if not isinstance(parsed_settings, dict):
+            fail_if_global("ValidationError", "--settings must be a JSON object")
             typer.echo("Error: --settings must be a JSON object", err=True)
             raise typer.Exit(1)
         merged_settings = parsed_settings
@@ -217,8 +248,8 @@ def add(
 
     # --- Add source ---
     quality_tier = 1 if type in ("api", "rss") else 2
-    _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
-    tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
+    _tier_tos_map = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+    tos_classification = _tier_tos_map.get(quality_tier, "open")
     new_source = SourceConfig(
         name=name,
         type=type,
@@ -230,6 +261,17 @@ def add(
     )
     domain_cfg.sources.append(new_source)
     save_config(config, cfg_path)
+    if emit_if_global(
+        {
+            "name": name,
+            "domain": domain,
+            "url": url,
+            "type": type,
+            "created": True,
+            "source_id": f"{domain}:{name}",
+        }
+    ):
+        return
     typer.echo(f"Source '{name}' added to domain '{domain}'.")
 
 
@@ -249,6 +291,7 @@ def add_sources(
     """
     src_path = Path(filename)
     if not src_path.is_file():
+        fail_if_global("NotFound", f"File not found: {filename}")
         typer.echo(f"Error: File not found: {filename}", err=True)
         raise typer.Exit(1)
 
@@ -256,10 +299,12 @@ def add_sources(
         try:
             sources_list = json.load(fh)
         except json.JSONDecodeError as exc:
+            fail_if_global("ValidationError", f"Invalid JSON in {filename}: {exc}")
             typer.echo(f"Error: Invalid JSON in {filename}: {exc}", err=True)
             raise typer.Exit(1)
 
     if not isinstance(sources_list, list):
+        fail_if_global("ValidationError", "JSON file must contain an array of source objects")
         typer.echo("Error: JSON file must contain an array of source objects", err=True)
         raise typer.Exit(1)
 
@@ -297,22 +342,35 @@ def add_sources(
             continue
 
         # Idempotency check
-        existing = any(
-            s.url == src_url and s.type == src_type for s in domain_cfg.sources
-        )
+        existing = any(s.url == src_url and s.type == src_type for s in domain_cfg.sources)
         if existing:
             typer.echo(f"  [{idx}] Skipped (already exists): {src_name}")
             continue
 
         quality_tier = 1 if src_type in ("api", "rss") else 2
-        _TIER_TOS_MAP = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
-        tos_classification = _TIER_TOS_MAP.get(quality_tier, "open")
+        _tier_tos_map = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
+        tos_classification = _tier_tos_map.get(quality_tier, "open")
         domain_cfg.sources.append(
-            SourceConfig(name=src_name, type=src_type, url=src_url, quality_tier=quality_tier, tos_classification=tos_classification)
+            SourceConfig(
+                name=src_name,
+                type=src_type,
+                url=src_url,
+                quality_tier=quality_tier,
+                tos_classification=tos_classification,
+            )
         )
         save_config(config, cfg_path)
         typer.echo(f"  [{idx}] Added: {src_name}")
         succeeded += 1
+
+    if emit_if_global(
+        {
+            "added": succeeded,
+            "errored": errored,
+            "total": len(sources_list),
+        }
+    ):
+        return
 
     typer.echo(f"\nBatch complete: {succeeded} added, {errored} errors")
 
@@ -321,9 +379,7 @@ def add_sources(
 def list_sources(
     ctx: typer.Context,
     domain: str = typer.Option(..., "--domain", help="Domain to list sources for"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List sources for a domain."""
     json_output = json_output or bool((ctx.obj or {}).get("json"))
@@ -331,6 +387,7 @@ def list_sources(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain}' is not configured")
         typer.echo(f"Error: Domain '{domain}' is not configured", err=True)
         raise typer.Exit(1)
 
@@ -345,8 +402,15 @@ def list_sources(
         for s in domain_cfg.sources
     ]
 
+    if emit_if_global({"domain": domain, "sources": source_list, "count": len(source_list)}):
+        return
+
     if json_output:
-        typer.echo(json.dumps({"domain": domain, "sources": source_list, "count": len(source_list)}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"domain": domain, "sources": source_list, "count": len(source_list)}, indent=2
+            )
+        )
         return
 
     if not source_list:
@@ -372,6 +436,7 @@ def remove(
     """Remove a source by its source_id (``domain:name``)."""
     parts = source_id.split(":", 1)
     if len(parts) != 2:
+        fail_if_global("ValidationError", "source_id must be in format 'domain:name'")
         typer.echo("Error: source_id must be in format 'domain:name'", err=True)
         raise typer.Exit(1)
 
@@ -380,6 +445,7 @@ def remove(
 
     domain_cfg = _find_domain(config, domain_name)
     if domain_cfg is None:
+        fail_if_global("DomainNotFound", f"Domain '{domain_name}' is not configured")
         typer.echo(f"Error: Domain '{domain_name}' is not configured", err=True)
         raise typer.Exit(1)
 
@@ -387,9 +453,12 @@ def remove(
         if existing.name == source_name:
             domain_cfg.sources.pop(i)
             save_config(config, cfg_path)
+            if emit_if_global({"source_id": source_id, "removed": True}):
+                return
             typer.echo(f"Source '{source_name}' removed from domain '{domain_name}'.")
             return
 
+    fail_if_global("SourceNotFound", f"Source '{source_name}' not found in domain '{domain_name}'")
     typer.echo(f"Error: Source '{source_name}' not found in domain '{domain_name}'", err=True)
     raise typer.Exit(1)
 
@@ -400,14 +469,14 @@ def health(
     source_id: str = typer.Option(
         ..., "--source-id", help="Source identifier in 'domain:name' format"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Check health status of a single source."""
     json_output = json_output or bool((ctx.obj or {}).get("json"))
     try:
         result = get_source_health(source_id=source_id)
+        if emit_if_global(result):
+            return
         if json_output:
             typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
             return
@@ -426,6 +495,7 @@ def health(
         if latency is not None:
             typer.echo(f"Latency:      {latency:.0f} ms")
     except Exception as exc:
+        fail_if_global("InternalError", f"Error checking source health: {exc}")
         typer.echo(f"Error checking source health: {exc}")
         raise typer.Exit(1) from exc
 
@@ -439,11 +509,13 @@ def test(
     # Validate
     url_error = _validate_url(url, type)
     if url_error:
+        fail_if_global("ValidationError", url_error)
         typer.echo(f"Error: {url_error}", err=True)
         raise typer.Exit(1)
 
     type_error = _validate_type(type)
     if type_error:
+        fail_if_global("ValidationError", type_error)
         typer.echo(f"Error: {type_error}", err=True)
         raise typer.Exit(1)
 
@@ -459,6 +531,19 @@ def test(
         content_preview = resp.text[:500] if resp.text else ""
         size_kb = len(resp.content) / 1024.0
 
+        if emit_if_global(
+            {
+                "url": url,
+                "type": type,
+                "status": resp.status_code,
+                "content_type": content_type_header,
+                "size_kb": round(size_kb, 3),
+                "format": _infer_format(content_type_header, content_preview),
+                "reachable": resp.status_code < 500,
+            }
+        ):
+            return
+
         typer.echo(f"URL:           {url}")
         typer.echo(f"Status:        {resp.status_code}")
         typer.echo(f"Content-Type:  {content_type_header}")
@@ -466,8 +551,10 @@ def test(
         typer.echo(f"Format:        {_infer_format(content_type_header, content_preview)}")
         typer.echo(f"Reachable:     {'yes' if resp.status_code < 500 else 'no'}")
     except httpx.TimeoutException:
+        fail_if_global("Timeout", f"Request to '{url}' timed out")
         typer.echo(f"Error: Request to '{url}' timed out", err=True)
         raise typer.Exit(1)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)

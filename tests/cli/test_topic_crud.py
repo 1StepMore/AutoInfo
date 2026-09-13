@@ -23,6 +23,7 @@ import pytest
 import yaml
 from mcp.types import CallToolRequest, CallToolRequestParams
 
+from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
     _handle_add_topic,
     _handle_list_topics,
@@ -140,8 +141,14 @@ class TestTopicsAddCLI:
             cli_runner.invoke(
                 app,
                 [
-                    "topics", "add", "--domain", "medical-research",
-                    "--name", "IVF", "--keywords", "IVF",
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "IVF",
+                    "--keywords",
+                    "IVF",
                 ],
                 catch_exceptions=False,
             )
@@ -150,8 +157,14 @@ class TestTopicsAddCLI:
             result = cli_runner.invoke(
                 app,
                 [
-                    "topics", "add", "--domain", "medical-research",
-                    "--name", "IVF", "--keywords", "IVF,embryo",
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "IVF",
+                    "--keywords",
+                    "IVF,embryo",
                 ],
                 catch_exceptions=False,
             )
@@ -200,16 +213,28 @@ class TestTopicsListCLI:
             cli_runner.invoke(
                 app,
                 [
-                    "topics", "add", "--domain", "medical-research",
-                    "--name", "IVF", "--keywords", "IVF,embryo",
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "IVF",
+                    "--keywords",
+                    "IVF,embryo",
                 ],
                 catch_exceptions=False,
             )
             cli_runner.invoke(
                 app,
                 [
-                    "topics", "add", "--domain", "medical-research",
-                    "--name", "Gene therapy", "--keywords", "CRISPR,gene",
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "Gene therapy",
+                    "--keywords",
+                    "CRISPR,gene",
                 ],
                 catch_exceptions=False,
             )
@@ -269,8 +294,14 @@ class TestTopicsRemoveCLI:
             cli_runner.invoke(
                 app,
                 [
-                    "topics", "add", "--domain", "medical-research",
-                    "--name", "IVF", "--keywords", "IVF",
+                    "topics",
+                    "add",
+                    "--domain",
+                    "medical-research",
+                    "--name",
+                    "IVF",
+                    "--keywords",
+                    "IVF",
                 ],
                 catch_exceptions=False,
             )
@@ -378,7 +409,8 @@ class TestMCPAddTopic:
         ):
             result = _handle_add_topic(domain="nonexistent", name="Test")
 
-        assert result["error_code"] == "DomainNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
@@ -388,7 +420,8 @@ class TestMCPAddTopic:
         ):
             result = _handle_add_topic(domain="medical-research", name="Test")
 
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
 
 
 # ======================================================================
@@ -420,7 +453,8 @@ class TestMCPRemoveTopic:
         ):
             result = _handle_remove_topic(domain="medical-research", topic_id="nonexistent")
 
-        assert result["error_code"] == "TopicNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.TOPIC_NOT_FOUND.value
 
     def test_domain_not_found(self, tmp_path: Path) -> None:
         """Removing from a non-existent domain returns DomainNotFound error."""
@@ -432,7 +466,8 @@ class TestMCPRemoveTopic:
         ):
             result = _handle_remove_topic(domain="nonexistent", topic_id="IVF")
 
-        assert result["error_code"] == "DomainNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
@@ -442,7 +477,8 @@ class TestMCPRemoveTopic:
         ):
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
 
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
 
 
 # ======================================================================
@@ -489,7 +525,8 @@ class TestMCPListTopics:
         ):
             result = _handle_list_topics(domain="nonexistent")
 
-        assert result["error_code"] == "DomainNotFound"
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
@@ -499,7 +536,8 @@ class TestMCPListTopics:
         ):
             result = _handle_list_topics(domain="medical-research")
 
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
 
 
 # ======================================================================
@@ -551,7 +589,8 @@ class TestMCPToolRegistration:
         call_result = result.root
         data = json.loads(call_result.content[0].text)
         # Should return DomainNotFound (since config won't exist)
-        assert "error_code" in data
+        assert data["success"] is False
+        assert data["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 
 
 # ======================================================================

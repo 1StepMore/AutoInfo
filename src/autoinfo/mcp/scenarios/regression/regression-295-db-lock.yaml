@@ -16,7 +16,10 @@
 # no LLM key, no network, no configured domain.
 name: regression-295-db-lock
 description: "Regression #295: SQLite busy_timeout set on _connect() and store_entry retries transient 'database is locked'"
-category: regression
+category: failure
+pyramid_layer: unit
+pipeline_stage: A3
+user_level: B2.4
 regression: true
 regression_issue: "#295"
 requires_env: []

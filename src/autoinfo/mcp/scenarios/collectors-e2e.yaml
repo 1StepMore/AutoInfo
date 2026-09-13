@@ -6,7 +6,10 @@
 # Errno 101) — environment limitation, not a code defect.
 name: collectors-e2e
 description: "Collector platform reachability via test_source (real HTTP probes)"
-category: collection
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A1
+user_level: B2.4
 requires_env: []
 steps:
   - name: "rss platform reachable (arXiv)"

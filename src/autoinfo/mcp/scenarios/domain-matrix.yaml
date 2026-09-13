@@ -7,7 +7,10 @@
 # scanner) — without it the 13-demo-domain coverage contract stays at 12/13.
 name: domain-matrix
 description: "Domain coverage matrix: get_domain_schema + list_output_templates for all zero-coverage demo domains"
-category: discovery
+category: agent_interaction
+pyramid_layer: e2e
+pipeline_stage: A7
+user_level: B2.1
 requires_env: []
 requires_domain:
   - language-learning

@@ -1,6 +1,9 @@
 name: cli-content
 description: 'CLI content commands: sources, topics, summaries, keywords, kb, output'
-category: cli
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

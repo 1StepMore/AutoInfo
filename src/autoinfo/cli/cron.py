@@ -22,6 +22,8 @@ from typing import Any
 import typer
 import yaml
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Manage scheduled collection jobs")
@@ -274,18 +276,20 @@ def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
         if hb_status == "error":
             health = "error"
 
-        result.append({
-            "schedule_id": name,
-            "domain": s.domain,
-            "cron_expr": s.expression,
-            "is_active": s.enabled,
-            "last_run": hb_last_run or s.last_run,
-            "next_run": next_run,
-            "schedule_type": s.type,
-            "recipients": s.recipients if s.type == "digest" else [],
-            "health": health,
-            "last_error": hb_last_error,
-        })
+        result.append(
+            {
+                "schedule_id": name,
+                "domain": s.domain,
+                "cron_expr": s.expression,
+                "is_active": s.enabled,
+                "last_run": hb_last_run or s.last_run,
+                "next_run": next_run,
+                "schedule_type": s.type,
+                "recipients": s.recipients if s.type == "digest" else [],
+                "health": health,
+                "last_error": hb_last_error,
+            }
+        )
 
     return result
 
@@ -476,13 +480,19 @@ def run_due_schedules(
 @app.command()
 def run(
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Report which schedules would run without executing",
+        False,
+        "--dry-run",
+        help="Report which schedules would run without executing",
     ),
     name: str | None = typer.Option(
-        None, "--name", help="Run only a specific schedule by name",
+        None,
+        "--name",
+        help="Run only a specific schedule by name",
     ),
     json_output: bool = typer.Option(
-        False, "--json", help="Output full results as JSON",
+        False,
+        "--json",
+        help="Output full results as JSON",
     ),
 ) -> None:
     """Run pending scheduled collections."""
@@ -493,6 +503,10 @@ def run(
             json_output=json_output,
         )
     except ImportError:
+        fail_if_global(
+            "InternalError",
+            "croniter is required for scheduled collection. Install it with: pip install croniter",
+        )
         typer.echo(
             "Error: croniter is required for scheduled collection.\n"
             "Install it with: pip install croniter",
@@ -500,11 +514,12 @@ def run(
         )
         raise typer.Exit(code=1)
 
+    if emit_if_global({"items": results, "count": len(results)}):
+        return
+
     if json_output:
         typer.echo(
-            json.dumps(
-                {"items": results, "count": len(results)}, ensure_ascii=False, indent=2
-            )
+            json.dumps({"items": results, "count": len(results)}, ensure_ascii=False, indent=2)
         )
         return
 
@@ -541,9 +556,7 @@ def run(
                 err=True,
             )
         else:
-            typer.echo(
-                f"  – {entry['name']} ({entry['domain']}) — skipped"
-            )
+            typer.echo(f"  – {entry['name']} ({entry['domain']}) — skipped")
 
     due_count = len(due)
     ran_count = len(ran)
@@ -558,10 +571,11 @@ def list_schedules(
     """List all configured schedules."""
     schedules = load_schedules()
 
+    data = [asdict(s) for s in schedules.values()]
+    if emit_if_global({"items": data, "count": len(data)}):
+        return
+
     if json_output:
-        data = []
-        for name, s in schedules.items():
-            data.append(asdict(s))
         typer.echo(json.dumps({"items": data, "count": len(data)}, ensure_ascii=False, indent=2))
         return
 
@@ -574,32 +588,44 @@ def list_schedules(
     for name, s in schedules.items():
         last = s.last_run or "—"
         enabled = "yes" if s.enabled else "no"
-        typer.echo(
-            f"{name:<20} {s.expression:<18} {s.domain:<22} {enabled:<8} {last:<30}"
-        )
+        typer.echo(f"{name:<20} {s.expression:<18} {s.domain:<22} {enabled:<8} {last:<30}")
 
 
 @app.command(name="add-schedule")
 def add_schedule(
     name: str = typer.Option(..., "--name", help="Schedule name"),
     expression: str = typer.Option(
-        ..., "--expression", help="Cron expression (e.g. '0 2 * * *')",
+        ...,
+        "--expression",
+        help="Cron expression (e.g. '0 2 * * *')",
     ),
     domain: str = typer.Option(
-        ..., "--domain", help="Domain to collect on this schedule",
+        ...,
+        "--domain",
+        help="Domain to collect on this schedule",
     ),
     schedule_type: str = typer.Option(
-        "collection", "--type", help="Schedule type: collection or digest",
+        "collection",
+        "--type",
+        help="Schedule type: collection or digest",
     ),
     recipients: str = typer.Option(
-        "", "--recipients", help="Comma-separated email recipients (for digest type)",
+        "",
+        "--recipients",
+        help="Comma-separated email recipients (for digest type)",
     ),
     output_format: str = typer.Option(
-        "html", "--format", help="Digest format: html or markdown",
+        "html",
+        "--format",
+        help="Digest format: html or markdown",
     ),
 ) -> None:
     """Add a new collection or digest schedule."""
     if schedule_type not in ("collection", "digest"):
+        fail_if_global(
+            "ValidationError",
+            f"Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
+        )
         typer.echo(
             f"Error: Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
             err=True,
@@ -607,6 +633,7 @@ def add_schedule(
         raise typer.Exit(code=1)
 
     if schedule_type == "digest" and not recipients:
+        fail_if_global("ValidationError", "--recipients is required for digest-type schedules.")
         typer.echo(
             "Error: --recipients is required for digest-type schedules.",
             err=True,
@@ -618,12 +645,20 @@ def add_schedule(
         from croniter import croniter
 
         if not croniter.is_valid(expression):
+            fail_if_global(
+                "InvalidCronExpression",
+                f"'{expression}' is not a valid cron expression.",
+            )
             typer.echo(
                 f"Error: '{expression}' is not a valid cron expression.",
                 err=True,
             )
             raise typer.Exit(code=1)
     except ImportError:
+        fail_if_global(
+            "InternalError",
+            "croniter is required for scheduled collection. Install it with: pip install croniter",
+        )
         typer.echo(
             "Error: croniter is required for scheduled collection.\n"
             "Install it with: pip install croniter",
@@ -633,6 +668,7 @@ def add_schedule(
 
     schedules = load_schedules()
     if name in schedules:
+        fail_if_global("ScheduleAlreadyExists", f"A schedule named '{name}' already exists.")
         typer.echo(f"Error: A schedule named '{name}' already exists.", err=True)
         raise typer.Exit(code=1)
 
@@ -652,11 +688,19 @@ def add_schedule(
     schedules[name] = new_schedule
     save_schedules(schedules)
 
+    if emit_if_global(
+        {
+            "name": name,
+            "expression": expression,
+            "domain": domain,
+            "type": schedule_type,
+            "created": True,
+        }
+    ):
+        return
+
     type_label = "digest" if schedule_type == "digest" else "collection"
-    typer.echo(
-        f"Schedule '{name}' added: {expression} → domain '{domain}' "
-        f"(type: {type_label})"
-    )
+    typer.echo(f"Schedule '{name}' added: {expression} → domain '{domain}' (type: {type_label})")
 
 
 @app.command(name="remove-schedule")
@@ -666,11 +710,21 @@ def remove_schedule(
     """Remove a collection schedule."""
     schedules = load_schedules()
     if name not in schedules:
+        fail_if_global("ScheduleNotFound", f"Schedule '{name}' not found.")
         typer.echo(f"Error: Schedule '{name}' not found.", err=True)
         raise typer.Exit(code=1)
 
     removed = schedules.pop(name)
     save_schedules(schedules)
+    if emit_if_global(
+        {
+            "name": name,
+            "removed": True,
+            "expression": removed.expression,
+            "domain": removed.domain,
+        }
+    ):
+        return
     typer.echo(
         f"Schedule '{name}' removed (was: {removed.expression} → domain '{removed.domain}')."
     )
@@ -680,7 +734,9 @@ def remove_schedule(
 def health(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     notify: bool = typer.Option(
-        False, "--notify", help="Send email alerts for missed schedules",
+        False,
+        "--notify",
+        help="Send email alerts for missed schedules",
     ),
 ) -> None:
     """Show per-schedule health status with missed-schedule detection.
@@ -696,6 +752,8 @@ def health(
     """
     statuses = get_schedule_status()
     if not statuses:
+        if emit_if_global({"schedules": [], "count": 0, "missed_count": 0}):
+            return
         typer.echo("No schedules configured.")
         return
 
@@ -705,12 +763,21 @@ def health(
     if notify and missed:
         _send_missed_alerts(missed)
 
+    if emit_if_global({"schedules": statuses, "count": len(statuses), "missed_count": len(missed)}):
+        return
+
     if json_output:
-        typer.echo(json.dumps({
-            "schedules": statuses,
-            "count": len(statuses),
-            "missed_count": len(missed),
-        }, ensure_ascii=False, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "schedules": statuses,
+                    "count": len(statuses),
+                    "missed_count": len(missed),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return
 
     # Table header
@@ -724,8 +791,7 @@ def health(
         last = s["last_run"] or "—"
         next_r = s["next_run"] or "—"
         typer.echo(
-            f"{s['schedule_id']:<20} {health_label:<10} {s['domain']:<22} "
-            f"{last:<28} {next_r:<28}"
+            f"{s['schedule_id']:<20} {health_label:<10} {s['domain']:<22} {last:<28} {next_r:<28}"
         )
         if s.get("last_error"):
             typer.echo(f"  ↳ Error: {s['last_error']}")
@@ -914,9 +980,7 @@ def uninstall() -> None:
         return
 
     _set_crontab_lines(filtered)
-    typer.echo(
-        f"Removed {removed} autoinfo crontab entr{'y' if removed == 1 else 'ies'}."
-    )
+    typer.echo(f"Removed {removed} autoinfo crontab entr{'y' if removed == 1 else 'ies'}.")
 
 
 # ---------------------------------------------------------------------------
@@ -927,13 +991,19 @@ def uninstall() -> None:
 @app.command(name="add-delivery")
 def add_delivery(
     domain: str = typer.Option(
-        ..., "--domain", help="Domain to generate output for",
+        ...,
+        "--domain",
+        help="Domain to generate output for",
     ),
     schedule: str = typer.Option(
-        ..., "--schedule", help="Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
+        ...,
+        "--schedule",
+        help="Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
     ),
     output: str = typer.Option(
-        "digest", "--output", help="Output type: digest or report",
+        "digest",
+        "--output",
+        help="Output type: digest or report",
     ),
     channel: str = typer.Option(
         "email",
@@ -941,13 +1011,19 @@ def add_delivery(
         help="Delivery channel: email, webhook, rest, telegram, discord, etc.",
     ),
     to: str = typer.Option(
-        "", "--to", help="Comma-separated recipients (emails, webhook URLs, etc.)",
+        "",
+        "--to",
+        help="Comma-separated recipients (emails, webhook URLs, etc.)",
     ),
     output_format: str = typer.Option(
-        "html", "--format", help="Output format: markdown, html, json, agent, audio, pdf",
+        "html",
+        "--format",
+        help="Output format: markdown, html, json, agent, audio, pdf",
     ),
     period: str = typer.Option(
-        "weekly", "--period", help="Content period: daily, weekly, monthly",
+        "weekly",
+        "--period",
+        help="Content period: daily, weekly, monthly",
     ),
     schedule_user_id: str = typer.Option(
         "",
@@ -961,12 +1037,14 @@ def add_delivery(
         from croniter import croniter
 
         if not croniter.is_valid(schedule):
+            fail_if_global("InvalidCronExpression", f"'{schedule}' is not a valid cron expression.")
             typer.echo(
                 f"Error: '{schedule}' is not a valid cron expression.",
                 err=True,
             )
             raise typer.Exit(code=1)
     except ImportError:
+        fail_if_global("InternalError", "croniter is required. Install with: pip install croniter")
         typer.echo(
             "Error: croniter is required. Install with: pip install croniter",
             err=True,
@@ -982,6 +1060,11 @@ def add_delivery(
     )
 
     if output not in VALID_OUTPUT_TYPES:
+        fail_if_global(
+            "ValidationError",
+            f"Invalid output type '{output}'. Must be one of: "
+            f"{', '.join(sorted(VALID_OUTPUT_TYPES))}",
+        )
         typer.echo(
             f"Error: Invalid output type '{output}'. "
             f"Must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}",
@@ -990,6 +1073,10 @@ def add_delivery(
         raise typer.Exit(code=1)
 
     if output_format not in VALID_FORMATS:
+        fail_if_global(
+            "ValidationError",
+            f"Invalid format '{output_format}'. Must be one of: {', '.join(sorted(VALID_FORMATS))}",
+        )
         typer.echo(
             f"Error: Invalid format '{output_format}'. "
             f"Must be one of: {', '.join(sorted(VALID_FORMATS))}",
@@ -998,6 +1085,10 @@ def add_delivery(
         raise typer.Exit(code=1)
 
     if channel not in VALID_CHANNELS:
+        fail_if_global(
+            "ValidationError",
+            f"Invalid channel '{channel}'. Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
+        )
         typer.echo(
             f"Error: Invalid channel '{channel}'. "
             f"Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
@@ -1010,6 +1101,7 @@ def add_delivery(
 
     gate = check_schedule_frequency(user_id=schedule_user_id, frequency=period)
     if not gate["allowed"]:
+        fail_if_global(gate["code"], gate["message"])
         typer.echo(
             f"Error: [{gate['code']}] {gate['message']}",
             err=True,
@@ -1031,6 +1123,19 @@ def add_delivery(
     scheduler = DeliveryScheduler()
     scheduler.add_schedule(new_schedule)
 
+    if emit_if_global(
+        {
+            "schedule_id": new_schedule.id,
+            "cron_expression": schedule,
+            "domain": domain,
+            "output_type": output,
+            "format": output_format,
+            "channel": channel,
+            "created": True,
+        }
+    ):
+        return
+
     typer.echo(
         f"Delivery schedule '{new_schedule.id}' added: "
         f"{schedule} → domain '{domain}' "
@@ -1050,13 +1155,16 @@ def list_deliveries(
     scheduler = DeliveryScheduler()
     schedules = scheduler.list_schedules()
 
+    data = []
+    for s in schedules:
+        d = asdict(s)
+        if d.get("last_error") is None:
+            d["last_error"] = ""
+        data.append(d)
+    if emit_if_global({"items": data, "count": len(data)}):
+        return
+
     if json_output:
-        data = []
-        for s in schedules:
-            d = asdict(s)
-            if d.get("last_error") is None:
-                d["last_error"] = ""
-            data.append(d)
         typer.echo(json.dumps({"items": data, "count": len(data)}, ensure_ascii=False, indent=2))
         return
 
@@ -1088,7 +1196,10 @@ def remove_delivery(
     removed = scheduler.remove_schedule(schedule_id)
 
     if not removed:
+        fail_if_global("ScheduleNotFound", f"Delivery schedule '{schedule_id}' not found.")
         typer.echo(f"Error: Delivery schedule '{schedule_id}' not found.", err=True)
         raise typer.Exit(code=1)
 
+    if emit_if_global({"schedule_id": schedule_id, "removed": True}):
+        return
     typer.echo(f"Delivery schedule '{schedule_id}' removed.")

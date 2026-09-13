@@ -36,6 +36,8 @@ from autoinfo.validation_matrix import (
     save_report_card,
 )
 
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
 app = typer.Typer(
     name="validate",
     help="Run the full-matrix acceptance executor and regression guard",
@@ -61,52 +63,59 @@ def _default_domains() -> list[str]:
 @app.command(name="matrix")
 def matrix(
     domains: str = typer.Option(
-        "", "--domains", "--domain",
+        "",
+        "--domains",
+        "--domain",
         help="Comma-separated domain subset (default: all active domains)",
     ),
     products: str = typer.Option(
-        "", "--products", "--product",
-        help=(
-            "Comma-separated product subset (default: all 8) — "
-            f"{', '.join(MATRIX_PRODUCTS)}"
-        ),
+        "",
+        "--products",
+        "--product",
+        help=(f"Comma-separated product subset (default: all 8) — {', '.join(MATRIX_PRODUCTS)}"),
     ),
     only_assert: bool = typer.Option(
-        False, "--only-assert",
+        False,
+        "--only-assert",
         help="Do not regenerate — assert on already-persisted outputs/ files",
     ),
     json_out: str = typer.Option("", "--json-out", help="Write report card JSON to this path"),
     html_out: str = typer.Option("", "--html-out", help="Write report card HTML to this path"),
     snapshot_dir: str = typer.Option(
-        "validation-runs/matrix", "--snapshot-dir",
+        "validation-runs/matrix",
+        "--snapshot-dir",
         help="Batch root: products + report-card snapshot are persisted under "
-             "<snapshot-dir>/<batch_id>/ (per-batch isolation, #335)",
+        "<snapshot-dir>/<batch_id>/ (per-batch isolation, #335)",
     ),
     batch: str = typer.Option(
-        "", "--batch",
+        "",
+        "--batch",
         help="Explicit batch id (default: <commit>-<stamp>); re-runs with the "
-             "same id land in the same isolated batch dir",
+        "same id land in the same isolated batch dir",
     ),
     no_skip: bool = typer.Option(
-        False, "--no-skip",
-        help="Disable #348 smart-skip — force full regeneration of every "
-             "(domain, product) pair",
+        False,
+        "--no-skip",
+        help="Disable #348 smart-skip — force full regeneration of every (domain, product) pair",
     ),
     skip_threshold: int = typer.Option(
-        3, "--skip-threshold",
+        3,
+        "--skip-threshold",
         help="#348 smart-skip: consecutive passing batches required before a "
-             "(domain, product) pair is reused instead of regenerated "
-             "(premium products need threshold + 2 unless --skip-premium)",
+        "(domain, product) pair is reused instead of regenerated "
+        "(premium products need threshold + 2 unless --skip-premium)",
     ),
     skip_premium: bool = typer.Option(
-        False, "--skip-premium",
+        False,
+        "--skip-premium",
         help="#348 smart-skip: allow premium products (premium-briefing, "
-             "column, enterprise-briefing) to skip at the plain threshold",
+        "column, enterprise-briefing) to skip at the plain threshold",
     ),
     link_check: bool = typer.Option(
-        False, "--link-check",
+        False,
+        "--link-check",
         help="#352.2: HEAD-check every [View Source]/References URL for "
-             "reachability (slow, opt-in; never runs on the default path)",
+        "reachability (slow, opt-in; never runs on the default path)",
     ),
 ) -> None:
     """Run the full-matrix acceptance executor (#331).
@@ -116,13 +125,8 @@ def matrix(
     code when any P0/P1 assertion fails.
     """
     domain_list = [d.strip() for d in domains.split(",") if d.strip()] or _default_domains()
-    product_list = (
-        [p.strip() for p in products.split(",") if p.strip()]
-        or list(MATRIX_PRODUCTS)
-    )
-    batch_id = batch or (
-        f"{_current_commit()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    )
+    product_list = [p.strip() for p in products.split(",") if p.strip()] or list(MATRIX_PRODUCTS)
+    batch_id = batch or (f"{_current_commit()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
     batch_root = Path(snapshot_dir)
     # #335: full mode always persists into an isolated per-batch dir; only-
     # assert targets the batch tree only when --batch is given, otherwise it
@@ -135,26 +139,44 @@ def matrix(
         data_dir=Path.cwd(),
     )
     report = run_matrix(
-        domain_list, product_list,
+        domain_list,
+        product_list,
         only_assert=only_assert,
         batch_id=batch_id,
         artifacts_dir=artifacts_dir,
         skip=skip_policy,
         include_slow=link_check,
     )
-    _render_report_card(report)
+    if not global_json():
+        _render_report_card(report)
     if json_out:
         Path(json_out).write_text(
             json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        console.print(f"[green]report card JSON → {json_out}[/green]")
+        if not global_json():
+            console.print(f"[green]report card JSON → {json_out}[/green]")
     if html_out:
         _write_html(report, Path(html_out))
-        console.print(f"[green]report card HTML → {html_out}[/green]")
+        if not global_json():
+            console.print(f"[green]report card HTML → {html_out}[/green]")
     snap = save_report_card(report, batch_root / batch_id)
-    console.print(f"[cyan]batch → {batch_id}[/cyan]")
-    console.print(f"[cyan]snapshot → {snap}[/cyan]")
+    if not global_json():
+        console.print(f"[cyan]batch → {batch_id}[/cyan]")
+        console.print(f"[cyan]snapshot → {snap}[/cyan]")
+
+    if emit_if_global(
+        {
+            "batch_id": batch_id,
+            "snapshot": str(snap),
+            "report_card": report.to_dict(),
+            "json_out": json_out or None,
+            "html_out": html_out or None,
+        }
+    ):
+        if report.summary.get("failures", 0):
+            raise typer.Exit(code=1)
+        return
 
     # Non-zero exit when any P0/P1 assertion failed (CI / release gate).
     if report.summary.get("failures", 0):
@@ -179,25 +201,46 @@ def diff_cmd(
         + cur_counts["missing_products"]
         + cur_counts["error_products"]
     )
-    console.print(
-        f"[bold]failures[/bold] {prev_card.get('batch_id', '?')} -> "
-        f"{cur_card.get('batch_id', '?')} | "
-        f"prev={sum(prev_counts.values())} -> cur={cur_issues} "
-        f"(assertions={cur_counts['failing_assertions']} "
-        f"missing={cur_counts['missing_products']} "
-        f"error={cur_counts['error_products']})"
-    )
-    console.print(
-        f"[bold]diff[/bold] new={counts['new']} regressed={counts['regressed']} "
-        f"fixed={counts['fixed']} existing={counts['existing_failing']} "
-        f"(new+regressed+existing={reconciled})"
-    )
+    if not global_json():
+        console.print(
+            f"[bold]failures[/bold] {prev_card.get('batch_id', '?')} -> "
+            f"{cur_card.get('batch_id', '?')} | "
+            f"prev={sum(prev_counts.values())} -> cur={cur_issues} "
+            f"(assertions={cur_counts['failing_assertions']} "
+            f"missing={cur_counts['missing_products']} "
+            f"error={cur_counts['error_products']})"
+        )
+        console.print(
+            f"[bold]diff[/bold] new={counts['new']} regressed={counts['regressed']} "
+            f"fixed={counts['fixed']} existing={counts['existing_failing']} "
+            f"(new+regressed+existing={reconciled})"
+        )
     if cur_issues != reconciled:
+        fail_if_global(
+            "InternalError",
+            f"diff buckets ({reconciled}) do not reconcile with card failures ({cur_issues})",
+        )
         console.print(
             f"[red]ERROR: diff buckets ({reconciled}) do not reconcile with "
             f"card failures ({cur_issues}) (#340)[/red]"
         )
         raise typer.Exit(code=1)
+    if emit_if_global(
+        {
+            "prev_batch_id": prev_card.get("batch_id"),
+            "cur_batch_id": cur_card.get("batch_id"),
+            "counts": counts,
+            "diff": {
+                "new": d["new"],
+                "regressed": d["regressed"],
+                "fixed": d["fixed"],
+                "existing_failing": d["existing_failing"],
+            },
+        }
+    ):
+        if d["regressed"] or d["new"]:
+            raise typer.Exit(code=1)
+        return
     table = Table(title="Regression diff")
     table.add_column("Class")
     table.add_column("Domain")
@@ -212,8 +255,11 @@ def diff_cmd(
         for domain, product, assertion in items:
             if assertion == PRODUCT_STATUS:
                 _status = next(
-                    (p.get("status", "?") for p in cur_card.get("products", [])
-                     if p.get("domain") == domain and p.get("product") == product),
+                    (
+                        p.get("status", "?")
+                        for p in cur_card.get("products", [])
+                        if p.get("domain") == domain and p.get("product") == product
+                    ),
                     "?",
                 )
                 assertion = f"product {_status}"
@@ -228,25 +274,28 @@ def stability(
     prev: str = typer.Argument(..., help="Previous batch id under --snapshot-dir"),
     cur: str = typer.Argument(..., help="Current batch id under --snapshot-dir"),
     snapshot_dir: str = typer.Option(
-        "validation-runs/matrix", "--snapshot-dir",
+        "validation-runs/matrix",
+        "--snapshot-dir",
         help="Batch root: each batch's products live under "
-             "<snapshot-dir>/<batch_id>/products (#335)",
+        "<snapshot-dir>/<batch_id>/products (#335)",
     ),
     domains: str = typer.Option(
-        "", "--domains", "--domain",
+        "",
+        "--domains",
+        "--domain",
         help="Comma-separated domain subset (default: all active domains)",
     ),
     products: str = typer.Option(
-        "", "--products", "--product",
-        help=(
-            "Comma-separated product subset (default: all 8) — "
-            f"{', '.join(MATRIX_PRODUCTS)}"
-        ),
+        "",
+        "--products",
+        "--product",
+        help=(f"Comma-separated product subset (default: all 8) — {', '.join(MATRIX_PRODUCTS)}"),
     ),
     link_check: bool = typer.Option(
-        False, "--link-check",
+        False,
+        "--link-check",
         help="#352.2: HEAD-check every [View Source]/References URL for "
-             "reachability (slow, opt-in; never runs on the default path)",
+        "reachability (slow, opt-in; never runs on the default path)",
     ),
 ) -> None:
     """Cross-day stability diff of two persisted batches (#352.1).
@@ -257,10 +306,7 @@ def stability(
     when a regression or new failure appears.
     """
     domain_list = [d.strip() for d in domains.split(",") if d.strip()] or _default_domains()
-    product_list = (
-        [p.strip() for p in products.split(",") if p.strip()]
-        or list(MATRIX_PRODUCTS)
-    )
+    product_list = [p.strip() for p in products.split(",") if p.strip()] or list(MATRIX_PRODUCTS)
     base = Path(snapshot_dir)
     result = diff_batches(
         base / prev / "products",
@@ -281,23 +327,39 @@ def stability(
         + cur_counts["error_products"]
     )
     reconciled = counts["new"] + counts["regressed"] + counts["existing_failing"]
-    console.print(
-        f"[bold]stability[/bold] {prev} -> {cur} | "
-        f"prev_issues={sum(prev_counts.values())} -> cur_issues={cur_issues} "
-        f"(assertions={cur_counts['failing_assertions']} "
-        f"missing={cur_counts['missing_products']} "
-        f"error={cur_counts['error_products']})"
-    )
-    console.print(
-        f"[bold]diff[/bold] new={counts['new']} regressed={counts['regressed']} "
-        f"fixed={counts['fixed']} existing={counts['existing_failing']}"
-    )
+    if not global_json():
+        console.print(
+            f"[bold]stability[/bold] {prev} -> {cur} | "
+            f"prev_issues={sum(prev_counts.values())} -> cur_issues={cur_issues} "
+            f"(assertions={cur_counts['failing_assertions']} "
+            f"missing={cur_counts['missing_products']} "
+            f"error={cur_counts['error_products']})"
+        )
+        console.print(
+            f"[bold]diff[/bold] new={counts['new']} regressed={counts['regressed']} "
+            f"fixed={counts['fixed']} existing={counts['existing_failing']}"
+        )
     if cur_issues != reconciled:
+        fail_if_global(
+            "InternalError",
+            f"diff buckets ({reconciled}) do not reconcile with batch failures ({cur_issues})",
+        )
         console.print(
             f"[red]ERROR: diff buckets ({reconciled}) do not reconcile with "
             f"batch failures ({cur_issues}) (#340)[/red]"
         )
         raise typer.Exit(code=1)
+    if emit_if_global(
+        {
+            "prev_batch": prev,
+            "cur_batch": cur,
+            "counts": counts,
+            "stable": result["stable"],
+        }
+    ):
+        if not result["stable"]:
+            raise typer.Exit(code=1)
+        return
     table = Table(title="Stability diff")
     table.add_column("Class")
     table.add_column("Domain")
@@ -312,8 +374,11 @@ def stability(
         for domain, product, assertion in items:
             if assertion == PRODUCT_STATUS:
                 _status = next(
-                    (p.get("status", "?") for p in cur_card.get("products", [])
-                     if p.get("domain") == domain and p.get("product") == product),
+                    (
+                        p.get("status", "?")
+                        for p in cur_card.get("products", [])
+                        if p.get("domain") == domain and p.get("product") == product
+                    ),
                     "?",
                 )
                 assertion = f"product {_status}"
@@ -360,9 +425,9 @@ def _write_html(report: MatrixReport, out: Path) -> None:
     for p in report.products:
         rows.append(
             "<tr>"
-            f"<td>{p.get('domain','')}</td>"
-            f"<td>{p.get('product','')}</td>"
-            f"<td>{p.get('status','')}</td>"
+            f"<td>{p.get('domain', '')}</td>"
+            f"<td>{p.get('product', '')}</td>"
+            f"<td>{p.get('status', '')}</td>"
             "</tr>"
         )
     html = (

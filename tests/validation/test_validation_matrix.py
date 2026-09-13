@@ -20,9 +20,12 @@ from autoinfo.mcp import validation as v
 MATRIX_YAML = """\
 name: matrix-scenario
 description: "Domain-matrix fixture"
-category: test
+category: happy_path
 requires_env: []
 matrix_domains: ["ai-commercial", "b2b"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "schema per domain"
     tool: get_domain_schema
@@ -40,8 +43,11 @@ steps:
 PLAIN_YAML = """\
 name: plain-scenario
 description: "No-matrix fixture (zero-regression guard)"
-category: test
+category: happy_path
 requires_env: []
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "schema per domain"
     tool: get_domain_schema
@@ -58,9 +64,12 @@ steps:
 PARTIAL_YAML = """\
 name: partial-scenario
 description: "Partial substitution fixture"
-category: test
+category: happy_path
 requires_env: []
 matrix_domains: ["ai-commercial"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "partial substitution"
     tool: get_domain_schema
@@ -78,10 +87,13 @@ steps:
 UNION_YAML = """\
 name: union-scenario
 description: "Union gate fixture"
-category: test
+category: happy_path
 requires_env: []
 requires_domain: ["medical-research"]
 matrix_domains: ["ai-commercial", "b2b"]
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 steps:
   - name: "schema per domain"
     tool: get_domain_schema
@@ -103,6 +115,10 @@ def _scenario_body(**extra: Any) -> str:
     data: dict[str, Any] = {
         "name": "schema-scenario",
         "description": "schema fixture",
+        "category": "happy_path",
+        "pyramid_layer": "component",
+        "pipeline_stage": "A7",
+        "user_level": "B2.4",
         "steps": [
             {
                 "name": "s",
@@ -145,9 +161,7 @@ class TestRunScenarioMatrix:
     ) -> None:
         """Each member domain fires the step once, ``{{domain}}`` replaced
         everywhere — top-level, nested dicts, and list items."""
-        monkeypatch.setattr(
-            v, "_configured_domain_names", lambda: ["ai-commercial", "b2b"]
-        )
+        monkeypatch.setattr(v, "_configured_domain_names", lambda: ["ai-commercial", "b2b"])
         sd = _write_scenario(tmp_path, MATRIX_YAML)
         dispatch = _CapturingDispatch()
 
@@ -189,9 +203,7 @@ class TestRunScenarioMatrix:
             assert sub["summary"]["total"] == 1
             assert sub["summary"]["passed"] == 1
 
-    async def test_without_matrix_domains_dispatches_exactly_once(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_without_matrix_domains_dispatches_exactly_once(self, tmp_path: Path) -> None:
         """Zero-regression guard: no matrix key -> one execution, no
         substitution (the literal ``{{domain}}`` token arrives untouched),
         and the envelope carries no ``matrix`` key."""
@@ -235,9 +247,7 @@ class TestRunScenarioMatrix:
     ) -> None:
         """Aggregation is ALL-or-nothing: one failing sub-run fails the whole
         scenario, with every sub-run's result recorded per domain."""
-        monkeypatch.setattr(
-            v, "_configured_domain_names", lambda: ["ai-commercial", "b2b"]
-        )
+        monkeypatch.setattr(v, "_configured_domain_names", lambda: ["ai-commercial", "b2b"])
         sd = _write_scenario(tmp_path, MATRIX_YAML)
         dispatch = _CapturingDispatch(fail_domains={"b2b"})
 
@@ -286,20 +296,14 @@ class TestLoadScenariosMatrixSchema:
         "bad",
         [[], "ai-commercial", [123], [""], ["ai-commercial", 7]],
     )
-    def test_load_scenarios_rejects_invalid_matrix_domains(
-        self, tmp_path: Path, bad: Any
-    ) -> None:
+    def test_load_scenarios_rejects_invalid_matrix_domains(self, tmp_path: Path, bad: Any) -> None:
         sd = tmp_path / "scenarios"
         sd.mkdir()
-        (sd / "bad.yaml").write_text(
-            _scenario_body(matrix_domains=bad), encoding="utf-8"
-        )
+        (sd / "bad.yaml").write_text(_scenario_body(matrix_domains=bad), encoding="utf-8")
         with pytest.raises(ValueError, match="matrix_domains"):
             v.load_scenarios(sd)
 
-    def test_load_scenarios_defaults_matrix_domains_to_empty(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_scenarios_defaults_matrix_domains_to_empty(self, tmp_path: Path) -> None:
         sd = tmp_path / "scenarios"
         sd.mkdir()
         (sd / "plain.yaml").write_text(_scenario_body(), encoding="utf-8")
@@ -327,9 +331,7 @@ class TestListScenariosMatrix:
             _scenario_body(name="mat-scenario", matrix_domains=["b2b"]),
             encoding="utf-8",
         )
-        (sd / "plain.yaml").write_text(
-            _scenario_body(name="plain-scenario"), encoding="utf-8"
-        )
+        (sd / "plain.yaml").write_text(_scenario_body(name="plain-scenario"), encoding="utf-8")
         summary = {s["name"]: s for s in v.list_scenarios(sd)["scenarios"]}
         assert summary["mat-scenario"]["matrix_domains"] == ["b2b"]
         assert summary["plain-scenario"]["matrix_domains"] == []

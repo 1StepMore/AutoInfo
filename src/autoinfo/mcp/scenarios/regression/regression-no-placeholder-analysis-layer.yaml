@@ -15,7 +15,10 @@
 # Deterministic (requires_env: []): exercises `_no_placeholder` directly.
 name: regression-no-placeholder-analysis-layer
 description: "Regression #334: _no_placeholder detects N/A / None / TBD / Not available / To be determined filler in the premium/enterprise analysis layer"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.5
 regression: true
 regression_issue: "#334"
 requires_env: []

@@ -18,6 +18,8 @@ import json
 
 import typer
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(
     name="agent-callback",
     help="Manage agent push callbacks — mirrors MCP set/list/remove_agent_callback",
@@ -27,6 +29,7 @@ _VALID_EVENTS = ("new_digest", "new_report", "new_tutorial")
 
 
 def _fail(message: str) -> None:
+    fail_if_global("ValidationError", message)
     typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(code=1)
 
@@ -38,9 +41,7 @@ def add(
         "--agent-url",
         help="Callback URL (must start with http:// or https://)",
     ),
-    url: str = typer.Option(
-        "", "--url", help="Alias for --agent-url (shorthand used in plan QA)"
-    ),
+    url: str = typer.Option("", "--url", help="Alias for --agent-url (shorthand used in plan QA)"),
     events: list[str] = typer.Option(
         [],
         "--events",
@@ -57,9 +58,7 @@ def add(
 
     invalid = [e for e in events if e not in _VALID_EVENTS]
     if invalid:
-        _fail(
-            f"Invalid events: {invalid}. Valid events: {', '.join(_VALID_EVENTS)}"
-        )
+        _fail(f"Invalid events: {invalid}. Valid events: {', '.join(_VALID_EVENTS)}")
     if not events:
         _fail("At least one --events value is required (new_digest, new_report, new_tutorial)")
 
@@ -72,18 +71,17 @@ def add(
         # Mirrors the MCP handler's ValueError → VALIDATION_ERROR mapping
         _fail(str(exc))
 
+    data = {
+        "callback_id": callback_id,
+        "agent_url": resolved,
+        "events": events,
+        "created": True,
+    }
+    if emit_if_global(data):
+        return
+
     if json_output:
-        typer.echo(
-            json.dumps(
-                {
-                    "callback_id": callback_id,
-                    "agent_url": resolved,
-                    "events": events,
-                    "created": True,
-                },
-                indent=2,
-            )
-        )
+        typer.echo(json.dumps(data, indent=2))
     else:
         typer.echo(
             f"Registered agent callback '{callback_id}' for {resolved} "
@@ -101,6 +99,9 @@ def list_cmd(
 
     callbacks = list_agent_callbacks()
 
+    if emit_if_global(callbacks):
+        return
+
     if json_output:
         typer.echo(json.dumps(callbacks, indent=2, ensure_ascii=False))
         return
@@ -110,9 +111,7 @@ def list_cmd(
         return
 
     for cb in callbacks:
-        typer.echo(
-            f"{cb['callback_id']}  {cb['agent_url']}  events={','.join(cb['events'])}"
-        )
+        typer.echo(f"{cb['callback_id']}  {cb['agent_url']}  events={','.join(cb['events'])}")
 
 
 @app.command()
@@ -139,6 +138,7 @@ def remove(
 
     if not removed:
         # Mirrors the MCP handler's NOT_FOUND response
+        fail_if_global("NotFound", f"Callback '{resolved}' not found")
         if json_output:
             typer.echo(
                 json.dumps(
@@ -156,6 +156,9 @@ def remove(
         else:
             typer.echo(f"Error: Callback '{resolved}' not found", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global({"callback_id": resolved, "removed": True}):
+        return
 
     if json_output:
         typer.echo(json.dumps({"callback_id": resolved, "removed": True}, indent=2))

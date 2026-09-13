@@ -1,7 +1,10 @@
 # Discovery tools — verify domain/LLM/output discovery in real project context.
 name: discovery
 description: "Discovery tools in real project context"
-category: discovery
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.1
 requires_env: []
 steps:
   - name: "list_domains returns configured domains"

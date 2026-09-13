@@ -4,9 +4,10 @@
 Locks the behavior of ``scripts/scenario_outcome_audit.py`` so the D-工-5
 evidence stays deterministic:
 
-1. All 138 scenarios (65 functional + 73 regression) are parsed with 483
-   steps (the #119/#120 + 2026-09-04/09-05 regression waves appended the
-   later scenarios and steps).
+1. Every loaded scenario and step is parsed — expected counts are derived
+   live from ``load_scenarios()`` (never hard-coded), so scenario regressions
+   and the T-A-02 `get_coverage_report` meta-validation step can grow the
+   library without editing this test.
 2. **Outcome grading** — >= 95% of steps assert an explicit ``success``
    key (grade the outcome envelope, not the path).
 3. **Error-path depth** — every error step pins ``error_code``; the
@@ -18,6 +19,7 @@ evidence stays deterministic:
    ``requires_http`` (so the engine reports ``unconfigured`` instead of
    silently passing).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -26,15 +28,15 @@ from typing import Any
 
 import pytest
 
+from autoinfo.mcp.validation import load_scenarios
+
 ROOT = Path(__file__).resolve().parents[2]
 AUDIT_SCRIPT = ROOT / "scripts" / "scenario_outcome_audit.py"
 
 
 @pytest.fixture(scope="module")
 def outcome_audit():
-    spec = importlib.util.spec_from_file_location(
-        "scenario_outcome_audit", AUDIT_SCRIPT
-    )
+    spec = importlib.util.spec_from_file_location("scenario_outcome_audit", AUDIT_SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -46,16 +48,20 @@ def result(outcome_audit):
     return outcome_audit.audit_all()
 
 
-def test_all_138_scenarios_parsed(result: dict[str, Any]) -> None:
-    # 138 = 65 functional + 73 regression, the count documented in README.md
-    # and the validation-scenario regression waves through 2026-09-05.
-    assert result["summary"]["total_scenarios"] == 138
-    assert result["summary"]["regression_scenarios"] == 73
+def test_all_scenarios_parsed(result: dict[str, Any]) -> None:
+    # Expected counts are derived from the live scenario library
+    # (``load_scenarios()``) — adding/removing a scenario or a regression
+    # scenario must not require editing this test.
+    scenarios = load_scenarios()
+    assert result["summary"]["total_scenarios"] == len(scenarios)
+    assert result["summary"]["regression_scenarios"] == sum(
+        1 for sc in scenarios if sc.get("regression")
+    )
 
 
 def test_total_steps(result):
-    # 483 = the live step total across all 138 scenarios.
-    assert result["summary"]["total_steps"] == 483
+    # Live step total across every loaded scenario.
+    assert result["summary"]["total_steps"] == sum(len(sc["steps"]) for sc in load_scenarios())
 
 
 def test_outcome_grading_ratio_high(result):
@@ -96,7 +102,12 @@ def test_llm_env_gate_declared(result):
 def test_scenario_row_shape(result):
     row = result["scenarios"][0]
     for key in (
-        "file", "name", "step_count", "requires_env", "requires_http",
-        "violations", "steps",
+        "file",
+        "name",
+        "step_count",
+        "requires_env",
+        "requires_http",
+        "violations",
+        "steps",
     ):
         assert key in row, key

@@ -79,8 +79,7 @@ _SAMPLE_LLM_SYNTHESIS = {
         {
             "topic": "Time-lapse imaging",
             "detail": (
-                "Significant improvement in live birth rates (48.2% vs 39.5%)"
-                " in a large RCT."
+                "Significant improvement in live birth rates (48.2% vs 39.5%) in a large RCT."
             ),
         },
         {
@@ -143,9 +142,7 @@ class TestParseJsonResponse:
         assert result == {"key": "value"}
 
     def test_bare_object_in_text(self) -> None:
-        result = _parse_json_response(
-            'Some text before {"nested": {"inner": 42}} and after'
-        )
+        result = _parse_json_response('Some text before {"nested": {"inner": 42}} and after')
         assert result == {"nested": {"inner": 42}}
 
     def test_invalid_json_returns_empty(self) -> None:
@@ -247,18 +244,14 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_json_output_valid_structure(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_json_output_valid_structure(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """JSON output is parsable with structured metadata and entries."""
         mock_llm.return_value = _SAMPLE_LLM_SYNTHESIS
         mock_store = MagicMock()
         mock_store.list_entries.side_effect = _mock_list_entries
         mock_kb.return_value = mock_store
 
-        result = generate_digest(
-            domain="medical-research", period="weekly", format="json"
-        )
+        result = generate_digest(domain="medical-research", period="weekly", format="json")
         parsed = json.loads(cast(str, result))
 
         assert parsed["digest_type"] == "digest"
@@ -270,18 +263,14 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_html_output_no_css(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_html_output_no_css(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """HTML output uses markdown-to-HTML conversion without styling."""
         mock_llm.return_value = _SAMPLE_LLM_SYNTHESIS
         mock_store = MagicMock()
         mock_store.list_entries.side_effect = _mock_list_entries
         mock_kb.return_value = mock_store
 
-        result = generate_digest(
-            domain="medical-research", period="weekly", format="html"
-        )
+        result = generate_digest(domain="medical-research", period="weekly", format="html")
 
         assert isinstance(result, str)
         # Has HTML structure (headings, paragraphs)
@@ -308,26 +297,20 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_json_empty_domain_zero_entries(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_json_empty_domain_zero_entries(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """JSON output for empty domain has entry_count == 0."""
         mock_llm.return_value = {}
         mock_store = MagicMock()
         mock_store.list_entries.side_effect = _mock_list_entries
         mock_kb.return_value = mock_store
 
-        result = generate_digest(
-            domain="empty-domain", period="weekly", format="json"
-        )
+        result = generate_digest(domain="empty-domain", period="weekly", format="json")
         parsed = json.loads(cast(str, result))
         assert parsed["entry_count"] == 0
         assert parsed["entries"] == []
 
     @patch("autoinfo.output.KBStore")
-    def test_llm_failure_still_renders_entries(
-        self, mock_kb: MagicMock
-    ) -> None:
+    def test_llm_failure_still_renders_entries(self, mock_kb: MagicMock) -> None:
         """When LLM fails, digest still renders entries — and, per issue
         #217, a deterministic entry-derived synthesis fills the D1-required
         sections instead of leaving them empty."""
@@ -336,9 +319,7 @@ class TestGenerateDigest:
         mock_kb.return_value = mock_store
 
         with patch("autoinfo.output._call_llm_for_digest", return_value={}):
-            result = generate_digest(
-                domain="medical-research", period="weekly"
-            )
+            result = generate_digest(domain="medical-research", period="weekly")
             assert "Entries" in cast(str, result)
             assert "IVF outcomes with time-lapse" in cast(str, result)
             # Issue #217: synthesis is now entry-derived, never empty —
@@ -360,9 +341,7 @@ class TestGenerateDigest:
         mock_store.list_entries.side_effect = _mock_list_entries
         mock_kb.return_value = mock_store
 
-        result = generate_digest(
-            domain="medical-research", period="weekly", format="json"
-        )
+        result = generate_digest(domain="medical-research", period="weekly", format="json")
         parsed = json.loads(cast(str, result))
         synth = parsed["llm_synthesis"]
         assert synth["executive_summary"].strip()
@@ -373,9 +352,7 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_empty_synthesis_passes_d1_gate(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_empty_synthesis_passes_d1_gate(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """Issue #217: D1 (product completeness) must pass when the LLM
         synthesis was empty and the deterministic entry-derived fallback
         filled the required sections."""
@@ -410,9 +387,7 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_daily_and_monthly_periods(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_daily_and_monthly_periods(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """Daily and monthly periods produce correct labels."""
         mock_llm.return_value = _SAMPLE_LLM_SYNTHESIS
         mock_store = MagicMock()
@@ -427,9 +402,7 @@ class TestGenerateDigest:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_digest_renders_real_tags(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_digest_renders_real_tags(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """Issue #16: a digest entry with real tags renders them (never ``—``),
         and its relevance_score renders as a real value (never ``—``)."""
         mock_llm.return_value = _SAMPLE_LLM_SYNTHESIS
@@ -456,9 +429,7 @@ class TestGenerateDigest:
         mock_store.list_entries.return_value = entries
         mock_kb.return_value = mock_store
 
-        result = generate_digest(
-            domain="medical-research", period="weekly", format="markdown"
-        )
+        result = generate_digest(domain="medical-research", period="weekly", format="markdown")
         body = cast(str, result)
         # Issue #91 (R2): the entry renders its title, summary, source — but
         # the internal Field|Value metadata table (Tags/Relevance/Type/
@@ -514,8 +485,8 @@ class TestMcpHandler:
             )
 
         assert result["success"] is True
-        assert result["format"] == "markdown"
-        assert "# Weekly Digest" in result["content"]
+        assert result["data"]["format"] == "markdown"
+        assert "# Weekly Digest" in result["data"]["content"]
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_json_format_parses_content(
@@ -524,21 +495,17 @@ class TestMcpHandler:
         """Handler parses JSON string into dict for JSON format response."""
         from autoinfo.mcp.server import _handle_generate_digest
 
-        json_content = json.dumps(
-            {"digest_type": "digest", "domain": "test", "entry_count": 0}
-        )
+        json_content = json.dumps({"digest_type": "digest", "domain": "test", "entry_count": 0})
         with patch(
             "autoinfo.output.generate_digest",
             return_value=json_content,
         ):
-            result = _handle_generate_digest(
-                domain="test", period="weekly", format="json"
-            )
+            result = _handle_generate_digest(domain="test", period="weekly", format="json")
 
         assert result["success"] is True
-        assert result["format"] == "json"
-        assert result["content"]["digest_type"] == "digest"
-        assert result["content"]["entry_count"] == 0
+        assert result["data"]["format"] == "json"
+        assert result["data"]["content"]["digest_type"] == "digest"
+        assert result["data"]["content"]["entry_count"] == 0
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_propagates_validation_error(
@@ -553,8 +520,8 @@ class TestMcpHandler:
         ):
             result = _handle_generate_digest(domain="test", period="yearly")
 
-        assert "error_code" in result
-        assert result["error_code"] == "ValidationError"
+        assert result["success"] is False
+        assert result["error"]["code"] == "ValidationError"
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_returns_error_for_exception(
@@ -569,7 +536,8 @@ class TestMcpHandler:
         ):
             result = _handle_generate_digest(domain="test", period="weekly")
 
-        assert "error_code" in result
+        assert result["success"] is False
+        assert result["error"]["code"] == "InternalError"
 
     @patch("autoinfo.mcp.server.logger")
     def test_handler_digest_with_product_passes_registry_template(
@@ -579,9 +547,7 @@ class TestMcpHandler:
         from autoinfo.mcp.server import _handle_generate_digest
         from autoinfo.output import PRODUCT_TEMPLATES
 
-        _row = next(
-            r for r in PRODUCT_TEMPLATES if r["name"] == "magazine-digest"
-        )
+        _row = next(r for r in PRODUCT_TEMPLATES if r["name"] == "magazine-digest")
         with patch(
             "autoinfo.output.generate_digest",
             return_value="# Magazine Digest -- test\n\ncurated content",
@@ -594,7 +560,7 @@ class TestMcpHandler:
             )
 
         assert result["success"] is True
-        assert "# Magazine Digest" in result["content"]
+        assert "# Magazine Digest" in result["data"]["content"]
         assert mock_generate.call_args.kwargs["product_template"] is _row["template"]
 
     @patch("autoinfo.mcp.server.logger")
@@ -605,9 +571,7 @@ class TestMcpHandler:
         from autoinfo.mcp.server import _handle_generate_digest
         from autoinfo.output import PRODUCT_TEMPLATES
 
-        result = _handle_generate_digest(
-            domain="medical-research", product="no-such-product"
-        )
+        result = _handle_generate_digest(domain="medical-research", product="no-such-product")
 
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
@@ -633,7 +597,7 @@ class TestMcpHandler:
             )
 
         assert result["success"] is True
-        assert "# Weekly Digest" in result["content"]
+        assert "# Weekly Digest" in result["data"]["content"]
         assert mock_generate.call_args.kwargs["product_template"] is None
 
 
@@ -647,32 +611,25 @@ class TestMcpHandler:
 # Issue affects ALL CLI tests across the project, not just digest.
 # Re-enable when upstream typer fixes eval_str compatibility with Python 3.14.
 
+
 class TestCliDigest:
     @patch("autoinfo.output.generate_digest")
-    def test_digest_command_calls_generate(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_digest_command_calls_generate(self, mock_generate: MagicMock) -> None:
         """CLI digest command calls generate_digest and echoes result."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_digest")
-    def test_digest_command_json_format(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_digest_command_json_format(self, mock_generate: MagicMock) -> None:
         """JSON format flag forwarded to generate_digest."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_digest")
-    def test_digest_command_error_handling(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_digest_command_error_handling(self, mock_generate: MagicMock) -> None:
         """When generate_digest raises, CLI exits with error code 1."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_digest")
-    def test_digest_command_defaults(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_digest_command_defaults(self, mock_generate: MagicMock) -> None:
         """CLI uses default period (weekly) and format (markdown)."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
@@ -713,17 +670,29 @@ class TestProductRelevanceFloor:
         from autoinfo.output import _filter_entries_by_domain_exclusions
 
         entries = [
-            {"entry_id": "a", "title": "Horse hydration RCT", "relevance_score": 10,
-             "domain": "medical-research"},
-            {"entry_id": "b", "title": "IVF breakthrough", "relevance_score": 85,
-             "domain": "medical-research"},
+            {
+                "entry_id": "a",
+                "title": "Horse hydration RCT",
+                "relevance_score": 10,
+                "domain": "medical-research",
+            },
+            {
+                "entry_id": "b",
+                "title": "IVF breakthrough",
+                "relevance_score": 85,
+                "domain": "medical-research",
+            },
             {"entry_id": "c", "title": "Unscored curated", "domain": "medical-research"},
-            {"entry_id": "d", "title": "Boundary", "relevance_score": 30,
-             "domain": "medical-research"},
+            {
+                "entry_id": "d",
+                "title": "Boundary",
+                "relevance_score": 30,
+                "domain": "medical-research",
+            },
         ]
-        kept = [e["entry_id"] for e in _filter_entries_by_domain_exclusions(
-            entries, "medical-research"
-        )]
+        kept = [
+            e["entry_id"] for e in _filter_entries_by_domain_exclusions(entries, "medical-research")
+        ]
         # medical-research seed floor is 30 -> below-floor 'a' dropped;
         # at-floor 'd', scored 'b', and absent-score 'c' (fail-open) kept.
         assert kept == ["b", "c", "d"], kept
@@ -743,14 +712,17 @@ class TestSynthesizedDigestExclusion:
         from autoinfo.output import _filter_product_entries
 
         synthesized = {
-            "entry_id": "fin-draft-1", "title": "金融市场情报 4",
-            "summary": "本期要点: ...", "tier": "02-Draft",
-            "custom_fields": {"source_ids": ["raw-a", "raw-b"],
-                              "source_raw_ids": "raw-a,raw-b"},
+            "entry_id": "fin-draft-1",
+            "title": "金融市场情报 4",
+            "summary": "本期要点: ...",
+            "tier": "02-Draft",
+            "custom_fields": {"source_ids": ["raw-a", "raw-b"], "source_raw_ids": "raw-a,raw-b"},
         }
         real = {
-            "entry_id": "fin-news-1", "title": "Fed holds rates",
-            "summary": "The Fed held rates steady.", "tier": "01-Raw",
+            "entry_id": "fin-news-1",
+            "title": "Fed holds rates",
+            "summary": "The Fed held rates steady.",
+            "tier": "01-Raw",
         }
         kept = [e["entry_id"] for e in _filter_product_entries([synthesized, real])]
         assert kept == ["fin-news-1"], kept
@@ -759,8 +731,10 @@ class TestSynthesizedDigestExclusion:
         from autoinfo.output import _filter_product_entries
 
         single = {
-            "entry_id": "draft-1", "title": "A single compiled note",
-            "summary": "From one source.", "tier": "02-Draft",
+            "entry_id": "draft-1",
+            "title": "A single compiled note",
+            "summary": "From one source.",
+            "tier": "02-Draft",
             "custom_fields": {"source_ids": ["raw-a"], "source_raw_ids": "raw-a"},
         }
         kept = [e["entry_id"] for e in _filter_product_entries([single])]
@@ -778,34 +752,43 @@ class TestSingleSourcePlaceholderDraftExclusion:
     the product stream even though it escapes the multi-source check (issue
     #184)."""
 
-    @pytest.mark.parametrize("entry", [
-        # truncated "本期...要点" summary placeholder
-        {
-            "entry_id": "ph-1", "title": "AI-commercial weekly: digest",
-            "summary": "本期核心要点: 数字人民币联盟链交易量环比翻倍, 大模型",
-            "tier": "02-Draft",
-            "custom_fields": {"source_ids": ["raw-a"]},
-        },
-        # digest-flag title token ("weekly:", "weekly")
-        {
-            "entry_id": "ph-2", "title": "AI-commercial weekly: 本期周报",
-            "summary": "Some normal summary text here.",
-            "tier": "03-Wiki",
-            "custom_fields": {"source_raw_ids": "raw-a"},
-        },
-        # template-name + digit title ("情报 4")
-        {
-            "entry_id": "ph-3", "title": "金融市场情报 4",
-            "summary": "正常摘要文本。", "tier": "02-Draft",
-            "custom_fields": {"source_ids": ["raw-a"]},
-        },
-        # template-name + digit title ("周报9" no space)
-        {
-            "entry_id": "ph-4", "title": "医疗前沿周报9",
-            "summary": "Normal English summary.", "tier": "02-Draft",
-            "custom_fields": {"source_ids": ["raw-a"]},
-        },
-    ])
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            # truncated "本期...要点" summary placeholder
+            {
+                "entry_id": "ph-1",
+                "title": "AI-commercial weekly: digest",
+                "summary": "本期核心要点: 数字人民币联盟链交易量环比翻倍, 大模型",
+                "tier": "02-Draft",
+                "custom_fields": {"source_ids": ["raw-a"]},
+            },
+            # digest-flag title token ("weekly:", "weekly")
+            {
+                "entry_id": "ph-2",
+                "title": "AI-commercial weekly: 本期周报",
+                "summary": "Some normal summary text here.",
+                "tier": "03-Wiki",
+                "custom_fields": {"source_raw_ids": "raw-a"},
+            },
+            # template-name + digit title ("情报 4")
+            {
+                "entry_id": "ph-3",
+                "title": "金融市场情报 4",
+                "summary": "正常摘要文本。",
+                "tier": "02-Draft",
+                "custom_fields": {"source_ids": ["raw-a"]},
+            },
+            # template-name + digit title ("周报9" no space)
+            {
+                "entry_id": "ph-4",
+                "title": "医疗前沿周报9",
+                "summary": "Normal English summary.",
+                "tier": "02-Draft",
+                "custom_fields": {"source_ids": ["raw-a"]},
+            },
+        ],
+    )
     def test_single_source_placeholder_draft_excluded(self, entry) -> None:
         from autoinfo.output import _filter_product_entries, _is_synthesized_digest_entry
 
@@ -813,20 +796,27 @@ class TestSingleSourcePlaceholderDraftExclusion:
         kept = [e["entry_id"] for e in _filter_product_entries([entry])]
         assert kept == [], kept
 
-    @pytest.mark.parametrize("entry", [
-        # real single-source news item
-        {
-            "entry_id": "news-1", "title": "Fed holds rates steady",
-            "summary": "The Fed held rates steady at 5.25%.", "tier": "02-Draft",
-            "custom_fields": {"source_ids": ["raw-a"]},
-        },
-        # real article whose title contains a number but NO template flag
-        {
-            "entry_id": "news-2", "title": "3 trends in AI for 2025",
-            "summary": "Analysis of the top three AI trends.", "tier": "02-Draft",
-            "custom_fields": {"source_id": "raw-a"},
-        },
-    ])
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            # real single-source news item
+            {
+                "entry_id": "news-1",
+                "title": "Fed holds rates steady",
+                "summary": "The Fed held rates steady at 5.25%.",
+                "tier": "02-Draft",
+                "custom_fields": {"source_ids": ["raw-a"]},
+            },
+            # real article whose title contains a number but NO template flag
+            {
+                "entry_id": "news-2",
+                "title": "3 trends in AI for 2025",
+                "summary": "Analysis of the top three AI trends.",
+                "tier": "02-Draft",
+                "custom_fields": {"source_id": "raw-a"},
+            },
+        ],
+    )
     def test_real_entries_not_misclassified(self, entry) -> None:
         from autoinfo.output import _filter_product_entries, _is_synthesized_digest_entry
 
@@ -844,8 +834,7 @@ class TestCjkLeakAndCurrencySplit:
     def test_cjk_leak_warns_for_non_learning_domain(self) -> None:
         from autoinfo.output import _warn_cjk_leak
 
-        count = _warn_cjk_leak("financial-intelligence", "digest",
-                               "本期要点中文内容1234567")
+        count = _warn_cjk_leak("financial-intelligence", "digest", "本期要点中文内容1234567")
         assert count > 5
 
     def test_cjk_leak_exempts_english_learning(self) -> None:

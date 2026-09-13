@@ -11,7 +11,10 @@
 # are patched.
 name: regression-enterprise-skeleton
 description: "Regression #314: enterprise-briefing output must not contain <...> skeleton placeholders"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#314"
 requires_env: []

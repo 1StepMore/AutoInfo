@@ -1,7 +1,10 @@
 # KB Versioning — verify version history, restoration, and comparison.
 name: kb-versioning
 description: "KB entry version history, restore, and diff comparison"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 steps:
   - name: "get_entry_history returns versions list"

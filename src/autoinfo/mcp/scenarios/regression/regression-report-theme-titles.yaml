@@ -20,7 +20,10 @@
 # (tempfile.mkdtemp, try/finally cleanup).
 name: regression-report-theme-titles
 description: "Regression #311: report section headings are semantic themes — >=1 heading, all unique, none a separator-dumped keyword list"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#311"
 requires_env: []

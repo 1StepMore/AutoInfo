@@ -18,7 +18,10 @@
 # the domain-default resolution regressed — never a silent skip.
 name: regression-domain-language-default
 description: "Regression #317: domain-level default_language filters digest/report without explicit --language"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#317"
 requires_env: []

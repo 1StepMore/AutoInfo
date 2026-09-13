@@ -16,7 +16,10 @@
 # any of the fixes fails here.
 name: regression-302-render-defects
 description: "Regression #302: magazine count-header removal (#117/#118), platform_name display mapping, one-per-line references"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#302"
 requires_env: []

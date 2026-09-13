@@ -19,6 +19,8 @@ from typing import Any
 
 import typer
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(
     name="import-kb",
     help="Import entries into the KB (01-Raw) — mirrors MCP import_kb",
@@ -27,15 +29,14 @@ app = typer.Typer(
 
 def _fail(message: str) -> None:
     """Print an error and exit non-zero (mirrors MCP error envelopes)."""
+    fail_if_global("ValidationError", message)
     typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(code=1)
 
 
 @app.callback(invoke_without_command=True)
 def import_kb(  # noqa: A001 — mirrors the MCP tool name
-    domain: str = typer.Option(
-        ..., "--domain", help="Target domain name (e.g. medical-research)"
-    ),
+    domain: str = typer.Option(..., "--domain", help="Target domain name (e.g. medical-research)"),
     format: str = typer.Option(  # noqa: A002 — mirrors the MCP tool param name
         ...,
         "--format",
@@ -111,29 +112,28 @@ def import_kb(  # noqa: A001 — mirrors the MCP tool name
     total_imported = sum(int(r.get("entries_imported", 0)) for r in results)
     total_failed = sum(int(r.get("entries_failed", 0)) for r in results)
 
+    data = {
+        "domain": domain,
+        "format": format,
+        "imports": results,
+        "total_imported": total_imported,
+        "total_failed": total_failed,
+    }
+    if emit_if_global(data):
+        if total_failed > 0:
+            raise typer.Exit(code=1)
+        return
+
     if json_output:
-        typer.echo(
-            json.dumps(
-                {
-                    "domain": domain,
-                    "format": format,
-                    "imports": results,
-                    "total_imported": total_imported,
-                    "total_failed": total_failed,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
     else:
         for result in results:
             imported = result.get("entries_imported", 0)
             failed = result.get("entries_failed", 0)
             errors = result.get("errors") or []
             entry_id = result.get("entry_id")
-            line = (
-                f"{result['source']}: {imported} imported, {failed} failed"
-                + (f" (entry_id={entry_id})" if entry_id else "")
+            line = f"{result['source']}: {imported} imported, {failed} failed" + (
+                f" (entry_id={entry_id})" if entry_id else ""
             )
             typer.echo(line)
             for error in errors:

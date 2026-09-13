@@ -1,0 +1,20 @@
+name: surface-build-release
+description: >-
+  T-S-11: build/release surface — the installed distribution is the editable
+  source install, imports cleanly, version-syncs with the release-please
+  manifest, registers the autoinfo console script, and has a structurally sound
+  pyproject (the methodology's build-from-AGENTS acid test).
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.2
+requires_env: []
+steps:
+  - name: "build/release validation passes"
+    kind: cli
+    command: python3 scripts/build_release_check.py
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        - "BUILD_RELEASE_OK"

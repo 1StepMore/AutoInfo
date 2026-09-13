@@ -15,7 +15,10 @@
 # the citation mechanism regressed — never a silent skip.
 name: regression-tutorial-citations
 description: "Regression #312: tutorial bodies carry inline citations to real source_urls"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#312"
 requires_env: []

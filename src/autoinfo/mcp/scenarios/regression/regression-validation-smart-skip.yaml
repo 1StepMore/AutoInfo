@@ -19,7 +19,10 @@
 # raw-count / generation seams mocked — no LLM call, no network, no real git.
 name: regression-validation-smart-skip
 description: "Regression #348: validate --matrix reuses stable (domain, product) artifacts marked frozen/stale; code/data changes and --no-skip force regeneration"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.5
 regression: true
 regression_issue: "#348"
 requires_env: []

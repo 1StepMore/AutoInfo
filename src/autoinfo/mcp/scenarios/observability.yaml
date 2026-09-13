@@ -1,7 +1,10 @@
 # Observability tools — trace, metrics, prometheus, audit log.
 name: observability
 description: "Observability tools — trace, metrics, prometheus, audit log"
-category: observability
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B3.2
 requires_env: []
 steps:
   - name: "trace_item returns pipeline timeline for dummy trace_id"

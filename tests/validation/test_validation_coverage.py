@@ -25,6 +25,8 @@ from typing import Any
 import pytest
 import yaml
 
+from autoinfo.mcp.server import _full_tool_list
+
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS_DIR = ROOT / "src" / "autoinfo" / "mcp" / "scenarios"
 KB_PROMOTE_YAML = SCENARIOS_DIR / "kb-promote.yaml"
@@ -61,7 +63,7 @@ def test_kb_promote_yaml_exists_and_parses() -> None:
     for key in ("name", "description", "steps"):
         assert key in data, f"missing required key: {key}"
     assert data["name"] == "kb-promote"
-    assert data["category"] == "kb"
+    assert data["category"] == "edge_case"
     assert data["requires_env"] == []
     assert data["requires_domain"] == ["medical-research"]
     assert data["collect_artifacts"] == [
@@ -154,14 +156,14 @@ def test_director_tool_steps_carry_explicit_director_actor() -> None:
 # ---------------------------------------------------------------------------
 
 SERVER_SNIPPET = (
-    'Tool(\n'
+    "Tool(\n"
     '    name="alpha_tool",\n'
     '    description="...",\n'
-    ')\n'
+    ")\n"
     'Tool(name="beta_tool")\n'
-    'Tool(\n'
+    "Tool(\n"
     '    name="gamma_tool",\n'
-    ')\n'
+    ")\n"
 )
 
 
@@ -243,13 +245,12 @@ def test_non_mcp_steps_do_not_count(coverage_audit: Any, tmp_path: Path) -> None
     assert cov["covered"] == ["alpha_tool"]
 
 
-def test_live_audit_prints_full_coverage() -> None:
-    """End-to-end: the real script against the real repo must report 146/146
-    with an empty MISSING list (146 tools = 142 baseline + T5's director
-    backdoor tools demote_kb_wiki/force_promote + T6's promote_pending sweep
-    + test_llm_connection; all four are covered by the director-backdoor,
-    promotion-triggers and llm-pool-config scenarios; the phantom from
-    error-boundary.yaml is not counted as a real tool)."""
+def test_live_audit_prints_full_coverage(coverage_audit: Any) -> None:
+    """End-to-end: the real script against the real repo must report full
+    scenario coverage of every non-suite tool (live/live, derived from
+    ``_full_tool_list()``) with an empty MISSING list (the phantom from
+    error-boundary.yaml is not counted as a real tool) and the suite-level
+    tools reported separately as unit-tested exemptions."""
     result = subprocess.run(
         [sys.executable, str(AUDIT_SCRIPT)],
         cwd=ROOT,
@@ -257,9 +258,13 @@ def test_live_audit_prints_full_coverage() -> None:
         text=True,
         timeout=120,
     )
+    live = len(_full_tool_list())
+    exempt = len(set(coverage_audit.SCENARIO_EXEMPT_TOOLS) & {t.name for t in _full_tool_list()})
     assert result.returncode == 0, result.stderr
-    assert "Covered by scenarios: 146/146" in result.stdout
+    assert f"Covered by scenarios: {live - exempt}/{live}" in result.stdout
     assert "MISSING tools (0):" in result.stdout
+    # Suite-level tools are surfaced, never silently counted as scenario-covered.
+    assert "Suite tools exempt from scenario coverage (unit-tested):" in result.stdout
     # phantom must be reported separately, never as missing
     assert "definitely_not_a_real_tool" in result.stdout
     assert result.stdout.index("MISSING tools (0):") < result.stdout.index(

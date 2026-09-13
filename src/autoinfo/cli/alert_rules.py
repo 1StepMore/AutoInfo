@@ -18,6 +18,8 @@ from dataclasses import asdict
 
 import typer
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer(
     name="alert-rules",
     help="Manage alert rules — mirrors MCP add_alert_rule/get_alert_rules/remove_alert_rule",
@@ -28,6 +30,7 @@ _VALID_KINDS = ("content", "source_credential_missing")
 
 
 def _fail(message: str) -> None:
+    fail_if_global("ValidationError", message)
     typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(code=1)
 
@@ -46,12 +49,8 @@ def add(
     relevance_threshold: float = typer.Option(
         0.0, "--relevance-threshold", help="Minimum relevance score (0-100) to trigger"
     ),
-    channel: str = typer.Option(
-        "email", "--channel", help="Delivery channel: email or webhook"
-    ),
-    enabled: bool = typer.Option(
-        True, "--enabled/--no-enabled", help="Whether the rule is active"
-    ),
+    channel: str = typer.Option("email", "--channel", help="Delivery channel: email or webhook"),
+    enabled: bool = typer.Option(True, "--enabled/--no-enabled", help="Whether the rule is active"),
     kind: str = typer.Option(
         "content",
         "--kind",
@@ -65,10 +64,7 @@ def add(
     if channel not in _VALID_CHANNELS:
         _fail(f"Invalid channel '{channel}'. Valid channels: email, webhook")
     if kind not in _VALID_KINDS:
-        _fail(
-            f"Invalid kind '{kind}'. Valid kinds: "
-            f"{', '.join(sorted(_VALID_KINDS))}"
-        )
+        _fail(f"Invalid kind '{kind}'. Valid kinds: {', '.join(sorted(_VALID_KINDS))}")
 
     # Deferred import — mirrors the MCP handler
     from autoinfo.alerts import add_alert_rule
@@ -81,6 +77,9 @@ def add(
         enabled=enabled,
         kind=kind,
     )
+
+    if emit_if_global({"alert_rule": asdict(rule), "created": True}):
+        return
 
     if json_output:
         typer.echo(json.dumps({"alert_rule": asdict(rule), "created": True}, indent=2))
@@ -107,6 +106,11 @@ def list_cmd(
     from autoinfo.alerts import list_alert_rules
 
     rules = list_alert_rules(domain=domain)
+
+    if emit_if_global(
+        {"domain": domain or "*", "alert_rules": [asdict(r) for r in rules], "count": len(rules)}
+    ):
+        return
 
     if json_output:
         typer.echo(
@@ -151,6 +155,7 @@ def remove(
 
     if not removed:
         # Mirrors the MCP handler's AlertRuleNotFound response
+        fail_if_global("AlertRuleNotFound", f"Alert rule '{id}' not found")
         if json_output:
             typer.echo(
                 json.dumps(
@@ -168,6 +173,9 @@ def remove(
         else:
             typer.echo(f"Error: Alert rule '{id}' not found", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global({"removed": True, "alert_rule_id": id}):
+        return
 
     if json_output:
         typer.echo(json.dumps({"removed": True, "alert_rule_id": id}, indent=2))

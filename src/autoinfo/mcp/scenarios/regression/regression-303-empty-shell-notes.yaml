@@ -16,7 +16,10 @@
 # fails here.
 name: regression-303-empty-shell-notes
 description: "Regression #303: column empty sections render fallback text; presentation notes never leak internal state"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#303"
 requires_env: []

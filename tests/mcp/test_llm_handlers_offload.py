@@ -70,9 +70,7 @@ def test_exactly_14_sync_llm_handlers_listed() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tool_name,handler_name", OFFLOADED_HANDLERS)
-async def test_sync_llm_handler_offloaded_via_to_thread(
-    tool_name: str, handler_name: str
-) -> None:
+async def test_sync_llm_handler_offloaded_via_to_thread(tool_name: str, handler_name: str) -> None:
     """Dispatch of each sync LLM handler goes through asyncio.to_thread exactly once."""
     calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
     stub_result = {"success": True, "data": {"offloaded": True}}
@@ -89,7 +87,7 @@ async def test_sync_llm_handler_offloaded_via_to_thread(
     ):
         result = await mcp_server.call_tool(tool_name, {})
 
-    assert json.loads(result[0].text)["success"] is True
+    assert json.loads(result[0][0].text)["success"] is True
     assert len(calls) == 1, (
         f"{tool_name}: expected exactly one asyncio.to_thread call, got {len(calls)}"
     )

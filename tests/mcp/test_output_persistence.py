@@ -95,9 +95,7 @@ class TestDigestPersist:
     ) -> None:
         """persist=True on generate_digest (json) writes a parseable JSON file."""
         payload = {"digest_type": "digest", "domain": "test", "entry_count": 0}
-        with patch(
-            "autoinfo.output.generate_digest", return_value=json.dumps(payload)
-        ):
+        with patch("autoinfo.output.generate_digest", return_value=json.dumps(payload)):
             result = _handle_generate_digest(
                 domain="medical-research",
                 period="weekly",
@@ -106,9 +104,9 @@ class TestDigestPersist:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
+        assert "persisted_path" in result["data"]
         file = _unique_output_file(outputs_dir, "medical-research", "digest-json-*.json")
-        assert result["persisted_path"].endswith(f"medical-research/{file.name}")
+        assert result["data"]["persisted_path"].endswith(f"medical-research/{file.name}")
         written = json.loads(file.read_text(encoding="utf-8"))
         assert written == payload
 
@@ -127,10 +125,8 @@ class TestDigestPersist:
             )
 
         assert result["success"] is True
-        assert result["content"] == content
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "digest-markdown-*.md"
-        )
+        assert result["data"]["content"] == content
+        file = _unique_output_file(outputs_dir, "medical-research", "digest-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
     @patch("autoinfo.mcp.server.logger")
@@ -149,7 +145,7 @@ class TestDigestPersist:
             )
 
         assert result["success"] is True
-        assert result["encoding"] == "base64"
+        assert result["data"]["encoding"] == "base64"
         file = _unique_output_file(outputs_dir, "medical-research", "digest-audio-*.mp3")
         assert file.read_bytes() == audio_bytes
 
@@ -170,11 +166,11 @@ class TestDigestPersist:
                 domain="medical-research", period="weekly", format="markdown"
             )
 
-        assert "persisted_path" not in explicit
-        assert "persisted_path" not in omitted
+        assert "persisted_path" not in explicit["data"]
+        assert "persisted_path" not in omitted["data"]
         assert explicit == omitted
         assert explicit["success"] is True
-        assert explicit["content"] == content
+        assert explicit["data"]["content"] == content
         assert list(outputs_dir.iterdir()) == []
 
 
@@ -195,7 +191,7 @@ class TestAllHandlersPersist:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
+        assert "persisted_path" in result["data"]
         file = _unique_output_file(outputs_dir, "medical-research", "report-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
@@ -218,10 +214,8 @@ class TestAllHandlersPersist:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "report-markdown-*.md"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "report-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
     def test_tutorial_persist_writes_md(self, outputs_dir: Path) -> None:
@@ -232,10 +226,8 @@ class TestAllHandlersPersist:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "tutorial-markdown-*.md"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "tutorial-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
     def test_presentation_persist_writes_md(self, outputs_dir: Path) -> None:
@@ -249,10 +241,8 @@ class TestAllHandlersPersist:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "presentation-markdown-*.md"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "presentation-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
     def test_persist_false_leaves_outputs_dir_empty_for_all_handlers(
@@ -298,10 +288,8 @@ class TestReportColumnPersistNaming:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "column-markdown-*.md"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "column-markdown-*.md")
         assert file.read_text(encoding="utf-8") == content
 
     @patch("autoinfo.mcp.server.logger")
@@ -319,10 +307,8 @@ class TestReportColumnPersistNaming:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "column-video-*.mp4"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "column-video-*.mp4")
         assert file.read_bytes() == base64.b64decode(video_b64)
 
     @patch("autoinfo.mcp.server.logger")
@@ -339,10 +325,8 @@ class TestReportColumnPersistNaming:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "report-video-*.mp4"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "report-video-*.mp4")
         assert file.read_bytes() == base64.b64decode(video_b64)
 
     @patch("autoinfo.mcp.server.logger")
@@ -360,9 +344,7 @@ class TestReportColumnPersistNaming:
         """
         mp4 = tmp_path / "report_20260814.mp4"
         mp4.write_bytes(b"real-mp4-bytes")
-        blob = json.dumps(
-            {"status": "ok", "video_path": str(mp4), "format": "mp4"}
-        )
+        blob = json.dumps({"status": "ok", "video_path": str(mp4), "format": "mp4"})
         with patch("autoinfo.output.generate_report", return_value=blob):
             result = _handle_generate_report(
                 domain="medical-research",
@@ -371,8 +353,6 @@ class TestReportColumnPersistNaming:
             )
 
         assert result["success"] is True
-        assert "persisted_path" in result
-        file = _unique_output_file(
-            outputs_dir, "medical-research", "report-video-*.mp4"
-        )
+        assert "persisted_path" in result["data"]
+        file = _unique_output_file(outputs_dir, "medical-research", "report-video-*.mp4")
         assert file.read_bytes() == b"real-mp4-bytes"

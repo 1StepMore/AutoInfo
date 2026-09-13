@@ -12,7 +12,10 @@
 # endpoint. A regression that drops them or reverts the FRED URL fails here.
 name: regression-financial-sources
 description: "Regression #288: financial-intelligence keyless RSS sources + fixed FRED endpoint"
-category: regression
+category: happy_path
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.3
 regression: true
 regression_issue: "#288"
 requires_env: []

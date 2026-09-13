@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """End-user CLI — manage end-user profiles.
 
 End users are paying customers, not director/operator users.
@@ -13,6 +11,7 @@ Usage::
     autoinfo enduser list
 """
 
+from __future__ import annotations
 
 import json
 from typing import Any
@@ -26,6 +25,8 @@ from autoinfo.user_store import (
     list_profiles,
     update_profile,
 )
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer(help="Manage end-user profiles")
 
@@ -41,14 +42,13 @@ def create(
     status: str = typer.Option(
         "trial", "--status", help="Account status (trial/active/suspended/cancelled)"
     ),
-    tier: str = typer.Option(
-        "free", "--tier", help="Account tier (free/pro/enterprise)"
-    ),
+    tier: str = typer.Option("free", "--tier", help="Account tier (free/pro/enterprise)"),
 ) -> None:
     """Create a new end-user profile."""
     try:
         prefs = json.loads(delivery_prefs) if delivery_prefs else {}
     except json.JSONDecodeError as exc:
+        fail_if_global("ValidationError", f"invalid JSON for --delivery-prefs: {exc}")
         typer.echo(f"Error: invalid JSON for --delivery-prefs: {exc}", err=True)
         raise typer.Exit(code=1)
 
@@ -62,9 +62,12 @@ def create(
             tier=tier,
         )
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
+    if emit_if_global(profile.to_dict()):
+        return
     typer.echo(f"Created end-user: {profile.user_id} ({profile.name})")
 
 
@@ -76,13 +79,17 @@ def get(
     try:
         profile = get_profile(user_id)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
     if profile is None:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"End-user '{user_id}' not found")
         raise typer.Exit(code=1)
 
+    if emit_if_global(profile.to_dict()):
+        return
     typer.echo(json.dumps(profile.to_dict(), indent=2, ensure_ascii=False))
 
 
@@ -97,9 +104,7 @@ def update(
     status: str = typer.Option(
         None, "--status", help="New account status (trial/active/suspended/cancelled)"
     ),
-    tier: str = typer.Option(
-        None, "--tier", help="New account tier (free/pro/enterprise)"
-    ),
+    tier: str = typer.Option(None, "--tier", help="New account tier (free/pro/enterprise)"),
 ) -> None:
     """Update an end-user profile (partial update)."""
     kwargs: dict[str, Any] = {}
@@ -111,6 +116,7 @@ def update(
         try:
             kwargs["delivery_prefs"] = json.loads(delivery_prefs)
         except json.JSONDecodeError as exc:
+            fail_if_global("ValidationError", f"invalid JSON for --delivery-prefs: {exc}")
             typer.echo(f"Error: invalid JSON for --delivery-prefs: {exc}", err=True)
             raise typer.Exit(code=1)
     if status is not None:
@@ -121,13 +127,17 @@ def update(
     try:
         profile = update_profile(user_id=user_id, **kwargs)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
     if profile is None:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"End-user '{user_id}' not found")
         raise typer.Exit(code=1)
 
+    if emit_if_global(profile.to_dict()):
+        return
     typer.echo(f"Updated end-user: {profile.user_id}")
     typer.echo(json.dumps(profile.to_dict(), indent=2, ensure_ascii=False))
 
@@ -140,28 +150,34 @@ def delete(
     try:
         ok = delete_profile(user_id)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
     if not ok:
+        fail_if_global("NotFound", f"End-user '{user_id}' not found")
         typer.echo(f"End-user '{user_id}' not found")
         raise typer.Exit(code=1)
 
+    if emit_if_global({"user_id": user_id, "deleted": True}):
+        return
     typer.echo(f"Deleted end-user: {user_id}")
 
 
 @app.command()
 def list(
-    json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON array (default: table)"
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON array (default: table)"),
 ) -> None:
     """List all end-user profiles."""
     try:
         profiles = list_profiles()
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
+
+    if emit_if_global({"items": [p.to_dict() for p in profiles], "count": len(profiles)}):
+        return
 
     if not profiles:
         typer.echo("No end-users found")
@@ -169,7 +185,11 @@ def list(
 
     if json_output:
         typer.echo(
-            json.dumps({"items": [p.to_dict() for p in profiles], "count": len(profiles)}, indent=2, ensure_ascii=False)
+            json.dumps(
+                {"items": [p.to_dict() for p in profiles], "count": len(profiles)},
+                indent=2,
+                ensure_ascii=False,
+            )
         )
         return
 
@@ -179,7 +199,5 @@ def list(
     typer.echo(header)
     typer.echo(sep)
     for p in profiles:
-        typer.echo(
-            f"{p.user_id:<24} {p.name:<24} {p.email:<32} {p.status:<12} {p.tier:<12}"
-        )
+        typer.echo(f"{p.user_id:<24} {p.name:<24} {p.email:<32} {p.status:<12} {p.tier:<12}")
     typer.echo(f"\nTotal: {len(profiles)} end-user(s)")

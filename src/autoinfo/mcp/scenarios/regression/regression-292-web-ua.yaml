@@ -8,7 +8,10 @@
 # must reuse the same constant.  A regression that drops the header fails here.
 name: regression-292-web-ua
 description: "Regression #292: web collector User-Agent header for fulltext fetches"
-category: regression
+category: happy_path
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
 regression: true
 regression_issue: "#292"
 requires_env: []

@@ -8,7 +8,10 @@
 # scenario's step results.
 name: enduser-journey
 description: "End-user product surface: generate a digest (inbox product) and search the KB (self-serve query)"
-category: enduser
+category: happy_path
+pyramid_layer: e2e
+pipeline_stage: A6
+user_level: B1.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 requires_domain: ["medical-research"]
 steps:

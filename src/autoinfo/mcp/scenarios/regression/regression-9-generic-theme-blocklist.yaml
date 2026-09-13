@@ -28,7 +28,10 @@
 # (tempfile.mkdtemp, try/finally cleanup).
 name: regression-9-generic-theme-blocklist
 description: "Regression #9 (reopened): report Sections never carry generic theme headings (New/Year/User/Growth/Apps/Activity) on the deterministic-keyword path"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#9"
 requires_env: []

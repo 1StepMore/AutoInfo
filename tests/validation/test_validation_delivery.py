@@ -8,6 +8,7 @@ Covers:
 - ``_package`` — gates/quality in manifest entries, 06-REJECTED/ output for
   failed artifacts, rejected summary in the manifest
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -124,13 +125,17 @@ def test_check_authenticity_json_valid(tmp_path: Path):
     """JSON with fully-provenanced entries passes."""
     p = tmp_path / "agent.json"
     p.write_text(
-        json.dumps({
-            "entries": [{
-                "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345",
-                "source_type": "pubmed",
-                "source_platform": "pubmed",
-            }]
-        }),
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345",
+                        "source_type": "pubmed",
+                        "source_platform": "pubmed",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     res = vd.check_authenticity(p)
@@ -142,13 +147,17 @@ def test_check_authenticity_json_example_com(tmp_path: Path):
     """JSON with an example.com placeholder URL fails."""
     p = tmp_path / "agent.json"
     p.write_text(
-        json.dumps({
-            "entries": [{
-                "source_url": "https://example.com/article",
-                "source_type": "web",
-                "source_platform": "web",
-            }]
-        }),
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "source_url": "https://example.com/article",
+                        "source_type": "web",
+                        "source_platform": "web",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     res = vd.check_authenticity(p)
@@ -160,12 +169,16 @@ def test_check_authenticity_json_missing_fields(tmp_path: Path):
     """JSON entries missing source_type (or source_platform) fail."""
     p = tmp_path / "agent.json"
     p.write_text(
-        json.dumps({
-            "entries": [{
-                "source_url": "https://arxiv.org/abs/2608.00001",
-                "source_platform": "arxiv",
-            }]
-        }),
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "source_url": "https://arxiv.org/abs/2608.00001",
+                        "source_platform": "arxiv",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     res = vd.check_authenticity(p)
@@ -175,12 +188,16 @@ def test_check_authenticity_json_missing_fields(tmp_path: Path):
 
     # A second entry missing source_platform also fails
     p.write_text(
-        json.dumps({
-            "entries": [{
-                "source_url": "https://arxiv.org/abs/2608.00001",
-                "source_type": "arxiv",
-            }]
-        }),
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "source_url": "https://arxiv.org/abs/2608.00001",
+                        "source_type": "arxiv",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     res2 = vd.check_authenticity(p)
@@ -210,8 +227,11 @@ def test_check_authenticity_jsonl(tmp_path: Path):
     """JSONL entries are validated per line."""
     p = tmp_path / "items.jsonl"
     entry1 = json.dumps(
-        {"source_url": "https://pubmed.ncbi.nlm.nih.gov/1",
-         "source_type": "pubmed", "source_platform": "pubmed"}
+        {
+            "source_url": "https://pubmed.ncbi.nlm.nih.gov/1",
+            "source_type": "pubmed",
+            "source_platform": "pubmed",
+        }
     )
     entry2 = json.dumps(
         {"source_url": "https://example.com/fake", "source_type": "web", "source_platform": "web"}
@@ -241,6 +261,7 @@ def test_run_delivery_gates_combined(tmp_path: Path, monkeypatch):
         "# T\n\n## Executive Summary\n\ns\n\n### Key Findings\n\nk\n\n### Recommendations\n\nr\n",
         encoding="utf-8",
     )
+
     def _mixed(product_output, context=None, delivery_gate_configs=None):
         return {
             "D1-ProductCompleteness": _passing_result("D1-ProductCompleteness"),
@@ -273,11 +294,13 @@ def test_run_delivery_gates_authenticity_fail_flips_quality(tmp_path: Path, monk
     """A failing authenticity pre-check fails quality even when D gates pass."""
     p = tmp_path / "agent.json"
     entry = {
-        "entries": [{
-            "source_url": "https://example.com/x",
-            "source_type": "web",
-            "source_platform": "web",
-        }]
+        "entries": [
+            {
+                "source_url": "https://example.com/x",
+                "source_type": "web",
+                "source_platform": "web",
+            }
+        ]
     }
     p.write_text(json.dumps(entry), encoding="utf-8")
     monkeypatch.setattr(vd, "_quality_run_delivery_gates", _all_pass_gates)
@@ -301,8 +324,15 @@ def test_run_delivery_gates_raw_bucket_skips_d_gates(tmp_path: Path, monkeypatch
     monkeypatch.setattr(vd, "_quality_run_delivery_gates", _capture)
     raw = tmp_path / "cached.json"
     item = json.dumps(
-        {"items": [{"source_url": "https://a.example.org/1",
-                    "source_type": "rss", "source_platform": "rss"}]}
+        {
+            "items": [
+                {
+                    "source_url": "https://a.example.org/1",
+                    "source_type": "rss",
+                    "source_platform": "rss",
+                }
+            ]
+        }
     )
     raw.write_text(item, encoding="utf-8")
     res = vd.run_delivery_gates(raw, "RAW")
@@ -336,18 +366,22 @@ def test_run_delivery_gates_json_freshness_real(tmp_path: Path):
     fresh = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     p = tmp_path / "digest.json"
     p.write_text(
-        json.dumps({
-            "key_findings": ["k1"],
-            "summary": "s",
-            "recommendations": ["r1"],
-            "entries": [{
-                "title": "fresh entry",
-                "source_url": "https://pubmed.ncbi.nlm.nih.gov/1",
-                "source_type": "pubmed",
-                "source_platform": "pubmed",
-                "collected_at": fresh,
-            }],
-        }),
+        json.dumps(
+            {
+                "key_findings": ["k1"],
+                "summary": "s",
+                "recommendations": ["r1"],
+                "entries": [
+                    {
+                        "title": "fresh entry",
+                        "source_url": "https://pubmed.ncbi.nlm.nih.gov/1",
+                        "source_type": "pubmed",
+                        "source_platform": "pubmed",
+                        "collected_at": fresh,
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     res = vd.run_delivery_gates(p, "PROCESSED")
@@ -370,9 +404,7 @@ def test_bucket_classification(tmp_path: Path):
     assert vd.is_excluded_artifact("knowledge/_failed/medical-research/rejected.md")
     assert vd.is_excluded_artifact("outputs/coverage-matrix/matrix-report.md")
     assert not vd.is_excluded_artifact("outputs/digest.md")
-    assert not vd.is_excluded_artifact(
-        "knowledge/medical-research/01-Raw/x/2026-08-06-a.md"
-    )
+    assert not vd.is_excluded_artifact("knowledge/medical-research/01-Raw/x/2026-08-06-a.md")
 
 
 def test_package_skips_excluded_artifacts(tmp_path: Path, monkeypatch):
@@ -401,9 +433,7 @@ def test_package_skips_excluded_artifacts(tmp_path: Path, monkeypatch):
     names = _zip_names(zip_path)
     assert any(n.endswith("/digest.md") for n in names), f"legit file missing: {names}"
     assert not any("_failed" in n for n in names), f"_failed leaked: {names}"
-    assert not any(
-        "coverage-matrix" in n for n in names
-    ), f"coverage-matrix leaked: {names}"
+    assert not any("coverage-matrix" in n for n in names), f"coverage-matrix leaked: {names}"
     manifest = _zip_manifest(zip_path)
     for entry in manifest["files"]:
         assert "_failed" not in entry["file"], f"_failed in manifest: {entry}"
@@ -454,11 +484,13 @@ def test_package_rejects_failed(tmp_path: Path, monkeypatch):
     )
     bad = tmp_path / "bad.json"
     bad_entry = {
-        "entries": [{
-            "source_url": "https://example.com/x",
-            "source_type": "web",
-            "source_platform": "web",
-        }]
+        "entries": [
+            {
+                "source_url": "https://example.com/x",
+                "source_type": "web",
+                "source_platform": "web",
+            }
+        ]
     }
     bad.write_text(json.dumps(bad_entry), encoding="utf-8")
     zip_path = _package_with(tmp_path, [digest, bad], monkeypatch, _all_pass_gates)
@@ -534,8 +566,9 @@ def test_package_skips_missing_files(tmp_path: Path, monkeypatch):
 _UX_SCENARIO = "enduser-journey"
 
 
-def _journey_result(*, passed: int, total: int, status: str = "passed",
-                    steps: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+def _journey_result(
+    *, passed: int, total: int, status: str = "passed", steps: list[tuple[str, str]] | None = None
+) -> dict[str, Any]:
     """A run_scenario-shaped enduser-journey result (name-keyed, the shape
     _run_all_scenarios hands to _package; run_scenario itself uses the
     ``scenario`` key — covered by test_ux_metrics_matches_scenario_key)."""
@@ -544,14 +577,20 @@ def _journey_result(*, passed: int, total: int, status: str = "passed",
     return {
         "name": _UX_SCENARIO,
         "status": status,
-        "summary": {"passed": passed, "failed": total - passed,
-                    "unconfigured": 0, "recovered": 0, "total": total},
+        "summary": {
+            "passed": passed,
+            "failed": total - passed,
+            "unconfigured": 0,
+            "recovered": 0,
+            "total": total,
+        },
         "steps": [{"name": n, "status": s, "detail": {}} for n, s in steps],
     }
 
 
-def _package_with_results(tmp_path: Path, results: list[dict[str, Any]], monkeypatch,
-                          artifacts: list[Path] | None = None) -> Path:
+def _package_with_results(
+    tmp_path: Path, results: list[dict[str, Any]], monkeypatch, artifacts: list[Path] | None = None
+) -> Path:
     monkeypatch.setattr(vd, "_quality_run_delivery_gates", _all_pass_gates)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
@@ -569,9 +608,12 @@ def test_package_ux_metrics_ok_when_journey_passes(tmp_path: Path, monkeypatch):
     results = [
         {"name": "some-other-scenario", "status": "passed", "summary": {"passed": 3, "total": 3}},
         _journey_result(
-            passed=2, total=2,
-            steps=[("generate_digest markdown for the end-user inbox", "passed"),
-                   ("search_knowledge_base returns entries for the journey query", "passed")],
+            passed=2,
+            total=2,
+            steps=[
+                ("generate_digest markdown for the end-user inbox", "passed"),
+                ("search_knowledge_base returns entries for the journey query", "passed"),
+            ],
         ),
     ]
     zip_path = _package_with_results(tmp_path, results, monkeypatch)
@@ -596,9 +638,13 @@ def test_package_ux_metrics_fail_when_journey_below_threshold(tmp_path: Path, mo
     UX_OK=False and the metric is still reported (advisory, never blocking)."""
     results = [
         _journey_result(
-            passed=1, total=2, status="failed",
-            steps=[("generate_digest markdown for the end-user inbox", "passed"),
-                   ("search_knowledge_base returns entries for the journey query", "failed")],
+            passed=1,
+            total=2,
+            status="failed",
+            steps=[
+                ("generate_digest markdown for the end-user inbox", "passed"),
+                ("search_knowledge_base returns entries for the journey query", "failed"),
+            ],
         ),
     ]
     zip_path = _package_with_results(tmp_path, results, monkeypatch)
@@ -638,8 +684,10 @@ def test_ux_metrics_matches_scenario_key_and_step_fallback():
         "summary": {},
         "steps": [
             {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
-            {"name": "search_knowledge_base returns entries for the journey query",
-             "status": "passed"},
+            {
+                "name": "search_knowledge_base returns entries for the journey query",
+                "status": "passed",
+            },
             {"name": "some-other-step", "status": "passed"},
             {"name": "some-other-step-2", "status": "passed"},
             {"name": "some-other-step-3", "status": "failed"},
@@ -657,8 +705,10 @@ def test_ux_metrics_matches_scenario_key_and_step_fallback():
         "summary": {},
         "steps": [
             {"name": "generate_digest markdown for the end-user inbox", "status": "passed"},
-            {"name": "search_knowledge_base returns entries for the journey query",
-             "status": "passed"},
+            {
+                "name": "search_knowledge_base returns entries for the journey query",
+                "status": "passed",
+            },
             {"name": "some-other-step", "status": "passed"},
             {"name": "some-other-step-3", "status": "failed"},
         ],
@@ -699,13 +749,16 @@ def test_enduser_journey_scenario_loads():
 
     sys.path.insert(0, str(ROOT / "src"))
     try:
-        from autoinfo.mcp.validation import load_scenarios
+        from autoinfo.mcp.validation import SCENARIO_CATEGORIES, load_scenarios
     finally:
         sys.path.remove(str(ROOT / "src"))
     scenarios = {s["name"]: s for s in load_scenarios()}
     journey = scenarios.get("enduser-journey")
     assert journey is not None, "enduser-journey.yaml must load"
-    assert journey["category"] == "enduser"
+    # T-B-01: the ad-hoc "enduser" category migrated into the loader's fixed
+    # 5-value taxonomy. Assert membership in the live taxonomy enum (the
+    # loader's authority), never the retired value.
+    assert journey["category"] in SCENARIO_CATEGORIES
     assert journey["requires_env"] == ["AUTOINFO_LLM_API_KEY"]
     assert journey["requires_domain"] == ["medical-research"]
     tools = [s["tool"] for s in journey["steps"]]

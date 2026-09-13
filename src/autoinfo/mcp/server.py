@@ -1,34 +1,9 @@
 """MCP server — exposes AutoInfo capabilities as MCP tools over stdio.
 
-This is the primary agent-facing interface for AutoInfo.  All 35+ capabilities
-are planned; v0.1 exposes 30 tools across 7 categories:
-
-**System** (2):
-    health_check, diagnose_system
-
-**Discovery** (7):
-    list_domains, get_domain_schema, list_available_models, get_effective_llm_config,
-    activate_domain, deactivate_domain, get_domain_config
-
-**Schedule Management** (4):
-    list_schedules, add_schedule, remove_schedule, run_schedules
-
-**Source Management** (5):
-    add_source, add_sources, remove_source, test_source, list_sources
-
-**Topic Management** (6):
-    add_topic, remove_topic, list_topics, list_keywords,
-    topic_group_add, topic_group_remove
-
-**Collection / Processing** (5):
-    collect_sources, get_collection_progress, get_collection_status,
-    process_collection, get_processing_progress
-
-**Knowledge Base** (4):
-    list_summaries, get_kb_entry, search_knowledge_base, flag_for_knowledge_base
-
-**Output** (3):
-    list_output_templates, generate_tutorial, generate_presentation
+This is the primary agent-facing interface for AutoInfo. It exposes 149 tools
+across 35 categories — the full catalog lives in the README "MCP Tools" table
+and is discoverable at runtime via ``list_tools()``.  ``get_tool_count()``
+returns the live count.
 
 Usage::
 
@@ -68,7 +43,7 @@ from autoinfo.cli.init import _list_demo_domains
 from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES
 from autoinfo.kb import DirectorOnlyError, is_director
 from autoinfo.llm import call_with_fallback
-from autoinfo.mcp.errors import ErrorCode, error_dict, error_response, success_response
+from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +78,7 @@ def _find_domain(config: Any, name: str) -> Any | None:
             return d
     return None
 
+
 # ---------------------------------------------------------------------------
 # Job state persistence (SQLite-backed, survives server restarts)
 # ---------------------------------------------------------------------------
@@ -117,7 +93,7 @@ def _job_db_path() -> Path:
     return Path.cwd() / "autoinfo.db"
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def _with_job_db(fn: Callable[[sqlite3.Connection], T]) -> T:
@@ -153,8 +129,14 @@ def _init_job_state_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _save_job_state(job_id: str, state_type: str, domain: str, status: str,
-                    progress_pct: float, metadata: dict[str, Any]) -> None:
+def _save_job_state(
+    job_id: str,
+    state_type: str,
+    domain: str,
+    status: str,
+    progress_pct: float,
+    metadata: dict[str, Any],
+) -> None:
     """Insert-or-update a row in ``job_state``."""
     from datetime import datetime, timezone
 
@@ -180,8 +162,7 @@ def _save_job_state(job_id: str, state_type: str, domain: str, status: str,
                    (job_id, state_type, domain, status, progress_pct,
                     created_at, updated_at, metadata)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (job_id, state_type, domain, status, progress_pct,
-                 now, now, meta_json),
+                (job_id, state_type, domain, status, progress_pct, now, now, meta_json),
             )
         conn.commit()
 
@@ -192,9 +173,7 @@ def _load_job_state(job_id: str) -> dict[str, Any] | None:
     """Return the full job state row as a dict, or ``None``."""
 
     def _read(conn: sqlite3.Connection) -> dict[str, Any] | None:
-        row = conn.execute(
-            "SELECT * FROM job_state WHERE job_id = ?", (job_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM job_state WHERE job_id = ?", (job_id,)).fetchone()
         if row is None:
             return None
         meta = _safe_json_load(row["metadata"])
@@ -247,6 +226,7 @@ def _safe_json_load(raw: str) -> dict[str, Any]:
     except (json.JSONDecodeError, TypeError):
         return {}
 
+
 # ---------------------------------------------------------------------------
 # Tool implementations
 #
@@ -256,22 +236,29 @@ def _safe_json_load(raw: str) -> dict[str, Any]:
 
 
 def _handle_health_check() -> dict[str, Any]:
-    """Quick status ping."""
-    return {
-        "status": "ok",
-        "version": __version__,
-        "tools_count": len(
-            [name for name in globals() if name.startswith("_handle_")]
-        ),
-    }
+    """Quick status ping.
+
+    Returns a canonical success envelope whose ``data`` is a **structured**
+    object (``status`` / ``version`` / ``tools_count``) — never an opaque
+    text blob.  Per ADR-0005 (T-S-09), this is the intentional exception to
+    the text-payload metadata rule: there is no text payload to label, so no
+    ``content_type``/``length`` metadata is emitted.  Text-format tools
+    (``get_prometheus_metrics``, ``get_feeds``) carry the metadata block
+    instead.
+    """
+    return success_response(
+        {
+            "status": "ok",
+            "version": __version__,
+            "tools_count": len([name for name in globals() if name.startswith("_handle_")]),
+        }
+    )
 
 
 def _handle_get_tool_count() -> dict[str, Any]:
     """Return the number of registered MCP tools."""
     return {
-        "tools_count": len(
-            [name for name in globals() if name.startswith("_handle_")]
-        ),
+        "tools_count": len([name for name in globals() if name.startswith("_handle_")]),
     }
 
 
@@ -376,8 +363,7 @@ def _handle_diagnose_system() -> dict[str, Any]:
                 "provider": config.llm.provider,
                 "model": config.llm.model,
                 "key_configured": bool(
-                    config.llm.api_key
-                    or os.environ.get("AUTOINFO_LLM_API_KEY")
+                    config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY")
                 ),
             }
             result["fallback_health"] = llm_fallback_health(config)
@@ -385,13 +371,15 @@ def _handle_diagnose_system() -> dict[str, Any]:
             for d in config.domains:
                 if d.active:
                     for s in d.sources:
-                        sources.append({
-                            "name": s.name,
-                            "type": s.type,
-                            "domain": d.name,
-                            "quality_tier": s.quality_tier,
-                            "tos_classification": s.tos_classification,
-                        })
+                        sources.append(
+                            {
+                                "name": s.name,
+                                "type": s.type,
+                                "domain": d.name,
+                                "quality_tier": s.quality_tier,
+                                "tos_classification": s.tos_classification,
+                            }
+                        )
             result["sources"] = {"count": len(sources), "items": sources}
     except Exception as exc:
         result["config_error"] = str(exc)
@@ -420,7 +408,6 @@ def _handle_diagnose_system() -> dict[str, Any]:
     if not isinstance(source_items, list):
         source_items = []
 
-
     health_dict: dict[str, Any] = {
         "python": {"status": "ok"},
         "config": {"status": config_status},
@@ -435,7 +422,7 @@ def _handle_diagnose_system() -> dict[str, Any]:
     # -- Phase Detection --------------------------------------------------
     result["phase"] = _detect_phase(result, config_path, collections_dir, knowledge_dir)
 
-    return result
+    return _canonicalize(result)
 
 
 def _handle_collect_sources(
@@ -457,9 +444,7 @@ def _handle_collect_sources(
 
         config_path = get_config_path()
         if config_path is None:
-            raise FileNotFoundError(
-                "No configuration found. Run 'autoinfo init' first."
-            )
+            raise FileNotFoundError("No configuration found. Run 'autoinfo init' first.")
         config = load_config(config_path)
         active_domains = [d.name for d in config.domains if d.active]
 
@@ -474,50 +459,57 @@ def _handle_collect_sources(
         for dom in active_domains:
             job_id = str(uuid.uuid4())
             started_at = datetime.now(timezone.utc).isoformat()
-            _save_job_state(job_id, "collection", dom, "running", 0.0, {
-                "started_at": started_at,
-                "completed_at": "",
-                "items_collected": 0,
-                "errors": 0,
-                "items_per_source": {},
-                "duration_s": 0.0,
-            })
+            _save_job_state(
+                job_id,
+                "collection",
+                dom,
+                "running",
+                0.0,
+                {
+                    "started_at": started_at,
+                    "completed_at": "",
+                    "items_collected": 0,
+                    "errors": 0,
+                    "items_per_source": {},
+                    "duration_s": 0.0,
+                },
+            )
 
             try:
                 result = run_collection(domain=dom, **kwargs)
-                total_new = (
-                    result.get("total_new", 0)
-                    if isinstance(result, dict)
-                    else 0
+                total_new = result.get("total_new", 0) if isinstance(result, dict) else 0
+                total_found = result.get("total_found", 0) if isinstance(result, dict) else 0
+                errors = result.get("errors", 0) if isinstance(result, dict) else 0
+                _save_job_state(
+                    job_id,
+                    "collection",
+                    dom,
+                    "completed",
+                    100.0,
+                    {
+                        "started_at": started_at,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "items_collected": total_new,
+                        "errors": errors,
+                        "items_per_source": (
+                            result.get("items_per_source", {}) if isinstance(result, dict) else {}
+                        ),
+                        "duration_s": 0.0,
+                    },
                 )
-                total_found = (
-                    result.get("total_found", 0)
-                    if isinstance(result, dict)
-                    else 0
-                )
-                errors = (
-                    result.get("errors", 0)
-                    if isinstance(result, dict)
-                    else 0
-                )
-                _save_job_state(job_id, "collection", dom, "completed", 100.0, {
-                    "started_at": started_at,
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                    "items_collected": total_new,
-                    "errors": errors,
-                    "items_per_source": (
-                        result.get("items_per_source", {})
-                        if isinstance(result, dict)
-                        else {}
-                    ),
-                    "duration_s": 0.0,
-                })
                 domain_results[dom] = job_id
             except Exception:
-                _save_job_state(job_id, "collection", dom, "error", 0.0, {
-                    "started_at": started_at,
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                })
+                _save_job_state(
+                    job_id,
+                    "collection",
+                    dom,
+                    "error",
+                    0.0,
+                    {
+                        "started_at": started_at,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
                 # Continue to next domain on failure
 
         return {
@@ -530,21 +522,27 @@ def _handle_collect_sources(
     if _find_domain(cfg, domain) is None:
         return error_response(
             ErrorCode.DOMAIN_NOT_FOUND,
-            f"Domain '{domain}' is not configured. "
-            f"Use add_domain(name='{domain}') to create it.",
+            f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
             actionable=True,
         )
 
     job_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
-    _save_job_state(job_id, "collection", domain, "running", 0.0, {
-        "started_at": started_at,
-        "completed_at": "",
-        "items_collected": 0,
-        "errors": 0,
-        "items_per_source": {},
-        "duration_s": 0.0,
-    })
+    _save_job_state(
+        job_id,
+        "collection",
+        domain,
+        "running",
+        0.0,
+        {
+            "started_at": started_at,
+            "completed_at": "",
+            "items_collected": 0,
+            "errors": 0,
+            "items_per_source": {},
+            "duration_s": 0.0,
+        },
+    )
 
     try:
         result = run_collection(domain=domain, **kwargs)
@@ -552,25 +550,41 @@ def _handle_collect_sources(
         total_new = result.get("total_new", 0) if isinstance(result, dict) else 0
         total_found = result.get("total_found", 0) if isinstance(result, dict) else 0
         errors = result.get("errors", 0) if isinstance(result, dict) else 0
-        _save_job_state(job_id, "collection", domain, "completed", 100.0, {
-            "started_at": started_at,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "items_collected": total_new,
-            "errors": errors,
-            "items_per_source": result.get("items_per_source", {}) if isinstance(result, dict) else {},
-            "duration_s": 0.0,
-        })
+        _save_job_state(
+            job_id,
+            "collection",
+            domain,
+            "completed",
+            100.0,
+            {
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "items_collected": total_new,
+                "errors": errors,
+                "items_per_source": result.get("items_per_source", {})
+                if isinstance(result, dict)
+                else {},
+                "duration_s": 0.0,
+            },
+        )
         if isinstance(result, dict):
             result["job_id"] = job_id
         else:
             result = {"job_id": job_id, "result": result}
-        return result
+        return _canonicalize(result)
     except Exception as exc:
-        _save_job_state(job_id, "collection", domain, "error", 0.0, {
-            "started_at": started_at,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        })
-        return error_response(ErrorCode.COLLECTION_FAILED, str(exc), actionable=True)
+        _save_job_state(
+            job_id,
+            "collection",
+            domain,
+            "error",
+            0.0,
+            {
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return _error_from_exc(exc, "Collection failed", code=ErrorCode.COLLECTION_FAILED)
 
 
 def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
@@ -624,7 +638,7 @@ def _handle_get_collection_progress(domain: str = "", job_id: str = "") -> dict[
                 }
         return {"domains": results, "count": len(results)}
 
-    return _with_job_db(_read_all)
+    return _canonicalize(_with_job_db(_read_all))
 
 
 def _handle_get_collection_status(domain: str) -> dict[str, Any]:
@@ -647,6 +661,7 @@ def _handle_get_collection_status(domain: str) -> dict[str, Any]:
     if state.get("started_at") and state.get("completed_at"):
         try:
             from datetime import datetime
+
             started = datetime.fromisoformat(state["started_at"])
             completed = datetime.fromisoformat(state["completed_at"])
             duration = (completed - started).total_seconds()
@@ -673,41 +688,71 @@ def _handle_process_collection(**kwargs: Any) -> dict[str, Any]:
     domain = kwargs.get("domain", "unknown")
     job_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
-    _save_job_state(job_id, "processing", domain, "running", 0.0, {
-        "started_at": started_at,
-        "kb_entries_created": 0,
-        "total_items": 0,
-    })
+    _save_job_state(
+        job_id,
+        "processing",
+        domain,
+        "running",
+        0.0,
+        {
+            "started_at": started_at,
+            "kb_entries_created": 0,
+            "total_items": 0,
+        },
+    )
 
     try:
         result = run_processing(**kwargs)
         if result.total_items == 0:
-            _save_job_state(job_id, "processing", domain, "noop", 100.0, {
+            _save_job_state(
+                job_id,
+                "processing",
+                domain,
+                "noop",
+                100.0,
+                {
+                    "started_at": started_at,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "total_items": 0,
+                },
+            )
+            return success_response(
+                {
+                    "status": "noop",
+                    "total_items": 0,
+                    "message": f"No cached items found for domain '{domain}'. Run collect_sources() first.",
+                    "domain": domain,
+                }
+            )
+        result_dict = asdict(result)
+        _save_job_state(
+            job_id,
+            "processing",
+            domain,
+            "completed",
+            100.0,
+            {
                 "started_at": started_at,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
-                "total_items": 0,
-            })
-            return success_response({
-                "status": "noop",
-                "total_items": 0,
-                "message": f"No cached items found for domain '{domain}'. Run collect_sources() first.",
-                "domain": domain,
-            })
-        result_dict = asdict(result)
-        _save_job_state(job_id, "processing", domain, "completed", 100.0, {
-            "started_at": started_at,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "kb_entries_created": result_dict.get("kb_entries_created", 0),
-            "total_items": result_dict.get("total_items", result_dict.get("total_new", 0)),
-        })
+                "kb_entries_created": result_dict.get("kb_entries_created", 0),
+                "total_items": result_dict.get("total_items", result_dict.get("total_new", 0)),
+            },
+        )
         result_dict["job_id"] = job_id
-        return result_dict
-    except Exception:
-        _save_job_state(job_id, "processing", domain, "error", 0.0, {
-            "started_at": started_at,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        })
-        raise
+        return _canonicalize(result_dict)
+    except Exception as exc:
+        _save_job_state(
+            job_id,
+            "processing",
+            domain,
+            "error",
+            0.0,
+            {
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return _error_from_exc(exc, "Processing failed", code=ErrorCode.PROCESSING_FAILED)
 
 
 def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[str, Any]:
@@ -721,7 +766,7 @@ def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[
     if domain:
         from autoinfo.process import get_processing_progress
 
-        return get_processing_progress(domain=domain)
+        return _canonicalize(get_processing_progress(domain=domain))
     return {"status": "idle", "is_complete": True}
 
 
@@ -774,7 +819,7 @@ def _handle_get_kb_entry(entry_id: str, user_id: str | None = None) -> dict[str,
             message=f"Entry '{entry_id}' not found",
             actionable=True,
         )
-    return entry
+    return _canonicalize(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -787,16 +832,20 @@ def _handle_list_domains() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"domains": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
+        return _error_from_exc(
+            exc, "Failed to load the project configuration", code=ErrorCode.INTERNAL_ERROR
+        )
 
     domains = []
     for d in config.domains:
-        domains.append({
-            "name": d.name,
-            "active": d.active,
-            "source_count": len(d.sources),
-            "topic_count": len(d.topics),
-        })
+        domains.append(
+            {
+                "name": d.name,
+                "active": d.active,
+                "source_count": len(d.sources),
+                "topic_count": len(d.topics),
+            }
+        )
     return {"domains": domains, "count": len(domains)}
 
 
@@ -806,34 +855,146 @@ def _handle_list_domains() -> dict[str, Any]:
 # map still gets advertised via ``list_available_platforms`` with a default
 # entry so PLATFORMS always mirrors VALID_SOURCE_TYPES.
 _PLATFORM_INFO: dict[str, dict[str, Any]] = {
-    "rss": {"name": "RSS/Atom Feed", "description": "Fetch content from RSS or Atom feeds", "output_formats": ["xml", "json"]},
-    "api": {"name": "REST API", "description": "Call REST API endpoints that return JSON data (PubMed via name match, or generic HTTP API)", "output_formats": ["json"]},
-    "web": {"name": "Web Page", "description": "Extract content from web pages using trafilatura/readability", "output_formats": ["html", "markdown"]},
-    "webhook": {"name": "Webhook Receiver", "description": "Receive pushed content via HTTP POST webhooks", "output_formats": ["json"]},
-    "email": {"name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
-    "email_imap": {"name": "Email (IMAP)", "description": "Collect content from email inboxes via IMAP", "output_formats": ["html", "text"]},
-    "pdf": {"name": "PDF Document", "description": "Extract text content from PDF documents", "output_formats": ["text", "markdown"]},
-    "apple_podcasts": {"name": "Apple Podcasts (iTunes Search)", "description": "Search Apple Podcasts via free iTunes Search API (shows only, no episodes)", "output_formats": ["json"]},
-    "dblp": {"name": "DBLP", "description": "Computer science bibliography via the DBLP API", "output_formats": ["json"]},
-    "nyt": {"name": "NYT", "description": "New York Times article search API", "output_formats": ["json"]},
-    "openalex": {"name": "OpenAlex", "description": "Open scholarly metadata via the OpenAlex API", "output_formats": ["json"]},
-    "ap_api": {"name": "AP API", "description": "Associated Press content API (paid)", "output_formats": ["json"]},
-    "reuters_mcp": {"name": "Reuters MCP", "description": "Reuters content via the Reuters MCP server", "output_formats": ["json"]},
-    "reddit": {"name": "Reddit", "description": "Reddit submissions and comments via the JSON API", "output_formats": ["json"]},
-    "spotify": {"name": "Spotify", "description": "Spotify shows and episodes via the Spotify API", "output_formats": ["json"]},
-    "youtube": {"name": "YouTube", "description": "YouTube videos and playlists via the YouTube Data API", "output_formats": ["json"]},
-    "bilibili": {"name": "Bilibili", "description": "Bilibili video content via the public API", "output_formats": ["json"]},
-    "yahoo_finance": {"name": "Yahoo Finance", "description": "Yahoo Finance market data quotes", "output_formats": ["json"]},
-    "quandl": {"name": "Quandl (Nasdaq Data Link)", "description": "Financial and economic datasets via Quandl", "output_formats": ["json"]},
-    "ssrn": {"name": "SSRN", "description": "SSRN preprint repository (working papers)", "output_formats": ["json"]},
-    "gdelt": {"name": "GDELT", "description": "GDELT global news event database", "output_formats": ["json"]},
-    "huggingface": {"name": "Hugging Face", "description": "Hugging Face hub datasets and content", "output_formats": ["json"]},
-    "kaggle": {"name": "Kaggle", "description": "Kaggle datasets and competitions", "output_formats": ["json"]},
-    "unpaywall": {"name": "Unpaywall", "description": "Open-access scholarly full text via Unpaywall", "output_formats": ["json"]},
-    "core": {"name": "CORE", "description": "CORE aggregator of open-access research papers", "output_formats": ["json"]},
-    "akshare": {"name": "AKShare", "description": "Chinese A-share market data via AKShare", "output_formats": ["json"]},
-    "sec_edgar": {"name": "SEC EDGAR", "description": "SEC EDGAR company filings (ticker → CIK → submissions)", "output_formats": ["json"]},
-    "edx_sitemap": {"name": "edX Sitemap", "description": "edX course catalog via sitemap index", "output_formats": ["xml", "json"]},
+    "rss": {
+        "name": "RSS/Atom Feed",
+        "description": "Fetch content from RSS or Atom feeds",
+        "output_formats": ["xml", "json"],
+    },
+    "api": {
+        "name": "REST API",
+        "description": "Call REST API endpoints that return JSON data (PubMed via name match, or generic HTTP API)",
+        "output_formats": ["json"],
+    },
+    "web": {
+        "name": "Web Page",
+        "description": "Extract content from web pages using trafilatura/readability",
+        "output_formats": ["html", "markdown"],
+    },
+    "webhook": {
+        "name": "Webhook Receiver",
+        "description": "Receive pushed content via HTTP POST webhooks",
+        "output_formats": ["json"],
+    },
+    "email": {
+        "name": "Email (IMAP)",
+        "description": "Collect content from email inboxes via IMAP",
+        "output_formats": ["html", "text"],
+    },
+    "email_imap": {
+        "name": "Email (IMAP)",
+        "description": "Collect content from email inboxes via IMAP",
+        "output_formats": ["html", "text"],
+    },
+    "pdf": {
+        "name": "PDF Document",
+        "description": "Extract text content from PDF documents",
+        "output_formats": ["text", "markdown"],
+    },
+    "apple_podcasts": {
+        "name": "Apple Podcasts (iTunes Search)",
+        "description": "Search Apple Podcasts via free iTunes Search API (shows only, no episodes)",
+        "output_formats": ["json"],
+    },
+    "dblp": {
+        "name": "DBLP",
+        "description": "Computer science bibliography via the DBLP API",
+        "output_formats": ["json"],
+    },
+    "nyt": {
+        "name": "NYT",
+        "description": "New York Times article search API",
+        "output_formats": ["json"],
+    },
+    "openalex": {
+        "name": "OpenAlex",
+        "description": "Open scholarly metadata via the OpenAlex API",
+        "output_formats": ["json"],
+    },
+    "ap_api": {
+        "name": "AP API",
+        "description": "Associated Press content API (paid)",
+        "output_formats": ["json"],
+    },
+    "reuters_mcp": {
+        "name": "Reuters MCP",
+        "description": "Reuters content via the Reuters MCP server",
+        "output_formats": ["json"],
+    },
+    "reddit": {
+        "name": "Reddit",
+        "description": "Reddit submissions and comments via the JSON API",
+        "output_formats": ["json"],
+    },
+    "spotify": {
+        "name": "Spotify",
+        "description": "Spotify shows and episodes via the Spotify API",
+        "output_formats": ["json"],
+    },
+    "youtube": {
+        "name": "YouTube",
+        "description": "YouTube videos and playlists via the YouTube Data API",
+        "output_formats": ["json"],
+    },
+    "bilibili": {
+        "name": "Bilibili",
+        "description": "Bilibili video content via the public API",
+        "output_formats": ["json"],
+    },
+    "yahoo_finance": {
+        "name": "Yahoo Finance",
+        "description": "Yahoo Finance market data quotes",
+        "output_formats": ["json"],
+    },
+    "quandl": {
+        "name": "Quandl (Nasdaq Data Link)",
+        "description": "Financial and economic datasets via Quandl",
+        "output_formats": ["json"],
+    },
+    "ssrn": {
+        "name": "SSRN",
+        "description": "SSRN preprint repository (working papers)",
+        "output_formats": ["json"],
+    },
+    "gdelt": {
+        "name": "GDELT",
+        "description": "GDELT global news event database",
+        "output_formats": ["json"],
+    },
+    "huggingface": {
+        "name": "Hugging Face",
+        "description": "Hugging Face hub datasets and content",
+        "output_formats": ["json"],
+    },
+    "kaggle": {
+        "name": "Kaggle",
+        "description": "Kaggle datasets and competitions",
+        "output_formats": ["json"],
+    },
+    "unpaywall": {
+        "name": "Unpaywall",
+        "description": "Open-access scholarly full text via Unpaywall",
+        "output_formats": ["json"],
+    },
+    "core": {
+        "name": "CORE",
+        "description": "CORE aggregator of open-access research papers",
+        "output_formats": ["json"],
+    },
+    "akshare": {
+        "name": "AKShare",
+        "description": "Chinese A-share market data via AKShare",
+        "output_formats": ["json"],
+    },
+    "sec_edgar": {
+        "name": "SEC EDGAR",
+        "description": "SEC EDGAR company filings (ticker → CIK → submissions)",
+        "output_formats": ["json"],
+    },
+    "edx_sitemap": {
+        "name": "edX Sitemap",
+        "description": "edX course catalog via sitemap index",
+        "output_formats": ["xml", "json"],
+    },
 }
 
 
@@ -1009,11 +1170,11 @@ def _handle_activate_domain(name: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
+            actionable=True,
+        )
 
     if domain_cfg.active:
         return {
@@ -1040,11 +1201,11 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
+            actionable=True,
+        )
 
     if not domain_cfg.active:
         return {
@@ -1065,14 +1226,11 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
 def _handle_remove_domain(name: str, confirm: bool = True, actor: str = "agent") -> dict[str, Any]:
     """Remove a domain configuration. Preserves all collected data on disk."""
     if not confirm:
-        return {
-            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
-            "message": (
-                "This operation is destructive and requires confirmation. "
-                "Pass confirm=True to proceed."
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.CONFIRMATION_REQUIRED,
+            message="This operation is destructive and requires confirmation. Pass confirm=True to proceed.",
+            actionable=True,
+        )
     try:
         config = _load_config()
     except Exception as exc:
@@ -1080,11 +1238,11 @@ def _handle_remove_domain(name: str, confirm: bool = True, actor: str = "agent")
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
+            actionable=True,
+        )
 
     config.domains.remove(domain_cfg)
     _save_config(config)
@@ -1100,11 +1258,11 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, name)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
+            actionable=True,
+        )
 
     sources = [
         {
@@ -1150,14 +1308,11 @@ def _handle_set_domain_webhooks(
         if not url.startswith(("http://", "https://")):
             invalid.append(url)
     if invalid:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": (
-                f"Invalid webhook URLs (must start with http:// or https://): "
-                f"{invalid}"
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Invalid webhook URLs (must start with http:// or https://): {invalid}",
+            actionable=True,
+        )
 
     try:
         config = _load_config()
@@ -1166,11 +1321,11 @@ def _handle_set_domain_webhooks(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     domain_cfg.webhook_urls = list(webhook_urls)
     _save_config(config)
@@ -1191,11 +1346,11 @@ def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     return {
         "domain": domain,
@@ -1254,13 +1409,17 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
         )
 
     sources = [
-        {"name": s.name, "type": s.type, "url": s.url, "quality_tier": s.quality_tier, "tos_classification": s.tos_classification, "requires_key": s.requires_key}
+        {
+            "name": s.name,
+            "type": s.type,
+            "url": s.url,
+            "quality_tier": s.quality_tier,
+            "tos_classification": s.tos_classification,
+            "requires_key": s.requires_key,
+        }
         for s in domain_cfg.sources
     ]
-    topics = [
-        {"name": t.name, "keywords": t.keywords}
-        for t in domain_cfg.topics
-    ]
+    topics = [{"name": t.name, "keywords": t.keywords} for t in domain_cfg.topics]
 
     extract_fields_schema: dict[str, dict[str, str]] = {
         "tl_dr": {"type": "string", "description": "One-sentence summary"},
@@ -1281,10 +1440,22 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
         "domain": domain,
         "extract_fields": extract_fields_schema,
         "output_templates": [
-            {"name": "digest", "description": "Scheduled knowledge digests", "access_level": "free"},
-            {"name": "report", "description": "Thematic structured reports", "access_level": "free"},
+            {
+                "name": "digest",
+                "description": "Scheduled knowledge digests",
+                "access_level": "free",
+            },
+            {
+                "name": "report",
+                "description": "Thematic structured reports",
+                "access_level": "free",
+            },
             {"name": "tutorial", "description": "Learning path tutorials", "access_level": "free"},
-            {"name": "presentation", "description": "Slide-based presentations", "access_level": "free"},
+            {
+                "name": "presentation",
+                "description": "Slide-based presentations",
+                "access_level": "free",
+            },
         ],
         "topics": topics,
         "sources": sources,
@@ -1305,12 +1476,11 @@ def _handle_list_available_models() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"models": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
+        return _error_from_exc(
+            exc, "Failed to load the project configuration", code=ErrorCode.INTERNAL_ERROR
+        )
 
-    api_key_configured = bool(
-        config.llm.api_key
-        or os.environ.get("AUTOINFO_LLM_API_KEY")
-    )
+    api_key_configured = bool(config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY"))
 
     models: list[dict[str, Any]] = [
         {
@@ -1331,9 +1501,7 @@ def _handle_list_available_models() -> dict[str, Any]:
                 "provider": fb.provider,
                 "model": fb.model,
                 "api_key_configured": bool(
-                    fb.api_key
-                    or config.llm.api_key
-                    or os.environ.get("AUTOINFO_LLM_API_KEY")
+                    fb.api_key or config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY")
                 ),
                 "inherits_provider": not bool(fb.provider),
             }
@@ -1361,7 +1529,7 @@ def _handle_get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
     from autoinfo.config import get_effective_llm_config
 
     try:
-        return get_effective_llm_config(task=task)
+        return _canonicalize(get_effective_llm_config(task=task))
     except Exception as exc:
         return _error_from_exc(exc, "Failed to resolve the effective LLM configuration")
 
@@ -1447,11 +1615,19 @@ def _handle_add_source(
     # --- Validation -----------------------------------------------------------
     type_error = _validate_source_type(type)
     if type_error:
-        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": type_error, "actionable": True}
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=type_error,
+            actionable=True,
+        )
 
     url_error = _validate_url(url, source_type=type)
     if url_error:
-        return {"error_code": ErrorCode.VALIDATION_ERROR.value, "message": url_error, "actionable": True}
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=url_error,
+            actionable=True,
+        )
 
     # --- Merge convenience params into settings dict ---------------------------
     merged_settings: dict[str, Any] = dict(settings or {})
@@ -1477,11 +1653,11 @@ def _handle_add_source(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     # Idempotency check: same url + type + domain
     for existing in domain_cfg.sources:
@@ -1501,7 +1677,7 @@ def _handle_add_source(
             }
             if existing.quality_tier >= 3:
                 dup_result["warning"] = "Quality tier 3+ source — content may have lower authority."
-            return dup_result
+            return _canonicalize(dup_result)
 
     # Determine next quality_tier based on type
     quality_tier = 1 if type in ("api", "rss") else 2
@@ -1550,7 +1726,7 @@ def _handle_add_source(
     if quality_tier >= 3:
         result["warning"] = "Quality tier 3+ source — content may have lower authority."
 
-    return result
+    return _canonicalize(result)
 
 
 def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1568,19 +1744,17 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
                 settings=src.get("settings"),
                 requires_key=src.get("requires_key"),
             )
-            if "error_code" in result:
+            if isinstance(result, dict) and result.get("success") is False:
                 errored += 1
-                results.append({"index": idx, **result})
-            else:
-                results.append({"index": idx, **result})
+            results.append({"index": idx, **result})
         except Exception as exc:
             errored += 1
-            results.append({
-                "index": idx,
-                "error_code": ErrorCode.INTERNAL_ERROR.value,
-                "message": str(exc),
-                "actionable": True,
-            })
+            results.append(
+                {
+                    "index": idx,
+                    **_error_from_exc(exc, "Failed to add sources", code=ErrorCode.INTERNAL_ERROR),
+                }
+            )
 
     return {
         "results": results,
@@ -1590,17 +1764,16 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _handle_remove_source(source_id: str, confirm: bool = True, actor: str = "agent") -> dict[str, Any]:
+def _handle_remove_source(
+    source_id: str, confirm: bool = True, actor: str = "agent"
+) -> dict[str, Any]:
     """Remove a source by its source_id (``domain:name``)."""
     if not confirm:
-        return {
-            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
-            "message": (
-                "This operation is destructive and requires confirmation. "
-                "Pass confirm=True to proceed."
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.CONFIRMATION_REQUIRED,
+            message="This operation is destructive and requires confirmation. Pass confirm=True to proceed.",
+            actionable=True,
+        )
     try:
         config = _load_config()
     except Exception as exc:
@@ -1608,20 +1781,20 @@ def _handle_remove_source(source_id: str, confirm: bool = True, actor: str = "ag
 
     parts = source_id.split(":", 1)
     if len(parts) != 2:
-        return {
-            "error_code": ErrorCode.INVALID_SOURCE_ID.value,
-            "message": "source_id must be in format 'domain:name'",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.INVALID_SOURCE_ID,
+            message="source_id must be in format 'domain:name'",
+            actionable=True,
+        )
     domain_name, source_name = parts
 
     domain_cfg = _find_domain(config, domain_name)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain_name}' is not configured. Use add_domain(name='{domain_name}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain_name}' is not configured. Use add_domain(name='{domain_name}') to create it.",
+            actionable=True,
+        )
 
     for i, existing in enumerate(domain_cfg.sources):
         if existing.name == source_name:
@@ -1637,11 +1810,11 @@ def _handle_remove_source(source_id: str, confirm: bool = True, actor: str = "ag
                 },
             }
 
-    return {
-        "error_code": ErrorCode.SOURCE_NOT_FOUND.value,
-        "message": f"Source '{source_name}' not found in domain '{domain_name}'",
-        "actionable": True,
-    }
+    return error_response(
+        code=ErrorCode.SOURCE_NOT_FOUND,
+        message=f"Source '{source_name}' not found in domain '{domain_name}'",
+        actionable=True,
+    )
 
 
 def _suggest_extract_fields(source_type: str) -> list[str]:
@@ -1706,7 +1879,7 @@ def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
         }
         if key_missing_hint:
             result["warning"] = key_missing_hint.strip()
-        return result
+        return _canonicalize(result)
     except httpx.TimeoutException:
         return error_response(
             code=ErrorCode.TIMEOUT,
@@ -1830,9 +2003,7 @@ def _handle_test_llm_connection(
     tested_model = temp_llm.resolve_model() or (
         f"{eff_provider or 'openrouter'}/{eff_model or 'deepseek/deepseek-chat'}"
     )
-    config_source = (
-        "params" if any([provider, model, base_url, api_key]) else "config"
-    )
+    config_source = "params" if any([provider, model, base_url, api_key]) else "config"
 
     start = time.monotonic()
     try:
@@ -1901,11 +2072,11 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     sources = [
         {
@@ -1940,11 +2111,11 @@ def _handle_add_topic(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     # Idempotency check: same name
     for existing in domain_cfg.topics:
@@ -1968,17 +2139,16 @@ def _handle_add_topic(
     }
 
 
-def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True, actor: str = "agent") -> dict[str, Any]:
+def _handle_remove_topic(
+    domain: str, topic_id: str, confirm: bool = True, actor: str = "agent"
+) -> dict[str, Any]:
     """Remove a topic by its topic_id (``domain:name``)."""
     if not confirm:
-        return {
-            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
-            "message": (
-                "This operation is destructive and requires confirmation. "
-                "Pass confirm=True to proceed."
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.CONFIRMATION_REQUIRED,
+            message="This operation is destructive and requires confirmation. Pass confirm=True to proceed.",
+            actionable=True,
+        )
     try:
         config = _load_config()
     except Exception as exc:
@@ -1986,11 +2156,11 @@ def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True, actor
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     topic_name = topic_id.split(":", 1)[-1] if ":" in topic_id else topic_id
     for i, existing in enumerate(domain_cfg.topics):
@@ -2003,11 +2173,11 @@ def _handle_remove_topic(domain: str, topic_id: str, confirm: bool = True, actor
                 "topic": {"name": removed.name, "keywords": removed.keywords},
             }
 
-    return {
-        "error_code": ErrorCode.TOPIC_NOT_FOUND.value,
-        "message": f"Topic '{topic_name}' not found in domain '{domain}'",
-        "actionable": True,
-    }
+    return error_response(
+        code=ErrorCode.TOPIC_NOT_FOUND,
+        message=f"Topic '{topic_name}' not found in domain '{domain}'",
+        actionable=True,
+    )
 
 
 def _handle_list_topics(domain: str) -> dict[str, Any]:
@@ -2019,16 +2189,13 @@ def _handle_list_topics(domain: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
-    topics = [
-        {"name": t.name, "keywords": t.keywords}
-        for t in domain_cfg.topics
-    ]
+    topics = [{"name": t.name, "keywords": t.keywords} for t in domain_cfg.topics]
     return {"domain": domain, "topics": topics, "count": len(topics)}
 
 
@@ -2052,11 +2219,11 @@ def _handle_list_keywords(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     # --- Topic-level keywords from config (existing behaviour) ---
     results: list[dict[str, Any]] = []
@@ -2068,7 +2235,11 @@ def _handle_list_keywords(
             "keywords": t.keywords,
             "group": t.group,
             "relevance_threshold": t.relevance_threshold,
-            "keyword_count": len(t.keywords) if isinstance(t.keywords, list) else sum(len(v) for v in t.keywords.values()) if isinstance(t.keywords, dict) else 0,
+            "keyword_count": len(t.keywords)
+            if isinstance(t.keywords, list)
+            else sum(len(v) for v in t.keywords.values())
+            if isinstance(t.keywords, dict)
+            else 0,
         }
         results.append(entry)
 
@@ -2126,11 +2297,11 @@ def _handle_topic_group_add(
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     assigned: list[str] = []
     not_found: list[str] = []
@@ -2170,11 +2341,11 @@ def _handle_topic_group_remove(domain: str, group_name: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(config, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     cleared: list[str] = []
     for t in domain_cfg.topics:
@@ -2205,17 +2376,18 @@ def _handle_approve_keyword(domain: str, keyword: str) -> dict[str, Any]:
     kf = KeywordsFile()
     result = kf.approve_keyword(domain=domain, keyword=keyword)
     if result is None:
-        return {
-            "error_code": ErrorCode.KEYWORD_NOT_FOUND.value,
-            "message": f"Keyword '{keyword}' not found in domain '{domain}'",
-            "actionable": True,
+        return error_response(
+            code=ErrorCode.KEYWORD_NOT_FOUND,
+            message=f"Keyword '{keyword}' not found in domain '{domain}'",
+            actionable=True,
+        )
+    return success_response(
+        {
+            "domain": domain,
+            "keyword": keyword,
+            "state": result.state.value,
         }
-    return {
-        "success": True,
-        "domain": domain,
-        "keyword": keyword,
-        "state": result.state.value,
-    }
+    )
 
 
 def _handle_reject_keyword(domain: str, keyword: str) -> dict[str, Any]:
@@ -2225,17 +2397,18 @@ def _handle_reject_keyword(domain: str, keyword: str) -> dict[str, Any]:
     kf = KeywordsFile()
     result = kf.deprecate_keyword(domain=domain, keyword=keyword)
     if result is None:
-        return {
-            "error_code": ErrorCode.KEYWORD_NOT_FOUND.value,
-            "message": f"Keyword '{keyword}' not found in domain '{domain}'",
-            "actionable": True,
+        return error_response(
+            code=ErrorCode.KEYWORD_NOT_FOUND,
+            message=f"Keyword '{keyword}' not found in domain '{domain}'",
+            actionable=True,
+        )
+    return success_response(
+        {
+            "domain": domain,
+            "keyword": keyword,
+            "state": result.state.value,
         }
-    return {
-        "success": True,
-        "domain": domain,
-        "keyword": keyword,
-        "state": result.state.value,
-    }
+    )
 
 
 def _handle_suggest_keywords(
@@ -2284,7 +2457,7 @@ def _handle_suggest_keywords(
         f"up to {limit} relevant keywords or short phrases (2-5 words) "
         "that capture the core topics. "
         "Respond with valid JSON only: an array of strings. "
-        "Example: [\"machine learning\", \"neural networks\", \"deep learning\"]"
+        'Example: ["machine learning", "neural networks", "deep learning"]'
     )
 
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
@@ -2427,11 +2600,11 @@ def _handle_get_extraction(content_id: str) -> dict[str, Any]:
     store = KBStore()
     entry = store.get_entry(content_id)
     if entry is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"Entry '{content_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"Entry '{content_id}' not found",
+            actionable=True,
+        )
 
     # Parse the Markdown frontmatter for extracted_fields
     file_path = entry.get("file_path", "")
@@ -2522,22 +2695,24 @@ def _handle_search_knowledge_base(
         }
 
     store = KBStore()
-    return store.search_knowledge_base(
-        query=query,
-        domain=domain or "",
-        limit=limit,
-        offset=offset,
-        mode=mode,
-        filter_tags=filter_tags,
-        filter_date_from=filter_date_from,
-        filter_date_to=filter_date_to,
-        filter_quality_tier_min=filter_quality_tier_min,
-        filter_quality_tier_max=filter_quality_tier_max,
-        filter_content_type=filter_content_type,
-        filter_language=filter_language,
-        filter_user_id=user_id,
-        include_stale=include_stale,
-        filter_custom_fields=filter_custom_fields,
+    return _canonicalize(
+        store.search_knowledge_base(
+            query=query,
+            domain=domain or "",
+            limit=limit,
+            offset=offset,
+            mode=mode,
+            filter_tags=filter_tags,
+            filter_date_from=filter_date_from,
+            filter_date_to=filter_date_to,
+            filter_quality_tier_min=filter_quality_tier_min,
+            filter_quality_tier_max=filter_quality_tier_max,
+            filter_content_type=filter_content_type,
+            filter_language=filter_language,
+            filter_user_id=user_id,
+            include_stale=include_stale,
+            filter_custom_fields=filter_custom_fields,
+        )
     )
 
 
@@ -2551,11 +2726,13 @@ def _handle_query_knowledge_graph(
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.query_knowledge_graph(
-        entity=entity,
-        relation=relation,
-        domain=domain,
-        limit=limit,
+    return _canonicalize(
+        store.query_knowledge_graph(
+            entity=entity,
+            relation=relation,
+            domain=domain,
+            limit=limit,
+        )
     )
 
 
@@ -2571,8 +2748,8 @@ def _handle_flag_for_knowledge_base(
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.flag_for_knowledge_base(
-        summary_id=summary_id, tags=tags, importance=importance
+    return _canonicalize(
+        store.flag_for_knowledge_base(summary_id=summary_id, tags=tags, importance=importance)
     )
 
 
@@ -2584,7 +2761,7 @@ def _handle_get_summary(summary_id: str) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.get_summary(summary_id=summary_id)
+    return _canonicalize(store.get_summary(summary_id=summary_id))
 
 
 def _handle_link_items(
@@ -2597,11 +2774,13 @@ def _handle_link_items(
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.link_items(
-        item_a_id=item_a_id,
-        item_b_id=item_b_id,
-        relation_type=relation_type,
-        metadata=metadata,
+    return _canonicalize(
+        store.link_items(
+            item_a_id=item_a_id,
+            item_b_id=item_b_id,
+            relation_type=relation_type,
+            metadata=metadata,
+        )
     )
 
 
@@ -2613,9 +2792,7 @@ def _handle_get_item_relations(
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    relations = store.get_item_relations(
-        item_id=item_id, relation_type=relation_type
-    )
+    relations = store.get_item_relations(item_id=item_id, relation_type=relation_type)
     return {"item_id": item_id, "relations": relations, "count": len(relations)}
 
 
@@ -2633,18 +2810,16 @@ def _handle_restore_entry_version(version_id: str) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.restore_entry_version(version_id=version_id)
+    return _canonicalize(store.restore_entry_version(version_id=version_id))
 
 
-def _handle_compare_versions(
-    entry_id: str, version_a: str, version_b: str
-) -> dict[str, Any]:
+def _handle_compare_versions(entry_id: str, version_a: str, version_b: str) -> dict[str, Any]:
     """Compare two versions of a KB entry and return a structured diff."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.compare_versions(
-        entry_id=entry_id, version_a=version_a, version_b=version_b
+    return _canonicalize(
+        store.compare_versions(entry_id=entry_id, version_a=version_a, version_b=version_b)
     )
 
 
@@ -2653,7 +2828,7 @@ def _handle_get_collection_stats(period: str = "daily") -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.get_collection_stats(period=period)
+    return _canonicalize(store.get_collection_stats(period=period))
 
 
 def _handle_get_collection_diff(since_collection_id: str) -> dict[str, Any]:
@@ -2661,19 +2836,15 @@ def _handle_get_collection_diff(since_collection_id: str) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.get_collection_diff(
-        since_collection_id=since_collection_id
-    )
+    return _canonicalize(store.get_collection_diff(since_collection_id=since_collection_id))
 
 
-def _handle_get_domain_decay(
-    domain: str, ttl_days: int = 90
-) -> dict[str, Any]:
+def _handle_get_domain_decay(domain: str, ttl_days: int = 90) -> dict[str, Any]:
     """Compute decay / staleness metrics for a domain."""
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.get_domain_decay(domain=domain, ttl_days=ttl_days)
+    return _canonicalize(store.get_domain_decay(domain=domain, ttl_days=ttl_days))
 
 
 def _handle_create_kb_draft(
@@ -2689,16 +2860,12 @@ def _handle_create_kb_draft(
     # Draft compiled from below-min raw content is an empty shell (#279).
     store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
     try:
-        entry = store.create_kb_draft(
-            raw_ids=raw_ids, title=title, summary=summary, tags=tags
-        )
-        return entry.to_dict()
+        entry = store.create_kb_draft(raw_ids=raw_ids, title=title, summary=summary, tags=tags)
+        return _canonicalize(entry.to_dict())
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(
+            exc, "Failed to create the KB draft", code=ErrorCode.VALIDATION_ERROR
+        )
 
 
 def _handle_reject_kb_draft(
@@ -2711,15 +2878,9 @@ def _handle_reject_kb_draft(
 
     store = KBStore()
     try:
-        return store.reject_kb_draft(
-            draft_id=draft_id, reason=reason, action=action
-        )
+        return _canonicalize(store.reject_kb_draft(draft_id=draft_id, reason=reason, action=action))
     except (ValueError, FileNotFoundError) as exc:
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Failed to reject the KB draft", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_list_kb_tier(
@@ -2755,7 +2916,9 @@ def _handle_list_kb_tier(
         }
 
     store = KBStore()
-    entries = store.list_kb_tier(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)
+    entries = store.list_kb_tier(
+        domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id
+    )
     return {
         "domain": domain,
         "tier": tier,
@@ -2781,19 +2944,13 @@ def _handle_promote_kb_draft(
     try:
         store = KBStore()
         result = store.promote_kb_draft(draft_id=entry_id)
-        return result
+        return _canonicalize(result)
     except FileNotFoundError as exc:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Failed to promote the KB draft", code=ErrorCode.NOT_FOUND)
     except PermissionError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(
+            exc, "Failed to promote the KB draft", code=ErrorCode.VALIDATION_ERROR
+        )
     except Exception as exc:
         logger.exception("promote_kb_draft failed for '%s'", entry_id)
         return _error_from_exc(exc, "promote_kb_draft failed")
@@ -2813,13 +2970,9 @@ def _handle_demote_kb_wiki(entry_id: str, actor: str = "agent") -> dict[str, Any
 
     store = KBStore()
     try:
-        return store.demote_entry(entry_id=entry_id, caller=actor)
+        return _canonicalize(store.demote_entry(entry_id=entry_id, caller=actor))
     except DirectorOnlyError as exc:
-        return error_response(
-            code=ErrorCode.DIRECTOR_ONLY,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "demote_kb_wiki refused", code=ErrorCode.DIRECTOR_ONLY)
 
 
 def _handle_force_promote(draft_id: str, actor: str = "agent") -> dict[str, Any]:
@@ -2835,13 +2988,9 @@ def _handle_force_promote(draft_id: str, actor: str = "agent") -> dict[str, Any]
 
     store = KBStore()
     try:
-        return store.force_promote_kb_draft(draft_id=draft_id, caller=actor)
+        return _canonicalize(store.force_promote_kb_draft(draft_id=draft_id, caller=actor))
     except DirectorOnlyError as exc:
-        return error_response(
-            code=ErrorCode.DIRECTOR_ONLY,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "force_promote refused", code=ErrorCode.DIRECTOR_ONLY)
 
 
 def _handle_promote_pending(domain: str, actor: str = "agent") -> dict[str, Any]:
@@ -2862,8 +3011,8 @@ def _handle_promote_pending(domain: str, actor: str = "agent") -> dict[str, Any]
     except Exception:
         config = None
     try:
-        return store.promote_pending_drafts(
-            domain=domain, config=config, caller=actor
+        return _canonicalize(
+            store.promote_pending_drafts(domain=domain, config=config, caller=actor)
         )
     except Exception as exc:
         logger.exception("promote_pending failed for domain '%s'", domain)
@@ -2878,7 +3027,7 @@ def _handle_reindex_kb(domain: str) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    return store.reindex_knowledge_base(domain=domain)
+    return _canonicalize(store.reindex_knowledge_base(domain=domain))
 
 
 def _handle_list_output_templates(domain: str = "", user_id: str | None = None) -> dict[str, Any]:
@@ -2903,7 +3052,7 @@ def _handle_list_output_templates(domain: str = "", user_id: str | None = None) 
         result["templates"] = filtered
         result["count"] = len(filtered)
 
-    return result
+    return _canonicalize(result)
 
 
 OUTPUTS_DIR = Path("outputs")
@@ -2972,9 +3121,7 @@ def _persist_output(
                 blob = json.loads(content)
             except (ValueError, TypeError):
                 blob = None
-        video_path = (
-            blob.get("video_path") if isinstance(blob, dict) else None
-        )
+        video_path = blob.get("video_path") if isinstance(blob, dict) else None
         if isinstance(video_path, str) and os.path.isfile(video_path):
             import shutil
 
@@ -3005,23 +3152,23 @@ def _output_text(result: str | Any) -> str:
 
 
 def _maybe_persist_output(
-    envelope: dict[str, Any],
+    payload: dict[str, Any],
     persist: bool,
     domain: str,
     product: str,
     format: str,
     content: Any,
 ) -> dict[str, Any]:
-    """Add ``persisted_path`` to *envelope* when *persist* is true.
+    """Build the canonical success envelope for a generated output.
 
-    With ``persist=False`` (the default) the envelope is returned
-    unchanged — byte-identical to the pre-persistence behavior.
+    *payload* carries the output fields (callers may include a ``success``
+    key from the pre-unification shape; it is dropped).  With *persist* true
+    a ``persisted_path`` key is added to the envelope's ``data``.
     """
+    data = {k: v for k, v in payload.items() if k != "success"}
     if persist:
-        envelope["persisted_path"] = _persist_output(
-            domain, product, format, content
-        )
-    return envelope
+        data["persisted_path"] = _persist_output(domain, product, format, content)
+    return success_response(data)
 
 
 def _handle_generate_digest(
@@ -3058,20 +3205,12 @@ def _handle_generate_digest(
             None,
         )
         if _product_row is None:
-            _valid = ", ".join(
-                sorted(row["name"] for row in PRODUCT_TEMPLATES)
+            _valid = ", ".join(sorted(row["name"] for row in PRODUCT_TEMPLATES))
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Unknown product '{product}'. Valid products: {_valid}",
+                actionable=True,
             )
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": f"Unknown product '{product}'. Valid products: {_valid}",
-                "actionable": True,
-                "success": False,
-                "error": {
-                    "code": ErrorCode.VALIDATION_ERROR.value,
-                    "message": f"Unknown product '{product}'. Valid products: {_valid}",
-                    "actionable": True,
-                },
-            }
         product_template = _product_row["template"]
 
     _period_days = {"daily": 1, "weekly": 7, "monthly": 30}
@@ -3086,15 +3225,16 @@ def _handle_generate_digest(
         # produce (issue #10).
         _preview = _store.list_entries(domain=domain, limit=1)
     if not _preview:
-        return {
-            "success": True,
-            "domain": domain,
-            "format": format,
-            "period": period,
-            "status": "noop",
-            "content": "",
-            "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        }
+        return success_response(
+            {
+                "domain": domain,
+                "format": format,
+                "period": period,
+                "status": "noop",
+                "content": "",
+                "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
+            }
+        )
 
     try:
         result = _generate_digest(
@@ -3118,7 +3258,11 @@ def _handle_generate_digest(
             _parsed = _json.loads(_output_text(result))
             return _maybe_persist_output(
                 {"success": True, "format": format, "content": _parsed},
-                persist, domain, "digest", format, _parsed,
+                persist,
+                domain,
+                "digest",
+                format,
+                _parsed,
             )
         if format == "audio":
             return _maybe_persist_output(
@@ -3129,7 +3273,11 @@ def _handle_generate_digest(
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domain, "digest", "audio", result,
+                persist,
+                domain,
+                "digest",
+                "audio",
+                result,
             )
         if format == "video":
             # _render_video_scaffold returns a JSON status blob with video_path.
@@ -3141,41 +3289,45 @@ def _handle_generate_digest(
                 parsed = {"status": "ok", "video_path": result}
             return _maybe_persist_output(
                 {"success": True, "format": "video", **parsed},
-                persist, domain, "digest", "video", result,
+                persist,
+                domain,
+                "digest",
+                "video",
+                result,
             )
         if format in ("epub", "audiobook"):
             return _maybe_persist_output(
                 {
                     "success": True,
                     "format": format,
-                    "content_type": (
-                        "application/epub+zip" if format == "epub" else "audio/mpeg"
-                    ),
+                    "content_type": ("application/epub+zip" if format == "epub" else "audio/mpeg"),
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domain, "digest", format, result,
+                persist,
+                domain,
+                "digest",
+                format,
+                result,
             )
         return _maybe_persist_output(
             {"success": True, "format": format, "content": result},
-            persist, domain, "digest", format, result,
+            persist,
+            domain,
+            "digest",
+            format,
+            result,
         )
     except FreeTierLimitError as exc:
         # Named free-tier user over quota — unified FREE_TIER_LIMIT envelope.
         error_detail = exc.to_envelope()["error"]
-        return {
-            "error_code": error_detail["code"],
-            "message": error_detail["message"],
-            "actionable": error_detail["actionable"],
-            "success": False,
-            "error": error_detail,
-        }
+        return error_response(
+            code=error_detail["code"],
+            message=error_detail["message"],
+            actionable=error_detail["actionable"],
+        )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Digest generation failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Digest generation failed for domain '%s'", domain)
         return _error_from_exc(exc, "Digest generation failed")
@@ -3213,20 +3365,12 @@ def _handle_generate_report(
             None,
         )
         if _product_row is None:
-            _valid = ", ".join(
-                sorted(row["name"] for row in PRODUCT_TEMPLATES)
+            _valid = ", ".join(sorted(row["name"] for row in PRODUCT_TEMPLATES))
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Unknown product '{product}'. Valid products: {_valid}",
+                actionable=True,
             )
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": f"Unknown product '{product}'. Valid products: {_valid}",
-                "actionable": True,
-                "success": False,
-                "error": {
-                    "code": ErrorCode.VALIDATION_ERROR.value,
-                    "message": f"Unknown product '{product}'. Valid products: {_valid}",
-                    "actionable": True,
-                },
-            }
         product_template = _product_row["template"]
     elif report_type == "column":
         from autoinfo.output import PRODUCT_TEMPLATES
@@ -3246,22 +3390,34 @@ def _handle_generate_report(
         # suppresses content the generator would produce (issue #10).
         _preview = _store.list_entries(domain=domain, limit=1)
     if not _preview:
-        return {
-            "success": True,
-            "domain": domain,
-            "format": format,
-            "period": period,
-            "status": "noop",
-            "content": "",
-            "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
-        }
+        return success_response(
+            {
+                "domain": domain,
+                "format": format,
+                "period": period,
+                "status": "noop",
+                "content": "",
+                "message": f"No entries found for domain '{domain}' in the requested period. Run collect_sources() + process_collection() first.",
+            }
+        )
 
     try:
         # Persist under the spec product name so matrix evidence resolves
         # (column was persisted as report-markdown-* and never counted for
         # the column:markdown cell — issue #229).
         _persist_product = "column" if report_type == "column" else "report"
-        result = _generate_report(domain=domain, format=format, period=period, custom_instructions=custom_instructions, target_audience=target_audience, user_id=user_id, report_type=report_type, product_template=product_template, language=language, ref_limit=ref_limit)
+        result = _generate_report(
+            domain=domain,
+            format=format,
+            period=period,
+            custom_instructions=custom_instructions,
+            target_audience=target_audience,
+            user_id=user_id,
+            report_type=report_type,
+            product_template=product_template,
+            language=language,
+            ref_limit=ref_limit,
+        )
         if format in ("json", "agent"):
             import json as _json
 
@@ -3274,7 +3430,11 @@ def _handle_generate_report(
                     "period": period,
                     "content": parsed,
                 },
-                persist, domain, _persist_product, format, parsed,
+                persist,
+                domain,
+                _persist_product,
+                format,
+                parsed,
             )
         if format == "audio":
             return _maybe_persist_output(
@@ -3287,7 +3447,11 @@ def _handle_generate_report(
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domain, _persist_product, "audio", result,
+                persist,
+                domain,
+                _persist_product,
+                "audio",
+                result,
             )
         if format == "video":
             import json as _json3
@@ -3310,7 +3474,11 @@ def _handle_generate_report(
                     "period": period,
                     **parsed,
                 },
-                persist, domain, _persist_product, "video", content,
+                persist,
+                domain,
+                _persist_product,
+                "video",
+                content,
             )
         if format in ("epub", "audiobook"):
             return _maybe_persist_output(
@@ -3319,13 +3487,15 @@ def _handle_generate_report(
                     "domain": domain,
                     "format": format,
                     "period": period,
-                    "content_type": (
-                        "application/epub+zip" if format == "epub" else "audio/mpeg"
-                    ),
+                    "content_type": ("application/epub+zip" if format == "epub" else "audio/mpeg"),
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domain, _persist_product, format, result,
+                persist,
+                domain,
+                _persist_product,
+                format,
+                result,
             )
         return _maybe_persist_output(
             {
@@ -3335,23 +3505,21 @@ def _handle_generate_report(
                 "period": period,
                 "content": result,
             },
-            persist, domain, _persist_product, format, result,
+            persist,
+            domain,
+            _persist_product,
+            format,
+            result,
         )
     except FreeTierLimitError as exc:
         error_detail = exc.to_envelope()["error"]
-        return {
-            "error_code": error_detail["code"],
-            "message": error_detail["message"],
-            "actionable": error_detail["actionable"],
-            "success": False,
-            "error": error_detail,
-        }
+        return error_response(
+            code=error_detail["code"],
+            message=error_detail["message"],
+            actionable=error_detail["actionable"],
+        )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Report generation failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Report generation failed for domain '%s'", domain)
         return _error_from_exc(exc, "Report generation failed")
@@ -3385,35 +3553,31 @@ def _handle_generate_cross_domain_report(
 
     # Validate at least 2 domains
     if not isinstance(domains, list) or len(domains) < 2:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": "At least 2 domains are required for cross-domain report generation",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="At least 2 domains are required for cross-domain report generation. Provide a list of two or more active domain names.",
+            actionable=True,
+        )
 
     # Validate all domains exist
     try:
         config = _load_config()
     except FileNotFoundError:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": (
-                "No project configuration found.  Run `init_project` "
-                "first to set up at least one domain. "
-                "See docs/dev/director-user-guide.md for setup instructions."
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="No project configuration found.  Run `init_project` first to set up at least one domain. See docs/dev/director-user-guide.md for setup instructions.",
+            actionable=True,
+        )
     except Exception as exc:
         return _error_from_exc(exc, "Cross-domain report generation failed")
     valid_names = {d.name for d in config.domains}
     invalid = [d for d in domains if d not in valid_names]
     if invalid:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": f"Unknown domain(s): {', '.join(invalid)}. Valid domains: {', '.join(sorted(valid_names))}",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Unknown domain(s): {', '.join(invalid)}. Valid domains: {', '.join(sorted(valid_names))}",
+            actionable=True,
+        )
 
     try:
         result = _generate_report(
@@ -3439,7 +3603,11 @@ def _handle_generate_cross_domain_report(
                     "period": period,
                     "content": parsed,
                 },
-                persist, domains[0], "report", format, parsed,
+                persist,
+                domains[0],
+                "report",
+                format,
+                parsed,
             )
         if format == "audio":
             return _maybe_persist_output(
@@ -3453,7 +3621,11 @@ def _handle_generate_cross_domain_report(
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domains[0], "report", "audio", result,
+                persist,
+                domains[0],
+                "report",
+                "audio",
+                result,
             )
         if format == "video":
             import json as _json4
@@ -3471,7 +3643,11 @@ def _handle_generate_cross_domain_report(
                     "period": period,
                     **parsed,
                 },
-                persist, domains[0], "report", "video", result,
+                persist,
+                domains[0],
+                "report",
+                "video",
+                result,
             )
         if format in ("epub", "audiobook"):
             return _maybe_persist_output(
@@ -3481,13 +3657,15 @@ def _handle_generate_cross_domain_report(
                     "domains": domains,
                     "format": format,
                     "period": period,
-                    "content_type": (
-                        "application/epub+zip" if format == "epub" else "audio/mpeg"
-                    ),
+                    "content_type": ("application/epub+zip" if format == "epub" else "audio/mpeg"),
                     "encoding": "base64",
                     "content": result,
                 },
-                persist, domains[0], "report", format, result,
+                persist,
+                domains[0],
+                "report",
+                format,
+                result,
             )
         return _maybe_persist_output(
             {
@@ -3498,23 +3676,23 @@ def _handle_generate_cross_domain_report(
                 "period": period,
                 "content": result,
             },
-            persist, domains[0], "report", format, result,
+            persist,
+            domains[0],
+            "report",
+            format,
+            result,
         )
     except FreeTierLimitError as exc:
         error_detail = exc.to_envelope()["error"]
-        return {
-            "error_code": error_detail["code"],
-            "message": error_detail["message"],
-            "actionable": error_detail["actionable"],
-            "success": False,
-            "error": error_detail,
-        }
+        return error_response(
+            code=error_detail["code"],
+            message=error_detail["message"],
+            actionable=error_detail["actionable"],
+        )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(
+            exc, "Cross-domain report generation failed", code=ErrorCode.VALIDATION_ERROR
+        )
     except Exception as exc:
         logger.exception(
             "Cross-domain report generation failed for domains %s",
@@ -3545,23 +3723,42 @@ def _handle_generate_tutorial(
     from autoinfo.output import generate_tutorial as _generate_tutorial
 
     try:
-        result = _generate_tutorial(domain=domain, format=format, custom_instructions=custom_instructions, user_id=user_id)
+        result = _generate_tutorial(
+            domain=domain, format=format, custom_instructions=custom_instructions, user_id=user_id
+        )
         if format == "agent":
             import json as _json
+
             return _maybe_persist_output(
-                {"success": True, "format": format, "domain": domain, "topic": topic, "content": _json.loads(_output_text(result))},
-                persist, domain, "tutorial", format, _json.loads(_output_text(result)),
+                {
+                    "success": True,
+                    "format": format,
+                    "domain": domain,
+                    "topic": topic,
+                    "content": _json.loads(_output_text(result)),
+                },
+                persist,
+                domain,
+                "tutorial",
+                format,
+                _json.loads(_output_text(result)),
             )
         return _maybe_persist_output(
-            {"success": True, "format": format, "domain": domain, "topic": topic, "content": result},
-            persist, domain, "tutorial", format, result,
+            {
+                "success": True,
+                "format": format,
+                "domain": domain,
+                "topic": topic,
+                "content": result,
+            },
+            persist,
+            domain,
+            "tutorial",
+            format,
+            result,
         )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Tutorial generation failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Tutorial generation failed for domain '%s'", domain)
         return _error_from_exc(exc, "Tutorial generation failed")
@@ -3591,22 +3788,52 @@ def _handle_generate_presentation(
 
     try:
         topic_str = topic or ""
-        result = _generate_presentation(domain=domain, topic=topic_str, slide_count=slides, format=format, custom_instructions=custom_instructions, user_id=user_id)
+        result = _generate_presentation(
+            domain=domain,
+            topic=topic_str,
+            slide_count=slides,
+            format=format,
+            custom_instructions=custom_instructions,
+            user_id=user_id,
+        )
         if format == "agent":
             import json as _json
+
             return _maybe_persist_output(
-                {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": _json.loads(_output_text(result))},
-                persist, domain, "presentation", format, _json.loads(_output_text(result)),
+                {
+                    "success": True,
+                    "domain": domain,
+                    "topic": topic,
+                    "slides": slides,
+                    "format": format,
+                    "content": _json.loads(_output_text(result)),
+                },
+                persist,
+                domain,
+                "presentation",
+                format,
+                _json.loads(_output_text(result)),
             )
         return _maybe_persist_output(
-            {"success": True, "domain": domain, "topic": topic, "slides": slides, "format": format, "content": result},
-            persist, domain, "presentation", format, result,
+            {
+                "success": True,
+                "domain": domain,
+                "topic": topic,
+                "slides": slides,
+                "format": format,
+                "content": result,
+            },
+            persist,
+            domain,
+            "presentation",
+            format,
+            result,
         )
     except ValueError as exc:
-        return error_response(
+        return _error_from_exc(
+            exc,
+            "Presentation generation failed",
             code=ErrorCode.VALIDATION_ERROR,
-            message=str(exc),
-            actionable=True,
         )
     except Exception as exc:
         logger.exception("Presentation generation failed for domain '%s'", domain)
@@ -3661,13 +3888,9 @@ def _handle_send_email_digest(
 
     try:
         result = _send_email(domain=domain, period=period, config=config, user_id=user_id)
-        return result
+        return _canonicalize(result)
     except RuntimeError as exc:
-        return error_response(
-            code=ErrorCode.EMAIL_SEND_FAILED,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "Email digest send failed", code=ErrorCode.EMAIL_SEND_FAILED)
     except Exception as exc:
         logger.exception("Email digest send failed for domain '%s'", domain)
         return _error_from_exc(exc, "Email digest send failed")
@@ -3686,13 +3909,9 @@ def _handle_localize_content(**kwargs: Any) -> dict[str, Any]:
 
     try:
         result = _localize(**kwargs)
-        return result
+        return _canonicalize(result)
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Localization failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Localization failed")
         return _error_from_exc(exc, "Localization failed")
@@ -3762,13 +3981,9 @@ def _handle_export_kb(
         else:
             result["file_size_bytes"] = 0
 
-        return result
+        return _canonicalize(result)
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Export KB failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Export KB failed for domain '%s'", domain)
         return _error_from_exc(exc, "Export KB failed")
@@ -3805,13 +4020,9 @@ def _handle_import_kb(
 
     try:
         result = _import_kb(domain=domain, format=format, data=data)
-        return result
+        return _canonicalize(result)
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "Import KB failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("Import KB failed for domain '%s'", domain)
         return _error_from_exc(exc, "Import KB failed")
@@ -3830,14 +4041,16 @@ def _handle_list_schedules() -> dict[str, Any]:
         schedules = load_schedules()
         items = []
         for name, s in schedules.items():
-            items.append({
-                "name": name,
-                "expression": s.expression,
-                "domain": s.domain,
-                "enabled": s.enabled,
-                "last_run": s.last_run,
-                "created_at": s.created_at,
-            })
+            items.append(
+                {
+                    "name": name,
+                    "expression": s.expression,
+                    "domain": s.domain,
+                    "enabled": s.enabled,
+                    "last_run": s.last_run,
+                    "created_at": s.created_at,
+                }
+            )
         return {"schedules": items, "count": len(items)}
     except Exception as exc:
         return _error_from_exc(exc, "Failed to list schedules")
@@ -3854,53 +4067,48 @@ def _handle_add_schedule(
     """Add a new collection or digest schedule."""
     try:
         if schedule_type not in ("collection", "digest"):
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": f"Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Invalid schedule type '{schedule_type}'. Must be 'collection' or 'digest'.",
+                actionable=True,
+            )
 
         if schedule_type == "digest":
             if not recipients:
-                return {
-                    "error_code": ErrorCode.VALIDATION_ERROR.value,
-                    "message": "Recipients are required for digest-type schedules.",
-                    "actionable": True,
-                }
+                return error_response(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message="Recipients are required for digest-type schedules. Provide the recipients list (e.g. email addresses).",
+                    actionable=True,
+                )
             try:
                 config = _load_config()
             except Exception as exc:
                 return _error_from_exc(exc, "Failed to load the project configuration")
             if not config.email.enabled:
-                return {
-                    "error_code": ErrorCode.EMAIL_NOT_ENABLED.value,
-                    "message": (
-                        "Email delivery is not enabled. Digest schedules require "
-                        "email to be configured. Set 'email.enabled: true' in "
-                        ".autoinfo/config.yaml and configure email.smtp_host, "
-                        "email.from_addr, and email.to_addrs."
-                    ),
-                    "actionable": True,
-                }
+                return error_response(
+                    code=ErrorCode.EMAIL_NOT_ENABLED,
+                    message="Email delivery is not enabled. Digest schedules require email to be configured. Set 'email.enabled: true' in .autoinfo/config.yaml and configure email.smtp_host, email.from_addr, and email.to_addrs.",
+                    actionable=True,
+                )
 
         from croniter import croniter
 
         if not croniter.is_valid(expression):
-            return {
-                "error_code": ErrorCode.INVALID_CRON_EXPRESSION.value,
-                "message": f"'{expression}' is not a valid cron expression",
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.INVALID_CRON_EXPRESSION,
+                message=f"'{expression}' is not a valid cron expression",
+                actionable=True,
+            )
 
         from autoinfo.cli.cron import Schedule, _now_iso, load_schedules, save_schedules
 
         schedules = load_schedules()
         if name in schedules:
-            return {
-                "error_code": ErrorCode.SCHEDULE_ALREADY_EXISTS.value,
-                "message": f"A schedule named '{name}' already exists",
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.SCHEDULE_ALREADY_EXISTS,
+                message=f"A schedule named '{name}' already exists",
+                actionable=True,
+            )
 
         new_schedule = Schedule(
             name=name,
@@ -3933,27 +4141,26 @@ def _handle_add_schedule(
         return _error_from_exc(exc, "Failed to add schedule")
 
 
-def _handle_remove_schedule(name: str, confirm: bool = False, actor: str = "agent") -> dict[str, Any]:
+def _handle_remove_schedule(
+    name: str, confirm: bool = False, actor: str = "agent"
+) -> dict[str, Any]:
     """Remove a collection schedule."""
     if not confirm:
-        return {
-            "error_code": ErrorCode.CONFIRMATION_REQUIRED.value,
-            "message": (
-                "This operation is destructive and requires confirmation. "
-                "Pass confirm=True to proceed."
-            ),
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.CONFIRMATION_REQUIRED,
+            message="This operation is destructive and requires confirmation. Pass confirm=True to proceed.",
+            actionable=True,
+        )
     try:
         from autoinfo.cli.cron import load_schedules, save_schedules
 
         schedules = load_schedules()
         if name not in schedules:
-            return {
-                "error_code": ErrorCode.SCHEDULE_NOT_FOUND.value,
-                "message": f"Schedule '{name}' not found",
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.SCHEDULE_NOT_FOUND,
+                message=f"Schedule '{name}' not found",
+                actionable=True,
+            )
         removed = schedules.pop(name)
         save_schedules(schedules)
         return {
@@ -4058,42 +4265,32 @@ def _handle_add_delivery_schedule(
         )
 
         if output_type not in VALID_OUTPUT_TYPES:
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": (
-                    f"Invalid output_type '{output_type}'. "
-                    f"Must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}"
-                ),
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Invalid output_type '{output_type}'. Must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}",
+                actionable=True,
+            )
         if output_format not in VALID_FORMATS:
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": (
-                    f"Invalid format '{output_format}'. "
-                    f"Must be one of: {', '.join(sorted(VALID_FORMATS))}"
-                ),
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Invalid format '{output_format}'. Must be one of: {', '.join(sorted(VALID_FORMATS))}",
+                actionable=True,
+            )
         if channel not in VALID_CHANNELS:
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": (
-                    f"Invalid channel '{channel}'. "
-                    f"Must be one of: {', '.join(sorted(VALID_CHANNELS))}"
-                ),
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Invalid channel '{channel}'. Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
+                actionable=True,
+            )
 
         from croniter import croniter
 
         if not croniter.is_valid(cron_expression):
-            return {
-                "error_code": ErrorCode.INVALID_CRON_EXPRESSION.value,
-                "message": f"'{cron_expression}' is not a valid cron expression",
-                "actionable": True,
-            }
-
+            return error_response(
+                code=ErrorCode.INVALID_CRON_EXPRESSION,
+                message=f"'{cron_expression}' is not a valid cron expression",
+                actionable=True,
+            )
 
         new_schedule = DeliverySchedule(
             cron_expression=cron_expression,
@@ -4239,7 +4436,7 @@ def _handle_get_source_health(source_id: str) -> dict[str, Any]:
     """Return health status for a single source."""
     from autoinfo.status import get_source_health
 
-    return get_source_health(source_id=source_id)
+    return _canonicalize(get_source_health(source_id=source_id))
 
 
 def _handle_rate_item(
@@ -4250,7 +4447,7 @@ def _handle_rate_item(
     """Store user rating/feedback for a collected item."""
     from autoinfo.status import rate_item
 
-    return rate_item(item_id=item_id, rating=rating, feedback=feedback)
+    return _canonicalize(rate_item(item_id=item_id, rating=rating, feedback=feedback))
 
 
 # ---------------------------------------------------------------------------
@@ -4269,7 +4466,7 @@ def _handle_query_collected(
     """
     from autoinfo.qa import query_collected as _qa
 
-    return _qa(query=query, domain=domain, content_ids=content_ids)
+    return _canonicalize(_qa(query=query, domain=domain, content_ids=content_ids))
 
 
 # ---------------------------------------------------------------------------
@@ -4320,21 +4517,12 @@ def _handle_init_project(
     # Validate domain against available demo domains
     demo_sources = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not demo_sources.is_file():
-        available = sorted(
-            d.name for d in _DEMO_DOMAINS_DIR.iterdir()
-            if d.is_dir()
+        available = sorted(d.name for d in _DEMO_DOMAINS_DIR.iterdir() if d.is_dir())
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Unknown demo domain '{domain}'. Available: {available}",
+            actionable=True,
         )
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": f"Unknown demo domain '{domain}'. Available: {available}",
-            "actionable": True,
-            "success": False,
-            "error": {
-                "code": ErrorCode.VALIDATION_ERROR.value,
-                "message": f"Unknown demo domain '{domain}'. Available: {available}",
-                "actionable": True,
-            },
-        }
 
     if dry_run:
         missing_keys = _detect_missing_source_keys(domain, sources_yaml=demo_sources)
@@ -4389,6 +4577,7 @@ def _handle_init_project(
 
         if llm_provider or llm_model or llm_base_url:
             import yaml
+
             config_path = autoinfo_dir / "config.yaml"
             if config_path.exists():
                 with open(config_path, "r") as f:
@@ -4437,17 +4626,7 @@ def _handle_init_project(
         }
     except Exception as exc:
         logger.exception("Init project failed for domain '%s'", domain)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-            "success": False,
-            "error": {
-                "code": ErrorCode.INTERNAL_ERROR.value,
-                "message": str(exc),
-                "actionable": True,
-            },
-        }
+        return _error_from_exc(exc, "Init project failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _validate_llm_pool_params(
@@ -4465,15 +4644,10 @@ def _validate_llm_pool_params(
             return "llm_fallback must be a list of fallback entries"
         for i, entry in enumerate(llm_fallback):
             if not isinstance(entry, dict):
-                return (
-                    f"llm_fallback[{i}] must be an object with at least "
-                    "a 'model' field"
-                )
+                return f"llm_fallback[{i}] must be an object with at least a 'model' field"
             model = entry.get("model")
             if not isinstance(model, str) or not model.strip():
-                return (
-                    f"llm_fallback[{i}] is missing the required 'model' field"
-                )
+                return f"llm_fallback[{i}] is missing the required 'model' field"
     if llm_tasks is not None:
         if not isinstance(llm_tasks, dict):
             return "llm_tasks must be an object mapping task names to configs"
@@ -4486,10 +4660,7 @@ def _validate_llm_pool_params(
                 )
             unknown = set(task_cfg) - allowed
             if unknown:
-                return (
-                    f"llm_tasks[{task_name}] has unknown fields: "
-                    f"{', '.join(sorted(unknown))}"
-                )
+                return f"llm_tasks[{task_name}] has unknown fields: {', '.join(sorted(unknown))}"
             for field, value in task_cfg.items():
                 if field in ("model", "provider") and not isinstance(value, str):
                     return f"llm_tasks[{task_name}].{field} must be a string"
@@ -4574,16 +4745,10 @@ def _handle_configure_llm(
     config_path = _config_path()
 
     # No-op when nothing is supplied
-    if (
-        not any([provider, model, api_key, base_url])
-        and llm_fallback is None
-        and llm_tasks is None
-    ):
+    if not any([provider, model, api_key, base_url]) and llm_fallback is None and llm_tasks is None:
         return {
             "status": "noop",
-            "message": (
-                "No parameters supplied. Nothing to configure."
-            ),
+            "message": ("No parameters supplied. Nothing to configure."),
         }
 
     # Check config exists
@@ -4665,13 +4830,9 @@ def _handle_configure_llm(
             from autoinfo.config import load_config
 
             loaded = load_config(config_path)
-            if llm_fallback is not None and len(loaded.llm.fallback) != len(
-                llm["fallback"]
-            ):
+            if llm_fallback is not None and len(loaded.llm.fallback) != len(llm["fallback"]):
                 raise RuntimeError("fallback count mismatch after round-trip")
-            if llm_tasks is not None and set(loaded.llm.tasks) != set(
-                llm["tasks"]
-            ):
+            if llm_tasks is not None and set(loaded.llm.tasks) != set(llm["tasks"]):
                 raise RuntimeError("task names mismatch after round-trip")
         except Exception as exc:
             logger.exception("configure_llm round-trip verification failed")
@@ -4686,9 +4847,7 @@ def _handle_configure_llm(
             "model": model or "(unchanged)",
             "base_url": base_url or "(unchanged)",
             "api_key": (
-                "${AUTOINFO_LLM_API_KEY} (env var reference written)"
-                if api_key
-                else "(unchanged)"
+                "${AUTOINFO_LLM_API_KEY} (env var reference written)" if api_key else "(unchanged)"
             ),
         }
         if llm_fallback is not None:
@@ -4714,20 +4873,18 @@ def _handle_configure_llm(
                     "judgment models)."
                 )
 
-        return success_response({
-            "status": "success",
-            "message": message,
-            "updated": updated,
-            "config_path": str(config_path),
-        })
+        return success_response(
+            {
+                "status": "success",
+                "message": message,
+                "updated": updated,
+                "config_path": str(config_path),
+            }
+        )
 
     except Exception as exc:
         logger.exception("configure_llm failed")
-        return error_response(
-            ErrorCode.INTERNAL_ERROR,
-            str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "configure_llm failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_list_projects(status: str = "") -> dict[str, Any]:
@@ -4735,7 +4892,7 @@ def _handle_list_projects(status: str = "") -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return {"projects": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
+        return _error_from_exc(exc, "Failed to list projects", code=ErrorCode.INTERNAL_ERROR)
 
     from autoinfo.config import get_config_path
 
@@ -4745,12 +4902,8 @@ def _handle_list_projects(status: str = "") -> dict[str, Any]:
             "name": config.project.name if hasattr(config, "project") else "default",
             "config_path": str(cfg_path) if cfg_path else "",
             "domain_count": len([d for d in config.domains if d.active]),
-            "total_sources": sum(
-                len(d.sources) for d in config.domains if d.active
-            ),
-            "total_topics": sum(
-                len(d.topics) for d in config.domains if d.active
-            ),
+            "total_sources": sum(len(d.sources) for d in config.domains if d.active),
+            "total_topics": sum(len(d.topics) for d in config.domains if d.active),
             "created_at": (
                 config.project.created_at
                 if hasattr(config, "project") and hasattr(config.project, "created_at")
@@ -4822,7 +4975,7 @@ def _handle_get_project_assets(type: str = "") -> dict[str, Any]:
         if key:
             return {key: assets[key]}
 
-    return assets
+    return _canonicalize(assets)
 
 
 def _handle_archive_project(reason: str = "", confirm: bool = False) -> dict[str, Any]:
@@ -4876,8 +5029,15 @@ def _handle_batch_run(
     topic: str = "",
     limit: int = 20,
     model: str = "",
+    resume_from: str = "",
 ) -> dict[str, Any]:
-    """Run collect + process in sequence for a domain. Returns per-phase results."""
+    """Run collect + process in sequence for a domain. Returns per-phase results.
+
+    ``resume_from`` (R-A-01) resumes each phase from its persisted
+    checkpoint: ``"auto"`` skips already-completed collection sources and
+    already-processed items; ``"start"`` checkpoints a fresh run;
+    ``"<source>"`` starts collection at that source.  Omitted → legacy run.
+    """
     from datetime import datetime, timezone
 
     from autoinfo.collect import run_collection
@@ -4889,56 +5049,70 @@ def _handle_batch_run(
     collect_args: dict[str, Any] = {"domain": domain, "limit": limit}
     if topic:
         collect_args["topic"] = topic
+    if resume_from:
+        collect_args["resume_from"] = resume_from
 
     phase_start = datetime.now(timezone.utc)
     try:
         collected = run_collection(**collect_args)
         phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
-        phases.append({
-            "phase": "collection",
-            "status": "completed",
-            "result": collected,
-            "duration_s": round(phase_duration, 2),
-        })
+        phases.append(
+            {
+                "phase": "collection",
+                "status": "completed",
+                "result": collected,
+                "duration_s": round(phase_duration, 2),
+            }
+        )
     except Exception as exc:
         phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
-        phases.append({
-            "phase": "collection",
-            "status": "failed",
-            "error": str(exc),
-            "duration_s": round(phase_duration, 2),
-        })
+        phases.append(
+            {
+                "phase": "collection",
+                "status": "failed",
+                "error": str(exc),
+                "duration_s": round(phase_duration, 2),
+            }
+        )
 
     if phases[-1]["status"] == "completed":
         process_args: dict[str, Any] = {"domain": domain}
         if model:
             process_args["model"] = model
+        if resume_from:
+            process_args["resume_from"] = resume_from
 
         phase_start = datetime.now(timezone.utc)
         try:
             processed: ProcessResult = run_processing(**process_args)
             processed_dict = asdict(processed)
             phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
-            phases.append({
-                "phase": "processing",
-                "status": "completed",
-                "result": processed_dict,
-                "duration_s": round(phase_duration, 2),
-            })
+            phases.append(
+                {
+                    "phase": "processing",
+                    "status": "completed",
+                    "result": processed_dict,
+                    "duration_s": round(phase_duration, 2),
+                }
+            )
         except Exception as exc:
             phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
-            phases.append({
-                "phase": "processing",
-                "status": "failed",
-                "error": str(exc),
-                "duration_s": round(phase_duration, 2),
-            })
+            phases.append(
+                {
+                    "phase": "processing",
+                    "status": "failed",
+                    "error": str(exc),
+                    "duration_s": round(phase_duration, 2),
+                }
+            )
     else:
-        phases.append({
-            "phase": "processing",
-            "status": "skipped",
-            "reason": "collection failed",
-        })
+        phases.append(
+            {
+                "phase": "processing",
+                "status": "skipped",
+                "reason": "collection failed",
+            }
+        )
 
     total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     overall_success = all(p["status"] == "completed" for p in phases)
@@ -4985,8 +5159,12 @@ def _handle_get_feeds(
     Returns
     -------
     dict
-        For ``format="json"``: ``{domain, format, items, pagination}``.
-        For ``format="rss"``: ``{domain, format, content}`` with the RSS XML string.
+        For ``format="json"``: ``{domain, format, items, pagination}`` —
+        structured JSON, not an opaque text payload.
+        For ``format="rss"``: ``{domain, format, content, content_type,
+        encoding, length, bytes, pagination}``.  ``content`` is the RSS 2.0
+        XML string and the surrounding keys are its machine-readable metadata
+        (T-S-09); ``content_type`` is ``application/rss+xml``.
     """
     from autoinfo.kb import KBStore
 
@@ -5022,23 +5200,25 @@ def _handle_get_feeds(
     total = len(all_raw)
 
     # Slice for pagination
-    page = all_raw[offset: offset + limit]
+    page = all_raw[offset : offset + limit]
 
     # Determine next offset
     next_offset: int | None = offset + limit if offset + limit < total else None
 
     items = []
     for entry in page:
-        items.append({
-            "id": entry.get("entry_id", ""),
-            "title": entry.get("title", ""),
-            "url": entry.get("source_url", ""),
-            "source_type": entry.get("source_type", ""),
-            "source_platform": entry.get("source_platform", ""),
-            "collected_at": entry.get("collected_at", ""),
-            "summary": entry.get("summary", ""),
-            "relevance_score": entry.get("relevance_score", 0.0),
-        })
+        items.append(
+            {
+                "id": entry.get("entry_id", ""),
+                "title": entry.get("title", ""),
+                "url": entry.get("source_url", ""),
+                "source_type": entry.get("source_type", ""),
+                "source_platform": entry.get("source_platform", ""),
+                "collected_at": entry.get("collected_at", ""),
+                "summary": entry.get("summary", ""),
+                "relevance_score": entry.get("relevance_score", 0.0),
+            }
+        )
 
     if format == "rss":
         import xml.etree.ElementTree as ET  # noqa: PLC0415 — deferred import
@@ -5048,9 +5228,7 @@ def _handle_get_feeds(
         ET.SubElement(channel, "title").text = f"AutoInfo Feed — {domain}"
         ET.SubElement(channel, "description").text = f"Knowledge base feed for domain: {domain}"
         ET.SubElement(channel, "link").text = "https://autoinfo.local"
-        ET.SubElement(channel, "lastBuildDate").text = (
-            items[0]["collected_at"] if items else ""
-        )
+        ET.SubElement(channel, "lastBuildDate").text = items[0]["collected_at"] if items else ""
 
         for item in items:
             xml_item = ET.SubElement(channel, "item")
@@ -5060,13 +5238,19 @@ def _handle_get_feeds(
             ET.SubElement(xml_item, "description").text = item["summary"] or ""
             if item["collected_at"]:
                 ET.SubElement(xml_item, "pubDate").text = item["collected_at"]
-            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = item["source_type"] or ""
+            ET.SubElement(xml_item, "source", {"url": item["url"] or ""}).text = (
+                item["source_type"] or ""
+            )
 
         ET.indent(rss, space="  ")
         rss_content = ET.tostring(rss, encoding="unicode", xml_declaration=True)
         return {
             "domain": domain,
-            "format": "rss",
+            **_text_payload_metadata(
+                rss_content,
+                format="rss",
+                content_type="application/rss+xml; charset=utf-8",
+            ),
             "content": rss_content,
             "pagination": {
                 "total": total,
@@ -5109,7 +5293,9 @@ def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
     try:
         active = _list_active()
     except Exception as exc:
-        return {"active_collections": [], "count": 0, "error_code": ErrorCode.INTERNAL_ERROR.value, "message": str(exc), "actionable": True}
+        return _error_from_exc(
+            exc, "Failed to list active collections", code=ErrorCode.INTERNAL_ERROR
+        )
 
     if domain:
         active = [c for c in active if c.get("domain") == domain]
@@ -5204,11 +5390,11 @@ def _handle_set_gate_config(
 
     domain_cfg = _find_domain(cfg, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     from autoinfo.config import DeliveryGateConfig, QualityGateConfig
 
@@ -5249,9 +5435,11 @@ def _handle_set_gate_config(
     # Both branches of is_quality/is_delivery set one of new_gc/new_dc
     if is_quality and new_gc is not None:
         from dataclasses import asdict as _asdict
+
         config_dict = _asdict(new_gc)
     elif new_dc is not None:
         from dataclasses import asdict as _asdict
+
         config_dict = _asdict(new_dc)
     else:
         config_dict = {}
@@ -5286,6 +5474,7 @@ def _handle_get_budget_thresholds() -> dict[str, Any]:
         thresholds = [50.0, 75.0, 90.0, 100.0]
 
     from autoinfo.cost import CostMeter
+
     meter = CostMeter()
     report = meter.get_report()
     current_spend = report["total_cost"]
@@ -5294,13 +5483,19 @@ def _handle_get_budget_thresholds() -> dict[str, Any]:
     for t in sorted(thresholds):
         pct = round(current_spend / t * 100, 2) if t > 0 else 0.0
         breached = current_spend >= t
-        status.append({
-            "threshold": t,
-            "current_spend": round(current_spend, 8),
-            "pct_used": pct,
-            "breached": breached,
-            "severity": "critical" if t >= 100 and breached else "warning" if breached else "ok",
-        })
+        status.append(
+            {
+                "threshold": t,
+                "current_spend": round(current_spend, 8),
+                "pct_used": pct,
+                "breached": breached,
+                "severity": "critical"
+                if t >= 100 and breached
+                else "warning"
+                if breached
+                else "ok",
+            }
+        )
 
     return {
         "budget_thresholds": thresholds,
@@ -5333,11 +5528,11 @@ def _handle_set_budget_thresholds(
         return _error_from_exc(exc, "Failed to load the project configuration")
 
     if not thresholds:
-        return {
-            "error_code": "InvalidArguments",
-            "message": "thresholds must be a non-empty list of floats",
-            "actionable": True,
-        }
+        return error_response(
+            code="InvalidArguments",
+            message="thresholds must be a non-empty list of floats",
+            actionable=True,
+        )
 
     config.cost_alerts.budget_thresholds = [float(t) for t in thresholds]
     if auto_remediation_enabled:
@@ -5374,19 +5569,19 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(cfg, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     product_type_upper = product_type.upper()
     if product_type_upper not in ("RAW", "PROCESSED"):
-        return {
-            "error_code": "ValidationError",
-            "message": f"Invalid product_type '{product_type}'. Must be 'RAW' or 'PROCESSED'.",
-            "actionable": True,
-        }
+        return error_response(
+            code="ValidationError",
+            message=f"Invalid product_type '{product_type}'. Must be 'RAW' or 'PROCESSED'.",
+            actionable=True,
+        )
 
     if product_type_upper == "RAW":
         product = {
@@ -5396,8 +5591,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
             "name": f"{domain} RAW Feed",
             "config": {
                 "sources": [
-                    {"name": s.name, "type": s.type, "url": s.url}
-                    for s in domain_cfg.sources
+                    {"name": s.name, "type": s.type, "url": s.url} for s in domain_cfg.sources
                 ],
                 "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
             },
@@ -5414,8 +5608,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
             "name": f"{domain} PROCESSED Output",
             "config": {
                 "delivery_gates": {
-                    dg: _gate_to_dict(gc)
-                    for dg, gc in domain_cfg.delivery_gates.items()
+                    dg: _gate_to_dict(gc) for dg, gc in domain_cfg.delivery_gates.items()
                 },
                 "webhook_urls": list(getattr(domain_cfg, "webhook_urls", [])),
                 "search_mode": getattr(domain_cfg, "search_mode", "keyword"),
@@ -5441,11 +5634,11 @@ def _handle_list_products(domain: str) -> dict[str, Any]:
 
     domain_cfg = _find_domain(cfg, domain)
     if domain_cfg is None:
-        return {
-            "error_code": ErrorCode.DOMAIN_NOT_FOUND.value,
-            "message": f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
+            actionable=True,
+        )
 
     raw_product = {
         "id": f"{domain}-raw",
@@ -5516,11 +5709,11 @@ def _handle_send_to_enduser(
 
     profile = _get_profile(end_user_id)
     if profile is None:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": f"End user '{end_user_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"End user '{end_user_id}' not found",
+            actionable=True,
+        )
 
     # --- Content-preference tier guard (B-001) -------------------------------
     # Block deliveries whose product kind conflicts with the user's stored
@@ -5531,9 +5724,7 @@ def _handle_send_to_enduser(
 
     effective_preference = _resolve_cp(profile.preferences)
     product_kind = (
-        product_type.lower()
-        if product_type.lower() in ("raw", "processed")
-        else "processed"
+        product_type.lower() if product_type.lower() in ("raw", "processed") else "processed"
     )
     preference_conflict: str | None = None
     if effective_preference == "raw_only" and product_kind != "raw":
@@ -5559,11 +5750,7 @@ def _handle_send_to_enduser(
             actionable=True,
         )
 
-    channel_name: str = (
-        channel
-        or profile.delivery_preferences.get("channel")
-        or "smtp"
-    )
+    channel_name: str = channel or profile.delivery_preferences.get("channel") or "smtp"
 
     domain: str = product_id
     for suffix in ("-raw", "-processed"):
@@ -5574,7 +5761,9 @@ def _handle_send_to_enduser(
     product = Product(
         id=product_id,
         domain=domain,
-        type=ProductType(product_type.lower()) if product_type.lower() in ("raw", "processed") else ProductType.PROCESSED,
+        type=ProductType(product_type.lower())
+        if product_type.lower() in ("raw", "processed")
+        else ProductType.PROCESSED,
         name=f"Product {product_id}",
         delivery_channels=[channel_name],
     )
@@ -5590,7 +5779,6 @@ def _handle_send_to_enduser(
 
     recipients: list[str] = [profile.email] if profile.email else []
 
-
     try:
         channel_instance = get_channel(channel_name)
         result = deliver_with_retry(
@@ -5601,11 +5789,7 @@ def _handle_send_to_enduser(
             subscription_id=delivery_id,
         )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "send_to_enduser failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("send_to_enduser dispatch failed")
         return _error_from_exc(exc, "send_to_enduser dispatch failed")
@@ -5631,11 +5815,11 @@ def _handle_get_alert_rules(domain: str) -> dict[str, Any]:
     try:
         rules = list_alert_rules(domain=domain)
     except Exception as exc:
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": f"Failed to list alert rules: {exc}",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=f"Failed to list alert rules: {exc}",
+            actionable=True,
+        )
 
     from dataclasses import asdict as _asdict
 
@@ -5667,11 +5851,11 @@ def _handle_add_alert_rule(
             kind=kind,
         )
     except Exception as exc:
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": f"Failed to add alert rule: {exc}",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=f"Failed to add alert rule: {exc}",
+            actionable=True,
+        )
 
     from dataclasses import asdict as _asdict
 
@@ -5753,20 +5937,22 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
         domains_list = []
         if hasattr(config, "domains"):
             for d in config.domains:
-                domains_list.append({
-                    "name": d.name,
-                    "active": d.active if hasattr(d, "active") else False,
-                    "source_count": len(d.sources) if hasattr(d, "sources") else 0,
-                    "topic_count": len(d.topics) if hasattr(d, "topics") else 0,
-                })
+                domains_list.append(
+                    {
+                        "name": d.name,
+                        "active": d.active if hasattr(d, "active") else False,
+                        "source_count": len(d.sources) if hasattr(d, "sources") else 0,
+                        "topic_count": len(d.topics) if hasattr(d, "topics") else 0,
+                    }
+                )
         config_dict["domains"] = domains_list
 
     if section and section not in ("project", "llm", "domains"):
-        return {
-            "error_code": ErrorCode.INVALID_SECTION.value,
-            "message": f"Unknown config section '{section}'. Valid: project, llm, domains",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.INVALID_SECTION,
+            message=f"Unknown config section '{section}'. Valid: project, llm, domains",
+            actionable=True,
+        )
 
     config_dict["config_path"] = str(_config_path())
 
@@ -5812,6 +5998,7 @@ def _handle_trace_item(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     knowledge_dir = Path("knowledge")
     if knowledge_dir.is_dir():
         import yaml as _yaml
+
         for md_file in knowledge_dir.rglob("*.md"):
             try:
                 content = md_file.read_text(encoding="utf-8")
@@ -5827,27 +6014,31 @@ def _handle_trace_item(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             except Exception:
                 continue
             if isinstance(fm, dict) and fm.get("trace_id") == trace_id:
-                kb_entries.append({
-                    "entry_id": fm.get("entry_id", ""),
-                    "title": fm.get("title", ""),
-                    "domain": fm.get("domain", ""),
-                    "tier": fm.get("tier", ""),
-                    "file_path": str(md_file),
-                    "collected_at": fm.get("collected_at", ""),
-                    "language": fm.get("language", ""),
-                    "dedup_status": fm.get("dedup_status", ""),
-                })
+                kb_entries.append(
+                    {
+                        "entry_id": fm.get("entry_id", ""),
+                        "title": fm.get("title", ""),
+                        "domain": fm.get("domain", ""),
+                        "tier": fm.get("tier", ""),
+                        "file_path": str(md_file),
+                        "collected_at": fm.get("collected_at", ""),
+                        "language": fm.get("language", ""),
+                        "dedup_status": fm.get("dedup_status", ""),
+                    }
+                )
 
     # -- Timeline from pipeline events -----------------------------------
     timeline: list[dict[str, Any]] = []
     for evt in pipeline_events:
-        timeline.append({
-            "stage": evt.get("module", "?"),
-            "timestamp": evt.get("timestamp", ""),
-            "status": evt.get("level", "?"),
-            "message": evt.get("message", ""),
-            "item_id": evt.get("item_id", ""),
-        })
+        timeline.append(
+            {
+                "stage": evt.get("module", "?"),
+                "timestamp": evt.get("timestamp", ""),
+                "status": evt.get("level", "?"),
+                "message": evt.get("message", ""),
+                "item_id": evt.get("item_id", ""),
+            }
+        )
 
     return {
         "trace_id": trace_id,
@@ -5861,75 +6052,90 @@ def _handle_trace_item(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_metrics(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.metrics import get_metrics as _get_metrics
-    return _get_metrics()
+
+    return _canonicalize(_get_metrics())
 
 
 def _handle_get_prometheus_metrics(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Return raw Prometheus exposition-format metrics in a dict wrapper."""
+    """Return raw Prometheus exposition-format metrics in a self-describing wrapper.
+
+    T-S-09: the exposition text alone is an unlabelled blob.  ``metrics_text``
+    carries the text and ``_text_payload_metadata`` adds machine-readable
+    ``format`` / ``content_type`` / ``encoding`` / ``length`` / ``bytes`` keys.
+    ``content_type`` is the Prometheus text exposition media type
+    (``text/plain; version=0.0.4``), so a consumer can route the payload
+    without sniffing the body.
+    """
     from autoinfo.metrics import format_prometheus
     from autoinfo.metrics import get_metrics as _get_metrics
 
     data = _get_metrics()
-    return {"format": "prometheus", "metrics_text": format_prometheus(data)}
+    metrics_text = format_prometheus(data)
+    return {
+        **_text_payload_metadata(
+            metrics_text,
+            format="prometheus",
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+        ),
+        "metrics_text": metrics_text,
+    }
 
 
 def _handle_soft_delete_entry(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.kb import KBStore
+
     store = KBStore()
     actor = arguments.get("actor") or "agent"
     purge = arguments.get("purge", False)
     try:
         if purge:
-            return store.delete_entry(arguments["entry_id"], actor=actor)
-        return store.soft_delete_entry(arguments["entry_id"], actor=actor)
+            return _canonicalize(store.delete_entry(arguments["entry_id"], actor=actor))
+        return _canonicalize(store.soft_delete_entry(arguments["entry_id"], actor=actor))
     except DirectorOnlyError as exc:
-        return error_response(
-            code=ErrorCode.DIRECTOR_ONLY,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "soft_delete_entry refused", code=ErrorCode.DIRECTOR_ONLY)
 
 
 def _handle_mark_stale(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.kb import mark_stale
-    return mark_stale(arguments["entry_id"])
+
+    return _canonicalize(mark_stale(arguments["entry_id"]))
 
 
 def _handle_restore_entry(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.kb import KBStore
+
     store = KBStore()
-    return store.restore_entry(arguments["entry_id"])
+    return _canonicalize(store.restore_entry(arguments["entry_id"]))
 
 
 def _handle_export_user_data(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.user_store import get_profile
+
     profile = get_profile(arguments["user_id"])
     return {"user_id": arguments["user_id"], "profile": profile}
 
 
 def _handle_delete_user_data(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     from autoinfo.kb import KBStore
+
     store = KBStore()
     purge = arguments.get("purge", False)
     if not purge:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": "Must set purge=True for permanent deletion",
-            "actionable": True,
-            "success": False,
-            "error": {
-                "code": ErrorCode.VALIDATION_ERROR.value,
-                "message": "Must set purge=True for permanent deletion",
-                "actionable": True,
-            },
-        }
-    return store.delete_user_data(arguments["user_id"])
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Must set purge=True for permanent deletion",
+            actionable=True,
+        )
+    return _canonicalize(store.delete_user_data(arguments["user_id"]))
 
 
-def _handle_query_delivery_log(name: str, arguments: dict[str, Any]) -> dict[str, Any] | list[dict[str, Any]]:
+def _handle_query_delivery_log(
+    name: str, arguments: dict[str, Any]
+) -> dict[str, Any] | list[dict[str, Any]]:
     import dataclasses
 
     from autoinfo.delivery_log import query_delivery_log
+
     subscription_id = arguments.get("subscription_id")
     limit = arguments.get("limit", 50)
     status = arguments.get("status")
@@ -6006,7 +6212,14 @@ def _handle_get_channel_health(
     if channel_name is not None:
         channel_cls = _CHANNEL_REGISTRY.get(channel_name)
         if channel_cls is None:
-            return [{"healthy": False, "latency_ms": 0.0, "error": f"unknown channel: {channel_name}", "channel": channel_name}]
+            return [
+                {
+                    "healthy": False,
+                    "latency_ms": 0.0,
+                    "error": f"unknown channel: {channel_name}",
+                    "channel": channel_name,
+                }
+            ]
         instance = channel_cls()
         results.append(instance.health_check())
     else:
@@ -6015,8 +6228,10 @@ def _handle_get_channel_health(
                 instance = channel_cls()
                 results.append(instance.health_check())
             except Exception as exc:
-                results.append({"healthy": False, "latency_ms": 0.0, "error": str(exc), "channel": name})
-    return results
+                results.append(
+                    {"healthy": False, "latency_ms": 0.0, "error": str(exc), "channel": name}
+                )
+    return _canonicalize(results)
 
 
 # ---------------------------------------------------------------------------
@@ -6047,11 +6262,11 @@ def _handle_get_enduser_history(end_user_id: str, limit: int = 20) -> dict[str, 
 
     profile = get_profile(end_user_id)
     if profile is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"End-user '{end_user_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"End-user '{end_user_id}' not found",
+            actionable=True,
+        )
 
     subscriptions = list_subscriptions(user_id=end_user_id)
     sub_ids: list[str] = []
@@ -6106,24 +6321,26 @@ def _handle_get_enduser_products(end_user_id: str) -> dict[str, Any]:
 
     profile = get_profile(end_user_id)
     if profile is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"End-user '{end_user_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"End-user '{end_user_id}' not found",
+            actionable=True,
+        )
 
     subscriptions = list_subscriptions(user_id=end_user_id)
     products: list[dict[str, Any]] = []
     for sub in subscriptions:
-        products.append({
-            "subscription_id": getattr(sub, "subscription_id", getattr(sub, "sub_id", "")),
-            "user_id": sub.user_id,
-            "plan": getattr(sub, "plan", getattr(sub, "product_id", "")),
-            "status": sub.status,
-            "start_date": sub.start_date,
-            "end_date": sub.end_date,
-            "auto_renew": sub.auto_renew,
-        })
+        products.append(
+            {
+                "subscription_id": getattr(sub, "subscription_id", getattr(sub, "sub_id", "")),
+                "user_id": sub.user_id,
+                "plan": getattr(sub, "plan", getattr(sub, "product_id", "")),
+                "status": sub.status,
+                "start_date": sub.start_date,
+                "end_date": sub.end_date,
+                "auto_renew": sub.auto_renew,
+            }
+        )
 
     return {
         "end_user_id": end_user_id,
@@ -6164,7 +6381,7 @@ def _handle_merge_items(
 
     try:
         result = merge_items(item_ids=item_ids, strategy=strategy)
-        return result
+        return _canonicalize(result)
     except Exception as exc:
         logger.exception("merge_items failed")
         return _error_from_exc(exc, "merge_items failed")
@@ -6213,17 +6430,11 @@ def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> d
     store = KBStore()
     entry = store.get_entry(entry_id)
     if entry is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"Entry not found: {entry_id}",
-            "actionable": True,
-            "success": False,
-            "error": {
-                "code": ErrorCode.NOT_FOUND.value,
-                "message": f"Entry not found: {entry_id}",
-                "actionable": True,
-            },
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"Entry not found: {entry_id}",
+            actionable=True,
+        )
     score = calculate_freshness_score(entry, ttl_days)
     return {"entry_id": entry_id, "freshness_score": score, "ttl_days": ttl_days}
 
@@ -6241,14 +6452,10 @@ def _handle_activate_trial(
     from autoinfo.user_store import activate_trial
 
     try:
-        return activate_trial(end_user_id=end_user_id, days=days)
+        return _canonicalize(activate_trial(end_user_id=end_user_id, days=days))
     except Exception as exc:
         logger.exception("activate_trial failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "activate_trial failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_check_trial_expiry(end_user_id: str) -> dict[str, Any]:
@@ -6256,14 +6463,10 @@ def _handle_check_trial_expiry(end_user_id: str) -> dict[str, Any]:
     from autoinfo.user_store import check_trial_expiry
 
     try:
-        return check_trial_expiry(end_user_id=end_user_id)
+        return _canonicalize(check_trial_expiry(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("check_trial_expiry failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "check_trial_expiry failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -6286,23 +6489,21 @@ def _handle_create_checkout_session(
     from autoinfo.billing import create_checkout_session
 
     try:
-        return create_checkout_session(
-            product_id=product_id,
-            end_user_id=end_user_id,
-            mode=mode,
-            success_url=success_url,
-            cancel_url=cancel_url,
-            email=email,
-            name=name,
-            article_id=article_id,
+        return _canonicalize(
+            create_checkout_session(
+                product_id=product_id,
+                end_user_id=end_user_id,
+                mode=mode,
+                success_url=success_url,
+                cancel_url=cancel_url,
+                email=email,
+                name=name,
+                article_id=article_id,
+            )
         )
     except Exception as exc:
         logger.exception("create_checkout_session failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "create_checkout_session failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_get_subscription_status(end_user_id: str = "") -> dict[str, Any]:
@@ -6311,14 +6512,10 @@ def _handle_get_subscription_status(end_user_id: str = "") -> dict[str, Any]:
 
     end_user_id = resolve_user_id(end_user_id or None)
     try:
-        return get_subscription_status(end_user_id=end_user_id)
+        return _canonicalize(get_subscription_status(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("get_subscription_status failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "get_subscription_status failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_get_billing_summary(
@@ -6353,11 +6550,7 @@ def _handle_get_billing_summary(
         subscription = get_subscription_status(end_user_id=user_id)
     except Exception as exc:
         logger.exception("get_billing_summary failed for '%s'", user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "get_billing_summary failed", code=ErrorCode.INTERNAL_ERROR)
 
     return {
         "user_id": user_id,
@@ -6395,14 +6588,10 @@ def _handle_get_enduser_usage(
 
     try:
         meter = CostMeter()
-        return meter.get_enduser_usage(end_user_id=end_user_id, period=period)
+        return _canonicalize(meter.get_enduser_usage(end_user_id=end_user_id, period=period))
     except Exception as exc:
         logger.exception("get_enduser_usage failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "get_enduser_usage failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_get_enduser_invoice(
@@ -6418,14 +6607,10 @@ def _handle_get_enduser_invoice(
 
     try:
         meter = CostMeter()
-        return meter.get_enduser_invoice(end_user_id=end_user_id, period=period)
+        return _canonicalize(meter.get_enduser_invoice(end_user_id=end_user_id, period=period))
     except Exception as exc:
         logger.exception("get_enduser_invoice failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "get_enduser_invoice failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -6458,14 +6643,10 @@ def _handle_update_preferences(
             )
 
     try:
-        return update_preferences(end_user_id=end_user_id, preferences=preferences)
+        return _canonicalize(update_preferences(end_user_id=end_user_id, preferences=preferences))
     except Exception as exc:
         logger.exception("update_preferences failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "update_preferences failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
@@ -6473,14 +6654,10 @@ def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
     from autoinfo.user_store import get_preferences
 
     try:
-        return get_preferences(end_user_id=end_user_id)
+        return _canonicalize(get_preferences(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("get_preferences failed for '%s'", end_user_id)
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "get_preferences failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -6530,11 +6707,11 @@ def _handle_enduser_get(user_id: str) -> dict[str, Any]:
         return _error_from_exc(exc, "enduser_get failed")
 
     if profile is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"End-user '{user_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"End-user '{user_id}' not found",
+            actionable=True,
+        )
 
     return success_response(_asdict(profile))
 
@@ -6566,11 +6743,11 @@ def _handle_enduser_update(
         return _error_from_exc(exc, "enduser_update failed")
 
     if profile is None:
-        return {
-            "error_code": ErrorCode.NOT_FOUND.value,
-            "message": f"End-user '{user_id}' not found",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"End-user '{user_id}' not found",
+            actionable=True,
+        )
 
     return success_response(_asdict(profile))
 
@@ -6615,6 +6792,7 @@ def _handle_enduser_list() -> dict[str, Any]:
 # Agent Callback handlers (3)
 # ---------------------------------------------------------------------------
 
+
 def _handle_set_agent_callback(
     agent_url: str,
     events: list[str],
@@ -6631,18 +6809,10 @@ def _handle_set_agent_callback(
             "created": True,
         }
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "set_agent_callback failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("set_agent_callback failed")
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "set_agent_callback failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_list_agent_callbacks() -> dict[str, Any] | list[dict[str, Any]]:
@@ -6650,14 +6820,10 @@ def _handle_list_agent_callbacks() -> dict[str, Any] | list[dict[str, Any]]:
     from autoinfo.agent_callback import list_agent_callbacks
 
     try:
-        return list_agent_callbacks()
+        return _canonicalize(list_agent_callbacks())
     except Exception as exc:
         logger.exception("list_agent_callbacks failed")
-        return {
-            "error_code": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(exc, "list_agent_callbacks failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
@@ -6675,11 +6841,7 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
         )
     except Exception as exc:
         logger.exception("remove_agent_callback failed")
-        return error_response(
-            code=ErrorCode.INTERNAL_ERROR,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "remove_agent_callback failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -6698,12 +6860,9 @@ def _handle_simplify_content(
     result = simplify_text(content, target_level, language)
 
     if target_level not in (frozenset({"A1", "A2", "B1", "B2", "C1"})):
-        return error_dict(
-            error_code=ErrorCode.VALIDATION_ERROR,
-            message=(
-                f"Invalid target_level: '{target_level}'. "
-                "Must be one of A1, A2, B1, B2, C1."
-            ),
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=(f"Invalid target_level: '{target_level}'. Must be one of A1, A2, B1, B2, C1."),
             actionable=True,
         )
 
@@ -6715,7 +6874,7 @@ def _handle_simplify_content(
 
 
 # ---------------------------------------------------------------------------
-# Validation (2)
+# Validation (4)
 # ---------------------------------------------------------------------------
 
 
@@ -6723,7 +6882,7 @@ def _handle_list_validation_scenarios() -> dict[str, Any]:
     """Handle list_validation_scenarios MCP tool."""
     from autoinfo.mcp.validation import list_scenarios
 
-    return list_scenarios()
+    return _canonicalize(list_scenarios())
 
 
 async def _handle_run_validation_scenario(
@@ -6737,7 +6896,7 @@ async def _handle_run_validation_scenario(
 
     async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         texts = await call_tool(name, arguments)
-        return cast(dict[str, Any], json.loads(texts[0].text))
+        return cast(dict[str, Any], json.loads(texts[0][0].text))
 
     try:
         result = await run_scenario(
@@ -6747,15 +6906,112 @@ async def _handle_run_validation_scenario(
             timeout=timeout,
         )
         if save_results:
-            run_dir = save_scenario_results([result])
+            from autoinfo.output.run_report import (
+                build_run_report,
+                persist_run_report,
+            )
+
+            session_id = result.get("session_id") or result.get("trace_id")
+            run_dir = save_scenario_results([result], session_id=session_id)
             result["saved_run"] = str(run_dir)
+            report = build_run_report(session_id, [result], kind="single")
+            result["report_path"] = str(persist_run_report(report))
         return result
     except ValueError as exc:
-        return error_response(
+        return _error_from_exc(
+            exc,
+            "run_validation_scenario failed",
             code=ErrorCode.VALIDATION_ERROR,
-            message=str(exc),
+        )
+
+
+async def _handle_run_all_validation_scenarios(
+    save_results: bool = True,
+    timeout: float = 180.0,
+) -> dict[str, Any]:
+    """Handle run_all_validation_scenarios MCP tool (R-S-05).
+
+    Runs the full live scenario library once and persists a single aggregate
+    run (``run_type="suite"``) whose ``scenarios[]`` array carries every
+    per-scenario result, so ``scripts/validation_report.py`` renders the whole
+    suite from one run without external aggregation scripting.
+    """
+    from autoinfo.mcp.validation import run_all_scenarios
+
+    async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        texts = await call_tool(name, arguments)
+        return cast(dict[str, Any], json.loads(texts[0][0].text))
+
+    try:
+        return await run_all_scenarios(
+            dispatch=_validation_dispatch,
+            timeout=timeout,
+            save=save_results,
+        )
+    except Exception as exc:  # noqa: BLE001 - typed envelope, never a silent pass
+        return _error_from_exc(
+            exc,
+            "run_all_validation_scenarios failed",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+
+
+def _handle_get_coverage_report() -> dict[str, Any]:
+    """Handle get_coverage_report MCP tool (register T-A-02/T-A-03/T-A-07).
+
+    Delegates to ``scripts/stage_user_coverage.py::build_report`` so the MCP
+    surface and the CLI report are the same classification (one source of
+    truth).  The script reads live scenario tags, the Todo 23 disposition
+    tables and the catalog matrix at call time — no cached classification.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    script = root / "scripts" / "stage_user_coverage.py"
+    try:
+        spec = importlib.util.spec_from_file_location("_autoinfo_stage_user_coverage", script)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load coverage script at {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return _canonicalize(module.build_report(root=root))
+    except Exception as exc:  # noqa: BLE001 - surface a typed error, never a silent pass
+        return _error_from_exc(
+            exc,
+            "get_coverage_report failed",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+
+
+def _handle_get_run_decisions(session_id: str) -> dict[str, Any]:
+    """Handle get_run_decisions MCP tool (TR-A-01/TR-A-02, B2.6/F69).
+
+    Return the structured decision trail for one run/session correlation id:
+    every scenario verdict, every step decision in execution order, and the
+    anomaly list (failures, timeouts, unconfigured/recovered steps, warnings).
+    Reads the persisted report under ``validation-runs/sessions/<id>.json``;
+    when no separate report exists it falls back to scanning saved runs, so an
+    already-persisted run is still queryable.  Use after
+    ``run_validation_scenario(save_results=true)`` or
+    ``run_all_validation_scenarios()`` to reconstruct what happened without
+    re-running anything.
+    """
+    from autoinfo.output.run_report import load_run_report
+
+    report = load_run_report(session_id)
+    if report is None:
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=(
+                f"No run report found for session_id '{session_id}'. Run "
+                "run_validation_scenario(save_results=true) or "
+                "run_all_validation_scenarios() first, then query the "
+                "returned session_id."
+            ),
             actionable=True,
         )
+    return success_response(report)
 
 
 def _handle_recommend_content(
@@ -6793,11 +7049,7 @@ def _handle_recommend_content(
         }
     except Exception as exc:
         logger.error("recommend_content failed: %s", exc)
-        return error_response(
-            code=ErrorCode.INTERNAL_ERROR,
-            message=str(exc),
-            actionable=True,
-        )
+        return _error_from_exc(exc, "recommend_content failed", code=ErrorCode.INTERNAL_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -6852,13 +7104,11 @@ def _handle_create_kb_entry(
 
     try:
         if not domain or not title or not content or not source_url:
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": (
-                    "domain, title, content, and source_url are required"
-                ),
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="domain, title, content, and source_url are required. Provide all four fields to create the KB entry.",
+                actionable=True,
+            )
 
         if len(content.strip()) < MIN_KB_CONTENT_CHARS:
             return error_response(
@@ -6889,26 +7139,28 @@ def _handle_create_kb_entry(
 
         if entry is None:
             # Issue #182: rejected (content too short) — clean error response
-            return {
-                "error_code": ErrorCode.VALIDATION_ERROR.value,
-                "message": "entry rejected by KB store (content too short or unparseable)",
-                "actionable": True,
-            }
+            return error_response(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="entry rejected by KB store (content too short or unparseable)",
+                actionable=True,
+            )
 
-        return success_response({
-            "entry_id": entry.entry_id,
-            "tier": entry.tier,
-            "source_url": entry.source_url,
-            "created_at": entry.collected_at,
-            "title": entry.title,
-            "domain": entry.domain,
-        })
+        return success_response(
+            {
+                "entry_id": entry.entry_id,
+                "tier": entry.tier,
+                "source_url": entry.source_url,
+                "created_at": entry.collected_at,
+                "title": entry.title,
+                "domain": entry.domain,
+            }
+        )
     except ValueError as exc:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": str(exc),
-            "actionable": True,
-        }
+        return _error_from_exc(
+            exc,
+            "Failed to create the KB entry",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
     except Exception as exc:
         logger.exception("create_kb_entry failed")
         return _error_from_exc(exc, "create_kb_entry failed")
@@ -7017,11 +7269,11 @@ def _handle_cefr_batch(
     from autoinfo.cefr import classify_text
 
     if not texts:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": "texts must be a non-empty list",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="texts must be a non-empty list",
+            actionable=True,
+        )
 
     results: list[dict[str, Any]] = []
     errors = 0
@@ -7048,11 +7300,13 @@ def _handle_cefr_batch(
         for i, future in futures.items():
             try:
                 result = future.result()
-                results.append({
-                    "text": texts[i],
-                    "cefr_level": result["cefr_level"],
-                    "confidence": result["confidence"],
-                })
+                results.append(
+                    {
+                        "text": texts[i],
+                        "cefr_level": result["cefr_level"],
+                        "confidence": result["confidence"],
+                    }
+                )
             except Exception as exc:
                 results.append({"text": texts[i], "error": str(exc)})
                 errors += 1
@@ -7113,11 +7367,11 @@ def _handle_email_config(
     email_cfg = cfg.email
 
     if enable and disable:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": "Cannot use both enable and disable.",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Cannot use both enable and disable.",
+            actionable=True,
+        )
 
     changed = False
     if smtp_server:
@@ -7179,9 +7433,7 @@ def _handle_email_config(
 
             server = None
             try:
-                server = smtplib.SMTP(
-                    email_cfg.smtp_host, email_cfg.smtp_port, timeout=30
-                )
+                server = smtplib.SMTP(email_cfg.smtp_host, email_cfg.smtp_port, timeout=30)
                 server.ehlo()
                 if server.has_extn("STARTTLS"):
                     server.starttls()
@@ -7199,7 +7451,7 @@ def _handle_email_config(
                     except Exception:
                         pass
 
-    return response
+    return _canonicalize(response)
 
 
 # ---------------------------------------------------------------------------
@@ -7230,11 +7482,11 @@ def _handle_knowledge_graph_export(
     """
     valid_formats = {"json", "graphml", "csv"}
     if format not in valid_formats:
-        return {
-            "error_code": ErrorCode.VALIDATION_ERROR.value,
-            "message": f"Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
-            "actionable": True,
-        }
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
+            actionable=True,
+        )
 
     from autoinfo.kb import KBStore
 
@@ -7246,8 +7498,7 @@ def _handle_knowledge_graph_export(
         logger.exception("Knowledge graph export failed for domain '%s'", domain)
         return _error_from_exc(exc, "Knowledge graph export failed")
 
-    out_path = (Path(output) if output
-                else Path(f"knowledge_graph_export.{format}"))
+    out_path = Path(output) if output else Path(f"knowledge_graph_export.{format}")
 
     try:
         if format == "json":
@@ -7255,10 +7506,12 @@ def _handle_knowledge_graph_export(
             out_path.write_text(content, encoding="utf-8")
         elif format == "graphml":
             from autoinfo.cli.knowledge import _build_graphml
+
             xml_content = _build_graphml(data)
             out_path.write_text(xml_content, encoding="utf-8")
         elif format == "csv":
             from autoinfo.cli.knowledge import _write_csv
+
             stem = str(out_path.with_suffix(""))
             _write_csv(data, stem)
     except OSError as exc:
@@ -7401,7 +7654,7 @@ def _handle_cost_dashboard(
         from autoinfo.cost import CostMeter
 
         meter = CostMeter()
-        return meter.get_cost_dashboard(period=period)
+        return _canonicalize(meter.get_cost_dashboard(period=period))
     except Exception as exc:
         logger.exception("Cost dashboard failed")
         return _error_from_exc(exc, "Cost dashboard failed")
@@ -7437,15 +7690,19 @@ def _handle_cost_allocation(
         from autoinfo.cost import CostMeter
 
         meter = CostMeter()
-        return meter.get_cost_allocation(
-            domain=domain, user_id=user_id, period=period
+        return _canonicalize(
+            meter.get_cost_allocation(domain=domain, user_id=user_id, period=period)
         )
     except Exception as exc:
         logger.exception("Cost allocation failed")
         return _error_from_exc(exc, "Cost allocation failed")
 
 
-def _error_from_exc(exc: Exception, context: str) -> dict[str, Any]:
+def _error_from_exc(
+    exc: Exception,
+    context: str,
+    code: ErrorCode | str | None = None,
+) -> dict[str, Any]:
     """Build an actionable error dict from an unexpected exception.
 
     Replaces the old ``_error_dict(exc)`` which leaked the raw exception
@@ -7453,36 +7710,94 @@ def _error_from_exc(exc: Exception, context: str) -> dict[str, Any]:
     The message now carries a human-readable operation context plus the
     exception detail and a concrete next step.
 
-    Returns both the legacy flat fields (``error_code``, ``message``,
-    ``actionable``) and the new envelope fields (``success``, ``error``).
-    Callers receive a fully populated error dict that passes through the
-    standard call_tool wrapping unchanged (idempotent).
+    ``code`` preserves the semantic :class:`ErrorCode` a call site used to
+    pass to ``error_response`` (e.g. ``COLLECTION_FAILED``,
+    ``DIRECTOR_ONLY``); when omitted the error is ``INTERNAL_ERROR``.
+
+    Returns the canonical error envelope
+    ``{success: False, error: {code, message, actionable}}`` so callers can
+    return it directly and the standard ``call_tool`` wrapping passes it
+    through unchanged (idempotent).
     """
-    code_str = ErrorCode.INTERNAL_ERROR.value
+    if isinstance(code, ErrorCode):
+        code_str = code.value
+    elif code:
+        code_str = str(code)
+    else:
+        code_str = ErrorCode.INTERNAL_ERROR.value
     message_str = (
         f"{context}: {exc}. Check the request parameters and retry, "
         "or consult the docs for supported inputs."
     )
+    return error_response(
+        code=code_str,
+        message=message_str,
+        actionable=True,
+    )
+
+
+def _text_payload_metadata(
+    text: str,
+    *,
+    format: str,
+    content_type: str,
+) -> dict[str, Any]:
+    """Build machine-readable metadata for a raw-text tool payload.
+
+    T-S-09: no tool may return an unlabelled text blob.  Every text-format
+    payload carries the text under a domain-specific key (``metrics_text``
+    for Prometheus exposition text, ``content`` for RSS XML) **plus** this
+    metadata block so an agent can parse/route it without sniffing bytes:
+
+    - ``format`` — payload family (``"prometheus"`` / ``"rss"``)
+    - ``content_type`` — IANA media type + parameters (RFC 7231)
+    - ``encoding`` — text encoding of ``bytes`` (always UTF-8 here)
+    - ``length`` — character count (``len(text)``)
+    - ``bytes`` — encoded size in UTF-8 octets
+
+    The metadata is merged into the handler's result dict; the caller keeps
+    its own keys (``domain``, ``pagination``, ...).  This is a pure payload
+    annotation — it changes no business behavior.
+    """
     return {
-        "error_code": code_str,
-        "message": message_str,
-        "actionable": True,
-        "success": False,
-        "error": {
-            "code": code_str,
-            "message": message_str,
-            "actionable": True,
-        },
+        "format": format,
+        "content_type": content_type,
+        "encoding": "utf-8",
+        "length": len(text),
+        "bytes": len(text.encode("utf-8")),
     }
 
 
-def _error_response(exc: Exception) -> list[TextContent]:
-    """Build a standardised error response in the envelope format.
+def _canonicalize(result: Any) -> Any:
+    """Normalize a forwarded helper result into the canonical envelope.
+
+    Some handlers forward the result of a lower-level helper (e.g.
+    ``status.get_source_health``, ``user_store.update_preferences``) that
+    still speaks the legacy flat shape (``error_code`` / bare ``success``).
+    This boundary helper converts those into the canonical envelope and
+    passes already-canonical or plain-data results through unchanged.
+    """
+    if not isinstance(result, dict):
+        return result
+    if "error_code" in result:
+        return error_response(
+            code=result["error_code"],
+            message=result.get("message", ""),
+            actionable=result.get("actionable", True),
+        )
+    if "success" in result and not {"data", "error"} & set(result):
+        return success_response({k: v for k, v in result.items() if k != "success"})
+    return result
+
+
+def _error_response(exc: Exception) -> dict[str, Any]:
+    """Build a standardised error envelope from an exception.
 
     Maps well-known exception types to appropriate ``ErrorCodes``.
     Falls back to ``INTERNAL_ERROR`` for unrecognised exceptions.
 
-    Returns ``list[TextContent]`` with the uniform ``{success, error}`` shape.
+    Returns the uniform ``{success: False, error: {...}}`` dict; the caller
+    packs it into the MCP content/structured-content tuple.
     """
     # -- Determine ErrorCode from exception type ---------------------------
     if isinstance(exc, DirectorOnlyError):
@@ -7514,19 +7829,14 @@ def _error_response(exc: Exception) -> list[TextContent]:
         except ImportError:
             pass
 
-    return [
-        TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": {
-                    "code": code.value,
-                    "message": str(exc),
-                    "actionable": True,
-                },
-            }),
-        )
-    ]
+    return {
+        "success": False,
+        "error": {
+            "code": code.value,
+            "message": str(exc),
+            "actionable": True,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -7535,3957 +7845,4436 @@ def _error_response(exc: Exception) -> list[TextContent]:
 
 app = Server("autoinfo")
 
+# Director-only operations (T-S-08 / AC1.3).  These are reserved for the
+# human director and are gated at the CODE level, not merely documented: a
+# default agent neither discovers them in ``list_tools()`` nor can invoke
+# them (the dispatch guard below refuses with ``DIRECTOR_ONLY``).  Keeping
+# the single source of truth here means discovery, the machine-readable
+# per-tool marker, and the dispatch guard can never drift apart.
+_DIRECTOR_ONLY_TOOLS: frozenset[str] = frozenset(
+    {
+        "demote_kb_wiki",  # 03-Wiki is append-only: director-only demotion
+        "force_promote",  # skip the curation/admission gate: director-only
+        "remove_domain",  # destructive config removal: human/director decides
+    }
+)
+
+# JSON Schema extension keyword marking a tool as director-only.  Unknown
+# keywords are ignored by standard JSON Schema consumers, so this rides
+# alongside the normal schema while staying machine-readable to an agent.
+DIRECTOR_ONLY_MARKER = "x-autoinfo-director-only"
+
+
+def _caller_actor_for_discovery() -> str:
+    """Resolve the actor identity used to decide director-surface visibility.
+
+    The MCP stdio transport carries no per-request caller identity, so the
+    server identity is taken from ``AUTOINFO_ACTOR`` (the same variable the
+    audit trail uses).  When that is unset but ``AUTOINFO_DIRECTOR_ACTORS``
+    is explicitly configured, the server adopts the first whitelisted actor
+    as its identity — i.e. a director-operated server.  A default agent
+    (neither variable set) resolves to ``"agent:mcp"``, which the default
+    ``"director"`` whitelist never matches, so director tools stay hidden.
+    """
+    actor = os.environ.get("AUTOINFO_ACTOR")
+    if actor and actor.strip():
+        return actor.strip()
+    raw = os.environ.get("AUTOINFO_DIRECTOR_ACTORS")
+    if raw and raw.strip():
+        first = next((a.strip() for a in raw.split(",") if a.strip()), "")
+        if first:
+            return first
+    return "agent:mcp"
+
+
+def _caller_is_director() -> bool:
+    """Return whether the current server identity is a whitelisted director."""
+    if _is_readonly():
+        return False
+    return is_director(_caller_actor_for_discovery())
+
 
 @app.list_tools()  # type: ignore[untyped-decorator,no-untyped-call]
 async def list_tools() -> list[Tool]:
     """Declare the available MCP tools with their input schemas.
 
     Read-only mode (gate 1): exposes ONLY the ``_READONLY_TOOLS`` whitelist.
+
+    Director gating (T-S-08): a default agent never sees the
+    ``_DIRECTOR_ONLY_TOOLS`` surface — an operation it cannot invoke is not
+    advertised.  A server whose identity resolves to a whitelisted
+    ``AUTOINFO_DIRECTOR_ACTORS`` entry sees the full declaration; those
+    tools also carry the machine-readable ``DIRECTOR_ONLY_MARKER``.
     """
+    tools = _full_tool_list()
     if _is_readonly():
-        return [t for t in _full_tool_list() if t.name in _READONLY_TOOLS]
-    return _full_tool_list()
+        return [t for t in tools if t.name in _READONLY_TOOLS]
+    if not _caller_is_director():
+        return [t for t in tools if t.name not in _DIRECTOR_ONLY_TOOLS]
+    return tools
+
+
+# Canonical param spellings with their legacy alias (T-S-03). The alias is
+# accepted at dispatch and exposed as an optional schema property; it is then
+# normalized to whichever spelling the handler signature expects.
+_USER_ID_ALIASES = ("user_id", "end_user_id")
+_DOMAIN_ALIASES = ("name", "domain")
+_DOMAIN_IDENTITY_TOOLS = frozenset(
+    {
+        "activate_domain",
+        "deactivate_domain",
+        "add_domain",
+        "remove_domain",
+        "get_domain_config",
+    }
+)
+
+# Canonical envelope from errors.py (ADR-0005). Modeled as a two-branch
+# ``oneOf`` because per-tool ``data`` shapes are heterogeneous; only the
+# envelope is a fixed contract every tool shares.
+_TOOL_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Canonical AutoInfo envelope: {success: true, data: ...} on success, "
+        "{success: false, error: {code, message, actionable}} on failure."
+    ),
+    "properties": {
+        "success": {
+            "type": "boolean",
+            "description": "True on success, False on error.",
+        },
+        "data": {
+            "description": (
+                "Tool-specific success payload. Shape varies per tool; absent "
+                "when success is false."
+            ),
+        },
+        "error": {
+            "type": "object",
+            "description": "Canonical error detail; absent when success is true.",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "ErrorCode enum value (e.g. DomainNotFound).",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Human-readable error message with remediation.",
+                },
+                "actionable": {
+                    "type": "boolean",
+                    "description": "True when the agent can act on the message.",
+                },
+            },
+            "required": ["code", "message", "actionable"],
+        },
+    },
+    "required": ["success"],
+    "oneOf": [
+        {"required": ["success", "data"], "not": {"required": ["error"]}},
+        {"required": ["success", "error"], "not": {"required": ["data"]}},
+    ],
+}
+
+
+def _inject_param_alias(
+    schema: dict[str, Any],
+    canonical: str,
+    alias: str,
+    alias_description: str,
+) -> None:
+    """Expose ``alias`` as an optional spelling of ``canonical``.
+
+    ``canonical`` stays required alongside the alias so the contract still
+    demands the value while either spelling satisfies it (JSON Schema
+    ``required`` is presence-only — dispatch collapses the alias).
+    """
+    props = schema.setdefault("properties", {})
+    if canonical not in props or alias in props:
+        return
+    props[alias] = {
+        "type": props[canonical].get("type", "string"),
+        "description": alias_description,
+        "deprecated": True,
+    }
+
+
+def _inject_param_aliases(tool: Tool) -> None:
+    """Expose legacy param spellings as optional aliases (T-S-03).
+
+    ``user_id``/``end_user_id`` and ``domain``/``name`` are the same entity
+    spelled two ways across the surface.  Both spellings remain callable;
+    dispatch normalizes to whichever spelling the handler expects.  The
+    canonical spelling stays in ``required`` when the handler needs it; the
+    alias is optional so existing required-param contracts don't break.
+    """
+    schema = tool.inputSchema
+    if not isinstance(schema, dict):
+        return
+    props = schema.get("properties", {})
+    if "user_id" in props:
+        _inject_param_alias(
+            schema,
+            "user_id",
+            "end_user_id",
+            "Alias of user_id (deprecated spelling; both are accepted).",
+        )
+    elif "end_user_id" in props:
+        _inject_param_alias(
+            schema,
+            "end_user_id",
+            "user_id",
+            "Alias of end_user_id (canonical spelling; both are accepted).",
+        )
+    if tool.name in _DOMAIN_IDENTITY_TOOLS and "name" in props:
+        _inject_param_alias(
+            schema,
+            "name",
+            "domain",
+            "Alias of name (domain identity; both are accepted).",
+        )
+
+
+def _with_output_schema(tools: list[Tool]) -> list[Tool]:
+    """Attach the canonical envelope ``outputSchema`` to every declared tool.
+
+    ``Tool.outputSchema`` is optional in the MCP types; this fills it for
+    every tool so 100% of the declared surface advertises its return
+    contract.  Any explicitly-set ``outputSchema`` is preserved (future
+    per-tool refinement), so this is a defaulting layer, never an override.
+    Also injects legacy param aliases (:func:`_inject_param_aliases`) and the
+    ``DIRECTOR_ONLY_MARKER`` on director-only tools.
+    """
+    for tool in tools:
+        if tool.outputSchema is None:
+            tool.outputSchema = _TOOL_OUTPUT_SCHEMA
+        _inject_param_aliases(tool)
+        if tool.name in _DIRECTOR_ONLY_TOOLS and isinstance(tool.inputSchema, dict):
+            tool.inputSchema[DIRECTOR_ONLY_MARKER] = True
+    return tools
 
 
 def _full_tool_list() -> list[Tool]:
-    return [
-        # -- System (2) ---------------------------------------------------
-        Tool(
-            name="health_check",
-            description="Check server health status",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="get_tool_count",
-            description="Return the number of registered MCP tools",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="diagnose_system",
-            description=(
-                "Comprehensive system diagnostics — LLM config, "
-                "sources, disk, database, health_score (0-100), "
-                "and phase detection (uninitialized/llm_unconfigured/"
-                "no_sources/ready_to_collect/operational)"
+    return _with_output_schema(
+        [
+            # -- System (2) ---------------------------------------------------
+            Tool(
+                name="health_check",
+                description="Check server health status. Returns status, version, and the registered tool count without touching the LLM or disk. Use as the first call when a session starts to confirm the MCP server is alive and correctly versioned.",
+                inputSchema={"type": "object", "properties": {}},
             ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        # -- Discovery (7) ------------------------------------------------
-        Tool(
-            name="list_domains",
-            description="List all configured domains with source/topic counts",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="list_available_platforms",
-            description="List all supported source platform types with descriptions",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="get_domain_schema",
-            description="Return the extraction schema and structure for a domain",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="list_available_models",
-            description="List configured LLM models with provider and task info",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="get_effective_llm_config",
-            description="Resolve the effective LLM configuration for a task",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": (
-                            "Optional task name (e.g. extraction, "
-                            "summarization)"
-                        ),
-                        "default": None,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="activate_domain",
-            description="Activate a domain (set domain.active = True)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Domain name to activate",
-                    },
-                },
-                "required": ["name"],
-            },
-        ),
-        Tool(
-            name="deactivate_domain",
-            description="Deactivate a domain (set domain.active = False)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Domain name to deactivate",
-                    },
-                },
-                "required": ["name"],
-            },
-        ),
-        Tool(
-            name="add_domain",
-            description="Create a new domain configuration (idempotent — returns existing config if domain already exists)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Domain name (e.g. my-custom-domain)",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Optional description of the domain",
-                    },
-                },
-                "required": ["name"],
-            },
-        ),
-        Tool(
-            name="remove_domain",
-            description="Remove a domain configuration. Preserves all collected data on disk. Requires confirm=True (destructive operation).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Domain name to remove",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to remove a domain (destructive operation)",
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["name", "confirm", "actor"],
-            },
-        ),
-        Tool(
-            name="get_domain_config",
-            description="Return full domain config including sources, topics, extract_fields",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["name"],
-            },
-        ),
-        # -- Source Management (5) ----------------------------------------
-        Tool(
-            name="add_source",
-            description=(
-                "Add a data source (idempotent — dedup by url + type + domain). "
-                "Supports 6 source types: api, rss, web, webhook, email, pdf. "
-                "For email sources, pass imap_server/imap_port/imap_username/"
-                "imap_password/imap_mailbox convenience params. "
-                "For webhook sources, pass webhook_secret for HMAC verification. "
-                "All types accept an optional settings dict for arbitrary configuration."
+            Tool(
+                name="get_tool_count",
+                description="Return the number of registered MCP tools. Reads the live _full_tool_list() so the count always matches the declared surface. Use to sanity-check a server's tool inventory after configuration changes.",
+                inputSchema={"type": "object", "properties": {}},
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Human-readable source name",
+            Tool(
+                name="diagnose_system",
+                description=(
+                    "Comprehensive system diagnostics — LLM config, "
+                    "sources, disk, database, health_score (0-100), "
+                    "and phase detection (uninitialized/llm_unconfigured/"
+                    "no_sources/ready_to_collect/operational)"
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # -- Discovery (7) ------------------------------------------------
+            Tool(
+                name="list_domains",
+                description="List all configured domains with source/topic counts. Each entry shows name, active flag, source count and topic count. Use to orient at session start before deciding which domain to collect, process, or generate output for.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="list_available_platforms",
+                description="List all supported source platform types with descriptions. Returns the catalog of collector handlers (rss, api, web, webhook, email, pdf and the platform-specific adapters). Use when choosing a source type for add_source.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_domain_schema",
+                description="Return the extraction schema and structure for a domain. Lists the extract_fields, classifier settings and quality-gate configuration that process_collection applies. Use to preview what fields an item will be extracted into.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
                     },
-                    "url": {
-                        "type": "string",
-                        "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
-                    },
-                    "type": {
-                        "type": "string",
-                        "description": "Source type (api, rss, web, webhook, email, pdf)",
-                        "default": "api",
-                        "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to add this source to",
-                    },
-                    "settings": {
-                        "type": "object",
-                        "description": "Optional key-value configuration (stored in SourceConfig.settings)",
-                    },
-                    "requires_key": {
-                        "type": "boolean",
-                        "description": (
-                            "Whether this source requires an API key/credential. "
-                            "Defaults to derived from the source type (true for "
-                            "known key-requiring types, e.g. nyt, ap_api, "
-                            "reuters_mcp, unpaywall, youtube)."
-                        ),
-                    },
-                    "imap_server": {
-                        "type": "string",
-                        "description": "Email type only: IMAP server hostname (e.g. imap.gmail.com)",
-                    },
-                    "imap_port": {
-                        "type": "integer",
-                        "description": "Email type only: IMAP port (default 993)",
-                    },
-                    "imap_username": {
-                        "type": "string",
-                        "description": "Email type only: IMAP username",
-                    },
-                    "imap_password": {
-                        "type": "string",
-                        "description": "Email type only: IMAP password (or set AUTOINFO_EMAIL_PASSWORD env var)",
-                    },
-                    "imap_mailbox": {
-                        "type": "string",
-                        "description": "Email type only: IMAP mailbox name (default INBOX)",
-                    },
-                    "webhook_secret": {
-                        "type": "string",
-                        "description": "Webhook type only: HMAC shared secret for payload verification",
-                    },
+                    "required": ["domain"],
                 },
-                "required": ["name", "url", "domain"],
-            },
-        ),
-        Tool(
-            name="add_sources",
-            description="Batch-add sources with per-source error isolation. Each source object supports the same parameters as add_source.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "sources": {
-                        "type": "array",
-                        "items": {
+            ),
+            Tool(
+                name="list_available_models",
+                description="List configured LLM models with provider and task info. Reads the effective config so agents can pick a model id for process_collection or output generation. Use before the first LLM-heavy call to confirm a key is wired.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_effective_llm_config",
+                description="Resolve the effective LLM configuration for a task. Merges the base llm config with per-task overrides (model, provider, fallback chain). Use to preview which model process_collection or output generation will actually call for a named task.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": ("Optional task name (e.g. extraction, summarization)"),
+                            "default": None,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="activate_domain",
+                description="Activate a domain (set domain.active = True). Use after adding a domain to mark it eligible for collection; deactivated domains are skipped by collect_sources. Returns the updated domain configuration.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Domain name to activate",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            ),
+            Tool(
+                name="deactivate_domain",
+                description="Deactivate a domain (set domain.active = False). Use to temporarily pause collection for a domain without deleting its configuration or data; collect_sources skips inactive domains. Returns the updated domain configuration.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Domain name to deactivate",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            ),
+            Tool(
+                name="add_domain",
+                description="Create a new domain configuration (idempotent — returns existing config if domain already exists)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Domain name (e.g. my-custom-domain)",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional description of the domain",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            ),
+            Tool(
+                name="remove_domain",
+                description="Remove a domain configuration (director-only). Preserves all collected data on disk. Requires confirm=True and an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS (default 'director') or the call is refused with DirectorOnly.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Domain name to remove",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to remove a domain (destructive operation)",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Acting director (must be whitelisted in AUTOINFO_DIRECTOR_ACTORS; default 'director') or the call is refused with DirectorOnly.",
+                        },
+                    },
+                    "required": ["name", "confirm", "actor"],
+                },
+            ),
+            Tool(
+                name="get_domain_config",
+                description="Return full domain config including sources, topics, extract_fields. Use to inspect a domain's complete configuration before modifying it or before running process_collection. Accepts either the domain name or the legacy name spelling.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            ),
+            # -- Source Management (5) ----------------------------------------
+            Tool(
+                name="add_source",
+                description=(
+                    "Add a data source (idempotent — dedup by url + type + domain). "
+                    "Supports 6 source types: api, rss, web, webhook, email, pdf. "
+                    "For email sources, pass imap_server/imap_port/imap_username/"
+                    "imap_password/imap_mailbox convenience params. "
+                    "For webhook sources, pass webhook_secret for HMAC verification. "
+                    "All types accept an optional settings dict for arbitrary configuration."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable source name",
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
+                        },
+                        "type": {
+                            "type": "string",
+                            "description": "Source type (api, rss, web, webhook, email, pdf)",
+                            "default": "api",
+                            "enum": [
+                                "api",
+                                "rss",
+                                "web",
+                                "webhook",
+                                "email",
+                                "pdf",
+                                "akshare",
+                                "sec_edgar",
+                                "edx_sitemap",
+                            ],
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to add this source to",
+                        },
+                        "settings": {
                             "type": "object",
+                            "description": "Optional key-value configuration (stored in SourceConfig.settings)",
+                        },
+                        "requires_key": {
+                            "type": "boolean",
+                            "description": (
+                                "Whether this source requires an API key/credential. "
+                                "Defaults to derived from the source type (true for "
+                                "known key-requiring types, e.g. nyt, ap_api, "
+                                "reuters_mcp, unpaywall, youtube)."
+                            ),
+                        },
+                        "imap_server": {
+                            "type": "string",
+                            "description": "Email type only: IMAP server hostname (e.g. imap.gmail.com)",
+                        },
+                        "imap_port": {
+                            "type": "integer",
+                            "description": "Email type only: IMAP port (default 993)",
+                        },
+                        "imap_username": {
+                            "type": "string",
+                            "description": "Email type only: IMAP username",
+                        },
+                        "imap_password": {
+                            "type": "string",
+                            "description": "Email type only: IMAP password (or set AUTOINFO_EMAIL_PASSWORD env var)",
+                        },
+                        "imap_mailbox": {
+                            "type": "string",
+                            "description": "Email type only: IMAP mailbox name (default INBOX)",
+                        },
+                        "webhook_secret": {
+                            "type": "string",
+                            "description": "Webhook type only: HMAC shared secret for payload verification",
+                        },
+                    },
+                    "required": ["name", "url", "domain"],
+                },
+            ),
+            Tool(
+                name="add_sources",
+                description="Batch-add sources with per-source error isolation. Each source object supports the same parameters as add_source.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Human-readable source name",
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "default": "api",
+                                        "description": "Source type (api, rss, web, webhook, email, pdf)",
+                                        "enum": [
+                                            "api",
+                                            "rss",
+                                            "web",
+                                            "webhook",
+                                            "email",
+                                            "pdf",
+                                            "akshare",
+                                            "sec_edgar",
+                                            "edx_sitemap",
+                                        ],
+                                    },
+                                    "domain": {
+                                        "type": "string",
+                                        "description": "Domain to add this source to",
+                                    },
+                                    "settings": {
+                                        "type": "object",
+                                        "description": "Optional key-value configuration (stored in SourceConfig.settings)",
+                                    },
+                                    "requires_key": {
+                                        "type": "boolean",
+                                        "description": (
+                                            "Whether this source requires an API key/credential. "
+                                            "Defaults to derived from the source type (true for "
+                                            "known key-requiring types, e.g. nyt, ap_api, "
+                                            "reuters_mcp, unpaywall, youtube)."
+                                        ),
+                                    },
+                                    "imap_server": {
+                                        "type": "string",
+                                        "description": "Email type only: IMAP server hostname",
+                                    },
+                                    "imap_port": {
+                                        "type": "integer",
+                                        "description": "Email type only: IMAP port (default 993)",
+                                    },
+                                    "imap_username": {
+                                        "type": "string",
+                                        "description": "Email type only: IMAP username",
+                                    },
+                                    "imap_password": {
+                                        "type": "string",
+                                        "description": "Email type only: IMAP password",
+                                    },
+                                    "imap_mailbox": {
+                                        "type": "string",
+                                        "description": "Email type only: IMAP mailbox name (default INBOX)",
+                                    },
+                                    "webhook_secret": {
+                                        "type": "string",
+                                        "description": "Webhook type only: HMAC shared secret",
+                                    },
+                                },
+                                "required": ["name", "url", "domain"],
+                            },
+                            "description": "List of source objects to add",
+                        },
+                    },
+                    "required": ["sources"],
+                },
+            ),
+            Tool(
+                name="remove_source",
+                description="Remove a source by its source_id (format: 'domain:name'). Deleting a source stops future collection from it without touching already-collected items. Requires confirm=True and an explicit actor for the audit trail.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "source_id": {
+                            "type": "string",
+                            "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to confirm this destructive operation",
+                            "default": False,
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
+                    },
+                    "required": ["source_id", "actor"],
+                },
+            ),
+            Tool(
+                name="test_source",
+                description="Test whether a source URL is reachable and return metadata",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "Source URL to test",
+                        },
+                        "type": {
+                            "type": "string",
+                            "description": "Source type (api, rss, web, webhook, email, pdf)",
+                            "default": "api",
+                            "enum": [
+                                "api",
+                                "rss",
+                                "web",
+                                "webhook",
+                                "email",
+                                "pdf",
+                                "akshare",
+                                "sec_edgar",
+                                "edx_sitemap",
+                            ],
+                        },
+                    },
+                    "required": ["url"],
+                },
+            ),
+            Tool(
+                name="list_sources",
+                description=(
+                    "List all configured collection sources for a domain, with "
+                    "each source's id, type, and platform. Use to inspect what "
+                    "feeds a domain before adding or removing sources."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            # -- Topic Management (6) -----------------------------------------
+            Tool(
+                name="add_topic",
+                description="Add a topic to a domain (idempotent by name+domain). Topics focus collection on specific subjects; use before collect_sources so the topic's keywords drive which items get fetched. Returns the new or existing topic.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Topic name",
+                        },
+                        "keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of related keywords",
+                            "default": [],
+                        },
+                    },
+                    "required": ["domain", "name"],
+                },
+            ),
+            Tool(
+                name="remove_topic",
+                description="Remove a topic from a domain. Stops topic-scoped collection for that name; existing items stay in the KB. Use to narrow collection scope when a research interest ends.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name",
+                        },
+                        "topic_id": {
+                            "type": "string",
+                            "description": "Topic identifier — name or 'domain:name' format (e.g. 'IVF breakthroughs' or 'medical-research:IVF breakthroughs'). Returned by add_topic in the response.",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to confirm this destructive operation",
+                            "default": False,
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
+                    },
+                    "required": ["domain", "topic_id", "actor"],
+                },
+            ),
+            Tool(
+                name="list_topics",
+                description=(
+                    "List all tracked topics and their keywords for a domain. "
+                    "Topics group collected items by area; use to review "
+                    "coverage before collecting."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="list_keywords",
+                description="List keywords with topic grouping, multi-language support, and scoring info",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic name filter",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="topic_group_add",
+                description="Assign a group to one or more topics within a domain",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "group_name": {
+                            "type": "string",
+                            "description": "Name of the group to assign topics to",
+                        },
+                        "topic_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of topic names to assign to this group",
+                        },
+                    },
+                    "required": ["domain", "group_name", "topic_names"],
+                },
+            ),
+            Tool(
+                name="topic_group_remove",
+                description="Remove a group assignment from all topics in that group",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "group_name": {
+                            "type": "string",
+                            "description": "Name of the group whose assignment should be removed from all topics",
+                        },
+                    },
+                    "required": ["domain", "group_name"],
+                },
+            ),
+            # -- Keywords Management (3) ---------------------------------------
+            Tool(
+                name="approve_keyword",
+                description="Approve a keyword — move from auto_added to verified state",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "keyword": {
+                            "type": "string",
+                            "description": "Keyword to approve",
+                        },
+                    },
+                    "required": ["domain", "keyword"],
+                },
+            ),
+            Tool(
+                name="reject_keyword",
+                description="Reject a keyword — move to deprecated state. Marks the keyword so suggest_keywords and extraction no longer propose it. Use to prune noisy terms that keep appearing in collected content.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "keyword": {
+                            "type": "string",
+                            "description": "Keyword to reject",
+                        },
+                    },
+                    "required": ["domain", "keyword"],
+                },
+            ),
+            Tool(
+                name="suggest_keywords",
+                description="Use LLM to suggest relevant keywords from a text input",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name for context",
+                        },
+                        "text": {
+                            "type": "string",
+                            "description": "Text to extract keywords from",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of suggestions (default 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["domain", "text"],
+                },
+            ),
+            # -- Collection / Processing (5) ----------------------------------
+            Tool(
+                name="collect_sources",
+                description=(
+                    "Execute a collection run for a domain. When domain is "
+                    "omitted, collects from ALL active domains and returns a "
+                    "{domains: {name: job_id, ...}, collected_count: N} mapping."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": (
+                                "Domain name (e.g. medical-research). "
+                                "Omit to collect from all active domains."
+                            ),
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic / keyword filter",
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": ("Optional list of source names to restrict to"),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max items per source",
+                            "default": 20,
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": ("If true, preview only — no storage"),
+                            "default": False,
+                        },
+                        "resume_from": {
+                            "type": "string",
+                            "description": (
+                                "Checkpoint/resume mode for a long collection run "
+                                "(R-A-01): 'auto' skips sources already completed "
+                                "in the checkpoint, 'start' checkpoints a fresh "
+                                "run, or a source name to start at that source. "
+                                "Omit for a legacy run that writes no checkpoint."
+                            ),
+                            "default": "",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_collection_progress",
+                description="Return current collection progress for a domain (in-memory state). Reports items fetched, remaining, per-source status and an optional job_id lookup. Poll this while collect_sources runs to surface live progress to the user.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain name — returns all domains if omitted",
+                            "default": "",
+                        },
+                        "job_id": {
+                            "type": "string",
+                            "description": "Optional job_id to look up collection progress by job",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_collection_status",
+                description="Return full collection results for a domain (last run). Summarizes the previous collect_sources execution: total items, per-source counts, failures and the run timestamp. Use after a collection finishes to inspect what was gathered.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="process_collection",
+                description=(
+                    "Execute a processing (LLM extraction) run for a domain. "
+                    "Optionally runs G4 factual consistency gate (check_factual) "
+                    "and G5 translation accuracy gate (check_translation)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": (
+                                "Optional topic name whose keywords seed the G3 "
+                                "relevance gate. When omitted, G3 defaults to the "
+                                "union of all the domain's topic keywords."
+                            ),
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": (
+                                "Optional LLM model override (e.g. deepseek/deepseek-chat)"
+                            ),
+                        },
+                        "batch_size": {
+                            "type": "integer",
+                            "description": (
+                                "Max number of items to process per run (0 = all, default 0)"
+                            ),
+                            "default": 0,
+                        },
+                        "check_factual": {
+                            "type": "boolean",
+                            "description": (
+                                "Run G4 factual consistency gate "
+                                "(LLM-based check of summary vs source). "
+                                "Default: False."
+                            ),
+                            "default": False,
+                        },
+                        "check_translation": {
+                            "type": "boolean",
+                            "description": (
+                                "Run G5 translation accuracy gate "
+                                "(LLM-based check of translation vs source). "
+                                "Default: False."
+                            ),
+                            "default": False,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="get_processing_progress",
+                description="Get processing progress for a domain or job_id. Reports items processed, pending, and per-stage gate results during process_collection. Poll this to surface live LLM extraction progress to the operator.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "job_id": {
+                            "type": "string",
+                            "description": "Optional job_id to look up processing progress by job",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Knowledge Base (4) -------------------------------------------
+            Tool(
+                name="list_summaries",
+                description="Browse KB entries for a domain, newest first. Returns summary cards (title, summary, tier, source) with pagination. Use to scan what the KB currently holds before choosing entries to flag, promote, or synthesize into a digest.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "date_from": {
+                            "type": "string",
+                            "description": ("ISO date filter — only entries from this date onward"),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return",
+                            "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Pagination offset",
+                            "default": 0,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="get_kb_entry",
+                description="Fetch a single KB entry by its entry ID. Returns the full tier metadata, content, source provenance, quality scores and custom fields. Use to inspect one item before promoting it or to retrieve the raw payload for downstream processing.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "Unique entry identifier",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user_id filter (accepted for multi-user compatibility; direct ID lookup is user-independent)",
+                        },
+                    },
+                    "required": ["entry_id"],
+                },
+            ),
+            Tool(
+                name="search_knowledge_base",
+                description=(
+                    "Search the knowledge base using FTS5 full-text, vector, "
+                    "or hybrid (FTS5 + vector) search. "
+                    "Supports simple term queries with optional domain and "
+                    "faceted filters (tags, date range, quality tier, "
+                    "content type, language)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query",
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain filter. When omitted or None, searches across all domains.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results",
+                            "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Pagination offset",
+                            "default": 0,
+                        },
+                        "mode": {
+                            "type": "string",
+                            "description": "Search mode: 'fts5' (default, full-text only), 'hybrid' (FTS5 + vector fusion), or 'vector' (vector-only). Falls back to FTS5 when vector search is unavailable.",
+                            "default": "fts5",
+                            "enum": ["fts5", "hybrid", "vector"],
+                        },
+                        "filter_tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Only include entries whose tags contain ANY of the given values",
+                        },
+                        "filter_date_from": {
+                            "type": "string",
+                            "description": "Only entries with collected_at >= this ISO date (e.g. 2025-01-01)",
+                        },
+                        "filter_date_to": {
+                            "type": "string",
+                            "description": "Only entries with collected_at <= this ISO date (e.g. 2025-06-30)",
+                        },
+                        "filter_quality_tier_min": {
+                            "type": "integer",
+                            "description": "Only entries with quality_tier >= this value",
+                        },
+                        "filter_quality_tier_max": {
+                            "type": "integer",
+                            "description": "Only entries with quality_tier <= this value",
+                        },
+                        "filter_content_type": {
+                            "type": "string",
+                            "description": "Only entries with this exact content_type",
+                        },
+                        "filter_language": {
+                            "type": "string",
+                            "description": "Only entries with this exact language",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user_id filter — only entries belonging to this user",
+                        },
+                        "filter_custom_fields": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                            "description": "Faceted filter over the custom_fields JSON column (product-analysis metadata). Each key is a dot-path into custom_fields (e.g. 'product_analysis.action_required'); an empty-string value matches entries where the field exists and is non-empty, any other value matches entries where the field's JSON value equals that text.",
+                        },
+                        "include_stale": {
+                            "type": "boolean",
+                            "description": "If false (default), stale entries are demoted to the bottom of search results. If true, stale entries are mixed normally with fresh results.",
+                            "default": False,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            Tool(
+                name="query_knowledge_graph",
+                description=(
+                    "Query the knowledge graph for entities related to a given "
+                    "entity.  Returns related entities with relation type and "
+                    "co-occurrence strength."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity": {
+                            "type": "string",
+                            "description": "Entity name to query (case-insensitive partial match)",
+                        },
+                        "relation": {
+                            "type": "string",
+                            "description": (
+                                "Entity-graph relation type to filter by. Empty "
+                                "string matches all relation types."
+                            ),
+                            "default": "related_to",
+                            "enum": [
+                                "",
+                                "child_of",
+                                "duplicate_of",
+                                "parent_of",
+                                "referenced_by",
+                                "references",
+                                "related",
+                                "related_to",
+                                "similar_to",
+                                "superseded_by",
+                                "supersedes",
+                                "version_of",
+                            ],
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain scope filter",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results",
+                            "default": 20,
+                        },
+                    },
+                    "required": ["entity"],
+                },
+            ),
+            # -- Knowledge Graph Export (1) -------------------------------------
+            Tool(
+                name="knowledge_graph_export",
+                description=(
+                    "Export the knowledge graph for a domain. "
+                    "Supports json, graphml, and csv formats. "
+                    "Returns entity and relation counts."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Export format: json, graphml, csv",
+                            "default": "json",
+                            "enum": ["json", "graphml", "csv"],
+                        },
+                        "output": {
+                            "type": "string",
+                            "description": "Optional output file path (auto-generated if omitted)",
+                            "default": "",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="flag_for_knowledge_base",
+                description=(
+                    "Flag a summary entry for KB inclusion — tags it in the "
+                    "SQLite index with importance rating.  Does NOT create a "
+                    "Draft; call create_kb_draft separately."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "summary_id": {
+                            "type": "string",
+                            "description": "Summary entry ID",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Tags to apply (merged with existing, no duplicates)",
+                        },
+                        "importance": {
+                            "type": "integer",
+                            "description": "Importance rating 1-5",
+                            "default": 3,
+                        },
+                    },
+                    "required": ["summary_id"],
+                },
+            ),
+            # -- KB: get_summary -----------------------------------------
+            Tool(
+                name="get_summary",
+                description=(
+                    "Return full detail for a summary entry including key "
+                    "points parsed from the body, quality scores, tags, "
+                    "importance, and source provenance."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "summary_id": {
+                            "type": "string",
+                            "description": "Summary entry ID",
+                        },
+                    },
+                    "required": ["summary_id"],
+                },
+            ),
+            # -- KB: Relations (2) --------------------------------------------
+            Tool(
+                name="link_items",
+                description=(
+                    "Create a link between two KB entries. Idempotent — "
+                    "calling with the same (item_a, item_b, relation_type) "
+                    "returns the existing relation."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "item_a_id": {
+                            "type": "string",
+                            "description": "First entry ID",
+                        },
+                        "item_b_id": {
+                            "type": "string",
+                            "description": "Second entry ID",
+                        },
+                        "relation_type": {
+                            "type": "string",
+                            "description": "Relation type (e.g. related, references)",
+                            "default": "related",
+                            "enum": ["related", "references"],
+                        },
+                        "metadata": {
+                            "type": "object",
+                            "description": "Optional metadata dict (e.g. matched_tags)",
+                        },
+                    },
+                    "required": ["item_a_id", "item_b_id"],
+                },
+            ),
+            Tool(
+                name="get_item_relations",
+                description=(
+                    "Return all relations where an item participates. "
+                    "Optionally filtered by relation_type."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "item_id": {
+                            "type": "string",
+                            "description": "Entry ID to query",
+                        },
+                        "relation_type": {
+                            "type": "string",
+                            "description": "Optional relation type filter",
+                            "enum": ["related", "references"],
+                        },
+                    },
+                    "required": ["item_id"],
+                },
+            ),
+            # -- KB: Versioning (2) -------------------------------------------
+            Tool(
+                name="get_entry_history",
+                description=(
+                    "Return all saved backup versions for an entry, "
+                    "newest first. Up to 5 versions are retained."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "Entry ID to query",
+                        },
+                    },
+                    "required": ["entry_id"],
+                },
+            ),
+            Tool(
+                name="restore_entry_version",
+                description=(
+                    "Restore an entry from a saved version backup. "
+                    "Copies the .bak file back over the original."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "version_id": {
+                            "type": "string",
+                            "description": "Version ID to restore",
+                        },
+                    },
+                    "required": ["version_id"],
+                },
+            ),
+            Tool(
+                name="compare_versions",
+                description=(
+                    "Compare two versions of a KB entry and return a "
+                    "structured diff showing which fields changed, their "
+                    "old and new values, and a summary of changes."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "KB entry ID whose versions to compare",
+                        },
+                        "version_a": {
+                            "type": "string",
+                            "description": (
+                                "First version identifier (version_id like "
+                                "'entry_abc--v1' or version number string like '1')"
+                            ),
+                        },
+                        "version_b": {
+                            "type": "string",
+                            "description": (
+                                "Second version identifier (version_id like "
+                                "'entry_abc--v2' or version number string like '2')"
+                            ),
+                        },
+                    },
+                    "required": ["entry_id", "version_a", "version_b"],
+                },
+            ),
+            # -- KB: Monitor (2) ----------------------------------------------
+            Tool(
+                name="get_collection_stats",
+                description=(
+                    "Aggregated collection statistics across all domains "
+                    "for daily, weekly, or monthly periods."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "description": "Period: daily (default), weekly, monthly",
+                            "default": "daily",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_collection_diff",
+                description=(
+                    "Return entries collected since a previous collection ID, "
+                    "showing new entries grouped by domain."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "since_collection_id": {
+                            "type": "string",
+                            "description": "Collection ID (timestamp) to compare against",
+                        },
+                    },
+                    "required": ["since_collection_id"],
+                },
+            ),
+            Tool(
+                name="get_domain_decay",
+                description=(
+                    "Compute decay / staleness metrics for a domain. "
+                    "Returns staleness ratio, average TTL remaining, "
+                    "decay grade (GREEN/YELLOW/RED), and re-collection suggestions."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name to compute decay metrics for",
+                        },
+                        "ttl_days": {
+                            "type": "integer",
+                            "description": (
+                                "Days before an entry is considered fully stale (default: 90)"
+                            ),
+                            "default": 90,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            # -- KB: Draft tools (4) ------------------------------------------
+            Tool(
+                name="create_kb_draft",
+                description=(
+                    "Create a Draft entry from one or more Raw entries. "
+                    "Validates all raw_ids exist in 01-Raw, merges content, "
+                    "and creates a file in 02-Draft/."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "raw_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "One or more 01-Raw entry IDs to compile into a Draft",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Title for the new Draft entry",
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "Optional summary text",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional tags for the Draft entry",
+                        },
+                    },
+                    "required": ["raw_ids", "title"],
+                },
+            ),
+            Tool(
+                name="reject_kb_draft",
+                description=(
+                    "Reject a Draft entry, moving it back to 01-Raw or "
+                    "archiving it.  Adds rejection_reason to frontmatter."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "draft_id": {
+                            "type": "string",
+                            "description": "Entry ID of the Draft to reject",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Optional rejection reason",
+                        },
+                        "action": {
+                            "type": "string",
+                            "description": (
+                                "'back_to_raw' (default) moves to 01-Raw; "
+                                "'archive' moves to _archive/"
+                            ),
+                            "default": "back_to_raw",
+                            "enum": ["back_to_raw", "archive"],
+                        },
+                    },
+                    "required": ["draft_id"],
+                },
+            ),
+            Tool(
+                name="list_kb_tier",
+                description=(
+                    "List all entries in a specific KB tier (01-Raw, 02-Draft, 03-Wiki) "
+                    "for a domain."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "tier": {
+                            "type": "string",
+                            "description": "Tier to list (01-Raw, 02-Draft, 03-Wiki)",
+                            "enum": ["01-Raw", "02-Draft", "03-Wiki"],
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return",
+                            "default": 50,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Pagination offset",
+                            "default": 0,
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user_id filter — only entries belonging to this user",
+                        },
+                    },
+                    "required": ["domain", "tier"],
+                },
+            ),
+            Tool(
+                name="promote_kb_draft",
+                description=(
+                    "Promote a Draft KB entry (02-Draft) to the 03-Wiki tier. "
+                    "Admission-gated agent promotion: the draft must satisfy "
+                    "the curation gate (source provenance, G1/G3 thresholds, "
+                    "G4 factual consistency) or the promotion is rejected and "
+                    "a _failed/ marker is written while the draft stays in "
+                    "02-Draft. Once promoted, entries are append-only and "
+                    "cannot be demoted. The entry must already exist in 02-Draft."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "ID of the Draft KB entry to promote (e.g. medical-research-draft-some-title)",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID for audit trail",
+                            "default": "",
+                        },
+                    },
+                    "required": ["entry_id"],
+                },
+            ),
+            Tool(
+                name="demote_kb_wiki",
+                description=(
+                    "Demote a 03-Wiki entry back to 02-Draft (director-only backdoor). "
+                    "Content is preserved: the file moves to 02-Draft with a "
+                    "demoted_at marker; the original promotion provenance is kept. "
+                    "The actor must be whitelisted in AUTOINFO_DIRECTOR_ACTORS "
+                    "(default 'director') or the call is refused with DIRECTOR_ONLY."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "ID of the 03-Wiki entry to demote",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Acting director (must be whitelisted in AUTOINFO_DIRECTOR_ACTORS)",
+                        },
+                    },
+                    "required": ["entry_id", "actor"],
+                },
+            ),
+            Tool(
+                name="force_promote",
+                description=(
+                    "Force-promote a 02-Draft entry to 03-Wiki, skipping the "
+                    "admission gate (director-only backdoor). Records "
+                    "promotion_source: director. The actor must be whitelisted "
+                    "in AUTOINFO_DIRECTOR_ACTORS (default 'director') or the "
+                    "call is refused with DIRECTOR_ONLY."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "draft_id": {
+                            "type": "string",
+                            "description": "ID of the 02-Draft entry to force-promote",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Acting director (must be whitelisted in AUTOINFO_DIRECTOR_ACTORS)",
+                        },
+                    },
+                    "required": ["draft_id", "actor"],
+                },
+            ),
+            Tool(
+                name="promote_pending",
+                description=(
+                    "Batch-promote all eligible 02-Draft entries for a domain "
+                    "(promotion sweep). Each draft is admission-checked via the "
+                    "curation gate (source provenance, G1/G3 thresholds, G4 "
+                    "factual consistency); drafts previously rejected (carrying "
+                    "a _failed/ marker) are skipped and never retried. "
+                    "Idempotent: already-promoted entries are naturally skipped. "
+                    "Returns a summary with promoted/rejected/failed per entry "
+                    "and per-entry failure reasons."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Acting agent recorded in promoted_by (default 'agent')",
+                            "default": "agent",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="reindex_kb",
+                description="Rebuild SQLite FTS5 search index from disk frontmatter. Re-reads every KB markdown file and refreshes the full-text index and vector embeddings. Use after manual file edits or when search results look stale versus the files on disk.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to reindex (empty = all domains)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="create_kb_entry",
+                description=(
+                    "Create a KB entry from scratch in 01-Raw tier. "
+                    "Architecture: 01-Raw is the sole entry point — "
+                    "all content enters the KB pipeline here. "
+                    "No quality gates are applied (matching REST behavior)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Target domain name (e.g. medical-research)",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Entry title",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Full text / Markdown content of the entry",
+                        },
+                        "source_url": {
+                            "type": "string",
+                            "description": "Source URL (mandatory provenance)",
+                        },
+                        "source_type": {
+                            "type": "string",
+                            "description": "Source type (e.g. web, api, manual)",
+                        },
+                        "topics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of topic tags",
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "Optional author name",
+                        },
+                    },
+                    "required": [
+                        "domain",
+                        "title",
+                        "content",
+                        "source_url",
+                        "source_type",
+                    ],
+                },
+            ),
+            # -- Output (5) ---------------------------------------------------
+            Tool(
+                name="list_output_templates",
+                description="List available output templates for a domain. Each template includes access_level (free/premium/enterprise) for freemium gating (G15).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (optional)",
+                            "default": "",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional end-user ID for tier-based filtering. "
+                                "When set, only templates accessible to this user "
+                                "are returned. When omitted, all templates are returned."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="generate_digest",
+                description=(
+                    "Compile a periodic digest summarizing recent KB entries for "
+                    "a domain over a chosen period (daily, weekly, monthly). "
+                    "Default markdown; also html, json, agent (JSON-LD), and "
+                    "audio MP3. Optional recipients emails the digest directly; "
+                    "max_items, include_stale, and target_audience tailor "
+                    "content; product supports magazine-digest."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Digest period: daily, weekly, monthly",
+                            "default": "weekly",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": (
+                                "Output format: markdown, html, json, agent, audio, epub, audiobook"
+                            ),
+                            "default": "markdown",
+                            "enum": [
+                                "markdown",
+                                "html",
+                                "json",
+                                "agent",
+                                "audio",
+                                "video",
+                                "epub",
+                                "audiobook",
+                            ],
+                        },
+                        "custom_instructions": {
+                            "type": "string",
+                            "description": "Optional custom instructions to tailor the output content",
+                            "default": "",
+                        },
+                        "target_audience": {
+                            "type": "string",
+                            "description": 'Optional target audience description to tailor output tone and depth (e.g. "healthcare professionals", "general public")',
+                            "default": "",
+                        },
+                        "include_stale": {
+                            "type": "boolean",
+                            "description": "Include stale entries in the digest (default: false). When false, entries below the domain freshness threshold are excluded.",
+                            "default": False,
+                        },
+                        "recipients": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of email recipient addresses for direct digest delivery",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID for preference-based personalization. When provided, stored preferences (target_audience, format, max_items) are auto-loaded from the user's profile.",
+                            "default": "",
+                        },
+                        "max_items": {
+                            "type": "integer",
+                            "description": "Optional maximum number of KB entries to include (default: 0 = use built-in limit of 200). Can be auto-set from stored user preferences when user_id is provided.",
+                            "default": 0,
+                        },
+                        "product": {
+                            "type": "string",
+                            "description": (
+                                "Optional product name from the PRODUCT_TEMPLATES registry "
+                                "(e.g. magazine-digest, premium-briefing, enterprise-briefing, "
+                                "column). When provided, the digest is rendered through that "
+                                "product's template family (e.g. magazine-digest.md.j2). "
+                                "Valid products: digest, report, tutorial, presentation, "
+                                "premium-briefing, column, magazine-digest, enterprise-briefing."
+                            ),
+                            "enum": [
+                                "digest",
+                                "report",
+                                "tutorial",
+                                "presentation",
+                                "premium-briefing",
+                                "column",
+                                "magazine-digest",
+                                "enterprise-briefing",
+                            ],
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": (
+                                "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
+                                "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
+                                "set, only entries whose detected language matches are "
+                                "included, so the digest never mixes languages (issue #309)."
+                            ),
+                            "default": "",
+                        },
+                        "ref_limit": {
+                            "type": "integer",
+                            "description": (
+                                "Optional maximum number of KB references to render "
+                                "(default: 60; issue #11). References are sorted by "
+                                "(has non-empty summary, relevance_score) and capped "
+                                "at this limit at the context-build site."
+                            ),
+                            "default": 60,
+                        },
+                        "persist": {
+                            "type": "boolean",
+                            "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="generate_report",
+                description=(
+                    "Produce a deep structured report analyzing collected items "
+                    "for a domain over a period (daily, weekly, monthly). "
+                    "Default markdown; also json, html, agent (JSON-LD), audio, "
+                    "epub, audiobook, video. report_type switches industry, "
+                    "competitive, trend, daily-briefing, or column templates; "
+                    "product supports premium-briefing and enterprise-briefing."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": (
+                                "Output format: markdown, json, html, agent, audio, epub, audiobook"
+                            ),
+                            "default": "markdown",
+                            "enum": [
+                                "markdown",
+                                "json",
+                                "html",
+                                "agent",
+                                "audio",
+                                "video",
+                                "epub",
+                                "audiobook",
+                            ],
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Report period: daily, weekly, monthly",
+                            "default": "monthly",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                        "custom_instructions": {
+                            "type": "string",
+                            "description": "Optional custom instructions to tailor the output content",
+                            "default": "",
+                        },
+                        "target_audience": {
+                            "type": "string",
+                            "description": 'Optional target audience description to tailor output tone and depth (e.g. "healthcare professionals", "general public")',
+                            "default": "",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional end-user ID for freemium access gating (G15). Premium reports are blocked for non-subscribers.",
+                            "default": "",
+                        },
+                        "report_type": {
+                            "type": "string",
+                            "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
+                            "default": "standard",
+                            "enum": [
+                                "standard",
+                                "industry",
+                                "competitive",
+                                "trend",
+                                "daily-briefing",
+                                "column",
+                            ],
+                        },
+                        "product": {
+                            "type": "string",
+                            "description": (
+                                "Optional product name from the PRODUCT_TEMPLATES registry "
+                                "(e.g. premium-briefing, enterprise-briefing, column). When "
+                                "provided, the report is rendered through that product's "
+                                "template family. Valid products: digest, report, tutorial, "
+                                "presentation, premium-briefing, column, magazine-digest, "
+                                "enterprise-briefing."
+                            ),
+                            "enum": [
+                                "digest",
+                                "report",
+                                "tutorial",
+                                "presentation",
+                                "premium-briefing",
+                                "column",
+                                "magazine-digest",
+                                "enterprise-briefing",
+                            ],
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": (
+                                "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
+                                "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
+                                "set, only entries whose detected language matches are "
+                                "included, so the report never mixes languages (issue #309)."
+                            ),
+                            "default": "",
+                        },
+                        "ref_limit": {
+                            "type": "integer",
+                            "description": (
+                                "Optional maximum number of KB references to render "
+                                "(default: 60; issue #11). References are sorted by "
+                                "(has non-empty summary, relevance_score) and capped "
+                                "at this limit at the context-build site."
+                            ),
+                            "default": 60,
+                        },
+                        "persist": {
+                            "type": "boolean",
+                            "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="generate_cross_domain_report",
+                description=(
+                    "Generate a synthesis report across multiple domains, "
+                    "connecting findings and identifying cross-domain trends. "
+                    "Returns markdown by default; also supports json, html, "
+                    "agent (JSON-LD), audio, epub, and audiobook.  "
+                    "At least 2 domains are required.  Period: daily, weekly, monthly."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": 'List of domain names to synthesize across (e.g. ["medical-research", "ai-commercial"]). At least 2 required.',
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": (
+                                "Output format: markdown, json, html, agent, audio, epub, audiobook"
+                            ),
+                            "default": "markdown",
+                            "enum": [
+                                "markdown",
+                                "json",
+                                "html",
+                                "agent",
+                                "audio",
+                                "video",
+                                "epub",
+                                "audiobook",
+                            ],
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Report period: daily, weekly, monthly",
+                            "default": "monthly",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                        "target_audience": {
+                            "type": "string",
+                            "description": 'Optional target audience description to tailor output tone and depth (e.g. "healthcare professionals", "general public")',
+                            "default": "",
+                        },
+                        "report_type": {
+                            "type": "string",
+                            "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
+                            "default": "standard",
+                            "enum": [
+                                "standard",
+                                "industry",
+                                "competitive",
+                                "trend",
+                                "daily-briefing",
+                                "column",
+                            ],
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
+                            "default": "",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": (
+                                "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
+                                "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
+                                "set, only entries whose detected language matches are "
+                                "included, so the report never mixes languages (issue #309)."
+                            ),
+                            "default": "",
+                        },
+                        "persist": {
+                            "type": "boolean",
+                            "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["domains"],
+                },
+            ),
+            Tool(
+                name="generate_tutorial",
+                description=(
+                    "Create a step-by-step tutorial teaching a topic for a "
+                    "domain, with learning goals and hands-on steps. "
+                    "Default markdown; also agent (JSON-LD). topic filters the "
+                    "content; custom_instructions shape the teaching style."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic filter",
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Output format: 'markdown' (default), 'agent' (JSON-LD for LLM re-consumption)",
+                            "default": "markdown",
+                            "enum": ["markdown", "agent"],
+                        },
+                        "custom_instructions": {
+                            "type": "string",
+                            "description": "Optional custom instructions to tailor the output content",
+                            "default": "",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
+                            "default": "",
+                        },
+                        "persist": {
+                            "type": "boolean",
+                            "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="generate_presentation",
+                description=(
+                    "Build a slide deck for a topic within a domain (slides 3-30). "
+                    "Outputs markdown (Reveal.js flavored), standalone html, "
+                    "mkslides build, or agent (JSON-LD). Pass custom_instructions "
+                    "for visual narrative and pacing."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Presentation topic",
+                        },
+                        "slides": {
+                            "type": "integer",
+                            "description": "Desired number of slides (3-30)",
+                            "default": 10,
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": (
+                                "Output format: 'markdown' (default, Reveal.js-flavoured "
+                                "Markdown), 'html' (standalone Reveal.js HTML5 via CDN), "
+                                "'mkslides' (mkslides build with HTML fallback), "
+                                "or 'agent' (JSON-LD for LLM re-consumption)."
+                            ),
+                            "default": "markdown",
+                            "enum": ["markdown", "html", "mkslides", "agent"],
+                        },
+                        "custom_instructions": {
+                            "type": "string",
+                            "description": "Optional custom instructions to tailor the output content",
+                            "default": "",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
+                            "default": "",
+                        },
+                        "persist": {
+                            "type": "boolean",
+                            "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["domain", "topic"],
+                },
+            ),
+            Tool(
+                name="localize_content",
+                description=(
+                    "Translate a KB entry or raw text into a target language. "
+                    "Two modes: (1) pass content_id to translate a stored KB "
+                    "entry (stores the translation as a new file), or (2) pass "
+                    "content + source_lang for direct translation without storage. "
+                    "Preserves medical terminology, drug names, procedures, "
+                    "statistics, and citations. Optionally accepts a domain "
+                    "name to inject terminology guardrails."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "content_id": {
+                            "type": "string",
+                            "description": (
+                                "KB entry ID to translate.  The entry must exist in the KB store."
+                            ),
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": (
+                                "Raw text to translate directly (no KB lookup). "
+                                "Requires source_lang."
+                            ),
+                        },
+                        "source_lang": {
+                            "type": "string",
+                            "description": (
+                                "Source language code (e.g. en, zh).  Required "
+                                "for direct content mode; auto-detected from "
+                                "the KB entry for content_id mode."
+                            ),
+                        },
+                        "target_lang": {
+                            "type": "string",
+                            "description": ("Target language code (e.g. zh, fr, ja)."),
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": (
+                                "Domain name (e.g. medical-research). When "
+                                "provided, loads domain-specific terminology "
+                                "guardrails from knowledge/<domain>/_terminology.yaml. "
+                                "In content_id mode, inferred from KB entry "
+                                "if not specified."
+                            ),
+                        },
+                    },
+                    "required": ["target_lang"],
+                },
+            ),
+            # -- Export / Import (2) -----------------------------------------------
+            Tool(
+                name="export_kb",
+                description=(
+                    "Export knowledge base entries to specified format. "
+                    "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle, sitemap, epub, mobi formats."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": (
+                                "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, "
+                                "agent, bundle (ZIP with PDF+JSON+MD+YAML), epub, mobi"
+                            ),
+                            "default": "markdown",
+                            "enum": [
+                                "markdown",
+                                "json",
+                                "sqlite",
+                                "csv",
+                                "pdf",
+                                "graphml",
+                                "rss",
+                                "agent",
+                                "bundle",
+                                "sitemap",
+                                "epub",
+                                "mobi",
+                            ],
+                        },
+                        "scope": {
+                            "type": "string",
+                            "description": "Export scope: domain (all entries), entry (specific IDs), collection (collection-scoped)",
+                            "default": "domain",
+                            "enum": ["entry", "collection", "domain"],
+                        },
+                        "entry_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific entry IDs to export (used when scope is 'entry')",
+                        },
+                        "output_path": {
+                            "type": "string",
+                            "description": "Optional explicit output path. Auto-generated when omitted.",
+                        },
+                        "base_url": {
+                            "type": "string",
+                            "description": (
+                                "Site base URL required when format is 'sitemap' "
+                                "(e.g. https://your-site.example); ignored for other formats"
+                            ),
+                        },
+                    },
+                    "required": ["domain", "format"],
+                },
+            ),
+            Tool(
+                name="import_kb",
+                description=(
+                    "Import entries or source suggestions into the KB. "
+                    "Supports 4 formats: markdown (YAML+Markdown frontmatter), "
+                    "json, csv, and opml. "
+                    "All entry imports land in 01-Raw (KB pipeline). "
+                    "OPML returns source suggestions only — does NOT auto-add sources."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Target domain name (e.g. medical-research)",
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Import format: markdown (YAML+Markdown), json, csv, opml",
+                            "enum": ["markdown", "json", "csv", "opml"],
+                        },
+                        "data": {
+                            "type": "string",
+                            "description": (
+                                "Raw content string to import. "
+                                "For markdown: YAML frontmatter (--- delimited) + Markdown body. "
+                                "For json: JSON array or single object with title, source_url, content. "
+                                "For csv: CSV with header row (title, source_url, content required). "
+                                "For opml: OPML XML with <outline> elements."
+                            ),
+                        },
+                    },
+                    "required": ["domain", "format", "data"],
+                },
+            ),
+            # -- Email (1) --------------------------------------------------------
+            Tool(
+                name="send_email_digest",
+                description=(
+                    "Generate and send a digest via SMTP email. "
+                    "Only sends when email is enabled in config "
+                    "(email.enabled: true). Requires email.smtp_host, "
+                    "email.from_addr, and email.to_addrs to be configured."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to generate digest for (e.g. medical-research)",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Digest period: daily, weekly, monthly",
+                            "default": "weekly",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional end-user ID. When provided, the digest "
+                                "honors the user's stored content_preference "
+                                "(e.g. raw_only / processed_only / both). "
+                                "Empty by default (no preference lookup)."
+                            ),
+                            "default": "",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            # -- Email Config (1) --------------------------------------------------
+            Tool(
+                name="email_config",
+                description=(
+                    "View or update email SMTP configuration. "
+                    "Get current settings, set SMTP host/port/credentials, "
+                    "enable/disable email, or send a test email."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "smtp_server": {
+                            "type": "string",
+                            "description": "SMTP server hostname",
+                            "default": "",
+                        },
+                        "smtp_port": {
+                            "type": "integer",
+                            "description": "SMTP server port",
+                            "default": 0,
+                        },
+                        "username": {
+                            "type": "string",
+                            "description": "SMTP username",
+                            "default": "",
+                        },
+                        "password": {
+                            "type": "string",
+                            "description": "SMTP password",
+                            "default": "",
+                        },
+                        "enable": {
+                            "type": "boolean",
+                            "description": "Enable email sending",
+                            "default": False,
+                        },
+                        "disable": {
+                            "type": "boolean",
+                            "description": "Disable email sending",
+                            "default": False,
+                        },
+                        "test": {
+                            "type": "boolean",
+                            "description": "Send a test email using current config",
+                            "default": False,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Custom Extraction (2) -----------------------------------------
+            Tool(
+                name="extract_fields",
+                description=(
+                    "On-demand re-extraction with a custom schema. "
+                    "Retrieves the KB entry, runs LLM extraction with the "
+                    "given field names, and returns the result "
+                    "(does NOT persist)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "content_id": {
+                            "type": "string",
+                            "description": "KB entry ID to re-extract",
+                        },
+                        "schema": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Custom field names to extract (e.g. methodology, findings)"
+                            ),
+                        },
+                    },
+                    "required": ["content_id", "schema"],
+                },
+            ),
+            Tool(
+                name="get_extraction",
+                description=(
+                    "Return the extracted fields stored for a KB entry. "
+                    "Reads the Markdown frontmatter to retrieve "
+                    "``extracted_fields``."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "content_id": {
+                            "type": "string",
+                            "description": "KB entry ID",
+                        },
+                    },
+                    "required": ["content_id"],
+                },
+            ),
+            # -- Schedule Management (4) ----------------------------------------
+            Tool(
+                name="list_schedules",
+                description=(
+                    "List all scheduled collection jobs that fetch sources on a "
+                    "cron cadence, showing job id and enabled state. Use to "
+                    "review or remove collection automation."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="add_schedule",
+                description="Add a new collection or digest schedule with a cron expression",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Unique schedule name",
+                        },
+                        "expression": {
+                            "type": "string",
+                            "description": ("Cron expression (e.g. '0 2 * * *' for daily at 2 AM)"),
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to collect or generate digest for",
+                        },
+                        "schedule_type": {
+                            "type": "string",
+                            "description": "Schedule type: collection or digest",
+                            "default": "collection",
+                            "enum": ["collection", "digest"],
+                        },
+                        "recipients": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Email recipients (required for digest type)",
+                        },
+                        "output_format": {
+                            "type": "string",
+                            "description": "Digest format: html or markdown",
+                            "default": "html",
+                            "enum": ["html", "markdown"],
+                        },
+                    },
+                    "required": ["name", "expression", "domain"],
+                },
+            ),
+            Tool(
+                name="remove_schedule",
+                description="Remove a collection schedule by name. Deletes the named cron schedule so run_schedules no longer triggers it. Use to stop a recurring collection job while keeping the domain configuration intact.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Schedule name to remove",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to confirm this destructive operation",
+                            "default": False,
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
+                    },
+                    "required": ["name", "actor"],
+                },
+            ),
+            Tool(
+                name="run_schedules",
+                description="Run due schedules now (checks cron expressions against last_run). Executes every collection or digest schedule whose cron window has elapsed. Use to trigger pending jobs on demand instead of waiting for the cron daemon.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": (
+                                "If true, report which schedules would run without executing"
+                            ),
+                            "default": False,
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": (
+                                "Optional single schedule name to run (runs all due if omitted)"
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_schedule_status",
+                description="Get status of all schedules or a specific one (last_run, next_run, is_active, domain)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "schedule_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional schedule name to get status for. "
+                                "When omitted, returns status for all schedules."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Delivery Schedule Management (3) ---------------------------------
+            Tool(
+                name="add_delivery_schedule",
+                description="Add a new delivery schedule for periodic output generation + channel delivery",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to generate output for",
+                        },
+                        "cron_expression": {
+                            "type": "string",
+                            "description": "Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
+                        },
+                        "output_type": {
+                            "type": "string",
+                            "description": "Output type: digest or report",
+                            "default": "digest",
+                            "enum": ["digest", "report"],
+                        },
+                        "channel": {
+                            "type": "string",
+                            "description": "Delivery channel: email, webhook, rest, telegram, discord, etc.",
+                            "default": "email",
+                            "enum": [
+                                "smtp",
+                                "webhook",
+                                "rest_api",
+                                "file_export",
+                                "discord",
+                                "telegram",
+                                "wechat_work",
+                                "wechat_oa",
+                                "dingtalk",
+                                "feishu",
+                                "rss",
+                                "social_publish",
+                                "push",
+                            ],
+                        },
+                        "recipients": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Recipient identifiers (emails, webhook URLs, etc.)",
+                        },
+                        "output_format": {
+                            "type": "string",
+                            "description": "Output format: markdown, html, json, agent, audio, pdf",
+                            "default": "html",
+                            "enum": ["html", "markdown"],
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Content period: daily, weekly, monthly",
+                            "default": "weekly",
+                            "enum": ["daily", "weekly", "monthly"],
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional end-user ID whose stored content_preference (raw_only / processed_only / both) is applied when generating the scheduled output. Empty = no preference lookup.",
+                            "default": "",
+                        },
+                    },
+                    "required": ["domain", "cron_expression"],
+                },
+            ),
+            Tool(
+                name="list_delivery_schedules",
+                description=(
+                    "List all delivery schedules that generate and push outputs "
+                    "(digests, reports) to end-user channels on a cron cadence. "
+                    "Shows output type, channel, and next run time per schedule."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="remove_delivery_schedule",
+                description="Remove a delivery schedule by ID. Cancels the recurring output generation + delivery for that schedule_id. Use when a product's cadence is retired or the recipient set changes permanently.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "schedule_id": {
+                            "type": "string",
+                            "description": "Schedule ID to remove",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to confirm this destructive operation",
+                            "default": False,
+                        },
+                    },
+                    "required": ["schedule_id"],
+                },
+            ),
+            # -- Q&A (1) -------------------------------------------------------
+            Tool(
+                name="query_collected",
+                description=(
+                    "Search collected content via FTS5 and synthesise an answer "
+                    "using the LLM.  Provide a natural-language question; the "
+                    "tool returns an answer with source citations."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural-language question to answer",
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to scope the search to (e.g. medical-research)",
+                        },
+                        "content_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Optional explicit list of entry IDs to use instead of FTS5 search"
+                            ),
+                        },
+                    },
+                    "required": ["query", "domain"],
+                },
+            ),
+            # -- Source Health / Feedback (2) ----------------------------------
+            Tool(
+                name="get_source_health",
+                description=(
+                    "Return health status for a single source. "
+                    "Status values: healthy, degraded, error, paused, unknown."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "source_id": {
+                            "type": "string",
+                            "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
+                        },
+                    },
+                    "required": ["source_id"],
+                },
+            ),
+            Tool(
+                name="rate_item",
+                description=(
+                    "Store a user rating and optional feedback for a "
+                    "collected item or KB entry.  Rating must be 1-5."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "item_id": {
+                            "type": "string",
+                            "description": "Collected item or KB entry ID to rate",
+                        },
+                        "rating": {
+                            "type": "integer",
+                            "description": "Rating value 1 (worst) to 5 (best)",
+                        },
+                        "feedback": {
+                            "type": "string",
+                            "description": "Optional free-text feedback",
+                        },
+                    },
+                    "required": ["item_id", "rating"],
+                },
+            ),
+            # -- Audit (1) -------------------------------------------------------
+            Tool(
+                name="query_audit_log",
+                description=(
+                    "Query the immutable audit log with optional filters. "
+                    "All filters are optional and combined with AND logic. "
+                    "Results returned newest-first."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "actor": {
+                            "type": "string",
+                            "description": "Filter by actor name",
+                        },
+                        "action": {
+                            "type": "string",
+                            "description": "Filter by action name",
+                        },
+                        "resource_type": {
+                            "type": "string",
+                            "description": "Filter by resource type",
+                        },
+                        "date_from": {
+                            "type": "string",
+                            "description": "ISO-8601 lower bound on timestamp",
+                        },
+                        "date_to": {
+                            "type": "string",
+                            "description": "ISO-8601 upper bound on timestamp",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return (default 100)",
+                            "default": 100,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Pagination offset (default 0)",
+                            "default": 0,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- CEFR Classification (1) ----------------------------------------
+            Tool(
+                name="classify_cefr",
+                description=(
+                    "Classify text into a CEFR level (A1-C2) using the "
+                    "configured LLM. Supports English (en), Chinese (zh), "
+                    "and Japanese (ja)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Text to classify",
+                        },
+                        "lang": {
+                            "type": "string",
+                            "description": "Language code: en, zh, or ja",
+                            "default": "en",
+                            "enum": ["en", "zh", "ja"],
+                        },
+                    },
+                    "required": ["text"],
+                },
+            ),
+            # -- CEFR Batch (1) ---------------------------------------------------
+            Tool(
+                name="cefr_batch",
+                description=(
+                    "Batch classify multiple texts into CEFR levels (A1-C2). "
+                    "Each text is classified independently. Per-text errors are "
+                    "included with an error key in the results array."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "texts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Texts to classify (non-empty)",
+                        },
+                        "lang": {
+                            "type": "string",
+                            "description": "Language code: en, zh, or ja",
+                            "default": "en",
+                            "enum": ["en", "zh", "ja"],
+                        },
+                    },
+                    "required": ["texts"],
+                },
+            ),
+            # -- Project / Batch / Config (6) ------------------------------------
+            Tool(
+                name="list_projects",
+                description=(
+                    "List all configured projects with domain count, source/topic "
+                    "summaries, and LLM provider info."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "Optional status filter (active, archived)",
+                            "default": "",
+                            "enum": ["active", "archived"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_project_assets",
+                description=(
+                    "Return project asset paths and sizes — collections, knowledge "
+                    "directories, database, exports, and config directory."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "description": (
+                                "Optional asset-type filter: collections, knowledge, "
+                                "database, exports, or config. Omit to return every "
+                                "asset group."
+                            ),
+                            "enum": [
+                                "collections",
+                                "knowledge",
+                                "database",
+                                "exports",
+                                "config",
+                            ],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="archive_project",
+                description=(
+                    "Archive the current project. Refuses unless at least one "
+                    "entry has been promoted to 03-Wiki.  Archive itself is a "
+                    "human-only operation; this tool reports whether prerequisites "
+                    "are met."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "reason": {
+                            "type": "string",
+                            "description": "Optional reason for archiving",
+                            "default": "",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be True to confirm this destructive operation",
+                            "default": False,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="batch_run",
+                description=(
+                    "Execute collection and processing in sequence for a domain. "
+                    "Runs collect_sources then process_collection automatically."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic / keyword filter for collection",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max items per source",
+                            "default": 20,
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Optional LLM model override for processing",
+                        },
+                        "resume_from": {
+                            "type": "string",
+                            "description": (
+                                "Checkpoint/resume mode for the collect + process "
+                                "pipeline (R-A-01): 'auto' resumes both phases from "
+                                "their persisted checkpoints, 'start' checkpoints a "
+                                "fresh run, or a source name to start collection at "
+                                "that source. Omit for a legacy run."
+                            ),
+                            "default": "",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="get_feeds",
+                description=(
+                    "Return a paginated feed of KB entries for a domain. "
+                    "Supports optional filters by topic tag, source type, "
+                    "and collected-at date.  Output format: JSON (default) or RSS 2.0 XML."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain to query (required)",
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional filter by topic tag",
+                        },
+                        "source_type": {
+                            "type": "string",
+                            "description": "Optional filter by source type (e.g. rss, api)",
+                        },
+                        "since": {
+                            "type": "string",
+                            "description": "Optional ISO date filter (collected_at >=)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max items to return (1-200)",
+                            "default": 50,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of items to skip for pagination",
+                            "default": 0,
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Output format: 'json' (paginated JSON envelope) or 'rss' (RSS 2.0 XML feed)",
+                            "default": "json",
+                            "enum": ["json", "rss"],
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="list_active_collections",
+                description=(
+                    "List currently active or in-progress collection runs. "
+                    "Optionally filter by domain."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain filter (e.g. medical-research)",
+                            "default": "",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="get_config",
+                description=(
+                    "Return the current configuration as a structured dict. "
+                    "Supports optional 'section' filter: project, llm, domains. "
+                    "Returns the full config when section is omitted."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "section": {
+                            "type": "string",
+                            "description": "Optional config section: project, llm, domains",
+                            "default": "",
+                            "enum": ["project", "llm", "domains"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Webhooks (2) ----------------------------------------------------
+            Tool(
+                name="set_domain_webhooks",
+                description=(
+                    "Set webhook URLs for a domain. All newly collected items "
+                    "will be POSTed to these URLs as JSON. Replaces any existing "
+                    "URLs. Fire-and-forget with retry (3 attempts)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "webhook_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "List of webhook URLs (must start with http:// or https://)"
+                            ),
+                        },
+                    },
+                    "required": ["domain", "webhook_urls"],
+                },
+            ),
+            Tool(
+                name="get_domain_webhooks",
+                description="Return the configured webhook URLs for a domain. Webhooks fire per collected item; use this to verify the endpoint set before relying on push delivery. Returns the raw list plus any per-source overrides.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            # -- Gate Config (2) ------------------------------------------------
+            Tool(
+                name="get_gate_config",
+                description="Return gate configuration (quality or delivery) for a domain — checks domain-level config, falls back to global defaults",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "gate": {
+                            "type": "string",
+                            "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
+                        },
+                    },
+                    "required": ["domain", "gate"],
+                },
+            ),
+            Tool(
+                name="set_gate_config",
+                description="Update gate configuration for a domain. Provide gate-specific fields (action, threshold, retries for quality gates; enabled, action_on_failure for delivery gates)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "gate": {
+                            "type": "string",
+                            "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": 'Gate configuration dict (e.g. {"action": "block", "retries": 3, "retry_models": [...]} for quality gates; {"enabled": true, "action_on_failure": "flag"} for delivery gates)',
                             "properties": {
-                                "name": {
+                                "action": {
                                     "type": "string",
-                                    "description": "Human-readable source name",
-                                },
-                                "url": {
-                                    "type": "string",
-                                    "description": "Source URL. email: imap(s)://host, pdf: file://path or http(s)://url, others: http(s)://url",
-                                },
-                                "type": {
-                                    "type": "string",
-                                    "default": "api",
-                                    "description": "Source type (api, rss, web, webhook, email, pdf)",
-                                    "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
-                                },
-                                "domain": {
-                                    "type": "string",
-                                    "description": "Domain to add this source to",
-                                },
-                                "settings": {
-                                    "type": "object",
-                                    "description": "Optional key-value configuration (stored in SourceConfig.settings)",
-                                },
-                                "requires_key": {
-                                    "type": "boolean",
                                     "description": (
-                                        "Whether this source requires an API key/credential. "
-                                        "Defaults to derived from the source type (true for "
-                                        "known key-requiring types, e.g. nyt, ap_api, "
-                                        "reuters_mcp, unpaywall, youtube)."
+                                        "Action on failure: block, retry, flag, "
+                                        "skip, archive (quality gates)"
                                     ),
+                                    "enum": [
+                                        "block",
+                                        "retry",
+                                        "flag",
+                                        "skip",
+                                        "archive",
+                                    ],
                                 },
-                                "imap_server": {
-                                    "type": "string",
-                                    "description": "Email type only: IMAP server hostname",
-                                },
-                                "imap_port": {
+                                "retries": {
                                     "type": "integer",
-                                    "description": "Email type only: IMAP port (default 993)",
+                                    "description": "Number of retry attempts (quality gates)",
                                 },
-                                "imap_username": {
-                                    "type": "string",
-                                    "description": "Email type only: IMAP username",
+                                "retry_models": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Fallback model chain (quality gates)",
                                 },
-                                "imap_password": {
-                                    "type": "string",
-                                    "description": "Email type only: IMAP password",
-                                },
-                                "imap_mailbox": {
-                                    "type": "string",
-                                    "description": "Email type only: IMAP mailbox name (default INBOX)",
-                                },
-                                "webhook_secret": {
-                                    "type": "string",
-                                    "description": "Webhook type only: HMAC shared secret",
-                                },
-                            },
-                            "required": ["name", "url", "domain"],
-                        },
-                        "description": "List of source objects to add",
-                    },
-                },
-                "required": ["sources"],
-            },
-        ),
-        Tool(
-            name="remove_source",
-            description="Remove a source by its source_id (format: 'domain:name')",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "source_id": {
-                        "type": "string",
-                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to confirm this destructive operation",
-                        "default": False,
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["source_id", "actor"],
-            },
-        ),
-        Tool(
-            name="test_source",
-            description="Test whether a source URL is reachable and return metadata",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "Source URL to test",
-                    },
-                    "type": {
-                        "type": "string",
-                        "description": "Source type (api, rss, web, webhook, email, pdf)",
-                        "default": "api",
-                        "enum": ["api", "rss", "web", "webhook", "email", "pdf", "akshare", "sec_edgar", "edx_sitemap"],
-                    },
-                },
-                "required": ["url"],
-            },
-        ),
-        Tool(
-            name="list_sources",
-            description=(
-                "List all configured collection sources for a domain, with "
-                "each source's id, type, and platform. Use to inspect what "
-                "feeds a domain before adding or removing sources."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        # -- Topic Management (6) -----------------------------------------
-        Tool(
-            name="add_topic",
-            description="Add a topic to a domain (idempotent by name+domain)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Topic name",
-                    },
-                    "keywords": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of related keywords",
-                        "default": [],
-                    },
-                },
-                "required": ["domain", "name"],
-            },
-        ),
-        Tool(
-            name="remove_topic",
-            description="Remove a topic from a domain",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name",
-                    },
-                    "topic_id": {
-                        "type": "string",
-                        "description": "Topic identifier — name or 'domain:name' format (e.g. 'IVF breakthroughs' or 'medical-research:IVF breakthroughs'). Returned by add_topic in the response.",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to confirm this destructive operation",
-                        "default": False,
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["domain", "topic_id", "actor"],
-            },
-        ),
-        Tool(
-            name="list_topics",
-            description=(
-                "List all tracked topics and their keywords for a domain. "
-                "Topics group collected items by area; use to review "
-                "coverage before collecting."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="list_keywords",
-            description="List keywords with topic grouping, multi-language support, and scoring info",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Optional topic name filter",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="topic_group_add",
-            description="Assign a group to one or more topics within a domain",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "group_name": {
-                        "type": "string",
-                        "description": "Name of the group to assign topics to",
-                    },
-                    "topic_names": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of topic names to assign to this group",
-                    },
-                },
-                "required": ["domain", "group_name", "topic_names"],
-            },
-        ),
-        Tool(
-            name="topic_group_remove",
-            description="Remove a group assignment from all topics in that group",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "group_name": {
-                        "type": "string",
-                        "description": "Name of the group whose assignment should be removed from all topics",
-                    },
-                },
-                "required": ["domain", "group_name"],
-            },
-        ),
-        # -- Keywords Management (3) ---------------------------------------
-        Tool(
-            name="approve_keyword",
-            description="Approve a keyword — move from auto_added to verified state",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "keyword": {
-                        "type": "string",
-                        "description": "Keyword to approve",
-                    },
-                },
-                "required": ["domain", "keyword"],
-            },
-        ),
-        Tool(
-            name="reject_keyword",
-            description="Reject a keyword — move to deprecated state",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "keyword": {
-                        "type": "string",
-                        "description": "Keyword to reject",
-                    },
-                },
-                "required": ["domain", "keyword"],
-            },
-        ),
-        Tool(
-            name="suggest_keywords",
-            description="Use LLM to suggest relevant keywords from a text input",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name for context",
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "Text to extract keywords from",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of suggestions (default 10)",
-                        "default": 10,
-                    },
-                },
-                "required": ["domain", "text"],
-            },
-        ),
-        # -- Collection / Processing (5) ----------------------------------
-        Tool(
-            name="collect_sources",
-            description=(
-                "Execute a collection run for a domain. When domain is "
-                "omitted, collects from ALL active domains and returns a "
-                "{domains: {name: job_id, ...}, collected_count: N} mapping."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": (
-                            "Domain name (e.g. medical-research). "
-                            "Omit to collect from all active domains."
-                        ),
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Optional topic / keyword filter",
-                    },
-                    "sources": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Optional list of source names to restrict to"
-                        ),
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max items per source",
-                        "default": 20,
-                    },
-                    "dry_run": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, preview only — no storage"
-                        ),
-                        "default": False,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_collection_progress",
-            description="Return current collection progress for a domain (in-memory state)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain name — returns all domains if omitted",
-                        "default": "",
-                    },
-                    "job_id": {
-                        "type": "string",
-                        "description": "Optional job_id to look up collection progress by job",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_collection_status",
-            description="Return full collection results for a domain (last run)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="process_collection",
-            description=(
-                "Execute a processing (LLM extraction) run for a domain. "
-                "Optionally runs G4 factual consistency gate (check_factual) "
-                "and G5 translation accuracy gate (check_translation)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": (
-                            "Optional topic name whose keywords seed the G3 "
-                            "relevance gate. When omitted, G3 defaults to the "
-                            "union of all the domain's topic keywords."
-                        ),
-                    },
-                    "model": {
-                        "type": "string",
-                        "description": (
-                            "Optional LLM model override "
-                            "(e.g. deepseek/deepseek-chat)"
-                        ),
-                    },
-                    "batch_size": {
-                        "type": "integer",
-                        "description": (
-                            "Max number of items to process per run "
-                            "(0 = all, default 0)"
-                        ),
-                        "default": 0,
-                    },
-                    "check_factual": {
-                        "type": "boolean",
-                        "description": (
-                            "Run G4 factual consistency gate "
-                            "(LLM-based check of summary vs source). "
-                            "Default: False."
-                        ),
-                        "default": False,
-                    },
-                    "check_translation": {
-                        "type": "boolean",
-                        "description": (
-                            "Run G5 translation accuracy gate "
-                            "(LLM-based check of translation vs source). "
-                            "Default: False."
-                        ),
-                        "default": False,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="get_processing_progress",
-            description="Get processing progress for a domain or job_id",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "job_id": {
-                        "type": "string",
-                        "description": "Optional job_id to look up processing progress by job",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Knowledge Base (4) -------------------------------------------
-        Tool(
-            name="list_summaries",
-            description="Browse KB entries for a domain, newest first",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "date_from": {
-                        "type": "string",
-                        "description": (
-                            "ISO date filter — only entries from "
-                            "this date onward"
-                        ),
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to return",
-                        "default": 20,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Pagination offset",
-                        "default": 0,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="get_kb_entry",
-            description="Fetch a single KB entry by its entry ID",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "Unique entry identifier",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user_id filter (accepted for multi-user compatibility; direct ID lookup is user-independent)",
-                    },
-                },
-                "required": ["entry_id"],
-            },
-        ),
-        Tool(
-            name="search_knowledge_base",
-            description=(
-                "Search the knowledge base using FTS5 full-text, vector, "
-                "or hybrid (FTS5 + vector) search. "
-                "Supports simple term queries with optional domain and "
-                "faceted filters (tags, date range, quality tier, "
-                "content type, language)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain filter. When omitted or None, searches across all domains.",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results",
-                        "default": 20,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Pagination offset",
-                        "default": 0,
-                    },
-                    "mode": {
-                        "type": "string",
-                        "description": "Search mode: 'fts5' (default, full-text only), 'hybrid' (FTS5 + vector fusion), or 'vector' (vector-only). Falls back to FTS5 when vector search is unavailable.",
-                        "default": "fts5",
-                        "enum": ["fts5", "hybrid", "vector"],
-                    },
-                    "filter_tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Only include entries whose tags contain ANY of the given values",
-                    },
-                    "filter_date_from": {
-                        "type": "string",
-                        "description": "Only entries with collected_at >= this ISO date (e.g. 2025-01-01)",
-                    },
-                    "filter_date_to": {
-                        "type": "string",
-                        "description": "Only entries with collected_at <= this ISO date (e.g. 2025-06-30)",
-                    },
-                    "filter_quality_tier_min": {
-                        "type": "integer",
-                        "description": "Only entries with quality_tier >= this value",
-                    },
-                    "filter_quality_tier_max": {
-                        "type": "integer",
-                        "description": "Only entries with quality_tier <= this value",
-                    },
-                    "filter_content_type": {
-                        "type": "string",
-                        "description": "Only entries with this exact content_type",
-                    },
-                    "filter_language": {
-                        "type": "string",
-                        "description": "Only entries with this exact language",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user_id filter — only entries belonging to this user",
-                    },
-                    "filter_custom_fields": {
-                        "type": "object",
-                        "additionalProperties": {"type": "string"},
-                        "description": "Faceted filter over the custom_fields JSON column (product-analysis metadata). Each key is a dot-path into custom_fields (e.g. 'product_analysis.action_required'); an empty-string value matches entries where the field exists and is non-empty, any other value matches entries where the field's JSON value equals that text.",
-                    },
-                    "include_stale": {
-                        "type": "boolean",
-                        "description": "If false (default), stale entries are demoted to the bottom of search results. If true, stale entries are mixed normally with fresh results.",
-                        "default": False,
-                    },
-                },
-                "required": ["query"],
-            },
-        ),
-        Tool(
-            name="query_knowledge_graph",
-            description=(
-                "Query the knowledge graph for entities related to a given "
-                "entity.  Returns related entities with relation type and "
-                "co-occurrence strength."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entity": {
-                        "type": "string",
-                        "description": "Entity name to query (case-insensitive partial match)",
-                    },
-                    "relation": {
-                        "type": "string",
-                        "description": "Relation type filter (default: 'related_to'). Use empty string for all.",
-                        "default": "related_to",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain scope filter",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results",
-                        "default": 20,
-                    },
-                },
-                "required": ["entity"],
-            },
-        ),
-        # -- Knowledge Graph Export (1) -------------------------------------
-        Tool(
-            name="knowledge_graph_export",
-            description=(
-                "Export the knowledge graph for a domain. "
-                "Supports json, graphml, and csv formats. "
-                "Returns entity and relation counts."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": "Export format: json, graphml, csv",
-                        "default": "json",
-                        "enum": ["json", "graphml", "csv"],
-                    },
-                    "output": {
-                        "type": "string",
-                        "description": "Optional output file path (auto-generated if omitted)",
-                        "default": "",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="flag_for_knowledge_base",
-            description=(
-                "Flag a summary entry for KB inclusion — tags it in the "
-                "SQLite index with importance rating.  Does NOT create a "
-                "Draft; call create_kb_draft separately."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "summary_id": {
-                        "type": "string",
-                        "description": "Summary entry ID",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Tags to apply (merged with existing, no duplicates)",
-                    },
-                    "importance": {
-                        "type": "integer",
-                        "description": "Importance rating 1-5",
-                        "default": 3,
-                    },
-                },
-                "required": ["summary_id"],
-            },
-        ),
-        # -- KB: get_summary -----------------------------------------
-        Tool(
-            name="get_summary",
-            description=(
-                "Return full detail for a summary entry including key "
-                "points parsed from the body, quality scores, tags, "
-                "importance, and source provenance."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "summary_id": {
-                        "type": "string",
-                        "description": "Summary entry ID",
-                    },
-                },
-                "required": ["summary_id"],
-            },
-        ),
-        # -- KB: Relations (2) --------------------------------------------
-        Tool(
-            name="link_items",
-            description=(
-                "Create a link between two KB entries. Idempotent — "
-                "calling with the same (item_a, item_b, relation_type) "
-                "returns the existing relation."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "item_a_id": {
-                        "type": "string",
-                        "description": "First entry ID",
-                    },
-                    "item_b_id": {
-                        "type": "string",
-                        "description": "Second entry ID",
-                    },
-                    "relation_type": {
-                        "type": "string",
-                        "description": "Relation type (e.g. related, references)",
-                        "default": "related",
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "description": "Optional metadata dict (e.g. matched_tags)",
-                    },
-                },
-                "required": ["item_a_id", "item_b_id"],
-            },
-        ),
-        Tool(
-            name="get_item_relations",
-            description=(
-                "Return all relations where an item participates. "
-                "Optionally filtered by relation_type."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "item_id": {
-                        "type": "string",
-                        "description": "Entry ID to query",
-                    },
-                    "relation_type": {
-                        "type": "string",
-                        "description": "Optional relation type filter",
-                    },
-                },
-                "required": ["item_id"],
-            },
-        ),
-        # -- KB: Versioning (2) -------------------------------------------
-        Tool(
-            name="get_entry_history",
-            description=(
-                "Return all saved backup versions for an entry, "
-                "newest first. Up to 5 versions are retained."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "Entry ID to query",
-                    },
-                },
-                "required": ["entry_id"],
-            },
-        ),
-        Tool(
-            name="restore_entry_version",
-            description=(
-                "Restore an entry from a saved version backup. "
-                "Copies the .bak file back over the original."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "version_id": {
-                        "type": "string",
-                        "description": "Version ID to restore",
-                    },
-                },
-                "required": ["version_id"],
-            },
-        ),
-        Tool(
-            name="compare_versions",
-            description=(
-                "Compare two versions of a KB entry and return a "
-                "structured diff showing which fields changed, their "
-                "old and new values, and a summary of changes."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "KB entry ID whose versions to compare",
-                    },
-                    "version_a": {
-                        "type": "string",
-                        "description": (
-                            "First version identifier (version_id like "
-                            "'entry_abc--v1' or version number string like '1')"
-                        ),
-                    },
-                    "version_b": {
-                        "type": "string",
-                        "description": (
-                            "Second version identifier (version_id like "
-                            "'entry_abc--v2' or version number string like '2')"
-                        ),
-                    },
-                },
-                "required": ["entry_id", "version_a", "version_b"],
-            },
-        ),
-        # -- KB: Monitor (2) ----------------------------------------------
-        Tool(
-            name="get_collection_stats",
-            description=(
-                "Aggregated collection statistics across all domains "
-                "for daily, weekly, or monthly periods."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "period": {
-                        "type": "string",
-                        "description": "Period: daily (default), weekly, monthly",
-                        "default": "daily",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_collection_diff",
-            description=(
-                "Return entries collected since a previous collection ID, "
-                "showing new entries grouped by domain."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "since_collection_id": {
-                        "type": "string",
-                        "description": "Collection ID (timestamp) to compare against",
-                    },
-                },
-                "required": ["since_collection_id"],
-            },
-        ),
-        Tool(
-            name="get_domain_decay",
-            description=(
-                "Compute decay / staleness metrics for a domain. "
-                "Returns staleness ratio, average TTL remaining, "
-                "decay grade (GREEN/YELLOW/RED), and re-collection suggestions."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name to compute decay metrics for",
-                    },
-                    "ttl_days": {
-                        "type": "integer",
-                        "description": (
-                            "Days before an entry is considered fully stale "
-                            "(default: 90)"
-                        ),
-                        "default": 90,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        # -- KB: Draft tools (4) ------------------------------------------
-        Tool(
-            name="create_kb_draft",
-            description=(
-                "Create a Draft entry from one or more Raw entries. "
-                "Validates all raw_ids exist in 01-Raw, merges content, "
-                "and creates a file in 02-Draft/."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "raw_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "One or more 01-Raw entry IDs to compile into a Draft",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Title for the new Draft entry",
-                    },
-                    "summary": {
-                        "type": "string",
-                        "description": "Optional summary text",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional tags for the Draft entry",
-                    },
-                },
-                "required": ["raw_ids", "title"],
-            },
-        ),
-        Tool(
-            name="reject_kb_draft",
-            description=(
-                "Reject a Draft entry, moving it back to 01-Raw or "
-                "archiving it.  Adds rejection_reason to frontmatter."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "draft_id": {
-                        "type": "string",
-                        "description": "Entry ID of the Draft to reject",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Optional rejection reason",
-                    },
-                    "action": {
-                        "type": "string",
-                        "description": (
-                            "'back_to_raw' (default) moves to 01-Raw; "
-                            "'archive' moves to _archive/"
-                        ),
-                        "default": "back_to_raw",
-                        "enum": ["back_to_raw", "archive"],
-                    },
-                },
-                "required": ["draft_id"],
-            },
-        ),
-        Tool(
-            name="list_kb_tier",
-            description=(
-                "List all entries in a specific KB tier (01-Raw, 02-Draft, 03-Wiki) "
-                "for a domain."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "tier": {
-                        "type": "string",
-                        "description": "Tier to list (01-Raw, 02-Draft, 03-Wiki)",
-                        "enum": ["01-Raw", "02-Draft", "03-Wiki"],
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to return",
-                        "default": 50,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Pagination offset",
-                        "default": 0,
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user_id filter — only entries belonging to this user",
-                    },
-                },
-                "required": ["domain", "tier"],
-            },
-        ),
-        Tool(
-            name="promote_kb_draft",
-            description=(
-                "Promote a Draft KB entry (02-Draft) to the 03-Wiki tier. "
-                "Admission-gated agent promotion: the draft must satisfy "
-                "the curation gate (source provenance, G1/G3 thresholds, "
-                "G4 factual consistency) or the promotion is rejected and "
-                "a _failed/ marker is written while the draft stays in "
-                "02-Draft. Once promoted, entries are append-only and "
-                "cannot be demoted. The entry must already exist in 02-Draft."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "ID of the Draft KB entry to promote (e.g. medical-research-draft-some-title)",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID for audit trail",
-                        "default": "",
-                    },
-                },
-                "required": ["entry_id"],
-            },
-        ),
-        Tool(
-            name="demote_kb_wiki",
-            description=(
-                "Demote a 03-Wiki entry back to 02-Draft (director-only backdoor). "
-                "Content is preserved: the file moves to 02-Draft with a "
-                "demoted_at marker; the original promotion provenance is kept. "
-                "The actor must be whitelisted in AUTOINFO_DIRECTOR_ACTORS "
-                "(default 'director') or the call is refused with DIRECTOR_ONLY."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "ID of the 03-Wiki entry to demote",
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Acting director (must be whitelisted in AUTOINFO_DIRECTOR_ACTORS)",
-                    },
-                },
-                "required": ["entry_id", "actor"],
-            },
-        ),
-        Tool(
-            name="force_promote",
-            description=(
-                "Force-promote a 02-Draft entry to 03-Wiki, skipping the "
-                "admission gate (director-only backdoor). Records "
-                "promotion_source: director. The actor must be whitelisted "
-                "in AUTOINFO_DIRECTOR_ACTORS (default 'director') or the "
-                "call is refused with DIRECTOR_ONLY."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "draft_id": {
-                        "type": "string",
-                        "description": "ID of the 02-Draft entry to force-promote",
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Acting director (must be whitelisted in AUTOINFO_DIRECTOR_ACTORS)",
-                    },
-                },
-                "required": ["draft_id", "actor"],
-            },
-        ),
-        Tool(
-            name="promote_pending",
-            description=(
-                "Batch-promote all eligible 02-Draft entries for a domain "
-                "(promotion sweep). Each draft is admission-checked via the "
-                "curation gate (source provenance, G1/G3 thresholds, G4 "
-                "factual consistency); drafts previously rejected (carrying "
-                "a _failed/ marker) are skipped and never retried. "
-                "Idempotent: already-promoted entries are naturally skipped. "
-                "Returns a summary with promoted/rejected/failed per entry "
-                "and per-entry failure reasons."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Acting agent recorded in promoted_by (default 'agent')",
-                        "default": "agent",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="reindex_kb",
-            description="Rebuild SQLite FTS5 search index from disk frontmatter",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to reindex (empty = all domains)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="create_kb_entry",
-            description=(
-                "Create a KB entry from scratch in 01-Raw tier. "
-                "Architecture: 01-Raw is the sole entry point — "
-                "all content enters the KB pipeline here. "
-                "No quality gates are applied (matching REST behavior)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Target domain name (e.g. medical-research)",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Entry title",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Full text / Markdown content of the entry",
-                    },
-                    "source_url": {
-                        "type": "string",
-                        "description": "Source URL (mandatory provenance)",
-                    },
-                    "source_type": {
-                        "type": "string",
-                        "description": "Source type (e.g. web, api, manual)",
-                    },
-                    "topics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of topic tags",
-                    },
-                    "author": {
-                        "type": "string",
-                        "description": "Optional author name",
-                    },
-                },
-                "required": [
-                    "domain",
-                    "title",
-                    "content",
-                    "source_url",
-                    "source_type",
-                ],
-            },
-        ),
-        # -- Output (5) ---------------------------------------------------
-        Tool(
-            name="list_output_templates",
-            description="List available output templates for a domain. Each template includes access_level (free/premium/enterprise) for freemium gating (G15).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (optional)",
-                        "default": "",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": (
-                            "Optional end-user ID for tier-based filtering. "
-                            "When set, only templates accessible to this user "
-                            "are returned. When omitted, all templates are returned."
-                        ),
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="generate_digest",
-            description=(
-                "Compile a periodic digest summarizing recent KB entries for "
-                "a domain over a chosen period (daily, weekly, monthly). "
-                "Default markdown; also html, json, agent (JSON-LD), and "
-                "audio MP3. Optional recipients emails the digest directly; "
-                "max_items, include_stale, and target_audience tailor "
-                "content; product supports magazine-digest."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Digest period: daily, weekly, monthly",
-                        "default": "weekly",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": (
-                            "Output format: markdown, html, json, agent, audio, epub, "
-                            "audiobook"
-                        ),
-                        "default": "markdown",
-                        "enum": [
-                            "markdown", "html", "json", "agent", "audio",
-                            "video", "epub", "audiobook",
-                        ],
-                    },
-                    "custom_instructions": {
-                        "type": "string",
-                        "description": "Optional custom instructions to tailor the output content",
-                        "default": "",
-                    },
-                    "target_audience": {
-                        "type": "string",
-                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
-                        "default": "",
-                    },
-                    "include_stale": {
-                        "type": "boolean",
-                        "description": "Include stale entries in the digest (default: false). When false, entries below the domain freshness threshold are excluded.",
-                        "default": False,
-                    },
-                    "recipients": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of email recipient addresses for direct digest delivery",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID for preference-based personalization. When provided, stored preferences (target_audience, format, max_items) are auto-loaded from the user's profile.",
-                        "default": "",
-                    },
-                    "max_items": {
-                        "type": "integer",
-                        "description": "Optional maximum number of KB entries to include (default: 0 = use built-in limit of 200). Can be auto-set from stored user preferences when user_id is provided.",
-                        "default": 0,
-                    },
-                    "product": {
-                        "type": "string",
-                        "description": (
-                            "Optional product name from the PRODUCT_TEMPLATES registry "
-                            "(e.g. magazine-digest, premium-briefing, enterprise-briefing, "
-                            "column). When provided, the digest is rendered through that "
-                            "product's template family (e.g. magazine-digest.md.j2). "
-                            "Valid products: digest, report, tutorial, presentation, "
-                            "premium-briefing, column, magazine-digest, enterprise-briefing."
-                        ),
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": (
-                            "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
-                            "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
-                            "set, only entries whose detected language matches are "
-                            "included, so the digest never mixes languages (issue #309)."
-                        ),
-                        "default": "",
-                    },
-                    "ref_limit": {
-                        "type": "integer",
-                        "description": (
-                            "Optional maximum number of KB references to render "
-                            "(default: 60; issue #11). References are sorted by "
-                            "(has non-empty summary, relevance_score) and capped "
-                            "at this limit at the context-build site."
-                        ),
-                        "default": 60,
-                    },
-                    "persist": {
-                        "type": "boolean",
-                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
-                        "default": False,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="generate_report",
-            description=(
-                "Produce a deep structured report analyzing collected items "
-                "for a domain over a period (daily, weekly, monthly). "
-                "Default markdown; also json, html, agent (JSON-LD), audio, "
-                "epub, audiobook, video. report_type switches industry, "
-                "competitive, trend, daily-briefing, or column templates; "
-                "product supports premium-briefing and enterprise-briefing."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": (
-                            "Output format: markdown, json, html, agent, audio, epub, "
-                            "audiobook"
-                        ),
-                        "default": "markdown",
-                        "enum": [
-                            "markdown", "json", "html", "agent", "audio",
-                            "video", "epub", "audiobook",
-                        ],
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Report period: daily, weekly, monthly",
-                        "default": "monthly",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                    "custom_instructions": {
-                        "type": "string",
-                        "description": "Optional custom instructions to tailor the output content",
-                        "default": "",
-                    },
-                    "target_audience": {
-                        "type": "string",
-                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
-                        "default": "",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional end-user ID for freemium access gating (G15). Premium reports are blocked for non-subscribers.",
-                        "default": "",
-                    },
-                    "report_type": {
-                        "type": "string",
-                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
-                        "default": "standard",
-                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
-                    },
-                    "product": {
-                        "type": "string",
-                        "description": (
-                            "Optional product name from the PRODUCT_TEMPLATES registry "
-                            "(e.g. premium-briefing, enterprise-briefing, column). When "
-                            "provided, the report is rendered through that product's "
-                            "template family. Valid products: digest, report, tutorial, "
-                            "presentation, premium-briefing, column, magazine-digest, "
-                            "enterprise-briefing."
-                        ),
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": (
-                            "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
-                            "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
-                            "set, only entries whose detected language matches are "
-                            "included, so the report never mixes languages (issue #309)."
-                        ),
-                        "default": "",
-                    },
-                    "ref_limit": {
-                        "type": "integer",
-                        "description": (
-                            "Optional maximum number of KB references to render "
-                            "(default: 60; issue #11). References are sorted by "
-                            "(has non-empty summary, relevance_score) and capped "
-                            "at this limit at the context-build site."
-                        ),
-                        "default": 60,
-                    },
-                    "persist": {
-                        "type": "boolean",
-                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
-                        "default": False,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="generate_cross_domain_report",
-            description=(
-                "Generate a synthesis report across multiple domains, "
-                "connecting findings and identifying cross-domain trends. "
-                "Returns markdown by default; also supports json, html, "
-                "agent (JSON-LD), audio, epub, and audiobook.  "
-                "At least 2 domains are required.  Period: daily, weekly, monthly."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domains": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of domain names to synthesize across (e.g. [\"medical-research\", \"ai-commercial\"]). At least 2 required.",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": (
-                            "Output format: markdown, json, html, agent, audio, epub, "
-                            "audiobook"
-                        ),
-                        "default": "markdown",
-                        "enum": ["markdown", "json", "html", "agent", "audio", "video", "epub", "audiobook"],
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Report period: daily, weekly, monthly",
-                        "default": "monthly",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                    "target_audience": {
-                        "type": "string",
-                        "description": "Optional target audience description to tailor output tone and depth (e.g. \"healthcare professionals\", \"general public\")",
-                        "default": "",
-                    },
-                    "report_type": {
-                        "type": "string",
-                        "description": "Report type: standard (default), industry, competitive, trend, daily-briefing, column",
-                        "default": "standard",
-                        "enum": ["standard", "industry", "competitive", "trend", "daily-briefing", "column"],
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
-                        "default": "",
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": (
-                            "Optional ISO-639 language code (e.g. 'zh', 'en'; alias/"
-                            "case tolerant: 'zh_CN', '中文', 'en-US' all match). When "
-                            "set, only entries whose detected language matches are "
-                            "included, so the report never mixes languages (issue #309)."
-                        ),
-                        "default": "",
-                    },
-                    "persist": {
-                        "type": "boolean",
-                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
-                        "default": False,
-                    },
-                },
-                "required": ["domains"],
-            },
-        ),
-        Tool(
-            name="generate_tutorial",
-            description=(
-                "Create a step-by-step tutorial teaching a topic for a "
-                "domain, with learning goals and hands-on steps. "
-                "Default markdown; also agent (JSON-LD). topic filters the "
-                "content; custom_instructions shape the teaching style."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Optional topic filter",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": "Output format: 'markdown' (default), 'agent' (JSON-LD for LLM re-consumption)",
-                        "default": "markdown",
-                        "enum": ["markdown", "agent"],
-                    },
-                    "custom_instructions": {
-                        "type": "string",
-                        "description": "Optional custom instructions to tailor the output content",
-                        "default": "",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
-                        "default": "",
-                    },
-                    "persist": {
-                        "type": "boolean",
-                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
-                        "default": False,
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="generate_presentation",
-            description=(
-                "Build a slide deck for a topic within a domain (slides 3-30). "
-                "Outputs markdown (Reveal.js flavored), standalone html, "
-                "mkslides build, or agent (JSON-LD). Pass custom_instructions "
-                "for visual narrative and pacing."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Presentation topic",
-                    },
-                    "slides": {
-                        "type": "integer",
-                        "description": "Desired number of slides (3-30)",
-                        "default": 10,
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": (
-                            "Output format: 'markdown' (default, Reveal.js-flavoured "
-                            "Markdown), 'html' (standalone Reveal.js HTML5 via CDN), "
-                            "'mkslides' (mkslides build with HTML fallback), "
-                            "or 'agent' (JSON-LD for LLM re-consumption)."
-                        ),
-                        "default": "markdown",
-                        "enum": ["markdown", "html", "mkslides", "agent"],
-                    },
-                    "custom_instructions": {
-                        "type": "string",
-                        "description": "Optional custom instructions to tailor the output content",
-                        "default": "",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID for preference-based personalization. When provided, stored content_preference (raw_only / processed_only / both) is auto-loaded and KB entries are tier-filtered accordingly.",
-                        "default": "",
-                    },
-                    "persist": {
-                        "type": "boolean",
-                        "description": "When true, write the generated artifact to outputs/<domain>/ and return its persisted_path in the envelope (default: false).",
-                        "default": False,
-                    },
-                },
-                "required": ["domain", "topic"],
-            },
-        ),
-        Tool(
-            name="localize_content",
-            description=(
-                "Translate a KB entry or raw text into a target language. "
-                "Two modes: (1) pass content_id to translate a stored KB "
-                "entry (stores the translation as a new file), or (2) pass "
-                "content + source_lang for direct translation without storage. "
-                "Preserves medical terminology, drug names, procedures, "
-                "statistics, and citations. Optionally accepts a domain "
-                "name to inject terminology guardrails."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content_id": {
-                        "type": "string",
-                        "description": (
-                            "KB entry ID to translate.  The entry must "
-                            "exist in the KB store."
-                        ),
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": (
-                            "Raw text to translate directly (no KB lookup). "
-                            "Requires source_lang."
-                        ),
-                    },
-                    "source_lang": {
-                        "type": "string",
-                        "description": (
-                            "Source language code (e.g. en, zh).  Required "
-                            "for direct content mode; auto-detected from "
-                            "the KB entry for content_id mode."
-                        ),
-                    },
-                    "target_lang": {
-                        "type": "string",
-                        "description": (
-                            "Target language code (e.g. zh, fr, ja)."
-                        ),
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": (
-                            "Domain name (e.g. medical-research). When "
-                            "provided, loads domain-specific terminology "
-                            "guardrails from knowledge/<domain>/_terminology.yaml. "
-                            "In content_id mode, inferred from KB entry "
-                            "if not specified."
-                        ),
-                    },
-                },
-                "required": ["target_lang"],
-            },
-        ),
-        # -- Export / Import (2) -----------------------------------------------
-        Tool(
-            name="export_kb",
-            description=(
-                "Export knowledge base entries to specified format. "
-                "Supports markdown, json, sqlite, csv, pdf, graphml, rss, agent, bundle, sitemap, epub, mobi formats."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": (
-                            "Output format: markdown, json, sqlite, csv, pdf, graphml, rss, "
-                            "agent, bundle (ZIP with PDF+JSON+MD+YAML), epub, mobi"
-                        ),
-                        "default": "markdown",
-                        "enum": [
-                            "markdown", "json", "sqlite", "csv", "pdf",
-                            "graphml", "rss", "agent", "bundle", "sitemap",
-                            "epub", "mobi",
-                        ],
-                    },
-                    "scope": {
-                        "type": "string",
-                        "description": "Export scope: domain (all entries), entry (specific IDs), collection (collection-scoped)",
-                        "default": "domain",
-                        "enum": ["entry", "collection", "domain"],
-                    },
-                    "entry_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Specific entry IDs to export (used when scope is 'entry')",
-                    },
-                    "output_path": {
-                        "type": "string",
-                        "description": "Optional explicit output path. Auto-generated when omitted.",
-                    },
-                    "base_url": {
-                        "type": "string",
-                        "description": (
-                            "Site base URL required when format is 'sitemap' "
-                            "(e.g. https://your-site.example); ignored for other formats"
-                        ),
-                    },
-                },
-                "required": ["domain", "format"],
-            },
-        ),
-        Tool(
-            name="import_kb",
-            description=(
-                "Import entries or source suggestions into the KB. "
-                "Supports 4 formats: markdown (YAML+Markdown frontmatter), "
-                "json, csv, and opml. "
-                "All entry imports land in 01-Raw (KB pipeline). "
-                "OPML returns source suggestions only — does NOT auto-add sources."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Target domain name (e.g. medical-research)",
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": "Import format: markdown (YAML+Markdown), json, csv, opml",
-                        "enum": ["markdown", "json", "csv", "opml"],
-                    },
-                    "data": {
-                        "type": "string",
-                        "description": (
-                            "Raw content string to import. "
-                            "For markdown: YAML frontmatter (--- delimited) + Markdown body. "
-                            "For json: JSON array or single object with title, source_url, content. "
-                            "For csv: CSV with header row (title, source_url, content required). "
-                            "For opml: OPML XML with <outline> elements."
-                        ),
-                    },
-                },
-                "required": ["domain", "format", "data"],
-            },
-        ),
-        # -- Email (1) --------------------------------------------------------
-        Tool(
-            name="send_email_digest",
-            description=(
-                "Generate and send a digest via SMTP email. "
-                "Only sends when email is enabled in config "
-                "(email.enabled: true). Requires email.smtp_host, "
-                "email.from_addr, and email.to_addrs to be configured."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to generate digest for (e.g. medical-research)",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Digest period: daily, weekly, monthly",
-                        "default": "weekly",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": (
-                            "Optional end-user ID. When provided, the digest "
-                            "honors the user's stored content_preference "
-                            "(e.g. raw_only / processed_only / both). "
-                            "Empty by default (no preference lookup)."
-                        ),
-                        "default": "",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        # -- Email Config (1) --------------------------------------------------
-        Tool(
-            name="email_config",
-            description=(
-                "View or update email SMTP configuration. "
-                "Get current settings, set SMTP host/port/credentials, "
-                "enable/disable email, or send a test email."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "smtp_server": {
-                        "type": "string",
-                        "description": "SMTP server hostname",
-                        "default": "",
-                    },
-                    "smtp_port": {
-                        "type": "integer",
-                        "description": "SMTP server port",
-                        "default": 0,
-                    },
-                    "username": {
-                        "type": "string",
-                        "description": "SMTP username",
-                        "default": "",
-                    },
-                    "password": {
-                        "type": "string",
-                        "description": "SMTP password",
-                        "default": "",
-                    },
-                    "enable": {
-                        "type": "boolean",
-                        "description": "Enable email sending",
-                        "default": False,
-                    },
-                    "disable": {
-                        "type": "boolean",
-                        "description": "Disable email sending",
-                        "default": False,
-                    },
-                    "test": {
-                        "type": "boolean",
-                        "description": "Send a test email using current config",
-                        "default": False,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Custom Extraction (2) -----------------------------------------
-        Tool(
-            name="extract_fields",
-            description=(
-                "On-demand re-extraction with a custom schema. "
-                "Retrieves the KB entry, runs LLM extraction with the "
-                "given field names, and returns the result "
-                "(does NOT persist)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content_id": {
-                        "type": "string",
-                        "description": "KB entry ID to re-extract",
-                    },
-                    "schema": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Custom field names to extract "
-                            "(e.g. methodology, findings)"
-                        ),
-                    },
-                },
-                "required": ["content_id", "schema"],
-            },
-        ),
-        Tool(
-            name="get_extraction",
-            description=(
-                "Return the extracted fields stored for a KB entry. "
-                "Reads the Markdown frontmatter to retrieve "
-                "``extracted_fields``."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content_id": {
-                        "type": "string",
-                        "description": "KB entry ID",
-                    },
-                },
-                "required": ["content_id"],
-            },
-        ),
-        # -- Schedule Management (4) ----------------------------------------
-        Tool(
-            name="list_schedules",
-            description=(
-                "List all scheduled collection jobs that fetch sources on a "
-                "cron cadence, showing job id and enabled state. Use to "
-                "review or remove collection automation."
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="add_schedule",
-            description="Add a new collection or digest schedule with a cron expression",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Unique schedule name",
-                    },
-                    "expression": {
-                        "type": "string",
-                        "description": (
-                            "Cron expression (e.g. '0 2 * * *' for daily at 2 AM)"
-                        ),
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to collect or generate digest for",
-                    },
-                    "schedule_type": {
-                        "type": "string",
-                        "description": "Schedule type: collection or digest",
-                        "default": "collection",
-                    },
-                    "recipients": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Email recipients (required for digest type)",
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "description": "Digest format: html or markdown",
-                        "default": "html",
-                    },
-                },
-                "required": ["name", "expression", "domain"],
-            },
-        ),
-        Tool(
-            name="remove_schedule",
-            description="Remove a collection schedule by name",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Schedule name to remove",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to confirm this destructive operation",
-                        "default": False,
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["name", "actor"],
-            },
-        ),
-        Tool(
-            name="run_schedules",
-            description="Run due schedules now (checks cron expressions against last_run)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "dry_run": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, report which schedules would run "
-                            "without executing"
-                        ),
-                        "default": False,
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": (
-                            "Optional single schedule name to run "
-                            "(runs all due if omitted)"
-                        ),
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_schedule_status",
-            description="Get status of all schedules or a specific one (last_run, next_run, is_active, domain)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schedule_id": {
-                        "type": "string",
-                        "description": (
-                            "Optional schedule name to get status for. "
-                            "When omitted, returns status for all schedules."
-                        ),
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Delivery Schedule Management (3) ---------------------------------
-        Tool(
-            name="add_delivery_schedule",
-            description="Add a new delivery schedule for periodic output generation + channel delivery",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to generate output for",
-                    },
-                    "cron_expression": {
-                        "type": "string",
-                        "description": "Cron expression (e.g. '0 8 * * 1' for Monday 8 AM)",
-                    },
-                    "output_type": {
-                        "type": "string",
-                        "description": "Output type: digest or report",
-                        "default": "digest",
-                        "enum": ["digest", "report"],
-                    },
-                    "channel": {
-                        "type": "string",
-                        "description": "Delivery channel: email, webhook, rest, telegram, discord, etc.",
-                        "default": "email",
-                    },
-                    "recipients": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Recipient identifiers (emails, webhook URLs, etc.)",
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "description": "Output format: markdown, html, json, agent, audio, pdf",
-                        "default": "html",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Content period: daily, weekly, monthly",
-                        "default": "weekly",
-                        "enum": ["daily", "weekly", "monthly"],
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional end-user ID whose stored content_preference (raw_only / processed_only / both) is applied when generating the scheduled output. Empty = no preference lookup.",
-                        "default": "",
-                    },
-                },
-                "required": ["domain", "cron_expression"],
-            },
-        ),
-        Tool(
-            name="list_delivery_schedules",
-            description=(
-                "List all delivery schedules that generate and push outputs "
-                "(digests, reports) to end-user channels on a cron cadence. "
-                "Shows output type, channel, and next run time per schedule."
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="remove_delivery_schedule",
-            description="Remove a delivery schedule by ID",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schedule_id": {
-                        "type": "string",
-                        "description": "Schedule ID to remove",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to confirm this destructive operation",
-                        "default": False,
-                    },
-                },
-                "required": ["schedule_id"],
-            },
-        ),
-        # -- Q&A (1) -------------------------------------------------------
-        Tool(
-            name="query_collected",
-            description=(
-                "Search collected content via FTS5 and synthesise an answer "
-                "using the LLM.  Provide a natural-language question; the "
-                "tool returns an answer with source citations."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural-language question to answer",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to scope the search to (e.g. medical-research)",
-                    },
-                    "content_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Optional explicit list of entry IDs to use "
-                            "instead of FTS5 search"
-                        ),
-                    },
-                },
-                "required": ["query", "domain"],
-            },
-        ),
-        # -- Source Health / Feedback (2) ----------------------------------
-        Tool(
-            name="get_source_health",
-            description=(
-                "Return health status for a single source. "
-                "Status values: healthy, degraded, error, paused, unknown."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "source_id": {
-                        "type": "string",
-                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source in the response.",
-                    },
-                },
-                "required": ["source_id"],
-            },
-        ),
-        Tool(
-            name="rate_item",
-            description=(
-                "Store a user rating and optional feedback for a "
-                "collected item or KB entry.  Rating must be 1-5."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "item_id": {
-                        "type": "string",
-                        "description": "Collected item or KB entry ID to rate",
-                    },
-                    "rating": {
-                        "type": "integer",
-                        "description": "Rating value 1 (worst) to 5 (best)",
-                    },
-                    "feedback": {
-                        "type": "string",
-                        "description": "Optional free-text feedback",
-                    },
-                },
-                "required": ["item_id", "rating"],
-            },
-        ),
-        # -- Audit (1) -------------------------------------------------------
-        Tool(
-            name="query_audit_log",
-            description=(
-                "Query the immutable audit log with optional filters. "
-                "All filters are optional and combined with AND logic. "
-                "Results returned newest-first."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "actor": {
-                        "type": "string",
-                        "description": "Filter by actor name",
-                    },
-                    "action": {
-                        "type": "string",
-                        "description": "Filter by action name",
-                    },
-                    "resource_type": {
-                        "type": "string",
-                        "description": "Filter by resource type",
-                    },
-                    "date_from": {
-                        "type": "string",
-                        "description": "ISO-8601 lower bound on timestamp",
-                    },
-                    "date_to": {
-                        "type": "string",
-                        "description": "ISO-8601 upper bound on timestamp",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to return (default 100)",
-                        "default": 100,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Pagination offset (default 0)",
-                        "default": 0,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- CEFR Classification (1) ----------------------------------------
-        Tool(
-            name="classify_cefr",
-            description=(
-                "Classify text into a CEFR level (A1-C2) using the "
-                "configured LLM. Supports English (en), Chinese (zh), "
-                "and Japanese (ja)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "Text to classify",
-                    },
-                    "lang": {
-                        "type": "string",
-                        "description": "Language code: en, zh, or ja",
-                        "default": "en",
-                        "enum": ["en", "zh", "ja"],
-                    },
-                },
-                "required": ["text"],
-            },
-        ),
-        # -- CEFR Batch (1) ---------------------------------------------------
-        Tool(
-            name="cefr_batch",
-            description=(
-                "Batch classify multiple texts into CEFR levels (A1-C2). "
-                "Each text is classified independently. Per-text errors are "
-                "included with an error key in the results array."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "texts": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Texts to classify (non-empty)",
-                    },
-                    "lang": {
-                        "type": "string",
-                        "description": "Language code: en, zh, or ja",
-                        "default": "en",
-                        "enum": ["en", "zh", "ja"],
-                    },
-                },
-                "required": ["texts"],
-            },
-        ),
-        # -- Project / Batch / Config (6) ------------------------------------
-        Tool(
-            name="list_projects",
-            description=(
-                "List all configured projects with domain count, source/topic "
-                "summaries, and LLM provider info."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "description": "Optional status filter (active, archived)",
-                        "default": "",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_project_assets",
-            description=(
-                "Return project asset paths and sizes — collections, knowledge "
-                "directories, database, exports, and config directory."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "description": "Optional asset type filter (collections, knowledge, database, exports, config)",
-                        "default": "",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="archive_project",
-            description=(
-                "Archive the current project. Refuses unless at least one "
-                "entry has been promoted to 03-Wiki.  Archive itself is a "
-                "human-only operation; this tool reports whether prerequisites "
-                "are met."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Optional reason for archiving",
-                        "default": "",
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Must be True to confirm this destructive operation",
-                        "default": False,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="batch_run",
-            description=(
-                "Execute collection and processing in sequence for a domain. "
-                "Runs collect_sources then process_collection automatically."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Optional topic / keyword filter for collection",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max items per source",
-                        "default": 20,
-                    },
-                    "model": {
-                        "type": "string",
-                        "description": "Optional LLM model override for processing",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="get_feeds",
-            description=(
-                "Return a paginated feed of KB entries for a domain. "
-                "Supports optional filters by topic tag, source type, "
-                "and collected-at date.  Output format: JSON (default) or RSS 2.0 XML."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain to query (required)",
-                    },
-                    "topic": {
-                        "type": "string",
-                        "description": "Optional filter by topic tag",
-                    },
-                    "source_type": {
-                        "type": "string",
-                        "description": "Optional filter by source type (e.g. rss, api)",
-                    },
-                    "since": {
-                        "type": "string",
-                        "description": "Optional ISO date filter (collected_at >=)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max items to return (1-200)",
-                        "default": 50,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Number of items to skip for pagination",
-                        "default": 0,
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": "Output format: 'json' (paginated JSON envelope) or 'rss' (RSS 2.0 XML feed)",
-                        "default": "json",
-                        "enum": ["json", "rss"],
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="list_active_collections",
-            description=(
-                "List currently active or in-progress collection runs. "
-                "Optionally filter by domain."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain filter (e.g. medical-research)",
-                        "default": "",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_config",
-            description=(
-                "Return the current configuration as a structured dict. "
-                "Supports optional 'section' filter: project, llm, domains. "
-                "Returns the full config when section is omitted."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "section": {
-                        "type": "string",
-                        "description": "Optional config section: project, llm, domains",
-                        "default": "",
-                        "enum": ["project", "llm", "domains"],
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Webhooks (2) ----------------------------------------------------
-        Tool(
-            name="set_domain_webhooks",
-            description=(
-                "Set webhook URLs for a domain. All newly collected items "
-                "will be POSTed to these URLs as JSON. Replaces any existing "
-                "URLs. Fire-and-forget with retry (3 attempts)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "webhook_urls": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "List of webhook URLs (must start with "
-                            "http:// or https://)"
-                        ),
-                    },
-                },
-                "required": ["domain", "webhook_urls"],
-            },
-        ),
-        Tool(
-            name="get_domain_webhooks",
-            description="Return the configured webhook URLs for a domain",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        # -- Gate Config (2) ------------------------------------------------
-        Tool(
-            name="get_gate_config",
-            description="Return gate configuration (quality or delivery) for a domain — checks domain-level config, falls back to global defaults",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "gate": {
-                        "type": "string",
-                        "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
-                    },
-                },
-                "required": ["domain", "gate"],
-            },
-        ),
-        Tool(
-            name="set_gate_config",
-            description="Update gate configuration for a domain. Provide gate-specific fields (action, threshold, retries for quality gates; enabled, action_on_failure for delivery gates)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "gate": {
-                        "type": "string",
-                        "description": "Gate name (e.g. G0, G1, D1, D2, CurationGate)",
-                    },
-                    "config": {
-                        "type": "object",
-                        "description": "Gate configuration dict (e.g. {\"action\": \"block\", \"retries\": 3, \"retry_models\": [...]} for quality gates; {\"enabled\": true, \"action_on_failure\": \"flag\"} for delivery gates)",
-                        "properties": {
-                            "action": {
-                                "type": "string",
-                                "description": "Action on failure: block, retry, flag, skip, archive",
-                            },
-                            "retries": {
-                                "type": "integer",
-                                "description": "Number of retry attempts (quality gates)",
-                            },
-                            "retry_models": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Fallback model chain (quality gates)",
-                            },
-                            "threshold": {
-                                "type": "number",
-                                "description": "Score threshold 0-100 (quality gates)",
-                            },
-                            "enabled": {
-                                "type": "boolean",
-                                "description": "Whether enabled (delivery gates; CurationGate G4)",
-                            },
-                            "action_on_failure": {
-                                "type": "string",
-                                "description": "Action on failure: block, fallback, flag (delivery gates)",
-                            },
-                        },
-                    },
-                },
-                "required": ["domain", "gate", "config"],
-            },
-        ),
-        # -- Product (2) ----------------------------------------------------
-        Tool(
-            name="get_product",
-            description=(
-                "Return configuration of a single product (RAW or PROCESSED) "
-                "for a domain by product type — channels, formats, and "
-                "platform limits derived from domain config. Inspect a "
-                "specific product before generating or delivering."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "product_type": {
-                        "type": "string",
-                        "description": "Product type: RAW or PROCESSED",
-                        "enum": ["RAW", "PROCESSED"],
-                    },
-                },
-                "required": ["domain", "product_type"],
-            },
-        ),
-        Tool(
-            name="list_products",
-            description=(
-                "Enumerate all products (RAW and PROCESSED) configured for a "
-                "domain with their product id, channels, and formats. Use "
-                "for an overview before choosing one to generate."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        # -- End User Delivery (1) -------------------------------------------
-        Tool(
-            name="send_to_enduser",
-            description="Dispatch a product to an end user through a delivery channel. Looks up the user profile, resolves the channel, and dispatches via the DeliveryChannel framework",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "User ID of the recipient (must exist in the user store)",
-                    },
-                    "product_type": {
-                        "type": "string",
-                        "description": "Product type: raw or processed",
-                        "enum": ["raw", "processed"],
-                    },
-                    "product_id": {
-                        "type": "string",
-                        "description": "Product identifier (e.g. medical-research-processed)",
-                    },
-                    "channel": {
-                        "type": "string",
-                        "description": "Delivery channel name (e.g. smtp, webhook, discord). Falls back to user's preferences, then smtp",
-                    },
-                },
-                "required": ["end_user_id", "product_type", "product_id"],
-            },
-        ),
-        # -- Alert Rules (3) ------------------------------------------------
-        Tool(
-            name="get_alert_rules",
-            description="List alert rules for a domain. Returns all rules filtered by domain",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="add_alert_rule",
-            description="Create a new threshold-based alert rule for a domain. Triggers notifications when collected items match the configured keywords and relevance threshold, or when a configured source is missing its required API key (kind=source_credential_missing)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name (e.g. medical-research)",
-                    },
-                    "topic_keywords": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Keywords to match against item title and content. Empty list matches all items",
-                        "default": [],
-                    },
-                    "relevance_threshold": {
-                        "type": "number",
-                        "description": "Minimum relevance score (0-100) to trigger",
-                        "default": 0.0,
-                    },
-                    "channel": {
-                        "type": "string",
-                        "description": "Delivery channel: email or webhook",
-                        "default": "email",
-                        "enum": ["email", "webhook"],
-                    },
-                    "enabled": {
-                        "type": "boolean",
-                        "description": "Whether the rule is active",
-                        "default": True,
-                    },
-                    "kind": {
-                        "type": "string",
-                        "description": "Rule kind: content (item matching) or source_credential_missing (fires when a configured source requires an API key absent from the operator environment)",
-                        "default": "content",
-                        "enum": ["content", "source_credential_missing"],
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="remove_alert_rule",
-            description="Remove an alert rule by its ID",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "Alert rule ID to remove (returned by add_alert_rule in the response)",
-                    },
-                },
-                "required": ["id"],
-            },
-        ),
-        # -- Budget Thresholds (2) -------------------------------------------
-        Tool(
-            name="get_budget_thresholds",
-            description=(
-                "Return current budget thresholds with spend status. "
-                "Compares total spend from CostMeter against each threshold "
-                "and reports breach status (ok/warning/critical)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="set_budget_thresholds",
-            description=(
-                "Update budget thresholds in the project config. "
-                "Thresholds are percentage values (0-100+) at which budget "
-                "alerts fire. Persisted to .autoinfo/config.yaml."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "thresholds": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Percentage thresholds (e.g. [30.0, 60.0, 90.0, 100.0])",
-                    },
-                    "auto_remediation_enabled": {
-                        "type": "boolean",
-                        "description": "Whether auto-remediation is active (V2 — not yet implemented)",
-                        "default": False,
-                    },
-                    "alert_webhook": {
-                        "type": "string",
-                        "description": "Optional webhook URL for budget alert notifications",
-                        "default": "",
-                    },
-                },
-                "required": ["thresholds"],
-            },
-        ),
-        # -- Cost Dashboard & Allocation (2) ----------------------------------
-        Tool(
-            name="cost_dashboard",
-            description=(
-                "Show cost dashboard — totals by domain, daily trend, "
-                "top models/sources, and budget status."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "period": {
-                        "type": "string",
-                        "description": "Time period: today, week, month, all",
-                        "default": "week",
-                        "enum": ["today", "week", "month", "all"],
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="cost_allocation",
-            description=(
-                "Show cost allocation broken down by domain and user. "
-                "Supports filtering by domain, user_id, and time period."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain filter (empty = all)",
-                        "default": "",
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "Optional user ID filter (empty = all)",
-                        "default": "",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Time period: all, today, week, month",
-                        "default": "all",
-                        "enum": ["all", "today", "week", "month"],
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Init (1) --------------------------------------------------------
-        Tool(
-            name="init_project",
-            description=(
-                "Initialize AutoInfo project skeleton (creates .autoinfo/ "
-                "directory, config, demo domain). Idempotent — safe to call "
-                "when already initialized."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Demo domain name (e.g. medical-research)",
-                        "enum": _list_demo_domains(),
-                    },
-                    "project_name": {
-                        "type": "string",
-                        "description": "Optional human-friendly project name",
-                        "default": "",
-                    },
-                    "dry_run": {
-                        "type": "boolean",
-                        "description": "Preview what would be created without writing files",
-                        "default": False,
-                    },
-                    "llm_provider": {
-                        "type": "string",
-                        "description": "Override default LLM provider (e.g. \"openai\")",
-                        "default": "",
-                    },
-                    "llm_model": {
-                        "type": "string",
-                        "description": "Override default LLM model (e.g. \"gpt-4\")",
-                        "default": "",
-                    },
-                    "llm_base_url": {
-                        "type": "string",
-                        "description": "Override default LLM base URL (e.g. \"http://localhost:11434/v1\")",
-                        "default": "",
-                    },
-                },
-                "required": ["domain"],
-            },
-        ),
-        Tool(
-            name="configure_llm",
-            description=(
-                "Update LLM configuration in .autoinfo/config.yaml. "
-                "Incremental: only updates fields explicitly provided. "
-                "api_key is stored as env var reference (${AUTOINFO_LLM_API_KEY}), "
-                "never the raw key. No-op when no parameters are supplied. "
-                "llm_fallback configures the fallback chain (None = unchanged, "
-                "[] = clear, entries merge by (provider, model) identity); "
-                "llm_tasks configures per-task model routing (None = unchanged, "
-                "{} = clear; judgment tasks still resolve to the release-pinned "
-                "the effective judgment model at runtime)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "provider": {
-                        "type": "string",
-                        "description": "LLM provider name (e.g. \"openai\", \"openrouter\")",
-                        "default": "",
-                    },
-                    "model": {
-                        "type": "string",
-                        "description": "LLM model name (e.g. \"gpt-4\", \"deepseek/deepseek-chat\")",
-                        "default": "",
-                    },
-                    "api_key": {
-                        "type": "string",
-                        "description": "API key — stored as env var reference (${AUTOINFO_LLM_API_KEY}), not raw key. Set AUTOINFO_LLM_API_KEY env var separately.",
-                        "default": "",
-                    },
-                    "base_url": {
-                        "type": "string",
-                        "description": "LLM base URL (e.g. \"http://localhost:11434/v1\")",
-                        "default": "",
-                    },
-                    "llm_fallback": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "model": {
-                                    "type": "string",
-                                    "description": "Fallback model name (required)",
-                                },
-                                "provider": {
-                                    "type": "string",
-                                    "description": "Fallback provider; empty inherits the primary provider",
-                                },
-                                "base_url": {
-                                    "type": "string",
-                                    "description": "Fallback base URL",
-                                },
-                                "api_key": {
-                                    "type": "string",
-                                    "description": "Fallback API key (env var reference ${...}); empty inherits the primary key",
-                                },
-                                "json_mode": {
-                                    "type": "boolean",
-                                    "description": "Force JSON response format for this fallback",
-                                },
-                                "reasoning_model": {
-                                    "type": "boolean",
-                                    "description": "Mark this fallback as a reasoning model",
-                                },
-                                "timeout": {
+                                "threshold": {
                                     "type": "number",
-                                    "description": "Per-call timeout in seconds",
+                                    "description": "Score threshold 0-100 (quality gates)",
+                                },
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Whether enabled (delivery gates; CurationGate G4)",
+                                },
+                                "action_on_failure": {
+                                    "type": "string",
+                                    "description": (
+                                        "Action on failure: block, fallback, flag (delivery gates)"
+                                    ),
+                                    "enum": ["block", "fallback", "flag"],
                                 },
                             },
-                            "required": ["model"],
                         },
-                        "description": "Fallback chain entries. None = leave unchanged; [] = clear; entries merge by (provider, model) identity.",
                     },
-                    "llm_tasks": {
-                        "type": "object",
-                        "description": "Per-task LLM overrides keyed by task name (model/provider/max_tokens). None = leave unchanged; {} = clear. Judgment tasks (g4_factual/g5_translation/llm_judge) still resolve to the effective judgment model (llm.judgment_model/llm.model) at runtime.",
-                        "additionalProperties": {
+                    "required": ["domain", "gate", "config"],
+                },
+            ),
+            # -- Product (2) ----------------------------------------------------
+            Tool(
+                name="get_product",
+                description=(
+                    "Return configuration of a single product (RAW or PROCESSED) "
+                    "for a domain by product type — channels, formats, and "
+                    "platform limits derived from domain config. Inspect a "
+                    "specific product before generating or delivering."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "product_type": {
+                            "type": "string",
+                            "description": "Product type: RAW or PROCESSED",
+                            "enum": ["RAW", "PROCESSED"],
+                        },
+                    },
+                    "required": ["domain", "product_type"],
+                },
+            ),
+            Tool(
+                name="list_products",
+                description=(
+                    "Enumerate all products (RAW and PROCESSED) configured for a "
+                    "domain with their product id, channels, and formats. Use "
+                    "for an overview before choosing one to generate."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            # -- End User Delivery (1) -------------------------------------------
+            Tool(
+                name="send_to_enduser",
+                description="Dispatch a product to an end user through a delivery channel. Looks up the user profile, resolves the channel, and dispatches via the DeliveryChannel framework",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "User ID of the recipient (must exist in the user store)",
+                        },
+                        "product_type": {
+                            "type": "string",
+                            "description": "Product type: raw or processed",
+                            "enum": ["raw", "processed"],
+                        },
+                        "product_id": {
+                            "type": "string",
+                            "description": "Product identifier (e.g. medical-research-processed)",
+                        },
+                        "channel": {
+                            "type": "string",
+                            "description": "Delivery channel name (e.g. smtp, webhook, discord). Falls back to user's preferences, then smtp",
+                            "enum": [
+                                "smtp",
+                                "webhook",
+                                "rest_api",
+                                "file_export",
+                                "discord",
+                                "telegram",
+                                "wechat_work",
+                                "wechat_oa",
+                                "dingtalk",
+                                "feishu",
+                                "rss",
+                                "social_publish",
+                                "push",
+                            ],
+                        },
+                    },
+                    "required": ["end_user_id", "product_type", "product_id"],
+                },
+            ),
+            # -- Alert Rules (3) ------------------------------------------------
+            Tool(
+                name="get_alert_rules",
+                description="List alert rules for a domain. Returns all rules filtered by domain",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="add_alert_rule",
+                description="Create a new threshold-based alert rule for a domain. Triggers notifications when collected items match the configured keywords and relevance threshold, or when a configured source is missing its required API key (kind=source_credential_missing)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain name (e.g. medical-research)",
+                        },
+                        "topic_keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Keywords to match against item title and content. Empty list matches all items",
+                            "default": [],
+                        },
+                        "relevance_threshold": {
+                            "type": "number",
+                            "description": "Minimum relevance score (0-100) to trigger",
+                            "default": 0.0,
+                        },
+                        "channel": {
+                            "type": "string",
+                            "description": "Delivery channel: email or webhook",
+                            "default": "email",
+                            "enum": ["email", "webhook"],
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Whether the rule is active",
+                            "default": True,
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description": "Rule kind: content (item matching) or source_credential_missing (fires when a configured source requires an API key absent from the operator environment)",
+                            "default": "content",
+                            "enum": ["content", "source_credential_missing"],
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="remove_alert_rule",
+                description="Remove an alert rule by its ID. Deletes the rule returned by add_alert_rule so no further checks or dispatches fire for it. Use to clean up stale thresholds after a budget re-plan.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Alert rule ID to remove (returned by add_alert_rule in the response)",
+                        },
+                    },
+                    "required": ["id"],
+                },
+            ),
+            # -- Budget Thresholds (2) -------------------------------------------
+            Tool(
+                name="get_budget_thresholds",
+                description=(
+                    "Return current budget thresholds with spend status. "
+                    "Compares total spend from CostMeter against each threshold "
+                    "and reports breach status (ok/warning/critical)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="set_budget_thresholds",
+                description=(
+                    "Update budget thresholds in the project config. "
+                    "Thresholds are percentage values (0-100+) at which budget "
+                    "alerts fire. Persisted to .autoinfo/config.yaml."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "thresholds": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Percentage thresholds (e.g. [30.0, 60.0, 90.0, 100.0])",
+                        },
+                        "auto_remediation_enabled": {
+                            "type": "boolean",
+                            "description": "Whether auto-remediation is active (V2 — not yet implemented)",
+                            "default": False,
+                        },
+                        "alert_webhook": {
+                            "type": "string",
+                            "description": "Optional webhook URL for budget alert notifications",
+                            "default": "",
+                        },
+                    },
+                    "required": ["thresholds"],
+                },
+            ),
+            # -- Cost Dashboard & Allocation (2) ----------------------------------
+            Tool(
+                name="cost_dashboard",
+                description=(
+                    "Show cost dashboard — totals by domain, daily trend, "
+                    "top models/sources, and budget status."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "description": "Time period: today, week, month, all",
+                            "default": "week",
+                            "enum": ["today", "week", "month", "all"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="cost_allocation",
+                description=(
+                    "Show cost allocation broken down by domain and user. "
+                    "Supports filtering by domain, user_id, and time period."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain filter (empty = all)",
+                            "default": "",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID filter (empty = all)",
+                            "default": "",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Time period: all, today, week, month",
+                            "default": "all",
+                            "enum": ["all", "today", "week", "month"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Init (1) --------------------------------------------------------
+            Tool(
+                name="init_project",
+                description=(
+                    "Initialize AutoInfo project skeleton (creates .autoinfo/ "
+                    "directory, config, demo domain). Idempotent — safe to call "
+                    "when already initialized."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Demo domain name (e.g. medical-research)",
+                            "enum": _list_demo_domains(),
+                        },
+                        "project_name": {
+                            "type": "string",
+                            "description": "Optional human-friendly project name",
+                            "default": "",
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Preview what would be created without writing files",
+                            "default": False,
+                        },
+                        "llm_provider": {
+                            "type": "string",
+                            "description": 'Override default LLM provider (e.g. "openai")',
+                            "default": "",
+                        },
+                        "llm_model": {
+                            "type": "string",
+                            "description": 'Override default LLM model (e.g. "gpt-4")',
+                            "default": "",
+                        },
+                        "llm_base_url": {
+                            "type": "string",
+                            "description": 'Override default LLM base URL (e.g. "http://localhost:11434/v1")',
+                            "default": "",
+                        },
+                    },
+                    "required": ["domain"],
+                },
+            ),
+            Tool(
+                name="configure_llm",
+                description=(
+                    "Update LLM configuration in .autoinfo/config.yaml. "
+                    "Incremental: only updates fields explicitly provided. "
+                    "api_key is stored as env var reference (${AUTOINFO_LLM_API_KEY}), "
+                    "never the raw key. No-op when no parameters are supplied. "
+                    "llm_fallback configures the fallback chain (None = unchanged, "
+                    "[] = clear, entries merge by (provider, model) identity); "
+                    "llm_tasks configures per-task model routing (None = unchanged, "
+                    "{} = clear; judgment tasks still resolve to the release-pinned "
+                    "the effective judgment model at runtime)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "description": 'LLM provider name (e.g. "openai", "openrouter")',
+                            "default": "",
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": 'LLM model name (e.g. "gpt-4", "deepseek/deepseek-chat")',
+                            "default": "",
+                        },
+                        "api_key": {
+                            "type": "string",
+                            "description": "API key — stored as env var reference (${AUTOINFO_LLM_API_KEY}), not raw key. Set AUTOINFO_LLM_API_KEY env var separately.",
+                            "default": "",
+                        },
+                        "base_url": {
+                            "type": "string",
+                            "description": 'LLM base URL (e.g. "http://localhost:11434/v1")',
+                            "default": "",
+                        },
+                        "llm_fallback": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "model": {
+                                        "type": "string",
+                                        "description": "Fallback model name (required)",
+                                    },
+                                    "provider": {
+                                        "type": "string",
+                                        "description": "Fallback provider; empty inherits the primary provider",
+                                    },
+                                    "base_url": {
+                                        "type": "string",
+                                        "description": "Fallback base URL",
+                                    },
+                                    "api_key": {
+                                        "type": "string",
+                                        "description": "Fallback API key (env var reference ${...}); empty inherits the primary key",
+                                    },
+                                    "json_mode": {
+                                        "type": "boolean",
+                                        "description": "Force JSON response format for this fallback",
+                                    },
+                                    "reasoning_model": {
+                                        "type": "boolean",
+                                        "description": "Mark this fallback as a reasoning model",
+                                    },
+                                    "timeout": {
+                                        "type": "number",
+                                        "description": "Per-call timeout in seconds",
+                                    },
+                                },
+                                "required": ["model"],
+                            },
+                            "description": "Fallback chain entries. None = leave unchanged; [] = clear; entries merge by (provider, model) identity.",
+                        },
+                        "llm_tasks": {
                             "type": "object",
-                            "properties": {
-                                "model": {
-                                    "type": "string",
-                                    "description": "Task model override",
-                                },
-                                "provider": {
-                                    "type": "string",
-                                    "description": "Task provider override",
-                                },
-                                "max_tokens": {
-                                    "type": "integer",
-                                    "description": "Task max_tokens override",
+                            "description": "Per-task LLM overrides keyed by task name (model/provider/max_tokens). None = leave unchanged; {} = clear. Judgment tasks (g4_factual/g5_translation/llm_judge) still resolve to the effective judgment model (llm.judgment_model/llm.model) at runtime.",
+                            "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                    "model": {
+                                        "type": "string",
+                                        "description": "Task model override",
+                                    },
+                                    "provider": {
+                                        "type": "string",
+                                        "description": "Task provider override",
+                                    },
+                                    "max_tokens": {
+                                        "type": "integer",
+                                        "description": "Task max_tokens override",
+                                    },
                                 },
                             },
                         },
                     },
+                    "required": [],
                 },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="test_llm_connection",
-            description=(
-                "Test LLM connectivity with the current or overridden "
-                "configuration. Makes a minimal completion call and reports "
-                "connectable, tested_model, latency_ms, and config_source "
-                "(params when any override is supplied, else config). "
-                "Pass api_key explicitly to test a key without persisting it."
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "provider": {
-                        "type": "string",
-                        "description": "LLM provider override (e.g. \"openai\", \"openrouter\")",
-                        "default": "",
+            Tool(
+                name="test_llm_connection",
+                description=(
+                    "Test LLM connectivity with the current or overridden "
+                    "configuration. Makes a minimal completion call and reports "
+                    "connectable, tested_model, latency_ms, and config_source "
+                    "(params when any override is supplied, else config). "
+                    "Pass api_key explicitly to test a key without persisting it."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "description": 'LLM provider override (e.g. "openai", "openrouter")',
+                            "default": "",
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": 'LLM model override (e.g. "gpt-4", "deepseek/deepseek-chat")',
+                            "default": "",
+                        },
+                        "base_url": {
+                            "type": "string",
+                            "description": 'LLM base URL override (e.g. "http://localhost:11434/v1")',
+                            "default": "",
+                        },
+                        "api_key": {
+                            "type": "string",
+                            "description": "API key override for this test only (never persisted). Empty inherits the config/env key.",
+                            "default": "",
+                        },
                     },
-                    "model": {
-                        "type": "string",
-                        "description": "LLM model override (e.g. \"gpt-4\", \"deepseek/deepseek-chat\")",
-                        "default": "",
-                    },
-                    "base_url": {
-                        "type": "string",
-                        "description": "LLM base URL override (e.g. \"http://localhost:11434/v1\")",
-                        "default": "",
-                    },
-                    "api_key": {
-                        "type": "string",
-                        "description": "API key override for this test only (never persisted). Empty inherits the config/env key.",
-                        "default": "",
-                    },
+                    "required": [],
                 },
-                "required": [],
-            },
-        ),
-        # -- Metrics (2) --------------------------------------------------
-        Tool(
-            name="get_metrics",
-            description="Get Prometheus-format metrics for monitoring",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Optional domain filter",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_prometheus_metrics",
-            description="Get raw Prometheus exposition-format metrics (same format as /metrics HTTP endpoint)",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        # -- Soft-delete & GDPR (4) -------------------------------------------
-        Tool(
-            name="soft_delete_entry",
-            description="Mark an entry as deleted (soft-delete) or permanently remove it (hard-delete). Set purge=True for permanent deletion. 03-Wiki entries are append-only: only an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS (default 'director') can delete them.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {"type": "string"},
-                    "purge": {
-                        "type": "boolean",
-                        "description": "If False (default), performs soft-delete (mark as deleted). If True, permanently deletes the entry from index, FTS5, and disk.",
-                        "default": False,
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Acting actor. 03-Wiki entries require an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS",
-                    },
-                },
-                "required": ["entry_id", "actor"],
-            },
-        ),
-        Tool(
-            name="mark_stale",
-            description="Mark a knowledge base entry as stale (demoted in search, excluded from digests)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {"type": "string"},
-                },
-                "required": ["entry_id"],
-            },
-        ),
-        Tool(
-            name="restore_entry",
-            description="Restore a soft-deleted entry",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {"type": "string"},
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["entry_id", "actor"],
-            },
-        ),
-        Tool(
-            name="export_user_data",
-            description="Export all data for a user (GDPR compliance)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {"type": "string"},
-                },
-                "required": ["user_id"],
-            },
-        ),
-        Tool(
-            name="delete_user_data",
-            description="Delete all user data (GDPR right to be forgotten)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {"type": "string"},
-                    "purge": {"type": "boolean"},
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
-                },
-                "required": ["user_id", "actor"],
-            },
-        ),
-        # -- Trace (1) -------------------------------------------------------
-        Tool(
-            name="trace_item",
-            description="Trace the full pipeline history for a trace_id",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "trace_id": {
-                        "type": "string",
-                        "description": "UUID trace identifier from collection",
-                    },
-                },
-                "required": ["trace_id"],
-            },
-        ),
-        # -- Merge (1) -------------------------------------------------------
-        Tool(
-            name="merge_items",
-            description="Merge multiple KB entries into one (cross-collection dedup)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "item_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of KB entry IDs to merge",
-                    },
-                    "strategy": {
-                        "type": "string",
-                        "description": "Merge strategy: 'simple' or 'title_first'",
-                        "default": "simple",
-                    },
-                },
-                "required": ["item_ids"],
-            },
-        ),
-        # -- Find Similar (1) -------------------------------------------------
-        Tool(
-            name="find_similar_items",
-            description="Find items similar to a query using text similarity",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "threshold": {
-                        "type": "number",
-                        "description": "Minimum similarity ratio (0.0–1.0)",
-                        "default": 0.8,
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return",
-                        "default": 20,
-                    },
-                },
-                "required": ["query"],
-            },
-        ),
-        # -- KB Freshness (1) --------------------------------------------------
-        Tool(
-            name="calculate_freshness_score",
-            description="Calculate freshness score (0.0–1.0) for a KB entry based on age and TTL",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {
-                        "type": "string",
-                        "description": "KB entry ID to calculate freshness for",
-                    },
-                    "ttl_days": {
-                        "type": "integer",
-                        "description": "Time-to-live in days (default: 90)",
-                        "default": 90,
-                    },
-                },
-                "required": ["entry_id"],
-            },
-        ),
-        # -- Portal / End-user Self-service (2) ------------------------------
-        Tool(
-            name="get_enduser_history",
-            description="Return delivery history for an end-user. Mirrors the portal CLI history command — looks up subscriptions and queries the delivery log for delivery attempts.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to return (default: 20)",
-                        "default": 20,
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        Tool(
-            name="get_enduser_products",
-            description="Return products (subscriptions) for an end-user. Mirrors the portal CLI subscription lookup — returns plan, status, dates, and auto-renew flag.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        # -- Delivery Log (1) ------------------------------------------------
-        Tool(
-            name="query_delivery_log",
-            description="Query the delivery log with optional filters (subscription_id, status, date range)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "subscription_id": {
-                        "type": "string",
-                        "description": "Filter by subscription ID",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of entries to return (default: 50)",
-                        "default": 50,
-                    },
-                    "status": {
-                        "type": "string",
-                        "description": "Filter by delivery status (e.g. success, failed, retrying)",
-                    },
-                    "from_date": {
-                        "type": "string",
-                        "description": "Filter by last_attempt >= this ISO-8601 timestamp",
-                    },
-                    "to_date": {
-                        "type": "string",
-                        "description": "Filter by last_attempt <= this ISO-8601 timestamp",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- Delivery Monitor (2) -------------------------------------------
-        Tool(
-            name="list_active_deliveries",
-            description="List all active/in-progress deliveries (status: retrying, pending, in_progress)",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="get_delivery_log",
-            description="Query delivery history with optional filters (status, domain) and pagination",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "description": "Filter by delivery status (e.g. success, failed, retrying, pending)",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Filter by domain name (delivery_log does not store domain yet — accepted for API compatibility)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to return (default: 20)",
-                        "default": 20,
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Pagination offset (default: 0)",
-                        "default": 0,
-                    },
-                },
-                "required": [],
-            },
-        ),
-        # -- End-User Trial (2) ------------------------------------------------
-        Tool(
-            name="activate_trial",
-            description="Activate or reset trial period for an end-user. Sets trial_started_at to now with configurable duration (default 14 days). Also sets user status to trial if not active.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                    "days": {
-                        "type": "integer",
-                        "description": "Trial duration in days (default: 14)",
-                        "default": 14,
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        Tool(
-            name="check_trial_expiry",
-            description="Check trial status for an end-user. Returns days_remaining (int), status (expired/active/no_trial), trial_started_at, and trial_days.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        # -- End-User Preferences (2) ------------------------------------------
-        Tool(
-            name="update_preferences",
-            description="Merge preferences into stored preferences for an end-user. Accepts a dict of keys to update (format, delivery_channel, timezone, max_items). Deep-merges with existing preferences.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                    "preferences": {
-                        "type": "object",
-                        "description": "Dict of preference keys to set (e.g. {format: markdown, delivery_channel: email, timezone: UTC, max_items: 50})",
-                    },
-                },
-                "required": ["end_user_id", "preferences"],
-            },
-        ),
-        Tool(
-            name="get_preferences",
-            description="Return stored preferences for an end-user. Returns dict with user_id and preferences object.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        # -- End-User CRUD (5) -------------------------------------------------
-        Tool(
-            name="enduser_create",
-            description="Create a new end-user profile. Requires user_id and name. Optional: email, delivery_prefs (JSON dict), status (trial/active/suspended/cancelled), tier (free/pro/enterprise).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "Unique user identifier (e.g. alice)",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "User display name",
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Email address",
-                        "default": "",
-                    },
-                    "delivery_prefs": {
-                        "type": "object",
-                        "description": "Delivery preferences as a JSON object (e.g. {channel: email})",
-                    },
-                    "status": {
-                        "type": "string",
-                        "description": "Account status (trial/active/suspended/cancelled)",
-                        "default": "trial",
-                        "enum": ["trial", "active", "suspended", "cancelled"],
-                    },
-                    "tier": {
-                        "type": "string",
-                        "description": "Account tier (free/pro/enterprise)",
-                        "default": "free",
-                        "enum": ["free", "pro", "enterprise"],
-                    },
-                },
-                "required": ["user_id", "name"],
-            },
-        ),
-        Tool(
-            name="enduser_get",
-            description="Get an end-user profile by user ID. Returns the full profile dict or an error if not found.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "User identifier to look up (e.g. alice)",
-                    },
-                },
-                "required": ["user_id"],
-            },
-        ),
-        Tool(
-            name="enduser_update",
-            description="Update an end-user profile (partial update). Only provided fields are changed. Returns the updated profile.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "User identifier to update (e.g. alice)",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "New display name (optional)",
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "New email address (optional)",
-                    },
-                    "delivery_prefs": {
-                        "type": "object",
-                        "description": "New delivery preferences JSON object (optional)",
-                    },
-                    "status": {
-                        "type": "string",
-                        "description": "New account status (optional)",
-                    },
-                    "tier": {
-                        "type": "string",
-                        "description": "New account tier (optional)",
-                    },
-                },
-                "required": ["user_id"],
-            },
-        ),
-        Tool(
-            name="enduser_delete",
-            description="Delete an end-user profile and associated subscriptions. Returns success or not-found error.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "User identifier to delete (e.g. alice)",
-                    },
-                },
-                "required": ["user_id"],
-            },
-        ),
-        Tool(
-            name="enduser_list",
-            description="List all end-user profiles. Returns items array and count.",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        # -- Stripe Billing (2) ------------------------------------------------
-        Tool(
-            name="create_checkout_session",
-            description="Create a Stripe Checkout Session for a product (subscription or one-time payment). Creates (or looks up) a Stripe Customer for the end-user and generates a checkout URL. Works with stripe-mock (localhost:12111) or live/test Stripe keys via STRIPE_API_KEY env var.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "product_id": {
-                        "type": "string",
-                        "description": "Stripe Price ID (e.g. price_xxx for subscriptions; name for payment mode)",
-                    },
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "AutoInfo end-user ID (e.g. alice)",
-                    },
-                    "mode": {
-                        "type": "string",
-                        "description": "Checkout mode: 'subscription' (default) or 'payment' (one-time purchase)",
-                        "default": "subscription",
-                        "enum": ["subscription", "payment"],
-                    },
-                    "article_id": {
-                        "type": "string",
-                        "description": "Article identifier for single-purchase metadata (payment mode only)",
-                        "default": "",
-                    },
-                    "success_url": {
-                        "type": "string",
-                        "description": "Redirect URL after successful payment (default: http://localhost:8741/success)",
-                        "default": "http://localhost:8741/success",
-                    },
-                    "cancel_url": {
-                        "type": "string",
-                        "description": "Redirect URL on cancellation (default: http://localhost:8741/cancel)",
-                        "default": "http://localhost:8741/cancel",
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer email (optional)",
-                        "default": "",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Customer display name (optional)",
-                        "default": "",
-                    },
-                },
-                "required": ["product_id", "end_user_id"],
-            },
-        ),
-        Tool(
-            name="get_subscription_status",
-            description="Check Stripe subscription status for an end-user. Looks up the Stripe subscription via stored stripe_subscription_id and returns status, plan, and customer info.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then \"default\".",
-                        "default": "",
-                    },
-                },
-            },
-        ),
-        Tool(
-            name="get_billing_summary",
-            description="Return combined billing summary — usage data and subscription status for an end-user. Combines CostMeter usage data (LLM tokens, storage, API calls) with Stripe subscription info in a single read-only result.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then \"default\".",
-                        "default": "",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Time period: today, week, month, all (default: month)",
-                        "default": "month",
-                    },
-                },
-            },
-        ),
-        # -- End-user Usage & Invoice (G16 — 2) ------------------------------
-        Tool(
-            name="get_enduser_usage",
-            description="Return billable usage for an end-user over a period. Queries CostMeter and maps internal tracking to customer-billable units: LLM tokens → llm_units, storage items → storage_mb, API calls → api_call_units.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Time period: today, week, month, all (default: month)",
-                        "default": "month",
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        Tool(
-            name="get_enduser_invoice",
-            description="Return an invoice-like summary with usage and estimated cost for an end-user. Computes billable units via CostMeter and applies configurable unit pricing.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "end_user_id": {
-                        "type": "string",
-                        "description": "End-user ID (e.g. alice)",
-                    },
-                    "period": {
-                        "type": "string",
-                        "description": "Time period: today, week, month, all (default: month)",
-                        "default": "month",
-                    },
-                },
-                "required": ["end_user_id"],
-            },
-        ),
-        # -- Clean Cache (1) --------------------------------------------------
-        Tool(
-            name="clean_cache",
-            description=(
-                "Remove cached artifacts and temporary files. "
-                "Supports selective cleanup (collections, outputs) or "
-                "--everything mode. dry_run shows what would be deleted "
-                "without actually deleting."
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "collections": {
-                        "type": "boolean",
-                        "description": "Remove cached collections/ contents",
-                        "default": False,
+            # -- Metrics (2) --------------------------------------------------
+            Tool(
+                name="get_metrics",
+                description="Get Prometheus-format metrics for monitoring. Exposes counters and gauges for collection, processing, LLM spend and delivery as text exposition format. Use when scraping into a monitoring stack or debugging a live server.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain filter",
+                        },
                     },
-                    "outputs": {
-                        "type": "boolean",
-                        "description": "Remove outputs/ contents",
-                        "default": False,
-                    },
-                    "everything": {
-                        "type": "boolean",
-                        "description": "Remove ALL cached data (collections + outputs + knowledge + DB)",
-                        "default": False,
-                    },
-                    "dry_run": {
-                        "type": "boolean",
-                        "description": "Show what would be deleted without deleting",
-                        "default": False,
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Required. Must be True when everything=True — this deletes the entire knowledge/ directory and database",
-                    },
-                    "actor": {
-                        "type": "string",
-                        "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
-                    },
+                    "required": [],
                 },
-                "required": ["actor", "confirm"],
-            },
-        ),
-        # -- Channel Health (1) -------------------------------------------
-        Tool(
-            name="get_channel_health",
-            description=(
-                "Check health of delivery channels. "
-                "Return health status (healthy, latency_ms, error) for one or all channels. "
-                "When channel_name is omitted, returns health for all 13 channels."
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "channel_name": {
-                        "type": "string",
-                        "description": (
-                            "Specific channel to check (smtp, webhook, rest_api, file_export, "
-                            "discord, telegram, wechat_work, wechat_oa, dingtalk, feishu, rss, push). "
-                            "When omitted, all channels are checked."
-                        ),
-                    },
+            Tool(
+                name="get_prometheus_metrics",
+                description="Get raw Prometheus exposition-format metrics (same format as /metrics HTTP endpoint)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
                 },
-                "required": [],
-            },
-        ),
-        # -- Agent Callbacks (3) --------------------------------------------
-        Tool(
-            name="set_agent_callback",
-            description=(
-                "Register an agent callback URL for push events "
-                "(new_digest, new_report, new_tutorial). "
-                "Returns a callback_id for later removal. "
-                "NOT shared with set_domain_webhooks — this is a separate system."
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "agent_url": {
-                        "type": "string",
-                        "description": "Callback URL (must start with http:// or https://)",
+            # -- Soft-delete & GDPR (4) -------------------------------------------
+            Tool(
+                name="soft_delete_entry",
+                description="Mark an entry as deleted (soft-delete) or permanently remove it (hard-delete). Set purge=True for permanent deletion. 03-Wiki entries are append-only: only an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS (default 'director') can delete them.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string"},
+                        "purge": {
+                            "type": "boolean",
+                            "description": "If False (default), performs soft-delete (mark as deleted). If True, permanently deletes the entry from index, FTS5, and disk.",
+                            "default": False,
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Acting actor. 03-Wiki entries require an actor whitelisted in AUTOINFO_DIRECTOR_ACTORS",
+                        },
                     },
-                    "events": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Events to subscribe to: new_digest, new_report, new_tutorial",
-                    },
+                    "required": ["entry_id", "actor"],
                 },
-                "required": ["agent_url", "events"],
-            },
-        ),
-        Tool(
-            name="list_agent_callbacks",
-            description="List all registered agent callbacks with their URLs and subscribed events",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="remove_agent_callback",
-            description="Remove a registered agent callback by its callback_id",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "callback_id": {
-                        "type": "string",
-                        "description": "Callback ID returned by set_agent_callback",
-                    },
-                },
-                "required": ["callback_id"],
-            },
-        ),
-        # -- Recommendation (1) ---------------------------------------------
-        Tool(
-            name="recommend_content",
-            description="Return content-based recommendations for a user query",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "User identifier",
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "Search/recommendation query",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain filter (optional)",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results (default 10)",
-                    },
-                },
-                "required": ["user_id"],
-            },
-        ),
-        # -- Simplification (1) ----------------------------------------------
-        Tool(
-            name="simplify_content",
-            description=(
-                "Simplify text content to a target CEFR reading level using LLM. "
-                "Classifies original level, rewrites at target level, and verifies "
-                "the result. Returns simplified text, original/simplified CEFR levels, "
-                "and a verified flag. Target levels: A1, A2, B1, B2, C1."
             ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "Text content to simplify",
+            Tool(
+                name="mark_stale",
+                description="Mark a knowledge base entry as stale (demoted in search, excluded from digests)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string"},
                     },
-                    "target_level": {
-                        "type": "string",
-                        "description": "Target CEFR level: A1, A2, B1, B2, or C1",
+                    "required": ["entry_id"],
+                },
+            ),
+            Tool(
+                name="restore_entry",
+                description="Restore a soft-deleted entry. Reverses soft_delete_entry within the retention window, returning the entry to its previous tier. Use to recover a mistakenly archived item before permanent purge.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "string"},
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
                     },
-                    "language": {
-                        "type": "string",
-                        "description": "Language code: en, zh, or ja (default: en)",
+                    "required": ["entry_id", "actor"],
+                },
+            ),
+            Tool(
+                name="export_user_data",
+                description="Export all data for a user (GDPR compliance). Bundles the profile, subscriptions, preferences, delivery log and audit rows into a single JSON payload. Use to fulfill a data-subject access request.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {"type": "string"},
+                    },
+                    "required": ["user_id"],
+                },
+            ),
+            Tool(
+                name="delete_user_data",
+                description="Delete all user data (GDPR right to be forgotten). Permanently erases the end-user profile, subscriptions, delivery history and derived records. Use only for a verified erasure request; requires actor for audit.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {"type": "string"},
+                        "purge": {"type": "boolean"},
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
+                    },
+                    "required": ["user_id", "actor"],
+                },
+            ),
+            # -- Trace (1) -------------------------------------------------------
+            Tool(
+                name="trace_item",
+                description="Trace the full pipeline history for a trace_id. Reconstructs the item journey from collection through gates, KB storage, and delivery using the structured logs. Use to diagnose why a specific item was dropped or delayed.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "trace_id": {
+                            "type": "string",
+                            "description": "UUID trace identifier from collection",
+                        },
+                    },
+                    "required": ["trace_id"],
+                },
+            ),
+            # -- Merge (1) -------------------------------------------------------
+            Tool(
+                name="merge_items",
+                description="Merge multiple KB entries into one (cross-collection dedup). Combines the content, sources, and metadata of 2+ entries into a single entry. Use after find_similar_items flags duplicates; strategy selects simple concatenation or title-first merging.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "item_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of KB entry IDs to merge",
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "description": "Merge strategy: 'simple' or 'title_first'",
+                            "default": "simple",
+                            "enum": ["simple", "title_first"],
+                        },
+                    },
+                    "required": ["item_ids"],
+                },
+            ),
+            # -- Find Similar (1) -------------------------------------------------
+            Tool(
+                name="find_similar_items",
+                description="Find items similar to a query using text similarity. Accepts a query string and ranks KB entries by lexical/semantic closeness. Use for dedup triage before merge_items or to locate related content across the collection.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "threshold": {
+                            "type": "number",
+                            "description": "Minimum similarity ratio (0.0–1.0)",
+                            "default": 0.8,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results to return",
+                            "default": 20,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            # -- KB Freshness (1) --------------------------------------------------
+            Tool(
+                name="calculate_freshness_score",
+                description="Calculate freshness score (0.0–1.0) for a KB entry based on age and TTL",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {
+                            "type": "string",
+                            "description": "KB entry ID to calculate freshness for",
+                        },
+                        "ttl_days": {
+                            "type": "integer",
+                            "description": "Time-to-live in days (default: 90)",
+                            "default": 90,
+                        },
+                    },
+                    "required": ["entry_id"],
+                },
+            ),
+            # -- Portal / End-user Self-service (2) ------------------------------
+            Tool(
+                name="get_enduser_history",
+                description="Return delivery history for an end-user. Mirrors the portal CLI history command — looks up subscriptions and queries the delivery log for delivery attempts.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return (default: 20)",
+                            "default": 20,
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            Tool(
+                name="get_enduser_products",
+                description="Return products (subscriptions) for an end-user. Mirrors the portal CLI subscription lookup — returns plan, status, dates, and auto-renew flag.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            # -- Delivery Log (1) ------------------------------------------------
+            Tool(
+                name="query_delivery_log",
+                description="Query the delivery log with optional filters (subscription_id, status, date range)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "subscription_id": {
+                            "type": "string",
+                            "description": "Filter by subscription ID",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of entries to return (default: 50)",
+                            "default": 50,
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "Filter by delivery status (e.g. success, failed, retrying)",
+                            "enum": ["success", "failed", "retrying", "pending", "in_progress"],
+                        },
+                        "from_date": {
+                            "type": "string",
+                            "description": "Filter by last_attempt >= this ISO-8601 timestamp",
+                        },
+                        "to_date": {
+                            "type": "string",
+                            "description": "Filter by last_attempt <= this ISO-8601 timestamp",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Delivery Monitor (2) -------------------------------------------
+            Tool(
+                name="list_active_deliveries",
+                description="List all active/in-progress deliveries (status: retrying, pending, in_progress). Use to monitor the delivery pipeline and spot stuck items before they violate SLA; pairs with the delivery log tools for a full picture.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_delivery_log",
+                description="Query delivery history with optional filters (status, domain) and pagination",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "Filter by delivery status (e.g. success, failed, retrying, pending)",
+                            "enum": ["success", "failed", "retrying", "pending", "in_progress"],
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Filter by domain name (delivery_log does not store domain yet — accepted for API compatibility)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return (default: 20)",
+                            "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Pagination offset (default: 0)",
+                            "default": 0,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- End-User Trial (2) ------------------------------------------------
+            Tool(
+                name="activate_trial",
+                description="Activate or reset trial period for an end-user. Sets trial_started_at to now with configurable duration (default 14 days). Also sets user status to trial if not active.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                        "days": {
+                            "type": "integer",
+                            "description": "Trial duration in days (default: 14)",
+                            "default": 14,
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            Tool(
+                name="check_trial_expiry",
+                description="Check trial status for an end-user. Returns days_remaining (int), status (expired/active/no_trial), trial_started_at, and trial_days.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            # -- End-User Preferences (2) ------------------------------------------
+            Tool(
+                name="update_preferences",
+                description="Merge preferences into stored preferences for an end-user. Accepts a dict of keys to update (format, delivery_channel, timezone, max_items). Deep-merges with existing preferences.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                        "preferences": {
+                            "type": "object",
+                            "description": "Dict of preference keys to set (e.g. {format: markdown, delivery_channel: email, timezone: UTC, max_items: 50})",
+                        },
+                    },
+                    "required": ["end_user_id", "preferences"],
+                },
+            ),
+            Tool(
+                name="get_preferences",
+                description="Return stored preferences for an end-user. Returns dict with user_id and preferences object.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            # -- End-User CRUD (5) -------------------------------------------------
+            Tool(
+                name="enduser_create",
+                description="Create a new end-user profile. Requires user_id and name. Optional: email, delivery_prefs (JSON dict), status (trial/active/suspended/cancelled), tier (free/pro/enterprise).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "Unique user identifier (e.g. alice)",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "User display name",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "Email address",
+                            "default": "",
+                        },
+                        "delivery_prefs": {
+                            "type": "object",
+                            "description": "Delivery preferences as a JSON object (e.g. {channel: email})",
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "Account status (trial/active/suspended/cancelled)",
+                            "default": "trial",
+                            "enum": ["trial", "active", "suspended", "cancelled"],
+                        },
+                        "tier": {
+                            "type": "string",
+                            "description": "Account tier (free/pro/enterprise)",
+                            "default": "free",
+                            "enum": ["free", "premium", "enterprise"],
+                        },
+                    },
+                    "required": ["user_id", "name"],
+                },
+            ),
+            Tool(
+                name="enduser_get",
+                description="Get an end-user profile by user ID. Returns the full profile dict or an error if not found.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "User identifier to look up (e.g. alice)",
+                        },
+                    },
+                    "required": ["user_id"],
+                },
+            ),
+            Tool(
+                name="enduser_update",
+                description="Update an end-user profile (partial update). Only provided fields are changed. Returns the updated profile.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "User identifier to update (e.g. alice)",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "New display name (optional)",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "New email address (optional)",
+                        },
+                        "delivery_prefs": {
+                            "type": "object",
+                            "description": "New delivery preferences JSON object (optional)",
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "New account status (optional)",
+                            "enum": ["trial", "active", "suspended", "cancelled"],
+                        },
+                        "tier": {
+                            "type": "string",
+                            "description": "New account tier (optional)",
+                            "enum": ["free", "premium", "enterprise"],
+                        },
+                    },
+                    "required": ["user_id"],
+                },
+            ),
+            Tool(
+                name="enduser_delete",
+                description="Delete an end-user profile and associated subscriptions. Returns success or not-found error.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "User identifier to delete (e.g. alice)",
+                        },
+                    },
+                    "required": ["user_id"],
+                },
+            ),
+            Tool(
+                name="enduser_list",
+                description="List all end-user profiles. Returns an items array with each profile's user_id, name, email, status, tier, and subscription count plus a total count. Use to browse the user directory before targeting a delivery.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            # -- Stripe Billing (2) ------------------------------------------------
+            Tool(
+                name="create_checkout_session",
+                description="Create a Stripe Checkout Session for a product (subscription or one-time payment). Creates (or looks up) a Stripe Customer for the end-user and generates a checkout URL. Works with stripe-mock (localhost:12111) or live/test Stripe keys via STRIPE_API_KEY env var.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "product_id": {
+                            "type": "string",
+                            "description": "Stripe Price ID (e.g. price_xxx for subscriptions; name for payment mode)",
+                        },
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "AutoInfo end-user ID (e.g. alice)",
+                        },
+                        "mode": {
+                            "type": "string",
+                            "description": "Checkout mode: 'subscription' (default) or 'payment' (one-time purchase)",
+                            "default": "subscription",
+                            "enum": ["subscription", "payment"],
+                        },
+                        "article_id": {
+                            "type": "string",
+                            "description": "Article identifier for single-purchase metadata (payment mode only)",
+                            "default": "",
+                        },
+                        "success_url": {
+                            "type": "string",
+                            "description": "Redirect URL after successful payment (default: http://localhost:8741/success)",
+                            "default": "http://localhost:8741/success",
+                        },
+                        "cancel_url": {
+                            "type": "string",
+                            "description": "Redirect URL on cancellation (default: http://localhost:8741/cancel)",
+                            "default": "http://localhost:8741/cancel",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "Customer email (optional)",
+                            "default": "",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Customer display name (optional)",
+                            "default": "",
+                        },
+                    },
+                    "required": ["product_id", "end_user_id"],
+                },
+            ),
+            Tool(
+                name="get_subscription_status",
+                description="Check Stripe subscription status for an end-user. Looks up the Stripe subscription via stored stripe_subscription_id and returns status, plan, and customer info.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": 'AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then "default".',
+                            "default": "",
+                        },
                     },
                 },
-                "required": ["content", "target_level"],
-            },
-        ),
+            ),
+            Tool(
+                name="get_billing_summary",
+                description="Return combined billing summary — usage data and subscription status for an end-user. Combines CostMeter usage data (LLM tokens, storage, API calls) with Stripe subscription info in a single read-only result.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": 'AutoInfo end-user ID (e.g. alice). Optional — defaults to config multi_user.default_user_id, then "default".',
+                            "default": "",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Time period: today, week, month, all (default: month)",
+                            "default": "month",
+                            "enum": ["today", "week", "month", "all"],
+                        },
+                    },
+                },
+            ),
+            # -- End-user Usage & Invoice (G16 — 2) ------------------------------
+            Tool(
+                name="get_enduser_usage",
+                description="Return billable usage for an end-user over a period. Queries CostMeter and maps internal tracking to customer-billable units: LLM tokens → llm_units, storage items → storage_mb, API calls → api_call_units.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Time period: today, week, month, all (default: month)",
+                            "default": "month",
+                            "enum": ["today", "week", "month", "all"],
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            Tool(
+                name="get_enduser_invoice",
+                description="Return an invoice-like summary with usage and estimated cost for an end-user. Computes billable units via CostMeter and applies configurable unit pricing.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "end_user_id": {
+                            "type": "string",
+                            "description": "End-user ID (e.g. alice)",
+                        },
+                        "period": {
+                            "type": "string",
+                            "description": "Time period: today, week, month, all (default: month)",
+                            "default": "month",
+                            "enum": ["today", "week", "month", "all"],
+                        },
+                    },
+                    "required": ["end_user_id"],
+                },
+            ),
+            # -- Clean Cache (1) --------------------------------------------------
+            Tool(
+                name="clean_cache",
+                description=(
+                    "Remove cached artifacts and temporary files. "
+                    "Supports selective cleanup (collections, outputs) or "
+                    "--everything mode. dry_run shows what would be deleted "
+                    "without actually deleting."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "collections": {
+                            "type": "boolean",
+                            "description": "Remove cached collections/ contents",
+                            "default": False,
+                        },
+                        "outputs": {
+                            "type": "boolean",
+                            "description": "Remove outputs/ contents",
+                            "default": False,
+                        },
+                        "everything": {
+                            "type": "boolean",
+                            "description": "Remove ALL cached data (collections + outputs + knowledge + DB)",
+                            "default": False,
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Show what would be deleted without deleting",
+                            "default": False,
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Required. Must be True when everything=True — this deletes the entire knowledge/ directory and database",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
+                        },
+                    },
+                    "required": ["actor", "confirm"],
+                },
+            ),
+            # -- Channel Health (1) -------------------------------------------
+            Tool(
+                name="get_channel_health",
+                description=(
+                    "Check health of delivery channels. "
+                    "Return health status (healthy, latency_ms, error) for one or all channels. "
+                    "When channel_name is omitted, returns health for all 13 channels."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "channel_name": {
+                            "type": "string",
+                            "description": (
+                                "Specific channel to check: smtp, webhook, rest_api, "
+                                "file_export, discord, telegram, wechat_work, "
+                                "wechat_oa, dingtalk, feishu, rss, social_publish, or "
+                                "push. When omitted, all 13 channels are checked."
+                            ),
+                            "enum": [
+                                "smtp",
+                                "webhook",
+                                "rest_api",
+                                "file_export",
+                                "discord",
+                                "telegram",
+                                "wechat_work",
+                                "wechat_oa",
+                                "dingtalk",
+                                "feishu",
+                                "rss",
+                                "social_publish",
+                                "push",
+                            ],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            # -- Agent Callbacks (3) --------------------------------------------
+            Tool(
+                name="set_agent_callback",
+                description=(
+                    "Register an agent callback URL for push events "
+                    "(new_digest, new_report, new_tutorial, source_requires_key). "
+                    "Returns a callback_id for later removal. "
+                    "NOT shared with set_domain_webhooks — this is a separate system."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "agent_url": {
+                            "type": "string",
+                            "description": "Callback URL (must start with http:// or https://)",
+                        },
+                        "events": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "new_digest",
+                                    "new_report",
+                                    "new_tutorial",
+                                    "source_requires_key",
+                                ],
+                            },
+                            "description": (
+                                "Events to subscribe to. Recognized events: "
+                                "new_digest, new_report, new_tutorial, "
+                                "source_requires_key."
+                            ),
+                        },
+                    },
+                    "required": ["agent_url", "events"],
+                },
+            ),
+            Tool(
+                name="list_agent_callbacks",
+                description="List all registered agent callbacks with their URLs and subscribed events",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            ),
+            Tool(
+                name="remove_agent_callback",
+                description="Remove a registered agent callback by its callback_id. Stops future push notifications to that endpoint. Use when an agent handler is retired or its URL must be rotated.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "callback_id": {
+                            "type": "string",
+                            "description": "Callback ID returned by set_agent_callback",
+                        },
+                    },
+                    "required": ["callback_id"],
+                },
+            ),
+            # -- Recommendation (1) ---------------------------------------------
+            Tool(
+                name="recommend_content",
+                description="Return content-based recommendations for a user query. Scores existing KB entries by relevance to the query using lexical signals and returns the top matches with their scores. Use to surface curated reading lists without generating a full digest.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "User identifier",
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Search/recommendation query",
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Domain filter (optional)",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default 10)",
+                        },
+                    },
+                    "required": ["user_id"],
+                },
+            ),
+            # -- Simplification (1) ----------------------------------------------
+            Tool(
+                name="simplify_content",
+                description=(
+                    "Simplify text content to a target CEFR reading level using LLM. "
+                    "Classifies original level, rewrites at target level, and verifies "
+                    "the result. Returns simplified text, original/simplified CEFR levels, "
+                    "and a verified flag. Target levels: A1, A2, B1, B2, C1."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Text content to simplify",
+                        },
+                        "target_level": {
+                            "type": "string",
+                            "description": "Target CEFR level: A1, A2, B1, B2, or C1",
+                            "enum": ["A1", "A2", "B1", "B2", "C1"],
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "Language code: en, zh, or ja (default: en)",
+                        },
+                    },
+                    "required": ["content", "target_level"],
+                },
+            ),
+            # -- Validation (5) -------------------------------------------------
+            Tool(
+                name="list_validation_scenarios",
+                description=(
+                    "List available Agent-native validation scenarios "
+                    "(MCP tool-call scenarios; SKIP when requires_env vars missing)"
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="run_validation_scenario",
+                description=(
+                    "Execute an Agent-native validation scenario in-process: "
+                    "each step calls an MCP tool and asserts on the "
+                    "{success, data} envelope. Returns per-step passed/failed/skipped status"
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "scenario": {
+                            "type": "string",
+                            "description": "Scenario name from list_validation_scenarios",
+                        },
+                        "steps": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "1-based step indices to run only a subset",
+                        },
+                        "save_results": {
+                            "type": "boolean",
+                            "description": (
+                                "Persist this run's result to validation-runs/<date>/"
+                                " (scenarios.json + latest.txt) for cross-run regression"
+                            ),
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "default": 180.0,
+                            "description": (
+                                "Per-step timeout in seconds (default 180). "
+                                "Each step may run for at most this long."
+                            ),
+                        },
+                    },
+                    "required": ["scenario"],
+                },
+            ),
+            Tool(
+                name="get_coverage_report",
+                description=(
+                    "Classify every stage×user cell (7 pipeline stages A1-A7 × 18 "
+                    "lifecycle stages = 126) plus the 72 founder expectations "
+                    "F01-F72 into exactly one committed state (validated / "
+                    "implemented-unvalidated / out-of-scope / blocked-with-record / "
+                    "documented-limit), with zero-unclassified enforcement. Use to "
+                    "audit coverage gaps and reconcile the 18-stage spine against "
+                    "the live scenario tags and disposition tables."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="run_all_validation_scenarios",
+                description=(
+                    "Run the full live validation scenario library as one suite: "
+                    "executes every scenario once through the real engine, persists "
+                    "a single aggregate run (validation-runs/<run>/scenarios.json "
+                    "with a scenarios[] array holding every per-scenario result), "
+                    "and returns aggregate passed/failed/unconfigured counts plus "
+                    "the saved run path. Use to feed scripts/validation_report.py "
+                    "from one run instead of collecting per-scenario runs."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "save_results": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Persist the aggregate run to validation-runs/<date>/ "
+                                "(scenarios.json + latest.txt) so the report consumes "
+                                "all scenarios from one run."
+                            ),
+                        },
+                        "timeout": {
+                            "type": "number",
+                            "default": 180.0,
+                            "description": (
+                                "Fallback per-step timeout in seconds (default 180) "
+                                "applied to every scenario step."
+                            ),
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_run_decisions",
+                description=(
+                    "Return the structured decision trail for one run/session "
+                    "correlation id: every scenario verdict, every step decision in "
+                    "execution order, and the anomaly list (failures, timeouts, "
+                    "unconfigured/recovered steps, warnings) as machine-readable "
+                    "JSON. Reads the persisted report written by "
+                    "run_validation_scenario(save_results=true) or "
+                    "run_all_validation_scenarios(), with a fallback scan of saved "
+                    "runs. Use to reconstruct what ran and why a verdict was reached "
+                    "across the A1-A7 pipeline without re-running anything."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string",
+                            "description": (
+                                "Session/action correlation id returned as "
+                                "session_id by run_validation_scenario or "
+                                "run_all_validation_scenarios."
+                            ),
+                        },
+                    },
+                    "required": ["session_id"],
+                },
+            ),
+        ]
+    )
 
-        # -- Validation (2) -------------------------------------------------
-        Tool(
-            name="list_validation_scenarios",
-            description=(
-                "List available Agent-native validation scenarios "
-                "(MCP tool-call scenarios; SKIP when requires_env vars missing)"
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="run_validation_scenario",
-            description=(
-                "Execute an Agent-native validation scenario in-process: "
-                "each step calls an MCP tool and asserts on the "
-                "{success, data} envelope. Returns per-step passed/failed/skipped status"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "scenario": {
-                        "type": "string",
-                        "description": "Scenario name from list_validation_scenarios",
-                    },
-                    "steps": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "1-based step indices to run only a subset",
-                    },
-                    "save_results": {
-                        "type": "boolean",
-                        "description": (
-                            "Persist this run's result to validation-runs/<date>/"
-                            " (scenarios.json + latest.txt) for cross-run regression"
-                        ),
-                    },
-                    "timeout": {
-                        "type": "number",
-                        "default": 180.0,
-                        "description": (
-                            "Per-step timeout in seconds (default 180). "
-                            "Each step may run for at most this long."
-                        ),
-                    },
-                },
-                "required": ["scenario"],
-            },
-        ),
-    ]
 
 # -- LLM-required tools (16) ------------------------------------------------
 # Tools in this set require LLM configuration to function.  When the LLM
 # is not configured (no api_key), call_tool will block them with a clear
 # error response before dispatching to the handler.
-_LLM_REQUIRED_TOOLS: frozenset[str] = frozenset({
-    "suggest_keywords",
-    "classify_cefr",
-    "cefr_batch",
-    "extract_fields",
-    "generate_digest",
-    "generate_report",
-    "generate_cross_domain_report",
-    "generate_tutorial",
-    "generate_presentation",
-    "localize_content",
-    "query_collected",
-    "process_collection",
-    "recommend_content",
-    "simplify_content",
-    "promote_kb_draft",
-    "batch_run",
-})
+_LLM_REQUIRED_TOOLS: frozenset[str] = frozenset(
+    {
+        "suggest_keywords",
+        "classify_cefr",
+        "cefr_batch",
+        "extract_fields",
+        "generate_digest",
+        "generate_report",
+        "generate_cross_domain_report",
+        "generate_tutorial",
+        "generate_presentation",
+        "localize_content",
+        "query_collected",
+        "process_collection",
+        "recommend_content",
+        "simplify_content",
+        "promote_kb_draft",
+        "batch_run",
+    }
+)
 
 
 # -- Read-only server mode (``autoinfo serve --agent``) ----------------------
@@ -11496,12 +12285,14 @@ _LLM_REQUIRED_TOOLS: frozenset[str] = frozenset({
 # ``export_kb`` / ``search_knowledge_base`` are not in _LLM_REQUIRED_TOOLS,
 # and export_kb(format="agent") is served by the pure-function path
 # (_export_agent_json — no LLM, no disk), so readonly mode works keyless.
-_READONLY_TOOLS: frozenset[str] = frozenset({
-    "search_knowledge_base",
-    "get_kb_entry",
-    "export_kb",
-    "list_validation_scenarios",
-})
+_READONLY_TOOLS: frozenset[str] = frozenset(
+    {
+        "search_knowledge_base",
+        "get_kb_entry",
+        "export_kb",
+        "list_validation_scenarios",
+    }
+)
 
 # Mode is decided at startup (--readonly / serve --agent), never mid-session.
 _READONLY_MODE = False
@@ -11531,10 +12322,7 @@ def _is_llm_configured() -> bool:
         config_path = get_config_path()
         if config_path:
             config = load_config(config_path)
-            return bool(
-                config.llm.api_key
-                or os.environ.get("AUTOINFO_LLM_API_KEY")
-            )
+            return bool(config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY"))
     except Exception:
         pass
     return False
@@ -11557,10 +12345,12 @@ def _is_llm_configured() -> bool:
 #    list_summaries, ...) — read-only discovery probes that fire in tight
 #    agent loops and would otherwise dominate the log.
 # All other tools (mutations + parameterised reads) are audited.
-_AUDIT_EXCLUDED_TOOLS: frozenset[str] = frozenset({
-    "health_check",
-    "get_tool_count",
-})
+_AUDIT_EXCLUDED_TOOLS: frozenset[str] = frozenset(
+    {
+        "health_check",
+        "get_tool_count",
+    }
+)
 
 _AUDIT_WRITE_FAILURES = 0  # in-process counter surfaced via pipeline logs
 
@@ -11573,10 +12363,87 @@ def _audit_excluded(tool_name: str) -> bool:
       * ``get_tool_count``
       * every tool whose name starts with ``list_``
     """
-    return (
-        tool_name in _AUDIT_EXCLUDED_TOOLS
-        or tool_name.startswith("list_")
-    )
+    return tool_name in _AUDIT_EXCLUDED_TOOLS or tool_name.startswith("list_")
+
+
+def _handler_declares(tool_name: str, param: str) -> bool:
+    """Return whether the handler *explicitly* declares ``param`` (T-S-03).
+
+    Unlike :func:`_handler_accepts`, this ignores ``**kwargs`` absorption:
+    a handler that only takes ``(name, arguments)`` — or a ``**kwargs``
+    catch-all — does *not* declare either spelling, and the alias resolver
+    must not assume the handler reads a specific key just because its
+    signature can absorb one.
+    """
+    import inspect
+
+    handler = globals().get(f"_handle_{tool_name}")
+    if handler is None:
+        return False
+    try:
+        sig = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return False
+    return param in sig.parameters
+
+
+def _handler_accepts(tool_name: str, param: str) -> bool:
+    """Return whether the tool's handler accepts ``param`` at dispatch time."""
+    import inspect
+
+    handler = globals().get(f"_handle_{tool_name}")
+    if handler is None:
+        return False
+    try:
+        sig = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return False
+    if param in sig.parameters:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+
+def _normalize_param_aliases(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Normalize legacy param spellings to what the handler expects (T-S-03).
+
+    The surface exposes ``user_id``/``end_user_id`` and
+    ``domain``/``name`` as the same entity.  Both spellings are accepted;
+    here the alias is collapsed onto whichever spelling the handler
+    signature *explicitly declares*, so explicit-signature handlers never
+    see an unexpected keyword and callers keep working with either
+    spelling.
+
+    Generic handlers — ``(name, arguments)`` or ``**kwargs`` collectors —
+    declare neither spelling, so their signature cannot tell us which key
+    they read.  Collapsing to the alias would break a handler that reads
+    ``arguments["user_id"]`` (the canonical spelling); therefore the
+    canonical spelling is used as the fallback target.
+    """
+    args = dict(arguments)
+    for canonical, alias in (_USER_ID_ALIASES,):
+        present = [p for p in (canonical, alias) if p in args]
+        if not present:
+            continue
+        value = args[present[0]]
+        if _handler_declares(tool_name, alias) and not _handler_declares(tool_name, canonical):
+            target = alias
+        else:
+            target = canonical
+        for p in (canonical, alias):
+            args.pop(p, None)
+        args[target] = value
+    if tool_name in _DOMAIN_IDENTITY_TOOLS:
+        present = [p for p in _DOMAIN_ALIASES if p in args]
+        if present:
+            value = args[present[0]]
+            if _handler_declares(tool_name, "domain") and not _handler_declares(tool_name, "name"):
+                target = "domain"
+            else:
+                target = "name"
+            for p in _DOMAIN_ALIASES:
+                args.pop(p, None)
+            args[target] = value
+    return args
 
 
 def _current_actor() -> str:
@@ -11649,80 +12516,86 @@ def _audit_tool_call(tool_name: str, code: str, resource: str = "") -> None:
 
         get_pipeline_logger("mcp.dispatch").warning(
             "Audit write failure",
-            extra={"tool": tool_name, "result_code": code,
-                   "failures": _AUDIT_WRITE_FAILURES},
+            extra={"tool": tool_name, "result_code": code, "failures": _AUDIT_WRITE_FAILURES},
         )
 
 
+def _envelope_result(
+    envelope: dict[str, Any],
+) -> tuple[list[TextContent], dict[str, Any]]:
+    """Pack an envelope as ``(text_content, structured_content)``.
+
+    The MCP SDK validates ``structuredContent`` against the tool's declared
+    ``outputSchema``.  Returning the tuple form lets clients read the same
+    JSON either as text or as structured data, both carrying the canonical
+    envelope.
+    """
+    return (
+        [TextContent(type="text", text=json.dumps(envelope))],
+        envelope,
+    )
+
+
 @app.call_tool()  # type: ignore[untyped-decorator]
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def call_tool(
+    name: str, arguments: dict[str, Any]
+) -> tuple[list[TextContent], dict[str, Any]]:
     """Dispatch tool calls to the appropriate implementation."""
     _dispatch_audit: dict[str, str] = {"code": "success"}
     result: dict[str, Any] | list[dict[str, Any]]
+    arguments = _normalize_param_aliases(name, arguments)
     try:
-        # -- health_check is exempted — keep flat for the entry-point tool
-        if name == "health_check":
-            result = _handle_health_check()
-            return [TextContent(type="text", text=json.dumps(result))]
-
         # -- Read-only gate (gate 2): whitelist enforcement ---------------
         # Explicit error envelope for non-whitelisted names — never silent.
         if _is_readonly() and name not in _READONLY_TOOLS:
             _dispatch_audit["code"] = "read_only"
-            return [
-                TextContent(
-                    type="text",
-                    text=json.dumps(error_response(
-                        code=ErrorCode.READ_ONLY_SERVER,
-                        message=(
-                            f"Tool '{name}' is not available in read-only "
-                            "server mode (autoinfo serve --agent). "
-                            f"Allowed tools: {', '.join(sorted(_READONLY_TOOLS))}. "
-                            "Restart the server without --readonly for full access."
-                        ),
-                        actionable=True,
-                    )),
+            return _envelope_result(
+                error_response(
+                    code=ErrorCode.READ_ONLY_SERVER,
+                    message=(
+                        f"Tool '{name}' is not available in read-only "
+                        "server mode (autoinfo serve --agent). "
+                        f"Allowed tools: {', '.join(sorted(_READONLY_TOOLS))}. "
+                        "Restart the server without --readonly for full access."
+                    ),
+                    actionable=True,
                 )
-            ]
+            )
 
         # -- LLM guard: block LLM-required tools when not configured ------
         if name in _LLM_REQUIRED_TOOLS and not _is_llm_configured():
             _dispatch_audit["code"] = "blocked"
-            return [
-                TextContent(
-                    type="text",
-                    text=json.dumps(error_response(
-                        code=ErrorCode.LLM_NOT_CONFIGURED,
-                        message="LLM is not configured. Use configure_llm() to set up your API key. See docs/dev/required-api-keys.md for the full list of API keys and environment variables.",
-                        actionable=True,
-                    )),
+            return _envelope_result(
+                error_response(
+                    code=ErrorCode.LLM_NOT_CONFIGURED,
+                    message="LLM is not configured. Use configure_llm() to set up your API key. See docs/dev/required-api-keys.md for the full list of API keys and environment variables.",
+                    actionable=True,
                 )
-            ]
+            )
 
-        # -- Director-only backdoor guard: demote / force-promote ---------
-        # Blocks non-whitelisted actors at dispatch so neither the store nor
-        # the audit trail records the attempt as a real mutation.  The
-        # handlers repeat the check so direct handler calls stay safe too.
-        if name in ("demote_kb_wiki", "force_promote"):
+        # -- Director-only guard: demote / force-promote / remove-domain --
+        # Enforced at dispatch against the AUTOINFO_DIRECTOR_ACTORS
+        # whitelist so a non-director actor is refused before anything is
+        # mutated; an omitted actor defaults to the non-privileged "agent",
+        # never to a privileged role.  demote_kb_wiki / force_promote repeat
+        # the check in the store; soft_delete_entry enforces the same
+        # whitelist at the store for 03-Wiki targets.
+        if name in _DIRECTOR_ONLY_TOOLS:
             actor = arguments.get("actor") or "agent"
             if not is_director(actor):
                 _dispatch_audit["code"] = "director_only"
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(error_response(
-                            code=ErrorCode.DIRECTOR_ONLY,
-                            message=(
-                                f"actor '{actor}' not whitelisted "
-                                "in AUTOINFO_DIRECTOR_ACTORS"
-                            ),
-                            actionable=True,
-                        )),
+                return _envelope_result(
+                    error_response(
+                        code=ErrorCode.DIRECTOR_ONLY,
+                        message=(f"actor '{actor}' not whitelisted in AUTOINFO_DIRECTOR_ACTORS"),
+                        actionable=True,
                     )
-                ]
+                )
 
-        # -- System (2) ---------------------------------------------------
-        if name == "get_tool_count":
+        # -- System (3) ---------------------------------------------------
+        if name == "health_check":
+            result = _handle_health_check()
+        elif name == "get_tool_count":
             result = _handle_get_tool_count()
         elif name == "diagnose_system":
             result = _handle_diagnose_system()
@@ -11942,9 +12815,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "configure_llm":
             result = _handle_configure_llm(**arguments)
         elif name == "test_llm_connection":
-            result = await asyncio.to_thread(
-                _handle_test_llm_connection, **arguments
-            )
+            result = await asyncio.to_thread(_handle_test_llm_connection, **arguments)
         elif name == "list_projects":
             result = _handle_list_projects()
         elif name == "get_project_assets":
@@ -12104,83 +12975,59 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "simplify_content":
             result = await asyncio.to_thread(_handle_simplify_content, **arguments)
 
-        # -- Validation (2) ------------------------------------------------
+        # -- Validation (5) ------------------------------------------------
         elif name == "list_validation_scenarios":
             result = _handle_list_validation_scenarios()
         elif name == "run_validation_scenario":
             result = await _handle_run_validation_scenario(**arguments)
+        elif name == "run_all_validation_scenarios":
+            result = await _handle_run_all_validation_scenarios(**arguments)
+        elif name == "get_coverage_report":
+            result = await asyncio.to_thread(_handle_get_coverage_report)
+        elif name == "get_run_decisions":
+            result = await asyncio.to_thread(_handle_get_run_decisions, **arguments)
 
         else:
             _dispatch_audit["code"] = "unknown_tool"
-            return [
-                TextContent(
-                    type="text",
-                    text=json.dumps(error_response(
-                        code=ErrorCode.UNKNOWN_TOOL,
-                        message=f"Unknown tool: {name}",
-                        actionable=False,
-                    )),
+            return _envelope_result(
+                error_response(
+                    code=ErrorCode.UNKNOWN_TOOL,
+                    message=f"Unknown tool: {name}",
+                    actionable=False,
                 )
-            ]
-
-        # Wrap non-health responses in uniform envelope
-        # Backward-compat: detect pre-wrapped dual-format responses
-        if isinstance(result, dict) and "success" in result:
-            # Already in envelope format (dual-format from handlers),
-            # pass through unchanged — no re-wrapping needed.
-            wrapped = result
-        elif isinstance(result, dict) and "error_code" in result:
-            # Legacy flat format: wrap into envelope with both
-            # flat fields and nested error for backward compat.
-            logger.warning(
-                "Flat error response detected from tool '%s' — auto-wrapping into envelope. "
-                "Migrate handler to return error_response() for consistency.",
-                name,
             )
-            wrapped = {
-                "success": False,
-                "error_code": result["error_code"],
-                "message": result.get("message", ""),
-                "actionable": result.get("actionable", True),
-                "error": {
-                    "code": result["error_code"],
-                    "message": result.get("message", ""),
-                    "actionable": result.get("actionable", True),
-                },
-            }
+
+        # Canonical envelope only: handlers return either the success envelope
+        # or the error envelope; flat success payloads are wrapped here.
+        if isinstance(result, dict) and "success" in result:
+            wrapped = result
         else:
             wrapped = success_response(result)
-        return [TextContent(type="text", text=json.dumps(wrapped))]
+        return _envelope_result(wrapped)
     except NotImplementedError:
         # Stub tools return a graceful error response using canonical envelope
         _dispatch_audit["code"] = "not_implemented"
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(error_response(
-                    code=ErrorCode.INTERNAL_ERROR,
-                    message=str(arguments.get("message", "Not implemented in v0.1")),
-                    actionable=True,
-                )),
+        return _envelope_result(
+            error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message=str(arguments.get("message", "Not implemented in v0.1")),
+                actionable=True,
             )
-        ]
+        )
     except TypeError as exc:
         # Missing required arguments — client-side call error, not a server bug
         _dispatch_audit["code"] = "validation_error"
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(error_response(
-                    code=ErrorCode.VALIDATION_ERROR,
-                    message=str(exc),
-                    actionable=True,
-                )),
+        return _envelope_result(
+            _error_from_exc(
+                exc,
+                f"Tool '{name}' call failed",
+                code=ErrorCode.VALIDATION_ERROR,
             )
-        ]
+        )
     except Exception as exc:
         _dispatch_audit["code"] = "error"
         logger.exception("Tool '%s' failed", name)
-        return _error_response(exc)
+        return _envelope_result(_error_response(exc))
     finally:
         resource = _safe_resource(arguments)
         _audit_tool_call(name, _dispatch_audit["code"], resource)

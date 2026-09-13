@@ -14,7 +14,10 @@
 # envelope by a deterministic CLI step calling the handler directly.
 name: regression-period-enum
 description: "Regression #126: generate_report default period is monthly; digest/report enums aligned"
-category: regression
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#126"
 requires_env: []

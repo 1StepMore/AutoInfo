@@ -1,0 +1,97 @@
+# T-B-04 (agent-interaction scenarios absent, S1): multi-turn context.
+#
+# PINNED CRITERION: 100% context retention over 5 turns (5/5).  A 5-turn
+# conversation is replayed against the REAL KB engine (real SQLite index +
+# real Markdown files in an absolute temp cwd), where each turn's tool
+# arguments are derived from the previous turn's OUTPUT (not re-supplied):
+#   turn 1  search "time-lapse"                      -> context: entry_id
+#   turn 2  get_entry(entry_id)                      -> context: keyword
+#   turn 3  search(keyword)                          -> assert entry_id back
+#   turn 4  create_kb_draft([entry_id], ...)         -> context: draft_id
+#   turn 5  get_entry(draft_id)                      -> assert tier + keyword
+# Retention = turns whose carried context was correctly reused / 5; PASS
+# requires 5/5 (100%).  Any turn that drops prior context fails its assert,
+# so partial retention is a hard failure.
+name: agent-multiturn-context
+description: >-
+  Agent multi-turn context retention with a pinned 100% threshold. Replays a
+  5-turn conversation against the real KB engine (real SQLite + Markdown)
+  where every turn's arguments derive from the previous turn's output;
+  requires 5/5 turns to retain context (no LLM, no network).
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.1
+requires_env: []
+steps:
+  - name: "5-turn context chain retains all 5 turns (100%)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from autoinfo.kb import KBStore
+      from autoinfo.models import Item
+
+      tmp = Path(tempfile.mkdtemp(prefix="agent-multiturn-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          store = KBStore(base_path=Path("knowledge"))
+          store.store_entry(Item(id="turn-0", source_name="pubmed", source_type="api",
+              source_url="https://example.invalid/turn-0",
+              title="Time-lapse imaging improves IVF outcomes",
+              content="Time-lapse embryo imaging improves selection in IVF cycles.",
+              collected_at="2026-01-01T00:00:00+00:00", domain="medical-research",
+              topic_tags=["IVF"]))
+          store.store_entry(Item(id="turn-1", source_name="arxiv", source_type="api",
+              source_url="https://example.invalid/turn-1",
+              title="Unrelated market note",
+              content="Large language model market trends.",
+              collected_at="2026-01-01T00:00:00+00:00", domain="medical-research",
+              topic_tags=["market"]))
+
+          retained = 0
+
+          # Turn 1: establish the working entry from a real search.
+          r1 = store.search_knowledge_base("time-lapse", domain="medical-research")
+          assert r1["total_count"] >= 1, r1
+          entry_id = r1["entries"][0]["entry_id"]
+          retained += 1
+
+          # Turn 2: carry entry_id into a direct lookup; derive the next keyword.
+          e = store.get_entry(entry_id)
+          assert e is not None, entry_id
+          title = e["title"]
+          keyword = "imaging" if "imaging" in title.lower() else title.split()[0]
+          retained += 1
+
+          # Turn 3: carry the derived keyword + domain back into search.
+          r3 = store.search_knowledge_base(keyword, domain="medical-research")
+          assert entry_id in {x["entry_id"] for x in r3["entries"]}, r3
+          retained += 1
+
+          # Turn 4: carry entry_id into draft creation.
+          draft = store.create_kb_draft([entry_id], title="Draft: " + title,
+                                        summary="context-carried")
+          draft_id = draft.entry_id
+          assert draft_id, draft
+          retained += 1
+
+          # Turn 5: carry draft_id + keyword into the final lookup.
+          dg = store.get_entry(draft_id)
+          assert dg is not None and dg["tier"] == "02-Draft", dg
+          assert keyword in dg["title"].lower(), dg["title"]
+          retained += 1
+
+          retention = retained / 5
+          print(f"MULTITURN_OK {retained}/5 retention={retention:.2f}")
+          assert retained == 5, retained
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["MULTITURN_OK 5/5 retention=1.00"]

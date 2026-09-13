@@ -61,12 +61,40 @@ logger = logging.getLogger(__name__)
 
 # Minimal stop sets for keyword auto-discovery (Step e in processing pipeline)
 # — augmented with the richer FTS5 stopword list from kb.py.
-_STOP_WORDS: frozenset[str] = frozenset({
-    "the", "this", "that", "with", "from", "have", "been", "were",
-    "their", "which", "about", "study", "also", "show", "shown",
-    "using", "used", "may", "results", "result", "method", "methods",
-    "however", "conclusion", "background", "objective", "aim",
-}) | _FTS5_STOPWORDS
+_STOP_WORDS: frozenset[str] = (
+    frozenset(
+        {
+            "the",
+            "this",
+            "that",
+            "with",
+            "from",
+            "have",
+            "been",
+            "were",
+            "their",
+            "which",
+            "about",
+            "study",
+            "also",
+            "show",
+            "shown",
+            "using",
+            "used",
+            "may",
+            "results",
+            "result",
+            "method",
+            "methods",
+            "however",
+            "conclusion",
+            "background",
+            "objective",
+            "aim",
+        }
+    )
+    | _FTS5_STOPWORDS
+)
 _STOP_PHRASES: frozenset[str] = frozenset({"", "  ", "   "})
 
 
@@ -93,6 +121,7 @@ def _is_valid_discovery_keyword(candidate: str, min_length: int = 2) -> bool:
         if all(w in _STOP_WORDS for w in words):
             return False
     return True
+
 
 # Parallel processing (issue #136): LLM extraction dominates per-item latency,
 # so items are processed concurrently in a bounded thread pool.  Default 5
@@ -131,7 +160,7 @@ def _is_db_locked_error(exc: BaseException) -> bool:
 
 def _jittered_backoff(attempt: int, base: float = _DB_LOCK_BACKOFF_BASE_S) -> float:
     """Return a small jittered backoff delay (seconds) for *attempt* (0-indexed)."""
-    result: float = base * (2 ** attempt) * (0.5 + random.random())
+    result: float = base * (2**attempt) * (0.5 + random.random())
     return result
 
 
@@ -336,12 +365,14 @@ class ProcessResult:
     errors: list[dict[str, Any]] = field(default_factory=list)
     duration_s: float = 0.0
     per_item_logs: list[dict[str, Any]] = field(default_factory=list)
-    token_usage: dict[str, Any] = field(default_factory=lambda: {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "items_with_usage": 0,
-    })
+    token_usage: dict[str, Any] = field(
+        default_factory=lambda: {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "items_with_usage": 0,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -391,9 +422,7 @@ def load_cached_items(domain: str, base_path: str | Path = "collections") -> lis
                         continue
                     items.append(Item.from_dict(data))
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-                    logger.warning(
-                        "Skipping malformed cache file %s: %s", json_file, exc
-                    )
+                    logger.warning("Skipping malformed cache file %s: %s", json_file, exc)
 
     logger.info("Loaded %d cached items for domain '%s'", len(items), domain)
     return items
@@ -760,6 +789,7 @@ def run_processing(
     check_factual: bool = False,
     check_translation: bool = False,
     auto_promote: bool = False,
+    resume_from: str | None = None,
 ) -> ProcessResult:
     """Main processing pipeline.
 
@@ -814,6 +844,13 @@ def run_processing(
         to 03-Wiki when eligible (per-entry try/except — a rejection or
         unexpected failure never aborts the run; rejected items stay in
         02-Draft with a ``_failed/`` marker).  Defaults to ``False``.
+    resume_from : str, optional
+        Checkpoint/resume mode (R-A-01).  ``"auto"`` resumes from the
+        persisted processing cursor — items already processed in an
+        interrupted run are skipped and the remaining items are processed
+        even when *batch_size* is 0.  ``"start"`` clears the cursor and
+        reprocesses from the beginning.  ``None`` (default) keeps the legacy
+        behaviour (cursor consulted only when *batch_size* > 0).
 
     Returns
     -------
@@ -834,7 +871,11 @@ def run_processing(
 
     # -- Determine which items to process (batch vs full) --------------------
     new_index = 0
-    if batch_size > 0:
+    if resume_from == "start":
+        _reset_progress(domain)
+    persist_cursor = batch_size > 0 or resume_from in ("auto", "start")
+    use_cursor = batch_size > 0 or resume_from == "auto"
+    if use_cursor:
         progress = _read_progress(domain)
         start_index: int = progress["last_processed_index"]
         persisted_total: int = progress["total_items"]
@@ -848,7 +889,8 @@ def run_processing(
         if persisted_total != total_items or start_index >= total_items:
             start_index = 0
 
-        items_slice = cached_items[start_index : start_index + batch_size]
+        effective_batch = batch_size if batch_size > 0 else total_items
+        items_slice = cached_items[start_index : start_index + effective_batch]
         processed_count = len(items_slice)
         new_index = start_index + processed_count
         remaining_count = total_items - new_index
@@ -887,8 +929,7 @@ def run_processing(
     _KB_FIELDS = {f.name for f in _dc_fields(KBEntry)}  # noqa: N806
     existing_entries_raw = kb_store.list_entries(domain, limit=10000)
     existing_entries: list[KBEntry] = [
-        KBEntry(**{k: v for k, v in row.items() if k in _KB_FIELDS})
-        for row in existing_entries_raw
+        KBEntry(**{k: v for k, v in row.items() if k in _KB_FIELDS}) for row in existing_entries_raw
     ]
 
     # Deserialize JSON fields (tags, custom_fields) stored as JSON strings in SQLite
@@ -1038,9 +1079,7 @@ def run_processing(
                 _write_failed_item(failed_dir, item, g0_check_result, "G0")
                 item_log["status"] = "g0_blocked"
                 item_log["g0_reason"] = str(
-                    g0_check_result.details.get(
-                        "error", "Schema integrity check failed"
-                    )
+                    g0_check_result.details.get("error", "Schema integrity check failed")
                 )
                 logger.warning(
                     "G0 blocked item %s — skipping extraction and storage",
@@ -1150,6 +1189,7 @@ def run_processing(
             sub_tasks: list[tuple[str, Callable[[], Any]]] = []
 
             if check_factual and extraction.tl_dr:
+
                 def _run_g4() -> QualityResult:
                     try:
                         g4_gate_config = (
@@ -1165,9 +1205,7 @@ def run_processing(
                         )
                         return g4.check(item, extraction, gate_config=g4_gate_config)
                     except Exception as exc:
-                        logger.warning(
-                            "G4 factual check failed for item %s: %s", item.id, exc
-                        )
+                        logger.warning("G4 factual check failed for item %s: %s", item.id, exc)
                         return QualityResult(
                             gate_name="G4-SummaryFactual",
                             passed=False,
@@ -1188,9 +1226,7 @@ def run_processing(
                 # if pre-checks pass.  Falls back to single-LLM-check path if
                 # the 5-gate pipeline fails.
                 def _run_g5() -> QualityResult:
-                    translation = (extraction.custom_fields or {}).get(
-                        "translation", ""
-                    )
+                    translation = (extraction.custom_fields or {}).get("translation", "")
 
                     if not translation:
                         # No translation to check — trivially pass (backward compat)
@@ -1213,45 +1249,39 @@ def run_processing(
                         source_text = item.content or ""
                         target_text = translation
                         source_lang = item.language or "en"
-                        target_lang = (
-                            extraction.custom_fields or {}
-                        ).get("target_language", "zh")
+                        target_lang = (extraction.custom_fields or {}).get("target_language", "zh")
 
                         # Resolve terminology dictionary from domain config
                         terminology_dict: dict[str, Any] = {}
                         if config:
                             for d in config.domains:
                                 if d.name == domain:
-                                    terminology_dict = (
-                                        getattr(d, "terminology", {}) or {}
-                                    )
+                                    terminology_dict = getattr(d, "terminology", {}) or {}
                                     break
 
                         # --- Deterministic pre-checks (gates 1-4, no LLM) ---
                         g1_pre = check_inline_tags(source_text, target_text)
-                        g2_pre = check_terminology(
-                            source_text, target_text, terminology_dict
-                        )
+                        g2_pre = check_terminology(source_text, target_text, terminology_dict)
                         g3_pre = check_length_ratio(source_text, target_text)
                         g4_pre = check_source_copy(source_text, target_text)
 
                         pre_checks = [g1_pre, g2_pre, g3_pre, g4_pre]
-                        pre_check_failed = any(
-                            not g["passed"] for g in pre_checks
-                        )
+                        pre_check_failed = any(not g["passed"] for g in pre_checks)
                         if pre_check_failed:
                             # Pre-checks failed → skip LLM judge, composite failure
                             failed_gates = [
-                                k for g, k in zip(
+                                k
+                                for g, k in zip(
                                     pre_checks,
-                                    ["inline_tags", "terminology",
-                                    "length_ratio", "source_copy"],
-                                ) if not g["passed"]
+                                    ["inline_tags", "terminology", "length_ratio", "source_copy"],
+                                )
+                                if not g["passed"]
                             ]
                             logger.info(
                                 "G5 deterministic pre-checks failed for "
                                 "item %s: %s — skipping LLM judge",
-                                item.id, ", ".join(failed_gates),
+                                item.id,
+                                ", ".join(failed_gates),
                             )
                             return QualityResult(
                                 gate_name="G5-TranslationAccuracy",
@@ -1281,23 +1311,19 @@ def run_processing(
                                 calculate_quality_score,  # noqa: PLC0415
                             )
                         g5_scores = llm_judge(
-                            source_text, target_text,
-                            source_lang, target_lang,
+                            source_text,
+                            target_text,
+                            source_lang,
+                            target_lang,
                             model=g5_model,
                             json_mode=proc_config.llm.json_mode if proc_config else False,
                             timeout=llm_timeout,
                         )
                         composite = calculate_quality_score(
-                            faithfulness=float(
-                                g5_scores.get("faithfulness", 0)
-                            ),
-                            terminology=float(
-                                g5_scores.get("terminology", 0)
-                            ),
+                            faithfulness=float(g5_scores.get("faithfulness", 0)),
+                            terminology=float(g5_scores.get("terminology", 0)),
                             style=float(g5_scores.get("style", 0)),
-                            readability=float(
-                                g5_scores.get("readability", 0)
-                            ),
+                            readability=float(g5_scores.get("readability", 0)),
                         )
                         composite_score = float(
                             composite.get("composite", 0.0)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
@@ -1355,7 +1381,8 @@ def run_processing(
                         logger.warning(
                             "G5 5-gate pipeline failed for item %s: %s — "
                             "falling back to single-LLM-check path",
-                            item.id, five_gate_exc,
+                            item.id,
+                            five_gate_exc,
                         )
                         # Fallback: single-LLM-check path (existing behavior)
                         try:
@@ -1364,7 +1391,8 @@ def run_processing(
                         except Exception as single_exc:
                             logger.warning(
                                 "G5 fallback also failed for item %s: %s",
-                                item.id, single_exc,
+                                item.id,
+                                single_exc,
                             )
                             return QualityResult(
                                 gate_name="G5-TranslationAccuracy",
@@ -1378,8 +1406,10 @@ def run_processing(
                                     "issues": [],
                                 },
                             )
+
                 sub_tasks.append(("G5-TranslationAccuracy", _run_g5))
             if config is not None and config.cefr.enabled:
+
                 def _run_cefr() -> None:
                     # The LLM classification runs concurrently; the storage
                     # write happens post-storage, under _STORAGE_LOCK, inside
@@ -1392,21 +1422,19 @@ def run_processing(
                         # storage.
                         logger.warning(
                             "CEFR classification failed for item %s: %s",
-                            item.id, exc,
+                            item.id,
+                            exc,
                         )
                         item_log["status"] = "error"
-                        stats["errors"].append(
-                            {"item_id": item.id, "error": str(exc)}
-                        )
+                        stats["errors"].append({"item_id": item.id, "error": str(exc)})
+
                 sub_tasks.append(("cefr", _run_cefr))
             if sub_tasks:
                 # G3 joins the concurrent phase only when there is another
                 # post-extraction task to overlap with (see Step b above);
                 # otherwise the serial G3 result stays authoritative.
                 def _run_g3() -> QualityResult:
-                    g3_config = (
-                        gate_config.get("G3-RelevanceScoring") if gate_config else None
-                    )
+                    g3_config = gate_config.get("G3-RelevanceScoring") if gate_config else None
                     threshold = 30
                     if g3_config is not None and g3_config.threshold is not None:
                         threshold = int(g3_config.threshold)
@@ -1481,9 +1509,7 @@ def run_processing(
             if g5_result is not None:
                 item_log["g5_flagged"] = g5_result.flagged
                 item_log["g5_faithful"] = g5_result.details.get("faithful")
-                item_log["g5_composite_score"] = g5_result.details.get(
-                    "composite_score"
-                )
+                item_log["g5_composite_score"] = g5_result.details.get("composite_score")
 
             # Step c0: Language detection — assign the language detected ahead
             # of the concurrent gates (Step a1).  Gates run before this
@@ -1586,9 +1612,7 @@ def run_processing(
             # thread) because KeywordsFile is not thread-safe.
             discovered: list[str] = []
             if extraction:
-                min_len = (
-                    domain_cfg.auto_keyword_min_length if domain_cfg else 2
-                )
+                min_len = domain_cfg.auto_keyword_min_length if domain_cfg else 2
                 # Collect entity names as keyword candidates
                 for entity in extraction.entities:
                     name = entity.get("name", "").strip().lower()
@@ -1603,7 +1627,7 @@ def run_processing(
                         if _is_valid_discovery_keyword(w, min_length=min_len):
                             discovered.append(w)
                     for n in (2, 3):
-                        phrases = [" ".join(words[i:i + n]) for i in range(len(words) - n + 1)]
+                        phrases = [" ".join(words[i : i + n]) for i in range(len(words) - n + 1)]
                         for p in phrases:
                             if _is_valid_discovery_keyword(p, min_length=min_len):
                                 discovered.append(p)
@@ -1635,10 +1659,7 @@ def run_processing(
     # -- Dispatch items to the worker pool -----------------------------------
     total_to_process = len(items_slice)
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="process") as pool:
-        futures = {
-            pool.submit(_process_item, item): idx
-            for idx, item in enumerate(items_slice)
-        }
+        futures = {pool.submit(_process_item, item): idx for idx, item in enumerate(items_slice)}
         logs_by_index: dict[int, dict[str, Any]] = {}
         logged_by_index: dict[int, bool] = {}
         completed = 0
@@ -1648,9 +1669,7 @@ def run_processing(
             try:
                 item_log, stats = future.result()
             except Exception as exc:  # safety net — _process_item catches all
-                logger.error(
-                    "Unexpected worker failure for item index %d: %s", idx, exc
-                )
+                logger.error("Unexpected worker failure for item index %d: %s", idx, exc)
                 item_log = {
                     "item_id": str(idx),
                     "title": "unknown",
@@ -1686,16 +1705,12 @@ def run_processing(
             # Toggle + cap (#179): when disabled nothing is written; once the
             # domain's AUTO_ADDED count reaches the cap, further new keywords
             # are skipped (never an error).
-            discovery_enabled = (
-                domain_cfg.auto_keyword_discovery if domain_cfg else True
-            )
+            discovery_enabled = domain_cfg.auto_keyword_discovery if domain_cfg else True
             max_auto = domain_cfg.max_auto_keywords if domain_cfg else 100
             if discovery_enabled and stats["discovered"]:
                 entries = kf.load(domain)
                 existing = {e.keyword: e for e in entries}
-                auto_count = sum(
-                    1 for e in entries if e.state == KeywordState.AUTO_ADDED
-                )
+                auto_count = sum(1 for e in entries if e.state == KeywordState.AUTO_ADDED)
                 for kw, source_name in stats["discovered"]:
                     current = existing.get(kw)
                     if current is None:
@@ -1729,24 +1744,18 @@ def run_processing(
         # Preserve input order; g0/g4-blocked items are excluded (matching
         # the historical sequential loop where ``continue`` skipped the log).
         result.per_item_logs = [
-            logs_by_index[i]
-            for i in range(total_to_process)
-            if logged_by_index.get(i, True)
+            logs_by_index[i] for i in range(total_to_process) if logged_by_index.get(i, True)
         ]
 
-    # -- Persist progress (batch mode only) ---------------------------------
-    if batch_size > 0:
+    # -- Persist progress (batch/resume mode) -------------------------------
+    if persist_cursor:
         _write_progress(domain, new_index, total_items)
 
     result.duration_s = round(time.time() - start_time, 3)
 
     # -- Summary ------------------------------------------------------------
-    g4_count = sum(
-        1 for log in result.per_item_logs if log.get("g4_flagged") is not None
-    )
-    g5_count = sum(
-        1 for log in result.per_item_logs if log.get("g5_flagged") is not None
-    )
+    g4_count = sum(1 for log in result.per_item_logs if log.get("g4_flagged") is not None)
+    g5_count = sum(1 for log in result.per_item_logs if log.get("g5_flagged") is not None)
     logger.info(
         "Processing complete: %d items → %d passed G1-G3 → %d KB entries created "
         "(batch=%d, remaining=%d, g4_checked=%d, g5_checked=%d)",

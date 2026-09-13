@@ -27,7 +27,10 @@
 # declaring ai-commercial default_language: en.
 name: regression-15-presentation-language-provenance
 description: "Regression #15: presentation filters zh finance noise by effective language and every KB-derived slide carries (Source: <url>)"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#15"
 requires_env: []

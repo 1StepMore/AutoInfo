@@ -22,7 +22,10 @@
 # in both environments.
 name: regression-llm-pool-config
 description: "Regression: LLM model-pool MCP surface — configure_llm fallback write, pool visibility, test_llm_connection, judgment pinning"
-category: regression
+category: agent_interaction
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B3.1
 regression: true
 regression_issue: "#model-pool"
 requires_env: []

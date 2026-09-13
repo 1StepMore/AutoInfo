@@ -5,8 +5,9 @@ Run from the project root:
     python3 scripts/doc_inventory.py          # regenerate docs/dev/doc-inventory.md
     python3 scripts/doc_inventory.py --check  # cross-doc consistency check, exit 0 = clean
 
-Pure Python 3.11 stdlib only (pathlib, re, argparse) — no yaml/pyyaml or any
-third-party dependency. Scans ``docs/**/*.md``, ``docs/**/*.yaml`` and
+Pure Python 3.11 stdlib only (pathlib, re, argparse, subprocess) — no
+yaml/pyyaml or any third-party dependency; live counts are read by shelling out
+to the interpreter. Scans ``docs/**/*.md``, ``docs/**/*.yaml`` and
 ``docs/**/*.json`` (JSON-LD schemas in docs/schemas/) and emits
 a Markdown report to ``docs/dev/doc-inventory.md`` (the ONLY file this script
 writes). The report carries an AUTO-GENERATED header so hand edits are
@@ -24,15 +25,25 @@ detectable; never hand-maintain the inventory — regenerate it.
   3. No stray ``tests/test_bug_*`` files exist in the tests/ root.
   4. ``docs/dev/doc-inventory.md`` exists and carries its AUTO-GENERATED
      header (stale-inventory detection).
+  5. The live declared tool count (``len(_full_tool_list())`` in
+     ``src/autoinfo/mcp/server.py``) agrees with README.md, and the
+     ``server.py`` module docstring's "N tools across M categories" claim
+     agrees with the live tool count and the README-declared category count.
+  6. Every declared tool name is enumerated in the README "MCP Tools" table
+     (completeness both ways) and the README table's category-row count agrees
+     with the README/AGENTS declared category count.
+  7. The live pytest collected count agrees with README.md's test count.
 
 Exits non-zero on any failure. Idempotent: regenerating twice produces the
-same bytes (no timestamps); fast (<2s, ~40 files, no network).
+same bytes (no timestamps). ``--check`` shells out to the interpreter for the
+live tool list and the pytest collection (the ~30s pytest collect dominates).
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +55,8 @@ TESTS = ROOT / "tests"
 README = ROOT / "README.md"
 AGENTS = ROOT / "AGENTS.md"
 SCENARIOS_DIR = ROOT / "src" / "autoinfo" / "mcp" / "scenarios"
+#: The MCP server module whose live tool list + docstring counts are checked.
+SERVER = ROOT / "src" / "autoinfo" / "mcp" / "server.py"
 #: The doc-manager skill whose own drift-prone numbers must agree with README.
 SKILL = ROOT / ".opencode" / "skills" / "doc-manager-skill" / "SKILL.md"
 
@@ -148,7 +161,9 @@ def render_report(rows: list[dict[str, Any]]) -> str:
     lines.append("")
     lines.append("```bash")
     lines.append("python3 scripts/doc_inventory.py          # regenerate this file")
-    lines.append("python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clean)")
+    lines.append(
+        "python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clean)"
+    )
     lines.append("```")
     lines.append("")
     lines.append("## Summary")
@@ -185,6 +200,7 @@ def render_report(rows: list[dict[str, Any]]) -> str:
 #: (fact name, regex) — first match wins; pattern must hit BOTH README and AGENTS.
 FACTS: list[tuple[str, str]] = [
     ("MCP tool count", r"(\d+)\s+tools\s+across"),
+    ("MCP categories", r"(\d+)\s+categories?"),
     ("CLI command groups", r"(\d+)\s+command groups?"),
     ("Delivery channels", r"(\d+)\s+(?:delivery\s+)?channels?"),
     ("Validation scenarios", r"(\d+)\s+scenarios?"),
@@ -211,6 +227,117 @@ def extract_number(text: str, pattern: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _run(args: list[str], timeout: int) -> tuple[int, str, str] | None:
+    """Run a subprocess; ``None`` if it could not be launched (timeout/OSError)."""
+    try:
+        proc = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def live_tool_names() -> tuple[list[str] | None, str | None]:
+    """Return the live declared tool names from ``_full_tool_list()``.
+
+    Shells out to the interpreter so this script's own imports stay stdlib-only.
+    Returns ``(names, None)`` on success, ``(None, error)`` otherwise — never a
+    silent empty success (that is the ``misleading_success_output`` failure mode).
+    """
+    code = (
+        "import sys; sys.path.insert(0, 'src'); "
+        "from autoinfo.mcp.server import _full_tool_list as f; "
+        "[print(t.name) for t in f()]"
+    )
+    result = _run([sys.executable, "-c", code], timeout=120)
+    if result is None:
+        return None, "subprocess failed to launch (timeout or OSError)"
+    rc, out, err = result
+    if rc != 0:
+        lines = [ln for ln in err.strip().splitlines() if ln.strip()]
+        return None, lines[-1] if lines else "unknown import error"
+    names = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    if not names:
+        return None, "empty output from _full_tool_list()"
+    return names, None
+
+
+def pytest_collected_count() -> tuple[int | None, str | None]:
+    """Return the live pytest collected count, or ``(None, error)``."""
+    result = _run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        timeout=600,
+    )
+    if result is None:
+        return None, "pytest subprocess failed to launch (timeout or OSError)"
+    rc, out, err = result
+    m = re.search(r"(\d+)\s+tests?\s+collected", f"{out}\n{err}")
+    if m is None:
+        return None, f"unparsable pytest output (exit {rc})"
+    return int(m.group(1)), None
+
+
+#: README "MCP Tools (N)" section up to the next H2, whose rows are
+#: ``| **Category** | tool_a, tool_b, ... |``.
+_README_MCP_SECTION_RE = re.compile(r"##\s+MCP Tools\s+\((\d+)\)(.*?)##\s+Demo Domains", re.S)
+_README_MCP_ROW_RE = re.compile(r"^\|\s*\*\*(.+?)\*\*\s*\|(.*?)\|\s*$", re.M)
+_TOOL_NAME_RE = re.compile(r"[a-z_][a-z0-9_]*")
+
+
+def _split_top_level(value: str) -> list[str]:
+    """Split a Markdown cell on commas not nested inside (), [], or {}."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in value:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
+
+
+def readme_tool_table(
+    readme_text: str,
+) -> tuple[int, list[str], list[str]] | None:
+    """Parse the README MCP table → (header count, category names, tool names)."""
+    section = _README_MCP_SECTION_RE.search(readme_text)
+    if section is None:
+        return None
+    rows = _README_MCP_ROW_RE.findall(section.group(2))
+    categories = [name.strip() for name, _ in rows]
+    tools: list[str] = []
+    for _, cell in rows:
+        for raw in _split_top_level(cell):
+            name = re.sub(r"\(.*$", "", raw.strip()).strip("*` ").strip()
+            if _TOOL_NAME_RE.fullmatch(name):
+                tools.append(name)
+    return int(section.group(1)), categories, tools
+
+
+def _server_docstring_counts(server_text: str) -> tuple[int, int] | None:
+    """Extract ``(tool_count, category_count)`` from the module docstring claim."""
+    doc = re.match(r'\s*"""(.*?)"""', server_text, re.S)
+    scope = doc.group(1) if doc else server_text[:4000]
+    m = re.search(r"(\d+)\s+tools?\s+across\s+(\d+)\s+categor(?:y|ies)", scope)
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
 def run_check() -> list[str]:
     """Check cross-doc consistency; return the list of human-readable failures."""
     failures: list[str] = []
@@ -224,8 +351,10 @@ def run_check() -> list[str]:
         match = rv is not None and rv == av
         rv_disp = rv if rv is not None else "not found"
         av_disp = av if av is not None else "not found"
-        print(f"  {fact}: README.md={rv_disp}, AGENTS.md={av_disp} "
-              f"-> {'match' if match else 'MISMATCH'}")
+        print(
+            f"  {fact}: README.md={rv_disp}, AGENTS.md={av_disp} "
+            f"-> {'match' if match else 'MISMATCH'}"
+        )
         readme_values[fact] = rv
         if not match:
             failures.append(f"fact '{fact}': README.md={rv_disp} vs AGENTS.md={av_disp}")
@@ -237,8 +366,10 @@ def run_check() -> list[str]:
         match = rv is not None and sv == rv
         rv_disp = rv if rv is not None else "not found"
         sv_disp = sv if sv is not None else "not found"
-        print(f"  SKILL.md {fact}: README.md={rv_disp}, SKILL.md={sv_disp} "
-              f"-> {'match' if match else 'MISMATCH'}")
+        print(
+            f"  SKILL.md {fact}: README.md={rv_disp}, SKILL.md={sv_disp} "
+            f"-> {'match' if match else 'MISMATCH'}"
+        )
         if not match:
             failures.append(
                 f"doc-manager-skill '{fact}': SKILL.md={sv_disp} vs README.md={rv_disp} — "
@@ -252,11 +383,125 @@ def run_check() -> list[str]:
     if claimed_readme is not None:
         actual = sum(1 for _ in SCENARIOS_DIR.rglob("*.yaml"))
         status = "match" if actual == int(claimed_readme) else "MISMATCH"
-        print(f"  Validation scenarios on disk: {actual} yaml files vs README.md={claimed_readme} -> {status}")
+        print(
+            f"  Validation scenarios on disk: {actual} yaml files "
+            f"vs README.md={claimed_readme} -> {status}"
+        )
         if actual != int(claimed_readme):
             failures.append(
                 f"validation scenario count drift: README.md={claimed_readme} vs actual "
                 f"{actual} .yaml files under {SCENARIOS_DIR.relative_to(ROOT)}"
+            )
+
+    live_names, live_err = live_tool_names()
+    live_count = len(live_names) if live_names is not None else None
+    readme_tool_fact = readme_values.get("MCP tool count")
+    readme_cat_fact = readme_values.get("MCP categories")
+    if live_names is None:
+        print(f"  Live MCP tools (_full_tool_list): unavailable -> {live_err}")
+        failures.append(
+            f"could not read live tool list from {SERVER.relative_to(ROOT)}: {live_err}"
+        )
+    else:
+        print(f"  Live MCP tools (_full_tool_list): {live_count}")
+
+    table = readme_tool_table(readme_text)
+    if table is None:
+        print("  README MCP Tools table: not found -> FAIL")
+        failures.append("README.md has no parseable '## MCP Tools (N)' table")
+    else:
+        header_count, categories, table_names = table
+        unique_table = set(table_names)
+        if live_names is not None:
+            declared_set = set(live_names)
+            missing = sorted(declared_set - unique_table)
+            extra = sorted(unique_table - declared_set)
+            if missing or extra:
+                details = []
+                if missing:
+                    details.append(
+                        f"{len(missing)} declared tool(s) not enumerated: {', '.join(missing)}"
+                    )
+                if extra:
+                    details.append(
+                        f"{len(extra)} enumerated name(s) not declared: {', '.join(extra)}"
+                    )
+                print(f"  README MCP table completeness: MISMATCH — {'; '.join(details)}")
+                failures.append(f"README 'MCP Tools' table completeness: {'; '.join(details)}")
+            else:
+                print(
+                    f"  README MCP table completeness: all {len(declared_set)} declared tools "
+                    f"enumerated ({len(table_names)} entries) -> match"
+                )
+        if live_count is not None and header_count != live_count:
+            print(f"  README MCP Tools header: {header_count} vs live {live_count} -> MISMATCH")
+            failures.append(
+                f"README '## MCP Tools (N)' header={header_count} vs live "
+                f"_full_tool_list()={live_count}"
+            )
+        if readme_cat_fact is not None and len(categories) != int(readme_cat_fact):
+            print(
+                f"  README MCP category rows: {len(categories)} vs declared "
+                f"{readme_cat_fact} -> MISMATCH"
+            )
+            failures.append(
+                f"README MCP table has {len(categories)} category rows vs declared "
+                f"{readme_cat_fact} categories"
+            )
+        else:
+            print(
+                f"  README MCP category rows: {len(categories)} vs declared "
+                f"{readme_cat_fact if readme_cat_fact is not None else 'not found'} -> "
+                f"{'match' if readme_cat_fact is not None else 'n/a'}"
+            )
+
+    if (
+        live_count is not None
+        and readme_tool_fact is not None
+        and int(readme_tool_fact) != live_count
+    ):
+        print(f"  README declared MCP tools: {readme_tool_fact} vs live {live_count} -> MISMATCH")
+        failures.append(
+            f"README.md MCP tool count={readme_tool_fact} vs live _full_tool_list()={live_count}"
+        )
+
+    server_text = read_text(SERVER) if SERVER.exists() else ""
+    doc_counts = _server_docstring_counts(server_text) if server_text else None
+    if doc_counts is None:
+        print("  server.py docstring 'N tools across M categories': not found -> FAIL")
+        failures.append(
+            f"{SERVER.relative_to(ROOT)} module docstring does not state "
+            "'N tools across M categories'"
+        )
+    else:
+        doc_tools, doc_cats = doc_counts
+        problems = []
+        if live_count is not None and doc_tools != live_count:
+            problems.append(f"tools {doc_tools} != live {live_count}")
+        if readme_cat_fact is not None and doc_cats != int(readme_cat_fact):
+            problems.append(f"categories {doc_cats} != README {readme_cat_fact}")
+        if problems:
+            print(f"  server.py docstring counts: MISMATCH — {'; '.join(problems)}")
+            failures.append(f"{SERVER.relative_to(ROOT)} docstring counts: {'; '.join(problems)}")
+        else:
+            print(
+                f"  server.py docstring counts: {doc_tools} tools / {doc_cats} categories -> match"
+            )
+
+    readme_test_fact = readme_values.get("Test count")
+    collected, collected_err = pytest_collected_count()
+    if collected is None:
+        print(f"  Pytest collected: unavailable -> {collected_err}")
+        failures.append(f"could not read pytest collected count: {collected_err}")
+    elif readme_test_fact is None:
+        print(f"  Pytest collected: {collected} vs README.md=not found -> MISMATCH")
+        failures.append(f"pytest collected={collected} but README.md test count was not found")
+    else:
+        status = "match" if collected == int(readme_test_fact) else "MISMATCH"
+        print(f"  Pytest collected: {collected} vs README.md={readme_test_fact} -> {status}")
+        if collected != int(readme_test_fact):
+            failures.append(
+                f"pytest collected count drift: README.md={readme_test_fact} vs actual {collected}"
             )
 
     stray = sorted(TESTS.glob("test_bug_*")) if TESTS.is_dir() else []
@@ -274,10 +519,15 @@ def run_check() -> list[str]:
             print("  docs/dev/doc-inventory.md: AUTO-GENERATED header present -> ok")
         else:
             print("  docs/dev/doc-inventory.md: AUTO-GENERATED header MISSING -> FAIL")
-            failures.append("docs/dev/doc-inventory.md is stale: missing its AUTO-GENERATED header — regenerate with python3 scripts/doc_inventory.py")
+            failures.append(
+                "docs/dev/doc-inventory.md is stale: missing its AUTO-GENERATED header "
+                "— regenerate with python3 scripts/doc_inventory.py"
+            )
     else:
         print("  docs/dev/doc-inventory.md: does not exist -> FAIL")
-        failures.append("docs/dev/doc-inventory.md missing — run python3 scripts/doc_inventory.py first")
+        failures.append(
+            "docs/dev/doc-inventory.md missing — run python3 scripts/doc_inventory.py first"
+        )
 
     return failures
 
@@ -311,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     OUT.write_text(render_report(rows), encoding="utf-8")
     total_lines = sum(r["lines"] for r in rows)
     print(f"Wrote {OUT} ({len(rows)} files, {total_lines} lines).")
-    print(f"Regenerate after doc changes; verify with --check (exit 0 = clean).")
+    print("Regenerate after doc changes; verify with --check (exit 0 = clean).")
     return 0
 
 

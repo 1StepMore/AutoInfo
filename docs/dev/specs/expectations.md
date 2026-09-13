@@ -35,7 +35,7 @@ Expectations are grouped by journey phase.
 > - **B2 Direct User (Agent Operator)**: An AI agent operates AutoInfo via MCP tools on behalf of the end user.
 > - **B3 Director User (Human Commander)**: A human operator defines domains, configures sources, and monitors the system.
 >
-> **Current status (as of 2026-07-27): 54/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 12/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).** Note: this is a historical snapshot — several items have since progressed (e.g., G14-G16 billing and subscription features, automated notifications, and rate limiting foundations have been implemented post-snapshot).
+> **Current status (as of 2026-07-27): 54/72 ✅ fully implemented, 6/72 🟡 partially implemented (F30 Subscription & Billing, F42 External Billing, F70 Unified Director Configuration, F71 Director Monitoring & Dashboard, F72 Incident Intervention Workflow, plus partial scope in F38/F40 reactivation paths), 12/72 ❌ not implemented (F58-F69, blank spaces from cross-dimensional gap analysis and user lifecycle gaps — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010 and [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).** Note: this is a historical snapshot — several items have since progressed (e.g., G14-G16 billing and subscription features, automated notifications, and rate limiting foundations have been implemented post-snapshot). **Every currently-unimplemented level (F58-F69, plus the B1.2 payment chain and the B3.4/B3.5 stages ratified by T-A-07) carries exactly one committed disposition (`out-of-scope` / `blocked-with-record` / `documented-limit`) with a recorded rationale in §3.17 — consumed by the stage×user coverage report (register T-A-02).**
 
 ### 3.1 Phase 1: Setup
 
@@ -58,7 +58,7 @@ Expectations are grouped by journey phase.
 | **Agent: MCP server connection** | Agent connects to MCP server via stdio (SSE transport is future work). Calls `health_check` tool to verify connectivity. Tool manifest is auto-discovered via MCP protocol. |
 | **Output format — human** | Plain text help. `--json` flag available globally for machine-readable output. |
 | **Output format — agent** | JSON-RPC over stdio. All tools return structured dicts. Tool descriptions are self-documenting via MCP protocol. |
-| **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (30 values) covers NotFound, DomainNotFound, ValidationError, InternalError, and additional codes: `AuthRequired` (future SSE auth), `RateLimited` (future rate limiting), `SessionExpired` (future session management), `LLMNotConfigured` (LLM guard, v1.8.1), `NoCachedItems`, `EmptyResult`, `ConfigNotFound`, `DIRECTOR_ONLY`, `READ_ONLY_SERVER` (read-only server guard), `FreeTierLimit` (free-tier usage gating). Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
+| **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (26 values, all CamelCase — T-S-05) covers NotFound, DomainNotFound, ValidationError, InternalError, and additional codes: `LLMNotConfigured` (LLM guard, v1.8.1), `ProcessingFailed` (processing-run failure), `EmptyResult`, `ConfigNotFound`, `DirectorOnly` (director-gated tools), `ReadOnlyServer` (read-only server guard), `FreeTierLimit` (free-tier usage gating). Four never-emitted codes were retired in T-S-05: `AuthRequired`/`SessionExpired` (no auth path yet — re-add with SSE transport), `RateLimited` (no emitting MCP surface), and `NoCachedItems` (a `{status: "noop"}` success, never an error). Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
 | **Key info visible** | Human: commands, config location, version. Agent: tool list, resource list, server instructions. |
 
 #### F03 — Configuration Initialization ✅
@@ -426,7 +426,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 #### F20 — Knowledge Base Storage (4-tier Pipeline) ✅
 
-*KB architecture follows the proven KB pipeline design (`docs/archive/kb-pipeline-reference.md`): a 4-level pipeline with sequential promotion.*
+*KB architecture follows the proven KB pipeline design (`docs/archive/kb-pipeline-reference.md`, historical storage-format reference only): a 4-level pipeline with sequential promotion. The archive's human-gate promotion rule ("agent must not write Wiki") is **superseded**: current promotion is agent-operated with no human gate (ADR-0002; see F20 below).*
 
 > **Lifecycle cross-ref:** Supports B3.3 Intervene — note: the promote Draft→Wiki operation is no longer a B3 intervention action (2026-08-08 director decision: promotion is an **agent operation**, the KB being a database for raw/processed production). See [`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §5.3 (Error Escalation Path) for the remaining intervention model.
 
@@ -491,7 +491,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | UX Detail | Specification |
 |-----------|---------------|
 | **Asset principle** | The KB is the primary long-term asset. Real-time feed is temporary; the KB is permanent and grows in value over time. |
-| **External KB compatible** | AutoInfo's KB output (`03-Wiki`) is designed to merge into or be consumed by an existing external KB (`docs/archive/kb-pipeline-reference.md`). Same Markdown + YAML frontmatter format, same pipeline tiers. |
+| **External KB compatible** | AutoInfo's KB output (`03-Wiki`) is designed to merge into or be consumed by an existing external KB (`docs/archive/kb-pipeline-reference.md`, historical storage-format reference only). Same Markdown + YAML frontmatter format, same pipeline tiers. |
 | **Obsidian-native** | Markdown files with `[[wiki links]]` are Obsidian-compatible out of the box. User can open `knowledge/` as an Obsidian vault directly. |
 | **Entry-level versioning** | Changes tracked per entry (git). Rollback supported. |
 | **Shareability** | KB collections exportable: Markdown bundle, JSON, SQLite dump. |
@@ -1170,7 +1170,47 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | **Dependencies** | F69 (B2 Execution Reporting) — anomaly detection triggers incidents. F71 (Director Dashboard) — incident status displayed, alerts routed. F54-F57 (Observability) — diagnostic tools for intervention. F47 (Audit Log) — incident records and post-mortems archived. F20 (KB Storage) — promote/reject as intervention action. F70 (Unified Director Config) — config rollback as intervention action. F38 (Lifecycle State Machine) — subscription state changes as intervention (e.g., suspend delivery to affected B1). |
 | **Deferred scope** | Automated incident response (auto-rollback on Critical), incident on-call rotation, incident severity auto-escalation (Recoverable → Degraded if not resolved in N hours), incident analytics (MTTR, incident frequency by domain), incident integration with external incident management (PagerDuty, Jira Service Desk), post-mortem review workflow (peer review before closing). |
 
-### 3.17 Notes on Expectation Numbering
+### 3.17 Committed Dispositions — Currently-Unimplemented User Levels (T-A-06)
+
+> **Purpose:** Records exactly one committed disposition for every currently-unimplemented
+> expectation / lifecycle level, so the stage×user coverage report (register T-A-02) has
+> zero unclassified items. This is a **classification** of the committed boundary — it does
+> not change any implementation status above.
+>
+> **Disposition format (machine-readable, consumed by the T-A-02 coverage report):**
+> the values are exactly one of `out-of-scope` | `blocked-with-record` | `documented-limit`
+> (mirroring `docs/dev/acceptance-framework.md` §4 AC4 committed states), in a
+> `| Level | Disposition | Rationale |` table. `out-of-scope` = deliberately excluded from
+> the V1 product boundary (alternative/shipped surface or V2+ roadmap rationale recorded);
+> `blocked-with-record` = cannot be validated until a named, recorded gate lands (an
+> architectural milestone or an owning register entry); `documented-limit` = a partial
+> implementation ships on the real surface and the unimplemented remainder is a documented
+> ceiling with the alternative path recorded.
+>
+> **Statuses were verified from `src/` on 2026-09-13** (not assumed from this catalog's
+> historical snapshot): F58/F59/F62/F65/F66/F68/F69 remain wholly unimplemented;
+> F60/F61/F63/F64/F67 are partially shipped; the B1.2 payment chain is V2-deferred
+> (AC6 phase split).
+
+| Level | Disposition | Rationale |
+|-------|-------------|-----------|
+| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement exists (`user_id` advisory only); gated on the recorded SSE-transport milestone — the stdio-only server cannot carry tenant context (`multi-tenancy-auth.md` deferral note). |
+| `F59` End-user authentication | `blocked-with-record` | Zero auth primitives (no sessions/tokens/passwords); gated on the recorded SSE-transport milestone; the `AuthRequired`/`SessionExpired` codes were retired until that implementation lands (T-S-05). |
+| `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source rate limits, and tier/free-tier product quotas are shipped; API-surface request quotas (429 + Retry-After, `batch_run` cap) are the documented ceiling, dependent on F59. |
+| `F61` Cron reliability & backup | `documented-limit` | Heartbeat + missed-schedule detection + alerts + `get_schedule_status` + backup/restore scripts are shipped (CD-004/CD-014 resolved); backfill (`--backfill-since`) and crond health inside `diagnose_system()` are the documented ceiling. |
+| `F62` Admin dashboard | `out-of-scope` | V1 operations surface is CLI/MCP (`status`, `cost dashboard`, `doctor`, `diagnose_system`, `get_metrics`, Prometheus); a web admin console is P2 roadmap (CD-005), outside the V1 boundary. |
+| `F63` Unified notification framework | `documented-limit` | Trial-ending + content-ready + budget-alert notifications are shipped per-subsystem; the unified `Notification` model / Jinja2 template bus / routing / per-user preferences / MCP tools are the documented ceiling (CD-006/CD-038 partial). |
+| `F64` Product catalog / storefront | `documented-limit` | End-user storefront (`/storefront`: catalog, product detail, subscribe) and agent-facing `list_products`/`get_product` are shipped (CD-010 resolved); self-service trial signup and final pricing are the documented ceiling. |
+| `F65` B1.1 End-user product discovery | `out-of-scope` | V1 discovery is agent-intro-led (CD-010); the self-service storefront + referral acquisition funnel is V2+ scope, dependent on F59 auth. |
+| `F66` B1.3 End-user onboarding | `out-of-scope` | No structured onboarding flow (welcome digest / preference verification / channel test / up-sell); B1 direct-consumer onboarding is V2+ scope. |
+| `F67` B1.5 Subscription config modification (NL→Config) | `documented-limit` | Config modification ships via direct MCP/CLI edit (`update_preferences`, `enduser_update`); the NL→Config modification pipeline is the documented ceiling (subscribe-time NL→Config exists via F36). |
+| `F68` B1.7 Subscription reactivation | `out-of-scope` | `cancelled` is a terminal state (`user_store.py` `_VALID_TRANSITIONS`); F38's 90-day window is spec-only. V1 treats churned users as new signups; reactivation with config snapshot is V2+ scope. |
+| `F69` B2.6 Structured execution reporting | `blocked-with-record` | No structured report exists — only per-tool observability (`get_metrics`, `trace_item`, `diagnose_system`); owned by register TR-A-02 (Todo 20 of the gap-register plan), so it cannot be validated until that lands. |
+| `B1.2` Subscribe (payment chain) | `out-of-scope` | Payment chain explicitly V2-deferred (AC6 phase split, `acceptance-framework.md` §6); the subscription-record layer and tier-gating infrastructure ship as V2 preparation (F30/F36). |
+| `B3.4` Iterate | `documented-limit` | Per-stage iteration capabilities ship (editable sources/gates/templates, backup/restore); A4 product A/B-testing and A6 consumption-driven iteration are the documented ceilings; the stage is ratified into the root spec by T-A-07. |
+| `B3.5` Scale (catalog-only stage) | `out-of-scope` | Scale-out cells (A3 multi-tenant KB isolation, A4 catalog scaling, A7 horizontal scaling) are V2+ on single-node SQLite; partial batch / LLM-rate-limit capabilities are the shipped alternative. |
+
+### 3.18 Notes on Expectation Numbering
 
 The catalog uses the following identifiers: F01-F06 (Phase 1: Setup), F07-F10b (Phase 2: Domain & Topic Config), F11-F15 (Phase 3: Information Gathering), F16-F19 (Phase 4: Curation & Interaction), F20-F23 (Phase 5: Knowledge Base Building), F24-F30 (Phase 6: Output & Asset Creation), F31-F32 (Phase 7: Monitor), F33-F34 (Phase 8: Iterate), F36-F40 (Phase 8.5: Product & Delivery — note: no F35 in source), F41-F45 (Phase 9: Cost Governance), F46-F48 (Phase 10: Data Privacy), F49-F53 (Phase 11: Knowledge Lifecycle), F54-F57 (Phase 12: Operational Observability), F58-F64 (Phase 13: Blank Spaces — added 2026-07-27 from cross-dimensional gap analysis), F65-F68 (Phase 14: B1 Lifecycle Gaps), F69 (Phase 15: B2 Lifecycle), F70-F72 (Phase 16: B3 Lifecycle). Note that F08 (Custom Sources) and F35 are not separately numbered in the source document — F08 appears as the F07b sub-section's continuation (the unheaded table after F07b's preamble concludes with the add-source UX), and F35 is omitted from the source ordering. F58-F64 were added on 2026-07-27 to document blank spaces (Type 1: Never Designed gaps) discovered during the cross-dimensional gap analysis — see [`cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) CD-001..CD-006, CD-010. F65-F68 (Phase 14: B1 Lifecycle Gaps), F69 (Phase 15: B2 Lifecycle), F70-F72 (Phase 16: B3 Lifecycle) — added 2026-07-27 to achieve 100% coverage of the user lifecycle definition ([`user-lifecycle-definition.md`](./user-lifecycle-definition.md) §2-§5).
 

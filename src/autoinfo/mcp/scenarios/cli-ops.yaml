@@ -1,6 +1,9 @@
 name: cli-ops
 description: 'CLI operations: cron, clean, trace, cost, enduser, audit, email, knowledge'
-category: cli
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B3.2
 requires_env: []
 steps:
 - name: cron list-schedules

@@ -13,6 +13,8 @@ import typer
 
 from autoinfo.process import ProcessResult, run_processing
 
+from ._output import emit_if_global, fail_if_global  # noqa: E402
+
 app = typer.Typer()
 
 
@@ -46,6 +48,15 @@ def process(
         "--check-translation",
         help="Run G5 translation accuracy gate (LLM-based check of translation vs source)",
     ),
+    resume_from: str = typer.Option(
+        None,
+        "--resume-from",
+        help=(
+            "Checkpoint/resume mode: 'auto' resumes from the persisted "
+            "processing cursor (skips already-processed items); 'start' "
+            "clears the cursor and reprocesses from the beginning."
+        ),
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Process collected items (LLM extraction, quality gates G1-G5, KB storage)."""
@@ -57,57 +68,61 @@ def process(
             batch_size=batch_size,
             check_factual=check_factual,
             check_translation=check_translation,
+            resume_from=resume_from,
         )
     except FileNotFoundError as exc:
+        fail_if_global("NotFound", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except Exception as exc:
+        fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1)
 
     # -- Output -------------------------------------------------------------
-    if json_output:
-        if result.total_items == 0:
-            # Noop parity with MCP process_collection (server.py:673-678).
-            typer.echo(
-                json.dumps(
-                    {
-                        "status": "noop",
-                        "total_items": 0,
-                        "message": (
-                            f"No cached items found for domain '{result.domain}'. "
-                            "Run collect_sources() first."
-                        ),
-                        "domain": result.domain,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
+    if result.total_items == 0:
+        # Noop parity with MCP process_collection (server.py:673-678).
+        noop = {
+            "status": "noop",
+            "total_items": 0,
+            "message": (
+                f"No cached items found for domain '{result.domain}'. Run collect_sources() first."
+            ),
+            "domain": result.domain,
+        }
+        if emit_if_global(noop):
+            if result.errors:
+                raise typer.Exit(code=1)
             return
-        typer.echo(
-            json.dumps(
-                {
-                    "domain": result.domain,
-                    "total_items": result.total_items,
-                    "processed_count": result.processed_count,
-                    "remaining_count": result.remaining_count,
-                    "is_complete": result.is_complete,
-                    "passed_gates": result.passed_gates,
-                    "kb_entries_created": result.kb_entries_created,
-                    "errors": result.errors,
-                    "duration_s": result.duration_s,
-                    "per_item_logs": result.per_item_logs,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-    else:
+        if json_output:
+            typer.echo(json.dumps(noop, ensure_ascii=False, indent=2))
+            return
         _print_human(result)
+    else:
+        full = {
+            "domain": result.domain,
+            "total_items": result.total_items,
+            "processed_count": result.processed_count,
+            "remaining_count": result.remaining_count,
+            "is_complete": result.is_complete,
+            "passed_gates": result.passed_gates,
+            "kb_entries_created": result.kb_entries_created,
+            "errors": result.errors,
+            "duration_s": result.duration_s,
+            "per_item_logs": result.per_item_logs,
+        }
+        if emit_if_global(full):
+            if result.errors:
+                raise typer.Exit(code=1)
+            return
+        if json_output:
+            typer.echo(json.dumps(full, ensure_ascii=False, indent=2))
+        else:
+            _print_human(result)
 
     # Exit with error code when any items failed
     if result.errors:
@@ -153,10 +168,7 @@ def _print_human(result: ProcessResult) -> None:
         else:
             score = log.get("g3_score", 0)
             dur = log.get("duration_s", 0)
-            typer.echo(
-                f"  {status_icon} {item_id}: {title} "
-                f"[score={score:.0f}, {dur:.2f}s]"
-            )
+            typer.echo(f"  {status_icon} {item_id}: {title} [score={score:.0f}, {dur:.2f}s]")
 
     # Summary line
     typer.echo("")

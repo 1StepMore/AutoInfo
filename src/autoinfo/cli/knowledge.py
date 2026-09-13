@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Knowledge graph CLI — query and export the knowledge graph.
 
 Usage::
@@ -10,6 +8,7 @@ Usage::
     autoinfo knowledge graph export --domain medical-research --format csv
 """
 
+from __future__ import annotations
 
 import csv
 import json
@@ -18,6 +17,8 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 import typer
+
+from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 knowledge_app = typer.Typer(help="Knowledge graph operations")
 graph_app = typer.Typer(help="Knowledge graph operations")
@@ -77,11 +78,7 @@ def _build_graphml(data: dict[str, Any]) -> str:
         entity_map[eid] = ent
 
     if related_entity_ids:
-        node_entities = {
-            eid: entity_map[eid]
-            for eid in related_entity_ids
-            if eid in entity_map
-        }
+        node_entities = {eid: entity_map[eid] for eid in related_entity_ids if eid in entity_map}
     else:
         node_entities = entity_map
 
@@ -140,9 +137,16 @@ def _write_csv(data: dict[str, Any], output_stem: str) -> dict[str, str]:
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "relation_id", "entity_a", "entity_a_name",
-                "entity_b", "entity_b_name", "relation_type",
-                "strength", "entries_shared", "domain", "created_at",
+                "relation_id",
+                "entity_a",
+                "entity_a_name",
+                "entity_b",
+                "entity_b_name",
+                "relation_type",
+                "strength",
+                "entries_shared",
+                "domain",
+                "created_at",
             ],
             extrasaction="ignore",
         )
@@ -163,9 +167,7 @@ def _write_csv(data: dict[str, Any], output_stem: str) -> dict[str, str]:
 
 @graph_app.command()
 def export(
-    domain: str = typer.Option(
-        ..., "--domain", help="Domain to export knowledge graph for"
-    ),
+    domain: str = typer.Option(..., "--domain", help="Domain to export knowledge graph for"),
     format: str = typer.Option(
         "json",
         "--format",
@@ -184,9 +186,12 @@ def export(
     """
     valid_formats = {"json", "graphml", "csv"}
     if format not in valid_formats:
+        fail_if_global(
+            "ValidationError",
+            f"Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
+        )
         typer.echo(
-            f"Error: Unsupported format '{format}'. "
-            f"Supported: {', '.join(sorted(valid_formats))}",
+            f"Error: Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -198,27 +203,44 @@ def export(
 
     # Resolve output path
     out_path = Path(output) if output else Path(f"knowledge_graph_export.{format}")
+    paths: dict[str, str] = {}
 
     try:
         if format == "json":
             content = json.dumps(data, ensure_ascii=False, indent=2)
             out_path.write_text(content, encoding="utf-8")
-            typer.echo(f"Exported knowledge graph to {out_path}")
 
         elif format == "graphml":
             xml_content = _build_graphml(data)
             out_path.write_text(xml_content, encoding="utf-8")
-            typer.echo(f"Exported knowledge graph to {out_path}")
 
         elif format == "csv":
             stem = str(out_path.with_suffix(""))
             paths = _write_csv(data, stem)
-            typer.echo(
-                f"Exported knowledge graph:\n"
-                f"  Entities: {paths['entities']}\n"
-                f"  Relations: {paths['relations']}"
-            )
 
     except OSError as exc:
+        fail_if_global("InternalError", f"Error writing export file: {exc}")
         typer.echo(f"Error writing export file: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+    summary = {
+        "domain": domain,
+        "format": format,
+        "entity_count": len(data.get("entities", [])),
+        "relation_count": len(data.get("relations", [])),
+    }
+    if format == "csv":
+        summary["files"] = paths
+    else:
+        summary["path"] = str(out_path)
+    if emit_if_global(summary):
+        return
+
+    if format == "csv":
+        typer.echo(
+            f"Exported knowledge graph:\n"
+            f"  Entities: {paths['entities']}\n"
+            f"  Relations: {paths['relations']}"
+        )
+    else:
+        typer.echo(f"Exported knowledge graph to {out_path}")

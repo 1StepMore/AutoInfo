@@ -3,7 +3,10 @@
 # same scenario to avoid polluting state.
 name: cron-schedules
 description: "Cron schedule lifecycle: add, list, status, dry-run, and remove"
-category: collection
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.5
 requires_env: []
 steps:
   - name: "list_schedules initially empty or populated"

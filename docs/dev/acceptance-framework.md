@@ -50,10 +50,12 @@ The user model is **not** invented by this framework; it is the ratified foundat
 | User | Definition | Interface | Role in acceptance |
 |------|-----------|-----------|--------------------|
 | **B1 End User** | The paying customer. Buys Raw and Processed data. Treated uniformly (individual, creator, publisher, enterprise, licensor, agent delegate). | Receives delivered products; intent expressed via subscription config, never ad-hoc commands | The ultimate judge of value; the lens through which every deliverable is assessed (as a human) |
-| **B2 Direct User** | The AI agent that operates the platform. Agent as user **and** agent as tester. | MCP tools (146 tools, 35 categories); CLI is fallback | Executes acceptance evidence; drafts verdicts |
+| **B2 Direct User** | The AI agent that operates the platform. Agent as user **and** agent as tester. | MCP tools (147 tools, 35 categories); CLI is fallback | Executes acceptance evidence; drafts verdicts |
 | **B3 Director User** | The human owner of the agent. Configures at deploy time, monitors at runtime, intervenes on exceptions. | Natural language with the agent | Adjudicates verdicts; performs human reading of deliverables; signs off |
 
 **Critical nuance (director decision, 2026-08-08):** the acceptance lens for deliverables is **always human-first**. Even when an agent performs a test or validation, the standard of judgment is "a human, as the end user, would find this acceptable." An agent-delegate end user (B1 subtype) does not weaken this: human judgment remains the primary view.
+
+**Coverage spine (T-A-07):** the three user tiers decompose into **18 lifecycle stages** — B1.1–B1.7, B2.1–B2.6, B3.1–B3.5 (B3.4 Iterate / B3.5 Scale are ratified in `user-lifecycle-definition.md` §4.2). The keystone matrix evaluates the 7 pipeline stages A1–A7 against those 18 stages = **126 stage×user cells**, plus the 72 founder expectations F01–F72. `get_coverage_report` classifies 100% of the 126 + 72 items into exactly one committed state (validated / implemented-unvalidated / out-of-scope / blocked-with-record / documented-limit) with zero unclassified; any unclassified item is a coverage FAIL.
 
 ### 0.3 The Two Data Layers
 
@@ -75,7 +77,7 @@ The hierarchy matters: the agent track proves the tool is operable; the human tr
 
 ### 0.5 Scope Basis (why the coverage matrix is authoritative)
 
-The service-coverage scope of this project is grounded in an end-user willingness-to-pay research synthesis, `docs/dev/research/综合报告-资讯付费与AI触达研究.md` (aggregating four agent research reports, 80+ P0/P1 sources, covering 2024-2026 data). From it, `docs/dev/enduser-coverage-matrix.md` maps **99 items across five dimensions** (A sources 29, B output products 25, C channels 14, D domains 16, E agent/commercial capabilities 15) to code and validation coverage. The coverage matrix is the operationalization of "what end users want to pay for"; AC4 grades commitment against it.
+The service-coverage scope of this project is grounded in an end-user willingness-to-pay research synthesis, `docs/dev/research/综合报告-资讯付费与AI触达研究.md` (aggregating four agent research reports, 80+ P0/P1 sources, covering 2024-2026 data). From it, `docs/dev/enduser-coverage-matrix.md` maps **99 items across five dimensions** (A sources 29, B output products 25, C channels 14, D use-case rows 16 — of which 13 map to a demo domain, E agent/commercial capabilities 15) to code and validation coverage. The coverage matrix is the operationalization of "what end users want to pay for"; AC4 grades commitment against it.
 
 ### 0.6 Five Principles
 
@@ -176,7 +178,7 @@ Two orientations, one hierarchy. The **agent track** proves the tool is operable
 
 ### Binary acceptance criteria
 
-1. **Full-surface agent operability.** An agent can exercise the entire feature surface — MCP tools (146/146), CLI groups (31/31), REST endpoints (8/8), delivery channels (13/13), collector reachability (30/30) — via real calls and record per-feature verdicts. Any surface row with neither a scenario nor a real artifact = FAIL.
+1. **Full-surface agent operability.** An agent can exercise the entire feature surface — MCP tools (147/147), CLI groups (31/31), REST endpoints (8/8), delivery channels (13/13), collector reachability (30/30) — via real calls and record per-feature verdicts. Any surface row with neither a scenario nor a real artifact = FAIL.
 2. **Self-discovering coverage.** An agent can enumerate coverage and features using only MCP tools and in-repo audit scripts, with no human help. False = FAIL.
 
 ### 3.2 Human track (deliverable acceptability) — the higher bar
@@ -446,7 +448,7 @@ Re-runnable per version, run from the project root. This catalog **replaces** th
 
 | # | Check | Command / surface | Produces | Dimension |
 |---|-------|-------------------|----------|-----------|
-| A1 | Scenario coverage audit | `python3 scripts/coverage_audit.py` | covered/missing tool list, 146/146 target | AC3-agent, AC1 |
+| A1 | Scenario coverage audit | `python3 scripts/coverage_audit.py` | covered/missing tool list, 147/147 target | AC3-agent, AC1 |
 | A2 | Scenario inventory + run | MCP `list_validation_scenarios` / `run_validation_scenario` | per-scenario status (passed/failed/unconfigured), per-step trace, root-cause report | AC1, AC3, AC7 |
 | A3 | System phase + health | MCP `diagnose_system`, `get_tool_count` | health_score + phase; live tool count | AC1 |
 | A4 | No-simulated-layer scan | grep over `src/` (excl. `tests/`) for `mock`/`fixture`/`placeholder`/`example.com`/`sk_test` | SUSPECT-table hits with dispositions | AC5, AC7 |

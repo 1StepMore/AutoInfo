@@ -3,7 +3,10 @@
 # get_collection_diff takes since_collection_id (a date string works).
 name: collection-monitor
 description: "Collection stats and diff across domains"
-category: collection
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.5
 requires_env: []
 collect_artifacts:
   - "collections/**/*.json"

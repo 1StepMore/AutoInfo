@@ -20,7 +20,10 @@
 # produce a generate, not a noop.
 name: regression-297-preview-fallback
 description: "Regression #10: generate_digest/generate_report preview falls back to full domain when the period window is empty"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#10"
 requires_env: []

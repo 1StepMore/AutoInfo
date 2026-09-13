@@ -13,7 +13,10 @@
 # older is REFUSE-skipped so real user exports are never touched.
 name: kb-import-export
 description: "KB import (markdown) and export (JSON, EPUB) in real project context (self-contained, self-cleaning)"
-category: kb
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A3
+user_level: B2.4
 requires_env: []
 steps:
   - name: "import_kb imports markdown entry"

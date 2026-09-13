@@ -2,7 +2,10 @@
 # Uses medical-research with add-then-remove to leave no side effects.
 name: topic-management
 description: "Topic lifecycle: list, add, remove, and group management"
-category: topic
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B2.3
 requires_env: []
 requires_domain: ["medical-research"]
 steps:

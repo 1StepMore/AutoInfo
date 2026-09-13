@@ -17,7 +17,10 @@
 # Failure means the cross-domain noise filter regressed — never a silent skip.
 name: regression-crossdomain-noise-filter
 description: "Regression #319: ai-commercial products exclude cross-domain medical entries via per-domain exclude_keywords"
-category: regression
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#319"
 requires_env: []

@@ -13,7 +13,10 @@
 # verifies the full contract keys on the flat dict for every format branch.
 name: regression-report-structure
 description: "Regression #121: generate_report markdown branch returns domain/format/period/content keys"
-category: regression
+category: happy_path
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
 regression: true
 regression_issue: "#121"
 requires_env: []

@@ -14,36 +14,62 @@ from typing import Any, Callable  # noqa: E402
 
 import typer  # noqa: E402
 
+from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
+
 app = typer.Typer()
 
 
 @app.callback(invoke_without_command=True)
 def collect(
     domain: str = typer.Option(
-        None, "--domain", help="Domain to collect for (mutually exclusive with --all)",
+        None,
+        "--domain",
+        help="Domain to collect for (mutually exclusive with --all)",
     ),
     all_domains: bool = typer.Option(
-        False, "--all", "-A", help="Collect for all active domains",
+        False,
+        "--all",
+        "-A",
+        help="Collect for all active domains",
     ),
     topic: str = typer.Option("", "--topic", help="Topic / search query filter"),
     source: list[str] | None = typer.Option(
-        None, "--source",
+        None,
+        "--source",
         help="Source name filter (repeatable: --source pubmed --source rss)",
     ),
     limit: int = typer.Option(20, "--limit", min=1, help="Max items to collect per source"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without storing"),
     auto_process: bool = typer.Option(
-        False, "--auto-process", help="Run processing immediately after collection",
+        False,
+        "--auto-process",
+        help="Run processing immediately after collection",
     ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     force_full: bool = typer.Option(
-        False, "--force-full", "-f",
+        False,
+        "--force-full",
+        "-f",
         help="Skip dedup/incremental logic — collect all items fresh",
+    ),
+    resume_from: str = typer.Option(
+        None,
+        "--resume-from",
+        help=(
+            "Checkpoint/resume mode for a long run: 'auto' skips sources "
+            "already completed in the checkpoint; 'start' checkpoints a fresh "
+            "run; or a source name to start at that source."
+        ),
     ),
 ) -> None:
     """Collect items from configured sources."""
     # -- Validate mutually exclusive flags ---------------------------------
     if all_domains and domain:
+        fail_if_global(
+            "ValidationError",
+            "Cannot use --all with --domain. Use either --all to collect for all "
+            "active domains or --domain to collect for a specific domain.",
+        )
         typer.echo(
             "Error: Cannot use --all with --domain. Use either --all to collect "
             "for all active domains or --domain to collect for a specific domain.",
@@ -52,6 +78,7 @@ def collect(
         raise typer.Exit(code=1)
 
     if not all_domains and not domain:
+        fail_if_global("ValidationError", "Either --domain or --all must be provided.")
         typer.echo(
             "Error: Either --domain or --all must be provided.",
             err=True,
@@ -64,19 +91,14 @@ def collect(
     # backward compatibility with the pre-#296 single-string behaviour.
     sources = None
     if source:
-        sources = [
-            s.strip()
-            for entry in source
-            for s in entry.split(",")
-            if s.strip()
-        ]
+        sources = [s.strip() for entry in source for s in entry.split(",") if s.strip()]
 
     try:
         from autoinfo.collect import run_collection
 
         # Live per-source progress lines (human-facing only). Skipped for
         # --json so the output stays pure JSON.
-        progress_cb = None if json_output else _make_progress_printer()
+        progress_cb = None if (json_output or global_json()) else _make_progress_printer()
 
         if all_domains:
             # -- Multi-domain collection -----------------------------------
@@ -84,6 +106,11 @@ def collect(
 
             config_path = get_config_path()
             if config_path is None:
+                fail_if_global(
+                    "ConfigNotFound",
+                    "No configuration found. Run 'autoinfo init' first. "
+                    "See docs/dev/required-api-keys.md for API key setup.",
+                )
                 typer.echo(
                     "Error: No configuration found. Run 'autoinfo init' first. See docs/dev/required-api-keys.md for API key setup.",  # noqa: E501
                     err=True,
@@ -94,12 +121,14 @@ def collect(
             active_domains = [d.name for d in config.domains if d.active]
 
             if not active_domains:
+                fail_if_global("EmptyResult", "No active domains found in configuration.")
                 typer.echo("Error: No active domains found in configuration.", err=True)
                 raise typer.Exit(code=1)
 
             results: list[dict[str, Any]] = []
             for dom in active_domains:
-                typer.echo(f"── Collecting for domain '{dom}' ──")
+                if not global_json():
+                    typer.echo(f"── Collecting for domain '{dom}' ──")
                 run_kwargs: dict[str, Any] = dict(
                     domain=dom,
                     topic=topic,
@@ -110,9 +139,11 @@ def collect(
                 )
                 if force_full:
                     run_kwargs["force_full"] = True
+                if resume_from:
+                    run_kwargs["resume_from"] = resume_from
                 dom_result = run_collection(**run_kwargs)
                 results.append(dom_result)
-                if not json_output:
+                if not (json_output or global_json()):
                     _print_human(dom_result)
                     typer.echo("")
 
@@ -126,7 +157,7 @@ def collect(
                 "dry_run": dry_run,
             }
 
-            if json_output:
+            if json_output and not global_json():
                 typer.echo(json.dumps(aggregated, ensure_ascii=False, indent=2))
 
             # -- Unknown / failed requested sources → non-zero exit (#296) --
@@ -137,12 +168,16 @@ def collect(
             if auto_process and not dry_run:
                 for dom_result in results:
                     if dom_result["total_new"] > 0:
-                        typer.echo(f"── Running auto-process for '{dom_result['domain']}' ──")
+                        if not global_json():
+                            typer.echo(f"── Running auto-process for '{dom_result['domain']}' ──")
                         _run_auto_process(dom_result["domain"], topic)
-                    else:
+                    elif not global_json():
                         typer.echo(
                             f"No new items for '{dom_result['domain']}' — skipping auto-process."
                         )
+
+            if emit_if_global(aggregated):
+                return
 
         else:
             # -- Single-domain collection (existing behavior) --------------
@@ -156,13 +191,16 @@ def collect(
             )
             if force_full:
                 single_run_kwargs["force_full"] = True
+            if resume_from:
+                single_run_kwargs["resume_from"] = resume_from
             result = run_collection(**single_run_kwargs)
 
             # -- Output ----------------------------------------------------
-            if json_output:
-                typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
-            else:
-                _print_human(result)
+            if not global_json():
+                if json_output:
+                    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+                else:
+                    _print_human(result)
 
             # -- Unknown / failed requested sources → non-zero exit (#296) --
             if sources:
@@ -171,24 +209,31 @@ def collect(
             # -- Optional: auto-process ------------------------------------
             if auto_process and not dry_run:
                 if result["total_new"] > 0:
-                    typer.echo("")
-                    typer.echo("── Running auto-process ──")
+                    if not global_json():
+                        typer.echo("")
+                        typer.echo("── Running auto-process ──")
                     _run_auto_process(domain, topic)
-                else:
+                elif not global_json():
                     typer.echo("")
                     typer.echo("No new items — skipping auto-process.")
 
+            if emit_if_global(result):
+                return
+
     except FileNotFoundError as exc:
+        fail_if_global("NotFound", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ValueError as exc:
+        fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ImportError as exc:
+        fail_if_global("InternalError", f"collect module not available: {exc}")
         typer.echo(f"Error: collect module not available: {exc}", err=True)
         raise typer.Exit(code=1)
 
-    if dry_run:
+    if dry_run and not global_json():
         typer.echo("")
         typer.echo("ℹ Dry-run — no items were stored.")
 
@@ -217,12 +262,20 @@ def _check_requested_sources(results: list[dict[str, Any]]) -> None:
                 failed.append(f"'{src.get('source')}' (domain '{domain_label}')")
 
     if unknown:
+        fail_if_global(
+            "InvalidSourceId",
+            f"requested source(s) not found in domain config: {', '.join(unknown)}",
+        )
         typer.echo(
             f"Error: requested source(s) not found in domain config: {', '.join(unknown)}",
             err=True,
         )
         raise typer.Exit(code=1)
     if failed:
+        fail_if_global(
+            "CollectionFailed",
+            f"requested source(s) failed during collection: {', '.join(failed)}",
+        )
         typer.echo(
             f"Error: requested source(s) failed during collection: {', '.join(failed)}",
             err=True,
@@ -260,9 +313,7 @@ def _make_progress_printer() -> Callable[[Any], None]:
 
 def _print_human(result: dict[str, Any]) -> None:
     """Print a human-readable collection summary."""
-    typer.echo(
-        f"Collection {result['collection_id']} for domain '{result['domain']}'"
-    )
+    typer.echo(f"Collection {result['collection_id']} for domain '{result['domain']}'")
     typer.echo("")
 
     for src in result["per_source"]:
@@ -274,8 +325,7 @@ def _print_human(result: dict[str, Any]) -> None:
         }.get(src["status"], "?")
 
         line = (
-            f"  {status_icon} {src['source']}: "
-            f"{src['items_new']} new / {src['items_found']} found"
+            f"  {status_icon} {src['source']}: {src['items_new']} new / {src['items_found']} found"
         )
         filtered = src.get("items_filtered", 0) or 0
         if filtered:
@@ -286,6 +336,9 @@ def _print_human(result: dict[str, Any]) -> None:
             typer.echo(f"      ↳ {err.get('message', 'unknown error')}", err=True)
 
     typer.echo("")
+    resumed = result.get("resumed_skipped") or []
+    if resumed:
+        typer.echo(f"  – resumed: skipped {len(resumed)} completed source(s): {', '.join(resumed)}")
     typer.echo(
         f"Total: {result['total_new']} new items from {result['total_found']} found "
         f"in {result['duration_s']:.1f}s"
@@ -298,6 +351,8 @@ def _run_auto_process(domain: str, topic: str = "") -> None:
         from autoinfo.process import run_processing
 
         proc_result = run_processing(domain=domain, topic=topic if topic else None)
+        if global_json():
+            return
         typer.echo(
             f"Processing: {proc_result.total_items} items → "
             f"{proc_result.passed_gates} passed G1-G3 → "
@@ -305,8 +360,7 @@ def _run_auto_process(domain: str, topic: str = "") -> None:
             f"({proc_result.duration_s:.1f}s)"
         )
         if proc_result.errors:
-            typer.echo(
-                f"  {len(proc_result.errors)} item(s) failed", err=True
-            )
+            typer.echo(f"  {len(proc_result.errors)} item(s) failed", err=True)
     except Exception as exc:
-        typer.echo(f"Auto-process failed: {exc}", err=True)
+        if not global_json():
+            typer.echo(f"Auto-process failed: {exc}", err=True)

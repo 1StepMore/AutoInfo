@@ -40,7 +40,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Data deletion & retention** — Soft-delete with restore within retention window. Retention by subscription tier. 30-day auto-cleanup. GDPR-compliant data export. Permanent purge only via explicit flag.
 - **Knowledge lifecycle management** — Per-domain TTL & freshness scoring. Versioned re-collection with structured diff. Stale content handling (demoted in search, excluded from digests). Domain decay metrics with proactive agent alerts. Cross-collection dedup & merge with LLM assistance.
 - **Operational observability** — Enhanced diagnostics (`doctor --verbose`) with composite health score (0-100). Prometheus metrics export. Per-domain error rates, latency p95/p99, LLM spend summaries.
-- **Agent-native** — 146 MCP tools across 35 categories. Agent operates, human directs.
+- **Agent-native** — 149 MCP tools across 35 categories. Agent operates, human directs.
 - **Self-discovering tool count** — `get_tool_count` MCP tool returns dynamic tool count, no more hardcoded numbers
 - **LLM configuration tool** — `configure_llm` MCP tool for agent-oriented BYOK setup (provider, model, api_key, base_url, `llm_fallback` chain, `llm_tasks` per-task routing); `test_llm_connection` verifies connectivity
 - **Agent-oriented error responses** — Unified dual-format error responses (flat + envelope) for backward-compatible consumer migration
@@ -85,8 +85,8 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **RAW product variants (E11)** — RAW product carries `variants: ["api_feed", "webhook", "bulk_export"]` field distinguishing the three RAW delivery modes
 - **Podcast RSS publishing (C11)** — RSS 2.0 delivery channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation; audio output auto-persists MP3 to disk
 - **Validated source types** — `VALID_SOURCE_TYPES` frozenset (29 types) as single source of truth for source type validation across MCP and CLI
-- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 138 scenarios (65 functional + 73 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float); `requires_http` gates steps that need a live REST server (reports `unconfigured` when offline). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
-- **Validation regression flywheel** — `src/autoinfo/mcp/scenarios/regression/` subdirectory (72 regression scenarios, `regression: true` key) auto-loads via recursive glob; `coverage_audit.py` prints a "Regression scenarios: N (issues: ...)" metric; `.github/ISSUE_TEMPLATE/bug_report.md` carries a mandatory 回归场景 (regression scenario) field so every bug ships with a scenario.
+- **Agent-native validation** — `list_validation_scenarios` / `run_validation_scenario` MCP tools execute validation scenarios through the MCP surface (plus CLI subprocess and REST HTTP steps): each step makes a real call and asserts on the `{success, data}` envelope; env-gated steps report `unconfigured` (never silently skipped), and `llm_assert` runs a real model call for semantic checks. 159 scenarios (86 functional + 73 regression). Per-step `timeout_seconds` guards runaway steps; failed steps can declare `recovery_steps` (run after the primary failure); scenarios support partial-pass via `min_passing` (int) / `pass_ratio` (float); `requires_http` gates steps that need a live REST server (reports `unconfigured` when offline). Results carry a per-step execution trace (step_index/duration/arguments/trace_id + llm_meta model/tokens/duration); `run_validation_scenario` output includes a root-cause report with `## Blockers` and `## Per-step trace` sections.
+- **Validation regression flywheel** — `src/autoinfo/mcp/scenarios/regression/` subdirectory (73 regression scenarios, `regression: true` key) auto-loads via recursive glob; `coverage_audit.py` prints a "Regression scenarios: N (issues: ...)" metric; `.github/ISSUE_TEMPLATE/bug_report.md` carries a mandatory 回归场景 (regression scenario) field so every bug ships with a scenario.
 - **Validation delivery packaging** — `scripts/validation_delivery.py` builds 01-RAW / 02-PROCESSED / 03-KB / 04-MATRIX / 06-REJECTED plus `validation-report.md` and `manifest.json` with per-file authenticity, D1-D3 delivery gates, and UX metrics (UX_OK/completion_rate ≥ 0.8). Each packaged processed product additionally gets a `01-QA-GATES/` directory with per-product `gate-report-<product>.md` (human-readable) + `.json` (agent-consumable) recording D1-D3 delivery-gate + authenticity verdicts, plus a `gate-reports-index.json` whose `rejected` list stays consistent with `manifest.json`'s `rejected` key (G0-G5 run at the process layer and are not recomputed in packaging). Output scenarios persist `collect_artifacts` for post-run inspection.
 - **End-user coverage matrix (E8)** — `scripts/coverage_matrix.py` generates the end-user feature coverage matrix from `docs/dev/specs/end-user-matrix.yaml` (v3: 8 products × 8 formats × 13 domains, 29 source platforms, 14 channels, 15 capabilities); surfaced as the 04-MATRIX section in validation delivery plus Oracle R8 unconfigured-vs-gap analysis. Scenario library currently exercises 8/8 products, 8/8 formats, 28/29 source platforms (email_imap not yet covered).
 - **End-user journey validation** — `enduser-journey.yaml` scenario drives the full B1 lifecycle with UX metrics (UX_OK/completion_rate ≥ 0.8) measured in validation packaging; the error-boundary scenario asserts the `actionable` field of the error envelope.
@@ -96,7 +96,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Dead-source detection** — Semantic Scholar HTTP 429 surfaces as `SourceFailure` (fail-fast, no partial results); arXiv rss/bio → rss/q-bio source config fix.
 - **CLI module entry** — `python -m autoinfo.cli` runs the same Typer app as the `autoinfo` console script; `collect` prints live per-source progress lines.
 - **Default Sources/References in products** — product templates render provenance out of the box: `magazine-digest.md.j2` adds a `## Sources` section with per-entry `source_url` links, `tutorial.md.j2` renders a structured `## Sources` section, `digest.md.j2`/`digest.html.j2` append aggregate `## References` tails, `column.md.j2` restores its `## References` section, and presentations carry an inline-cite note — so every product ships with visible source attribution even without LLM synthesis.
-- **Read-only MCP mode** — `autoinfo serve --agent` (equivalent to `python -m autoinfo.mcp.server --readonly`) exposes exactly 4 read-only tools (search_knowledge_base, get_kb_entry, export_kb, list_validation_scenarios) over stdio; any other tool returns `READ_ONLY_SERVER`.
+- **Read-only MCP mode** — `autoinfo serve --agent` (equivalent to `python -m autoinfo.mcp.server --readonly`) exposes exactly 4 read-only tools (search_knowledge_base, get_kb_entry, export_kb, list_validation_scenarios) over stdio; any other tool returns `ReadOnlyServer`.
 
 ## Status
 
@@ -120,7 +120,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
-| MCP server | ✅ 146 tools across 35 categories |
+| MCP server | ✅ 149 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -175,9 +175,9 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Cost allocation MCP | ✅ cost_allocation MCP tool |
 | Demo domains | ✅ 21 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, plus english/french/hindi/italian/korean/portuguese/russian/spanish-learning) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
-| Validation scenarios | ✅ 138 scenarios (65 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
+| Validation scenarios | ✅ 159 scenarios (86 functional + 73 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
-| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (72 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
+| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (73 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics UX_OK/completion_rate ≥ 0.8) + 01-QA-GATES/ gate reports (per-product `gate-report-<product>.{md,json}` + `gate-reports-index.json`) |
 | End-user coverage matrix (E8) | ✅ `scripts/coverage_matrix.py` + `docs/dev/specs/end-user-matrix.yaml`; surfaced as 04-MATRIX + coverage-gaps.json |
 | End-user journey validation | ✅ `enduser-journey.yaml` scenario + UX metrics; error-boundary asserts `actionable` field |
@@ -185,7 +185,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback` (actual: `mimo-v2.5` same-gateway, empty `provider`/`api_key` inherit primary); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~4925 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave; order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~5215 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -218,7 +218,7 @@ AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
 
 1. **Health** — `health_check()` → `{status, version, tools_count}`
 2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
-3. **Validate** — `list_validation_scenarios()` (138 scenarios: 65 functional + 73 regression) → `run_validation_scenario(scenario="system-health")`
+3. **Validate** — `list_validation_scenarios()` (159 scenarios: 86 functional + 73 regression) → `run_validation_scenario(scenario="system-health")`
 
 Validation is the fastest way to prove the system works: each scenario makes
 real MCP / CLI / REST calls and asserts on the `{success, data}` envelope.
@@ -239,7 +239,7 @@ curl http://localhost:8741/api/v1/entries?limit=5
 ## Run the AutoInfo MCP server
 
 AutoInfo ships an MCP server (`python -m autoinfo.mcp.server`) that exposes
-146 tools over stdio. Editor configs are already committed for Cursor
+149 tools over stdio. Editor configs are already committed for Cursor
 (`.cursor/mcp.json`), OpenCode (`.opencode/mcp.json`), and Claude Desktop
 (`.claude/claude_desktop_config.json`). They all run
 `python -m autoinfo.mcp.server` and pass `AUTOINFO_LLM_API_KEY` through from
@@ -339,7 +339,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (146 tools)
+         └── MCP server (149 tools)
 ```
 
 ## Tech Stack
@@ -349,7 +349,7 @@ Sources (RSS/API/Web)
 | Language | Python ≥ 3.11 |
 | CLI | typer (31 command groups) |
 | REST API | FastAPI + uvicorn (port 8741) |
-| MCP server | mcp (Model Context Protocol) — 146 tools over stdio |
+| MCP server | mcp (Model Context Protocol) — 149 tools over stdio |
 | LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |
 | Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
 | KB files | Markdown + python-frontmatter, git-versioned |
@@ -406,7 +406,7 @@ autoinfo serve --agent               # Read-only MCP server over stdio (4 read-o
 autoinfo mvp init|list               # Concierge MVP pilots: provision pilot users + first product
 ```
 
-## MCP Tools (146)
+## MCP Tools (149)
 
 | Category | Tools |
 |----------|-------|
@@ -416,7 +416,7 @@ autoinfo mvp init|list               # Concierge MVP pilots: provision pilot use
 | **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
 | **Topic** | add_topic, remove_topic, list_topics, topic_group_add, topic_group_remove, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
 | **Collection** | collect_sources (with dry_run, domain-less), get_collection_progress, get_collection_status, process_collection (with batch, check_factual, check_translation), get_processing_progress, batch_run, clean_cache |
-| **KB** | search_knowledge_base (hybrid, cross-domain, faceted `filter_custom_fields` on custom_fields JSON), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (agent promotion Draft→Wiki), list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |
+| **KB** | search_knowledge_base (hybrid, cross-domain, faceted `filter_custom_fields` on custom_fields JSON), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (agent promotion Draft→Wiki), promote_pending, demote_kb_wiki, force_promote, list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |
 | **KB Relations** | link_items, get_item_relations |
 | **KB Versioning** | get_entry_history, restore_entry_version |
 | **KB Monitor** | get_collection_stats, get_collection_diff |
@@ -437,14 +437,14 @@ autoinfo mvp init|list               # Concierge MVP pilots: provision pilot use
 | **Quality Gate Config** | get_gate_config, set_gate_config |
 | **Product** | list_products, get_product |
 | **Alert Rules** | add_alert_rule, get_alert_rules, remove_alert_rule |
-| **End User** | send_to_enduser, get_enduser_history, get_enduser_products, query_delivery_log, get_delivery_log, activate_trial, check_trial_expiry, update_preferences, get_preferences, get_subscription_status |
+| **End User** | enduser_create, enduser_get, enduser_update, enduser_delete, enduser_list, send_to_enduser, get_enduser_history, get_enduser_products, query_delivery_log, get_delivery_log, activate_trial, check_trial_expiry, update_preferences, get_preferences, get_subscription_status |
 | **Cost** | get_billing_summary, get_budget_thresholds, set_budget_thresholds, create_checkout_session, get_enduser_usage, get_enduser_invoice, cost_dashboard, cost_allocation |
 | **Data Privacy** | soft_delete_entry (with purge flag), restore_entry, export_user_data, delete_user_data |
 | **Knowledge Lifecycle** | compare_versions, find_similar_items, merge_items, get_domain_decay, mark_stale, calculate_freshness_score, recommend_content, simplify_content |
 | **Observability** | trace_item, get_metrics, get_prometheus_metrics, diagnose_system |
 | **Agent Callbacks** | set_agent_callback, list_agent_callbacks, remove_agent_callback |
 | **Delivery Schedule** | add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule |
-| **Validation** | list_validation_scenarios, run_validation_scenario |
+| **Validation** | list_validation_scenarios, run_validation_scenario, run_all_validation_scenarios, get_coverage_report, get_run_decisions |
 
 ## Demo Domains
 
@@ -482,7 +482,7 @@ make lint        # ruff check + mypy
 
 ## Known Limitations
 
-the #342 wave grew it to 108 (64 functional + 44 regression); the #332-B wave grew it to 109 (64 functional + 45 regression); the #325 wave grew it to 110 (64 functional + 46 regression); the #319 wave grew it to 111 (64 functional + 47 regression); the #348 wave grew it to 112 (64 functional + 48 regression); the #351/#357 security-assertions wave grew it to 116 (65 functional + 51 regression); the #9-reopened theme-blocklist fix grew it to 117 (65 functional + 52 regression); the #14-#18 output-quality wave grew it to 124 (65 functional + 59 regression); the #119/#120 cross-product-coherence wave grew it to 129 (65 functional + 64 regression); the 2026-09-04 wave grew it to 130 (65 functional + 65 regression); the 2026-09-04 concierge wave grew it to 137 (65 functional + 72 regression); the 2026-09-05 regression wave grew it to 138 (65 functional + 73 regression). The following items remain explicitly deferred:
+The validation scenario library grew steadily across waves: the #342 wave grew it to 108 (64 functional + 44 regression); the #332-B wave grew it to 109 (64 functional + 45 regression); the #325 wave grew it to 110 (64 functional + 46 regression); the #319 wave grew it to 111 (64 functional + 47 regression); the #348 wave grew it to 112 (64 functional + 48 regression); the #351/#357 security-assertions wave grew it to 116 (65 functional + 51 regression); the #9-reopened theme-blocklist fix grew it to 117 (65 functional + 52 regression); the #14-#18 output-quality wave grew it to 124 (65 functional + 59 regression); the #119/#120 cross-product-coherence wave grew it to 129 (65 functional + 64 regression); the 2026-09-04 wave grew it to 130 (65 functional + 65 regression); the 2026-09-04 concierge wave grew it to 137 (65 functional + 72 regression); the 2026-09-05 regression wave grew it to 138 (65 functional + 73 regression); the red-team adversarial layer (T-B-03: prompt injection, prompt escape, data exfiltration, tool-argument abuse) grew it to 143 (70 functional + 73 regression); the agent-interaction + performance wave (T-B-04/T-B-05: agent-tool-selection, agent-multiturn-context, perf-concurrency, perf-token-budget, perf-latency) grew it to 148 (75 functional + 73 regression); the recoverability wave (T19/R-A-01/R-B-01/R-B-02: recover-pipeline-resume, recover-rollback, recover-idempotent-retry, recover-cli-resume-from) grew it to 152 (79 functional + 73 regression); the Toolability surface wave (T-S-10/T-S-11/T-S-12: surface-rest-parity, surface-build-release, surface-vendor-agnosticism) grew it to 155 (82 functional + 73 regression); the privacy/tenancy coverage wave (T-A-08/T-A-09: privacy-soft-delete-restore, privacy-gdpr-export, privacy-retention-tier, tenancy-isolation) grew it to 159 (86 functional + 73 regression). The following items remain explicitly deferred:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -490,7 +490,7 @@ the #342 wave grew it to 108 (64 functional + 44 regression); the #332-B wave gr
 | Multi-user / collaboration (auth, teams) | 📋 Planned | user_id fields in place; full auth v2 |
 
 > See `docs/dev/founder-expectations.md` §14 for the full deferred-items catalog.
-> Cross-dimensional catalog (keystone product matrix): `docs/dev/cross-dimensional-catalog.md` (42 cells, 5 gap types across A1-A7 Pipeline × B1/B2/B3 Users).
+> Cross-dimensional catalog (keystone product matrix): `docs/dev/cross-dimensional-catalog.md` (126 cells = 7×18 lifecycle stages; 42 is the catalogued gap count, 5 gap types across A1-A7 Pipeline × B1/B2/B3 Users).
 > Some high-value sources (Bloomberg, Reuters Eikon, WSJ) remain blocked by cost/policy — see `docs/known-limitations/blocked-sources.md`.
 
 ## License

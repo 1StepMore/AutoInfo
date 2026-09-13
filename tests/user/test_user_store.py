@@ -29,9 +29,7 @@ from autoinfo.user_store import (
 def user_db(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     """Isolate the user-store SQLite DB in a temp dir."""
     monkeypatch.setattr("autoinfo.user_store._DB_PATH", None)
-    monkeypatch.setattr(
-        "autoinfo.user_store._get_db_path", lambda: tmp_path / "users.db"
-    )
+    monkeypatch.setattr("autoinfo.user_store._get_db_path", lambda: tmp_path / "users.db")
     yield tmp_path
 
 
@@ -45,12 +43,8 @@ def stored_user(user_db: Any) -> str:
 class TestUpdatePreferencesContentPreference:
     """``update_preferences`` validation and persistence of content_preference."""
 
-    def test_invalid_value_rejected_with_error_envelope(
-        self, stored_user: str
-    ) -> None:
-        result = update_preferences(
-            stored_user, {"content_preference": "everything"}
-        )
+    def test_invalid_value_rejected_with_error_envelope(self, stored_user: str) -> None:
+        result = update_preferences(stored_user, {"content_preference": "everything"})
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
         assert result["error"]["actionable"] is True
@@ -67,54 +61,40 @@ class TestUpdatePreferencesContentPreference:
         assert "format" not in stored
 
     def test_valid_raw_only_persists(self, stored_user: str) -> None:
-        result = update_preferences(
-            stored_user, {"content_preference": "raw_only"}
-        )
+        result = update_preferences(stored_user, {"content_preference": "raw_only"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["content_preference"] == "raw_only"
 
     def test_valid_processed_only_persists(self, stored_user: str) -> None:
-        result = update_preferences(
-            stored_user, {"content_preference": "processed_only"}
-        )
+        result = update_preferences(stored_user, {"content_preference": "processed_only"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["content_preference"] == "processed_only"
 
     def test_valid_both_persists(self, stored_user: str) -> None:
-        result = update_preferences(
-            stored_user, {"content_preference": "both"}
-        )
+        result = update_preferences(stored_user, {"content_preference": "both"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["content_preference"] == "both"
 
     def test_merge_keeps_existing_keys(self, stored_user: str) -> None:
         update_preferences(stored_user, {"format": "html"})
-        result = update_preferences(
-            stored_user, {"content_preference": "raw_only"}
-        )
+        result = update_preferences(stored_user, {"content_preference": "raw_only"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["format"] == "html"
         assert stored["content_preference"] == "raw_only"
 
-    def test_backward_compat_without_content_preference(
-        self, stored_user: str
-    ) -> None:
-        result = update_preferences(
-            stored_user, {"format": "markdown", "timezone": "UTC"}
-        )
+    def test_backward_compat_without_content_preference(self, stored_user: str) -> None:
+        result = update_preferences(stored_user, {"format": "markdown", "timezone": "UTC"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["format"] == "markdown"
         assert "content_preference" not in stored
 
     def test_missing_user_returns_not_found(self, user_db: Any) -> None:
-        result = update_preferences(
-            "no-such-user", {"content_preference": "both"}
-        )
+        result = update_preferences("no-such-user", {"content_preference": "both"})
         assert result["error_code"] == "NotFound"
 
 
@@ -128,22 +108,14 @@ class TestResolveContentPreference:
 
     def test_returns_valid_values(self) -> None:
         for value in CONTENT_PREFERENCE_VALUES:
-            assert (
-                resolve_content_preference({"content_preference": value})
-                == value
-            )
+            assert resolve_content_preference({"content_preference": value}) == value
 
     def test_invalid_stored_value_defaults_to_both(self) -> None:
-        assert (
-            resolve_content_preference({"content_preference": "nope"})
-            == "both"
-        )
+        assert resolve_content_preference({"content_preference": "nope"}) == "both"
 
     def test_default_constant_is_both(self) -> None:
         assert CONTENT_PREFERENCE_DEFAULT == "both"
-        assert CONTENT_PREFERENCE_VALUES == frozenset(
-            {"raw_only", "processed_only", "both"}
-        )
+        assert CONTENT_PREFERENCE_VALUES == frozenset({"raw_only", "processed_only", "both"})
 
 
 class TestMCPUpdatePreferencesHandler:
@@ -152,9 +124,7 @@ class TestMCPUpdatePreferencesHandler:
     def test_invalid_value_returns_envelope(self, stored_user: str) -> None:
         from autoinfo.mcp.server import _handle_update_preferences
 
-        result = _handle_update_preferences(
-            stored_user, {"content_preference": "everything"}
-        )
+        result = _handle_update_preferences(stored_user, {"content_preference": "everything"})
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
         assert result["error"]["actionable"] is True
@@ -163,9 +133,7 @@ class TestMCPUpdatePreferencesHandler:
     def test_valid_value_stores(self, stored_user: str) -> None:
         from autoinfo.mcp.server import _handle_update_preferences
 
-        result = _handle_update_preferences(
-            stored_user, {"content_preference": "processed_only"}
-        )
+        result = _handle_update_preferences(stored_user, {"content_preference": "processed_only"})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["content_preference"] == "processed_only"
@@ -173,19 +141,14 @@ class TestMCPUpdatePreferencesHandler:
     def test_unknown_user_not_found(self, user_db: Any) -> None:
         from autoinfo.mcp.server import _handle_update_preferences
 
-        result = _handle_update_preferences(
-            "nobody", {"content_preference": "both"}
-        )
-        assert result["error_code"] == "NotFound"
+        result = _handle_update_preferences("nobody", {"content_preference": "both"})
+        assert result["success"] is False
+        assert result["error"]["code"] == "NotFound"
 
-    def test_without_content_preference_passes_through(
-        self, stored_user: str
-    ) -> None:
+    def test_without_content_preference_passes_through(self, stored_user: str) -> None:
         from autoinfo.mcp.server import _handle_update_preferences
 
-        result = _handle_update_preferences(
-            stored_user, {"format": "html", "max_items": 5}
-        )
+        result = _handle_update_preferences(stored_user, {"format": "html", "max_items": 5})
         assert result["success"] is True
         stored = get_preferences(stored_user)["preferences"]
         assert stored["format"] == "html"
@@ -195,9 +158,7 @@ class TestMCPUpdatePreferencesHandler:
 class TestGetPreferencesCompat:
     """``get_preferences`` stays backward compatible."""
 
-    def test_returns_preferences_for_unknown_prefs(
-        self, stored_user: str
-    ) -> None:
+    def test_returns_preferences_for_unknown_prefs(self, stored_user: str) -> None:
         result = get_preferences(stored_user)
         assert result["user_id"] == stored_user
         assert result["preferences"] == {}

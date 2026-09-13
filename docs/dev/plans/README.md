@@ -47,4 +47,4 @@ the ADR + CHANGELOG when done (stage-7 backfill), and promoting them adds noise.
 
 | Wave | Type | Outcome | Status |
 |------|------|---------|--------|
-| *(none yet)* | | | |
+| `agent-oriented-gap-register.md` | Validation / agent-native gaps | Commit `2e1052d`: 62-gap agent-oriented register closed across 7 waves; scenarios 138→159; canonical envelope + `outputSchema` 100%; AX M-01..M-06 gated | completed |

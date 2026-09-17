@@ -64,12 +64,14 @@ class. Both reproduce only under machine load, and both are worth a follow-up:
 | Observation | Symptom | Trigger |
 |---|---|---|
 | EPUB export boundary (`TestOptionalFormats`) | Export wrote no artifact; passes in isolation, in-file, and in a 4-directory combination | Appeared in the 16-minute full-selection run while ~10 unrelated background jobs were saturating the box; healed on re-run |
-| Concurrent outbox writes (`tests/mcp/test_agent_callback.py`) | `1 of 16 events dropped (database is locked without busy_timeout)` — `sqlite3.OperationalError` inside `autoinfo.agent_callback._connect` | 16 threads writing concurrently; `_connect` sets `journal_mode=WAL` but no `busy_timeout`, so a locked DB raises instead of waiting and the notification row is lost |
+| Concurrent outbox writes (`tests/mcp/test_agent_callback.py`) | `1 of 16 events dropped (database is locked without busy_timeout)` — `sqlite3.OperationalError` raised at `PRAGMA journal_mode=WAL` inside `autoinfo.agent_callback._connect` | 16 threads writing concurrently while ~10 background jobs saturated the box. **The `busy_timeout` mitigation is already present and has been since 2026-08-28 (`502a63c5`, issue #67) — it is set before the WAL transition** — yet the failure still surfaced on the WAL statement, i.e. the busy handler did not cover that PRAGMA under this contention. Root cause unproven; needs a dedicated 16-thread repro before anyone claims a fix |
 
 The second one is a real product-side data-loss path rather than a test defect
 (a dropped outbox row means a lost end-user notification), which is why it is
-recorded here rather than silently ignored. Fixing it is a robustness change,
-i.e. out of the current P0/P1 scope; register it before fixing it.
+recorded here rather than silently ignored. Note that the obvious diagnosis
+("add busy_timeout") is **already implemented** and did not prevent the drop —
+read `_connect` before "fixing" it again. Reproducing it is a robustness
+work item, i.e. out of the current P0/P1 scope; register it before fixing it.
 
 **Outside the canonical selection (observed 2026-09-17, not budgeted).** The
 selection above covers 2606 of the suite's 5237 tests. A sweep of the remaining

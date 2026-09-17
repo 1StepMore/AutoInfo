@@ -329,7 +329,7 @@
 | － 其中顺序依赖假红 | 9 | **0** |
 | 被跟踪文件数 | 7,828（含 6,968 运行时产物） | **860**（本轮全部收尾后为 **863**：+3 为同日新增的守护测试） |
 | `git status` 条目 | 36（全为运行时抖动） | **6**（全部为本次有意改动；mypy 清偿轮为 50 = 46 `.py` + 4 配置/文档） |
-| ruff 口径 | 0.9.10 → 307 / 注释称 0.15.22 → 863 | **0.16.8 → 307（版本已锁，注释计数同轮修正）** |
+| ruff 口径 | 0.9.10 → 307 / 注释称 0.15.22 → 863 | **0.16.8 → 287（版本已锁；计数随本轮改动同轮更新：`307 → 287`，见下方括注）** |
 | mypy strict 错误数 | 192（57 文件未过） | **0（140 文件全过）** |
 
 核心选取集残留的 6 条红灯已逐条登记在 `tests/TRIAGE.md`，性质为
@@ -427,7 +427,7 @@
 | 守护测试 | `test_known_red_budget_single_source.py` + `test_tracked_runtime_artifacts.py` + `test_server_dispatch_freeze.py` + `test_envelope_conformance.py` → 14 passed |
 | 文档一致性 | `scripts/doc_inventory.py --check` → exit 0 |
 
-（同轮顺带修正的漂移：`ci.yml` / `pyproject.toml` 注释称全树 ruff 为 `309`，实测 `HEAD` 基线亦为 **307**；`CONTRIBUTING.md` 称 CLI 有 `28` 个命令组，实际 **31**；`tests/TRIAGE.md` 的基线数字在守卫增补后由 `2604/2574` 复测为 `2606/2576`。）
+（同轮顺带修正的漂移：`ci.yml` / `pyproject.toml` 注释称全树 ruff 为 `309`，`HEAD` 基线实测 **307**；本轮改动落地后复测为 **287** —— 差额来自「被触碰文件经 `ruff`/`ruff-format` 钩子后归零」与长行重排，两处注释已按 `ci.yml` 自己写的契约同轮更新。另修正 `CONTRIBUTING.md` 称 CLI 有 `28` 个命令组（实际 **31**）、`tests/TRIAGE.md` 基线数字由 `2604/2574` 复测为 `2606/2576`。）
 
 #### 本轮新识别的残余（未修，记录以备后续）
 
@@ -437,5 +437,5 @@
 | `CONTRIBUTING.md` 的数字不在 `doc_inventory.py` 覆盖内 | 该脚本只查 README / AGENTS.md / SKILL.md，故 28→31 这类漂移不会被自动发现 |
 | `.pre-commit-config.yaml` 的 `no-credential-url` 自指误报 | 钩子扫描到自身配置里的 URL 样例即失败，导致该文件无法被提交 |
 | `.opencode/.gitignore` 与跟踪状态冲突 | 注释称 `skills/` 「never committed」，但 4 个 `SKILL.md` 被跟踪 |
-| 机器负载下的两个非封闭失败 | EPUB 导出边界 + 并发 outbox 写。已登记在 `tests/TRIAGE.md` 的「Load-sensitive flake」小节；其中 `agent_callback._connect` 缺 `busy_timeout` 会**丢通知行**，属真实数据丢失路径，修它属 P2 范围故本轮不修 |
-| 仓库整体未过 `ruff format` | `ruff format --check src/` 在 `HEAD` 上报 **71 个文件待格式化**（0.16.8 与钩子的 v0.9.10 结论一致，无版本分歧）。CI 没有 format 门禁，而 `.pre-commit-config.yaml` 的 `ruff-format` 只处理**被暂存的文件**——于是任何触碰这些文件的人都会被自动重排整文件。本轮 46 个 `.py` 中有 25 个被重排（约 940 行风格改写，非语义），并顺带消掉 1 条既有 E501。若要根治，应把 `ruff format` 作为独立的一次性格式化提交落地并加进 CI，而不是让它在每次改动里零散发生 |
+| 机器负载下的两个非封闭失败 | EPUB 导出边界 + 并发 outbox 写。已登记在 `tests/TRIAGE.md` 的「Load-sensitive flake」小节；其中 outbox 写失败会**丢通知行**（真实数据丢失路径），且**常规诊断已被证伪**：`agent_callback._connect` 自 2026-08-28（`502a63c5`，#67）起就在 WAL 之前设了 `busy_timeout`，本次失败仍发生在 `PRAGMA journal_mode=WAL` 上 —— 需要专门的 16 线程复现才能定性，属 P2 范围故本轮不修 |
+| 仓库整体未过 `ruff format` | `ruff format --check src/` 在 `HEAD` 上报 **71** 个文件待格式化，本轮结束时仍剩 **46**（0.16.8 与钩子的 v0.9.10 结论一致，无版本分歧）。CI 没有 format 门禁，而 `.pre-commit-config.yaml` 的 `ruff-format` 只处理**被暂存的文件**——于是任何触碰这些文件的人都会被自动重排整文件。清偿提交因此是 **47 files changed, 1097 insertions(+), 963 deletions(-)**，其中多数为格式化输出（非语义）。若要根治，应把 `ruff format` 作为独立的一次性格式化提交落地并加进 CI，而不是让它在每次改动里零散发生 |

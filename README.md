@@ -185,7 +185,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback` (actual: `mimo-v2.5` same-gateway, empty `provider`/`api_key` inherit primary); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~5237 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate); order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~5247 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -364,7 +364,7 @@ Sources (RSS/API/Web)
 | Utilities | python-dateutil |
 | Testing | pytest + pytest-asyncio + pytest-vcr + pytest-timeout |
 | Lint & type checking | ruff + mypy (strict) |
-| Secret scanning | gitleaks v8.18.4 pre-commit hook + local `no-credential-url` guard (blocks token-authenticated GitHub URLs of the `https://<token>@` form and `ghp_`/`github_pat_` PAT prefixes in staged files) + `gitleaks-action` in CI |
+| Secret scanning | gitleaks v8.18.4 pre-commit hook + local `no-credential-url` guard (blocks token-authenticated GitHub URLs of the `https://<token>@` form and `ghp_`/`github_pat_` PAT prefixes in staged files) + the same pinned gitleaks release in CI (`.github/workflows/ci.yml` lint job, PR/push commit range) |
 
 Optional extras: `pip install "autoinfo[web]"` (Playwright),
 `"autoinfo[pdf]"` (PyMuPDF + weasyprint), `"autoinfo[tts]"` (edge-tts), or

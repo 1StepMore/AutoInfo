@@ -26,10 +26,11 @@ Python 3.14.4, pytest 8.4.2, pytest-timeout 2.4.0.
 pytest tests/mcp tests/validation tests/cli tests/output tests/llm
 ```
 
-**Baseline**: **2606 tests -> 6 failed / 2576 passed / 24 skipped / 0 errors**
-(673.76s on the reference WSL box, 2026-09-17; re-measured after the mypy
-strict debt paydown — the composition of the 6 is unchanged, the two extra
-collected tests come from the guards added earlier the same day).
+**Baseline**: **2611 tests -> 6 failed / 2581 passed / 24 skipped / 0 errors**
+(701.29s on the reference WSL box, 2026-09-17; re-measured after the mypy strict
+debt paydown and after the regression locks added for the same day's bug fixes —
+the composition of the 6 is unchanged, and the +5 collected/passed come from the
+new locks that live inside this selection).
 
 ### Budgeted failures — exact node ids (6)
 
@@ -74,7 +75,7 @@ read `_connect` before "fixing" it again. Reproducing it is a robustness
 work item, i.e. out of the current P0/P1 scope; register it before fixing it.
 
 **Outside the canonical selection (observed 2026-09-17, not budgeted).** The
-selection above covers 2606 of the suite's 5237 tests. A sweep of the remaining
+selection above covers 2611 of the suite's 5247 tests. A sweep of the remaining
 directories (`tests/alerts tests/api tests/billing tests/collectors
 tests/config tests/cost tests/delivery tests/email tests/integration tests/kb
 tests/monitor tests/process tests/qa tests/scripts tests/user`) found two
@@ -93,6 +94,12 @@ class is invisible in the narrow selection and unavoidable in the wide one.
 
 The full suite (2026-09-17, this box) reported 28 failed / 5,152 passed /
 51 skipped in 55m05s; that run predates the fixes above.
+
+## Unfixed product defect (found 2026-09-17 while adding regression locks)
+
+| Location | Defect | Trigger | Status |
+|---|---|---|---|
+| `src/autoinfo/cost.py` budget-status block | `f"SELECT DISTINCT domain FROM cost_log{where} WHERE domain != ''"` appends a second `WHERE` whenever `where` already carries one, so the query raises `sqlite3.OperationalError` for every period except `all`; the surrounding `except Exception: pass` swallows it and `budget_status` silently stays empty | `cost_dashboard(period="today"\|"week"\|"month")` with at least one cost row | Registered, not fixed (out of scope). The import fix has a lock in `tests/cost/test_cost_budget_alerts.py` (uses `period="all"`, where `where` is empty). Fix: reuse the existing `where` fragment instead of appending a second. |
 
 ## Historical baseline (2026-08-05, superseded)
 

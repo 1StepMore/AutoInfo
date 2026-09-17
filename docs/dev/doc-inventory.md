@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 101 |
-| Total lines | 34123 |
-| Active files | 73 |
+| Total files | 107 |
+| Total lines | 35673 |
+| Active files | 79 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
 | Category — known-limitations | 2 files / 336 lines |
@@ -24,8 +24,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 9 files / 458 lines |
 | Category — specs | 12 files / 9716 lines |
 | Category — validation-reports | 14 files / 3186 lines |
-| Category — docs/dev | 26 files / 9917 lines |
-| Category — docs/root | 3 files / 391 lines |
+| Category — docs/dev | 30 files / 10875 lines |
+| Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
 
@@ -70,6 +70,10 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
 | `demo-release-standard.md` | 42 | docs/root | active | — |
 | `dev/2026-08-30-graph-engineering-调研与三项目落地-修正版.md` | 139 | docs/dev | active | — |
+| `dev/AutoInfo-development-brief-v2.md` | 226 | docs/dev | active | — |
+| `dev/AutoInfo-development-brief-v3.md` | 247 | docs/dev | active | — |
+| `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
+| `dev/AutoInfo开发简报.md` | 104 | docs/dev | active | — |
 | `dev/acceptance-framework.md` | 496 | docs/dev | active | — |
 | `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
@@ -103,7 +107,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/testing-layers.md` | 261 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
-| `dev/validation-loop-log.md` | 167 | docs/dev | active | plan |
+| `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 59 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
@@ -122,9 +126,11 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/workflow-charter.md` | 67 | docs/dev | active | workflow-charter |
 | `dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md` | 234 | docs/dev | active | methodology |
 | `glossary.md` | 61 | docs/root | active | glossary |
+| `handoff-2026-09-17.md` | 151 | docs/root | active | — |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
 | `known-limitations/demo-quality-residuals.md` | 48 | known-limitations | active | — |
 | `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
+| `project-health-assessment-2026-09-17.md` | 441 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |
 | `schemas/knowledge-digest-v1.json` | 154 | schemas | active | — |
 | `schemas/knowledge-presentation-v1.json` | 72 | schemas | active | — |

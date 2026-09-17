@@ -134,7 +134,7 @@ unclear, a maintainer will ask you to reword it.
 - mypy in **strict** mode (`python_version = "3.11"`, `strict = true`).
 - Type annotations on public functions and non-trivial internals.
 - Prefer small modules that do one thing well, following the existing layout
-  under `src/autoinfo/`. New CLI groups mirror MCP tools (the CLI has 28
+  under `src/autoinfo/`. New CLI groups mirror MCP tools (the CLI has 31
   command groups).
 - Avoid `# type: ignore`; if you must add one, explain why in a comment.
 

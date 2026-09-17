@@ -36,12 +36,13 @@ jobs:
         run: ruff check --select E9,F --output-format=github src/
       # Full-src ruff: informational drift surface for the whole tree.
       # The dev extra pins ruff==0.16.8 so this number is reproducible and
-      # comparable between local runs and CI. Under that pin: 309 pre-existing
+      # comparable between local runs and CI. Under that pin: 307 pre-existing
       # errors across the tree (E501×159, I001×56, F401×46, N803×11, F841×11,
-      # W292×8, F821×6, N806×5, ...; line-length=100). Informational only —
-      # changed-files ruff (above) is the required gate. Cleanup is a separate
-      # tracked work item; if the count moves, update it here AND in
-      # pyproject.toml's per-file-ignores note. Do not re-range the pin.
+      # W292×6, F821×6, N806×5, N817×3, N802×2, F541×1, F811×1;
+      # line-length=100). Informational only — changed-files ruff (above) is
+      # the required gate. Cleanup is a separate tracked work item; if the
+      # count moves, update it here AND in pyproject.toml's per-file-ignores
+      # note. Do not re-range the pin.
       - name: Ruff on full source
         run: ruff check src/ tests/
         continue-on-error: true
@@ -71,6 +72,19 @@ jobs:
           else
             mypy --follow-imports=silent "${FILES[@]}"
           fi
+      # Full-tree strict mypy — the recursion guard. The changed-files step
+      # above runs with --follow-imports=silent, so it cannot see the damage a
+      # change here does to a module it imports: a wrong signature, a widened
+      # return type or a removed re-export stays invisible until someone edits
+      # the victim file, and by then the cause is buried. This step closes
+      # that hole. The tree is fully clean (strict, 0 errors across
+      # src/autoinfo) as of the 192-error debt paydown, so any error reported
+      # here is new and must be fixed, not budgeted. It runs inside the
+      # existing job rather than a new one because "Mypy (changed files)" is a
+      # required status check name in GOVERNANCE.md — a new job would need
+      # branch-protection surgery for no extra signal.
+      - name: Mypy on full source
+        run: mypy src/
 
   test:
     name: Test suite (fast subset)

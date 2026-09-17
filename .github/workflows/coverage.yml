@@ -8,9 +8,10 @@
 #
 # Design decisions (why scoped, why baseline-aware):
 #   - A repo-wide fail-under gate would be dragged down by untouched legacy
-#     modules (e.g. server.py's 211 pre-existing lint rows — see ci.yml) and
-#     would block unrelated PRs. Scoping the gate to changed modules ties the
-#     requirement to the code the PR introduces.
+#     modules (e.g. server.py's pre-existing ruff debt, suppressed via
+#     [tool.ruff.lint.per-file-ignores] in pyproject.toml) and would block
+#     unrelated PRs. Scoping the gate to changed modules ties the requirement
+#     to the code the PR introduces.
 #   - A fixed fail-under=60 on the WHOLE changed module still penalises
 #     legacy modules: server.py sits at 53% on the fast subset, so any PR
 #     touching it (even a one-line, fully-tested change) failed. The gate is

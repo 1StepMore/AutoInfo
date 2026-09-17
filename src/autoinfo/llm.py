@@ -171,11 +171,10 @@ def _backoff_delay(attempt: int) -> float:
     ``base 1.0s * factor 2**attempt``, capped at 8s, with +/-25% uniform
     jitter so concurrent retriers do not stampede in lockstep.
     """
-    raw = min(
-        BACKOFF_BASE_SECONDS * (BACKOFF_FACTOR**attempt), BACKOFF_CAP_SECONDS
-    )
+    raw = min(BACKOFF_BASE_SECONDS * (BACKOFF_FACTOR**attempt), BACKOFF_CAP_SECONDS)
     jitter = raw * BACKOFF_JITTER
     return max(0.0, raw - jitter + random.uniform(0.0, 2.0 * jitter))
+
 
 # ---------------------------------------------------------------------------
 # Extractor
@@ -256,10 +255,12 @@ class LLMExtractor:
                 env_key = f"{fb_provider.upper()}_API_KEY"
                 os.environ.setdefault(env_key, fb.api_key)
             fb_burl = fb.base_url or ""
-            self._fallback_models.append({
-                "model": fb_full,
-                "base_url": fb_burl,
-            })
+            self._fallback_models.append(
+                {
+                    "model": fb_full,
+                    "base_url": fb_burl,
+                }
+            )
 
     def _should_use_json_mode(self) -> bool:
         """Return True only when json_mode is enabled AND not a reasoning model.
@@ -337,8 +338,8 @@ class LLMExtractor:
                     time.sleep(1)
 
         raise RuntimeError(
-            f"LLM extraction failed after {max_retries + 1} attempts "
-            f"(no fallback configured)" if not self._fallback_models
+            f"LLM extraction failed after {max_retries + 1} attempts (no fallback configured)"
+            if not self._fallback_models
             else f"LLM extraction failed after {max_retries + 1} attempts "
             f"(all primary + fallback models exhausted)"
         ) from last_exception
@@ -375,9 +376,7 @@ class LLMExtractor:
         # Append entity type guidance when entities are requested
         if "entities" in fields:
             lines.append("")
-            lines.append(
-                "Entity types: " + ", ".join(ENTITY_TYPES)
-            )
+            lines.append("Entity types: " + ", ".join(ENTITY_TYPES))
 
         if custom:
             lines.append("")
@@ -422,7 +421,18 @@ class LLMExtractor:
             _handlers_changed = False
             for _handler in list(_litellm_logger.handlers):
                 if isinstance(_handler, _logging.StreamHandler):
-                    _handler.setStream(_sys.stderr)
+                    try:
+                        _handler.setStream(_sys.stderr)
+                    except ValueError:
+                        # ``StreamHandler.setStream`` flushes the OLD stream
+                        # before installing the new one, so a handler still
+                        # pointing at a stream that was closed underneath it
+                        # (e.g. a pytest capture stream from a previous test)
+                        # raises ``ValueError: I/O operation on closed file``
+                        # — which would abort every LLM call. Drop the dead
+                        # handler; the rebuild below installs a live one.
+                        _litellm_logger.removeHandler(_handler)
+                        continue
                     _handlers_changed = True
             if not _handlers_changed:
                 _stderr_handler = _logging.StreamHandler(_sys.stderr)
@@ -488,9 +498,7 @@ class LLMExtractor:
             tl_dr=parsed.get("tl_dr", ""),
             key_points=parsed.get("key_points", []),
             entities=parsed.get("entities", []),
-            relevance_score=max(
-                0.0, min(100.0, float(parsed.get("relevance_score", 0)))
-            ),
+            relevance_score=max(0.0, min(100.0, float(parsed.get("relevance_score", 0)))),
             custom_fields=custom_fields,
             usage=usage,
         )
@@ -509,15 +517,11 @@ class LLMExtractor:
         try:
             parsed = parse_json_response(content)
         except json.JSONDecodeError:
-            logger.warning(
-                "Failed to parse LLM response as JSON: %.200s", content or ""
-            )
+            logger.warning("Failed to parse LLM response as JSON: %.200s", content or "")
             return {}
         if isinstance(parsed, dict):
             return parsed
-        logger.warning(
-            "LLM response parsed but is not a JSON object: %.200s", content or ""
-        )
+        logger.warning("LLM response parsed but is not a JSON object: %.200s", content or "")
         return {}
 
 
@@ -556,9 +560,7 @@ def parse_json_response(content: str | None) -> Any:
     if content is None:
         raise json.JSONDecodeError("LLM returned no parseable content", "", 0)
     if not isinstance(content, str):
-        raise TypeError(
-            f"LLM response content must be a string, got {type(content).__name__}"
-        )
+        raise TypeError(f"LLM response content must be a string, got {type(content).__name__}")
 
     # Strategy 1 — direct JSON
     try:
@@ -712,9 +714,7 @@ def call_with_fallback(
 
     provider = config.llm.provider or DEFAULT_PROVIDER
     primary = (
-        model
-        or config.llm.resolve_model()
-        or f"{provider}/{config.llm.model or DEFAULT_MODEL}"
+        model or config.llm.resolve_model() or f"{provider}/{config.llm.model or DEFAULT_MODEL}"
     )
 
     # Primary api_key falls back to config.llm.api_key (which may hold a
@@ -723,17 +723,19 @@ def call_with_fallback(
     if primary_key.startswith("${") and primary_key.endswith("}"):
         primary_key = os.environ.get(primary_key[2:-1], "")
 
-    chain: list[dict[str, str]] = [{
-        "model": primary,
-        # Effective provider for rate-limiting keying (shared semaphore).
-        "provider": provider,
-        # Primary base_url defaults to config.llm.base_url (issue #147
-        # follow-up: callers like cefr/quality/qa/keywords pass no base_url,
-        # so without this the primary silently hits the provider default
-        # endpoint (e.g. api.openai.com) instead of the configured one).
-        "base_url": base_url or (config.llm.base_url or ""),
-        "api_key": primary_key,
-    }]
+    chain: list[dict[str, str]] = [
+        {
+            "model": primary,
+            # Effective provider for rate-limiting keying (shared semaphore).
+            "provider": provider,
+            # Primary base_url defaults to config.llm.base_url (issue #147
+            # follow-up: callers like cefr/quality/qa/keywords pass no base_url,
+            # so without this the primary silently hits the provider default
+            # endpoint (e.g. api.openai.com) instead of the configured one).
+            "base_url": base_url or (config.llm.base_url or ""),
+            "api_key": primary_key,
+        }
+    ]
     for fb in config.llm.fallback:
         fb_provider = fb.provider or provider
         fb_full = f"{fb_provider}/{fb.model or config.llm.model or DEFAULT_MODEL}"
@@ -742,12 +744,14 @@ def call_with_fallback(
         fb_key = fb.api_key or ""
         if fb_key.startswith("${") and fb_key.endswith("}"):
             fb_key = os.environ.get(fb_key[2:-1], "")
-        chain.append({
-            "model": fb_full,
-            "provider": fb_provider,
-            "base_url": fb.base_url or "",
-            "api_key": fb_key,
-        })
+        chain.append(
+            {
+                "model": fb_full,
+                "provider": fb_provider,
+                "base_url": fb.base_url or "",
+                "api_key": fb_key,
+            }
+        )
 
     attempted: list[str] = []
     last_exception: Optional[Exception] = None

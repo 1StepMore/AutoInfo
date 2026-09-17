@@ -11,10 +11,10 @@
 # anything added below should also be covered by the CI gates.
 
 repos:
-  # Ruff revs track ruff's own releases; pinned to a stable tag matching the
-  # ruff>=0.5 floor in pyproject.toml.
+  # Ruff rev mirrors the pyproject.toml pin (ruff==0.16.8) so the local hook
+  # and the CI gate lint with the same rule set; bump both in the same change.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.16.8
     hooks:
       - id: ruff
         args: [--fix]
@@ -36,18 +36,19 @@ repos:
   # Secret scanning — blocks commits containing API keys / tokens / credentials.
   # Uses gitleaks (Go binary, downloaded on first run). Covers ghp_/gho_/
   # github_pat_, sk-, AIza, AKIA, eyJ, long hex/base64, and 150+ other rules.
-  # Keep in sync with CI: .github/workflows/coverage.yml also runs gitleaks.
+  # Keep in sync with CI: the `lint` job in .github/workflows/ci.yml runs the
+  # same pinned gitleaks release over the PR/push commit range.
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks:
       - id: gitleaks
 
   # Lightweight fallback — catches credential URLs even if gitleaks is skipped.
-  # Runs a local grep for https://<token>@github.com patterns and ghp_ prefixes.
+  # Runs a local grep for token-in-URL forms and ghp_/github_pat_ prefixes.
   - repo: local
     hooks:
       - id: no-credential-url
-        name: no-credential-url (block https://token@github.com)
+        name: no-credential-url (block token-in-URL)
         entry: 'bash -c ''git diff --cached --diff-filter=ACM --name-only | xargs grep -nE "https://[^/]*@github\.com|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}" 2>/dev/null && echo "ERROR: staged files contain credential URL or GitHub PAT" && exit 1 || exit 0'''
         language: system
         always_run: false

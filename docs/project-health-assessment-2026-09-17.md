@@ -304,7 +304,7 @@
 | 2. 预算由「数量」改为「测试身份」 | `tests/TRIAGE.md §Authoritative known-red budget` 现枚举 **6 条确切 node id**（不再是裸数字）；守护测试断言「列表非空 / 无重复 / 每个 id 都能落到磁盘上的真实测试 / 基线失败数 == 列表长度」 | `tests/validation/test_known_red_budget_single_source.py` 4 passed |
 | 3. 清理被跟踪的运行时产物 | `git rm -r --cached` 移出 `knowledge/` `collections/` `outputs/` `validation-runs/` `validation-deliveries/` `.omo/` 共 **6,968** 个文件（磁盘文件全部保留，已核验）；新增守护测试锁住该边界 | 跟踪文件 **7,828 → 860**；`tests/validation/test_tracked_runtime_artifacts.py` 2 passed |
 | 4. 上帝模块：先立约束、重构推迟 | 新增 `tests/mcp/test_server_dispatch_freeze.py`：`server.py` 的 `if/elif name ==` 分支数与 `_handle_*` 函数数**冻结在 149**；新增工具必须先抽注册表，否则守护测试转红 | 2 passed |
-| 5. 锁定 ruff 版本 | `pyproject.toml` 由 `ruff>=0.5` 改为 `ruff==0.16.8`；`ci.yml` / `coverage.yml` 中互相矛盾的历史计数（863 与 211）统一为**同一锁定口径下的实测值 309** | `ruff check --select E9,F src/` → All checks passed |
+| 5. 锁定 ruff 版本 | `pyproject.toml` 由 `ruff>=0.5` 改为 `ruff==0.16.8`；`ci.yml` / `coverage.yml` 中互相矛盾的历史计数（863 与 211）统一为**同一锁定口径下的实测值 307** | `ruff check --select E9,F src/` → All checks passed |
 
 ### 9.2 意外收获：套件不封闭的根因不在测试，在源码
 
@@ -328,8 +328,9 @@
 | 核心选取集失败数 | 17 | **6** |
 | － 其中顺序依赖假红 | 9 | **0** |
 | 被跟踪文件数 | 7,828（含 6,968 运行时产物） | **860** |
-| `git status` 条目 | 36（全为运行时抖动） | **6**（全部为本次有意改动） |
-| ruff 口径 | 0.9.10 → 307 / 注释称 0.15.22 → 863 | **0.16.8 → 309（版本已锁）** |
+| `git status` 条目 | 36（全为运行时抖动） | **6**（全部为本次有意改动；mypy 清偿轮为 50 = 46 `.py` + 4 配置/文档） |
+| ruff 口径 | 0.9.10 → 307 / 注释称 0.15.22 → 863 | **0.16.8 → 307（版本已锁，注释计数同轮修正）** |
+| mypy strict 错误数 | 192（57 文件未过） | **0（140 文件全过）** |
 
 核心选取集残留的 6 条红灯已逐条登记在 `tests/TRIAGE.md`，性质为
 「依赖本机配置 / 本机数据集」，非顺序依赖。
@@ -341,4 +342,100 @@
 | `server.py` / `output/__init__.py` 拆分 | §5 方案 B：风险高，先以 149 冻结约束兜住增量 |
 | 67 处静默吞异常、仓库级覆盖率门禁 | P2，本轮范围外 |
 | REST 鉴权 / 多租户 | P3，阻塞商业化的独立工作项 |
-| mypy strict 192 错清偿 | P1 但成本高，需分批；本轮先锁定 ruff 口径与红灯身份 |
+
+### 9.5 mypy strict 存量债清偿（P1 第 3 项，本轮完成）
+
+§4 的 P1 第 3 项（`mypy strict 192 错、40% 文件未过`）在本轮一并清偿：
+
+| 指标 | 修复前（§2） | 修复后 |
+|---|---|---|
+| mypy strict 错误数 | 192 | **0** |
+| 未通过 strict 的文件数 | 57（约 40%） | **0** |
+| `mypy src/` | 报错 | **`Success: no issues found in 140 source files`** |
+| CI 口径 | 仅改动文件（`--follow-imports=silent`），全树无检查 | 改动文件 + **新增全树强制步骤** |
+
+#### 做法：按根因批量清偿，而不是逐条 suppress
+
+192 个错误里绝大多数同源，逐条 `# type: ignore` 会把债藏起来而不是还掉。本轮按根因分组：
+
+| 根因 | 错误数 | 处理方式 |
+|---|---|---|
+| `mcp/server.py` 的 `_canonicalize()` 返回 `Any` | 59 错中的 58 个 | 单点加 3 个 `@typing.overload`（`dict` / `list[dict]` / `T`），一次复位全部调用点 |
+| `BaseHandler.fetch` 返回类型过窄（`list[Item]`） | 18 个 `[override]` | 基类签名加宽为 `list[Item] \| list[dict[str, Any]]`，一次消除全部子类 override 冲突，并连带删掉 5 条失效 ignore |
+| 隐式再导出（`no_implicit_reexport`） | `attr-defined` 组 | PEP 484 显式再导出 `X as X` |
+| lint/类型漂移的失效 `# type: ignore` | 22 个 `[unused-ignore]` | 删除（strict 下这些 ignore 本身成了错误） |
+| 其余（`arg-type` / `no-redef` / `union-attr` / `index` / `no-untyped-def` / `assignment` / `no-untyped-call`） | 约 60 | 逐条加宽注解或修正真实缺陷 |
+
+`python_version = "3.11"` 与 `strict = true` 已固化在 `pyproject.toml`，结果不随本机解释器版本漂移。
+
+#### 副作用：6 个被 mock 掩盖的真实运行时缺陷
+
+清偿过程中发现这些「类型错误」其实是**活的 bug**，不是注解问题。它们此前全部被测试里的 `MagicMock` 屏蔽（mock 对任意属性都返回 mock，所以 `.to_dict()` / `.get()` 永远"存在"）：
+
+| # | 位置 | 缺陷 | 触发条件 |
+|---|---|---|---|
+| 1 | `cli/enduser.py` `cli/audit.py` `cli/portal.py` 共 9 处 | 对**没有** `to_dict` 的纯 dataclass（`UserProfile` / `AuditLog` / `DeliveryLog`）调用 `.to_dict()` | 4 条 CLI 成功路径必崩（已实测三者 `hasattr(cls, "to_dict") == False`） |
+| 2 | `cost.py` | `from autoinfo.alerts import get_budget_alerts` —— 该函数**从未定义** | import 即 `ImportError`（`git log -S` 确认自 `3f5cbdc8` 起无定义） |
+| 3 | `api/server.py` | `dict(event)`，而 `StripeObject` 不继承 `dict` | Stripe 回调生产路径 500（实测 `dict(StripeObject)` 抛 `KeyError: 0`） |
+| 4 | `billing.py` | 对 `StripeObject` 调用 `.get()` | `StripeObject` 无 `.get`（stripe ≥12 破坏性变更，实测 `hasattr == False`）→ checkout / subscription 查询静默降级 |
+| 5 | `email_sender.py` | `generate_digest()` 返回 `str \| DeliveryOutput`，未解包 | 配置 delivery gates 后 TypeError |
+| 6 | `cli/output.py` | 同上，`_output_text()` 未解包 | 同上 |
+
+处理方式统一为**等价改写而非放宽类型**：`asdict()` 替 `.to_dict()`（纯 dataclass）、`_as_plain_dict()` 助手收敛 Stripe 对象转换（`to_dict()` 优先、`isinstance(dict)` 兜底，两条路径行为一致）、`DeliveryOutput` 用 `isinstance` 解包。
+
+#### 两个被驳回的误报
+
+清偿中另有两处看似缺陷、实测**不是**：
+
+- `collectors/email_imap.py` 的嵌套 multipart「`get_payload(decode=True)` 可能返回 list」——实测返回 `None`，故 `cast("bytes | None", ...)` 正确。
+- `mcp/validation.py` 的「早返回分支引用未定义变量」——逐行确认变量在两条路径上均已分离定义。
+
+#### 一处被清偿动作打掉的守卫，及它的修法
+
+`@overload` 的引入打破了一个既有 AST 守卫，且**没有**被新增的全树 mypy 门禁发现（这是类型层的改动，不是类型错误）：
+
+`tests/mcp/test_envelope_conformance.py::test_no_flat_error_key_anywhere_in_server`
+用 `next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_canonicalize")`
+取「这一个」辅助函数，再把它从源码里剥掉、断言其余部分不出现 legacy 的 `error_code` 键。
+`_canonicalize` 现在有 **4 个** 定义（3 个 overload stub + 1 个实现），`next()` 命中第一个 stub，
+真正的实现留在 `rest` 里 → 断言失败。
+
+修法是让守卫剥掉**所有**同名定义而不是「第一个」，并额外断言该辅助函数仍然提到 legacy 键 ——
+后者防止这次修改把守卫悄悄改成空转。严格性不变（stub 里本就没有 `error_code`），
+断言范围反而从「碰巧的第一个定义」变成「全部定义」。
+
+这条也说明了 §9.5 新增的全树 mypy 门禁**不能**替代跑一遍测试：类型检查看不见这种
+「AST/字符串级约定被合法语法糖打散」的破坏。
+
+#### 门禁落地：为什么加在既有 job 里而不是新开 job
+
+`ci.yml` 的 `mypy-changed-files` 步骤跑的是 `--follow-imports=silent`，**看不见**一次改动对下游导入方的破坏（签名改错、返回类型放宽、再导出被删，都要等到有人编辑受害文件才暴露，那时病因已被埋掉）。故新增一步 `mypy src/`：
+
+- 全树现已 0 错，此处报出的**任何**错误都是新增的，必须修，不进预算。
+- 放在既有 job 内而非新 job —— `Mypy (changed files)` 是 `GOVERNANCE.md` 里的**必需状态检查名**，新 job 需要改分支保护，换不来额外信号。
+
+#### 验证证据
+
+| 证据 | 结果 |
+|---|---|
+| `mypy src/` | `Success: no issues found in 140 source files` |
+| `mypy src/autoinfo` | 0 错 |
+| ruff 增量 | 与 `HEAD` 基线 worktree 对比，21 个改动文件产出 **20 条完全相同**的告警（file+rule 一致，仅行号位移）；`comm` 双向差集**均为空** → 零新增 lint 债 |
+| 环境等价性 | CI 装 `.[dev]`，本机多装了 `ebooklib`；临时隐藏该包后仍 `Success: no issues found in 140 source files` → 新门禁在 CI 环境应为绿 |
+| **回归（核心选取集）** | `pytest tests/mcp tests/validation tests/cli tests/output tests/llm` → **6 failed / 2576 passed / 24 skipped**，失败集合**恰等于** `tests/TRIAGE.md` 的 6 条预算 node id，无一条越界 |
+| **回归（选取集之外）** | 其余 15 个目录（`alerts/api/billing/collectors/config/cost/delivery/email/integration/kb/monitor/process/qa/scripts/user`）→ **2 failed / 2594 passed**；两条均已在**改动前的 `HEAD`**（detached worktree，并把工作副本的 `.autoinfo/` + `knowledge/` 放到它旁边以对齐环境）复现同款失败 → 非本次改动引入，已登记进 `tests/TRIAGE.md` |
+| 守护测试 | `test_known_red_budget_single_source.py` + `test_tracked_runtime_artifacts.py` + `test_server_dispatch_freeze.py` + `test_envelope_conformance.py` → 14 passed |
+| 文档一致性 | `scripts/doc_inventory.py --check` → exit 0 |
+
+（同轮顺带修正的漂移：`ci.yml` / `pyproject.toml` 注释称全树 ruff 为 `309`，实测 `HEAD` 基线亦为 **307**；`CONTRIBUTING.md` 称 CLI 有 `28` 个命令组，实际 **31**；`tests/TRIAGE.md` 的基线数字在守卫增补后由 `2604/2574` 复测为 `2606/2576`。）
+
+#### 本轮新识别的残余（未修，记录以备后续）
+
+| 残余 | 说明 |
+|---|---|
+| `collectors/pdf.py` 的 extra 环境敏感性 | 装 `[pdf]` extra 的开发者会重新看到 2 个 mypy 错（PyMuPDF 无 stubs）。无单一写法能同时满足「装/不装」两种 profile，故保留并记于此 |
+| `CONTRIBUTING.md` 的数字不在 `doc_inventory.py` 覆盖内 | 该脚本只查 README / AGENTS.md / SKILL.md，故 28→31 这类漂移不会被自动发现 |
+| `.pre-commit-config.yaml` 的 `no-credential-url` 自指误报 | 钩子扫描到自身配置里的 URL 样例即失败，导致该文件无法被提交 |
+| `.opencode/.gitignore` 与跟踪状态冲突 | 注释称 `skills/` 「never committed」，但 4 个 `SKILL.md` 被跟踪 |
+| 机器负载下的两个非封闭失败 | EPUB 导出边界 + 并发 outbox 写。已登记在 `tests/TRIAGE.md` 的「Load-sensitive flake」小节；其中 `agent_callback._connect` 缺 `busy_timeout` 会**丢通知行**，属真实数据丢失路径，修它属 P2 范围故本轮不修 |
+| 仓库整体未过 `ruff format` | `ruff format --check src/` 在 `HEAD` 上报 **71 个文件待格式化**（0.16.8 与钩子的 v0.9.10 结论一致，无版本分歧）。CI 没有 format 门禁，而 `.pre-commit-config.yaml` 的 `ruff-format` 只处理**被暂存的文件**——于是任何触碰这些文件的人都会被自动重排整文件。本轮 46 个 `.py` 中有 25 个被重排（约 940 行风格改写，非语义），并顺带消掉 1 条既有 E501。若要根治，应把 `ruff format` 作为独立的一次性格式化提交落地并加进 CI，而不是让它在每次改动里零散发生 |

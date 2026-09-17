@@ -26,8 +26,10 @@ Python 3.14.4, pytest 8.4.2, pytest-timeout 2.4.0.
 pytest tests/mcp tests/validation tests/cli tests/output tests/llm
 ```
 
-**Baseline**: **2604 tests -> 6 failed / 2574 passed / 24 skipped / 0 errors**
-(1047.59s on the reference WSL box, 2026-09-17).
+**Baseline**: **2606 tests -> 6 failed / 2576 passed / 24 skipped / 0 errors**
+(673.76s on the reference WSL box, 2026-09-17; re-measured after the mypy
+strict debt paydown — the composition of the 6 is unchanged, the two extra
+collected tests come from the guards added earlier the same day).
 
 ### Budgeted failures — exact node ids (6)
 
@@ -53,6 +55,39 @@ tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generat
 |-------|-------|-------|-----|
 | Local-config dependent | 3 | `tests/llm/test_fallback_config.py` | Assert against the working copy's `.autoinfo/config.yaml` (provider/model/fallback chain), which is a per-machine runtime artifact — the tests are not hermetic. |
 | Local-dataset dependent | 3 | `tests/output/test_magazine_digest.py` | Depend on local KB/dataset content rather than on a fixture. |
+
+**Load-sensitive flake (observed 2026-09-17, not budgeted).** Two failures
+appeared in one run and healed on re-run of the identical selection, so they
+are not identity-locked — they are a separate, newly observed non-hermetic
+class. Both reproduce only under machine load, and both are worth a follow-up:
+
+| Observation | Symptom | Trigger |
+|---|---|---|
+| EPUB export boundary (`TestOptionalFormats`) | Export wrote no artifact; passes in isolation, in-file, and in a 4-directory combination | Appeared in the 16-minute full-selection run while ~10 unrelated background jobs were saturating the box; healed on re-run |
+| Concurrent outbox writes (`tests/mcp/test_agent_callback.py`) | `1 of 16 events dropped (database is locked without busy_timeout)` — `sqlite3.OperationalError` inside `autoinfo.agent_callback._connect` | 16 threads writing concurrently; `_connect` sets `journal_mode=WAL` but no `busy_timeout`, so a locked DB raises instead of waiting and the notification row is lost |
+
+The second one is a real product-side data-loss path rather than a test defect
+(a dropped outbox row means a lost end-user notification), which is why it is
+recorded here rather than silently ignored. Fixing it is a robustness change,
+i.e. out of the current P0/P1 scope; register it before fixing it.
+
+**Outside the canonical selection (observed 2026-09-17, not budgeted).** The
+selection above covers 2606 of the suite's 5237 tests. A sweep of the remaining
+directories (`tests/alerts tests/api tests/billing tests/collectors
+tests/config tests/cost tests/delivery tests/email tests/integration tests/kb
+tests/monitor tests/process tests/qa tests/scripts tests/user`) found two
+pre-existing failures. Neither is in the budget because the budget's scope is
+the touched areas, and neither is caused by a recent change — both were
+reproduced at the pre-change `HEAD` in a detached worktree:
+
+| Failure | Class | Why it fails |
+|---|---|---|
+| `tests/kb/test_process_batch.py::TestBatchCli::test_batch_size_passed_to_run_processing` | Stale test vs code | The CLI passes `resume_from=None` to `run_processing` and the test's `assert_called_once_with` predates that kwarg. Fails at `HEAD` identically (verified in the detached worktree) — a real one-line test fix that nothing was watching for. |
+| `tests/integration/test_v1_2_integration.py::TestJSONReport::test_generate_report_json_format` | Local-dataset + LLM dependent | Same non-hermetic class as the magazine tests: with local `knowledge/` populated it reads 5 entries, attempts LLM report synthesis, burns ~230s on auth-retry backoff and is killed by `--timeout=180`. Reproduced node-id-level at `HEAD`: `1 failed in 195.81s` in the detached worktree once `.autoinfo/` and `knowledge/` from the working copy were placed beside it (it passes there in 1.7s when `knowledge/` is absent) — data- and key-dependent, not code-dependent. |
+
+The second one doubles as the evidence for why the canonical selection is
+stated explicitly rather than replaced by "the whole suite": the data-dependent
+class is invisible in the narrow selection and unavoidable in the wide one.
 
 The full suite (2026-09-17, this box) reported 28 failed / 5,152 passed /
 51 skipped in 55m05s; that run predates the fixes above.

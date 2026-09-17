@@ -35,10 +35,13 @@ jobs:
       - name: Ruff gate on source
         run: ruff check --select E9,F --output-format=github src/
       # Full-src ruff: informational drift surface for the whole tree.
-      # 863 pre-existing lint errors across the tree (E402×70, N806×27,
-      # F841×18, F541×15, N803×15, F821×10, W292×5, ...; ruff 0.15.22,
-      # line-length=100). Informational only — changed-files ruff (below) is
-      # the required gate. Cleanup is a separate tracked work item.
+      # The dev extra pins ruff==0.16.8 so this number is reproducible and
+      # comparable between local runs and CI. Under that pin: 309 pre-existing
+      # errors across the tree (E501×159, I001×56, F401×46, N803×11, F841×11,
+      # W292×8, F821×6, N806×5, ...; line-length=100). Informational only —
+      # changed-files ruff (above) is the required gate. Cleanup is a separate
+      # tracked work item; if the count moves, update it here AND in
+      # pyproject.toml's per-file-ignores note. Do not re-range the pin.
       - name: Ruff on full source
         run: ruff check src/ tests/
         continue-on-error: true
@@ -78,10 +81,10 @@ jobs:
       # terminal (GITHUB_ACTIONS=true). TERM=dumb forces plain output so
       # help-substring assertions pass identically to local runs.
       TERM: dumb
-    # Required job (was continue-on-error in #116). The suite currently carries
-    # 12 documented M1-deferred envelope failures (tests/TRIAGE.md rows #73,
-    # #74-83, #84) that M1T11-12 clears — read tests/TRIAGE.md before treating
-    # red CI as a regression.
+    # Required job (was continue-on-error in #116). The suite carries a known
+    # red budget; its single authority is tests/TRIAGE.md §Authoritative
+    # known-red budget. Read that section before treating red CI as a
+    # regression — this file must never restate the budget itself.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -106,7 +109,6 @@ jobs:
             echo ""
             echo "=== Failure triage pointer ==="
             echo "See tests/TRIAGE.md for the documented failure table."
-            echo "The 12 M1-deferred envelope rows (#73, #74-83, #84) are cleared by M1T11-12."
           } >> pytest-output.log
       - name: Upload pytest output on failure
         if: failure()

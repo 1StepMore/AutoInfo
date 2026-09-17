@@ -331,7 +331,7 @@ Key counts the agent must know without opening README:
 | Validation scenarios | **161 scenarios** (86 functional + 75 regression) |
 | Demo domains | **21 demo domains** |
 | LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~5222 tests** |
+| Test suite | **~5237 tests** |
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):

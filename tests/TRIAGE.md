@@ -1,13 +1,24 @@
 # Failure Triage — 2026-08-05 (Task M0T1)
 
-## Authoritative known-red budget (2026-09-14)
+## Authoritative known-red budget (2026-09-17)
 
 > **Single source of truth.** CI and every other document reference this
 > section; they must not restate a failure number. When the test set changes,
 > update this section in the same change.
 
+**Identity lock.** The budget is the node-id list below, not a bare count. A
+count-only budget silently lets a new failure be cancelled out by an old one
+healing — the total stays put while the composition rots (that is exactly how
+the 2026-09-13 baseline drifted: `test_magazine_digest.py` 2→3 and
+`test_fallback_config.py` 2→3 were offset by `test_tutorial_no_placeholder.py`
+3→0 and `test_coverage_matrix.py` 1→0). `tests/validation/test_known_red_budget_single_source.py`
+asserts the list is duplicate-free, that every id still resolves to a real
+test on disk, and that the baseline's failure count equals the list length.
+If a run shows a failure that is not in this list, it is NEW — do not "absorb"
+it by deleting a healed entry.
+
 **Compliant environment** (the triple the baseline was measured under):
-Python 3.11.15, pytest 8.4.2, pytest-timeout 2.4.0.
+Python 3.14.4, pytest 8.4.2, pytest-timeout 2.4.0.
 
 **Canonical selection** (the areas the 2026-09-13 round touched):
 
@@ -15,17 +26,36 @@ Python 3.11.15, pytest 8.4.2, pytest-timeout 2.4.0.
 pytest tests/mcp tests/validation tests/cli tests/output tests/llm
 ```
 
-**Baseline**: **2594 tests -> 17 failed / 2553 passed / 24 skipped / 0 errors (519.95s)**.
+**Baseline**: **2604 tests -> 6 failed / 2574 passed / 24 skipped / 0 errors**
+(1047.59s on the reference WSL box, 2026-09-17).
 
-The 17 failures split into two classes; only the second is deterministic:
+### Budgeted failures — exact node ids (6)
+
+Both remaining classes are deterministic and environment/data dependent, not
+order-dependent. The 2026-09-17 round removed the order-dependent class
+entirely: the root cause was `LLMExtractor._get_litellm()` calling
+`StreamHandler.setStream(sys.stderr)` on a handler still bound to a CLOSED
+stream (CLI tests under capture), which made `setStream` raise
+`ValueError: I/O operation on closed file` and aborted every LLM call before
+`litellm.completion` — `tests/llm/test_simplify.py` ×7 and
+`tests/llm/test_llm_timeout.py` ×2 healed with that fix.
+
+```
+tests/llm/test_fallback_config.py::test_fallback_chain_parsed_from_real_config
+tests/llm/test_fallback_config.py::test_primary_unchanged
+tests/llm/test_fallback_config.py::test_fallback_model_resolves_with_primary_provider
+tests/output/test_magazine_digest.py::TestMagazineRender::test_generate_digest_renders_magazine_variant
+tests/output/test_magazine_digest.py::TestMagazineRender::test_magazine_render_free_user_no_gate
+tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generate_digest_magazine_contains_editorial_sections
+```
 
 | Class | Count | Files | Why |
 |-------|-------|-------|-----|
-| Order-dependent false red | 9 | `tests/llm/test_simplify.py` x7, `tests/llm/test_llm_timeout.py` x2 | Pass in isolation; fail only in the combined run (the suite is not hermetic). |
-| Deterministic | 8 | `tests/llm/test_fallback_config.py` x2, `tests/output/test_magazine_digest.py` x2, `tests/output/test_tutorial_no_placeholder.py` x3 (#241), `tests/validation/test_coverage_matrix.py` x1 (#240) | Depend on the local config or local dataset content, or are time bombs. |
+| Local-config dependent | 3 | `tests/llm/test_fallback_config.py` | Assert against the working copy's `.autoinfo/config.yaml` (provider/model/fallback chain), which is a per-machine runtime artifact — the tests are not hermetic. |
+| Local-dataset dependent | 3 | `tests/output/test_magazine_digest.py` | Depend on local KB/dataset content rather than on a fixture. |
 
-The full suite cannot finish on the current WSL box (>40 min); this selection
-is the 2026-09-13 controlled baseline, not a full-suite floor.
+The full suite (2026-09-17, this box) reported 28 failed / 5,152 passed /
+51 skipped in 55m05s; that run predates the fixes above.
 
 ## Historical baseline (2026-08-05, superseded)
 

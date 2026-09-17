@@ -36,9 +36,9 @@ jobs:
         run: ruff check --select E9,F --output-format=github src/
       # Full-src ruff: informational drift surface for the whole tree.
       # The dev extra pins ruff==0.16.8 so this number is reproducible and
-      # comparable between local runs and CI. Under that pin: 307 pre-existing
-      # errors across the tree (E501×159, I001×56, F401×46, N803×11, F841×11,
-      # W292×6, F821×6, N806×5, N817×3, N802×2, F541×1, F811×1;
+      # comparable between local runs and CI. Under that pin: 287 pre-existing
+      # errors across the tree (E501×141, I001×55, F401×46, N803×11, F841×11,
+      # W292×6, F821×6, N806×4, N817×3, N802×2, F541×1, F811×1;
       # line-length=100). Informational only — changed-files ruff (above) is
       # the required gate. Cleanup is a separate tracked work item; if the
       # count moves, update it here AND in pyproject.toml's per-file-ignores

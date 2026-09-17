@@ -189,10 +189,12 @@ class TestWebhookSignatureVerification:
     def test_valid_signature_returns_200(self, mock_env_get: MagicMock) -> None:
         """Valid signature -> 200 with processed webhook result."""
         mock_env_get.return_value = "whsec_test_secret"
-        payload = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {"metadata": {}}},
-        })
+        payload = json.dumps(
+            {
+                "type": "checkout.session.completed",
+                "data": {"object": {"metadata": {}}},
+            }
+        )
 
         client = TestClient(app)
         with patch("stripe.Webhook.construct_event") as mock_construct:
@@ -208,7 +210,9 @@ class TestWebhookSignatureVerification:
 
         assert resp.status_code == 200
         mock_construct.assert_called_once_with(
-            payload.encode(), "t=123,v1=valid_sig", "whsec_test_secret",
+            payload.encode(),
+            "t=123,v1=valid_sig",
+            "whsec_test_secret",
         )
 
     # ------------------------------------------------------------------
@@ -226,7 +230,8 @@ class TestWebhookSignatureVerification:
         client = TestClient(app)
         with patch("stripe.Webhook.construct_event") as mock_construct:
             mock_construct.side_effect = _stripe.error.SignatureVerificationError(
-                "Signature does not match", "t=123,v1=bad",
+                "Signature does not match",
+                "t=123,v1=bad",
             )
             resp = client.post(
                 "/api/v1/webhook/stripe",
@@ -246,7 +251,8 @@ class TestWebhookSignatureVerification:
 
     @patch("autoinfo.api.server.os.environ.get")
     def test_dev_mode_no_secret_skips_verification(
-        self, mock_env_get: MagicMock,
+        self,
+        mock_env_get: MagicMock,
     ) -> None:
         """No ``STRIPE_WEBHOOK_SECRET`` -> raw JSON parsed directly (dev mode).
 
@@ -254,10 +260,12 @@ class TestWebhookSignatureVerification:
         handles the missing ``end_user_id`` gracefully.
         """
         mock_env_get.return_value = ""  # no secret
-        payload = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {"metadata": {}}},
-        })
+        payload = json.dumps(
+            {
+                "type": "checkout.session.completed",
+                "data": {"object": {"metadata": {}}},
+            }
+        )
 
         client = TestClient(app)
         resp = client.post(
@@ -277,7 +285,8 @@ class TestWebhookSignatureVerification:
 
     @patch("autoinfo.api.server.os.environ.get")
     def test_invalid_json_payload_returns_400(
-        self, mock_env_get: MagicMock,
+        self,
+        mock_env_get: MagicMock,
     ) -> None:
         """Invalid JSON body in dev mode -> 400 with canonical error envelope."""
         mock_env_get.return_value = ""  # dev mode
@@ -293,6 +302,95 @@ class TestWebhookSignatureVerification:
         assert data["error"]["code"] == "ValidationError"
 
 
+class TestWebhookStripeObjectNormalization:
+    """Regression lock: the webhook normalizes a ``StripeObject`` before dispatch.
+
+    ``stripe.Webhook.construct_event`` returns a ``StripeObject`` (stripe>=12),
+    not a dict.  The endpoint used ``dict(event)``, which raises ``KeyError: 0``
+    on a ``StripeObject`` — the KeyError handler turned that into a 400, so the
+    event never reached ``handle_webhook``.  The fix routes through
+    ``event.to_dict()``.
+    """
+
+    @patch("autoinfo.api.server.os.environ.get")
+    def test_stripe_object_event_reaches_handler_as_plain_dict(
+        self,
+        mock_env_get: MagicMock,
+    ) -> None:
+        import stripe
+
+        mock_env_get.return_value = "whsec_test_secret"
+        payload = json.dumps({"type": "checkout.session.completed"})
+        event = stripe.StripeObject.construct_from(
+            {
+                "id": "evt_obj",
+                "type": "checkout.session.completed",
+                "data": {"object": {"metadata": {"end_user_id": "user_obj"}}},
+            },
+            "event",
+        )
+
+        client = TestClient(app)
+        with (
+            patch("stripe.Webhook.construct_event", return_value=event),
+            patch(
+                "autoinfo.billing.handle_webhook",
+                return_value={"status": "processed"},
+            ) as mock_handle,
+        ):
+            resp = client.post(
+                "/api/v1/webhook/stripe",
+                content=payload,
+                headers={"Stripe-Signature": "t=123,v1=valid_sig"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "processed"
+        mock_handle.assert_called_once()
+        passed = mock_handle.call_args.args[0]
+        assert isinstance(passed, dict)
+        assert passed["type"] == "checkout.session.completed"
+
+
+class TestAsPlainDict:
+    """Regression lock: ``_as_plain_dict`` converts a stripe>=12 ``StripeObject``.
+
+    On stripe>=12 ``StripeObject`` is not a ``dict`` and exposes no ``.get()``,
+    so the subscription/session reads raised when using the dict API.  The
+    helper returns a real dict with working ``.get()`` and nested access.
+    """
+
+    def test_converts_stripe_object_with_nested_get(self) -> None:
+        import stripe
+
+        from autoinfo.billing import _as_plain_dict
+
+        obj = stripe.StripeObject.construct_from(
+            {
+                "id": "sub_plain",
+                "status": "active",
+                "items": {"data": [{"price": {"id": "price_nested"}}]},
+            },
+            "subscription",
+        )
+        assert hasattr(obj, "get") is False
+
+        result = _as_plain_dict(obj)
+
+        assert isinstance(result, dict)
+        assert result.get("status") == "active"
+        assert result["id"] == "sub_plain"
+        assert result["items"]["data"][0]["price"]["id"] == "price_nested"
+        assert result.get("missing", "fallback") == "fallback"
+
+    def test_passes_plain_dict_through(self) -> None:
+        from autoinfo.billing import _as_plain_dict
+
+        payload = {"id": "evt_plain", "type": "checkout.session.completed"}
+
+        assert _as_plain_dict(payload) is payload
+
+
 # ===================================================================
 # 2. handle_webhook() event dispatch
 # ===================================================================
@@ -306,7 +404,8 @@ class TestHandleWebhookDispatch:
     # ------------------------------------------------------------------
 
     def test_checkout_completed_activates_subscription(
-        self, checkout_completed_event: dict,
+        self,
+        checkout_completed_event: dict,
     ) -> None:
         """``checkout.session.completed`` -> subscription activated and customer stored."""
         _user_stripe_map["user_abc"] = "cus_test123"
@@ -338,7 +437,8 @@ class TestHandleWebhookDispatch:
         assert mock_update.call_count == 2
 
     def test_checkout_completed_missing_end_user_id(
-        self, checkout_completed_event: dict,
+        self,
+        checkout_completed_event: dict,
     ) -> None:
         """Missing ``end_user_id`` metadata -> error response."""
         checkout_completed_event["data"]["object"]["metadata"] = {}
@@ -347,7 +447,8 @@ class TestHandleWebhookDispatch:
         assert result["action"] == "missing_end_user_id"
 
     def test_checkout_completed_payment_mode(
-        self, payment_checkout_event: dict,
+        self,
+        payment_checkout_event: dict,
     ) -> None:
         """``checkout.session.completed`` with mode="payment" → no subscription activation."""
         _user_stripe_map["user_abc"] = "cus_test123"
@@ -360,8 +461,10 @@ class TestHandleWebhookDispatch:
             mock_get.return_value = "cus_test123"
             mock_store = MagicMock()
             mock_store.grant_article_access.return_value = {
-                "granted": True, "article_id": "art_42",
-                "user_id": "user_abc", "reason": "granted",
+                "granted": True,
+                "article_id": "art_42",
+                "user_id": "user_abc",
+                "reason": "granted",
             }
             mock_store_cls.return_value = mock_store
             result = handle_webhook(payment_checkout_event)
@@ -374,7 +477,8 @@ class TestHandleWebhookDispatch:
         assert result["entitlement_reason"] == "granted"
 
         mock_store.grant_article_access.assert_called_once_with(
-            user_id="user_abc", article_id="art_42",
+            user_id="user_abc",
+            article_id="art_42",
             payment_intent_id="pi_test_art42",
         )
         mock_store.record_event.assert_called_once()
@@ -392,8 +496,7 @@ class TestHandleWebhookDispatch:
                 )
             if "stripe_subscription_id" in kwargs:
                 pytest.fail(
-                    "BUG REGRESSION: mode=payment wrote stripe_subscription_id "
-                    "to the profile"
+                    "BUG REGRESSION: mode=payment wrote stripe_subscription_id to the profile"
                 )
 
     # ------------------------------------------------------------------
@@ -401,7 +504,8 @@ class TestHandleWebhookDispatch:
     # ------------------------------------------------------------------
 
     def test_subscription_updated_maps_status(
-        self, sub_updated_event: dict,
+        self,
+        sub_updated_event: dict,
     ) -> None:
         """``customer.subscription.updated`` -> status mapped (past_due -> suspended)."""
         _user_stripe_map["user_abc"] = "cus_test123"
@@ -419,7 +523,8 @@ class TestHandleWebhookDispatch:
         )
 
     def test_subscription_updated_no_end_user_match(
-        self, sub_updated_event: dict,
+        self,
+        sub_updated_event: dict,
     ) -> None:
         """Unknown customer (no end_user_id match) -> ignored."""
         _user_stripe_map.clear()
@@ -432,7 +537,8 @@ class TestHandleWebhookDispatch:
     # ------------------------------------------------------------------
 
     def test_subscription_deleted_cancels(
-        self, sub_deleted_event: dict,
+        self,
+        sub_deleted_event: dict,
     ) -> None:
         """``customer.subscription.deleted`` -> subscription cancelled."""
         _user_stripe_map["user_abc"] = "cus_test123"
@@ -448,7 +554,8 @@ class TestHandleWebhookDispatch:
         )
 
     def test_subscription_deleted_no_end_user_match(
-        self, sub_deleted_event: dict,
+        self,
+        sub_deleted_event: dict,
     ) -> None:
         """Unknown customer in delete event -> ignored."""
         _user_stripe_map.clear()
@@ -695,8 +802,10 @@ class TestCreateCheckoutSession:
                 "url": "https://checkout.stripe.com/cs_pay_123",
             }
             result = create_checkout_session(
-                "article_42", "user_pay",
-                mode="payment", article_id="art_42",
+                "article_42",
+                "user_pay",
+                mode="payment",
+                article_id="art_42",
             )
 
         assert result["session_id"] == "cs_pay_123"
@@ -739,7 +848,12 @@ class TestCheckAccessTierFastPath:
         return type(
             "_FakeProfile",
             (),
-            {"tier": tier, "status": status, "stripe_customer_id": "", "stripe_subscription_id": ""},  # noqa: E501
+            {
+                "tier": tier,
+                "status": status,
+                "stripe_customer_id": "",
+                "stripe_subscription_id": "",
+            },  # noqa: E501
         )()
 
     @patch("autoinfo.billing._load_user_profile")
@@ -836,9 +950,7 @@ class TestCheckAccessTierFastPath:
 def temp_consumption_db(tmp_path):
     """Patch ConsumptionStore to use a temporary DB file."""
     db_path = tmp_path / "consumption.db"
-    with patch(
-        "autoinfo.consumption._get_db_path", return_value=db_path
-    ):
+    with patch("autoinfo.consumption._get_db_path", return_value=db_path):
         yield tmp_path
 
 
@@ -850,7 +962,9 @@ class TestArticleEntitlement:
     """
 
     def test_payment_webhook_grants_entitlement(
-        self, temp_consumption_db, payment_checkout_event: dict,
+        self,
+        temp_consumption_db,
+        payment_checkout_event: dict,
     ) -> None:
         """Payment webhook → article_entitlement row + 'purchased' event."""
         _user_stripe_map["user_abc"] = "cus_test123"
@@ -875,7 +989,8 @@ class TestArticleEntitlement:
         assert purchased_events[0]["product_id"] == "art_42"
 
     def test_payment_webhook_no_article_skips_entitlement(
-        self, temp_consumption_db,
+        self,
+        temp_consumption_db,
         payment_checkout_event_no_article: dict,
     ) -> None:
         """Payment without article_id → no entitlement, no crash."""
@@ -890,7 +1005,8 @@ class TestArticleEntitlement:
         assert result.get("entitlement_reason") is None
 
     def test_check_article_access_hit(
-        self, temp_consumption_db,
+        self,
+        temp_consumption_db,
     ) -> None:
         """User with entitlement → check_access with article_id allows."""
         from autoinfo.billing import check_access
@@ -903,7 +1019,9 @@ class TestArticleEntitlement:
         )
 
         result = check_access(
-            "user_buyer", "premium", article_id="art_99",
+            "user_buyer",
+            "premium",
+            article_id="art_99",
         )
         assert result["allowed"] is True
         assert "article entitlement fast path" in result["reason"]
@@ -911,14 +1029,19 @@ class TestArticleEntitlement:
         assert result["article_id"] == "art_99"
 
     def test_check_article_access_miss(
-        self, temp_consumption_db,
+        self,
+        temp_consumption_db,
     ) -> None:
         """User without entitlement → check_access denies (falls through to tier)."""
         from autoinfo.billing import check_access
 
-        with patch(
-            "autoinfo.billing._load_user_profile", return_value=None,
-        ), patch("autoinfo.billing.get_subscription_status") as mock_sub:
+        with (
+            patch(
+                "autoinfo.billing._load_user_profile",
+                return_value=None,
+            ),
+            patch("autoinfo.billing.get_subscription_status") as mock_sub,
+        ):
             mock_sub.return_value = {
                 "end_user_id": "user_nonbuyer",
                 "profile_status": "trial",
@@ -928,14 +1051,17 @@ class TestArticleEntitlement:
                 "plan": "free",
             }
             result = check_access(
-                "user_nonbuyer", "premium", article_id="art_nonexistent",
+                "user_nonbuyer",
+                "premium",
+                article_id="art_nonexistent",
             )
 
         assert result["allowed"] is False
         assert "trial" in result["reason"]  # skipped article path, went to tier
 
     def test_duplicate_payment_idempotent(
-        self, temp_consumption_db,
+        self,
+        temp_consumption_db,
     ) -> None:
         """Duplicate payment → entitlement is idempotent, second grant returns already_entitled."""
         store = ConsumptionStore()
@@ -961,7 +1087,8 @@ class TestArticleEntitlement:
         assert len(entitlements) == 1
 
     def test_check_access_subscription_supercedes_article(
-        self, temp_consumption_db,
+        self,
+        temp_consumption_db,
     ) -> None:
         """Premium subscriber + article purchase → check_access grants via tier, not article."""
         from autoinfo.billing import check_access
@@ -974,16 +1101,24 @@ class TestArticleEntitlement:
         )
 
         profile = type(
-            "_FakeProfile", (),
-            {"tier": "premium", "status": "active",
-             "stripe_customer_id": "", "stripe_subscription_id": ""},
+            "_FakeProfile",
+            (),
+            {
+                "tier": "premium",
+                "status": "active",
+                "stripe_customer_id": "",
+                "stripe_subscription_id": "",
+            },
         )()
 
         with patch(
-            "autoinfo.billing._load_user_profile", return_value=profile,
+            "autoinfo.billing._load_user_profile",
+            return_value=profile,
         ):
             result = check_access(
-                "user_prem_buyer", "premium", article_id="art_bonus",
+                "user_prem_buyer",
+                "premium",
+                article_id="art_bonus",
             )
 
         assert result["allowed"] is True
@@ -1018,9 +1153,11 @@ def _stripe_mock_available() -> bool:
     meaning ``docker compose up -d stripe-mock`` has been run.
     """
     import os
+
     api_base = os.environ.get("STRIPE_API_BASE", "http://localhost:12111")
     try:
         import urllib.request
+
         req = urllib.request.Request(f"{api_base}/v1/health")
         with urllib.request.urlopen(req, timeout=2) as resp:
             return resp.status == 200
@@ -1031,7 +1168,7 @@ def _stripe_mock_available() -> bool:
 @pytest.mark.skipif(
     not _stripe_mock_available(),
     reason="stripe-mock not available (start with `make stripe-mock` "
-           "or `docker compose up -d stripe-mock`)",
+    "or `docker compose up -d stripe-mock`)",
 )
 class TestStripeLifecycle:
     """Integration tests against stripe-mock for full lifecycle regression.
@@ -1064,7 +1201,8 @@ class TestStripeLifecycle:
         import stripe as _stripe
 
         self._api_base = os.environ.get(
-            "STRIPE_API_BASE", "http://localhost:12111",
+            "STRIPE_API_BASE",
+            "http://localhost:12111",
         )
         _stripe.api_key = "sk_test_mock_integration"
         _stripe.api_base = self._api_base
@@ -1092,15 +1230,11 @@ class TestStripeLifecycle:
         )
 
         assert "error" not in result, (
-            f"Unexpected error from create_checkout_session: "
-            f"{result.get('error')}"
+            f"Unexpected error from create_checkout_session: {result.get('error')}"
         )
-        assert result["session_id"], (
-            "session_id should not be empty"
-        )
+        assert result["session_id"], "session_id should not be empty"
         assert result["customer_id"].startswith("cus_"), (
-            f"Expected customer_id to start with 'cus_', "
-            f"got {result['customer_id']!r}"
+            f"Expected customer_id to start with 'cus_', got {result['customer_id']!r}"
         )
         assert result["mode"] == "subscription"
         assert result["end_user_id"] == "user_integ_lifecycle"
@@ -1117,9 +1251,7 @@ class TestStripeLifecycle:
             article_id="art_integ_42",
         )
 
-        assert "error" not in result, (
-            f"Payment checkout failed: {result.get('error')}"
-        )
+        assert "error" not in result, f"Payment checkout failed: {result.get('error')}"
         assert result["mode"] == "payment"
         assert result["session_id"], "session_id should not be empty"
         assert result["customer_id"].startswith("cus_")
@@ -1155,9 +1287,7 @@ class TestStripeLifecycle:
             email="lifecycle@example.com",
             name="Lifecycle User",
         )
-        assert "error" not in result, (
-            f"Checkout failed: {result.get('error')}"
-        )
+        assert "error" not in result, f"Checkout failed: {result.get('error')}"
         session_id = result["session_id"]
         customer_id = result["customer_id"]
 
@@ -1210,7 +1340,8 @@ class TestStripeLifecycle:
         # Patch _load_user_profile to return a fake profile with the
         # subscription_id set (simulating profile state after webhook).
         fake_profile = type(
-            "_FakeLifecycleProfile", (),
+            "_FakeLifecycleProfile",
+            (),
             {
                 "tier": "premium",
                 "status": "active",
@@ -1230,8 +1361,7 @@ class TestStripeLifecycle:
         assert status_result["customer_id"] == customer_id
         # stripe-mock should return a valid status (not "error")
         assert status_result["stripe_status"] != "error", (
-            f"stripe.Subscription.retrieve failed against stripe-mock: "
-            f"{status_result}"
+            f"stripe.Subscription.retrieve failed against stripe-mock: {status_result}"
         )
 
         # ── 5. Test subscription.updated status transitions ────────────
@@ -1260,8 +1390,7 @@ class TestStripeLifecycle:
                 upd_result = handle_webhook(updated_event)
 
             assert upd_result["status"] == "processed", (
-                f"[{stripe_status}] Expected 'processed', "
-                f"got {upd_result['status']!r}"
+                f"[{stripe_status}] Expected 'processed', got {upd_result['status']!r}"
             )
             assert upd_result["action"] == "updated_status"
             assert upd_result["new_status"] == expected_status, (
@@ -1331,15 +1460,15 @@ class TestStripeLifecycle:
         with (
             patch("autoinfo.user_store.update_profile") as mock_update,
             patch("autoinfo.user_store.get_stripe_customer_id") as mock_get,
-            patch(
-                "autoinfo.consumption.ConsumptionStore"
-            ) as mock_store_cls,
+            patch("autoinfo.consumption.ConsumptionStore") as mock_store_cls,
         ):
             mock_get.return_value = customer_id
             mock_store = MagicMock()
             mock_store.grant_article_access.return_value = {
-                "granted": True, "article_id": "art_regression_77",
-                "user_id": end_user_id, "reason": "granted",
+                "granted": True,
+                "article_id": "art_regression_77",
+                "user_id": end_user_id,
+                "reason": "granted",
             }
             mock_store_cls.return_value = mock_store
 
@@ -1362,8 +1491,7 @@ class TestStripeLifecycle:
                 )
             if "stripe_subscription_id" in kwargs:
                 pytest.fail(
-                    "BUG REGRESSION: mode=payment wrote "
-                    "stripe_subscription_id to the profile"
+                    "BUG REGRESSION: mode=payment wrote stripe_subscription_id to the profile"
                 )
 
     # ------------------------------------------------------------------
@@ -1383,7 +1511,8 @@ class TestStripeLifecycle:
 
         # Simulate a profile that has been activated
         fake_profile = type(
-            "_FakeStatusProfile", (),
+            "_FakeStatusProfile",
+            (),
             {
                 "tier": "premium",
                 "status": "active",
@@ -1443,17 +1572,17 @@ class TestStripeMockGuard:
     """A real STRIPE_API_KEY with the default stripe-mock base would
     silently send real keys to the mock endpoint. The guard must warn."""
 
-    def test_configure_stripe_warns_when_key_set_but_base_is_mock(
-        self, caplog
-    ) -> None:
+    def test_configure_stripe_warns_when_key_set_but_base_is_mock(self, caplog) -> None:
         import logging
 
         from autoinfo.billing import _configure_stripe
 
         # Patch the module-level constants directly (read at import time)
-        with patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"), \
-             patch.object(_billing_mod, "_STRIPE_API_BASE", "http://localhost:12111"), \
-             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+        with (
+            patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"),
+            patch.object(_billing_mod, "_STRIPE_API_BASE", "http://localhost:12111"),
+            caplog.at_level(logging.WARNING, logger="autoinfo.billing"),
+        ):
             _configure_stripe()
 
         assert any("stripe-mock" in r.message for r in caplog.records), (
@@ -1461,25 +1590,23 @@ class TestStripeMockGuard:
             f"got records: {[r.message for r in caplog.records]}"
         )
 
-    def test_configure_stripe_no_warning_when_base_is_real(
-        self, caplog
-    ) -> None:
+    def test_configure_stripe_no_warning_when_base_is_real(self, caplog) -> None:
         import logging
 
         from autoinfo.billing import _configure_stripe
 
-        with patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"), \
-             patch.object(_billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"), \
-             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+        with (
+            patch.object(_billing_mod, "_STRIPE_API_KEY", "sk_test_real"),
+            patch.object(_billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"),
+            caplog.at_level(logging.WARNING, logger="autoinfo.billing"),
+        ):
             _configure_stripe()
 
         assert not any("stripe-mock" in r.message for r in caplog.records), (
             f"Unexpected warning: {[r.message for r in caplog.records]}"
         )
 
-    def test_configure_stripe_real_mode_sets_key_and_base(
-        self, caplog
-    ) -> None:
+    def test_configure_stripe_real_mode_sets_key_and_base(self, caplog) -> None:
         """When STRIPE_API_KEY and real STRIPE_API_BASE are set,
         stripe.api_key and api_base should be correctly configured
         without any stripe-mock warning."""
@@ -1489,10 +1616,12 @@ class TestStripeMockGuard:
         from autoinfo.billing import _configure_stripe
 
         mock_stripe = MagicMock()
-        with patch.object(billing_mod, "_STRIPE_API_KEY", "sk_test_xyz"), \
-             patch.object(billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"), \
-             patch.object(billing_mod, "stripe", mock_stripe), \
-             caplog.at_level(logging.WARNING, logger="autoinfo.billing"):
+        with (
+            patch.object(billing_mod, "_STRIPE_API_KEY", "sk_test_xyz"),
+            patch.object(billing_mod, "_STRIPE_API_BASE", "https://api.stripe.com"),
+            patch.object(billing_mod, "stripe", mock_stripe),
+            caplog.at_level(logging.WARNING, logger="autoinfo.billing"),
+        ):
             _configure_stripe()
 
         assert mock_stripe.api_key == "sk_test_xyz", (

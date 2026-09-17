@@ -327,7 +327,7 @@
 |---|---|---|
 | 核心选取集失败数 | 17 | **6** |
 | － 其中顺序依赖假红 | 9 | **0** |
-| 被跟踪文件数 | 7,828（含 6,968 运行时产物） | **860** |
+| 被跟踪文件数 | 7,828（含 6,968 运行时产物） | **860**（本轮全部收尾后为 **863**：+3 为同日新增的守护测试） |
 | `git status` 条目 | 36（全为运行时抖动） | **6**（全部为本次有意改动；mypy 清偿轮为 50 = 46 `.py` + 4 配置/文档） |
 | ruff 口径 | 0.9.10 → 307 / 注释称 0.15.22 → 863 | **0.16.8 → 307（版本已锁，注释计数同轮修正）** |
 | mypy strict 错误数 | 192（57 文件未过） | **0（140 文件全过）** |
@@ -422,7 +422,7 @@
 | `mypy src/autoinfo` | 0 错 |
 | ruff 增量 | 与 `HEAD` 基线 worktree 对比，21 个改动文件产出 **20 条完全相同**的告警（file+rule 一致，仅行号位移）；`comm` 双向差集**均为空** → 零新增 lint 债 |
 | 环境等价性 | CI 装 `.[dev]`，本机多装了 `ebooklib`；临时隐藏该包后仍 `Success: no issues found in 140 source files` → 新门禁在 CI 环境应为绿 |
-| **回归（核心选取集）** | `pytest tests/mcp tests/validation tests/cli tests/output tests/llm` → **6 failed / 2576 passed / 24 skipped**，失败集合**恰等于** `tests/TRIAGE.md` 的 6 条预算 node id，无一条越界 |
+| **回归（核心选取集）** | `pytest tests/mcp tests/validation tests/cli tests/output tests/llm` → **6 failed / 2576 passed / 24 skipped**（1121.15s，在提交后重跑一遍以覆盖 pre-commit 的重排），失败集合**恰等于** `tests/TRIAGE.md` 的 6 条预算 node id，无一条越界 |
 | **回归（选取集之外）** | 其余 15 个目录（`alerts/api/billing/collectors/config/cost/delivery/email/integration/kb/monitor/process/qa/scripts/user`）→ **2 failed / 2594 passed**；两条均已在**改动前的 `HEAD`**（detached worktree，并把工作副本的 `.autoinfo/` + `knowledge/` 放到它旁边以对齐环境）复现同款失败 → 非本次改动引入，已登记进 `tests/TRIAGE.md` |
 | 守护测试 | `test_known_red_budget_single_source.py` + `test_tracked_runtime_artifacts.py` + `test_server_dispatch_freeze.py` + `test_envelope_conformance.py` → 14 passed |
 | 文档一致性 | `scripts/doc_inventory.py --check` → exit 0 |

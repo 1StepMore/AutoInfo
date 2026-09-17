@@ -302,7 +302,7 @@
 |---|---|---|
 | 1. 立即修 2 个红灯 | README / AGENTS.md / doc-manager SKILL 的测试计数统一为 **5237**；`ci.yml` 删除复述红灯预算的注释块与失败提示行，改为指向 `tests/TRIAGE.md` | `scripts/doc_inventory.py --check` → exit 0；`coverage_matrix.py --check-enduser-doc` → OK；2 个漂移守护测试转绿 |
 | 2. 预算由「数量」改为「测试身份」 | `tests/TRIAGE.md §Authoritative known-red budget` 现枚举 **6 条确切 node id**（不再是裸数字）；守护测试断言「列表非空 / 无重复 / 每个 id 都能落到磁盘上的真实测试 / 基线失败数 == 列表长度」 | `tests/validation/test_known_red_budget_single_source.py` 4 passed |
-| 3. 清理被跟踪的运行时产物 | `git rm -r --cached` 移出 `knowledge/` `collections/` `outputs/` `validation-runs/` `validation-deliveries/` `.omo/` 共 **6,968** 个文件（磁盘文件全部保留，已核验）；新增守护测试锁住该边界 | 跟踪文件 **7,828 → 860**；`tests/validation/test_tracked_runtime_artifacts.py` 2 passed |
+| 3. 清理被跟踪的运行时产物 | `git rm -r --cached` 移出 `knowledge/` `collections/` `outputs/` `validation-runs/` `validation-deliveries/` `.omo/` 共 **6,968** 个文件（磁盘文件全部保留，已核验）；新增守护测试锁住该边界。强制点放在 CI 的**必需 `test` 作业**（`pytest -m "not real_api"` 全量运行，自然包含该守护）而不是另加 `guard.yml` 步骤 —— 两者同为必需检查，多写一遍只是重复同一断言 | 跟踪文件 **7,828 → 860**（本轮收尾 863）；`tests/validation/test_tracked_runtime_artifacts.py` 2 passed |
 | 4. 上帝模块：先立约束、重构推迟 | 新增 `tests/mcp/test_server_dispatch_freeze.py`：`server.py` 的 `if/elif name ==` 分支数与 `_handle_*` 函数数**冻结在 149**；新增工具必须先抽注册表，否则守护测试转红 | 2 passed |
 | 5. 锁定 ruff 版本 | `pyproject.toml` 由 `ruff>=0.5` 改为 `ruff==0.16.8`；`ci.yml` / `coverage.yml` 中互相矛盾的历史计数（863 与 211）统一为**同一锁定口径下的实测值 307** | `ruff check --select E9,F src/` → All checks passed |
 

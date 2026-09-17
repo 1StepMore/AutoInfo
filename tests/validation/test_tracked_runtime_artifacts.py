@@ -10,8 +10,9 @@ worktree permanently dirty, drowned real source diffs in review noise and
 inflated ``.git``.
 
 This guard locks the boundary: walking ``git ls-files`` and failing when any
-tracked path lives under one of those runtime directories. ``.omo/`` carries a
-single documented tracked-by-exception subtree.
+tracked path lives under one of those runtime directories. ``.omo/`` is runtime
+scratch with **no** exception — anything learned there is distilled into
+in-repo artifacts, so nothing under ``.omo/`` may be tracked.
 
 Fix hint for a reported violation: ``git rm -r --cached <path>`` (keeps the
 file on disk, drops it from the index).
@@ -37,8 +38,12 @@ RUNTIME_DIRS: tuple[str, ...] = (
     ".omo/",
 )
 
-# .omo/ is tracked-by-exception: .gitignore whitelists this subtree only.
-OMO_TRACKED_WHITELIST: tuple[str, ...] = (".omo/evidence/validation-runs/",)
+#: A path under .omo/ that must stay ignored. It used to be re-included by a
+#: ``!.omo/evidence/validation-runs/`` negation, which a later unanchored
+#: ``validation-runs/`` rule silently defeated — so the guard's "tracked-by-
+#: exception" whitelist was inert and its comment was false. The probe in
+#: ``test_omo_is_fully_ignored`` locks the intent: every .omo/ path is ignored.
+OMO_PROBE = ".omo/evidence/validation-runs/__guard_probe__"
 
 
 def _git_ls_files() -> list[str]:
@@ -64,12 +69,9 @@ def test_no_tracked_runtime_artifacts() -> None:
     violations: list[str] = []
     for path in tracked:
         for runtime_dir in RUNTIME_DIRS:
-            if not path.startswith(runtime_dir):
-                continue
-            if path.startswith(OMO_TRACKED_WHITELIST):
-                continue
-            violations.append(path)
-            break
+            if path.startswith(runtime_dir):
+                violations.append(path)
+                break
 
     if violations:
         shown = violations[:20]
@@ -84,15 +86,32 @@ def test_no_tracked_runtime_artifacts() -> None:
         )
 
 
-def test_omo_whitelist_is_the_only_omo_exception() -> None:
-    """Every tracked .omo/ path must live under the documented whitelist."""
+def test_omo_is_fully_ignored() -> None:
+    """No ``.omo/`` path may be tracked, and git must ignore the whole tree.
+
+    The ``check-ignore`` probe is the non-vacuous half: it fails when a
+    ``.gitignore`` rule (e.g. an unanchored ``validation-runs/``) resurrects a
+    path that a negation had re-included — exactly how the previous
+    "tracked-by-exception subtree" claim became false.
+    """
     tracked = _git_ls_files()
     assert tracked, "git ls-files returned nothing — guard cannot verify the index"
 
-    omo_tracked = [path for path in tracked if path.startswith(".omo/")]
-    strays = [path for path in omo_tracked if not path.startswith(OMO_TRACKED_WHITELIST)]
-
-    assert not strays, (
+    tracked_omo = [path for path in tracked if path.startswith(".omo/")]
+    assert not tracked_omo, (
         ".omo/ is runtime scratch space (AGENTS.md §Runtime Artifacts vs Source "
-        f"Files); only {OMO_TRACKED_WHITELIST} may be tracked, found: {strays}"
+        f"Files); nothing there may be tracked, found: {tracked_omo}"
+    )
+
+    probe = subprocess.run(
+        ["git", "check-ignore", "-v", OMO_PROBE],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert probe.returncode == 0, (
+        f"{OMO_PROBE} is NOT ignored — .omo/ must be entirely runtime state. An "
+        "unanchored ignore rule (e.g. `validation-runs/`) may be defeating the "
+        "`.omo/` rule; anchor it (e.g. `/validation-runs/`).\n"
+        f"git check-ignore stderr: {probe.stderr.strip()}"
     )

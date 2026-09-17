@@ -23,6 +23,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from autoinfo.models import DeliveryLog, Subscription, UserProfile
+
 
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
@@ -69,3 +71,63 @@ def test_delivery_history_unknown_user_404(client: TestClient) -> None:
     body = response.json()
     assert body["success"] is False
     assert "error" in body
+
+
+def test_delivery_history_populated_serializes_real_dataclasses(client: TestClient) -> None:
+    """Regression lock: the handler serializes real ``DeliveryLog``/``Subscription``.
+
+    The route used to call ``entry.to_dict()`` and ``s.to_dict()`` on pure
+    dataclasses (no such method — it was masked by a ``# type: ignore``).
+    This path was never exercised because the only other test returns an
+    empty subscription list, so the loop body and the subscriptions leg
+    never ran.  With ``.to_dict()`` restored, the ``AttributeError`` hits
+    the catch-all 500 handler and the ``status_code == 200`` assertion
+    (plus the field assertions) fail.
+    """
+    profile = UserProfile(user_id="hist-user", name="Hist User")
+    subscription = Subscription(
+        subscription_id="sub_hist",
+        user_id="hist-user",
+        plan="premium",
+        status="active",
+    )
+    older = DeliveryLog(
+        log_id="log-old",
+        subscription_id="sub_hist",
+        channel="smtp",
+        message_type="digest",
+        status="delivered",
+        attempt_count=1,
+        last_attempt="2026-01-01T00:00:00+00:00",
+    )
+    newer = DeliveryLog(
+        log_id="log-new",
+        subscription_id="sub_hist",
+        channel="webhook",
+        message_type="report",
+        status="delivered",
+        attempt_count=2,
+        last_attempt="2026-01-02T00:00:00+00:00",
+    )
+
+    with (
+        patch("autoinfo.user_store.get_profile", return_value=profile),
+        patch("autoinfo.user_store.list_subscriptions", return_value=[subscription]),
+        patch("autoinfo.delivery_log.query_delivery_log", return_value=[older, newer]),
+    ):
+        response = client.get(
+            "/api/v1/portal/delivery-history",
+            params={"user_id": "hist-user"},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["total"] == 2
+    assert [e["log_id"] for e in data["entries"]] == ["log-new", "log-old"]
+    entry = data["entries"][0]
+    assert entry["channel"] == "webhook"
+    assert entry["status"] == "delivered"
+    assert data["subscriptions"][0]["subscription_id"] == "sub_hist"
+    assert data["subscriptions"][0]["plan"] == "premium"

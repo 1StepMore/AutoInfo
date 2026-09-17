@@ -6,6 +6,7 @@ All routes are mounted under ``/api/v1`` in ``server.py``.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -146,6 +147,7 @@ def _entry_to_response(entry: dict[str, Any]) -> dict[str, Any]:
     tags_raw = entry.get("tags") or []
     if isinstance(tags_raw, str):
         import json
+
         try:
             tags = json.loads(tags_raw)
         except (json.JSONDecodeError, TypeError):
@@ -156,6 +158,7 @@ def _entry_to_response(entry: dict[str, Any]) -> dict[str, Any]:
     custom_fields_raw = entry.get("custom_fields") or {}
     if isinstance(custom_fields_raw, str):
         import json
+
         try:
             custom_fields = json.loads(custom_fields_raw)
         except (json.JSONDecodeError, TypeError):
@@ -307,9 +310,7 @@ async def create_entry(body: EntryCreate) -> Response | dict[str, Any]:
                 "success": False,
                 "error": {
                     "code": ErrorCode.VALIDATION_ERROR,
-                    "message": (
-                        f"content must be at least {MIN_KB_CONTENT_CHARS} characters"
-                    ),
+                    "message": (f"content must be at least {MIN_KB_CONTENT_CHARS} characters"),
                     "actionable": True,
                 },
             },
@@ -478,23 +479,25 @@ async def list_feeds(
     total = len(all_raw)
 
     # Slice for pagination
-    page = all_raw[offset: offset + limit]
+    page = all_raw[offset : offset + limit]
 
     # Determine next offset
     next_offset: int | None = offset + limit if offset + limit < total else None
 
     items = []
     for entry in page:
-        items.append({
-            "id": entry.get("entry_id", ""),
-            "title": entry.get("title", ""),
-            "url": entry.get("source_url", ""),
-            "source_type": entry.get("source_type", ""),
-            "source_platform": entry.get("source_platform", ""),
-            "collected_at": entry.get("collected_at", ""),
-            "summary": entry.get("summary", ""),
-            "relevance_score": entry.get("relevance_score", 0.0),
-        })
+        items.append(
+            {
+                "id": entry.get("entry_id", ""),
+                "title": entry.get("title", ""),
+                "url": entry.get("source_url", ""),
+                "source_type": entry.get("source_type", ""),
+                "source_platform": entry.get("source_platform", ""),
+                "collected_at": entry.get("collected_at", ""),
+                "summary": entry.get("summary", ""),
+                "relevance_score": entry.get("relevance_score", 0.0),
+            }
+        )
 
     if format == "rss":
         import xml.etree.ElementTree as ET  # noqa: PLC0415 — deferred import
@@ -504,9 +507,7 @@ async def list_feeds(
         ET.SubElement(channel, "title").text = f"AutoInfo Feed — {domain}"
         ET.SubElement(channel, "description").text = f"Knowledge base feed for domain: {domain}"
         ET.SubElement(channel, "link").text = "https://autoinfo.local"
-        ET.SubElement(channel, "lastBuildDate").text = (
-            items[0]["collected_at"] if items else ""
-        )
+        ET.SubElement(channel, "lastBuildDate").text = items[0]["collected_at"] if items else ""
 
         for item in items:
             xml_item = ET.SubElement(channel, "item")
@@ -521,19 +522,22 @@ async def list_feeds(
             )
 
         from fastapi.responses import Response
+
         ET.indent(rss, space="  ")
         rss_content = ET.tostring(rss, encoding="unicode", xml_declaration=True)
         return Response(content=rss_content, media_type="application/rss+xml")
 
-    return success_envelope({
-        "items": items,
-        "pagination": {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "next": next_offset,
-        },
-    })
+    return success_envelope(
+        {
+            "items": items,
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "next": next_offset,
+            },
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -556,14 +560,16 @@ async def get_portal_preferences(
     if profile is None:
         raise HTTPException(status_code=404, detail=f"End-user '{user_id}' not found")
 
-    return success_envelope({
-        "user_id": profile.user_id,
-        "name": profile.name,
-        "email": profile.email,
-        "delivery_preferences": profile.delivery_preferences or {},
-        "tier": profile.tier,
-        "status": profile.status,
-    })
+    return success_envelope(
+        {
+            "user_id": profile.user_id,
+            "name": profile.name,
+            "email": profile.email,
+            "delivery_preferences": profile.delivery_preferences or {},
+            "tier": profile.tier,
+            "status": profile.status,
+        }
+    )
 
 
 class PreferencesUpdate(BaseModel):
@@ -603,14 +609,16 @@ async def update_portal_preferences(
     if updated is None:
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
-    return success_envelope({
-        "user_id": updated.user_id,
-        "name": updated.name,
-        "email": updated.email,
-        "delivery_preferences": updated.delivery_preferences or {},
-        "tier": updated.tier,
-        "status": updated.status,
-    })
+    return success_envelope(
+        {
+            "user_id": updated.user_id,
+            "name": updated.name,
+            "email": updated.email,
+            "delivery_preferences": updated.delivery_preferences or {},
+            "tier": updated.tier,
+            "status": updated.status,
+        }
+    )
 
 
 @router.get("/portal/delivery-history", response_model=dict[str, Any])
@@ -641,14 +649,16 @@ async def get_portal_delivery_history(
     sub_ids = [s.subscription_id for s in subscriptions if s.subscription_id]
 
     if not sub_ids:
-        return success_envelope({
-            "user_id": user_id,
-            "subscriptions": [],
-            "entries": [],
-            "total": 0,
-            "limit": limit,
-            "offset": offset,
-        })
+        return success_envelope(
+            {
+                "user_id": user_id,
+                "subscriptions": [],
+                "entries": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+            }
+        )
 
     # Query the delivery log for each subscription
     all_entries: list[dict[str, Any]] = []
@@ -662,7 +672,7 @@ async def get_portal_delivery_history(
             offset=0,
         )
         for entry in raw:
-            all_entries.append(entry.to_dict())  # type: ignore[attr-defined]
+            all_entries.append(asdict(entry))
 
     # Sort by last_attempt DESC
     all_entries.sort(key=lambda e: e.get("last_attempt", ""), reverse=True)
@@ -670,13 +680,15 @@ async def get_portal_delivery_history(
     total = len(all_entries)
 
     # Apply pagination slice
-    page = all_entries[offset: offset + limit]
+    page = all_entries[offset : offset + limit]
 
-    return success_envelope({
-        "user_id": user_id,
-        "subscriptions": [s.to_dict() for s in subscriptions],  # type: ignore[attr-defined]
-        "entries": page,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })
+    return success_envelope(
+        {
+            "user_id": user_id,
+            "subscriptions": [asdict(s) for s in subscriptions],
+            "entries": page,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )

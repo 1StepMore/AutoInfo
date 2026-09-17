@@ -16,6 +16,7 @@ from urllib.parse import quote
 import httpx
 
 from autoinfo.collectors.base import BaseHandler, SourceFailure
+from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,11 @@ class SemanticScholarHandler(BaseHandler):
 
     source_name: str = "semantic_scholar"
 
-    def __init__(self, api_key: str | None = None, source_config=None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        source_config: SourceConfig | None = None,
+    ) -> None:
         """Initialise handler.
 
         Args:
@@ -146,11 +151,7 @@ class SemanticScholarHandler(BaseHandler):
             List of parsed paper dictionaries, each with mapped fields.
         """
         limit = max(1, min(limit, 100))
-        url = (
-            f"{SEARCH_URL}"
-            f"?query={quote(query)}&limit={limit}"
-            f"&fields={DEFAULT_FIELDS}"
-        )
+        url = f"{SEARCH_URL}?query={quote(query)}&limit={limit}&fields={DEFAULT_FIELDS}"
 
         headers: dict[str, str] = {}
         if self.api_key:
@@ -186,9 +187,7 @@ class SemanticScholarHandler(BaseHandler):
         """
         # Extract author names as a flat list of strings
         authors_raw = paper.get("authors") or []
-        authors: list[str] = [
-            a["name"] for a in authors_raw if isinstance(a, dict) and "name" in a
-        ]
+        authors: list[str] = [a["name"] for a in authors_raw if isinstance(a, dict) and "name" in a]
 
         return {
             "id": paper.get("paperId") or "",
@@ -221,11 +220,7 @@ class SemanticScholarHandler(BaseHandler):
             source_name=self.source_name,
             source_type="api",
             source_platform="semantic_scholar",
-            source_url=(
-                f"https://api.semanticscholar.org/paper/{paper_id}"
-                if paper_id
-                else ""
-            ),
+            source_url=(f"https://api.semanticscholar.org/paper/{paper_id}" if paper_id else ""),
             title=title,
             content=paper.get("abstract") or "",
             content_type="text",

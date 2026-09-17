@@ -9,6 +9,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import typer
 
@@ -42,7 +43,7 @@ def dashboard(
         _print_dashboard(result)
 
 
-def _print_dashboard(result: dict) -> None:
+def _print_dashboard(result: dict[str, Any]) -> None:
     typer.echo("")
     typer.echo(f"  Cost Dashboard — period: {result['period']}")
     typer.echo(f"  {'=' * 50}")
@@ -137,7 +138,7 @@ def allocation(
         _print_human(result)
 
 
-def _print_human(result: dict) -> None:
+def _print_human(result: dict[str, Any]) -> None:
     typer.echo(f"Period:      {result['period']}")
     typer.echo(f"Domain:      {result['domain_filter'] or '(all)'}")
     typer.echo(f"User ID:     {result['user_id_filter'] or '(all)'}")

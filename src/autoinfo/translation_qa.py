@@ -75,7 +75,9 @@ def calculate_quality_score(
     """
     # Clamp and default individual scores
     scores = {
-        "faithfulness": max(0.0, min(100.0, float(faithfulness))) if faithfulness is not None else 0.0,
+        "faithfulness": max(0.0, min(100.0, float(faithfulness)))
+        if faithfulness is not None
+        else 0.0,
         "terminology": max(0.0, min(100.0, float(terminology))) if terminology is not None else 0.0,
         "style": max(0.0, min(100.0, float(style))) if style is not None else 0.0,
         "readability": max(0.0, min(100.0, float(readability))) if readability is not None else 0.0,
@@ -188,7 +190,7 @@ def back_translate(
             timeout=timeout,
         )
 
-        back_text: str = response.choices[0].message.content  # type: ignore[union-attr]
+        back_text: str = response.choices[0].message.content
         if not back_text or not back_text.strip():
             logger.warning("back_translate: empty response from model %s", back_model)
             return {
@@ -288,7 +290,7 @@ def llm_judge_translation(
             disable_thinking=False,
         )
 
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+        content: str = response.choices[0].message.content
         parsed = json.loads(content)
 
         faithfulness = max(0.0, min(100.0, float(parsed.get("faithfulness_score", 0))))
@@ -298,11 +300,13 @@ def llm_judge_translation(
         issues: list[dict[str, str]] = []
         for iss in raw_issues:
             if isinstance(iss, dict):
-                issues.append({
-                    "severity": str(iss.get("severity", "minor")),
-                    "description": str(iss.get("description", "")),
-                    "position": str(iss.get("position", "")),
-                })
+                issues.append(
+                    {
+                        "severity": str(iss.get("severity", "minor")),
+                        "description": str(iss.get("description", "")),
+                        "position": str(iss.get("position", "")),
+                    }
+                )
 
         return {"faithfulness_score": faithfulness, "issues": issues}
 
@@ -310,13 +314,25 @@ def llm_judge_translation(
         logger.warning("llm_judge_translation: malformed response: %s", exc)
         return {
             "faithfulness_score": 0.0,
-            "issues": [{"severity": "major", "description": f"Failed to parse LLM response: {exc}", "position": "n/a"}],
+            "issues": [
+                {
+                    "severity": "major",
+                    "description": f"Failed to parse LLM response: {exc}",
+                    "position": "n/a",
+                }
+            ],
         }
     except Exception as exc:
         logger.warning("llm_judge_translation: LLM call failed: %s", exc)
         return {
             "faithfulness_score": 0.0,
-            "issues": [{"severity": "major", "description": f"LLM evaluation failed: {exc}", "position": "n/a"}],
+            "issues": [
+                {
+                    "severity": "major",
+                    "description": f"LLM evaluation failed: {exc}",
+                    "position": "n/a",
+                }
+            ],
         }
 
 
@@ -395,7 +411,13 @@ def run_back_translation_pipeline(
             "back_model": bt_result["back_model"],
             "judge_model": "n/a",
             "faithfulness": 0.0,
-            "issues": [{"severity": "major", "description": "Back-translation failed or returned empty", "position": "n/a"}],
+            "issues": [
+                {
+                    "severity": "major",
+                    "description": "Back-translation failed or returned empty",
+                    "position": "n/a",
+                }
+            ],
             "composite_score": 0.0,
         }
 
@@ -490,8 +512,7 @@ def _resolve_default_model() -> str:
         raise
     except Exception as exc:
         raise JudgmentModelNotConfiguredError(
-            f"No LLM model configured: set llm.model in .autoinfo/config.yaml "
-            f"({exc})"
+            f"No LLM model configured: set llm.model in .autoinfo/config.yaml ({exc})"
         ) from exc
 
 
@@ -607,9 +628,13 @@ def refine_translation(
             line += f" (location: {pos})"
         issues_lines.append(line)
 
-    issues_text = "\n".join(issues_lines) if issues_lines else (
-        "No specific issues were identified, but the overall quality "
-        "score was below the acceptable threshold."
+    issues_text = (
+        "\n".join(issues_lines)
+        if issues_lines
+        else (
+            "No specific issues were identified, but the overall quality "
+            "score was below the acceptable threshold."
+        )
     )
 
     prompt = (
@@ -642,19 +667,15 @@ def refine_translation(
             timeout=timeout,
         )
 
-        translation: str = response.choices[0].message.content  # type: ignore[union-attr]
+        translation: str = response.choices[0].message.content
         if not translation or not translation.strip():
-            logger.warning(
-                "refine_translation: empty response from model %s", model
-            )
+            logger.warning("refine_translation: empty response from model %s", model)
             return {"translation": initial_translation, "model_used": model}
 
         return {"translation": translation.strip(), "model_used": model}
 
     except Exception as exc:
-        logger.warning(
-            "refine_translation: LLM call failed with %s: %s", model, exc
-        )
+        logger.warning("refine_translation: LLM call failed with %s: %s", model, exc)
         return {"translation": initial_translation, "model_used": model}
 
 
@@ -682,21 +703,25 @@ def _build_rounds_list(
     rounds: list[dict[str, Any]] = []
     for i, (_, model_used, ev) in enumerate(candidates):
         if ev is not None:
-            rounds.append({
-                "round": i + 1,
-                "model_used": model_used,
-                "faithfulness": ev.get("faithfulness", 0.0),
-                "composite": ev.get("composite_score", 0.0),
-                "issues": list(ev.get("issues", [])),
-            })
+            rounds.append(
+                {
+                    "round": i + 1,
+                    "model_used": model_used,
+                    "faithfulness": ev.get("faithfulness", 0.0),
+                    "composite": ev.get("composite_score", 0.0),
+                    "issues": list(ev.get("issues", [])),
+                }
+            )
         else:
-            rounds.append({
-                "round": i + 1,
-                "model_used": model_used,
-                "faithfulness": 0.0,
-                "composite": 0.0,
-                "issues": [],
-            })
+            rounds.append(
+                {
+                    "round": i + 1,
+                    "model_used": model_used,
+                    "faithfulness": 0.0,
+                    "composite": 0.0,
+                    "issues": [],
+                }
+            )
     return rounds
 
 
@@ -804,8 +829,7 @@ def run_refinement_pipeline(
             refine_model = pool[1]
         else:
             logger.warning(
-                "run_refinement_pipeline: only one model in pool — "
-                "reusing %s for round %d",
+                "run_refinement_pipeline: only one model in pool — reusing %s for round %d",
                 primary_model,
                 refinement_idx + 1,
             )

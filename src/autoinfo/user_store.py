@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Allowed values for the end-user ``content_preference`` preference
 # (B-001 launch blocker; spec: docs/dev/specs/user-lifecycle-definition.md §2.3).
-CONTENT_PREFERENCE_VALUES: frozenset[str] = frozenset(
-    {"raw_only", "processed_only", "both"}
-)
+CONTENT_PREFERENCE_VALUES: frozenset[str] = frozenset({"raw_only", "processed_only", "both"})
 CONTENT_PREFERENCE_DEFAULT: str = "both"
 
 _DB_PATH: Path | None = None
@@ -125,21 +123,12 @@ def _ensure_columns_exist() -> None:
 
     with _connect() as conn:
         for table, col_list in [("user_profiles", user_cols), ("subscriptions", sub_cols)]:
-            existing = {
-                row[1]
-                for row in conn.execute(
-                    f"PRAGMA table_info({table})"
-                ).fetchall()
-            }
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for col_name, col_def in col_list:
                 if col_name not in existing:
                     try:
-                        conn.execute(
-                            f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"
-                        )
-                        logger.info(
-                            "Added column '%s' to %s table", col_name, table
-                        )
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        logger.info("Added column '%s' to %s table", col_name, table)
                     except sqlite3.OperationalError:
                         logger.warning(
                             "Could not add column '%s' to %s (may already exist)",
@@ -287,9 +276,7 @@ def create_profile(
     now = datetime.now(timezone.utc).isoformat()
     trial_start = now if status == "trial" else ""
     trial_end = (
-        (datetime.now(timezone.utc) + timedelta(days=14)).isoformat()
-        if status == "trial"
-        else ""
+        (datetime.now(timezone.utc) + timedelta(days=14)).isoformat() if status == "trial" else ""
     )
     profile = UserProfile(
         user_id=user_id,
@@ -331,9 +318,7 @@ def get_profile(user_id: str) -> UserProfile | None:
     """Return a user profile by *user_id*, or ``None``."""
     init_db()
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)).fetchone()
     return _row_to_profile(row) if row is not None else None
 
 
@@ -364,9 +349,7 @@ def update_profile(
     new_status = status if status is not None else existing.status
     new_tier = tier if tier is not None else existing.tier
     new_stripe_customer = (
-        stripe_customer_id
-        if stripe_customer_id is not None
-        else existing.stripe_customer_id
+        stripe_customer_id if stripe_customer_id is not None else existing.stripe_customer_id
     )
     new_stripe_subscription = (
         stripe_subscription_id
@@ -414,9 +397,7 @@ def list_profiles() -> list[UserProfile]:
     """Return all user profiles ordered by creation date (newest first)."""
     init_db()
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM user_profiles ORDER BY created_at DESC"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM user_profiles ORDER BY created_at DESC").fetchall()
     return [_row_to_profile(r) for r in rows]
 
 
@@ -436,9 +417,7 @@ def set_stripe_customer_id(user_id: str, customer_id: str) -> None:
     init_db()
     result = update_profile(user_id=user_id, stripe_customer_id=customer_id)
     if result is None:
-        raise ValueError(
-            f"Cannot set stripe_customer_id: user '{user_id}' not found"
-        )
+        raise ValueError(f"Cannot set stripe_customer_id: user '{user_id}' not found")
 
 
 def get_stripe_customer_id(user_id: str) -> str | None:
@@ -604,7 +583,7 @@ def resolve_content_preference(preferences: dict[str, Any] | None) -> str:
     (and callers that never set it) keep the pre-B-001 behavior.
     """
     raw = (preferences or {}).get("content_preference")
-    if raw in CONTENT_PREFERENCE_VALUES:
+    if isinstance(raw, str) and raw in CONTENT_PREFERENCE_VALUES:
         return raw
     return CONTENT_PREFERENCE_DEFAULT
 
@@ -774,9 +753,7 @@ def list_subscriptions(user_id: str | None = None) -> list[Subscription]:
                 (user_id,),
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM subscriptions ORDER BY start_date DESC"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM subscriptions ORDER BY start_date DESC").fetchall()
     return [_row_to_subscription(r) for r in rows]
 
 

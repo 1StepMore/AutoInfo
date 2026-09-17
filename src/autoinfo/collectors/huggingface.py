@@ -129,9 +129,7 @@ class HuggingFaceHandler(BaseHandler):
             self._last_request_time = time.time()
             return
 
-        min_interval = (
-            1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
-        )
+        min_interval = 1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
         elapsed = time.time() - self._last_request_time
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
@@ -228,15 +226,17 @@ class HuggingFaceHandler(BaseHandler):
             # Kaggle dataset
             ref: str = item.get("ref") or ""
             dataset_id = ref
-            title: str = item.get("title") or ""
-            description: str = item.get("subtitle") or item.get("description") or ""
-            author: str = item.get("ownerName") or item.get("ownerRef") or ""
+            title = item.get("title") or ""
+            description = item.get("subtitle") or item.get("description") or ""
+            author = item.get("ownerName") or item.get("ownerRef") or ""
             tags_raw: list[dict[str, str]] = item.get("tags") or []
-            tags = [t.get("name", t.get("ref", "")) if isinstance(t, dict) else str(t) for t in tags_raw]
-            downloads: int = item.get("downloadCount") or 0
-            likes: int = item.get("voteCount") or 0
-            last_modified: str = item.get("lastUpdated") or ""
-            source_url: str = f"https://www.kaggle.com/datasets/{ref}" if ref else ""
+            tags = [
+                t.get("name", t.get("ref", "")) if isinstance(t, dict) else str(t) for t in tags_raw
+            ]
+            downloads = item.get("downloadCount") or 0
+            likes = item.get("voteCount") or 0
+            last_modified = item.get("lastUpdated") or ""
+            source_url = f"https://www.kaggle.com/datasets/{ref}" if ref else ""
 
         return {
             "id": dataset_id,
@@ -329,7 +329,9 @@ class HuggingFaceHandler(BaseHandler):
 
         # HF Hub API returns a list directly (not wrapped in {"results": [...]})
         items_list: list[dict[str, Any]] = (
-            data if isinstance(data, list) else data.get(self.content_type) or data.get("results") or []
+            data
+            if isinstance(data, list)
+            else data.get(self.content_type) or data.get("results") or []
         )
 
         for item in items_list:

@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 import yaml
 
@@ -136,7 +136,7 @@ def save_scenario_results(
     """
     run_dir = _runs_dir(runs_dir) / _run_stamp()
     run_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, Any] = {
         "run_id": run_dir.name,
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
         "run_type": run_type,
@@ -268,7 +268,9 @@ def aggregate_category_pyramid(
             unclassified.append({"scenario": name, "reason": "; ".join(reasons)})
             continue
         cell = cells.setdefault(
-            category_pyramid_key(category, layer),
+            # Empty ``reasons`` ⇒ both isinstance() guards above passed, so the
+            # runtime values are str — the narrowing is lost through the list.
+            category_pyramid_key(cast(str, category), cast(str, layer)),
             {
                 "category": category,
                 "pyramid_layer": layer,
@@ -2353,7 +2355,7 @@ async def run_scenario(
     else:
         status = "passed"
 
-    result: dict[str, Any] = {
+    matrix_result: dict[str, Any] = {
         "scenario": name,
         "description": scenario["description"],
         "category": scenario["category"],
@@ -2367,16 +2369,16 @@ async def run_scenario(
         "matrix": {"domains": matrix_domains, "per_domain": per_domain},
     }
     if cleanup is not None:
-        result["cleanup"] = cleanup
+        matrix_result["cleanup"] = cleanup
     if artifacts is not None:
-        result["artifacts"] = artifacts
+        matrix_result["artifacts"] = artifacts
     if warnings:
-        result["warnings"] = warnings
+        matrix_result["warnings"] = warnings
     for _key in ("regression", "regression_issue"):
         if _key in scenario:
-            result[_key] = scenario[_key]
+            matrix_result[_key] = scenario[_key]
 
-    return _attach_session_id(result, session_id)
+    return _attach_session_id(matrix_result, session_id)
 
 
 async def _execute_scenario(

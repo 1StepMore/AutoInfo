@@ -30,7 +30,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeVar, cast
+from typing import Any, Callable, Literal, TypeVar, cast, overload
 
 import httpx
 from mcp.server import Server
@@ -6911,7 +6911,10 @@ async def _handle_run_validation_scenario(
                 persist_run_report,
             )
 
-            session_id = result.get("session_id") or result.get("trace_id")
+            # ``or ""`` keeps this a ``str``: both consumers only test truthiness
+            # (``save_scenario_results`` skips a falsy id; ``build_run_report``
+            # raises on one), so an absent id behaved as "" already.
+            session_id = result.get("session_id") or result.get("trace_id") or ""
             run_dir = save_scenario_results([result], session_id=session_id)
             result["saved_run"] = str(run_dir)
             report = build_run_report(session_id, [result], kind="single")
@@ -6975,7 +6978,10 @@ def _handle_get_coverage_report() -> dict[str, Any]:
             raise ImportError(f"cannot load coverage script at {script}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return _canonicalize(module.build_report(root=root))
+        # The script is loaded dynamically, so its ``build_report`` return
+        # type is invisible to mypy; the report is a plain JSON-able dict.
+        report: dict[str, Any] = module.build_report(root=root)
+        return _canonicalize(report)
     except Exception as exc:  # noqa: BLE001 - surface a typed error, never a silent pass
         return _error_from_exc(
             exc,
@@ -7768,6 +7774,18 @@ def _text_payload_metadata(
     }
 
 
+@overload
+def _canonicalize(result: dict[str, Any]) -> dict[str, Any]: ...
+
+
+@overload
+def _canonicalize(result: list[dict[str, Any]]) -> list[dict[str, Any]]: ...
+
+
+@overload
+def _canonicalize(result: T) -> T: ...
+
+
 def _canonicalize(result: Any) -> Any:
     """Normalize a forwarded helper result into the canonical envelope.
 
@@ -7776,6 +7794,12 @@ def _canonicalize(result: Any) -> Any:
     still speaks the legacy flat shape (``error_code`` / bare ``success``).
     This boundary helper converts those into the canonical envelope and
     passes already-canonical or plain-data results through unchanged.
+
+    The overloads state what the body already guarantees, so the ``Any``
+    return does not erase the argument type at every call site: a ``dict``
+    argument always comes back a ``dict`` (rewritten into an envelope or
+    passed through), a ``list[dict[str, Any]]`` comes back unchanged, and
+    anything else is an identity pass-through.
     """
     if not isinstance(result, dict):
         return result

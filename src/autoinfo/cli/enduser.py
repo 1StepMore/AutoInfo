@@ -14,6 +14,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 import typer
@@ -66,7 +67,7 @@ def create(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
-    if emit_if_global(profile.to_dict()):
+    if emit_if_global(asdict(profile)):
         return
     typer.echo(f"Created end-user: {profile.user_id} ({profile.name})")
 
@@ -88,9 +89,9 @@ def get(
         typer.echo(f"End-user '{user_id}' not found")
         raise typer.Exit(code=1)
 
-    if emit_if_global(profile.to_dict()):
+    if emit_if_global(asdict(profile)):
         return
-    typer.echo(json.dumps(profile.to_dict(), indent=2, ensure_ascii=False))
+    typer.echo(json.dumps(asdict(profile), indent=2, ensure_ascii=False))
 
 
 @app.command()
@@ -136,10 +137,10 @@ def update(
         typer.echo(f"End-user '{user_id}' not found")
         raise typer.Exit(code=1)
 
-    if emit_if_global(profile.to_dict()):
+    if emit_if_global(asdict(profile)):
         return
     typer.echo(f"Updated end-user: {profile.user_id}")
-    typer.echo(json.dumps(profile.to_dict(), indent=2, ensure_ascii=False))
+    typer.echo(json.dumps(asdict(profile), indent=2, ensure_ascii=False))
 
 
 @app.command()
@@ -176,7 +177,7 @@ def list(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 
-    if emit_if_global({"items": [p.to_dict() for p in profiles], "count": len(profiles)}):
+    if emit_if_global({"items": [asdict(p) for p in profiles], "count": len(profiles)}):
         return
 
     if not profiles:
@@ -186,7 +187,7 @@ def list(
     if json_output:
         typer.echo(
             json.dumps(
-                {"items": [p.to_dict() for p in profiles], "count": len(profiles)},
+                {"items": [asdict(p) for p in profiles], "count": len(profiles)},
                 indent=2,
                 ensure_ascii=False,
             )

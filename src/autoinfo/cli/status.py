@@ -8,6 +8,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import typer
 
@@ -64,7 +65,7 @@ def status(
         _print_human(result)
 
 
-def _print_human(result: dict) -> None:
+def _print_human(result: dict[str, Any]) -> None:
     """Print a human-readable status overview."""
     domains = result.get("domains", [])
     if not domains:

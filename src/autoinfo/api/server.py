@@ -15,12 +15,13 @@ import json
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
@@ -145,7 +146,10 @@ def _known_domains() -> set[str]:
 
 
 @app.middleware("http")
-async def domain_validation_middleware(request: Request, call_next):
+async def domain_validation_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Validate that the ``domain`` query parameter refers to an existing domain.
 
     Only applies to ``/api/v1/*`` GET and DELETE routes that accept a
@@ -164,7 +168,10 @@ async def domain_validation_middleware(request: Request, call_next):
                 return _error_envelope(
                     status_code=404,
                     error_code=ErrorCode.DOMAIN_NOT_FOUND,
-                    message=f"Domain '{domain}' not found. Use add_domain(name='{domain}') to create it.",
+                    message=(
+                        f"Domain '{domain}' not found. "
+                        f"Use add_domain(name='{domain}') to create it."
+                    ),
                 )
 
     return await call_next(request)
@@ -238,15 +245,9 @@ async def request_validation_error_handler(
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(
-    request: Request, exc: HTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Map FastAPI HTTPException → same status with canonical envelope."""
-    code = (
-        ErrorCode.VALIDATION_ERROR
-        if 400 <= exc.status_code < 500
-        else ErrorCode.INTERNAL_ERROR
-    )
+    code = ErrorCode.VALIDATION_ERROR if 400 <= exc.status_code < 500 else ErrorCode.INTERNAL_ERROR
     logger.warning(
         "HTTPException in %s %s (%d): %s",
         request.method,
@@ -263,9 +264,7 @@ async def http_exception_handler(
 
 
 @app.exception_handler(ValueError)
-async def value_error_handler(
-    request: Request, exc: ValueError
-) -> JSONResponse:
+async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
     """Map ValueError → 400 Bad Request."""
     logger.warning(
         "ValueError in %s %s: %s",
@@ -281,9 +280,7 @@ async def value_error_handler(
 
 
 @app.exception_handler(KeyError)
-async def key_error_handler(
-    request: Request, exc: KeyError
-) -> JSONResponse:
+async def key_error_handler(request: Request, exc: KeyError) -> JSONResponse:
     """Map KeyError → 400 Bad Request."""
     logger.warning(
         "KeyError in %s %s: %s",
@@ -477,7 +474,8 @@ async def stripe_webhook(request: Request) -> JSONResponse:
                 webhook_secret = cfg.stripe.webhook_secret
         except Exception:
             logger.debug(
-                "Could not load stripe.webhook_secret from config", exc_info=True,
+                "Could not load stripe.webhook_secret from config",
+                exc_info=True,
             )
 
     # --- Signature verification ------------------------------------------------
@@ -485,7 +483,11 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         try:
             import stripe
 
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+            # ``stripe.Webhook.construct_event`` ships without annotations
+            # upstream, so bind it to an explicitly ``Any``-typed name rather
+            # than suppressing a strict-mode error at the call site.
+            construct_event: Any = stripe.Webhook.construct_event
+            event = construct_event(payload, sig_header, webhook_secret)
         except ValueError as exc:
             logger.warning("Stripe webhook: invalid payload: %s", exc)
             return _error_envelope(
@@ -503,8 +505,7 @@ async def stripe_webhook(request: Request) -> JSONResponse:
     else:
         # Dev mode: no secret configured — parse raw JSON
         logger.warning(
-            "STRIPE_WEBHOOK_SECRET not set — "
-            "skipping signature verification (dev mode)",
+            "STRIPE_WEBHOOK_SECRET not set — skipping signature verification (dev mode)",
         )
         try:
             event = json.loads(payload)
@@ -518,7 +519,10 @@ async def stripe_webhook(request: Request) -> JSONResponse:
     # --- Dispatch to billing handler -------------------------------------------
     from autoinfo.billing import handle_webhook
 
-    result = handle_webhook(dict(event))
+    # ``construct_event`` returns a ``StripeObject`` (not a ``dict``); dev mode
+    # and test doubles hand over a plain ``dict``.  Normalize both shapes.
+    event_dict: dict[str, Any] = event.to_dict() if hasattr(event, "to_dict") else dict(event)
+    result = handle_webhook(event_dict)
     return JSONResponse(content=result)
 
 

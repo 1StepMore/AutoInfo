@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -30,7 +31,7 @@ def trace(
     """
     # -- Search pipeline logs ---------------------------------------------
     log_dir = Path("logs")
-    pipeline_events: list[dict] = []
+    pipeline_events: list[dict[str, Any]] = []
 
     if log_dir.is_dir():
         for log_file in sorted(log_dir.glob("pipeline-*.log"), reverse=True):
@@ -56,7 +57,7 @@ def trace(
                 break
 
     # -- Search KB frontmatter for the entry ------------------------------
-    kb_entries: list[dict] = []
+    kb_entries: list[dict[str, Any]] = []
     knowledge_dir = Path("knowledge")
     if knowledge_dir.is_dir():
         for md_file in knowledge_dir.rglob("*.md"):

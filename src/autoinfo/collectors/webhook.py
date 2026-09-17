@@ -55,7 +55,7 @@ class WebhookHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:  # type: ignore[override]
+    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:
         """Webhook is push-based; pull-based fetch returns nothing."""
         return []
 
@@ -102,9 +102,7 @@ class WebhookHandler(BaseHandler):
         # -- Required field validation --------------------------------------
         missing = REQUIRED_FIELDS - payload.keys()
         if missing:
-            raise ValueError(
-                f"Missing required webhook fields: {', '.join(sorted(missing))}"
-            )
+            raise ValueError(f"Missing required webhook fields: {', '.join(sorted(missing))}")
 
         title = payload["title"]
         content = payload["content"]
@@ -115,9 +113,7 @@ class WebhookHandler(BaseHandler):
         if secret:
             signature = payload.get("signature") or config.get("signature") or ""
             if not signature:
-                raise ValueError(
-                    "HMAC secret configured but no signature provided"
-                )
+                raise ValueError("HMAC secret configured but no signature provided")
             self._verify_hmac(secret, payload, signature)
 
         # -- Build and return Item ------------------------------------------
@@ -133,9 +129,7 @@ class WebhookHandler(BaseHandler):
             content=content,
             content_type="text",
             collected_at="",
-            raw_data={
-                k: v for k, v in payload.items() if k not in REQUIRED_FIELDS
-            },
+            raw_data={k: v for k, v in payload.items() if k not in REQUIRED_FIELDS},
         )
 
     # ------------------------------------------------------------------
@@ -151,16 +145,11 @@ class WebhookHandler(BaseHandler):
         window = 60.0  # 1 minute
 
         # Prune timestamps older than the window
-        while (
-            self._request_timestamps
-            and self._request_timestamps[0] < now - window
-        ):
+        while self._request_timestamps and self._request_timestamps[0] < now - window:
             self._request_timestamps.popleft()
 
         if len(self._request_timestamps) >= max_rpm:
-            raise ValueError(
-                f"Rate limit exceeded: {max_rpm} requests per minute"
-            )
+            raise ValueError(f"Rate limit exceeded: {max_rpm} requests per minute")
 
         self._request_timestamps.append(now)
 

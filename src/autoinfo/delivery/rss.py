@@ -151,27 +151,13 @@ class RSSDeliveryChannel(DeliveryChannel):
             )
 
         # Resolve feed metadata ----------------------------------------------
-        feed_title = (
-            payload.get("title")
-            or config.get("title")
-            or _RSS_DEFAULT_TITLE
-        )
+        feed_title = payload.get("title") or config.get("title") or _RSS_DEFAULT_TITLE
         feed_description = (
-            payload.get("description")
-            or config.get("description")
-            or _RSS_DEFAULT_DESCRIPTION
+            payload.get("description") or config.get("description") or _RSS_DEFAULT_DESCRIPTION
         )
-        feed_language = (
-            payload.get("language")
-            or config.get("language")
-            or _RSS_DEFAULT_LANGUAGE
-        )
+        feed_language = payload.get("language") or config.get("language") or _RSS_DEFAULT_LANGUAGE
         # link for the channel — prefer config "link" or resort to feed_url
-        feed_link = (
-            config.get("link")
-            or payload.get("link")
-            or feed_path
-        )
+        feed_link = config.get("link") or payload.get("link") or feed_path
 
         # Resolve entries ----------------------------------------------------
         entries: list[dict[str, Any]] = payload.get("entries", [])
@@ -246,12 +232,18 @@ class RSSDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             out_dir = _os.environ.get("AUTOINFO_RSS_DIR", _os.getcwd())
             if not _os.access(out_dir, _os.W_OK):
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": f"directory not writable: {out_dir}", "channel": "rss"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": f"directory not writable: {out_dir}",
+                    "channel": "rss",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "rss"}
         except Exception as e:
@@ -283,9 +275,7 @@ class RSSDeliveryChannel(DeliveryChannel):
         ET.SubElement(channel, "link").text = link
         ET.SubElement(channel, "description").text = description
         ET.SubElement(channel, "language").text = language
-        ET.SubElement(channel, "lastBuildDate").text = _rfc822_datetime(
-            datetime.now(timezone.utc)
-        )
+        ET.SubElement(channel, "lastBuildDate").text = _rfc822_datetime(datetime.now(timezone.utc))
         ET.SubElement(channel, "generator").text = "AutoInfo"
 
         for e in entries:
@@ -315,7 +305,8 @@ class RSSDeliveryChannel(DeliveryChannel):
                 except (ValueError, TypeError):
                     pass
 
-        return ET.tostring(rss, encoding="utf-8", xml_declaration=True)
+        xml: bytes = ET.tostring(rss, encoding="utf-8", xml_declaration=True)
+        return xml
 
     @staticmethod
     def _entries_from_kb(domain: str | None) -> list[dict[str, Any]]:
@@ -344,10 +335,9 @@ class RSSDeliveryChannel(DeliveryChannel):
             # For simplicity we return a note that the file was generated.
             path = result.get("path", "")
             if path:
-                logger.info(
-                    "RSS feed content sourced from export_kb at %s", path
-                )
-            return result.get("entries", [])
+                logger.info("RSS feed content sourced from export_kb at %s", path)
+            entries: list[dict[str, Any]] = result.get("entries", [])
+            return entries
         except Exception as exc:
             logger.warning("export_kb RSS fallback failed: %s", exc)
             return []
@@ -461,39 +451,21 @@ class PodcastRSSDeliveryChannel(DeliveryChannel):
             )
 
         # Resolve metadata ---------------------------------------------------
-        feed_title = (
-            payload.get("title")
-            or config.get("title")
-            or _RSS_DEFAULT_TITLE
-        )
+        feed_title = payload.get("title") or config.get("title") or _RSS_DEFAULT_TITLE
         feed_description = (
-            payload.get("description")
-            or config.get("description")
-            or _RSS_DEFAULT_DESCRIPTION
+            payload.get("description") or config.get("description") or _RSS_DEFAULT_DESCRIPTION
         )
-        feed_author = str(
-            payload.get("author")
-            or config.get("author")
-            or "AutoInfo"
-        )
-        feed_link = str(
-            payload.get("link")
-            or config.get("link")
-            or feed_path
-        )
+        feed_author = str(payload.get("author") or config.get("author") or "AutoInfo")
+        feed_link = str(payload.get("link") or config.get("link") or feed_path)
         feed_language = str(
-            payload.get("language")
-            or config.get("language")
-            or _RSS_DEFAULT_LANGUAGE
+            payload.get("language") or config.get("language") or _RSS_DEFAULT_LANGUAGE
         )
         feed_image_url = str(payload.get("image_url", "") or config.get("image_url", ""))
         feed_explicit = str(payload.get("explicit", "") or config.get("explicit", "no"))
         feed_category = str(payload.get("category", "") or config.get("category", "Technology"))
         feed_subcategory = str(payload.get("subcategory", "") or config.get("subcategory", ""))
         base_url = str(
-            payload.get("base_url")
-            or config.get("base_url")
-            or "http://localhost:8741"
+            payload.get("base_url") or config.get("base_url") or "http://localhost:8741"
         ).rstrip("/")
 
         # Resolve episodes ---------------------------------------------------
@@ -536,11 +508,14 @@ class PodcastRSSDeliveryChannel(DeliveryChannel):
             out_path.write_bytes(xml_bytes)
             logger.info(
                 "Podcast RSS feed written to %s (%d episodes)",
-                out_path, len(episodes),
+                out_path,
+                len(episodes),
             )
         except OSError as exc:
             logger.error(
-                "Failed to write podcast RSS feed to %s: %s", feed_path, exc,
+                "Failed to write podcast RSS feed to %s: %s",
+                feed_path,
+                exc,
             )
             return DeliveryResult(
                 product_id=product.id,
@@ -584,6 +559,7 @@ class PodcastRSSDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             out_dir = _os.environ.get("AUTOINFO_RSS_DIR", _os.getcwd())
@@ -636,7 +612,8 @@ class PodcastRSSDeliveryChannel(DeliveryChannel):
             if not result.get("success"):
                 return []
 
-            return result.get("entries", [])
+            episodes: list[dict[str, Any]] = result.get("entries", [])
+            return episodes
         except Exception as exc:
             logger.warning("KB fallback for podcast episodes failed: %s", exc)
             return []
@@ -677,9 +654,7 @@ def _build_podcast_rss(
     ET.SubElement(channel, "link").text = link
     ET.SubElement(channel, "language").text = language
     ET.SubElement(channel, "description").text = description
-    ET.SubElement(channel, "lastBuildDate").text = _rfc822_datetime(
-        datetime.now(timezone.utc)
-    )
+    ET.SubElement(channel, "lastBuildDate").text = _rfc822_datetime(datetime.now(timezone.utc))
     ET.SubElement(channel, "generator").text = "AutoInfo"
 
     # itunes:* namespace elements
@@ -741,11 +716,15 @@ def _build_podcast_rss(
             enclosure_url = f"{base_url}/{enclosure_url.lstrip('/')}"
 
         if enclosure_url:
-            ET.SubElement(item, "enclosure", {
-                "url": enclosure_url,
-                "length": str(len(ep.get("audio_data", b"")) or 0),
-                "type": "audio/mpeg",
-            })
+            ET.SubElement(
+                item,
+                "enclosure",
+                {
+                    "url": enclosure_url,
+                    "length": str(len(ep.get("audio_data", b"")) or 0),
+                    "type": "audio/mpeg",
+                },
+            )
 
         # itunes:* per-episode metadata
         _itunes(item, "title", ep_title)
@@ -766,7 +745,8 @@ def _build_podcast_rss(
         if ep_explicit := ep.get("explicit", ""):
             _itunes(item, "explicit", str(ep_explicit))
 
-    return ET.tostring(rss, encoding="utf-8", xml_declaration=True)
+    xml: bytes = ET.tostring(rss, encoding="utf-8", xml_declaration=True)
+    return xml
 
 
 def _itunes(

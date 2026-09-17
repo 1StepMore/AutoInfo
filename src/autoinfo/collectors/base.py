@@ -43,7 +43,7 @@ class BaseHandler(ABC):
     source_name: str = "base"
 
     @abstractmethod
-    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:
+    def fetch(self, *args: Any, **kwargs: Any) -> list[Item] | list[dict[str, Any]]:
         """Fetch items from the source.
 
         Parameters (varies by handler type)
@@ -56,7 +56,9 @@ class BaseHandler(ABC):
 
         Returns
         -------
-        list[Item]
-            Zero or more collected items.
+        list[Item] | list[dict[str, Any]]
+            Zero or more collected items — :class:`Item` instances for the
+            handlers that build them directly, or raw ``dict`` payloads for
+            the handlers that expose :meth:`to_item` for the conversion.
         """
         ...

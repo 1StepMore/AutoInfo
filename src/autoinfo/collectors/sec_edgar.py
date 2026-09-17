@@ -36,9 +36,7 @@ DEFAULT_RATE_LIMIT: float = 0.1  # seconds between requests (<= 10 req/s)
 DEFAULT_USER_AGENT: str = "AutoInfoResearch/1.0 (contact: ops@autoinfo.ai)"
 COMPANY_TICKERS_URL: str = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL: str = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
-ARCHIVE_URL: str = (
-    "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{primary_doc}"
-)
+ARCHIVE_URL: str = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{primary_doc}"
 INTERESTING_FORMS: frozenset[str] = frozenset({"8-K", "10-K", "10-Q"})
 
 
@@ -86,9 +84,7 @@ class SecEdgarHandler(BaseHandler):
         self.source_name: str = str(config.get("source_name") or "SEC EDGAR")
         tickers_raw: str = str(config.get("tickers") or "AAPL")
         self.tickers: list[str] = [
-            t.strip().upper()
-            for t in tickers_raw.replace(";", ",").split(",")
-            if t.strip()
+            t.strip().upper() for t in tickers_raw.replace(";", ",").split(",") if t.strip()
         ]
         self.limit: int = int(config.get("limit") or DEFAULT_LIMIT)
         forms_raw = config.get("forms")
@@ -96,22 +92,14 @@ class SecEdgarHandler(BaseHandler):
             self.forms: frozenset[str] = INTERESTING_FORMS
         elif isinstance(forms_raw, str):
             self.forms = frozenset(
-                f.strip().upper()
-                for f in forms_raw.replace(";", ",").split(",")
-                if f.strip()
+                f.strip().upper() for f in forms_raw.replace(";", ",").split(",") if f.strip()
             )
         else:
-            self.forms = frozenset(
-                str(f).strip().upper() for f in forms_raw if str(f).strip()
-            )
+            self.forms = frozenset(str(f).strip().upper() for f in forms_raw if str(f).strip())
         rate_limit = config.get("rate_limit")
-        self.rate_limit: float = (
-            float(rate_limit) if rate_limit is not None else DEFAULT_RATE_LIMIT
-        )
+        self.rate_limit: float = float(rate_limit) if rate_limit is not None else DEFAULT_RATE_LIMIT
         self.timeout: int = int(config.get("timeout") or DEFAULT_TIMEOUT)
-        self.user_agent: str = str(
-            config.get("user_agent") or DEFAULT_USER_AGENT
-        )
+        self.user_agent: str = str(config.get("user_agent") or DEFAULT_USER_AGENT)
         self._cik_map: dict[str, dict[str, Any]] = {}
         self._last_request_time: float = 0.0
 
@@ -141,9 +129,7 @@ class SecEdgarHandler(BaseHandler):
     def _load_ticker_map(self) -> dict[str, dict[str, Any]]:
         """Fetch the ticker → CIK map, keyed by uppercase ticker."""
         self._wait_for_rate_limit()
-        resp = httpx.get(
-            COMPANY_TICKERS_URL, headers=self._headers(), timeout=self.timeout
-        )
+        resp = httpx.get(COMPANY_TICKERS_URL, headers=self._headers(), timeout=self.timeout)
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()
         result: dict[str, dict[str, Any]] = {}
@@ -162,9 +148,7 @@ class SecEdgarHandler(BaseHandler):
             return "", ""
         return str(entry.get("cik_str") or ""), str(entry.get("title") or "")
 
-    def _fetch_filings(
-        self, cik: str, company: str, limit: int
-    ) -> list[dict[str, Any]]:
+    def _fetch_filings(self, cik: str, company: str, limit: int) -> list[dict[str, Any]]:
         """Fetch recent 8-K / 10-K / 10-Q filings for a CIK."""
         if limit <= 0:
             return []
@@ -180,9 +164,7 @@ class SecEdgarHandler(BaseHandler):
         dates: list[Any] = recent.get("filingDate") or []
         primary_docs: list[Any] = recent.get("primaryDocument") or []
         report_dates: list[Any] = recent.get("reportDate") or []
-        n = min(
-            len(forms), len(accessions), len(dates), len(primary_docs)
-        )
+        n = min(len(forms), len(accessions), len(dates), len(primary_docs))
 
         filings: list[dict[str, Any]] = []
         for i in range(n):
@@ -227,7 +209,7 @@ class SecEdgarHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch(self, query: str = "", limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:  # type: ignore[override]
+    def fetch(self, query: str = "", limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch recent filings for all configured tickers.
 
         Args:
@@ -247,18 +229,12 @@ class SecEdgarHandler(BaseHandler):
                 try:
                     cik, company = self._lookup_cik(ticker)
                     if not cik:
-                        logger.warning(
-                            "SEC EDGAR: no CIK found for ticker %s", ticker
-                        )
+                        logger.warning("SEC EDGAR: no CIK found for ticker %s", ticker)
                         continue
-                    filings = self._fetch_filings(
-                        cik, company, limit - len(results)
-                    )
+                    filings = self._fetch_filings(cik, company, limit - len(results))
                     results.extend(filings)
                 except Exception as exc:
-                    logger.warning(
-                        "SEC EDGAR ticker %s fetch failed: %s", ticker, exc
-                    )
+                    logger.warning("SEC EDGAR ticker %s fetch failed: %s", ticker, exc)
                     continue
                 if len(results) >= limit:
                     break

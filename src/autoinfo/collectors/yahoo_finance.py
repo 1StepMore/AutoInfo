@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import feedparser
@@ -158,7 +158,7 @@ def _normalise_date(date_str: str) -> str:
     try:
         from dateutil import parser as dateutil_parser
 
-        dt = dateutil_parser.parse(date_str)
+        dt: datetime = dateutil_parser.parse(date_str)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.isoformat()

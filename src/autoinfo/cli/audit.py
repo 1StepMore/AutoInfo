@@ -11,6 +11,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
 import typer
 
@@ -63,7 +64,7 @@ def query_audit(
         raise typer.Exit(code=1)
 
     data = {
-        "entries": [e.to_dict() for e in entries],
+        "entries": [asdict(e) for e in entries],
         "count": len(entries),
     }
     if emit_if_global(data):

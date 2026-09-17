@@ -89,7 +89,7 @@ def classify_text(
         "Examples:\n"
         '- "I am happy" -> A1\n'
         '- "The mitochondria is the powerhouse of the cell" -> B2\n'
-        f'Language: {lang_name}\n\n'
+        f"Language: {lang_name}\n\n"
         f"Text: {text[:3000]}\n\n"
         "What is the CEFR level of this text? "
         "Output only the level (A1, A2, B1, B2, C1, or C2)."
@@ -118,7 +118,7 @@ def classify_text(
             api_key=api_key or None,
             timeout=timeout,
         )
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+        content: str = response.choices[0].message.content
         return _parse_level(content)
     except Exception as exc:
         logger.warning("CEFR classification failed: %s", exc)

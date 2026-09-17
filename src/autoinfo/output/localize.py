@@ -156,7 +156,8 @@ def _translate_segment_text(
         # answered with a JSON array); treat it as a failed translation.
         logger.warning(
             "localize_content returned non-str body (%s) for segment: %.60s",
-            type(translated).__name__, text[:60],
+            type(translated).__name__,
+            text[:60],
         )
         return text
     if not translated.strip():
@@ -186,13 +187,15 @@ def _qa_segment(
 
     pool: list[str] = []
     try:
-        config = load_config(get_config_path())
-        # Issue #195: resolve_llm_model raises when unconfigured — no silent
-        # hardcoded vendor default.  The raise is caught below and the empty
-        # pool surfaces through run_back_translation_pipeline's own loud
-        # resolution (_resolve_default_model).
-        resolved = resolve_llm_model(config.llm)
-        pool = [resolved]
+        config_path = get_config_path()
+        if config_path is not None:
+            config = load_config(config_path)
+            # Issue #195: resolve_llm_model raises when unconfigured — no silent
+            # hardcoded vendor default.  The raise is caught below and the empty
+            # pool surfaces through run_back_translation_pipeline's own loud
+            # resolution (_resolve_default_model).
+            resolved = resolve_llm_model(config.llm)
+            pool = [resolved]
     except Exception:
         pool = []
 
@@ -243,17 +246,22 @@ def _resolve_source_language(domain: str, source_lang: str) -> str:
     if source_lang:
         return source_lang
     try:
-        config = load_config(get_config_path())
-        for d in config.domains:
-            if d.name == domain and d.default_language:
-                return d.default_language
+        config_path = get_config_path()
+        if config_path is not None:
+            config = load_config(config_path)
+            for d in config.domains:
+                if d.name == domain and d.default_language:
+                    return d.default_language
     except Exception:
         pass
     return "en"
 
 
 def _generate_product_text(
-    domain: str, product: str, period: str, max_items: int = 0,
+    domain: str,
+    product: str,
+    period: str,
+    max_items: int = 0,
     include_stale: bool = False,
 ) -> tuple[str, str]:
     """Generate the product markdown; return (markdown, generator-name)."""
@@ -270,7 +278,9 @@ def _generate_product_text(
         )
     if product in _DIGEST_FAMILY:
         kwargs: dict[str, Any] = {
-            "domain": domain, "period": period, "format": "markdown",
+            "domain": domain,
+            "period": period,
+            "format": "markdown",
             "product_template": template,
         }
         if max_items:
@@ -321,9 +331,7 @@ def localize_product(
     )
 
     segments = _segment_markdown(markdown)
-    translatable_idx = [
-        i for i, seg in enumerate(segments) if seg["kind"] not in PROTECTED_KINDS
-    ]
+    translatable_idx = [i for i, seg in enumerate(segments) if seg["kind"] not in PROTECTED_KINDS]
     sample_size = max(qa_min_samples, round(len(translatable_idx) * qa_sample_rate))
     stride = max(1, -(-len(translatable_idx) // sample_size))
     sampled_idx = set(translatable_idx[::stride])
@@ -353,7 +361,7 @@ def localize_product(
     file_path.write_text(localized_md, encoding="utf-8")
 
     avg_score = round(sum(qa_scores) / len(qa_scores), 1) if qa_scores else 100.0
-    entry = {
+    entry: dict[str, Any] = {
         "product": product,
         "domain": domain,
         "language": target_lang,
@@ -384,8 +392,14 @@ def localize_product(
 
     logger.info(
         "localized %s/%s -> %s (qa=%s, avg=%.1f, refined=%d, failed=%d) at %s",
-        domain, product, target_lang, entry["qa"]["gate"], avg_score,
-        refined_count, failed_count, file_path,
+        domain,
+        product,
+        target_lang,
+        entry["qa"]["gate"],
+        avg_score,
+        refined_count,
+        failed_count,
+        file_path,
     )
     return {
         "file_path": str(file_path),

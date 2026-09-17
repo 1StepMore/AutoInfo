@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    import fitz  # type: ignore[import-untyped]
+    import fitz
 except ImportError:
-    fitz = None  # type: ignore[assignment]
+    fitz = None
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -269,8 +269,7 @@ class PDFHandler(BaseHandler):
         """Raise ``ImportError`` when PyMuPDF is not installed."""
         if fitz is None:
             raise ImportError(
-                "PyMuPDF is required for PDF extraction. "
-                "Install it with: pip install autoinfo[pdf]"
+                "PyMuPDF is required for PDF extraction. Install it with: pip install autoinfo[pdf]"
             )
 
 

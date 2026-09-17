@@ -8,11 +8,16 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    # Import-cycle-free type-only import: ``autoinfo.kb`` is loaded lazily at
+    # runtime inside ``ContentBasedEngine._get_kb``.
+    from autoinfo.kb import KBStore
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +80,9 @@ class ContentBasedEngine(RecommendationEngine):
     FRESHNESS_DAYS: int = 30
 
     def __init__(self) -> None:
-        self._kb_store = None  # Lazy-loaded KBStore
+        self._kb_store: KBStore | None = None  # Lazy-loaded KBStore
 
-    def _get_kb(self):
+    def _get_kb(self) -> KBStore | None:
         """Lazy-load KBStore."""
         if self._kb_store is None:
             try:
@@ -155,7 +160,9 @@ class ContentBasedEngine(RecommendationEngine):
                 vec_score = 1.0 if eid in vec_ids else 0.0
                 fresh_score = self._freshness_score(entry)
                 item_domain = str(entry.get("domain", ""))
-                dom_score = 1.0 if (dom and item_domain and dom.lower() in item_domain.lower()) else 0.0
+                dom_score = (
+                    1.0 if (dom and item_domain and dom.lower() in item_domain.lower()) else 0.0
+                )
 
                 composite = (
                     kw_score * self.WEIGHT_KEYWORD * 100
@@ -236,7 +243,7 @@ class ContentBasedEngine(RecommendationEngine):
         try:
             from dateutil import parser
 
-            dt = parser.parse(str(collected_at))
+            dt: datetime = parser.parse(str(collected_at))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
@@ -275,7 +282,9 @@ class ContentBasedEngine(RecommendationEngine):
                 domain=domain or "",
                 limit=limit,
             )
-            entries: list[dict[str, Any]] = result.get("entries", []) if isinstance(result, dict) else []
+            entries: list[dict[str, Any]] = (
+                result.get("entries", []) if isinstance(result, dict) else []
+            )
 
             scored: list[ScoredItem] = []
             for item in entries:

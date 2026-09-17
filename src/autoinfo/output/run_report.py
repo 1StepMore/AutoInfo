@@ -99,7 +99,7 @@ def _iter_steps(result: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
 def _step_decision(
     seq: int,
     session_id: str,
-    scenario: str,
+    scenario: str | None,
     step_kind: str,
     step: dict[str, Any],
 ) -> dict[str, Any]:

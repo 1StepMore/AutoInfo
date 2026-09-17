@@ -214,11 +214,13 @@ class G0SchemaIntegrity:
             for fname in self.MANDATORY_FIELDS:
                 val = item.get(fname)
                 if not isinstance(val, str) or not val.strip():
-                    errors.append({
-                        "field": fname,
-                        "reason": "missing or empty",
-                        "value": val,
-                    })
+                    errors.append(
+                        {
+                            "field": fname,
+                            "reason": "missing or empty",
+                            "value": val,
+                        }
+                    )
 
             frontmatter = item.get("frontmatter")
             if frontmatter is not None:
@@ -226,17 +228,21 @@ class G0SchemaIntegrity:
                     try:
                         yaml.safe_load(frontmatter)
                     except yaml.YAMLError as exc:
-                        errors.append({
-                            "field": "frontmatter",
-                            "reason": f"invalid YAML: {exc}",
-                            "value": frontmatter[:200],
-                        })
+                        errors.append(
+                            {
+                                "field": "frontmatter",
+                                "reason": f"invalid YAML: {exc}",
+                                "value": frontmatter[:200],
+                            }
+                        )
                 elif not isinstance(frontmatter, str):
-                    errors.append({
-                        "field": "frontmatter",
-                        "reason": "not a string",
-                        "value": str(type(frontmatter)),
-                    })
+                    errors.append(
+                        {
+                            "field": "frontmatter",
+                            "reason": "not a string",
+                            "value": str(type(frontmatter)),
+                        }
+                    )
 
             return errors
 
@@ -665,9 +671,7 @@ class G2Dedup:
         if item_pmid:
             for entry in existing_entries:
                 entry_pmid = (
-                    entry.custom_fields.get("pmid")
-                    if hasattr(entry, "custom_fields")
-                    else None
+                    entry.custom_fields.get("pmid") if hasattr(entry, "custom_fields") else None
                 )
                 if entry_pmid and str(entry_pmid) == str(item_pmid):
                     return QualityResult(
@@ -721,9 +725,7 @@ class G2Dedup:
 
                 entry_title = (entry.title or "").strip().lower()
                 if entry_title:
-                    similarity = difflib.SequenceMatcher(
-                        None, item_title, entry_title
-                    ).ratio()
+                    similarity = difflib.SequenceMatcher(None, item_title, entry_title).ratio()
                     if similarity >= 0.85:
                         logger.info(
                             "G2-Dedup: duplicate detected (fuzzy title: %.2f) - "
@@ -810,14 +812,14 @@ class G3RelevanceScoring:
 
     def __init__(
         self,
-        model: str = "",
+        model: str | None = "",
         timeout: float | None = None,
     ) -> None:
-        # Issue #195: an empty model resolves to the deployment's configured
-        # model (config.llm) when available; when the deployment configured
-        # none, it stays "" and G3 falls back to lexical scoring (G3 is NOT a
-        # judgment gate — LLM-unavailable is a first-class soft fallback, not
-        # an error).  Never a hardcoded vendor default.
+        # Issue #195: an empty/None model resolves to the deployment's
+        # configured model (config.llm) when available; when the deployment
+        # configured none, it stays "" and G3 falls back to lexical scoring
+        # (G3 is NOT a judgment gate — LLM-unavailable is a first-class soft
+        # fallback, not an error).  Never a hardcoded vendor default.
         if not model:
             model = _resolve_optional_llm_model()
         self._model = model
@@ -913,7 +915,9 @@ class G3RelevanceScoring:
         if gate_config is not None and gate_config.retries > 0:
             if self._model:
                 score_val, llm_retries_used = self._llm_score(
-                    text, keywords, gate_config,
+                    text,
+                    keywords,
+                    gate_config,
                 )
                 if score_val is None:
                     # Issue #172: all LLM retries exhausted (e.g. no API key,
@@ -952,9 +956,7 @@ class G3RelevanceScoring:
                 "llm_failed": llm_failed,
             }
             if scoring_method == "lexical":
-                details["keyword_matches"] = sum(
-                    1 for kw in keywords if kw.lower() in text
-                )
+                details["keyword_matches"] = sum(1 for kw in keywords if kw.lower() in text)
                 details["total_keywords"] = len(keywords)
             if action == "archive":
                 # Issue #79: with a broad union keyword set (issue #68), a
@@ -1004,9 +1006,7 @@ class G3RelevanceScoring:
             "llm_failed": llm_failed,
         }
         if scoring_method == "lexical":
-            details_pass["keyword_matches"] = sum(
-                1 for kw in keywords if kw.lower() in text
-            )
+            details_pass["keyword_matches"] = sum(1 for kw in keywords if kw.lower() in text)
             details_pass["total_keywords"] = len(keywords)
 
         return QualityResult(
@@ -1037,9 +1037,7 @@ class G3RelevanceScoring:
         keyword_str = ", ".join(keywords[:20])  # cap keywords to 20
 
         # Build retry chain (same pattern as G4FactualConsistency.check)
-        retry_models = (
-            list(gate_config.retry_models) if gate_config.retry_models else []
-        )
+        retry_models = list(gate_config.retry_models) if gate_config.retry_models else []
         models = [self._model] + retry_models
         max_attempts = gate_config.retries
 
@@ -1354,10 +1352,7 @@ class G4FactualConsistency:
             model = models[min(attempt, len(models) - 1)]
 
             try:
-                user_content = (
-                    f"SOURCE TEXT: {item.content[:4000]}\n\n"
-                    f"SUMMARY: {extraction.tl_dr}"
-                )
+                user_content = f"SOURCE TEXT: {item.content[:4000]}\n\nSUMMARY: {extraction.tl_dr}"
 
                 if attempt > 0 and retry_log:
                     prev = retry_log[-1]
@@ -1403,13 +1398,15 @@ class G4FactualConsistency:
                         },
                     )
 
-                retry_log.append({
-                    "attempt": attempt + 1,
-                    "model": model,
-                    "contradiction": True,
-                    "explanation": explanation,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                retry_log.append(
+                    {
+                        "attempt": attempt + 1,
+                        "model": model,
+                        "contradiction": True,
+                        "explanation": explanation,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
 
             except (json.JSONDecodeError, KeyError, AttributeError) as exc:
                 logger.warning("G4 malformed LLM response (attempt %d): %s", attempt + 1, exc)
@@ -1428,12 +1425,14 @@ class G4FactualConsistency:
                             "explanation": f"Failed to parse LLM response: {exc}",
                         },
                     )
-                retry_log.append({
-                    "attempt": attempt + 1,
-                    "model": model,
-                    "error": f"Failed to parse LLM response: {exc}",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                retry_log.append(
+                    {
+                        "attempt": attempt + 1,
+                        "model": model,
+                        "error": f"Failed to parse LLM response: {exc}",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 last_error = str(exc)
 
             except Exception as exc:
@@ -1452,12 +1451,14 @@ class G4FactualConsistency:
                             "explanation": f"LLM check failed: {exc}",
                         },
                     )
-                retry_log.append({
-                    "attempt": attempt + 1,
-                    "model": model,
-                    "error": f"LLM check failed: {exc}",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                retry_log.append(
+                    {
+                        "attempt": attempt + 1,
+                        "model": model,
+                        "error": f"LLM check failed: {exc}",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 last_error = str(exc)
 
         if gate_config is not None and gate_config.retries > 0:
@@ -1479,17 +1480,17 @@ class G4FactualConsistency:
                     "retry_count": len(retry_log),
                     "retries": list(retry_log),
                     "explanation": (
-                        f"All {max_attempts} attempt(s) exhausted. "
-                        f"Last error: {last_error}" if last_error
-                        else f"All {max_attempts} attempt(s) exhausted. "
-                        f"Summary contradicts source."
+                        f"All {max_attempts} attempt(s) exhausted. Last error: {last_error}"
+                        if last_error
+                        else f"All {max_attempts} attempt(s) exhausted. Summary contradicts source."
                     ),
                 },
             )
 
         fallback_explanation = (
             retry_log[0].get("explanation", "Contradiction detected")
-            if retry_log else "Contradiction detected"
+            if retry_log
+            else "Contradiction detected"
         )
         return QualityResult(
             gate_name="G4-SummaryFactual",
@@ -1652,8 +1653,7 @@ class G5TranslationAccuracy:
                     {
                         "role": "user",
                         "content": (
-                            f"SOURCE TEXT: {item.content[:4000]}\n\n"
-                            f"TRANSLATION: {translation}"
+                            f"SOURCE TEXT: {item.content[:4000]}\n\nTRANSLATION: {translation}"
                         ),
                     },
                 ],
@@ -1666,7 +1666,7 @@ class G5TranslationAccuracy:
                 disable_thinking=False,
             )
 
-            content: str = response.choices[0].message.content  # type: ignore[union-attr]
+            content: str = response.choices[0].message.content
             parsed = parse_json_response(content)
             faithful = bool(parsed.get("faithful", False))
             explanation = str(parsed.get("explanation", ""))
@@ -1913,10 +1913,7 @@ class D1ProductCompleteness:
                     "presentation_format": True,
                     "missing_sections": [],
                     "empty_sections": ["body"],
-                    "error": (
-                        f"presentation incomplete: only {text_len} content "
-                        "chars"
-                    ),
+                    "error": (f"presentation incomplete: only {text_len} content chars"),
                 },
             )
 
@@ -1959,10 +1956,7 @@ class D1ProductCompleteness:
                 "missing_sections": missing,
                 "empty_sections": empty,
                 "required_sections": list(self.required_sections),
-                "error": (
-                    f"Missing sections: {missing}; "
-                    f"empty sections: {empty}"
-                ),
+                "error": (f"Missing sections: {missing}; empty sections: {empty}"),
             },
         )
 
@@ -1990,9 +1984,7 @@ class D1ProductCompleteness:
             from autoinfo.models import AlertRule, Item  # noqa: PLC0415
 
             domain = str(context.get("domain", product_output.get("domain", "unknown")))
-            product_id = str(
-                context.get("product_id", product_output.get("product_id", "unknown"))
-            )
+            product_id = str(context.get("product_id", product_output.get("product_id", "unknown")))
 
             parts: list[str] = []
             if missing:
@@ -2046,10 +2038,23 @@ class _HTMLValidator(html.parser.HTMLParser):
     unclosed tags can be detected.
     """
 
-    _SELF_CLOSING = frozenset({
-        "br", "hr", "img", "input", "meta", "link", "area", "base",
-        "col", "embed", "source", "track", "wbr",
-    })
+    _SELF_CLOSING = frozenset(
+        {
+            "br",
+            "hr",
+            "img",
+            "input",
+            "meta",
+            "link",
+            "area",
+            "base",
+            "col",
+            "embed",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -2170,18 +2175,20 @@ class D2FormatIntegrity:
         for entry in entries:
             # Prefer explicit ``tos_classification`` field; fall back to
             # ``quality_tier`` → tier-to-TOS mapping
-            tos: str = entry.get("tos_classification", "")  # type: ignore[assignment]
+            tos: str = entry.get("tos_classification", "")
             if not tos:
                 tier: int = entry.get("quality_tier", 1)
                 tos = self._TIER_TOS_MAP.get(tier, "open")
 
             if tos in self._RESTRICTED_TOS:
-                restricted_entries.append({
-                    "entry_id": entry.get("entry_id", ""),
-                    "title": entry.get("title", ""),
-                    "tos_classification": tos,
-                    "source_url": entry.get("source_url", ""),
-                })
+                restricted_entries.append(
+                    {
+                        "entry_id": entry.get("entry_id", ""),
+                        "title": entry.get("title", ""),
+                        "tos_classification": tos,
+                        "source_url": entry.get("source_url", ""),
+                    }
+                )
 
         if not restricted_entries:
             return QualityResult(
@@ -2630,11 +2637,13 @@ class D3Freshness:
                     entry_date = entry_date.replace(tzinfo=timezone.utc)
 
                 if entry_date < cutoff:
-                    stale_entries.append({
-                        "title": entry.get("title", "(untitled)"),
-                        "collected_at": entry.get("collected_at", str(raw_date)),
-                        "age_days": (datetime.now(timezone.utc) - entry_date).days,
-                    })
+                    stale_entries.append(
+                        {
+                            "title": entry.get("title", "(untitled)"),
+                            "collected_at": entry.get("collected_at", str(raw_date)),
+                            "age_days": (datetime.now(timezone.utc) - entry_date).days,
+                        }
+                    )
             except (ValueError, TypeError):
                 # Unparseable date — skip
                 continue
@@ -2825,20 +2834,24 @@ def check_terminology(
 
         if term_type == "do_not_translate":
             if term.lower() not in target.lower():
-                violations.append({
-                    "term": term,
-                    "expected": f"present as '{term}'",
-                    "actual": "missing or translated",
-                })
+                violations.append(
+                    {
+                        "term": term,
+                        "expected": f"present as '{term}'",
+                        "actual": "missing or translated",
+                    }
+                )
 
         elif term_type == "preferred":
             preferred = config.get("preferred", "")
             if preferred and preferred not in target:
-                violations.append({
-                    "term": term,
-                    "expected": preferred,
-                    "actual": "missing preferred translation",
-                })
+                violations.append(
+                    {
+                        "term": term,
+                        "expected": preferred,
+                        "actual": "missing preferred translation",
+                    }
+                )
 
     return {"passed": len(violations) == 0, "violations": violations}
 
@@ -2940,8 +2953,15 @@ def llm_judge(
         # Issue #195: an LLM failure is NOT a genuine all-zero verdict — it
         # could not judge.  judged=False lets consumers distinguish
         # NOT_JUDGED from a real score of 0 (never silent PASS).
-        return {"faithfulness": 0, "terminology": 0, "style": 0, "readability": 0,
-                "issues": [f"LLM eval failed: {e}"], "judged": False, "error": str(e)}
+        return {
+            "faithfulness": 0,
+            "terminology": 0,
+            "style": 0,
+            "readability": 0,
+            "issues": [f"LLM eval failed: {e}"],
+            "judged": False,
+            "error": str(e),
+        }
 
     return {
         "faithfulness": max(0, min(100, int(parsed.get("faithfulness", 0)))),
@@ -2986,8 +3006,7 @@ def _resolve_llm_model() -> str:
         raise
     except Exception as exc:
         raise JudgmentModelNotConfiguredError(
-            f"No LLM model configured: set llm.model in .autoinfo/config.yaml "
-            f"({exc})"
+            f"No LLM model configured: set llm.model in .autoinfo/config.yaml ({exc})"
         ) from exc
 
 
@@ -3110,9 +3129,7 @@ def run_quality_gates(
 
     # Validate gate_config type
     if gate_config is not None and not isinstance(gate_config, dict):
-        logger.warning(
-            "Invalid gate_config type '%s', ignoring", type(gate_config).__name__
-        )
+        logger.warning("Invalid gate_config type '%s', ignoring", type(gate_config).__name__)
         gate_config = None
 
     source_config: dict[str, Any] | None = ctx.get("source_config")
@@ -3199,11 +3216,13 @@ def find_similar_items(query: str, threshold: float = 0.8) -> list[dict[str, Any
         similarity = SequenceMatcher(None, query_lower, text).ratio()
 
         if similarity >= threshold:
-            similar.append({
-                "entry_id": str(entry.get("entry_id", "")),
-                "similarity": float(similarity),
-                "title": title,
-            })
+            similar.append(
+                {
+                    "entry_id": str(entry.get("entry_id", "")),
+                    "similarity": float(similarity),
+                    "title": title,
+                }
+            )
 
     return sorted(similar, key=lambda x: x["similarity"], reverse=True)[:20]
 
@@ -3250,9 +3269,7 @@ def merge_items(item_ids: list[str], strategy: str = "simple") -> dict[str, Any]
         return {"error": "Need at least 2 items to merge"}
 
     if strategy == "simple":
-        merged_content = "\n\n---\n\n".join(
-            str(i.get("content", "")) for i in items
-        )
+        merged_content = "\n\n---\n\n".join(str(i.get("content", "")) for i in items)
     elif strategy == "title_first":
         merged_content = "# " + str(items[0].get("title", "")) + "\n\n"
         for idx, item in enumerate(items):
@@ -3260,9 +3277,7 @@ def merge_items(item_ids: list[str], strategy: str = "simple") -> dict[str, Any]
             merged_content += f"## {title}\n\n"
             merged_content += str(item.get("content", "")) + "\n\n"
     else:
-        merged_content = "\n\n---\n\n".join(
-            str(i.get("content", "")) for i in items
-        )
+        merged_content = "\n\n---\n\n".join(str(i.get("content", "")) for i in items)
 
     merged_entry: dict[str, Any] = {
         "title": f"Merge of {len(items)} items",

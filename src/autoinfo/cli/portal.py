@@ -10,6 +10,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 import typer
@@ -147,7 +148,7 @@ def history(
             limit=limit,
         )
         for entry in raw:
-            all_entries.append(entry.to_dict())
+            all_entries.append(asdict(entry))
 
     all_entries.sort(key=lambda e: e.get("last_attempt", ""), reverse=True)
     page = all_entries[:limit]
@@ -174,14 +175,14 @@ def history(
     typer.echo(f"Delivery history for '{user_id}' ({len(page)} entries):")
     typer.echo(header)
     typer.echo(sep)
-    for entry in page:
+    for row in page:
         typer.echo(
-            f"{entry.get('log_id', ''):<40} "
-            f"{entry.get('channel', ''):<12} "
-            f"{entry.get('message_type', ''):<12} "
-            f"{entry.get('status', ''):<10} "
-            f"{entry.get('attempt_count', 0):<8} "
-            f"{entry.get('last_attempt', ''):<30}"
+            f"{row.get('log_id', ''):<40} "
+            f"{row.get('channel', ''):<12} "
+            f"{row.get('message_type', ''):<12} "
+            f"{row.get('status', ''):<10} "
+            f"{row.get('attempt_count', 0):<8} "
+            f"{row.get('last_attempt', ''):<30}"
         )
     typer.echo(sep)
     typer.echo(f"Total: {len(page)} entries across {len(sub_ids)} subscription(s)")

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -62,7 +63,7 @@ def _load() -> tuple[Path, Config]:
     return cfg_path, config
 
 
-def _domain_dict(domain_cfg: DomainConfig) -> dict:
+def _domain_dict(domain_cfg: DomainConfig) -> dict[str, Any]:
     return {
         "name": domain_cfg.name,
         "description": domain_cfg.description,
@@ -412,7 +413,7 @@ def init(
     with open(cfg_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
-    domains_raw: list[dict] = raw.get("domains", []) or []
+    domains_raw: list[dict[str, Any]] = raw.get("domains", []) or []
     existing = next((d for d in domains_raw if d.get("name") == demo_name), None)
 
     if existing is None:

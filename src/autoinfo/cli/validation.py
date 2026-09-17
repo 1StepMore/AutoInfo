@@ -15,6 +15,8 @@ Subcommands:
 
 from __future__ import annotations
 
+from typing import Any
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -87,13 +89,13 @@ def list_cmd(
         )
 
 
-def _render_summary(scenarios: list[dict]) -> None:
+def _render_summary(scenarios: list[dict[str, Any]]) -> None:
     """Group scenarios by category; print functional vs regression counts.
 
     All counts are derived at runtime from the discovered scenarios — no
     hardcoded library totals.
     """
-    by_category: dict[str, list[dict]] = {}
+    by_category: dict[str, list[dict[str, Any]]] = {}
     for sc in scenarios:
         by_category.setdefault(sc.get("category", "general"), []).append(sc)
 

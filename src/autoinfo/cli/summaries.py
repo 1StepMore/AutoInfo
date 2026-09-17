@@ -185,7 +185,7 @@ def show(
         _print_summary_human(result)
 
 
-def _print_human(entries) -> None:
+def _print_human(entries: list[dict[str, Any]]) -> None:
     """Print entries in a human-readable table."""
     if not entries:
         typer.echo("No entries found.")

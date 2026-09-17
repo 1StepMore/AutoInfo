@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 from typing import Any
 
 from autoinfo.config import Config, EmailConfig, get_config_path, load_config
-from autoinfo.output import PERIOD_LABELS, generate_digest
+from autoinfo.output import PERIOD_LABELS, DeliveryOutput, generate_digest
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,7 @@ def send_digest(
 
     # --- Guard: email must be enabled ---
     if not email_cfg.enabled:
-        raise RuntimeError(
-            "Email delivery is not enabled. Set 'email.enabled: true' in config."
-        )
+        raise RuntimeError("Email delivery is not enabled. Set 'email.enabled: true' in config.")
 
     # --- Validate SMTP settings ---
     if not email_cfg.smtp_host:
@@ -77,7 +75,7 @@ def send_digest(
 
     # --- Generate digest content ---
     try:
-        digest_md = generate_digest(
+        digest_result = generate_digest(
             domain=domain,
             period=period,
             format="markdown",
@@ -86,6 +84,11 @@ def send_digest(
         )
     except ValueError as exc:
         raise RuntimeError(f"Digest generation failed: {exc}") from exc
+
+    # ``generate_digest`` returns a ``DeliveryOutput`` (carrying D1-D3 gate
+    # results) when delivery gates are configured for the domain; the email
+    # parts need the rendered body only.
+    digest_md = digest_result.output if isinstance(digest_result, DeliveryOutput) else digest_result
 
     digest_html = _md_to_html(digest_md)
 
@@ -108,10 +111,11 @@ def send_digest(
     # --- Send ---
     _send_smtp(email_cfg, msg)
 
+    recipients = email_cfg.to_addrs
     return {
         "success": True,
-        "message": f"Digest sent to {len(email_cfg.to_addrs)} recipient(s): {', '.join(email_cfg.to_addrs)}",
-        "recipients": email_cfg.to_addrs,
+        "message": f"Digest sent to {len(recipients)} recipient(s): {', '.join(recipients)}",
+        "recipients": recipients,
         "domain": domain,
         "period": period,
     }
@@ -143,7 +147,8 @@ def _md_to_html(md_text: str) -> str:
     try:
         import markdown as md_lib  # noqa: PLC0415 — deferred import
 
-        return md_lib.markdown(md_text, extensions=["fenced_code", "tables"])
+        html: str = md_lib.markdown(md_text, extensions=["fenced_code", "tables"])
+        return html
     except ImportError:
         logger.warning("markdown library not available — returning plain text as HTML")
         return f"<pre>{md_text}</pre>"
@@ -157,7 +162,11 @@ def _build_html_wrapper(body_html: str, domain: str, period: str) -> str:
 <head>
     <meta charset="utf-8">
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; line-height: 1.6; max-width: 700px; margin: 0 auto; padding: 20px; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #333; line-height: 1.6; max-width: 700px;
+            margin: 0 auto; padding: 20px;
+        }}
         h1 {{ color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }}
         h2 {{ color: #444; margin-top: 24px; }}
         a {{ color: #1a73e8; text-decoration: none; }}
@@ -166,7 +175,10 @@ def _build_html_wrapper(body_html: str, domain: str, period: str) -> str:
         .entry-title {{ font-size: 16px; font-weight: 600; }}
         .entry-summary {{ font-size: 14px; color: #555; margin-top: 4px; }}
         .entry-meta {{ font-size: 12px; color: #888; margin-top: 4px; }}
-        .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 12px; color: #888; }}
+        .footer {{
+            margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd;
+            font-size: 12px; color: #888;
+        }}
     </style>
 </head>
 <body>
@@ -276,9 +288,7 @@ def send_notification(
     email_cfg = config.email
 
     if not email_cfg.enabled:
-        raise RuntimeError(
-            "Email delivery is not enabled. Set 'email.enabled: true' in config."
-        )
+        raise RuntimeError("Email delivery is not enabled. Set 'email.enabled: true' in config.")
     if not email_cfg.smtp_host:
         raise RuntimeError("SMTP host not configured (email.smtp_host)")
     if not email_cfg.from_addr:
@@ -340,7 +350,9 @@ def _send_smtp_single(
 
         server.sendmail(email_cfg.from_addr, [recipient], msg.as_string())
 
-        logger.info("Notification sent to %s via %s:%d", recipient, email_cfg.smtp_host, email_cfg.smtp_port)
+        logger.info(
+            "Notification sent to %s via %s:%d", recipient, email_cfg.smtp_host, email_cfg.smtp_port
+        )
 
     except smtplib.SMTPException as exc:
         logger.error("SMTP delivery to %s failed: %s", recipient, exc)

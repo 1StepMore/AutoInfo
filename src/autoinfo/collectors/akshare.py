@@ -87,11 +87,7 @@ class AKShareHandler(BaseHandler):
             self.symbols: list[str] = []
         else:
             symbols_raw: str = str(config.get("symbols", DEFAULT_SYMBOLS) or "").strip()
-            self.symbols = [
-                s.strip()
-                for s in symbols_raw.replace(",", " ").split()
-                if s.strip()
-            ]
+            self.symbols = [s.strip() for s in symbols_raw.replace(",", " ").split() if s.strip()]
             if not self.symbols:
                 self.symbols = [DEFAULT_SYMBOLS]
         self.default_limit: int = int(config.get("limit", DEFAULT_LIMIT))
@@ -149,7 +145,7 @@ class AKShareHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:  # type: ignore[override]
+    def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch market data rows from AKShare.
 
         Args:
@@ -168,9 +164,7 @@ class AKShareHandler(BaseHandler):
             # installed; the ImportError is caught below.
             import akshare as ak  # noqa: PLC0415
         except ImportError:
-            logger.warning(
-                "akshare is not installed; install with 'pip install autoinfo[akshare]'"
-            )
+            logger.warning("akshare is not installed; install with 'pip install autoinfo[akshare]'")
             return []
 
         rows: list[dict[str, Any]] = []

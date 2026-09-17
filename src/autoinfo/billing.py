@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import stripe  # noqa: F401 — imported lazily in _ensure_stripe
 
 from autoinfo.models import UserProfile
+
+if TYPE_CHECKING:
+    from stripe.params.checkout import SessionCreateParamsLineItem
 
 logger = logging.getLogger(__name__)
 
@@ -123,19 +126,22 @@ def set_user_stripe_id(end_user_id: str, customer_id: str) -> None:
         _stripe_sync_failures += 1
         logger.warning(
             "STORAGE_CONNECTION_ERROR set_user_stripe_id user=%s error=%s",
-            end_user_id, exc,
+            end_user_id,
+            exc,
         )
     except stripe.error.StripeError as exc:
         _stripe_sync_failures += 1
         logger.warning(
             "STRIPE_API_ERROR set_user_stripe_id user=%s stripe_error=%s",
-            end_user_id, exc,
+            end_user_id,
+            exc,
         )
     except Exception as exc:
         _stripe_sync_failures += 1
         logger.warning(
             "SET_USER_STRIPE_UNKNOWN set_user_stripe_id user=%s error=%s",
-            end_user_id, exc,
+            end_user_id,
+            exc,
         )
 
 
@@ -171,6 +177,20 @@ def _configure_stripe() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _as_plain_dict(obj: Any) -> dict[str, Any]:
+    """Return a plain ``dict`` view of a Stripe SDK object.
+
+    ``stripe.StripeObject`` (stripe >= 12) is **not** a ``dict`` subclass and
+    exposes no ``.get()`` — only ``to_dict()`` / ``__getitem__`` /
+    ``__contains__``.  Plain dicts (webhook payloads, test doubles) are
+    returned unchanged so both shapes can be read with one dict API.
+    """
+    if isinstance(obj, dict):
+        return obj
+    data: dict[str, Any] = obj.to_dict()
+    return data
+
+
 def _get_or_create_customer(end_user_id: str, email: str = "", name: str = "") -> str:
     """Return existing Stripe customer ID, or create one for *end_user_id*."""
     cached_id = get_user_stripe_id(end_user_id)
@@ -183,13 +203,14 @@ def _get_or_create_customer(end_user_id: str, email: str = "", name: str = "") -
         name=name or end_user_id,
         metadata={"end_user_id": end_user_id},
     )
-    set_user_stripe_id(end_user_id, customer["id"])  # type: ignore[index]
+    customer_id: str = customer["id"]
+    set_user_stripe_id(end_user_id, customer_id)
     logger.info(
         "Created Stripe customer %s for end_user %s",
-        customer["id"],  # type: ignore[index]
+        customer_id,
         end_user_id,
     )
-    return customer["id"]  # type: ignore[index]
+    return customer_id
 
 
 def _sync_user_stripe_id(end_user_id: str, stripe_customer_id: str) -> bool:
@@ -207,34 +228,35 @@ def _sync_user_stripe_id(end_user_id: str, stripe_customer_id: str) -> bool:
         persisted = _db_get(end_user_id)
         if persisted != stripe_customer_id:
             logger.error(
-                "SYNC_MISMATCH _sync_user_stripe_id user=%s "
-                "operation=verify expected=%s got=%s",
-                end_user_id, stripe_customer_id, persisted,
+                "SYNC_MISMATCH _sync_user_stripe_id user=%s operation=verify expected=%s got=%s",
+                end_user_id,
+                stripe_customer_id,
+                persisted,
             )
             _stripe_sync_failures += 1
             return False
         return True
     except ConnectionError as exc:
         logger.error(
-            "STORAGE_CONNECTION_ERROR _sync_user_stripe_id user=%s "
-            "operation=verify error=%s",
-            end_user_id, exc,
+            "STORAGE_CONNECTION_ERROR _sync_user_stripe_id user=%s operation=verify error=%s",
+            end_user_id,
+            exc,
         )
         _stripe_sync_failures += 1
         return False
     except ValueError as exc:
         logger.error(
-            "STORAGE_VALUE_ERROR _sync_user_stripe_id user=%s "
-            "operation=verify error=%s",
-            end_user_id, exc,
+            "STORAGE_VALUE_ERROR _sync_user_stripe_id user=%s operation=verify error=%s",
+            end_user_id,
+            exc,
         )
         _stripe_sync_failures += 1
         return False
     except Exception as exc:
         logger.error(
-            "SYNC_UNKNOWN_ERROR _sync_user_stripe_id user=%s "
-            "operation=verify error=%s",
-            end_user_id, exc,
+            "SYNC_UNKNOWN_ERROR _sync_user_stripe_id user=%s operation=verify error=%s",
+            end_user_id,
+            exc,
         )
         _stripe_sync_failures += 1
         return False
@@ -299,7 +321,9 @@ def create_checkout_session(
     try:
         _configure_stripe()
         customer_id = _get_or_create_customer(
-            end_user_id, email=email, name=name,
+            end_user_id,
+            email=email,
+            name=name,
         )
 
         metadata: dict[str, str] = {"end_user_id": end_user_id}
@@ -308,14 +332,16 @@ def create_checkout_session(
 
         if mode == "payment":
             # One-time payment: use price_data with unit_amount
-            line_items = [{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {"name": product_id},
-                    "unit_amount": 0,  # 0 = pay-what-you-want / T11 determines actual amount
-                },
-                "quantity": 1,
-            }]
+            line_items: list[SessionCreateParamsLineItem] = [
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {"name": product_id},
+                        "unit_amount": 0,  # 0 = pay-what-you-want / T11 determines actual amount
+                    },
+                    "quantity": 1,
+                }
+            ]
         else:
             # Subscription mode: use existing price ID
             line_items = [{"price": product_id, "quantity": 1}]
@@ -328,15 +354,16 @@ def create_checkout_session(
             cancel_url=cancel_url,
             metadata=metadata,
         )
+        session_data = _as_plain_dict(session)
         logger.info(
             "Checkout session %s created for %s (mode=%s)",
-            session["id"],  # type: ignore[index]
+            session_data["id"],
             end_user_id,
             mode,
         )
         return {
-            "session_id": session["id"],  # type: ignore[index]
-            "url": session.get("url", ""),
+            "session_id": session_data["id"],
+            "url": session_data.get("url", ""),
             "customer_id": customer_id,
             "end_user_id": end_user_id,
             "mode": mode,
@@ -449,8 +476,7 @@ def _handle_checkout_completed(event: dict[str, Any]) -> dict[str, Any]:
             )
 
         logger.info(
-            "checkout.session.completed (payment) for %s article=%s "
-            "entitlement=%s",
+            "checkout.session.completed (payment) for %s article=%s entitlement=%s",
             end_user_id,
             article_id or "(none)",
             entitlement.get("reason") if article_id else "no_article",
@@ -615,13 +641,9 @@ def get_subscription_status(end_user_id: str) -> dict[str, Any]:
         try:
             _configure_stripe()
             sub = stripe.Subscription.retrieve(subscription_id)
-            stripe_status = sub.get("status", "unknown")  # type: ignore[union-attr]
-            plan = (
-                sub.get("items", {})  # type: ignore[union-attr]
-                .get("data", [{}])[0]
-                .get("price", {})
-                .get("id", "free")
-            )
+            sub_data = _as_plain_dict(sub)
+            stripe_status = sub_data.get("status", "unknown")
+            plan = sub_data.get("items", {}).get("data", [{}])[0].get("price", {}).get("id", "free")
         except Exception:
             logger.warning(
                 "Failed to retrieve Stripe subscription %s for %s",
@@ -673,7 +695,9 @@ def _check_article_entitlement(user_id: str, article_id: str) -> bool:
     except Exception:
         logger.debug(
             "Article entitlement check failed for user=%s article=%s",
-            user_id, article_id, exc_info=True,
+            user_id,
+            article_id,
+            exc_info=True,
         )
         return False
 
@@ -752,13 +776,13 @@ def check_access(
         }
 
     # --- Fast path: check UserProfile.tier (no Stripe dependency) ----------
-    TIER_MAP: dict[str, int] = {"free": 0, "premium": 1, "enterprise": 2}
-    required_tier_num = TIER_MAP.get(access_level, 0)
+    tier_map: dict[str, int] = {"free": 0, "premium": 1, "enterprise": 2}
+    required_tier_num = tier_map.get(access_level, 0)
 
     profile = _load_user_profile(end_user_id)
     if profile is not None:
         user_tier = getattr(profile, "tier", "free") or "free"
-        user_tier_num = TIER_MAP.get(user_tier, 0)
+        user_tier_num = tier_map.get(user_tier, 0)
         if user_tier_num >= required_tier_num:
             return {
                 "allowed": True,
@@ -784,7 +808,8 @@ def check_access(
     if access_level == "premium":
         # Active profile AND active/trial Stripe status = paying user
         is_active = profile_status in ("active",) and stripe_status in (
-            "active", "trialing",
+            "active",
+            "trialing",
         )
         if is_active:
             return {

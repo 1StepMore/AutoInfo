@@ -228,7 +228,7 @@ def list_alert_rules(domain: str | None = None) -> list[AlertRule]:
 # ---------------------------------------------------------------------------
 
 
-def evaluate_budget_alerts() -> list:
+def evaluate_budget_alerts() -> list[dict[str, Any]]:
     """Evaluate spend against configured budget thresholds.
 
     Queries the :class:`CostMeter` for total spend and compares it against
@@ -262,12 +262,14 @@ def evaluate_budget_alerts() -> list:
         alerts: list[dict[str, object]] = []
         for threshold in thresholds:
             if current_spend >= threshold:
-                alerts.append({
-                    "type": "budget_threshold",
-                    "threshold": threshold,
-                    "current_spend": current_spend,
-                    "severity": "warning" if threshold < 100 else "critical",
-                })
+                alerts.append(
+                    {
+                        "type": "budget_threshold",
+                        "threshold": threshold,
+                        "current_spend": current_spend,
+                        "severity": "warning" if threshold < 100 else "critical",
+                    }
+                )
 
         return alerts
     except Exception:
@@ -275,7 +277,7 @@ def evaluate_budget_alerts() -> list:
         return []
 
 
-def execute_auto_remediation(alert: dict) -> dict:
+def execute_auto_remediation(alert: dict[str, Any]) -> dict[str, Any]:
     """Execute auto-remediation actions for critical alerts.
 
     For critical-severity budget alerts this logs a warning and records
@@ -351,8 +353,7 @@ def check_alerts(item: Item, domain: str) -> list[dict[str, Any]]:
 
         # --- Match!  Send notification ---------------------------------------
         logger.info(
-            "Alert rule '%s' matched item '%s' "
-            "(relevance=%.1f, threshold=%.1f, channel=%s)",
+            "Alert rule '%s' matched item '%s' (relevance=%.1f, threshold=%.1f, channel=%s)",
             rule.id,
             item.id,
             relevance_score,
@@ -413,9 +414,7 @@ def check_source_credentials(domain: str) -> list[dict[str, str]]:
     return missing
 
 
-def _load_raw_source_settings(
-    config_path: str | Path, domain: str
-) -> dict[str, dict[str, Any]]:
+def _load_raw_source_settings(config_path: str | Path, domain: str) -> dict[str, dict[str, Any]]:
     """Return ``{source_name: settings}`` from the raw YAML (env refs unresolved)."""
     try:
         with open(config_path, "r", encoding="utf-8") as fh:
@@ -430,9 +429,7 @@ def _load_raw_source_settings(
         for source_raw in domain_raw.get("sources", []) or []:
             if isinstance(source_raw, dict) and source_raw.get("name"):
                 settings = source_raw.get("settings")
-                result[str(source_raw["name"])] = (
-                    settings if isinstance(settings, dict) else {}
-                )
+                result[str(source_raw["name"])] = settings if isinstance(settings, dict) else {}
     return result
 
 
@@ -642,9 +639,7 @@ def _missing_credential_for(
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_notification(
-    rule: AlertRule, item: Item, domain: str
-) -> dict[str, Any]:
+def _dispatch_notification(rule: AlertRule, item: Item, domain: str) -> dict[str, Any]:
     """Dispatch a notification for a matched alert rule.
 
     Routes to the appropriate channel implementation.
@@ -697,17 +692,14 @@ def _load_webhook_urls(domain: str) -> list[str]:
     return []
 
 
-def _notify_webhook(
-    rule: AlertRule, item: Item, domain: str
-) -> dict[str, Any]:
+def _notify_webhook(rule: AlertRule, item: Item, domain: str) -> dict[str, Any]:
     """Send an alert via webhook POST to the domain's configured URLs."""
     # Load domain webhook URLs from config
     urls = _load_webhook_urls(domain)
 
     if not urls:
         logger.warning(
-            "Alert rule '%s' uses webhook channel but no webhook URLs "
-            "configured for domain '%s'",
+            "Alert rule '%s' uses webhook channel but no webhook URLs configured for domain '%s'",
             rule.id,
             domain,
         )
@@ -763,16 +755,13 @@ def _build_source_alert_payload(
     }
 
 
-def _notify_source_webhook(
-    rule: AlertRule, cred: dict[str, str], domain: str
-) -> dict[str, Any]:
+def _notify_source_webhook(rule: AlertRule, cred: dict[str, str], domain: str) -> dict[str, Any]:
     """Send a source-credential alert via webhook POST (mirror of _notify_webhook)."""
     urls = _load_webhook_urls(domain)
 
     if not urls:
         logger.warning(
-            "Alert rule '%s' uses webhook channel but no webhook URLs "
-            "configured for domain '%s'",
+            "Alert rule '%s' uses webhook channel but no webhook URLs configured for domain '%s'",
             rule.id,
             domain,
         )
@@ -807,9 +796,7 @@ def _notify_source_webhook(
     }
 
 
-def _notify_source_email(
-    rule: AlertRule, cred: dict[str, str], domain: str
-) -> dict[str, Any]:
+def _notify_source_email(rule: AlertRule, cred: dict[str, str], domain: str) -> dict[str, Any]:
     """Send a source-credential alert via SMTP email (mirror of _notify_email)."""
     try:
         config_path = get_config_path()
@@ -887,9 +874,7 @@ def _notify_source_email(
         }
 
 
-def _build_source_alert_email_body(
-    rule: AlertRule, cred: dict[str, str], domain: str
-) -> str:
+def _build_source_alert_email_body(rule: AlertRule, cred: dict[str, str], domain: str) -> str:
     """Build a plain-text notification email body for a missing credential."""
     lines = [
         f"AutoInfo Alert - Missing Source Credential ({domain})",

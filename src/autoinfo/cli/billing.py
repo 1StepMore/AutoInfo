@@ -11,6 +11,7 @@ Usage::
 """
 
 import json
+from typing import Any
 
 import typer
 
@@ -150,7 +151,7 @@ def summary(
         _print_summary(result)
 
 
-def _print_summary(result: dict) -> None:
+def _print_summary(result: dict[str, Any]) -> None:
     typer.echo("")
     typer.echo(f"  Billing Summary — {result['user_id']} ({result['period']})")
     typer.echo(f"  {'=' * 50}")

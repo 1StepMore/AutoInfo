@@ -22,13 +22,24 @@ from typing import Any, cast
 
 import typer
 
-from autoinfo.output import PRODUCT_TEMPLATES, ProductTemplate, export_kb
+from autoinfo.output import PRODUCT_TEMPLATES, DeliveryOutput, ProductTemplate, export_kb
 
 from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
 
 app = typer.Typer(
     help="Generate digests, reports, tutorials, presentations, exports, and translations"
 )
+
+
+def _output_text(result: str | DeliveryOutput) -> str:
+    """Unwrap a ``generate_*`` result to its plain text.
+
+    ``generate_digest`` returns ``str | DeliveryOutput``; this CLI never passes
+    *delivery_gate_configs*, so a ``DeliveryOutput`` can only appear if the
+    contract changes.  Normalise to ``str`` so the text can be safely
+    ``json.loads``-ed or base64-decoded (mirrors ``mcp.server._output_text``).
+    """
+    return result.output if isinstance(result, DeliveryOutput) else result
 
 
 def _resolve_product_template(product: str) -> ProductTemplate | None:
@@ -241,7 +252,7 @@ def digest(
             kwargs["ref_limit"] = ref_limit
         if product_template is not None:
             kwargs["product_template"] = product_template
-        result = generate_digest(**kwargs)
+        result = _output_text(generate_digest(**kwargs))
         persisted_path: str | None = None
         if persist:
             import base64

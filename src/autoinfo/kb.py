@@ -43,6 +43,7 @@ from enum import Enum  # noqa: E402
 
 class RelationType(str, Enum):
     """Types of relationships between KB entries."""
+
     RELATED = "related"
     RELATED_TO = "related_to"
     PARENT_OF = "parent_of"
@@ -86,9 +87,7 @@ class PromotionRejected(Exception):  # noqa: N818 — mandated name (plan T2/T5/
 
     def __init__(self, reasons: list[RejectionReason]) -> None:
         self.reasons = reasons
-        super().__init__(
-            "Promotion rejected: " + ", ".join(str(r) for r in reasons)
-        )
+        super().__init__("Promotion rejected: " + ", ".join(str(r) for r in reasons))
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +245,7 @@ _FTS5_SPECIAL = re.compile(r'[\^"():+\-!~{}\[\]\\\\*?]')
 _FTS5_KEYWORDS = frozenset({"AND", "OR", "NOT", "NEAR"})
 
 
-_CUSTOM_FIELD_PATH_RE = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
-)
+_CUSTOM_FIELD_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 def _validate_custom_field_path(path: str) -> None:
@@ -287,22 +284,125 @@ def _escape_fts5_query(query: str) -> str:
 # Kept deliberately small — only words unlikely to carry search intent.
 _FTS5_STOPWORDS = frozenset(
     {
-        "a", "an", "the",
-        "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
-        "are", "is", "was", "were", "be", "been", "being", "am",
-        "do", "does", "did", "done", "doing", "have", "has", "had",
-        "can", "could", "would", "should", "will", "shall", "may", "might", "must",
-        "and", "or", "not", "of", "to", "for", "in", "on", "at", "with", "by",
-        "from", "as", "into", "over", "under", "about", "than", "then", "so",
-        "if", "but", "up", "down", "out", "off", "it", "its", "this", "that",
-        "these", "those", "there", "here", "we", "you", "they", "he", "she",
-        "i", "me", "my", "our", "us", "their", "them", "your", "any", "all",
-        "each", "every", "some", "such", "only", "same", "very", "just",
-        "also", "other", "others", "more", "most", "no", "yes", "etc",
+        "a",
+        "an",
+        "the",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "where",
+        "when",
+        "why",
+        "how",
+        "are",
+        "is",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "do",
+        "does",
+        "did",
+        "done",
+        "doing",
+        "have",
+        "has",
+        "had",
+        "can",
+        "could",
+        "would",
+        "should",
+        "will",
+        "shall",
+        "may",
+        "might",
+        "must",
+        "and",
+        "or",
+        "not",
+        "of",
+        "to",
+        "for",
+        "in",
+        "on",
+        "at",
+        "with",
+        "by",
+        "from",
+        "as",
+        "into",
+        "over",
+        "under",
+        "about",
+        "than",
+        "then",
+        "so",
+        "if",
+        "but",
+        "up",
+        "down",
+        "out",
+        "off",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "there",
+        "here",
+        "we",
+        "you",
+        "they",
+        "he",
+        "she",
+        "i",
+        "me",
+        "my",
+        "our",
+        "us",
+        "their",
+        "them",
+        "your",
+        "any",
+        "all",
+        "each",
+        "every",
+        "some",
+        "such",
+        "only",
+        "same",
+        "very",
+        "just",
+        "also",
+        "other",
+        "others",
+        "more",
+        "most",
+        "no",
+        "yes",
+        "etc",
         # Frequent in natural-language questions about content
-        "discuss", "discusses", "discussed", "discussing", "mention",
-        "mentions", "mentioned", "technology", "technologies", "article",
-        "articles", "information", "about", "main", "topic", "topics",
+        "discuss",
+        "discusses",
+        "discussed",
+        "discussing",
+        "mention",
+        "mentions",
+        "mentioned",
+        "technology",
+        "technologies",
+        "article",
+        "articles",
+        "information",
+        "about",
+        "main",
+        "topic",
+        "topics",
     }
 )
 
@@ -327,10 +427,7 @@ def _meaningful_search_terms(query: str) -> list[str]:
     Used to build OR-semantics and LIKE fallback queries for long
     natural-language questions that fail FTS5's default AND semantics.
     """
-    return [
-        term for term in _split_search_terms(query)
-        if term.lower() not in _FTS5_STOPWORDS
-    ]
+    return [term for term in _split_search_terms(query) if term.lower() not in _FTS5_STOPWORDS]
 
 
 # ---------------------------------------------------------------------------
@@ -591,9 +688,7 @@ class SQLiteIndex:
             """)
             # Migration: add git_sha column for existing databases
             try:
-                conn.execute(
-                    "ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''"
-                )
+                conn.execute("ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''")
             except Exception:
                 pass
 
@@ -700,9 +795,7 @@ class SQLiteIndex:
                 # legal-compliance 2019 GDPR posts created_at=2026-08-10).
                 # Weekly content should reflect the CONTENT date; created_at
                 # only stands in when collected_at is missing entirely.
-                conditions.append(
-                    "COALESCE(NULLIF(collected_at, ''), NULLIF(created_at, '')) >= ?"
-                )
+                conditions.append("COALESCE(NULLIF(collected_at, ''), NULLIF(created_at, '')) >= ?")
                 params.append(date_from)
             if user_id is not None:
                 conditions.append("user_id = ?")
@@ -742,7 +835,9 @@ class SQLiteIndex:
         list[dict]
             Each dict contains the columns from the ``entries`` table.
         """
-        return self.list_entries(domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id)  # noqa: E501
+        return self.list_entries(
+            domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id
+        )  # noqa: E501
 
     def count_entries_by_tier(self, domain: str, tier: str) -> int:
         """Return the number of entries in *domain* for *tier*.
@@ -797,9 +892,7 @@ class SQLiteIndex:
                 # legal-compliance 2019 GDPR posts created_at=2026-08-10).
                 # Weekly content should reflect the CONTENT date; created_at
                 # only stands in when collected_at is missing entirely.
-                conditions.append(
-                    "COALESCE(NULLIF(collected_at, ''), NULLIF(created_at, '')) >= ?"
-                )
+                conditions.append("COALESCE(NULLIF(collected_at, ''), NULLIF(created_at, '')) >= ?")
                 params.append(date_from)
             if user_id is not None:
                 conditions.append("user_id = ?")
@@ -830,8 +923,7 @@ class SQLiteIndex:
             return None
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM entries WHERE source_url = ? "
-                "ORDER BY collected_at DESC LIMIT 1",
+                "SELECT * FROM entries WHERE source_url = ? ORDER BY collected_at DESC LIMIT 1",
                 (source_url,),
             ).fetchone()
             return dict(row) if row else None
@@ -886,9 +978,7 @@ class SQLiteIndex:
 
         return True
 
-    def search_by_field(
-        self, field: str, value: str
-    ) -> list[dict[str, Any]]:
+    def search_by_field(self, field: str, value: str) -> list[dict[str, Any]]:
         """Search entries where *field* LIKE ``%value%``.
 
         .. caution::
@@ -896,13 +986,16 @@ class SQLiteIndex:
             added in v0.2.
         """
         allowed = {
-            "title", "domain", "source_url", "source_type",
-            "source_platform", "dedup_status",
+            "title",
+            "domain",
+            "source_url",
+            "source_type",
+            "source_platform",
+            "dedup_status",
         }
         if field not in allowed:
             raise ValueError(
-                f"search_by_field: '{field}' is not allowed. "
-                f"Allowed fields: {sorted(allowed)}"
+                f"search_by_field: '{field}' is not allowed. Allowed fields: {sorted(allowed)}"
             )
 
         with self._connect() as conn:
@@ -1015,9 +1108,7 @@ class SQLiteIndex:
                 pass
             # Migration: add git_sha column for existing databases
             try:
-                conn.execute(
-                    "ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''"
-                )
+                conn.execute("ALTER TABLE entry_versions ADD COLUMN git_sha TEXT DEFAULT ''")
             except Exception:
                 pass
 
@@ -1036,7 +1127,9 @@ class SQLiteIndex:
             # Check if git is available and we're in a repo
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             if result.returncode != 0:
                 logger.warning("Git not available or not a git repo — skipping git commit")
@@ -1047,24 +1140,28 @@ class SQLiteIndex:
             # Check that git user is configured
             name_check = subprocess.run(
                 ["git", "config", "user.name"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
                 cwd=repo_root,
             )
             email_check = subprocess.run(
                 ["git", "config", "user.email"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
                 cwd=repo_root,
             )
             if not name_check.stdout.strip() or not email_check.stdout.strip():
-                logger.warning(
-                    "Git user.name or user.email not configured — skipping git commit"
-                )
+                logger.warning("Git user.name or user.email not configured — skipping git commit")
                 return ""
 
             # git add
             add = subprocess.run(
                 ["git", "add", file_path],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
                 cwd=repo_root,
             )
             if add.returncode != 0:
@@ -1075,7 +1172,9 @@ class SQLiteIndex:
             msg = f"autoinfo: version {version_num} of {entry_id}"
             commit = subprocess.run(
                 ["git", "commit", "-m", msg],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
                 cwd=repo_root,
             )
             if commit.returncode != 0:
@@ -1085,7 +1184,9 @@ class SQLiteIndex:
             # Get SHA
             sha = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
                 cwd=repo_root,
             )
             if sha.returncode == 0:
@@ -1234,9 +1335,7 @@ class SQLiteIndex:
             "comment": version.get("comment", ""),
         }
 
-    def compare_versions(
-        self, entry_id: str, version_a: str, version_b: str
-    ) -> dict[str, Any]:
+    def compare_versions(self, entry_id: str, version_a: str, version_b: str) -> dict[str, Any]:
         """Compare two versions of a KB entry and return a structured diff.
 
         Reads the ``.bak`` files for two versions, parses their YAML
@@ -1380,11 +1479,13 @@ class SQLiteIndex:
             old_val = _serialize(fm_a.get(key))
             new_val = _serialize(fm_b.get(key))
             if old_val != new_val:
-                field_diffs.append({
-                    "field": key,
-                    "old_value": old_val,
-                    "new_value": new_val,
-                })
+                field_diffs.append(
+                    {
+                        "field": key,
+                        "old_value": old_val,
+                        "new_value": new_val,
+                    }
+                )
 
         summary = (
             f"Compared {version_a} (v{dict(va_row)['version_num']}, "
@@ -1454,9 +1555,11 @@ class SQLiteIndex:
             date_from = today.isoformat()
         elif period == "weekly":
             from datetime import timedelta
+
             date_from = (today - timedelta(days=7)).isoformat()
         elif period == "monthly":
             from datetime import timedelta
+
             date_from = (today - timedelta(days=30)).isoformat()
         else:
             date_from = today.isoformat()
@@ -1545,9 +1648,7 @@ class SQLiteIndex:
     # Flag / Tagging
     # ------------------------------------------------------------------
 
-    def update_entry_tags(
-        self, entry_id: str, tags: list[str], importance: int = 3
-    ) -> None:
+    def update_entry_tags(self, entry_id: str, tags: list[str], importance: int = 3) -> None:
         """Update the ``tags`` and ``importance`` columns for an entry.
 
         Called by ``KBStore.flag_for_knowledge_base``.  Does not raise
@@ -1564,9 +1665,7 @@ class SQLiteIndex:
                 ),
             )
 
-    def update_entry_custom_fields(
-        self, entry_id: str, fields: dict[str, Any]
-    ) -> bool:
+    def update_entry_custom_fields(self, entry_id: str, fields: dict[str, Any]) -> bool:
         """Merge *fields* into the entry's ``custom_fields`` JSON column.
 
         The ``custom_fields`` column is the KB metadata dict path: it is
@@ -1795,10 +1894,7 @@ class SQLiteIndex:
                         )
                         params.extend([json_path, json_path, json_path])
                     else:
-                        conds.append(
-                            f"CAST(json_extract({prefix}.custom_fields, ?) "
-                            f"AS TEXT) = ?"
-                        )
+                        conds.append(f"CAST(json_extract({prefix}.custom_fields, ?) AS TEXT) = ?")
                         params.extend([json_path, expected])
 
             conds.append(
@@ -1810,6 +1906,7 @@ class SQLiteIndex:
             return conds, params
 
         with self._connect() as conn:
+
             def _fts5_rows(match_query: str) -> list[sqlite3.Row]:
                 """Run an FTS5 MATCH with dynamic filters, returning rows."""
                 fts_conds = ["entries_fts5 MATCH ?"]
@@ -1861,9 +1958,7 @@ class SQLiteIndex:
                 # (non-stopword) terms, since FTS5 MATCH defaults to AND
                 # semantics and long questions can match nothing.
                 meaningful = _meaningful_search_terms(query)
-                or_terms = [
-                    e for e in (_escape_fts5_query(t) for t in meaningful) if e
-                ]
+                or_terms = [e for e in (_escape_fts5_query(t) for t in meaningful) if e]
                 if or_terms:
                     or_query = " OR ".join(or_terms)
                     method = "or"
@@ -1879,9 +1974,7 @@ class SQLiteIndex:
                 like_parts: list[str] = []
                 like_params: list[Any] = []
                 for term in like_terms:
-                    like_parts.append(
-                        "(e.title LIKE ? OR e.summary LIKE ? OR e.tags LIKE ?)"
-                    )
+                    like_parts.append("(e.title LIKE ? OR e.summary LIKE ? OR e.tags LIKE ?)")
                     pattern = f"%{term}%"
                     like_params.extend([pattern, pattern, pattern])
 
@@ -2087,9 +2180,7 @@ class SQLiteIndex:
         # -----------------------------------------------------------
         if mode == "vector":
             vector_entries: list[dict[str, Any]] = []
-            for eid, _score in sorted(
-                vec_scores.items(), key=lambda x: x[1], reverse=True
-            ):
+            for eid, _score in sorted(vec_scores.items(), key=lambda x: x[1], reverse=True):
                 entry_dict = self.get_entry(eid)
                 if entry_dict:
                     entry_dict["_vec_score"] = vec_scores[eid]
@@ -2159,9 +2250,7 @@ class SQLiteIndex:
         of entries indexed.
         """
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT rowid, * FROM entries"
-            ).fetchall()
+            rows = conn.execute("SELECT rowid, * FROM entries").fetchall()
 
         # Clear existing FTS5 content
         with self._connect() as conn:
@@ -2229,7 +2318,8 @@ class SQLiteIndex:
                 )
                 count += conn.total_changes  # not perfect but indicative
             # Deduplicate — keep only the first (earliest) row per name+type+domain
-            conn.execute("""
+            conn.execute(
+                """
                 DELETE FROM entities
                 WHERE rowid NOT IN (
                     SELECT MIN(rowid) FROM entities
@@ -2237,7 +2327,9 @@ class SQLiteIndex:
                     GROUP BY name, type, domain
                 )
                 AND domain = ?
-            """, (domain, domain))
+            """,
+                (domain, domain),
+            )
         return count
 
     def discover_relations(
@@ -2281,9 +2373,7 @@ class SQLiteIndex:
                     ).fetchone()
 
                     if row is not None:
-                        shared: set[str] = set(
-                            json.loads(row["entries_shared"] or "[]")
-                        )
+                        shared: set[str] = set(json.loads(row["entries_shared"] or "[]"))
                         shared.add(entry_id)
                         strength = len(shared)
                         conn.execute(
@@ -2392,23 +2482,21 @@ class SQLiteIndex:
                     ).fetchall()
 
                 for row in rows:
-                    other_eid = (
-                        row["entity_b"]
-                        if row["entity_a"] == eid
-                        else row["entity_a"]
-                    )
+                    other_eid = row["entity_b"] if row["entity_a"] == eid else row["entity_a"]
                     # Skip self-relations
                     if other_eid == eid:
                         continue
                     shared_raw = row["entries_shared"] or "[]"
                     shared_count = len(json.loads(shared_raw))
-                    results.append({
-                        "entity": entity_names.get(eid, eid),
-                        "related_entity": entity_names.get(other_eid, other_eid),
-                        "relation_type": row["relation_type"],
-                        "strength": row["strength"],
-                        "entries_shared_count": shared_count,
-                    })
+                    results.append(
+                        {
+                            "entity": entity_names.get(eid, eid),
+                            "related_entity": entity_names.get(other_eid, other_eid),
+                            "relation_type": row["relation_type"],
+                            "strength": row["strength"],
+                            "entries_shared_count": shared_count,
+                        }
+                    )
 
         # Deduplicate by (entity, related_entity, relation_type)
         seen: set[tuple[str, str, str]] = set()
@@ -2472,9 +2560,7 @@ class SQLiteIndex:
                     (domain,),
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    base_query + "ORDER BY r.strength DESC"
-                ).fetchall()
+                rows = conn.execute(base_query + "ORDER BY r.strength DESC").fetchall()
             return [dict(r) for r in rows]
 
 
@@ -2605,26 +2691,28 @@ class KBStore:
                     continue
 
                 tags = fm.get("tags", [])
-                results.append({
-                    "entry_id": fm.get("entry_id", ""),
-                    "title": fm.get("title", ""),
-                    "domain": fm.get("domain", domain),
-                    "tier": fm.get("tier", tier or "01-Raw"),
-                    "source_url": fm.get("source_url", ""),
-                    "source_type": fm.get("source_type", ""),
-                    "source_platform": fm.get("source_platform", ""),
-                    "collected_at": fm.get("collected_at", ""),
-                    "summary": fm.get("summary", ""),
-                    "quality_tier": fm.get("quality_tier", 1),
-                    "relevance_score": fm.get("relevance_score", 0.0),
-                    "dedup_status": fm.get("dedup_status", "unique"),
-                    "file_path": str(md_file),
-                    "tags": json.dumps(tags) if isinstance(tags, list) else str(tags),
-                    "content_type": fm.get("content_type", ""),
-                    "language": fm.get("language", ""),
-                    "user_id": fm.get("user_id", ""),
-                    "cefr": fm.get("cefr", ""),
-                })
+                results.append(
+                    {
+                        "entry_id": fm.get("entry_id", ""),
+                        "title": fm.get("title", ""),
+                        "domain": fm.get("domain", domain),
+                        "tier": fm.get("tier", tier or "01-Raw"),
+                        "source_url": fm.get("source_url", ""),
+                        "source_type": fm.get("source_type", ""),
+                        "source_platform": fm.get("source_platform", ""),
+                        "collected_at": fm.get("collected_at", ""),
+                        "summary": fm.get("summary", ""),
+                        "quality_tier": fm.get("quality_tier", 1),
+                        "relevance_score": fm.get("relevance_score", 0.0),
+                        "dedup_status": fm.get("dedup_status", "unique"),
+                        "file_path": str(md_file),
+                        "tags": json.dumps(tags) if isinstance(tags, list) else str(tags),
+                        "content_type": fm.get("content_type", ""),
+                        "language": fm.get("language", ""),
+                        "user_id": fm.get("user_id", ""),
+                        "cefr": fm.get("cefr", ""),
+                    }
+                )
             except Exception:
                 continue
 
@@ -2645,10 +2733,7 @@ class KBStore:
         """
         path_str = str(file_path)
         if "/03-Wiki/" in path_str or path_str.endswith("/03-Wiki"):
-            raise PermissionError(
-                "03-Wiki is append-only. "
-                "Only promote_kb_draft() can write here."
-            )
+            raise PermissionError("03-Wiki is append-only. Only promote_kb_draft() can write here.")
 
     def store_entry(
         self,
@@ -3019,9 +3104,7 @@ class KBStore:
         self, item_id: str, relation_type: str | None = None
     ) -> list[dict[str, Any]]:
         """Return all relations where *item_id* participates."""
-        return self.index.get_item_relations(
-            item_id=item_id, relation_type=relation_type
-        )
+        return self.index.get_item_relations(item_id=item_id, relation_type=relation_type)
 
     # ------------------------------------------------------------------
     # Entry versioning
@@ -3035,9 +3118,7 @@ class KBStore:
         """Restore an entry from a saved version backup."""
         return self.index.restore_entry_version(version_id=version_id)
 
-    def compare_versions(
-        self, entry_id: str, version_a: str, version_b: str
-    ) -> dict[str, Any]:
+    def compare_versions(self, entry_id: str, version_a: str, version_b: str) -> dict[str, Any]:
         """Compare two versions of a KB entry and return a structured diff.
 
         See :meth:`SQLiteIndex.compare_versions` for details.
@@ -3066,9 +3147,7 @@ class KBStore:
         """
         return self.index.get_collection_stats(period=period)
 
-    def get_collection_diff(
-        self, since_collection_id: str
-    ) -> dict[str, Any]:
+    def get_collection_diff(self, since_collection_id: str) -> dict[str, Any]:
         """Return entries collected since a previous collection ID.
 
         Parameters
@@ -3082,9 +3161,7 @@ class KBStore:
         dict
             ``{since_id, new_entries, count, domains}``
         """
-        return self.index.get_collection_diff(
-            since_collection_id=since_collection_id
-        )
+        return self.index.get_collection_diff(since_collection_id=since_collection_id)
 
     # ------------------------------------------------------------------
     # Read
@@ -3105,20 +3182,24 @@ class KBStore:
         is empty.  Returns entries sorted by ``collected_at DESC``.
         """
         entries = self.index.list_entries(
-            domain, tier, date_from, limit, offset, user_id=user_id,
+            domain,
+            tier,
+            date_from,
+            limit,
+            offset,
+            user_id=user_id,
         )
         if entries:
             return entries
         # Fallback: scan filesystem
         fs_entries = self._scan_kb_filesystem(domain, tier=tier)
         if date_from:
+
             def _content_date(e: dict[str, Any]) -> str:
                 return e.get("collected_at") or e.get("created_at") or ""
-            fs_entries = [
-                e for e in fs_entries
-                if _content_date(e) >= date_from
-            ]
-        return fs_entries[offset: offset + limit]
+
+            fs_entries = [e for e in fs_entries if _content_date(e) >= date_from]
+        return fs_entries[offset : offset + limit]
 
     def list_all_entries(
         self,
@@ -3136,8 +3217,12 @@ class KBStore:
         Otherwise behaves like :meth:`list_entries`.
         """
         entries = self.index.list_all_entries(
-            domain=domain, tier=tier, date_from=date_from,
-            limit=limit, offset=offset, user_id=user_id,
+            domain=domain,
+            tier=tier,
+            date_from=date_from,
+            limit=limit,
+            offset=offset,
+            user_id=user_id,
         )
         if entries:
             return entries
@@ -3155,11 +3240,8 @@ class KBStore:
                 fs_entries.extend(self._scan_kb_filesystem(child.name, tier=tier))
             fs_entries.sort(key=lambda x: x.get("collected_at", ""), reverse=True)
         if date_from:
-            fs_entries = [
-                e for e in fs_entries
-                if e.get("collected_at", "") >= date_from
-            ]
-        return fs_entries[offset: offset + limit]
+            fs_entries = [e for e in fs_entries if e.get("collected_at", "") >= date_from]
+        return fs_entries[offset : offset + limit]
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return full entry content from the Markdown file + SQLite metadata.
@@ -3176,7 +3258,8 @@ class KBStore:
             if not kb_base.is_dir():
                 return None
             fs_results = self._scan_kb_filesystem(
-                domain="*", entry_id=entry_id,
+                domain="*",
+                entry_id=entry_id,
             )
             if not fs_results:
                 # Try each real domain directory
@@ -3184,7 +3267,8 @@ class KBStore:
                     if not child.is_dir() or child.name.startswith("_"):
                         continue
                     fs_results = self._scan_kb_filesystem(
-                        domain=child.name, entry_id=entry_id,
+                        domain=child.name,
+                        entry_id=entry_id,
                     )
                     if fs_results:
                         break
@@ -3318,19 +3402,17 @@ class KBStore:
         topics: set[str] = set()
 
         for rid in raw_ids:
-            entry = self.index.get_entry(rid)
-            if entry is None:
-                raise ValueError(
-                    f"Raw entry '{rid}' not found in knowledge base"
-                )
-            if entry.get("tier", "01-Raw") != "01-Raw":
+            raw_record = self.index.get_entry(rid)
+            if raw_record is None:
+                raise ValueError(f"Raw entry '{rid}' not found in knowledge base")
+            if raw_record.get("tier", "01-Raw") != "01-Raw":
                 raise ValueError(
                     f"Entry '{rid}' is not in 01-Raw tier "
-                    f"(found: {entry.get('tier', 'unknown')})"
+                    f"(found: {raw_record.get('tier', 'unknown')})"
                 )
-            raw_entries.append(entry)
+            raw_entries.append(raw_record)
 
-            fp = Path(entry["file_path"])
+            fp = Path(raw_record["file_path"])
             # file_path: knowledge/<domain>/01-Raw/<topic>/<file>
             if len(fp.parts) >= 4:
                 domains.add(fp.parts[-4])
@@ -3351,9 +3433,7 @@ class KBStore:
         merged_body_parts: list[str] = []
         source_bodies: list[str] = []
         for i, re in enumerate(raw_entries):  # noqa: F402
-            merged_body_parts.append(
-                f"## Source {i + 1}: {re['title']}\n\n"
-            )
+            merged_body_parts.append(f"## Source {i + 1}: {re['title']}\n\n")
             raw_fp = Path(re["file_path"])
             if raw_fp.is_file():
                 raw_text = raw_fp.read_text(encoding="utf-8")
@@ -3367,13 +3447,11 @@ class KBStore:
         # Same 50-char floor the process/import write paths enforce: a Draft
         # built from a Raw entry whose content is below MIN_KB_CONTENT_CHARS
         # is an empty shell and must not be written (issue #279).
-        if any(
-            len(body.strip()) < self.min_content_chars for body in source_bodies
-        ):
+        if any(len(body.strip()) < self.min_content_chars for body in source_bodies):
             raise ValueError(
-                 "draft content too short: a source Raw entry provides "
-                 f"fewer than {self.min_content_chars} characters"
-             )
+                "draft content too short: a source Raw entry provides "
+                f"fewer than {self.min_content_chars} characters"
+            )
 
         # Issue #176: when the caller passes no summary, auto-generate a
         # deterministic one-line summary from the source Raw summaries/titles
@@ -3392,7 +3470,7 @@ class KBStore:
 
         # Build KBEntry
         source_raw_ids = ",".join(raw_ids)
-        entry = KBEntry(  # type: ignore[assignment]
+        entry = KBEntry(
             entry_id=entry_id,
             title=title,
             domain=domain,
@@ -3441,7 +3519,7 @@ class KBStore:
 
         # Write Markdown file
         file_dir.mkdir(parents=True, exist_ok=True)
-        frontmatter = _build_frontmatter(entry)  # type: ignore[arg-type]
+        frontmatter = _build_frontmatter(entry)
         parts = [f"---\n{frontmatter}---\n\n"]
         parts.append(f"_Compiled from: {source_raw_ids}_\n\n")
         source_urls = entry.custom_fields.get("source_urls", []) if entry.custom_fields else []
@@ -3454,9 +3532,9 @@ class KBStore:
         file_path.write_text("".join(parts), encoding="utf-8")
 
         # Index in SQLite
-        self.index.index_entry(entry)  # type: ignore[arg-type]
+        self.index.index_entry(entry)
 
-        return entry  # type: ignore[return-value]
+        return entry
 
     def reject_kb_draft(
         self,
@@ -3496,9 +3574,7 @@ class KBStore:
 
         file_path = Path(meta["file_path"])
         if not file_path.is_file():
-            raise FileNotFoundError(
-                f"Draft file not found on disk: {file_path}"
-            )
+            raise FileNotFoundError(f"Draft file not found on disk: {file_path}")
 
         raw_content = file_path.read_text(encoding="utf-8")
 
@@ -3519,13 +3595,9 @@ class KBStore:
                 body = raw_content[end + 3 :].lstrip("\n")
                 raw_content = f"---\n{new_fm}---\n\n{body}"
             else:
-                raw_content = (
-                    f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
-                )
+                raw_content = f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
         else:
-            raw_content = (
-                f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
-            )
+            raw_content = f"---\nrejection_reason: {reason}\n---\n\n{raw_content}"
 
         if action == "back_to_raw":
             parts = list(file_path.parts)
@@ -3587,9 +3659,7 @@ class KBStore:
             file_path.unlink()
 
             with self.index._connect() as conn:
-                conn.execute(
-                    "DELETE FROM entries WHERE entry_id = ?", (draft_id,)
-                )
+                conn.execute("DELETE FROM entries WHERE entry_id = ?", (draft_id,))
 
             return {
                 "status": "archived",
@@ -3601,9 +3671,7 @@ class KBStore:
             }
 
         else:
-            raise ValueError(
-                f"Unknown action '{action}'. Use 'back_to_raw' or 'archive'."
-            )
+            raise ValueError(f"Unknown action '{action}'. Use 'back_to_raw' or 'archive'.")
 
     @staticmethod
     def _entry_from_meta(meta: dict[str, Any]) -> KBEntry:
@@ -3752,15 +3820,12 @@ class KBStore:
 
         if meta.get("tier") != "02-Draft":
             raise ValueError(
-                f"Entry '{draft_id}' is not a Draft "
-                f"(tier: {meta.get('tier', 'unknown')})"
+                f"Entry '{draft_id}' is not a Draft (tier: {meta.get('tier', 'unknown')})"
             )
 
         file_path = Path(meta["file_path"])
         if not file_path.is_file():
-            raise FileNotFoundError(
-                f"Draft file not found on disk: {file_path}"
-            )
+            raise FileNotFoundError(f"Draft file not found on disk: {file_path}")
 
         # --- Admission gate (T2/T3): evaluate before any file movement ----
         entry = self._entry_from_meta(meta)
@@ -3904,9 +3969,7 @@ class KBStore:
                 )
                 continue
             try:
-                result = self.promote_kb_draft(
-                    draft_id=draft_id, config=config, caller=caller
-                )
+                result = self.promote_kb_draft(draft_id=draft_id, config=config, caller=caller)
                 summary["promoted"].append(
                     {"entry_id": draft_id, "new_path": result.get("new_path", "")}
                 )
@@ -3967,9 +4030,7 @@ class KBStore:
             If the Draft file is missing from disk.
         """
         if not is_director(caller):
-            raise DirectorOnlyError(
-                actor=caller, entry_id=draft_id, operation="force-promote"
-            )
+            raise DirectorOnlyError(actor=caller, entry_id=draft_id, operation="force-promote")
 
         meta = self.index.get_entry(draft_id)
         if meta is None:
@@ -3977,15 +4038,12 @@ class KBStore:
 
         if meta.get("tier") != "02-Draft":
             raise ValueError(
-                f"Entry '{draft_id}' is not a Draft "
-                f"(tier: {meta.get('tier', 'unknown')})"
+                f"Entry '{draft_id}' is not a Draft (tier: {meta.get('tier', 'unknown')})"
             )
 
         file_path = Path(meta["file_path"])
         if not file_path.is_file():
-            raise FileNotFoundError(
-                f"Draft file not found on disk: {file_path}"
-            )
+            raise FileNotFoundError(f"Draft file not found on disk: {file_path}")
 
         return self._move_draft_to_wiki(meta, promotion_source="director", caller=caller)
 
@@ -4027,9 +4085,7 @@ class KBStore:
             If the Wiki file is missing from disk.
         """
         if not is_director(caller):
-            raise DirectorOnlyError(
-                actor=caller, entry_id=entry_id, operation="demote"
-            )
+            raise DirectorOnlyError(actor=caller, entry_id=entry_id, operation="demote")
 
         meta = self.index.get_entry(entry_id)
         if meta is None:
@@ -4037,15 +4093,12 @@ class KBStore:
 
         if meta.get("tier") != "03-Wiki":
             raise ValueError(
-                f"Entry '{entry_id}' is not in 03-Wiki "
-                f"(tier: {meta.get('tier', 'unknown')})"
+                f"Entry '{entry_id}' is not in 03-Wiki (tier: {meta.get('tier', 'unknown')})"
             )
 
         file_path = Path(meta["file_path"])
         if not file_path.is_file():
-            raise FileNotFoundError(
-                f"Wiki file not found on disk: {file_path}"
-            )
+            raise FileNotFoundError(f"Wiki file not found on disk: {file_path}")
 
         now_iso = datetime.now(timezone.utc).isoformat()
         raw_content = file_path.read_text(encoding="utf-8")
@@ -4175,9 +4228,7 @@ class KBStore:
                 "error": "Entry not found",
             }
 
-        current_tags: list[str] = (
-            json.loads(existing["tags"]) if existing.get("tags") else []
-        )
+        current_tags: list[str] = json.loads(existing["tags"]) if existing.get("tags") else []
         if tags:
             merged = list(dict.fromkeys(current_tags + tags))
         else:
@@ -4345,9 +4396,7 @@ class KBStore:
             content = meta.get("content", "")
 
         key_points = _extract_key_points(content)
-        tags: list[str] = (
-            json.loads(meta["tags"]) if meta.get("tags") else []
-        )
+        tags: list[str] = json.loads(meta["tags"]) if meta.get("tags") else []
 
         return {
             "entry_id": meta["entry_id"],
@@ -4467,6 +4516,7 @@ class KBStore:
         if domain:
             try:
                 from autoinfo.config import get_config_path, load_config
+
                 config_path = get_config_path()
                 if config_path:
                     cfg = load_config(config_path)
@@ -4498,9 +4548,7 @@ class KBStore:
         if include_stale:
             scored_entries.sort(key=lambda e: (-e["combined_score"], e["entry_id"]))
         else:
-            scored_entries.sort(
-                key=lambda e: (e["is_stale"], -e["combined_score"], e["entry_id"])
-            )
+            scored_entries.sort(key=lambda e: (e["is_stale"], -e["combined_score"], e["entry_id"]))
 
         for e in scored_entries:
             e.pop("combined_score", None)
@@ -4563,11 +4611,13 @@ class KBStore:
                 }
 
                 key = title.lower().strip()
-                title_map[key].append({
-                    "entry_id": entry_id,
-                    "title": title,
-                    "tier": fm.get("tier", "01-Raw"),
-                })
+                title_map[key].append(
+                    {
+                        "entry_id": entry_id,
+                        "title": title,
+                        "tier": fm.get("tier", "01-Raw"),
+                    }
+                )
             except Exception as exc:
                 logger.debug("Skipping %s: %s", md_file, exc)
 
@@ -4588,16 +4638,20 @@ class KBStore:
                 for tm in matches:
                     if tm["entry_id"] == entry_id:
                         continue
-                    forward_map[entry_id].append({
-                        "wikilink": link_title,
-                        "target_entry_id": tm["entry_id"],
-                        "target_title": tm["title"],
-                    })
-                    backlink_map[tm["entry_id"]].append({
-                        "source_entry_id": entry_id,
-                        "source_title": info["title"],
-                        "wikilink": link_title,
-                    })
+                    forward_map[entry_id].append(
+                        {
+                            "wikilink": link_title,
+                            "target_entry_id": tm["entry_id"],
+                            "target_title": tm["title"],
+                        }
+                    )
+                    backlink_map[tm["entry_id"]].append(
+                        {
+                            "source_entry_id": entry_id,
+                            "source_title": info["title"],
+                            "wikilink": link_title,
+                        }
+                    )
 
         stats["backlinks_found"] = sum(len(v) for v in backlink_map.values())
 
@@ -4712,10 +4766,12 @@ class KBStore:
                     self.index.index_entry(entry)
                 files_found += 1
             except Exception as exc:
-                sync_errors.append({
-                    "file": str(md_file),
-                    "error": str(exc),
-                })
+                sync_errors.append(
+                    {
+                        "file": str(md_file),
+                        "error": str(exc),
+                    }
+                )
 
         fts5_count = self.index.reindex_fts5()
 
@@ -4759,9 +4815,7 @@ class KBStore:
                 "error": "Entry not found",
             }
 
-        _ensure_wiki_delete_allowed(
-            meta.get("tier", "01-Raw"), actor=actor, entry_id=entry_id
-        )
+        _ensure_wiki_delete_allowed(meta.get("tier", "01-Raw"), actor=actor, entry_id=entry_id)
 
         now = datetime.now(timezone.utc).isoformat()
 
@@ -4787,10 +4841,8 @@ class KBStore:
                         sort_keys=False,
                         width=120,
                     )
-                    body = raw[end + 3:].lstrip("\n")
-                    file_path.write_text(
-                        f"---\n{new_fm}---\n\n{body}", encoding="utf-8"
-                    )
+                    body = raw[end + 3 :].lstrip("\n")
+                    file_path.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
 
         return {
             "deleted": True,
@@ -4845,10 +4897,8 @@ class KBStore:
                         sort_keys=False,
                         width=120,
                     )
-                    body = raw[end + 3:].lstrip("\n")
-                    file_path.write_text(
-                        f"---\n{new_fm}---\n\n{body}", encoding="utf-8"
-                    )
+                    body = raw[end + 3 :].lstrip("\n")
+                    file_path.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
 
         return {
             "restored": True,

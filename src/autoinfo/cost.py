@@ -505,13 +505,19 @@ class CostMeter:
             for t in sorted(thresholds):
                 pct = round(total_cost / t * 100, 2) if t > 0 else 0.0
                 breached = total_cost >= t
-                threshold_status.append({
-                    "threshold": t,
-                    "current_spend": round(total_cost, 8),
-                    "pct_used": pct,
-                    "breached": breached,
-                    "severity": "critical" if t >= 100 and breached else "warning" if breached else "ok",
-                })
+                threshold_status.append(
+                    {
+                        "threshold": t,
+                        "current_spend": round(total_cost, 8),
+                        "pct_used": pct,
+                        "breached": breached,
+                        "severity": "critical"
+                        if t >= 100 and breached
+                        else "warning"
+                        if breached
+                        else "ok",
+                    }
+                )
 
         result: dict[str, Any] = {
             "period": period,
@@ -605,9 +611,7 @@ class CostMeter:
                         "domain": domain_name,
                         "cost": round(r["cost"], 8),
                         "pct_of_total": (
-                            round(r["cost"] / total_cost * 100, 2)
-                            if total_cost > 0
-                            else 0.0
+                            round(r["cost"] / total_cost * 100, 2) if total_cost > 0 else 0.0
                         ),
                         "log_count": r["cnt"],
                     }
@@ -634,9 +638,7 @@ class CostMeter:
                         "user_id": uid,
                         "cost": round(r["cost"], 8),
                         "pct_of_total": (
-                            round(r["cost"] / total_cost * 100, 2)
-                            if total_cost > 0
-                            else 0.0
+                            round(r["cost"] / total_cost * 100, 2) if total_cost > 0 else 0.0
                         ),
                         "log_count": r["cnt"],
                     }
@@ -719,15 +721,16 @@ class CostMeter:
             ).fetchall()
             for r in rows:
                 domain_name = r["domain"] or "(empty)"
-                by_domain.append({
-                    "domain": domain_name,
-                    "cost": round(r["cost"], 8),
-                    "pct_of_total": (
-                        round(r["cost"] / total_cost * 100, 2)
-                        if total_cost > 0 else 0.0
-                    ),
-                    "log_count": r["cnt"],
-                })
+                by_domain.append(
+                    {
+                        "domain": domain_name,
+                        "cost": round(r["cost"], 8),
+                        "pct_of_total": (
+                            round(r["cost"] / total_cost * 100, 2) if total_cost > 0 else 0.0
+                        ),
+                        "log_count": r["cnt"],
+                    }
+                )
 
             # -- Daily cost trend ------------------------------------------
             daily_trend: list[dict[str, Any]] = []
@@ -741,11 +744,13 @@ class CostMeter:
                 params,
             ).fetchall()
             for r in rows:
-                daily_trend.append({
-                    "day": r["day"],
-                    "cost": round(r["cost"], 8),
-                    "log_count": r["log_count"],
-                })
+                daily_trend.append(
+                    {
+                        "day": r["day"],
+                        "cost": round(r["cost"], 8),
+                        "log_count": r["log_count"],
+                    }
+                )
 
             # -- Top 5 LLM models by cost ----------------------------------
             top_models: list[dict[str, Any]] = []
@@ -764,12 +769,14 @@ class CostMeter:
             ).fetchall()
             for r in rows:
                 if r["model"]:
-                    top_models.append({
-                        "model": r["model"],
-                        "total_tokens": r["total_tokens"],
-                        "call_count": r["call_count"],
-                        "cost": round(r["cost"], 8),
-                    })
+                    top_models.append(
+                        {
+                            "model": r["model"],
+                            "total_tokens": r["total_tokens"],
+                            "call_count": r["call_count"],
+                            "cost": round(r["cost"], 8),
+                        }
+                    )
 
             # -- Top 5 API sources by cost ---------------------------------
             top_sources: list[dict[str, Any]] = []
@@ -787,17 +794,28 @@ class CostMeter:
             ).fetchall()
             for r in rows:
                 if r["source_type"]:
-                    top_sources.append({
-                        "source_type": r["source_type"],
-                        "call_count": r["call_count"],
-                        "cost": round(r["cost"], 8),
-                    })
+                    top_sources.append(
+                        {
+                            "source_type": r["source_type"],
+                            "call_count": r["call_count"],
+                            "cost": round(r["cost"], 8),
+                        }
+                    )
 
             # -- Budget status: compare cost vs configured alerts ----------
             budget_status: list[dict[str, Any]] = []
             try:
-                from autoinfo.alerts import get_budget_alerts
+                from autoinfo.alerts import list_alert_rules
 
+                # Known gap (pre-existing, not introduced here): ``AlertRule``
+                # has no cost-threshold field — its kinds are "content" and
+                # "source_credential_missing" only — so the ``threshold is
+                # None`` guard below always skips and ``budget_status`` stays
+                # empty.  This used to import a ``get_budget_alerts`` that was
+                # never defined, so the block raised ImportError into the
+                # ``except Exception`` below and was dead silently; it is now
+                # at least honest dead.  Wiring it up needs a cost-budget rule
+                # kind, not just this import fix.
                 # Collect unique domains from cost_log
                 domain_rows = conn.execute(
                     f"SELECT DISTINCT domain FROM cost_log{where} WHERE domain != ''"
@@ -805,9 +823,11 @@ class CostMeter:
                 active_domains = [r["domain"] for r in domain_rows]
 
                 for d in active_domains:
-                    alerts = get_budget_alerts(domain=d)
+                    alerts = list_alert_rules(domain=d)
                     for alert in alerts:
-                        threshold = getattr(alert, "cost_threshold", None) or getattr(alert, "threshold", None)
+                        threshold = getattr(alert, "cost_threshold", None) or getattr(
+                            alert, "threshold", None
+                        )
                         if threshold is None:
                             continue
                         # Find cost for this domain
@@ -816,14 +836,20 @@ class CostMeter:
                             0.0,
                         )
                         pct = round(domain_cost / threshold * 100, 2) if threshold > 0 else 0.0
-                        budget_status.append({
-                            "domain": d,
-                            "cost": domain_cost,
-                            "budget": threshold,
-                            "pct_used": pct,
-                            "status": "breached" if pct >= 100 else "warning" if pct >= 80 else "ok",
-                            "alert_period": getattr(alert, "cost_period", period),
-                        })
+                        budget_status.append(
+                            {
+                                "domain": d,
+                                "cost": domain_cost,
+                                "budget": threshold,
+                                "pct_used": pct,
+                                "status": "breached"
+                                if pct >= 100
+                                else "warning"
+                                if pct >= 80
+                                else "ok",
+                                "alert_period": getattr(alert, "cost_period", period),
+                            }
+                        )
             except Exception:
                 # Budget alerts are optional — silently skip on error
                 pass
@@ -845,8 +871,8 @@ class CostMeter:
 
     # Customer-facing unit pricing defaults (configurable)
     _DEFAULT_UNIT_PRICES: dict[str, float] = {
-        "llm_units": 0.01,      # per 1000 tokens
-        "storage_mb": 0.10,     # per MB
+        "llm_units": 0.01,  # per 1000 tokens
+        "storage_mb": 0.10,  # per MB
         "api_call_units": 0.005,  # per API call
     }
     """Default customer-facing unit prices."""
@@ -961,14 +987,12 @@ class CostMeter:
             "storage_mb": storage_mb,
             "api_call_units": api_call_units,
             "total_estimated_cost": round(total_estimated_cost, 8),
-            "by_domain": [
-                {"domain": d, **u} for d, u in sorted(by_domain.items())
-            ],
+            "by_domain": [{"domain": d, **u} for d, u in sorted(by_domain.items())],
             "log_count": log_count,
             "unit_descriptions": {
                 "llm_units": "LLM processing units (total tokens processed)",
                 "storage_mb": "Storage units in MB (estimated from item count × "
-                              f"{self._STORAGE_MB_PER_ITEM} MB/item)",
+                f"{self._STORAGE_MB_PER_ITEM} MB/item)",
                 "api_call_units": "API call units (number of external API calls)",
             },
         }
@@ -1007,43 +1031,49 @@ class CostMeter:
         llm_qty = usage["llm_units"]
         llm_price = prices["llm_units"]
         llm_subtotal = round(llm_qty * llm_price / 1000.0, 8)  # per-1k pricing
-        line_items.append({
-            "unit_type": "llm_units",
-            "description": "LLM processing units",
-            "quantity": llm_qty,
-            "unit": "tokens",
-            "unit_price": llm_price,
-            "unit_price_desc": f"${llm_price} per 1000 tokens",
-            "subtotal": llm_subtotal,
-        })
+        line_items.append(
+            {
+                "unit_type": "llm_units",
+                "description": "LLM processing units",
+                "quantity": llm_qty,
+                "unit": "tokens",
+                "unit_price": llm_price,
+                "unit_price_desc": f"${llm_price} per 1000 tokens",
+                "subtotal": llm_subtotal,
+            }
+        )
 
         # Storage
         storage_qty = usage["storage_mb"]
         storage_price = prices["storage_mb"]
         storage_subtotal = round(storage_qty * storage_price, 8)
-        line_items.append({
-            "unit_type": "storage_mb",
-            "description": "Storage units",
-            "quantity": storage_qty,
-            "unit": "MB",
-            "unit_price": storage_price,
-            "unit_price_desc": f"${storage_price} per MB",
-            "subtotal": storage_subtotal,
-        })
+        line_items.append(
+            {
+                "unit_type": "storage_mb",
+                "description": "Storage units",
+                "quantity": storage_qty,
+                "unit": "MB",
+                "unit_price": storage_price,
+                "unit_price_desc": f"${storage_price} per MB",
+                "subtotal": storage_subtotal,
+            }
+        )
 
         # API calls
         api_qty = usage["api_call_units"]
         api_price = prices["api_call_units"]
         api_subtotal = round(api_qty * api_price, 8)
-        line_items.append({
-            "unit_type": "api_call_units",
-            "description": "API call units",
-            "quantity": api_qty,
-            "unit": "calls",
-            "unit_price": api_price,
-            "unit_price_desc": f"${api_price} per call",
-            "subtotal": api_subtotal,
-        })
+        line_items.append(
+            {
+                "unit_type": "api_call_units",
+                "description": "API call units",
+                "quantity": api_qty,
+                "unit": "calls",
+                "unit_price": api_price,
+                "unit_price_desc": f"${api_price} per call",
+                "subtotal": api_subtotal,
+            }
+        )
 
         subtotal = round(llm_subtotal + storage_subtotal + api_subtotal, 8)
 
@@ -1070,9 +1100,7 @@ class CostMeter:
         """
         with self._connect() as conn:
             if domain:
-                cur = conn.execute(
-                    "DELETE FROM cost_log WHERE domain = ?", (domain,)
-                )
+                cur = conn.execute("DELETE FROM cost_log WHERE domain = ?", (domain,))
             else:
                 cur = conn.execute("DELETE FROM cost_log")
             return cur.rowcount

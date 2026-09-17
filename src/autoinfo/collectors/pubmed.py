@@ -18,6 +18,7 @@ from xml.etree import ElementTree as ET
 import httpx
 
 from autoinfo.collectors.base import BaseHandler
+from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,11 @@ class PubMedHandler(BaseHandler):
         items = [handler.to_item(a) for a in articles]
     """
 
-    def __init__(self, api_key: str | None = None, source_config=None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        source_config: SourceConfig | None = None,
+    ) -> None:
         """Initialise handler.
 
         Args:
@@ -139,7 +144,8 @@ class PubMedHandler(BaseHandler):
 
         resp = self._request(url)
         data = resp.json()
-        return data.get("esearchresult", {}).get("idlist", [])
+        pmids: list[str] = data.get("esearchresult", {}).get("idlist", [])
+        return pmids
 
     def fetch(self, pmids: list[str]) -> list[dict[str, Any]]:
         """Fetch full article metadata for one or more PMIDs.
@@ -151,10 +157,7 @@ class PubMedHandler(BaseHandler):
             List of parsed article dictionaries, one per PMID.
         """
         joined = ",".join(pmids)
-        url = (
-            f"{BASE_URL}efetch.fcgi"
-            f"?db=pubmed&id={joined}&retmode=xml"
-        )
+        url = f"{BASE_URL}efetch.fcgi?db=pubmed&id={joined}&retmode=xml"
         if self.api_key:
             url += f"&api_key={self.api_key}"
 
@@ -166,7 +169,10 @@ class PubMedHandler(BaseHandler):
             articles.append(self._parse_article(elem))
 
         # -- Optionally enrich with PMC full text ---------------------------
-        if self.source_config is not None and self.source_config.fetch_depth in ("fulltext", "auto"):
+        if self.source_config is not None and self.source_config.fetch_depth in (
+            "fulltext",
+            "auto",
+        ):
             self._enrich_fulltext(articles)
 
         return articles
@@ -193,7 +199,8 @@ class PubMedHandler(BaseHandler):
             elif self.source_config and self.source_config.fetch_depth == "fulltext":
                 logger.warning(
                     "fetch_depth=fulltext but PMC full text unavailable for PMC %s (PMID %s)",
-                    pmc_id, article.get("pmid", "unknown"),
+                    pmc_id,
+                    article.get("pmid", "unknown"),
                 )
 
     def _fetch_pmc_fulltext(self, pmc_id: str) -> str | None:
@@ -223,7 +230,9 @@ class PubMedHandler(BaseHandler):
             return "\n\n".join(paragraphs) if paragraphs else None
         except Exception:
             logger.warning(
-                "Failed to fetch PMC full text for %s", pmc_id, exc_info=True,
+                "Failed to fetch PMC full text for %s",
+                pmc_id,
+                exc_info=True,
             )
             return None
 
@@ -355,11 +364,7 @@ class PubMedHandler(BaseHandler):
             source_name="pubmed",
             source_type="api",
             source_platform="pubmed",
-            source_url=(
-                f"{BASE_URL}efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
-                if pmid
-                else ""
-            ),
+            source_url=(f"{BASE_URL}efetch.fcgi?db=pubmed&id={pmid}&retmode=xml" if pmid else ""),
             title=article.get("title", ""),
             content=article.get("abstract", ""),
             content_type="text",

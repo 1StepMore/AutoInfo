@@ -85,9 +85,7 @@ class EdxSitemapHandler(BaseHandler):
         settings: dict[str, Any] = config or {}
         self.config: dict[str, Any] = settings
         self.source_name: str = str(settings.get("name", "edX Sitemap"))
-        self.sitemap_url: str = str(
-            settings.get("sitemap_url", DEFAULT_SITEMAP_URL)
-        ).rstrip("/")
+        self.sitemap_url: str = str(settings.get("sitemap_url", DEFAULT_SITEMAP_URL)).rstrip("/")
         self.robots_url: str = ROBOTS_URL
         self.limit: int = int(settings.get("limit", DEFAULT_LIMIT))
         self.rate_limit: float = float(settings.get("rate_limit", DEFAULT_RATE_LIMIT))
@@ -114,7 +112,7 @@ class EdxSitemapHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:  # type: ignore[override]
+    def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch course metadata from the edX sitemap.
 
         Args:
@@ -246,9 +244,7 @@ class EdxSitemapHandler(BaseHandler):
             resp = httpx.get(self.robots_url, timeout=self.timeout)
             resp.raise_for_status()
         except Exception as exc:
-            logger.warning(
-                "robots.txt fetch failed (%s) — proceeding with course crawl", exc
-            )
+            logger.warning("robots.txt fetch failed (%s) — proceeding with course crawl", exc)
             return True
         return robots_allows(resp.text, COURSE_PATH, user_agent="*")
 

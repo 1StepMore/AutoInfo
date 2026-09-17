@@ -101,17 +101,29 @@ class TestStaticEnvelopeConformance:
 
     def test_no_flat_error_key_anywhere_in_server(self) -> None:
         source = SERVER_SRC.read_text(encoding="utf-8")
-        # The only legitimate mention is inside the _canonicalize() boundary
+        # The only legitimate mentions are inside the _canonicalize() boundary
         # helper, which detects legacy flat dicts forwarded from lower-level
-        # helpers. Everywhere else the legacy key is banned.
+        # helpers. Everywhere else the legacy key is banned. The helper is
+        # declared several times — the typing.overload stubs plus the
+        # implementation — so strip every definition carrying that name rather
+        # than an arbitrary first match, which would land on a stub.
         tree = ast.parse(source)
-        helper = next(
+        helpers = [
             n
             for n in ast.walk(tree)
             if isinstance(n, ast.FunctionDef) and n.name == "_canonicalize"
+        ]
+        assert helpers, "server.py no longer defines the _canonicalize() boundary helper"
+        helper_srcs = [ast.get_source_segment(source, h) or "" for h in helpers]
+        # Keep the check from silently going vacuous: the helper itself must
+        # still be the place the legacy key is handled.
+        assert any("error_code" in src for src in helper_srcs), (
+            "_canonicalize() no longer mentions the legacy flat key — re-point "
+            "this test at wherever the legacy-key boundary moved to"
         )
-        helper_src = ast.get_source_segment(source, helper) or ""
-        rest = source.replace(helper_src, "")
+        rest = source
+        for helper_src in helper_srcs:
+            rest = rest.replace(helper_src, "")
         assert "error_code" not in rest, (
             "server.py references the legacy flat 'error_code' key outside "
             "the _canonicalize() boundary helper"

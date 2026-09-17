@@ -75,9 +75,7 @@ def query_collected(
                 raw_entries.append(entry)
     else:
         # FTS5 search, top 5
-        search_result = store.search_knowledge_base(
-            query=query, domain=domain, limit=5
-        )
+        search_result = store.search_knowledge_base(query=query, domain=domain, limit=5)
         fts5_entries = search_result.get("entries", [])
         # Fetch full content for each FTS5 result
         for e in fts5_entries:
@@ -106,10 +104,7 @@ def query_collected(
     # ------------------------------------------------------------------
     if not sources:
         return {
-            "answer": (
-                "No relevant articles found in the knowledge base to "
-                "answer your question."
-            ),
+            "answer": ("No relevant articles found in the knowledge base to answer your question."),
             "sources": [],
         }
 
@@ -168,7 +163,7 @@ def _call_llm_for_qa(query: str, articles: list[str]) -> str:
             max_tokens=2000,
             temperature=0.1,
         )
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+        content: str = response.choices[0].message.content
         return content or ""
     except Exception as exc:
         logger.error("LLM Q&A call failed: %s", exc)

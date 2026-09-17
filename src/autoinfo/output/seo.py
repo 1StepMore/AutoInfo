@@ -9,7 +9,7 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def generate_sitemap(
     domain: str = "",
     base_url: str = "",
-    entries: Optional[list[dict]] = None,
+    entries: Optional[list[dict[str, Any]]] = None,
 ) -> str:
     """Generate an XML sitemap for KB entries.
 
@@ -98,7 +98,7 @@ def generate_structured_data(
     Returns:
         JSON-LD string suitable for <script type="application/ld+json">
     """
-    ld: dict = {
+    ld: dict[str, Any] = {
         "@context": "https://schema.org",
         "@type": article_type,
         "headline": title,

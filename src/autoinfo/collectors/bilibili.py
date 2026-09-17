@@ -321,7 +321,8 @@ class BilibiliHandler(BaseHandler):
             )
             return None
 
-        return body.get("data")
+        data: dict[str, Any] | None = body.get("data")
+        return data
 
     # ------------------------------------------------------------------
     # Field mapping
@@ -349,9 +350,7 @@ class BilibiliHandler(BaseHandler):
         published_date = ""
         if created:
             try:
-                published_date = datetime.fromtimestamp(
-                    int(created), tz=timezone.utc
-                ).isoformat()
+                published_date = datetime.fromtimestamp(int(created), tz=timezone.utc).isoformat()
             except (ValueError, OSError):
                 published_date = ""
 
@@ -393,9 +392,7 @@ class BilibiliHandler(BaseHandler):
         published_date = ""
         if created:
             try:
-                published_date = datetime.fromtimestamp(
-                    int(created), tz=timezone.utc
-                ).isoformat()
+                published_date = datetime.fromtimestamp(int(created), tz=timezone.utc).isoformat()
             except (ValueError, OSError):
                 published_date = ""
 
@@ -439,9 +436,8 @@ class BilibiliHandler(BaseHandler):
             source_name="bilibili",
             source_type="bilibili",
             source_platform="bilibili",
-            source_url=video.get("source_url") or (
-                f"https://www.bilibili.com/video/av{video_id}" if video_id else ""
-            ),
+            source_url=video.get("source_url")
+            or (f"https://www.bilibili.com/video/av{video_id}" if video_id else ""),
             title=title,
             content=video.get("content") or "",
             content_type="text",

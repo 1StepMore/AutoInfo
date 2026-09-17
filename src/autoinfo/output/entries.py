@@ -771,9 +771,13 @@ _NEAR_DUP_CHAR_SIM_MAX = 0.85
 # cross-domain dedup (backup issue #109) so the two never drift.  Re-exported
 # here so existing callers/tests keep working.
 from autoinfo.textutil import (  # noqa: E402  (import at module top)
-    _NEAR_DUP_WINDOW_DAYS,
-    _extract_proper_nouns,
-    _has_death_event_word,
+    _NEAR_DUP_WINDOW_DAYS as _NEAR_DUP_WINDOW_DAYS,
+)
+from autoinfo.textutil import (  # noqa: E402
+    _extract_proper_nouns as _extract_proper_nouns,
+)
+from autoinfo.textutil import (  # noqa: E402
+    _has_death_event_word as _has_death_event_word,
 )
 
 

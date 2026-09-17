@@ -154,7 +154,7 @@ def _load_heartbeat() -> dict[str, Any]:
         return {"schedules": {}}
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
+            data: dict[str, Any] = json.load(fh)
     except (json.JSONDecodeError, OSError):
         logger.warning("Failed to parse heartbeat file at %s", path)
         return {"schedules": {}}
@@ -198,7 +198,7 @@ def _update_heartbeat(
     _save_heartbeat(heartbeat)
 
 
-def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
+def get_schedule_status(schedule_id: str | None = None) -> list[dict[str, Any]]:
     """Return status for all schedules or a specific one.
 
     Parameters
@@ -218,7 +218,7 @@ def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
     import sys
 
     now = datetime.now(timezone.utc)
-    result: list[dict] = []
+    result: list[dict[str, Any]] = []
 
     schedules = load_schedules()
     if not schedules:
@@ -230,7 +230,7 @@ def get_schedule_status(schedule_id: str | None = None) -> list[dict]:
         try:
             import croniter as croniter_mod  # type: ignore[no-redef]
         except ImportError:
-            croniter_mod = None  # type: ignore[assignment]
+            croniter_mod = None
 
     heartbeat = _load_heartbeat()
     schedules_heartbeat = heartbeat.get("schedules", {})
@@ -322,7 +322,7 @@ def _is_due(
 
     last_dt = datetime.fromisoformat(last_run)
     cron = croniter(expression, last_dt)
-    next_time = cron.get_next(datetime)
+    next_time: datetime = cron.get_next(datetime)
     return next_time <= now
 
 
@@ -330,7 +330,7 @@ def run_due_schedules(
     dry_run: bool = False,
     schedule_filter: str | None = None,
     json_output: bool = False,
-) -> list:  # list of result dicts
+) -> list[dict[str, Any]]:  # list of result dicts
     """Run all due schedules, returning a list of result dicts.
 
     Parameters
@@ -817,7 +817,7 @@ def _health_icon(health: str) -> str:
     return {"ok": "✓", "missed": "✗", "error": "✗", "unknown": "?"}.get(health, "?")
 
 
-def _send_missed_alerts(missed_schedules: list[dict]) -> None:
+def _send_missed_alerts(missed_schedules: list[dict[str, Any]]) -> None:
     """Send email notification for missed schedules.
 
     Reads admin email from ``AUTOINFO_ADMIN_EMAIL`` env var or falls back

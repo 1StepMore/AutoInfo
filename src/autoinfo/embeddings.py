@@ -62,9 +62,7 @@ def load_vec_extension(conn: sqlite3.Connection) -> bool:
     is logged and ``False`` is returned.
     """
     if not _sqlite_vec_available:
-        logger.warning(
-            "sqlite-vec package is not installed — vector features disabled"
-        )
+        logger.warning("sqlite-vec package is not installed — vector features disabled")
         return False
 
     if sqlite3.sqlite_version_info < (3, 41):
@@ -144,7 +142,7 @@ def generate_embedding(
     try:
         import litellm  # noqa: PLC0415 — deferred import
 
-        response = litellm.embedding(model=model, input=[text])  # type: ignore
+        response = litellm.embedding(model=model, input=[text])
         embedding: list[float] = response.data[0]["embedding"]
         return embedding
     except Exception as exc:
@@ -175,7 +173,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
     try:
         # Fast path — NumPy
-        import numpy as np  # type: ignore  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
 
         aa = np.array(a, dtype=np.float64)
         bb = np.array(b, dtype=np.float64)

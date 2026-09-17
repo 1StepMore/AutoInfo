@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timezone
 from email.header import decode_header
 from email.message import Message
-from typing import Any
+from typing import Any, cast
 
 from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
@@ -50,7 +50,7 @@ class EmailHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:  # type: ignore[override]
+    def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:
         """Delegate to :meth:`collect` for BaseHandler compatibility."""
         return self.collect(*args, **kwargs)
 
@@ -86,8 +86,7 @@ class EmailHandler(BaseHandler):
         # -- Validate required fields ----------------------------------
         if not host or not username or not password:
             logger.error(
-                "EmailHandler: missing required config: host=%s username=%s "
-                "password=%s",
+                "EmailHandler: missing required config: host=%s username=%s password=%s",
                 host or "<missing>",
                 username or "<missing>",
                 "<set>" if password else "<missing>",
@@ -286,7 +285,9 @@ class EmailHandler(BaseHandler):
     def _extract_singlepart_body(msg: Message) -> tuple[str, str]:
         """Extract body from a non-multipart message."""
         content_type = msg.get_content_type()
-        payload = msg.get_payload(decode=True)
+        # ``decode=True`` returns ``bytes`` (``None`` for multipart messages);
+        # typeshed's overload set over-unions the result, so pin the real type.
+        payload = cast("bytes | None", msg.get_payload(decode=True))
         if payload is None:
             return "", "text"
 
@@ -315,7 +316,7 @@ class EmailHandler(BaseHandler):
                 continue
 
             content_type = part.get_content_type()
-            payload = part.get_payload(decode=True)
+            payload = cast("bytes | None", part.get_payload(decode=True))
             if payload is None:
                 continue
 
@@ -425,10 +426,10 @@ class EmailHandler(BaseHandler):
         try:
             from dateutil import parser as dateutil_parser
 
-            dt = dateutil_parser.parse(date_str)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.isoformat()
+            parsed: datetime = dateutil_parser.parse(date_str)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.isoformat()
         except Exception:
             pass
 

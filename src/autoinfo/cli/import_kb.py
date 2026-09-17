@@ -112,20 +112,20 @@ def import_kb(  # noqa: A001 — mirrors the MCP tool name
     total_imported = sum(int(r.get("entries_imported", 0)) for r in results)
     total_failed = sum(int(r.get("entries_failed", 0)) for r in results)
 
-    data = {
+    payload: dict[str, Any] = {
         "domain": domain,
         "format": format,
         "imports": results,
         "total_imported": total_imported,
         "total_failed": total_failed,
     }
-    if emit_if_global(data):
+    if emit_if_global(payload):
         if total_failed > 0:
             raise typer.Exit(code=1)
         return
 
     if json_output:
-        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         for result in results:
             imported = result.get("entries_imported", 0)

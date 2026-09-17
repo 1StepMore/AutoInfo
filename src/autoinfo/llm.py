@@ -480,7 +480,7 @@ class LLMExtractor:
                 "total_tokens": getattr(response.usage, "total_tokens", 0),
             }
 
-        content: str = response.choices[0].message.content  # type: ignore[union-attr]
+        content: str = response.choices[0].message.content
         parsed = self._parse_response(content)
 
         custom_field_names: list[str] = []

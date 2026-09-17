@@ -236,22 +236,45 @@ def _try_notify_content_ready(
 # must never ship entries that are empty shells, test fixtures, or placeholder
 # content — they pollute the LLM synthesis input AND the rendered body.
 
-_TEST_TITLE_MARKERS: frozenset[str] = frozenset({
-    "Get Test", "Entry A", "Entry B", "Entry C", "QA Article", "Test Entry",
-    "Test", "test",
-})
+_TEST_TITLE_MARKERS: frozenset[str] = frozenset(
+    {
+        "Get Test",
+        "Entry A",
+        "Entry B",
+        "Entry C",
+        "QA Article",
+        "Test Entry",
+        "Test",
+        "test",
+    }
+)
 _TEST_TITLE_RE = re.compile(r"parity-t\d+|test\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE)
 _TEST_TITLE_SUBSTRINGS: tuple[str, ...] = (
-    "validation import", "spotcheck", "test entry", "lorem ipsum",
-    "placeholder", "test content",
+    "validation import",
+    "spotcheck",
+    "test entry",
+    "lorem ipsum",
+    "placeholder",
+    "test content",
 )
 _TEST_URL_MARKERS: tuple[str, ...] = (
-    "example.org", "localhost", "127.0.0.1", ".local",
+    "example.org",
+    "localhost",
+    "127.0.0.1",
+    ".local",
 )
-_TEST_SOURCE_PLATFORMS: frozenset[str] = frozenset({
-    "fixture", "mock", "stub", "sample",
-    "test-fixture", "test_fixture", "test-source", "test_source",
-})
+_TEST_SOURCE_PLATFORMS: frozenset[str] = frozenset(
+    {
+        "fixture",
+        "mock",
+        "stub",
+        "sample",
+        "test-fixture",
+        "test_fixture",
+        "test-source",
+        "test_source",
+    }
+)
 
 _NO_CONTENT_SUMMARY_RE: re.Pattern[str] = re.compile(
     r"^\s*(no\s+content\s+provided(?:\s+to\s+summarize)?\.?"
@@ -384,9 +407,7 @@ def _entry_source_cell(entry: dict[str, Any]) -> str:
     to its source.
     """
     url = str(entry.get("source_url") or "").strip()
-    label = str(
-        entry.get("source_label") or entry.get("source_platform") or ""
-    ).strip()
+    label = str(entry.get("source_label") or entry.get("source_platform") or "").strip()
     if url and url.startswith(("http://", "https://")):
         if not label:
             # No label but a real URL — show the host as the label.
@@ -403,9 +424,7 @@ def _entry_source_cell(entry: dict[str, Any]) -> str:
 # LLM leak detection (issue #302 — ①)
 # ---------------------------------------------------------------------------
 
-_LEAK_FENCED_JSON_RE: re.Pattern[str] = re.compile(
-    r"```json\s*\n", re.IGNORECASE
-)
+_LEAK_FENCED_JSON_RE: re.Pattern[str] = re.compile(r"```json\s*\n", re.IGNORECASE)
 _LEAK_JSON_PREFIX_RE: re.Pattern[str] = re.compile(
     r"^\s*\{\s*\"(?:title|entries|@type|digest_type)\"\s*:", re.IGNORECASE
 )
@@ -470,9 +489,7 @@ _CJK_EXEMPT_DOMAINS: frozenset[str] = frozenset(
 )
 
 
-def _warn_cjk_leak(
-    domain: str, product_type: str, rendered: str, threshold: int = 5
-) -> int:
+def _warn_cjk_leak(domain: str, product_type: str, rendered: str, threshold: int = 5) -> int:
     """Warn when a non-exempt domain's product carries too many CJK chars.
 
     Counts CJK ideographs in *rendered* and logs a warning (issue #181) when
@@ -780,6 +797,7 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
     NEW list; input dicts are never mutated and never dropped from the KB.
     """
     from autoinfo.output import datetime  # noqa: PLC0415 - package seam
+
     if not entries:
         return []
     nouns_by_key: dict[int, set[str]] = {}
@@ -793,12 +811,20 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
         return (-relevance, collected, eid)
 
     def _parse_dt(value: str | None) -> datetime | None:
+        from datetime import timezone  # noqa: PLC0415 - tiny stdlib import
+
         if not value:
             return None
         try:
-            return datetime.fromisoformat(str(value))
+            dt = datetime.fromisoformat(str(value))
         except (ValueError, TypeError):
             return None
+        # Normalise naive timestamps to UTC — collected_at values arrive both
+        # with an explicit offset (+00:00) and as date-only strings, and
+        # subtracting a naive from an aware datetime raises TypeError.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
     def _within_window(rep: dict[str, Any], entry: dict[str, Any]) -> bool:
         rep_dt = _parse_dt(rep.get("collected_at"))
@@ -837,12 +863,8 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
         entry_title = str(entry.get("title") or "").strip()
         if not rep_title or not entry_title:
             return False
-        rep_idx = next(
-            (i for i, e in enumerate(entries) if e is rep), -1
-        )
-        entry_idx = next(
-            (i for i, e in enumerate(entries) if e is entry), -1
-        )
+        rep_idx = next((i for i, e in enumerate(entries) if e is rep), -1)
+        entry_idx = next((i for i, e in enumerate(entries) if e is entry), -1)
         if rep_idx < 0 or entry_idx < 0:
             return False
         rep_nouns = nouns_by_key.get(rep_idx, set())
@@ -862,9 +884,8 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
             return False
         if not any(noun in entry_title for noun in shared):
             return False
-        return (
-            _has_death_event_word(rep_title, rep.get("language"))
-            and _has_death_event_word(entry_title, entry.get("language"))
+        return _has_death_event_word(rep_title, rep.get("language")) and _has_death_event_word(
+            entry_title, entry.get("language")
         )
 
     def _secondary_signal(rep: dict[str, Any], entry: dict[str, Any]) -> bool:
@@ -887,12 +908,8 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
             and SequenceMatcher(None, a, b).ratio() >= _NEAR_DUP_CHAR_SIM_MAX
         ):
             return True
-        rep_idx = next(
-            (i for i, e in enumerate(entries) if e is rep), -1
-        )
-        entry_idx = next(
-            (i for i, e in enumerate(entries) if e is entry), -1
-        )
+        rep_idx = next((i for i, e in enumerate(entries) if e is rep), -1)
+        entry_idx = next((i for i, e in enumerate(entries) if e is entry), -1)
         if rep_idx >= 0 and entry_idx >= 0:
             shared = nouns_by_key.get(rep_idx, set()) & nouns_by_key.get(entry_idx, set())
             if len(shared) >= 2:
@@ -948,9 +965,7 @@ def _filter_digest_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]
         if cf_dict.get("status") in ("archived", "deprecated"):
             continue
         active.append(entry)
-    return _converge_near_duplicates(
-        _filter_product_entries(_enrich_product_entries(active))
-    )
+    return _converge_near_duplicates(_filter_product_entries(_enrich_product_entries(active)))
 
 
 _LANG_ALIASES: dict[str, str] = {
@@ -1007,7 +1022,8 @@ def _filter_entries_by_language(
     if dropped:
         logger.info(
             "Excluded %d entries from product input for language='%s'",
-            dropped, target,
+            dropped,
+            target,
         )
     return kept
 
@@ -1052,7 +1068,9 @@ def _filter_entries_by_language_product_safe(
             "Language filter '%s' would reduce %d inputs to %d — treating the "
             "resolved language as stale and falling back to unfiltered input "
             "(issue #53)",
-            language, len(entries), len(filtered),
+            language,
+            len(entries),
+            len(filtered),
         )
         return entries, True
     return filtered, False
@@ -1068,6 +1086,7 @@ def _resolve_gloss_language(domain: str, default: str = "en") -> str:
     *default* (``en``) when unset.
     """
     from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+
     try:
         config_path = get_config_path()
         if config_path and config_path.is_file():
@@ -1080,9 +1099,7 @@ def _resolve_gloss_language(domain: str, default: str = "en") -> str:
     return default
 
 
-def _resolve_effective_language(
-    language: str, domain: str, *, cross_domain: bool = False
-) -> str:
+def _resolve_effective_language(language: str, domain: str, *, cross_domain: bool = False) -> str:
     """Resolve the effective language for a product (issue #317).
     Precedence:
     1. An explicit *language* param always wins.
@@ -1110,6 +1127,7 @@ def _resolve_effective_language(
         get_config_path,
         load_config,
     )
+
     if language:
         return language
     if cross_domain:
@@ -1157,6 +1175,7 @@ def _seed_domain_default_language(domain: str) -> str:
     ``default_language``.
     """
     from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
         return ""
@@ -1214,6 +1233,7 @@ def _get_domain_exclude_keywords(domain: str) -> list[str]:
     absent file yields ``[]``.
     """
     from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+
     config_path = get_config_path()
     if config_path is None or not config_path.is_file():
         return _seed_domain_exclude_keywords(domain)
@@ -1256,6 +1276,7 @@ def _seed_domain_exclude_keywords(domain: str) -> list[str]:
     Returns ``[]`` when the seed file is absent or unreadable.
     """
     from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
         return []
@@ -1276,6 +1297,7 @@ def _seed_domain_relevance_floor(domain: str) -> int:
     (disabled) when the seed file is absent or declares no floor.
     """
     from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
         return 0
@@ -1302,6 +1324,7 @@ def _get_domain_relevance_floor(domain: str) -> int:
     declared value always wins.  Returns 0 (disabled) when unset everywhere.
     """
     from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+
     config_path = get_config_path()
     if config_path and config_path.is_file():
         try:
@@ -1330,9 +1353,7 @@ def _config_declares_relevance_floor(config_path: Path, domain: str) -> bool:
     return False
 
 
-def _entry_matches_exclude_keywords(
-    entry: dict[str, Any], keywords: list[str]
-) -> bool:
+def _entry_matches_exclude_keywords(entry: dict[str, Any], keywords: list[str]) -> bool:
     """Return True when any excluded keyword appears in the entry's content.
 
     Matching is a deterministic substring check (casefold for latin, CJK-aware)
@@ -1383,6 +1404,7 @@ def _filter_entries_by_domain_exclusions(
         _get_domain_exclude_keywords,
         _get_domain_relevance_floor,
     )
+
     if not entries:
         return entries
     exclude_by_domain: dict[str, list[str]] = {}
@@ -1392,12 +1414,8 @@ def _filter_entries_by_domain_exclusions(
     for entry in entries:
         entry_domain = str(entry.get("domain") or domain)
         if entry_domain not in exclude_by_domain:
-            exclude_by_domain[entry_domain] = _get_domain_exclude_keywords(
-                entry_domain
-            )
-            floor_by_domain[entry_domain] = _get_domain_relevance_floor(
-                entry_domain
-            )
+            exclude_by_domain[entry_domain] = _get_domain_exclude_keywords(entry_domain)
+            floor_by_domain[entry_domain] = _get_domain_relevance_floor(entry_domain)
         keywords = exclude_by_domain[entry_domain]
         if keywords and _entry_matches_exclude_keywords(entry, keywords):
             dropped += 1
@@ -1418,6 +1436,7 @@ def _filter_entries_by_domain_exclusions(
         logger.info(
             "Excluded %d entries from product input for domain '%s' via "
             "exclude_keywords / relevance floor (product admission filter)",
-            dropped, domain,
+            dropped,
+            domain,
         )
     return kept

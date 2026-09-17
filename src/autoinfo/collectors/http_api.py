@@ -24,6 +24,7 @@ import trafilatura
 from autoinfo.collectors.base import BaseHandler, SourceFailure
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
+from autoinfo.textutil import clean_feed_text
 
 logger = logging.getLogger(__name__)
 
@@ -354,7 +355,9 @@ class HttpApiHandler(BaseHandler):
 
         for i, raw in enumerate(raw_items):
             try:
-                content = _coerce_str(_get_field(raw, field_mapping.get("content", "")))
+                content = clean_feed_text(
+                    _coerce_str(_get_field(raw, field_mapping.get("content", "")))
+                )
 
                 # CrossRef-specific fallback: if the content field (abstract) is empty
                 # AND the source is CrossRef, try to scrape the DOI landing page.
@@ -382,8 +385,7 @@ class HttpApiHandler(BaseHandler):
                     or self.source_config.url
                 )
                 content_type = (
-                    _coerce_str(_get_field(raw, field_mapping.get("content_type", "")))
-                    or "text"
+                    _coerce_str(_get_field(raw, field_mapping.get("content_type", ""))) or "text"
                 )
 
                 # Issue #180: sources without a field_mapping (e.g. Alpha
@@ -542,11 +544,11 @@ def _get_field(data: dict[str, Any], path: str) -> Any:
         return ""
 
     # -- Fast path: single dict key -----------------------------------------
-    if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', path):
+    if re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", path):
         return data.get(path, "")
 
     # -- Array indexing: key[N] ---------------------------------------------
-    m = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]$', path)
+    m = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]$", path)
     if m:
         key, idx = m.group(1), int(m.group(2))
         val = data.get(key)
@@ -559,7 +561,7 @@ def _get_field(data: dict[str, Any], path: str) -> Any:
     for key in path.split("."):
         if isinstance(current, dict):
             # Handle nested array index within dot path: "a[0].b"
-            m2 = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]$', key)
+            m2 = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]$", key)
             if m2:
                 dict_key, idx = m2.group(1), int(m2.group(2))
                 current = current.get(dict_key)
@@ -613,8 +615,7 @@ def _scrape_doi_page(doi_url: str, timeout: int = 10) -> str:
             timeout=timeout,
             headers={
                 "User-Agent": (
-                    "Mozilla/5.0 (compatible; AutoInfo/1.8; "
-                    "+https://github.com/1StepMore/AutoInfo)"
+                    "Mozilla/5.0 (compatible; AutoInfo/1.8; +https://github.com/1StepMore/AutoInfo)"
                 ),
             },
         )

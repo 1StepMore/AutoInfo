@@ -84,7 +84,10 @@ def _flatten_theme(raw: dict[str, Any]) -> dict[str, Any]:
     flat.setdefault("radius", "12px")
     flat.setdefault("radius_lg", "16px")
     flat.setdefault("shadow", "0 4px 12px rgba(0,0,0,0.3)")
-    flat.setdefault("grad", f"linear-gradient(135deg, {flat.get('accent', '#00ff88')}, {flat.get('bg', '#0a0a0a')})")
+    flat.setdefault(
+        "grad",
+        f"linear-gradient(135deg, {flat.get('accent', '#00ff88')}, {flat.get('bg', '#0a0a0a')})",
+    )
     flat.setdefault("good", flat.get("accent", "#00ff88"))
     flat.setdefault("warn", "#ffaa00")
     flat.setdefault("bad", "#ff6464")
@@ -486,7 +489,9 @@ def generate_hyperframes_project(
         "meta.json.j2",
         title=title,
         target_duration=int(total_duration),
-        scenes=[{"name": s["name"], "start": s["start"], "duration": s["duration"]} for s in scenes],
+        scenes=[
+            {"name": s["name"], "start": s["start"], "duration": s["duration"]} for s in scenes
+        ],
     )
     with open(os.path.join(output_dir, "meta.json"), "w", encoding="utf-8") as f:
         f.write(meta)
@@ -540,7 +545,7 @@ def render_hyperframes(
     project_dir: str,
     output_path: str,
     quality: str = "draft",
-    timeout: float = 1200,
+    timeout: float = float(os.environ.get("AUTOINFO_VIDEO_RENDER_TIMEOUT", "1200")),
 ) -> str:
     """Render a HyperFrames project to MP4 via ``bun x hyperframes render``.
 
@@ -559,9 +564,7 @@ def render_hyperframes(
         timeout=timeout,
     )
     if lint.returncode != 0:
-        raise RuntimeError(
-            f"HyperFrames lint failed:\n{lint.stdout}\n{lint.stderr}"
-        )
+        raise RuntimeError(f"HyperFrames lint failed:\n{lint.stdout}\n{lint.stderr}")
     logger.info("HyperFrames lint passed: %s", project_dir)
 
     # --- render ---
@@ -571,9 +574,14 @@ def render_hyperframes(
 
     render = subprocess.run(
         [
-            bun, "x", "hyperframes", "render",
-            "--output", output_path,
-            "--quality", quality,
+            bun,
+            "x",
+            "hyperframes",
+            "render",
+            "--output",
+            output_path,
+            "--quality",
+            quality,
         ],
         cwd=project_dir,
         capture_output=True,
@@ -582,14 +590,11 @@ def render_hyperframes(
     )
     if render.returncode != 0:
         raise RuntimeError(
-            f"HyperFrames render failed (quality={quality}):\n"
-            f"{render.stdout}\n{render.stderr}"
+            f"HyperFrames render failed (quality={quality}):\n{render.stdout}\n{render.stderr}"
         )
 
     if not os.path.isfile(output_path) or os.path.getsize(output_path) < 100:
-        raise RuntimeError(
-            f"Video output is missing or too small: {output_path}"
-        )
+        raise RuntimeError(f"Video output is missing or too small: {output_path}")
 
     logger.info(
         "Video rendered via HyperFrames: %s (%d bytes, quality=%s)",
@@ -649,9 +654,7 @@ def generate_report_video(
 
         # 3. Render
         if output_path is None:
-            output_path = os.path.join(
-                work_dir, f"autoinfo_video_{int(time.time())}.mp4"
-            )
+            output_path = os.path.join(work_dir, f"autoinfo_video_{int(time.time())}.mp4")
         render_hyperframes(project_dir, output_path, quality=cfg.quality)
 
         return os.path.abspath(output_path)

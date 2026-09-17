@@ -284,6 +284,48 @@ class TestRSSFulltext:
         assert len(items[0].content) == FULLTEXT_MAX_CHARS == 8000
         assert items[0].content == long_body[:FULLTEXT_MAX_CHARS]
 
+    def test_fulltext_does_not_downgrade_richer_summary(self) -> None:
+        from unittest import mock
+
+        from autoinfo.collectors.web import WebHandler
+
+        long_desc = "Rich feed body. " * 30
+        xml = (
+            b'<?xml version="1.0"?>'
+            b'<rss version="2.0"><channel><title>t</title><item>'
+            b"<title>Entry</title>"
+            b"<link>https://example.com/entry</link>"
+            b"<description>" + long_desc.encode() + b"</description>"
+            b"</item></channel></rss>"
+        )
+
+        class _Resp:
+            content = xml
+
+            def raise_for_status(self) -> None:
+                pass
+
+        short_item = Item(
+            id="web-1",
+            source_name="web",
+            source_type="web",
+            source_platform="web",
+            source_url="https://example.com/entry",
+            title="t",
+            content="Tiny teaser.",
+            content_type="text",
+        )
+
+        handler = RSSHandler(fetch_depth="fulltext")
+        with (
+            mock.patch("httpx.get", return_value=_Resp()),
+            mock.patch.object(WebHandler, "fetch", return_value=[short_item]),
+        ):
+            items = handler.fetch("https://example.com/feed.xml")
+
+        assert "Rich feed body." in items[0].content
+        assert items[0].content != "Tiny teaser."
+
 
 # ---------------------------------------------------------------------------
 # Edge cases
@@ -373,3 +415,54 @@ class TestFeedTextSanitization:
 
         assert items[0].title == "Hello World: A Plain Title"
         assert items[0].content == "Just a normal summary."
+
+
+class TestRicherBodyPreference:
+    def test_content_encoded_preferred_over_short_description(self, handler: RSSHandler) -> None:
+        long_body = "<p>" + ("Long article body sentence. " * 40) + "</p>"
+        xml = (
+            b'<?xml version="1.0"?>'
+            b'<rss version="2.0" '
+            b'xmlns:content="http://purl.org/rss/1.0/modules/content/">'
+            b"<channel><title>t</title><item>"
+            b"<title>Full article</title>"
+            b"<link>https://example.com/a</link>"
+            b"<description>Short teaser.</description>"
+            b"<content:encoded><![CDATA[" + long_body.encode() + b"]]></content:encoded>"
+            b"</item></channel></rss>"
+        )
+
+        class _Resp:
+            content = xml
+
+            def raise_for_status(self) -> None:
+                pass
+
+        with patch("httpx.get", return_value=_Resp()):
+            items = handler.fetch(
+                "https://example.com/feed.xml",
+            )
+
+        assert "Long article body sentence." in items[0].content
+        assert items[0].content != "Short teaser."
+
+    def test_description_used_when_no_content_encoded(self, handler: RSSHandler) -> None:
+        xml = (
+            b'<?xml version="1.0"?>'
+            b'<rss version="2.0"><channel><title>t</title><item>'
+            b"<title>Only teaser</title>"
+            b"<link>https://example.com/b</link>"
+            b"<description>Only a teaser here.</description>"
+            b"</item></channel></rss>"
+        )
+
+        class _Resp:
+            content = xml
+
+            def raise_for_status(self) -> None:
+                pass
+
+        with patch("httpx.get", return_value=_Resp()):
+            items = handler.fetch("https://example.com/feed.xml")
+
+        assert items[0].content == "Only a teaser here."

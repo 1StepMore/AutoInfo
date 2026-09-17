@@ -169,9 +169,7 @@ class DedupChecker:
             for entry in existing_entries:
                 entry_title = (entry.title or "").strip().lower()
                 if entry_title:
-                    similarity = difflib.SequenceMatcher(
-                        None, item_title, entry_title
-                    ).ratio()
+                    similarity = difflib.SequenceMatcher(None, item_title, entry_title).ratio()
                     if similarity >= 0.85:
                         logger.info(
                             "DedupChecker: duplicate detected (fuzzy title: %.2f) - "
@@ -290,12 +288,19 @@ class DedupChecker:
 
     @staticmethod
     def _parse_dt(value: str) -> datetime | None:
+        from datetime import timezone
+
         if not value:
             return None
         try:
-            return datetime.fromisoformat(str(value))
+            dt = datetime.fromisoformat(str(value))
         except (ValueError, TypeError):
             return None
+        # collected_at arrives both tz-aware (+00:00) and date-only; subtracting
+        # a naive from an aware datetime raises TypeError.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
     @staticmethod
     def _parse_kb_file(path: Path) -> KBEntry | None:

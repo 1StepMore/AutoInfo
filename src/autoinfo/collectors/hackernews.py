@@ -19,6 +19,7 @@ import httpx
 
 from autoinfo.collectors.base import BaseHandler
 from autoinfo.models import Item
+from autoinfo.textutil import clean_feed_text
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,8 @@ class HackerNewsHandler(BaseHandler):
         settings: dict[str, Any] = getattr(source_config, "settings", None) or {}
         self.rate_limit: float = float(settings.get("rate_limit", DEFAULT_RATE_LIMIT))
         self.timeout: int = int(settings.get("timeout", DEFAULT_TIMEOUT))
+        self.fetch_depth: str = str(getattr(source_config, "fetch_depth", "abstract") or "abstract")
+        self._web_handler: Any = None
         self._last_request_time: float = 0.0
 
     # ------------------------------------------------------------------
@@ -128,9 +131,7 @@ class HackerNewsHandler(BaseHandler):
                 if payload:
                     stories.append(payload)
             except Exception as exc:
-                logger.warning(
-                    "HackerNews item %s fetch failed: %s", story_id, exc
-                )
+                logger.warning("HackerNews item %s fetch failed: %s", story_id, exc)
                 continue
 
         return stories
@@ -151,12 +152,14 @@ class HackerNewsHandler(BaseHandler):
         """
         story_id: int = payload.get("id", 0)
         sid: str = str(story_id) if story_id else ""
-        title: str = (
-            payload.get("title")
-            or (payload.get("text", "") or "")[:80]
-            or f"HN story {sid}"
-        )
-        source_url: str = HN_ITEM_URL.format(item_id=sid) if sid else ""
+        text: str = clean_feed_text(payload.get("text") or "")
+        title: str = payload.get("title") or text[:80] or f"HN story {sid}"
+        article_url: str = str(payload.get("url") or "")
+        source_url: str = article_url or (HN_ITEM_URL.format(item_id=sid) if sid else "")
+
+        content: str = text
+        if not content and article_url and self.fetch_depth == "fulltext":
+            content = self._fetch_article(article_url)
 
         return Item(
             id=sid,
@@ -164,9 +167,29 @@ class HackerNewsHandler(BaseHandler):
             source_type="hackernews",
             source_url=source_url,
             title=title,
-            content=payload.get("text", "") or "",
+            content=content,
             content_type="text",
             source_platform="hackernews",
             collected_at=datetime.now(timezone.utc).isoformat(),
             raw_data=payload,
         )
+
+    def _fetch_article(self, url: str) -> str:
+        """Fetch the linked article body for a link-type HN story.
+
+        HN link posts carry no ``text``; the only useful body lives at the
+        story's ``url``.  Used when ``fetch_depth == "fulltext"``.  Failures
+        degrade to an empty body rather than aborting the item.
+        """
+        from autoinfo.collectors.rss import FULLTEXT_MAX_CHARS
+        from autoinfo.collectors.web import WebHandler
+
+        if self._web_handler is None:
+            self._web_handler = WebHandler()
+        try:
+            fetched = self._web_handler.fetch(url)
+        except Exception as exc:
+            logger.debug("HackerNews fulltext fetch failed for %s: %s", url, exc)
+            return ""
+        body = fetched[0].content if fetched else ""
+        return body[:FULLTEXT_MAX_CHARS]

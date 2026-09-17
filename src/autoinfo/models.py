@@ -79,9 +79,7 @@ class Item:
         try:
             return cls(**filtered)
         except Exception as exc:
-            raise TypeError(
-                f"Cannot create Item from data: {exc}"
-            ) from exc
+            raise TypeError(f"Cannot create Item from data: {exc}") from exc
 
 
 @dataclass
@@ -240,7 +238,17 @@ class KBEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> KBEntry:
-        return cls(**data)
+        """Create a KBEntry from a dict, ignoring unknown extra keys.
+
+        Frontmatter accumulates fields over time (``deleted`` / ``deleted_at``
+        are written by the soft-delete path, ``status`` by stale-marking), so a
+        valid entry must not fail to parse merely because the frontmatter
+        carries a key that has no matching dataclass field. Unknown keys are
+        silently dropped — mirrors :meth:`Item.from_dict`.
+        """
+        valid_fields = cls.__dataclass_fields__
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
 
 
 @dataclass

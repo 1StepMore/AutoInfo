@@ -5,6 +5,7 @@ Verifies the two-step fetch: GET /topstories.json → array of int ids → GET /
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -42,7 +43,13 @@ TOP_STORIES = [1, 2, 3]
 STORY_PAYLOADS: dict[int, dict] = {
     1: {"id": 1, "title": "Story One", "text": "", "by": "author1", "url": "https://example.com/1"},
     2: {"id": 2, "title": "Story Two", "text": "Content of story two.", "by": "author2", "url": ""},
-    3: {"id": 3, "title": "", "text": "No title, only text content here for story three.", "by": "author3", "url": "https://example.com/3"},
+    3: {
+        "id": 3,
+        "title": "",
+        "text": "No title, only text content here for story three.",
+        "by": "author3",
+        "url": "https://example.com/3",
+    },
 }
 
 
@@ -58,9 +65,7 @@ class TestHackerNewsHandler:
         assert handler.source_name == "HackerNews API"
 
     @patch("autoinfo.collectors.hackernews.httpx.get")
-    def test_fetch_returns_items(
-        self, mock_get: MagicMock, hn_config: SourceConfig
-    ) -> None:
+    def test_fetch_returns_items(self, mock_get: MagicMock, hn_config: SourceConfig) -> None:
         def side_effect(url: str, **kwargs):
             if "topstories" in url:
                 return _fake_response(TOP_STORIES)
@@ -78,10 +83,11 @@ class TestHackerNewsHandler:
 
         assert len(items) == 3
 
-        # First item
+        # First item — link post: source_url is the ORIGINAL article, not the
+        # HN discussion page (provenance must point at the source content).
         assert items[0].id == "1"
         assert items[0].title == "Story One"
-        assert items[0].source_url == "https://news.ycombinator.com/item?id=1"
+        assert items[0].source_url == "https://example.com/1"
         assert items[0].source_type == "hackernews"
         assert items[0].source_name == "HackerNews API"
 
@@ -113,14 +119,11 @@ class TestHackerNewsHandler:
         handler.fetch(limit=3)
 
         # Verify topstories.json called
-        base = hn_config.url.rstrip("/")
         calls = [call.args[0] for call in mock_get.call_args_list]
         assert any("/topstories.json" in c for c in calls), f"topstories.json not in calls: {calls}"
 
     @patch("autoinfo.collectors.hackernews.httpx.get")
-    def test_fetch_calls_item_endpoints(
-        self, mock_get: MagicMock, hn_config: SourceConfig
-    ) -> None:
+    def test_fetch_calls_item_endpoints(self, mock_get: MagicMock, hn_config: SourceConfig) -> None:
         def side_effect(url: str, **kwargs):
             if "topstories" in url:
                 return _fake_response(TOP_STORIES)
@@ -176,3 +179,64 @@ class TestHackerNewsHandler:
         item = handler.to_item({"id": 99})
         assert item.title == "HN story 99"
         assert item.id == "99"
+
+    def test_to_item_prefers_article_url_over_hn_page(self, hn_config: SourceConfig) -> None:
+        handler = HackerNewsHandler(hn_config)
+        item = handler.to_item({"id": 5, "title": "T", "url": "https://blog.example.com/post"})
+        assert item.source_url == "https://blog.example.com/post"
+
+    def test_to_item_falls_back_to_hn_page_without_article_url(
+        self, hn_config: SourceConfig
+    ) -> None:
+        handler = HackerNewsHandler(hn_config)
+        item = handler.to_item({"id": 5, "title": "T", "url": ""})
+        assert item.source_url == "https://news.ycombinator.com/item?id=5"
+
+    def test_to_item_strips_html_from_text(self, hn_config: SourceConfig) -> None:
+        handler = HackerNewsHandler(hn_config)
+        item = handler.to_item({"id": 6, "title": "T", "text": "<p>Hello &amp; <b>world</b></p>"})
+        assert item.content == "Hello & world"
+
+    @patch("autoinfo.collectors.web.WebHandler")
+    def test_to_item_fulltext_fetches_article_body_when_configured(
+        self, mock_web: MagicMock
+    ) -> None:
+        mock_web.return_value.fetch.return_value = [
+            SimpleNamespace(content="Full article body text")
+        ]
+        cfg = SourceConfig(
+            name="HackerNews API",
+            type="hackernews",
+            url="https://hacker-news.firebasedatabase.app/v0",
+            fetch_depth="fulltext",
+        )
+        handler = HackerNewsHandler(cfg)
+        item = handler.to_item(
+            {"id": 7, "title": "T", "url": "https://blog.example.com/x", "text": ""}
+        )
+        assert item.content == "Full article body text"
+
+    def test_to_item_skips_fulltext_fetch_by_default(self, hn_config: SourceConfig) -> None:
+        handler = HackerNewsHandler(hn_config)
+        with patch("autoinfo.collectors.web.WebHandler") as mock_web:
+            item = handler.to_item(
+                {"id": 8, "title": "T", "url": "https://blog.example.com/y", "text": ""}
+            )
+        mock_web.assert_not_called()
+        assert item.content == ""
+
+    @patch("autoinfo.collectors.web.WebHandler")
+    def test_to_item_fulltext_failure_degrades_to_empty(self, mock_web: MagicMock) -> None:
+        mock_web.return_value.fetch.side_effect = RuntimeError("network down")
+        cfg = SourceConfig(
+            name="HackerNews API",
+            type="hackernews",
+            url="https://hacker-news.firebasedatabase.app/v0",
+            fetch_depth="fulltext",
+        )
+        handler = HackerNewsHandler(cfg)
+        item = handler.to_item(
+            {"id": 9, "title": "T", "url": "https://blog.example.com/z", "text": ""}
+        )
+        assert item.content == ""
+        assert item.title == "T"

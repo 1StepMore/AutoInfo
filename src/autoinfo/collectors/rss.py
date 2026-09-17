@@ -174,12 +174,13 @@ class RSSHandler(BaseHandler):
         """
         title = clean_feed_text(entry.get("title", ""))
         link = entry.get("link", feed_url)
-        summary = clean_feed_text(
-            entry.get("summary")
-            or entry.get("description")
-            or entry.get("content", [{}])[0].get("value", "")
-            or ""
-        )
+        summary_text = clean_feed_text(entry.get("summary") or entry.get("description") or "")
+        encoded_text = clean_feed_text((entry.get("content") or [{}])[0].get("value", ""))
+        # Prefer the richer body: many feeds carry a one-line <description>
+        # AND the full article in content:encoded, so choosing summary
+        # unconditionally silently truncated the item to its teaser.
+        summary = encoded_text if len(encoded_text) > len(summary_text) else summary_text
+        summary = summary[:FULLTEXT_MAX_CHARS]
 
         published = entry.get("published") or entry.get("updated") or ""
         collected_at = _normalise_date(published)
@@ -214,6 +215,8 @@ class RSSHandler(BaseHandler):
             return
         if not body:
             logger.debug("No extractable fulltext for %s", link)
+            return
+        if len(body) <= len(item.content):
             return
         item.content = body[:FULLTEXT_MAX_CHARS]
 

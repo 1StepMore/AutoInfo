@@ -70,3 +70,6 @@ autoinfo.db.bak-precrossdom-cleanup-20260831
 
 # Concierge MVP pilot delivery dirs
 mvp/
+
+# Demo packages (generated raw+processed bundles — reproducible, not for git)
+demo-packages/

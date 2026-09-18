@@ -26,6 +26,7 @@ All LLM calls are mocked — no real API calls are made.
 
 from __future__ import annotations
 
+import tempfile
 import threading
 import time
 from contextlib import ExitStack
@@ -88,15 +89,11 @@ def _extraction(item: Item, translation: str = "") -> ExtractionResult:
 
 
 def _g3_pass() -> QualityResult:
-    return QualityResult(
-        gate_name="G3-RelevanceScoring", passed=True, score=80.0, details={}
-    )
+    return QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=80.0, details={})
 
 
 def _g4_pass() -> QualityResult:
-    return QualityResult(
-        gate_name="G4-SummaryFactual", passed=True, flagged=False, details={}
-    )
+    return QualityResult(gate_name="G4-SummaryFactual", passed=True, flagged=False, details={})
 
 
 def _quality_all_pass() -> dict[str, QualityResult]:
@@ -108,9 +105,7 @@ def _quality_all_pass() -> dict[str, QualityResult]:
         "G1-SourceAuthority": QualityResult(
             gate_name="G1-SourceAuthority", passed=True, details={}
         ),
-        "G1-TosCompliance": QualityResult(
-            gate_name="G1-TosCompliance", passed=True, details={}
-        ),
+        "G1-TosCompliance": QualityResult(gate_name="G1-TosCompliance", passed=True, details={}),
         "G2-Dedup": QualityResult(
             gate_name="G2-Dedup", passed=True, details={"is_duplicate": False}
         ),
@@ -159,24 +154,40 @@ def _run_with_patches(
     **proc_kwargs: Any,
 ) -> ProcessResult:
     """Run ``run_processing`` with the standard mock seam for KB + LLM."""
-    patches = [
-        patch("autoinfo.process.load_cached_items", return_value=items),
-        # Force the config seam regardless of a local .autoinfo/config.yaml —
-        # run_processing only calls load_config when get_config_path() finds a
-        # file, so on CI (no gitignored config) the patch below is a no-op.
-        patch("autoinfo.process.get_config_path", return_value=Path("/nonexistent/config.yaml")),
-        patch("autoinfo.process.load_config", return_value=config),
-        patch("autoinfo.process.KBStore", return_value=store),
-        patch.object(
-            LLMExtractor,
-            "extract",
-            side_effect=lambda item, schema=None: _extraction(  # noqa: ARG001, ARG005
-                item, translation=translation
-            ),
-        ),
-        *extra_patches,
-    ]
     with ExitStack() as stack:
+        # Judgment-gate model seam (issue #195): G4/G5/llm_judge resolve
+        # their model via autoinfo.config.get_config_path — point that seam
+        # at a throwaway config so gates get a model on CI (no project config).
+        cfg_root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        cfg_dir = cfg_root / ".autoinfo"
+        cfg_dir.mkdir(parents=True)
+        cfg_path = cfg_dir / "config.yaml"
+        cfg_path.write_text(
+            "project:\n  name: Subtask Parallelism Test\n"
+            "llm:\n  provider: openrouter\n  model: deepseek/deepseek-chat\n",
+            encoding="utf-8",
+        )
+        patches = [
+            patch("autoinfo.process.load_cached_items", return_value=items),
+            # Force the config seam regardless of a local .autoinfo/config.yaml —
+            # run_processing only calls load_config when get_config_path() finds a
+            # file, so on CI (no gitignored config) the patch below is a no-op.
+            patch(
+                "autoinfo.process.get_config_path",
+                return_value=Path("/nonexistent/config.yaml"),
+            ),
+            patch("autoinfo.process.load_config", return_value=config),
+            patch("autoinfo.process.KBStore", return_value=store),
+            patch.object(
+                LLMExtractor,
+                "extract",
+                side_effect=lambda item, schema=None: _extraction(  # noqa: ARG001, ARG005
+                    item, translation=translation
+                ),
+            ),
+            patch("autoinfo.config.get_config_path", return_value=cfg_path),
+            *extra_patches,
+        ]
         for p in patches:
             stack.enter_context(p)
         return run_processing("medical-research", **proc_kwargs)
@@ -216,9 +227,7 @@ def _barrier_gate(
     return _gate
 
 
-def _sleepy_gate(
-    counter: _Inflight, result: Any, delay: float = 0.05
-) -> Callable[..., Any]:
+def _sleepy_gate(counter: _Inflight, result: Any, delay: float = 0.05) -> Callable[..., Any]:
     """Gate mock body: count in-flight, sleep, return result."""
 
     def _gate(*args: Any, **kwargs: Any) -> Any:  # noqa: ARG001
@@ -249,9 +258,7 @@ class TestResolveSubtaskCap:
         monkeypatch.setenv("AUTOINFO_SUBTASK_CAP", "2")
         assert _resolve_subtask_cap() == 2
 
-    def test_invalid_env_falls_back_to_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_env_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AUTOINFO_SUBTASK_CAP", "not-a-number")
         assert _resolve_subtask_cap() == _DEFAULT_SUBTASK_CAP
 
@@ -266,9 +273,7 @@ class TestResolveSubtaskCap:
 
 
 class TestConcurrentGates:
-    def test_in_flight_reaches_subtask_cap(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_in_flight_reaches_subtask_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """All four post-extraction sub-tasks (G3/G4/G5/CEFR) run concurrently.
 
         Each mocked gate blocks on a shared barrier of 4 — if any gate ran
@@ -286,16 +291,10 @@ class TestConcurrentGates:
         }
 
         mock_g3 = MagicMock()
-        mock_g3.return_value.check.side_effect = _barrier_gate(
-            barrier, counter, _g3_pass()
-        )
+        mock_g3.return_value.check.side_effect = _barrier_gate(barrier, counter, _g3_pass())
         mock_g4 = MagicMock()
-        mock_g4.return_value.check.side_effect = _barrier_gate(
-            barrier, counter, _g4_pass()
-        )
-        mock_llm_judge = MagicMock(
-            side_effect=_barrier_gate(barrier, counter, g5_scores)
-        )
+        mock_g4.return_value.check.side_effect = _barrier_gate(barrier, counter, _g4_pass())
+        mock_llm_judge = MagicMock(side_effect=_barrier_gate(barrier, counter, g5_scores))
         mock_cefr = MagicMock(side_effect=_barrier_gate(barrier, counter, None))
 
         item = _item("par-a1-item", "First test article about IVF")
@@ -313,8 +312,7 @@ class TestConcurrentGates:
             check_factual=True,
             check_translation=True,
             translation=(
-                "This is the translated version of the article about IVF"
-                " treatment outcomes."
+                "This is the translated version of the article about IVF treatment outcomes."
             ),
         )
 
@@ -325,9 +323,7 @@ class TestConcurrentGates:
         assert result.kb_entries_created == 1
         assert result.per_item_logs[0]["status"] == "ok"
 
-    def test_subtask_cap_bounds_in_flight(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_subtask_cap_bounds_in_flight(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Lowering ``AUTOINFO_SUBTASK_CAP`` bounds concurrency to that value."""
         monkeypatch.setenv("AUTOINFO_SUBTASK_CAP", "2")
         counter = _Inflight()
@@ -364,14 +360,12 @@ class TestConcurrentGates:
             check_factual=True,
             check_translation=True,
             translation=(
-                "This is the translated version of the article about IVF"
-                " treatment outcomes."
+                "This is the translated version of the article about IVF treatment outcomes."
             ),
         )
 
         assert counter.max_inflight == 2, (
-            f"sub-task cap=2 was not respected (max in-flight = "
-            f"{counter.max_inflight})"
+            f"sub-task cap=2 was not respected (max in-flight = {counter.max_inflight})"
         )
         assert result.kb_entries_created == 1
 
@@ -382,9 +376,7 @@ class TestConcurrentGates:
 
 
 class TestReportOrder:
-    def test_gates_reported_in_canonical_order(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_gates_reported_in_canonical_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """quality_results keys stay G0→G5 even when gates complete out of order.
 
         G3's mock sleeps 0.3 s while G4/G5 return immediately — G3 finishes
@@ -403,9 +395,7 @@ class TestReportOrder:
 
         mock_quality = MagicMock(return_value=_quality_all_pass())
         mock_g3 = MagicMock()
-        mock_g3.return_value.check.side_effect = _sleepy_gate(
-            _Inflight(), _g3_pass(), delay=0.3
-        )
+        mock_g3.return_value.check.side_effect = _sleepy_gate(_Inflight(), _g3_pass(), delay=0.3)
         mock_g4 = MagicMock()
         mock_g4.return_value.check.side_effect = lambda *a, **k: _g4_pass()
         mock_llm_judge = MagicMock(
@@ -433,8 +423,7 @@ class TestReportOrder:
             check_factual=True,
             check_translation=True,
             translation=(
-                "This is the translated version of the article about IVF"
-                " treatment outcomes."
+                "This is the translated version of the article about IVF treatment outcomes."
             ),
         )
 
@@ -456,9 +445,7 @@ class TestReportOrder:
 
 
 class TestG4RetrySemantics:
-    def test_flaky_g4_retries_then_succeeds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_flaky_g4_retries_then_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """G4's internal retry loop drives 3 attempts; success on attempt 3.
 
         The LLM call fails twice (RuntimeError) then returns a non-
@@ -476,10 +463,7 @@ class TestG4RetrySemantics:
                 choices=[
                     SimpleNamespace(
                         message=SimpleNamespace(
-                            content=(
-                                '{"contradiction": false, '
-                                '"explanation": "all good"}'
-                            )
+                            content=('{"contradiction": false, "explanation": "all good"}')
                         )
                     )
                 ]
@@ -497,9 +481,7 @@ class TestG4RetrySemantics:
             check_factual=True,
         )
 
-        assert calls["n"] == 3, (
-            f"G4 retry loop did not run 3 attempts (observed {calls['n']})"
-        )
+        assert calls["n"] == 3, f"G4 retry loop did not run 3 attempts (observed {calls['n']})"
         assert result.kb_entries_created == 1  # passed → stored
         assert store.store_entry.call_count == 1
         g4 = store.store_entry.call_args.args[2]["G4-SummaryFactual"]
@@ -515,6 +497,7 @@ class TestG4RetrySemantics:
         the item is blocked (no storage), and G4 writes its own ``_failed/``
         diagnostics (3 attempts recorded).
         """
+
         def always_fail(*args: Any, **kwargs: Any) -> Any:  # noqa: ARG001
             raise RuntimeError("provider boom")
 
@@ -522,16 +505,12 @@ class TestG4RetrySemantics:
         store = _mock_store(_entry("par-d1-entry"))
         monkeypatch.setenv("AUTOINFO_PROCESS_WORKERS", "1")
 
-        with patch.object(
-            G4FactualConsistency, "_write_failed_diagnostics"
-        ) as mock_wfd:
+        with patch.object(G4FactualConsistency, "_write_failed_diagnostics") as mock_wfd:
             result = _run_with_patches(
                 [item],
                 store,
                 _g4_config(retries=3),
-                patch(
-                    "autoinfo.quality.call_with_fallback", side_effect=always_fail
-                ),
+                patch("autoinfo.quality.call_with_fallback", side_effect=always_fail),
                 check_factual=True,
             )
 

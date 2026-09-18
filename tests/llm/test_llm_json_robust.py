@@ -284,7 +284,9 @@ class TestGatesFencedJson:
         """G4 with fenced JSON: previously raised, now passes cleanly."""
         fenced = '```json\n{"contradiction": false, "explanation": "consistent"}\n```'
         with patch.object(LLMExtractor, "_get_litellm", return_value=_mock_litellm(fenced)):
-            result = G4FactualConsistency(json_mode=False).check(sample_item, sample_extraction)
+            result = G4FactualConsistency(model="test/test", json_mode=False).check(
+                sample_item, sample_extraction
+            )
         assert result.passed is True
         assert result.flagged is False
         assert result.details["explanation"] == "consistent"
@@ -296,7 +298,9 @@ class TestGatesFencedJson:
         fenced = '```json\n{"faithful": true, "explanation": "ok", "issues": []}\n```'
         sample_extraction.custom_fields = {"translation": "IVF success rates rise"}
         with patch.object(LLMExtractor, "_get_litellm", return_value=_mock_litellm(fenced)):
-            result = G5TranslationAccuracy(json_mode=False).check(sample_item, sample_extraction)
+            result = G5TranslationAccuracy(model="test/test", json_mode=False).check(
+                sample_item, sample_extraction
+            )
         assert result.passed is True
         assert result.flagged is False
         assert result.details["faithful"] is True
@@ -314,7 +318,11 @@ class TestCefrMaxTokens:
         """Fake LLM returning a bare level still classifies (B2)."""
         mock_litellm = _mock_litellm("B2")
         with patch.object(LLMExtractor, "_get_litellm", return_value=mock_litellm):
-            result = classify_text("The mitochondria is the powerhouse of the cell", lang="en")
+            result = classify_text(
+                "The mitochondria is the powerhouse of the cell",
+                lang="en",
+                model_config={"model": "test/test"},
+            )
         assert result["cefr_level"] == "B2"
         # The bump from 50 must have taken effect (and be sane).
         assert mock_litellm.completion.call_args.kwargs["max_tokens"] >= 256

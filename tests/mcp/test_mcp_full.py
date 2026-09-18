@@ -601,7 +601,7 @@ class TestToolFilters:
             result = mcp_server._handle_list_active_collections(domain="medical-research")
         assert "active_collections" in result
 
-    def test_list_projects_accepts_status_filter(self) -> None:
+    def test_list_projects_accepts_status_filter(self, tmp_config: Path) -> None:
         """list_projects accepts a status parameter."""
         result = mcp_server._handle_list_projects(status="active")
         assert "projects" in result

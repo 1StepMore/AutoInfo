@@ -14,10 +14,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoinfo.qa import query_collected
 from autoinfo.kb import KBStore
 from autoinfo.models import Item
-
+from autoinfo.qa import query_collected
 
 # ===================================================================
 # Fixtures
@@ -133,6 +132,19 @@ def mock_litellm() -> MagicMock:
     return m
 
 
+def _qa_config_path(tmp_path: Path) -> Path:
+    """Write a minimal hermetic config and return its path (qa model seam)."""
+    config_dir = tmp_path / ".autoinfo"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        "project:\n  name: QA Test\n"
+        "llm:\n  provider: openrouter\n  model: deepseek/deepseek-chat\n",
+        encoding="utf-8",
+    )
+    return config_path
+
+
 # ===================================================================
 # Tests
 # ===================================================================
@@ -152,15 +164,17 @@ class TestQueryCollected:
         mock_litellm: MagicMock,
         kb_store: KBStore,
         seed_entries: dict[str, str],
+        tmp_path: Path,
     ) -> None:
         """FTS5 search yields entries; LLM returns a cited answer."""
         mock_get_litellm.return_value = mock_litellm.completion.return_value
 
-        result = query_collected(
-            query="embryo IVF time-lapse",
-            domain="medical-research",
-            store=kb_store,
-        )
+        with patch("autoinfo.qa.get_config_path", return_value=_qa_config_path(tmp_path)):
+            result = query_collected(
+                query="embryo IVF time-lapse",
+                domain="medical-research",
+                store=kb_store,
+            )
 
         # Answer is the canned LLM output
         assert "IVF" in result["answer"]
@@ -220,6 +234,7 @@ class TestQueryCollected:
         mock_litellm: MagicMock,
         kb_store: KBStore,
         seed_entries: dict[str, str],
+        tmp_path: Path,
     ) -> None:
         """When content_ids is provided, only those entries are used."""
         mock_get_litellm.return_value = mock_litellm.completion.return_value
@@ -228,12 +243,13 @@ class TestQueryCollected:
         entry_ids = list(seed_entries.keys())
         selected = entry_ids[:2]
 
-        result = query_collected(
-            query="Tell me about embryo research",
-            domain="medical-research",
-            content_ids=selected,
-            store=kb_store,
-        )
+        with patch("autoinfo.qa.get_config_path", return_value=_qa_config_path(tmp_path)):
+            result = query_collected(
+                query="Tell me about embryo research",
+                domain="medical-research",
+                content_ids=selected,
+                store=kb_store,
+            )
 
         # Only the selected entries appear in sources
         assert len(result["sources"]) == 2
@@ -254,25 +270,27 @@ class TestQueryCollected:
         mock_litellm: MagicMock,
         kb_store: KBStore,
         seed_entries: dict[str, str],
+        tmp_path: Path,
     ) -> None:
         """Each call is stateless — second query ignores first."""
         mock_get_litellm.return_value = mock_litellm.completion.return_value
 
-        # First query
-        result1 = query_collected(
-            query="embryo IVF",
-            domain="medical-research",
-            store=kb_store,
-        )
-        assert result1["answer"]
+        with patch("autoinfo.qa.get_config_path", return_value=_qa_config_path(tmp_path)):
+            # First query
+            result1 = query_collected(
+                query="embryo IVF",
+                domain="medical-research",
+                store=kb_store,
+            )
+            assert result1["answer"]
 
-        # Second query — same question, new call
-        result2 = query_collected(
-            query="embryo IVF",
-            domain="medical-research",
-            store=kb_store,
-        )
-        assert result2["answer"]
+            # Second query — same question, new call
+            result2 = query_collected(
+                query="embryo IVF",
+                domain="medical-research",
+                store=kb_store,
+            )
+            assert result2["answer"]
 
         # Verify LLM was called twice with full conversation each time
         assert mock_get_litellm.call_count == 2

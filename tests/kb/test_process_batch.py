@@ -12,8 +12,7 @@ Covers:
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,7 +26,6 @@ from autoinfo.process import (
     run_processing,
 )
 from autoinfo.quality import QualityResult
-
 
 # ===================================================================
 # Fixtures
@@ -49,7 +47,7 @@ def three_items() -> list[Item]:
                 title=f"Test article {i}",
                 content=f"Content of test article {i}.",
                 content_type="text",
-                collected_at=f"2026-07-{15+i:02d}T10:00:00Z",
+                collected_at=f"2026-07-{15 + i:02d}T10:00:00Z",
                 language="en",
                 domain="medical-research",
                 topic_tags=["IVF"],
@@ -77,15 +75,21 @@ def _all_pass_gates() -> dict[str, QualityResult]:
     """Quality gate results where all three gates pass."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=True, score=1.0,
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
             details={"is_duplicate": False, "matched_by": None},
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=80.0,
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=80.0,
             details={"hidden": False},
         ),
     }
@@ -120,16 +124,16 @@ class TestBatchProcessing:
 
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items),
-            patch("autoinfo.process._read_progress",
-                  return_value={"last_processed_index": 0, "total_items": 3}),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={"last_processed_index": 0, "total_items": 3},
+            ),
             patch("autoinfo.process._write_progress") as mock_write,
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            result = run_processing(
-                "medical-research", batch_size=2
-            )
+            result = run_processing("medical-research", batch_size=2)
 
         assert result.total_items == 3
         assert result.processed_count == 2
@@ -139,9 +143,7 @@ class TestBatchProcessing:
         assert len(result.per_item_logs) == 2
 
         # Progress was persisted
-        mock_write.assert_called_once_with(
-            "medical-research", 2, 3
-        )
+        mock_write.assert_called_once_with("medical-research", 2, 3)
 
     def test_batch_completes_when_batch_exceeds_remaining(
         self,
@@ -156,16 +158,16 @@ class TestBatchProcessing:
         # Start from index 2 (1 item remaining), batch=5 should get it all
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items),
-            patch("autoinfo.process._read_progress",
-                  return_value={"last_processed_index": 2, "total_items": 3}),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={"last_processed_index": 2, "total_items": 3},
+            ),
             patch("autoinfo.process._write_progress"),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            result = run_processing(
-                "medical-research", batch_size=5
-            )
+            result = run_processing("medical-research", batch_size=5)
 
         assert result.total_items == 3
         assert result.processed_count == 1
@@ -192,9 +194,9 @@ class TestBatchProcessing:
         progress_store: dict = {}
 
         def mock_read(domain: str) -> dict:
-            return progress_store.get(domain, {
-                "last_processed_index": 0, "total_items": len(three_items)
-            })
+            return progress_store.get(
+                domain, {"last_processed_index": 0, "total_items": len(three_items)}
+            )
 
         def mock_write(domain: str, index: int, total: int) -> None:
             progress_store[domain] = {
@@ -256,8 +258,10 @@ class TestBatchProcessing:
         # Simulate: progress says 3 items, but only 2 items loaded
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items[:2]),
-            patch("autoinfo.process._read_progress",
-                  return_value={"last_processed_index": 2, "total_items": 3}),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={"last_processed_index": 2, "total_items": 3},
+            ),
             patch("autoinfo.process._write_progress"),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
@@ -271,9 +275,7 @@ class TestBatchProcessing:
         # All items reprocessed when cache size changes (order not guaranteed)
         assert sorted(processed_ids) == ["item-001", "item-002"]
 
-    def test_cache_change_resets_progress(
-        self, three_items: list[Item]
-    ) -> None:
+    def test_cache_change_resets_progress(self, three_items: list[Item]) -> None:
         """When persisted total_items differs from cache, progress resets."""
         mock_ext = MagicMock()
         mock_quality = MagicMock()
@@ -282,8 +284,10 @@ class TestBatchProcessing:
         # persisted_total=5 but actual=3 → reset
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items),
-            patch("autoinfo.process._read_progress",
-                  return_value={"last_processed_index": 3, "total_items": 5}),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={"last_processed_index": 3, "total_items": 5},
+            ),
             patch("autoinfo.process._write_progress") as mock_write,
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
@@ -347,9 +351,7 @@ class TestBatchBackwardCompatibility:
 
         mock_write.assert_not_called()
 
-    def test_empty_cache_with_batch(
-        self, mock_extraction: ExtractionResult
-    ) -> None:
+    def test_empty_cache_with_batch(self, mock_extraction: ExtractionResult) -> None:
         """Empty cache with batch_size returns zero counts."""
         mock_ext = MagicMock(return_value=mock_extraction)
         mock_quality = MagicMock()
@@ -357,8 +359,10 @@ class TestBatchBackwardCompatibility:
 
         with (
             patch("autoinfo.process.load_cached_items", return_value=[]),
-            patch("autoinfo.process._read_progress",
-                  return_value={"last_processed_index": 0, "total_items": 0}),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={"last_processed_index": 0, "total_items": 0},
+            ),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
             patch("autoinfo.process.KBStore", return_value=mock_store),
@@ -447,25 +451,31 @@ class TestBatchCli:
         assert result.exit_code == 0
         assert "--batch-size" in result.stdout
 
-    def test_batch_size_passed_to_run_processing(
-        self, cli_runner
-    ) -> None:
+    def test_batch_size_passed_to_run_processing(self, cli_runner) -> None:
         """--batch-size 2 is passed to run_processing()."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=5,
-            processed_count=2,
-            remaining_count=3,
-            is_complete=False,
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=5,
+                processed_count=2,
+                remaining_count=3,
+                is_complete=False,
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
-            result = cli_runner.invoke(app, [
-                "process", "--domain", "test-domain",
-                "--batch-size", "2",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "process",
+                    "--domain",
+                    "test-domain",
+                    "--batch-size",
+                    "2",
+                ],
+            )
 
         assert result.exit_code == 0
         mock_proc.assert_called_once_with(
@@ -475,50 +485,61 @@ class TestBatchCli:
             batch_size=2,
             check_factual=False,
             check_translation=False,
+            resume_from=None,
         )
 
-    def test_batch_progress_shown_in_human_output(
-        self, cli_runner
-    ) -> None:
+    def test_batch_progress_shown_in_human_output(self, cli_runner) -> None:
         """Incomplete batch shows progress message."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=5,
-            processed_count=2,
-            remaining_count=3,
-            is_complete=False,
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=5,
+                processed_count=2,
+                remaining_count=3,
+                is_complete=False,
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
-            result = cli_runner.invoke(app, [
-                "process", "--domain", "test-domain",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "process",
+                    "--domain",
+                    "test-domain",
+                ],
+            )
 
         assert result.exit_code == 0
         assert "incomplete" in result.stdout
         assert "2 processed" in result.stdout
         assert "3 remaining" in result.stdout
 
-    def test_batch_progress_hidden_when_complete(
-        self, cli_runner
-    ) -> None:
+    def test_batch_progress_hidden_when_complete(self, cli_runner) -> None:
         """Complete batch hides the progress message."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=3,
-            processed_count=3,
-            remaining_count=0,
-            is_complete=True,
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=3,
+                processed_count=3,
+                remaining_count=0,
+                is_complete=True,
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
-            result = cli_runner.invoke(app, [
-                "process", "--domain", "test-domain",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "process",
+                    "--domain",
+                    "test-domain",
+                ],
+            )
 
         assert result.exit_code == 0
         assert "incomplete" not in result.stdout
@@ -533,30 +554,25 @@ class TestBatchMCP:
     """MCP server dispatches batch_size to run_processing."""
 
     @patch("autoinfo.process.run_processing")
-    def test_mcp_passes_batch_size(
-        self, mock_proc: MagicMock
-    ) -> None:
+    def test_mcp_passes_batch_size(self, mock_proc: MagicMock) -> None:
         """MCP process_collection passes batch_size kwarg."""
         from autoinfo.mcp.server import _handle_process_collection
 
         mock_proc.return_value = ProcessResult(
-            domain="med", total_items=10, processed_count=3, is_complete=False,
+            domain="med",
+            total_items=10,
+            processed_count=3,
+            is_complete=False,
         )
 
-        result = _handle_process_collection(
-            domain="med", batch_size=3
-        )
+        result = _handle_process_collection(domain="med", batch_size=3)
 
-        mock_proc.assert_called_once_with(
-            domain="med", batch_size=3
-        )
+        mock_proc.assert_called_once_with(domain="med", batch_size=3)
         assert result["is_complete"] is False
         assert result["processed_count"] == 3
 
     @patch("autoinfo.process.get_processing_progress")
-    def test_mcp_get_progress(
-        self, mock_progress: MagicMock
-    ) -> None:
+    def test_mcp_get_progress(self, mock_progress: MagicMock) -> None:
         """MCP get_processing_progress returns progress data."""
         from autoinfo.mcp.server import _handle_get_processing_progress
 

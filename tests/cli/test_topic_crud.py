@@ -573,10 +573,12 @@ class TestMCPToolRegistration:
             assert schema.get("type") == "object"
 
     @pytest.mark.asyncio
-    async def test_list_topics_dispatch(self) -> None:
+    async def test_list_topics_dispatch(self, tmp_path: Path) -> None:
         """``list_topics`` call_tool dispatches to ``_handle_list_topics``."""
         from autoinfo.mcp import server as mcp_server
 
+        _setup_minimal_config(tmp_path)
+        config_path = tmp_path / ".autoinfo" / "config.yaml"
         handler = mcp_server.app.request_handlers[CallToolRequest]
         request = CallToolRequest(
             method="tools/call",
@@ -585,10 +587,11 @@ class TestMCPToolRegistration:
                 arguments={"domain": "nonexistent"},
             ),
         )
-        result = await handler(request)
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+            result = await handler(request)
         call_result = result.root
         data = json.loads(call_result.content[0].text)
-        # Should return DomainNotFound (since config won't exist)
+        # Config loads (hermetic seam) but the domain is not in it → DomainNotFound
         assert data["success"] is False
         assert data["error"]["code"] == ErrorCode.DOMAIN_NOT_FOUND.value
 

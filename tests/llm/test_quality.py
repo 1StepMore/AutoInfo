@@ -133,9 +133,7 @@ class TestG1SourceScore:
     def test_gate_config_overrides_score_map(self, sample_item: Item) -> None:
         item = Item(**{**sample_item.to_dict(), "quality_tier": 1})
         custom_map = {1: 95.0, 2: 75.0, 3: 55.0, 4: 25.0}
-        gate_config = QualityGateConfig(
-            name="G1-SourceAuthority", source_score_map=custom_map
-        )
+        gate_config = QualityGateConfig(name="G1-SourceAuthority", source_score_map=custom_map)
         g1 = G1SourceAuthority()
         result = g1.check(item, gate_config=gate_config)
         assert result.details["source_score"] == 95.0
@@ -144,9 +142,7 @@ class TestG1SourceScore:
         assert hasattr(sample_kb_entry, "source_score")
         assert sample_kb_entry.source_score == 0.0  # default
 
-    def test_store_entry_persists_source_score(
-        self, sample_item: Item, tmp_path: Path
-    ) -> None:
+    def test_store_entry_persists_source_score(self, sample_item: Item, tmp_path: Path) -> None:
         from autoinfo.kb import KBStore
 
         store = KBStore(base_path=tmp_path / "kb")
@@ -179,9 +175,7 @@ class TestG1SourceScore:
         assert db_entry is not None
         assert db_entry["source_score"] == 90.0
 
-    def test_search_results_include_source_score(
-        self, sample_item: Item, tmp_path: Path
-    ) -> None:
+    def test_search_results_include_source_score(self, sample_item: Item, tmp_path: Path) -> None:
         from autoinfo.kb import KBStore
         from autoinfo.models import ExtractionResult
 
@@ -222,9 +216,7 @@ class TestG2Dedup:
     """G2 detects duplicates by URL, PMID, or DOI."""
 
     def test_url_duplicate_detected(self, sample_item: Item, sample_kb_entry: KBEntry) -> None:
-        existing = [
-            KBEntry(**{**sample_kb_entry.to_dict(), "source_url": sample_item.source_url})
-        ]
+        existing = [KBEntry(**{**sample_kb_entry.to_dict(), "source_url": sample_item.source_url})]
         g2 = G2Dedup()
         result = g2.check(sample_item, existing)
 
@@ -482,6 +474,7 @@ class TestG2Dedup:
         assert result.passed is True
         assert result.details["is_duplicate"] is False
 
+
 # ===================================================================
 # G3 — Relevance Scoring
 # ===================================================================
@@ -548,13 +541,26 @@ class TestG3RelevanceScoring:
         g3 = G3RelevanceScoring()
         # 13-keyword union (b2b-like broad set); the item hits only "IVF" in title.
         keywords = [
-            "IVF", "embryo", "fertility", "startup", "funding", "SaaS",
-            "enterprise", "cloud", "CRM", "marketing", "sales", "procurement",
+            "IVF",
+            "embryo",
+            "fertility",
+            "startup",
+            "funding",
+            "SaaS",
+            "enterprise",
+            "cloud",
+            "CRM",
+            "marketing",
+            "sales",
+            "procurement",
             "vendor",
         ]
         config = QualityGateConfig(
-            name="G3-RelevanceScoring", category="soft", retries=0,
-            action="archive", threshold=30,
+            name="G3-RelevanceScoring",
+            category="soft",
+            retries=0,
+            action="archive",
+            threshold=30,
         )
         result = g3.check(sample_item, topic_keywords=keywords, threshold=30, gate_config=config)
 
@@ -571,11 +577,16 @@ class TestG3RelevanceScoring:
 
         g3 = G3RelevanceScoring()
         config = QualityGateConfig(
-            name="G3-RelevanceScoring", category="soft", retries=0,
-            action="archive", threshold=30,
+            name="G3-RelevanceScoring",
+            category="soft",
+            retries=0,
+            action="archive",
+            threshold=30,
         )
         result = g3.check(
-            sample_item, topic_keywords=["quantum computing"], threshold=30,
+            sample_item,
+            topic_keywords=["quantum computing"],
+            threshold=30,
             gate_config=config,
         )
 
@@ -590,17 +601,23 @@ class TestG3RelevanceScoring:
         partial-hit (flag)."""
         from autoinfo.config import QualityGateConfig
 
-        g3 = G3RelevanceScoring()
+        g3 = G3RelevanceScoring(model="test/test")
         g3.llm_call = lambda **kwargs: type(
-            "R", (), {"choices": [type("C", (), {"message": type(
-                "M", (), {"content": "10"})()})()]}  # noqa: E501
+            "R",
+            (),
+            {"choices": [type("C", (), {"message": type("M", (), {"content": "10"})()})()]},  # noqa: E501
         )()
         config = QualityGateConfig(
-            name="G3-RelevanceScoring", category="soft", retries=1,
-            action="archive", threshold=30,
+            name="G3-RelevanceScoring",
+            category="soft",
+            retries=1,
+            action="archive",
+            threshold=30,
         )
         result = g3.check(
-            sample_item, topic_keywords=["IVF", "embryo"], threshold=30,
+            sample_item,
+            topic_keywords=["IVF", "embryo"],
+            threshold=30,
             gate_config=config,
         )
 
@@ -608,7 +625,8 @@ class TestG3RelevanceScoring:
         assert result.details.get("archive") is True
 
     def test_llm_failure_lexical_zero_never_archives(
-        self, sample_item: Item,
+        self,
+        sample_item: Item,
     ) -> None:
         """Issue #189: an LLM scoring failure (no key / provider down) falls
         back to lexical; a zero-hit lexical score is UNKNOWN, not irrelevant
@@ -617,19 +635,24 @@ class TestG3RelevanceScoring:
         LLM re-score of 85+ cannot un-archive (kb.py #79 preservation)."""
         from autoinfo.config import QualityGateConfig
 
-        g3 = G3RelevanceScoring()
+        g3 = G3RelevanceScoring(model="test/test")
 
         def _always_fail(**kwargs: object) -> object:
             raise RuntimeError("LLM provider unavailable")
 
         g3.llm_call = _always_fail
         config = QualityGateConfig(
-            name="G3-RelevanceScoring", category="soft", retries=2,
-            action="archive", threshold=30,
+            name="G3-RelevanceScoring",
+            category="soft",
+            retries=2,
+            action="archive",
+            threshold=30,
         )
         # sample_item has zero hits for these keywords — lexical score is 0.
         result = g3.check(
-            sample_item, topic_keywords=["quantum computing"], threshold=30,
+            sample_item,
+            topic_keywords=["quantum computing"],
+            threshold=30,
             gate_config=config,
         )
 
@@ -744,9 +767,7 @@ class TestG3RelevanceScoringLLM:
     def test_llm_score_returned_directly(self, sample_item: Item) -> None:
         """LLM returns '85' → score is 85."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("85")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("85"))
         result = g3.check(
             sample_item,
             topic_keywords=["IVF", "embryo"],
@@ -758,9 +779,7 @@ class TestG3RelevanceScoringLLM:
     def test_llm_score_zero(self, sample_item: Item) -> None:
         """LLM returns '0' → score is 0, flagged hidden."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("0")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("0"))
         result = g3.check(
             sample_item,
             topic_keywords=["IVF"],
@@ -774,9 +793,7 @@ class TestG3RelevanceScoringLLM:
     def test_llm_score_100(self, sample_item: Item) -> None:
         """LLM returns '100' → score is 100, passes."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("100")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("100"))
         result = g3.check(
             sample_item,
             topic_keywords=["IVF"],
@@ -789,9 +806,7 @@ class TestG3RelevanceScoringLLM:
     def test_llm_clamps_out_of_range(self, sample_item: Item) -> None:
         """LLM returns '150' → clamped to 100."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("150")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("150"))
         result = g3.check(
             sample_item,
             topic_keywords=["IVF"],
@@ -802,9 +817,7 @@ class TestG3RelevanceScoringLLM:
     def test_llm_parses_number_from_text(self, sample_item: Item) -> None:
         """LLM returns 'Score: 73' → parses to 73."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("Score: 73")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("Score: 73"))
         result = g3.check(
             sample_item,
             topic_keywords=["IVF"],
@@ -860,14 +873,14 @@ class TestG3RelevanceScoringLLM:
     def test_content_truncation_for_large_input(self, sample_item: Item) -> None:
         """Content > 32K chars is truncated before LLM call."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("90")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("90"))
         # Build content exceeding _MAX_CONTENT_CHARS (32K)
-        long_item = Item(**{
-            **sample_item.to_dict(),
-            "content": "A" * 50000,
-        })
+        long_item = Item(
+            **{
+                **sample_item.to_dict(),
+                "content": "A" * 50000,
+            }
+        )
         result = g3.check(
             long_item,
             topic_keywords=["IVF"],
@@ -878,7 +891,7 @@ class TestG3RelevanceScoringLLM:
         call_args = g3.llm_call.call_args
         user_content = call_args[1]["messages"][1]["content"]
         content_start = user_content.find("CONTENT: ")
-        passed_content = user_content[content_start + len("CONTENT: "):]
+        passed_content = user_content[content_start + len("CONTENT: ") :]
         # Should be ≤ 32K chars plus the prefix text before CONTENT:
         assert len(passed_content) <= g3._MAX_CONTENT_CHARS + 200
 
@@ -899,9 +912,7 @@ class TestG3RelevanceScoringLLM:
     def test_multi_language_keywords(self, sample_item: Item) -> None:
         """Multi-language keyword dict is flattened and scored by LLM."""
         g3 = G3RelevanceScoring(model="test/test")
-        g3.llm_call = MagicMock(
-            return_value=self._mock_llm_response("88")
-        )
+        g3.llm_call = MagicMock(return_value=self._mock_llm_response("88"))
         result = g3.check(
             sample_item,
             topic_keywords={"en": ["IVF"], "zh": ["试管婴儿"]},
@@ -972,7 +983,8 @@ class TestRunQualityGates:
             wraps=G3RelevanceScoring,
         ) as mock_g3_cls:
             run_quality_gates(
-                sample_item, context,
+                sample_item,
+                context,
                 llm_model="openai/mimo-v2.5",
             )
         # The G3 scorer was constructed with the forwarded production model.
@@ -1006,9 +1018,7 @@ class TestRunQualityGates:
         assert g1.flagged is True
         assert g1.details["warning"] == "low quality source"
 
-    def test_g1_uses_item_quality_tier_without_source_config(
-        self, sample_item: Item
-    ) -> None:
+    def test_g1_uses_item_quality_tier_without_source_config(self, sample_item: Item) -> None:
         """G1 falls back to item.quality_tier when source_config not in context (Fix A path)."""
         item = Item(**{**sample_item.to_dict(), "quality_tier": 3})
         context = {"topic_keywords": ["IVF"]}
@@ -1019,9 +1029,7 @@ class TestRunQualityGates:
         assert g1.details["warning"] == "low quality source"
         assert g1.details["quality_tier"] == 3
 
-    def test_g1_source_config_overrides_item_tier_in_orchestrator(
-        self, sample_item: Item
-    ) -> None:
+    def test_g1_source_config_overrides_item_tier_in_orchestrator(self, sample_item: Item) -> None:
         """source_config in context overrides item.quality_tier (Fix B path)."""
         item = Item(**{**sample_item.to_dict(), "quality_tier": 1})
         context = {
@@ -1037,9 +1045,7 @@ class TestRunQualityGates:
     def test_g2_detects_duplicate_in_orchestrator(
         self, sample_item: Item, sample_kb_entry: KBEntry
     ) -> None:
-        existing = [
-            KBEntry(**{**sample_kb_entry.to_dict(), "source_url": sample_item.source_url})
-        ]
+        existing = [KBEntry(**{**sample_kb_entry.to_dict(), "source_url": sample_item.source_url})]
         context = {
             "existing_entries": existing,
             "topic_keywords": ["IVF"],

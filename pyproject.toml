@@ -72,7 +72,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0,<10",  # pytest 9.1.1 removed EncodedFile.getvalue — caplog tests crash (#211)
+    # Upper bound is <9, not <10: pytest 9.1.1 removed EncodedFile.getvalue,
+    # which crashes caplog-based tests in _pytest/logging.py (#211). A
+    # dependabot bump widened this to <10 (#243) and re-admitted 9.1.1 in CI,
+    # so the bound and the dependabot ignore below must move together.
+    "pytest>=8.0,<9",
     "pytest-asyncio>=0.24",
     "pytest-cov>=4.1",
     "pytest-mock>=3.14",

@@ -11,6 +11,11 @@ updates:
     ignore:
       - dependency-name: "mcp"
         update-types: ["version-update:semver-major"]
+      # pytest 9.1.1 removed EncodedFile.getvalue and crashes caplog tests
+      # (#211). The previous major-bump PR (#243) widened the pyproject bound
+      # and turned CI red, so block the bump rather than repeat it.
+      - dependency-name: "pytest"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -171,7 +171,7 @@ class TestQualityTimeout:
         mock_lm.completion.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(content="88"))]
         )
-        gate = G3RelevanceScoring(timeout=30.0)
+        gate = G3RelevanceScoring(model="test/test", timeout=30.0)
         with patch(
             "autoinfo.quality.call_with_fallback",
             return_value=mock_lm.completion.return_value,
@@ -191,7 +191,7 @@ class TestQualityTimeout:
         mock_lm.completion.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(content="88"))]
         )
-        gate = G3RelevanceScoring()
+        gate = G3RelevanceScoring(model="test/test")
         with patch(
             "autoinfo.quality.call_with_fallback",
             return_value=mock_lm.completion.return_value,
@@ -242,7 +242,7 @@ class TestQualityTimeout:
         )
         extraction = _dummy_extraction(sample_item)
         extraction.custom_fields["translation"] = "Some translated text."
-        gate = G5TranslationAccuracy(timeout=55.0)
+        gate = G5TranslationAccuracy(model="test/test", timeout=55.0)
         with patch(
             "autoinfo.quality.call_with_fallback",
             return_value=mock_lm.completion.return_value,
@@ -267,7 +267,7 @@ class TestQualityTimeout:
             ]
         )
         with patch.dict(sys.modules, {"litellm": mock_lm}):
-            llm_judge("source", "target", "en", "zh", timeout=33.0)
+            llm_judge("source", "target", "en", "zh", model="test/test", timeout=33.0)
         assert mock_lm.completion.call_args.kwargs["timeout"] == 33.0
 
 
@@ -314,6 +314,7 @@ class TestTranslationQaTimeout:
                 translated_text="bonjour",
                 source_lang="en",
                 target_lang="fr",
+                model_pool=["test/model-a", "test/model-b"],
                 timeout=28.0,
             )
         assert mock_cwf.call_args.kwargs["timeout"] == 28.0
@@ -331,7 +332,7 @@ class TestTranslationQaTimeout:
             "autoinfo.translation_qa.call_with_fallback",
             return_value=mock_lm.completion.return_value,
         ) as mock_cwf:
-            llm_judge_translation("source", "back", "en", timeout=29.0)
+            llm_judge_translation("source", "back", "en", model="test/test", timeout=29.0)
         assert mock_cwf.call_args.kwargs["timeout"] == 29.0
 
     def test_refine_translation_passes_timeout(self) -> None:
@@ -348,6 +349,7 @@ class TestTranslationQaTimeout:
                 source_lang="en",
                 target_lang="fr",
                 judge_feedback=[],
+                model="test/test",
                 timeout=31.0,
             )
         assert mock_cwf.call_args.kwargs["timeout"] == 31.0

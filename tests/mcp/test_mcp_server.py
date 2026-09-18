@@ -658,8 +658,15 @@ class TestDomainLifecycle:
         assert result["domain"] == "medical"
         assert result["active"] is True
 
-    def test_activate_nonexistent_domain(self) -> None:
-        with patch("autoinfo.config.get_config_path", return_value=None):
+    def test_activate_nonexistent_domain(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
             result = _handle_activate_domain(name="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -707,8 +714,15 @@ class TestDomainLifecycle:
         assert result["topic_count"] == 1
         assert "methodology" in result["extract_fields"]
 
-    def test_get_domain_config_nonexistent(self) -> None:
-        with patch("autoinfo.config.get_config_path", return_value=None):
+    def test_get_domain_config_nonexistent(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
             result = _handle_get_domain_config(name="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -769,8 +783,15 @@ class TestListKeywords:
         assert result["count"] == 1
         assert result["topics"][0]["name"] == "IVF"
 
-    def test_list_keywords_domain_not_found(self) -> None:
-        with patch("autoinfo.config.get_config_path", return_value=None):
+    def test_list_keywords_domain_not_found(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".autoinfo"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
+        )
+
+        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
             result = _handle_list_keywords(domain="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"

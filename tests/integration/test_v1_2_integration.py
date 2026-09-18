@@ -514,7 +514,10 @@ class TestCEFRClassification:
             "sys.modules",
             {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
         ):
-            result = classify_text("This is a moderately complex English text for classification.")
+            result = classify_text(
+                "This is a moderately complex English text for classification.",
+                model_config={"model": "test/test"},
+            )
         assert result["cefr_level"] in ("A1", "A2", "B1", "B2", "C1", "C2")
         assert result["confidence"] > 0.0
 
@@ -554,7 +557,7 @@ class TestCEFRClassification:
             "sys.modules",
             {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
         ):
-            result = classify_text("今天天气很好", lang="zh")
+            result = classify_text("今天天气很好", lang="zh", model_config={"model": "test/test"})
         assert result["cefr_level"] == "A2"
 
     def test_parse_level_exact_match(self):
@@ -588,7 +591,7 @@ class TestCEFRClassification:
         assert result["cefr_level"] == "unknown"
         assert result["confidence"] == 0.0
 
-    def test_cli_classify_command(self, cli_runner):
+    def test_cli_classify_command(self, cli_runner, tmp_project):
         """autoinfo cefr classify outputs JSON with cefr_level."""
         from autoinfo.cli import app
 
@@ -596,9 +599,15 @@ class TestCEFRClassification:
         mock_response.choices[0].message.content = "A1"
         # TRIAGE #29 — same seam retarget as #25 (CLI routes through
         # autoinfo.cli.cefr.classify_text → src/autoinfo/cefr.py:97,103).
-        with patch.dict(
-            "sys.modules",
-            {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+        with (
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
+            patch.dict(
+                "sys.modules",
+                {"litellm": _litellm_stub(completion=MagicMock(return_value=mock_response))},
+            ),
         ):
             result = cli_runner.invoke(app, ["cefr", "classify", "Hello world", "--lang", "en"])
         assert result.exit_code == 0
@@ -606,7 +615,7 @@ class TestCEFRClassification:
         assert "cefr_level" in data
         assert data["cefr_level"] == "A1"
 
-    def test_mcp_classify_cefr(self):
+    def test_mcp_classify_cefr(self, tmp_project):
         """_handle_classify_cefr returns cefr_level key."""
         from autoinfo.llm import LLMExtractor
         from autoinfo.mcp.server import _handle_classify_cefr
@@ -622,10 +631,16 @@ class TestCEFRClassification:
         # setStream() raises ValueError("I/O operation on closed file") before
         # litellm.completion is reached. Patch the binding call_with_fallback
         # actually looks up, then assert the completion mock was called.
-        with patch.object(
-            LLMExtractor,
-            "_get_litellm",
-            return_value=_litellm_stub(completion=completion),
+        with (
+            patch(
+                "autoinfo.mcp.server._config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
+            patch.object(
+                LLMExtractor,
+                "_get_litellm",
+                return_value=_litellm_stub(completion=completion),
+            ),
         ):
             result = _handle_classify_cefr(text="A moderate text", lang="en")
         completion.assert_called_once()

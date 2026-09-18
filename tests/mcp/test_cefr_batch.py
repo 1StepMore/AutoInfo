@@ -31,9 +31,7 @@ from autoinfo.mcp.server import _handle_cefr_batch
 # ---------------------------------------------------------------------------
 
 
-def _make_sleeping_classifier(
-    monitor: dict[str, object], *, delay: float = 0.02
-):
+def _make_sleeping_classifier(monitor: dict[str, object], *, delay: float = 0.02):
     """Build a ``classify_text`` stand-in that measures in-flight concurrency.
 
     ``monitor`` is a shared dict with ``lock``, ``in_flight`` and ``max_seen``
@@ -173,6 +171,7 @@ def test_per_item_error_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_batch_routes_through_call_with_fallback(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     """The un-mocked real path must resolve via call_with_fallback (llm.py),
     which is where the shared per-provider semaphore is acquired."""
@@ -181,12 +180,22 @@ def test_batch_routes_through_call_with_fallback(
 
     def _fake_call_with_fallback(messages: list, **kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="B2"))]
-        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="B2"))])
+
+    config_dir = tmp_path / ".autoinfo"
+    config_dir.mkdir(parents=True)
+    config_path = config_dir / "config.yaml"
+    config_path.write_text(
+        "project:\n  name: CEFR Batch Test\n"
+        "llm:\n  provider: openrouter\n  model: deepseek/deepseek-chat\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.delenv("AUTOINFO_CEFR_BATCH_WORKERS", raising=False)
-    with mock.patch("autoinfo.cefr.call_with_fallback", new=_fake_call_with_fallback):
+    with (
+        mock.patch("autoinfo.mcp.server._config_path", return_value=config_path),
+        mock.patch("autoinfo.cefr.call_with_fallback", new=_fake_call_with_fallback),
+    ):
         out = _handle_cefr_batch(texts, lang="en")
 
     assert out["errors"] == 0

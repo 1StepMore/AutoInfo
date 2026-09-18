@@ -25,6 +25,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -44,6 +45,17 @@ from autoinfo.output import (
 # Sample data
 # ===================================================================
 
+
+def _recent_iso(*, days_ago: int, hour: int = 0) -> str:
+    """Return a UTC ISO timestamp *days_ago* days before now.
+
+    Fixtures derive their timestamps from the current time so they never fall
+    outside the digest/report freshness window as the calendar advances.
+    """
+    stamp = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return stamp.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+
+
 _SAMPLE_ENTRIES: list[dict[str, Any]] = [
     {
         "entry_id": "entry-001",
@@ -56,7 +68,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 92.0,
         "tags": '["IVF", "embryo"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-15T10:00:00Z",
+        "collected_at": _recent_iso(days_ago=2, hour=10),
     },
     {
         "entry_id": "entry-002",
@@ -69,7 +81,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 85.0,
         "tags": '["AI", "IVF"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-16T10:00:00Z",
+        "collected_at": _recent_iso(days_ago=1, hour=10),
     },
 ]
 
@@ -167,16 +179,13 @@ def _make_grouping_result() -> ExtractionResult:
                 {
                     "theme": "IVF & Reproductive Medicine",
                     "description": (
-                        "Advancements in IVF treatment and assisted "
-                        "reproductive technologies."
+                        "Advancements in IVF treatment and assisted reproductive technologies."
                     ),
                     "entry_ids": ["entry-001"],
                 },
                 {
                     "theme": "Neuroplasticity & Brain Development",
-                    "description": (
-                        "Brain plasticity across different developmental stages."
-                    ),
+                    "description": ("Brain plasticity across different developmental stages."),
                     "entry_ids": ["entry-002"],
                 },
             ],
@@ -266,9 +275,7 @@ class TestDigestProductH1Titles:
     """``generate_digest(product_template=…)`` renders a product-specific H1."""
 
     @pytest.mark.parametrize("family", sorted(_EXPECTED_H1_WORDS))
-    def test_digest_h1_matches_product_word_and_domain(
-        self, family: str
-    ) -> None:
+    def test_digest_h1_matches_product_word_and_domain(self, family: str) -> None:
         """The H1 is ``# Weekly {product word} — Medical Research``."""
         result = _render_digest(product_template=_registry_template(family))
         expected = f"# Weekly {_EXPECTED_H1_WORDS[family]} \u2014 Medical Research"
@@ -277,9 +284,7 @@ class TestDigestProductH1Titles:
     def test_all_product_h1s_are_distinct(self) -> None:
         """The product H1s all differ from each other (acceptance #318/#99)."""
         h1s = {
-            family: _h1(
-                _render_digest(product_template=_registry_template(family))
-            )
+            family: _h1(_render_digest(product_template=_registry_template(family)))
             for family in _EXPECTED_H1_WORDS
         }
         assert len(set(h1s.values())) == len(_EXPECTED_H1_WORDS)
@@ -291,18 +296,14 @@ class TestDigestProductH1Titles:
     def test_period_label_drives_daily_prefix(self) -> None:
         """``period="daily"`` yields a ``Daily`` prefix on every product."""
         for family in _EXPECTED_H1_WORDS:
-            result = _render_digest(
-                product_template=_registry_template(family), period="daily"
-            )
+            result = _render_digest(product_template=_registry_template(family), period="daily")
             expected = f"# Daily {_EXPECTED_H1_WORDS[family]} \u2014 Medical Research"
             assert _h1(result) == expected
 
     def test_period_label_drives_weekly_prefix(self) -> None:
         """``period="weekly"`` yields a ``Weekly`` prefix on every product."""
         for family in _EXPECTED_H1_WORDS:
-            result = _render_digest(
-                product_template=_registry_template(family), period="weekly"
-            )
+            result = _render_digest(product_template=_registry_template(family), period="weekly")
             expected = f"# Weekly {_EXPECTED_H1_WORDS[family]} \u2014 Medical Research"
             assert _h1(result) == expected
 
@@ -328,9 +329,7 @@ class TestReportProductH1Titles:
             ("enterprise-briefing", "standard"),
         ],
     )
-    def test_report_h1_matches_product_word(
-        self, family: str, report_type: str
-    ) -> None:
+    def test_report_h1_matches_product_word(self, family: str, report_type: str) -> None:
         """The report H1 is ``# medical-research — {product word}``."""
         result = _render_report(
             product_template=_registry_template(family),

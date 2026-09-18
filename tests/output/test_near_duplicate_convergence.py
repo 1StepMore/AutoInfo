@@ -8,9 +8,33 @@ representative per cluster.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import _converge_near_duplicates, _extract_proper_nouns
+
+
+def _iso_offset(
+    *,
+    days_ago: int,
+    hour: int = 12,
+    minute: int = 0,
+    second: int = 0,
+    offset_hours: int = 0,
+    add_hours: int = 0,
+) -> str:
+    """Return an ISO timestamp *days_ago* days before now.
+
+    Fixtures derive their timestamps from the current time so they never rot
+    out of the near-duplicate window as the calendar advances.  ``offset_hours``
+    renders the wall-clock time in that fixed UTC offset (timezone-offset
+    fixtures keep their offset); ``add_hours`` shifts the wall clock forward.
+    """
+    stamp = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    if offset_hours:
+        stamp = stamp.astimezone(timezone(timedelta(hours=offset_hours)))
+    stamp = stamp.replace(hour=hour, minute=minute, second=second, microsecond=0)
+    return (stamp + timedelta(hours=add_hours)).isoformat()
 
 
 def _mk_entry(**overrides: object) -> dict[str, object]:
@@ -22,7 +46,7 @@ def _mk_entry(**overrides: object) -> dict[str, object]:
         "source_url": "https://example.com/default",
         "source_type": "rss",
         "source_platform": "source",
-        "collected_at": "2026-08-25T12:00:00",
+        "collected_at": _iso_offset(days_ago=1),
         "summary": "",
         "quality_tier": 2,
         "relevance_score": 50.0,
@@ -37,17 +61,13 @@ def _mk_entry(**overrides: object) -> dict[str, object]:
 
 class TestExtractProperNouns:
     def test_basic_person_name(self) -> None:
-        assert _extract_proper_nouns("Dolly Parton has died at age 80") == [
-            "Dolly Parton"
-        ]
+        assert _extract_proper_nouns("Dolly Parton has died at age 80") == ["Dolly Parton"]
 
     def test_stoplist_phrase_removed(self) -> None:
         assert _extract_proper_nouns("New York Stock Exchange report") == []
 
     def test_people_names_both_kept(self) -> None:
-        result = _extract_proper_nouns(
-            "Dolly Parton and Donald Trump met in Nashville"
-        )
+        result = _extract_proper_nouns("Dolly Parton and Donald Trump met in Nashville")
         assert "Dolly Parton" in result
         assert "Donald Trump" in result
 
@@ -98,7 +118,7 @@ class TestConvergeNearDuplicates:
                 language="fr",
                 dedup_status="duplicate",
                 relevance_score=float(60 - i),
-                collected_at=f"2026-08-2{3 + (i % 3)}T12:00:00",
+                collected_at=_iso_offset(days_ago=2 + (i % 3)),
             )
             for i in range(5)
         ]
@@ -156,7 +176,7 @@ class TestConvergeNearDuplicates:
                 title="Dolly Parton has died",
                 source_url="https://example.com/low",
                 relevance_score=40.0,
-                collected_at="2026-08-24T12:00:00",
+                collected_at=_iso_offset(days_ago=2),
                 dedup_status="duplicate",
                 language="en",
             ),
@@ -165,7 +185,7 @@ class TestConvergeNearDuplicates:
                 title="Dolly Parton est décédée à 80 ans",
                 source_url="https://example.com/high",
                 relevance_score=90.0,
-                collected_at="2026-08-25T12:00:00",
+                collected_at=_iso_offset(days_ago=1),
                 dedup_status="duplicate",
             ),
         ]
@@ -180,7 +200,7 @@ class TestConvergeNearDuplicates:
                 title="Dolly Parton has died",
                 source_url="https://example.com/early",
                 relevance_score=50.0,
-                collected_at="2026-08-24T12:00:00",
+                collected_at=_iso_offset(days_ago=3),
                 dedup_status="duplicate",
                 language="en",
             ),
@@ -189,7 +209,7 @@ class TestConvergeNearDuplicates:
                 title="Dolly Parton est décédée",
                 source_url="https://example.com/late",
                 relevance_score=50.0,
-                collected_at="2026-08-26T12:00:00",
+                collected_at=_iso_offset(days_ago=1),
                 dedup_status="duplicate",
             ),
         ]
@@ -203,14 +223,14 @@ class TestConvergeNearDuplicates:
                 entry_id="old",
                 title="Dolly Parton has died",
                 source_url="https://example.com/old",
-                collected_at="2026-07-01T12:00:00",
+                collected_at=_iso_offset(days_ago=30),
                 dedup_status="duplicate",
             ),
             _mk_entry(
                 entry_id="new",
                 title="Dolly Parton est décédée",
                 source_url="https://example.com/new",
-                collected_at="2026-08-25T12:00:00",
+                collected_at=_iso_offset(days_ago=1),
                 dedup_status="duplicate",
             ),
         ]
@@ -256,7 +276,7 @@ class TestConvergeNearDuplicates:
                 language="fr",
                 dedup_status="unique",
                 relevance_score=90.0,
-                collected_at="2026-08-25T23:46:43+02:00",
+                collected_at=_iso_offset(days_ago=2, hour=23, minute=46, second=43, offset_hours=2),
             ),
             _mk_entry(
                 entry_id="obit-2",
@@ -265,14 +285,12 @@ class TestConvergeNearDuplicates:
                 language="fr",
                 dedup_status="unique",
                 relevance_score=70.0,
-                collected_at="2026-08-25T22:26:38+02:00",
+                collected_at=_iso_offset(days_ago=2, hour=22, minute=26, second=38, offset_hours=2),
             ),
         ]
         assert len(_extract_proper_nouns(entries[0]["title"])) == 2
         assert len(_extract_proper_nouns(entries[1]["title"])) == 1
-        assert not (
-            0.5 <= self._char_ratio(entries[0]["title"], entries[1]["title"]) < 0.85
-        )
+        assert not (0.5 <= self._char_ratio(entries[0]["title"], entries[1]["title"]) < 0.85)
         result = _converge_near_duplicates(entries)
         assert len(result) == 1
         assert result[0]["entry_id"] == "obit-1"
@@ -300,9 +318,7 @@ class TestConvergeNearDuplicates:
         ]
         assert len(_extract_proper_nouns(entries[0]["title"])) == 1
         assert len(_extract_proper_nouns(entries[1]["title"])) == 1
-        assert not (
-            0.5 <= self._char_ratio(entries[0]["title"], entries[1]["title"]) < 0.85
-        )
+        assert not (0.5 <= self._char_ratio(entries[0]["title"], entries[1]["title"]) < 0.85)
         result = _converge_near_duplicates(entries)
         assert len(result) == 1
         assert result[0]["entry_id"] == "de-obit"
@@ -372,7 +388,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=95.0,
         dedup_status="unique",
         summary="La chanteuse country s'est éteinte.",
-        collected_at="2026-08-25T06:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=0),
     ),
     _mk_entry(
         entry_id="fr-2",
@@ -382,7 +398,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=60.0,
         dedup_status="duplicate",
         summary="La musicienne nous a quittés.",
-        collected_at="2026-08-25T08:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=2),
     ),
     _mk_entry(
         entry_id="fr-3",
@@ -392,7 +408,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=55.0,
         dedup_status="duplicate",
         summary="Hommage à la reine de la country.",
-        collected_at="2026-08-25T09:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=3),
     ),
     _mk_entry(
         entry_id="fr-4",
@@ -402,7 +418,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=50.0,
         dedup_status="duplicate",
         summary="La star s'est éteinte à 80 ans.",
-        collected_at="2026-08-25T10:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=4),
     ),
     _mk_entry(
         entry_id="fr-5",
@@ -412,7 +428,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=45.0,
         dedup_status="duplicate",
         summary="La chanteuse est morte.",
-        collected_at="2026-08-25T11:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=5),
     ),
     _mk_entry(
         entry_id="fr-6",
@@ -422,7 +438,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=40.0,
         dedup_status="duplicate",
         summary="L'émotion est immense.",
-        collected_at="2026-08-25T12:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=6),
     ),
     _mk_entry(
         entry_id="en-1",
@@ -432,7 +448,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=60.0,
         dedup_status="duplicate",
         summary="The country icon has passed away.",
-        collected_at="2026-08-25T13:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=7),
     ),
     _mk_entry(
         entry_id="en-2",
@@ -442,7 +458,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=55.0,
         dedup_status="duplicate",
         summary="The singer has died.",
-        collected_at="2026-08-25T14:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=8),
     ),
     _mk_entry(
         entry_id="en-3",
@@ -452,7 +468,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=50.0,
         dedup_status="duplicate",
         summary="An era ends for country music.",
-        collected_at="2026-08-25T15:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=9),
     ),
     _mk_entry(
         entry_id="es-1",
@@ -462,7 +478,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=55.0,
         dedup_status="duplicate",
         summary="La cantante ha fallecido.",
-        collected_at="2026-08-25T16:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=10),
     ),
     _mk_entry(
         entry_id="es-2",
@@ -472,7 +488,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=50.0,
         dedup_status="duplicate",
         summary="Adiós a una leyenda.",
-        collected_at="2026-08-25T17:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=11),
     ),
     _mk_entry(
         entry_id="pt-1",
@@ -482,7 +498,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=55.0,
         dedup_status="duplicate",
         summary="A cantora tinha 80 anos.",
-        collected_at="2026-08-25T18:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=12),
     ),
     _mk_entry(
         entry_id="pt-2",
@@ -492,7 +508,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=50.0,
         dedup_status="duplicate",
         summary="Morreu a lenda da country.",
-        collected_at="2026-08-25T19:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=13),
     ),
     _mk_entry(
         entry_id="b2b-1",
@@ -502,7 +518,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=45.0,
         dedup_status="duplicate",
         summary="Licensing interest is rising.",
-        collected_at="2026-08-25T20:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=14),
     ),
     _mk_entry(
         entry_id="b2b-2",
@@ -512,7 +528,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=40.0,
         dedup_status="duplicate",
         summary="Merchandise sales are climbing.",
-        collected_at="2026-08-25T21:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=15),
     ),
     _mk_entry(
         entry_id="gaming-1",
@@ -522,7 +538,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=45.0,
         dedup_status="duplicate",
         summary="Fans are paying tribute.",
-        collected_at="2026-08-25T22:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=16),
     ),
     _mk_entry(
         entry_id="gaming-2",
@@ -532,7 +548,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=40.0,
         dedup_status="duplicate",
         summary="A new game is in the works.",
-        collected_at="2026-08-25T23:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=17),
     ),
     _mk_entry(
         entry_id="edu-1",
@@ -542,7 +558,7 @@ _DOLLY_18: list[dict[str, object]] = [
         relevance_score=45.0,
         dedup_status="duplicate",
         summary="A profile of the singer.",
-        collected_at="2026-08-26T00:00:00",
+        collected_at=_iso_offset(days_ago=1, hour=6, add_hours=18),
     ),
 ]
 
@@ -575,13 +591,14 @@ class TestDigestConvergence:
 
         from autoinfo.output import generate_digest
 
-        body = generate_digest(
-            domain="french-learning", period="weekly", format="markdown"
-        )
+        body = generate_digest(domain="french-learning", period="weekly", format="markdown")
         assert isinstance(body, str)
         # 18 flood entries -> obit cluster (1) + 7 distinct stories.  Rendered
         # "Dolly" mentions stay well under the flood count (18) and above 0.
-        assert 1 <= body.count("Dolly") <= 9
+        # Measured on the findings section only: the aggregate References tail
+        # repeats every rendered title by design (327ca937), so counting the
+        # whole document double-counts each survivor.
+        assert 1 <= body.partition("## References")[0].count("Dolly") <= 9
 
     def test_dolly_18_converges_to_obit_cluster_plus_distinct_stories(self) -> None:
         """The 18-entry cross-domain flood collapses the death-event cluster

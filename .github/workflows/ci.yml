@@ -127,9 +127,19 @@ jobs:
           # --diff-filter=d skips deletions: a removed module (e.g. the
           # untracked .omo/ tree) is not a readable target, and passing it on
           # makes ruff/mypy abort with E902 / "Cannot read file".
-          mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
+          mapfile -t CHANGED < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
+          # Scope: src/ only. The declared strict target is src/autoinfo — the
+          # full-tree step below runs `mypy src/` and requires it clean. Tests
+          # are held to strict typing by no other gate, so including them here
+          # made any PR touching an untyped test file fail: the 272-commit
+          # sync reported 205 newly added test annotations as new debt, none
+          # of it in src/.
+          FILES=()
+          for f in "${CHANGED[@]}"; do
+            [[ "$f" == src/* ]] && FILES+=("$f")
+          done
           if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "No changed Python files - skipping mypy."
+            echo "No changed src/ Python files - skipping mypy."
             exit 0
           fi
           # Baseline-aware: a legitimate touch of a file carrying pre-existing

@@ -595,7 +595,10 @@ class TestDigestConvergence:
         assert isinstance(body, str)
         # 18 flood entries -> obit cluster (1) + 7 distinct stories.  Rendered
         # "Dolly" mentions stay well under the flood count (18) and above 0.
-        assert 1 <= body.count("Dolly") <= 9
+        # Measured on the findings section only: the aggregate References tail
+        # repeats every rendered title by design (327ca937), so counting the
+        # whole document double-counts each survivor.
+        assert 1 <= body.partition("## References")[0].count("Dolly") <= 9
 
     def test_dolly_18_converges_to_obit_cluster_plus_distinct_stories(self) -> None:
         """The 18-entry cross-domain flood collapses the death-event cluster

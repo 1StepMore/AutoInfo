@@ -47,9 +47,49 @@ jobs:
           mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No changed Python files - skipping ruff."
-          else
-            ruff check "${FILES[@]}"
+            exit 0
           fi
+          # Baseline-aware: this gate catches NEW errors without blocking a
+          # legitimate touch of a file that already carries lint debt (a
+          # 269-file PR failed here on 37 pre-existing errors). Run the SAME
+          # ruff over the SAME file list on the merge-base tree and on HEAD,
+          # then fail only for a (file, rule) whose head COUNT exceeds its
+          # base COUNT -- a rule absent at base counts 0, which covers newly
+          # added files. Totals are never compared: a total would let a new
+          # failure hide behind an older one healing (tests/TRIAGE.md).
+          BASE_TREE="$RUNNER_TEMP/autoinfo-ruff-base"
+          git worktree add --detach "$BASE_TREE" "$BASE"
+          [ -d "$BASE_TREE" ] || { echo "ERROR: base worktree $BASE_TREE missing"; exit 1; }
+          # ruff concise lines are "path:line:col: CODE message"; key = "path CODE".
+          collect_ruff() {
+            local dir="$1"; shift
+            local -a present=()
+            local f
+            for f in "$@"; do
+              [ -f "$dir/$f" ] && present+=("$f")
+            done
+            [ "${#present[@]}" -eq 0 ] && return 0
+            ( cd "$dir" && ruff check --output-format=concise "${present[@]}" 2>/dev/null || true ) \
+              | sed -nE 's/^([^:]+):[0-9]+:[0-9]+: ([A-Z]+[0-9]+) .*/\1 \2/p'
+          }
+          {
+            collect_ruff "$BASE_TREE" "${FILES[@]}" | sed 's/^/b\t/'
+            collect_ruff . "${FILES[@]}" | sed 's/^/h\t/'
+          } | awk -F'\t' '
+            { key=$0; sub(/^[^\t]*\t/, "", key); if ($1=="b") b[key]++; else h[key]++ }
+            END {
+              for (k in b) keys[k]=1
+              for (k in h) keys[k]=1
+              for (k in keys) printf "%s\t%d\t%d\n", k, (k in h?h[k]:0), (k in b?b[k]:0)
+            }
+          ' | LC_ALL=C sort -t$'\t' -k1,1 > "$RUNNER_TEMP/ruff-counts.txt"
+          REGRESSIONS="$(awk -F'\t' '$2 > $3' "$RUNNER_TEMP/ruff-counts.txt")"
+          if [ -n "$REGRESSIONS" ]; then
+            echo "Ruff found NEW errors relative to $BASE (head count > merge-base count):"
+            printf '%s\n' "$REGRESSIONS" | awk -F'\t' '{ printf "  NEW: %s (head %d vs base %d)\n", $1, $2, $3 }'
+            exit 1
+          fi
+          echo "Ruff: no new errors vs $BASE."
       - name: Ruff gate on source
         run: ruff check --select E9,F --output-format=github src/
       # Full-src ruff: informational drift surface for the whole tree.
@@ -90,9 +130,50 @@ jobs:
           mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No changed Python files - skipping mypy."
-          else
-            mypy --follow-imports=silent "${FILES[@]}"
+            exit 0
           fi
+          # Baseline-aware: a legitimate touch of a file carrying pre-existing
+          # type debt must not fail this gate; only errors NEW relative to the
+          # merge-base do (a 269-file PR failed here on 759 pre-existing
+          # errors, 0 of them in src/). Run the SAME mypy over the SAME file
+          # list on the merge-base tree and on HEAD, then fail only for a
+          # (file, code) whose head COUNT exceeds its base COUNT -- absent at
+          # base counts 0, which covers newly added files. Totals are never
+          # compared: a total would let a new failure hide behind an older one
+          # healing (tests/TRIAGE.md).
+          BASE_TREE="$RUNNER_TEMP/autoinfo-mypy-base"
+          git worktree add --detach "$BASE_TREE" "$BASE"
+          [ -d "$BASE_TREE" ] || { echo "ERROR: base worktree $BASE_TREE missing"; exit 1; }
+          # mypy lines are "path:line: error: message [code]"; key = "path code".
+          collect_mypy() {
+            local dir="$1"; shift
+            local -a present=()
+            local f
+            for f in "$@"; do
+              [ -f "$dir/$f" ] && present+=("$f")
+            done
+            [ "${#present[@]}" -eq 0 ] && return 0
+            ( cd "$dir" && mypy --follow-imports=silent "${present[@]}" 2>/dev/null || true ) \
+              | sed -nE 's/^([^:]+):[0-9]+: error: .* \[([a-zA-Z0-9_-]+)\]$/\1 \2/p'
+          }
+          {
+            collect_mypy "$BASE_TREE" "${FILES[@]}" | sed 's/^/b\t/'
+            collect_mypy . "${FILES[@]}" | sed 's/^/h\t/'
+          } | awk -F'\t' '
+            { key=$0; sub(/^[^\t]*\t/, "", key); if ($1=="b") b[key]++; else h[key]++ }
+            END {
+              for (k in b) keys[k]=1
+              for (k in h) keys[k]=1
+              for (k in keys) printf "%s\t%d\t%d\n", k, (k in h?h[k]:0), (k in b?b[k]:0)
+            }
+          ' | LC_ALL=C sort -t$'\t' -k1,1 > "$RUNNER_TEMP/mypy-counts.txt"
+          REGRESSIONS="$(awk -F'\t' '$2 > $3' "$RUNNER_TEMP/mypy-counts.txt")"
+          if [ -n "$REGRESSIONS" ]; then
+            echo "Mypy found NEW errors relative to $BASE (head count > merge-base count):"
+            printf '%s\n' "$REGRESSIONS" | awk -F'\t' '{ printf "  NEW: %s (head %d vs base %d)\n", $1, $2, $3 }'
+            exit 1
+          fi
+          echo "Mypy: no new errors vs $BASE."
       # Full-tree strict mypy — the recursion guard. The changed-files step
       # above runs with --follow-imports=silent, so it cannot see the damage a
       # change here does to a module it imports: a wrong signature, a widened

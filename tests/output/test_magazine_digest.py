@@ -15,6 +15,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -30,6 +31,17 @@ from autoinfo.output import (
 # Sample data
 # ===================================================================
 
+
+def _recent_iso(*, days_ago: int, hour: int = 0) -> str:
+    """Return a UTC ISO timestamp *days_ago* days before now.
+
+    Fixtures derive their timestamps from the current time so they never fall
+    outside the digest/report freshness window as the calendar advances.
+    """
+    stamp = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return stamp.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+
+
 _SAMPLE_ENTRIES: list[dict[str, Any]] = [
     {
         "entry_id": "entry-001",
@@ -41,7 +53,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 91.0,
         "tags": '["AI", "journalism"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-29T10:00:00Z",
+        "collected_at": _recent_iso(days_ago=2, hour=10),
     },
     {
         "entry_id": "entry-002",
@@ -53,7 +65,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 84.0,
         "tags": '["journalism", "trust"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-29T11:00:00Z",
+        "collected_at": _recent_iso(days_ago=2, hour=11),
     },
     {
         "entry_id": "entry-003",
@@ -65,7 +77,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "relevance_score": 77.0,
         "tags": '["climate", "policy"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-30T09:00:00Z",
+        "collected_at": _recent_iso(days_ago=1, hour=9),
     },
 ]
 
@@ -136,9 +148,7 @@ def _magazine_template() -> ProductTemplate:
     for row in PRODUCT_TEMPLATES:
         if row["name"] == "magazine-digest":
             return cast(ProductTemplate, row["template"])
-    raise AssertionError(
-        "magazine-digest ProductTemplate row missing from PRODUCT_TEMPLATES"
-    )
+    raise AssertionError("magazine-digest ProductTemplate row missing from PRODUCT_TEMPLATES")
 
 
 def _digest_template() -> ProductTemplate:
@@ -296,9 +306,7 @@ class TestMagazineEditorialFeature:
         self,
     ) -> None:
         """The magazine synthesis prompt asks for editorial + feature fields."""
-        prompt = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="magazine-digest"
-        )
+        prompt = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="magazine-digest")
 
         assert isinstance(prompt, str)
         assert "editorial_intro" in prompt
@@ -315,9 +323,7 @@ class TestMagazineEditorialFeature:
         clients") with no source backing.  The prompt now requires
         grounding language aligned with the column sections.
         """
-        prompt = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="magazine-digest"
-        )
+        prompt = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="magazine-digest")
 
         # The old inviting phrasing is gone.
         assert "narrative beyond the summary list" not in prompt
@@ -336,24 +342,18 @@ class TestMagazineEditorialFeature:
         feature_story — unhedged market-direction/motive assertions recurred
         in R6/R7 because only feature_story was pinned."""
         # magazine-digest prompt: editorial_intro must be hedged.
-        magazine = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="magazine-digest"
-        )
+        magazine = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="magazine-digest")
         assert "editorial_intro" in magazine
         assert "market-direction, motive, or forward-looking claim" in magazine
         assert "clearly hedged" in magazine
 
         # digest prompt (executive_summary opener) must be hedged.
-        digest = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="digest"
-        )
+        digest = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="digest")
         assert "executive_summary" in digest
         assert "market-direction, motive, or forward-looking claim" in digest
 
         # column prompt (Deep Dive opener) must be hedged.
-        column = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="column"
-        )
+        column = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="column")
         assert "sections" in column
         assert "market-direction, motive, or forward-looking claim" in column
 
@@ -364,9 +364,7 @@ class TestMagazineEditorialFeature:
         surface carries the same editorial hedge discipline."""
         from autoinfo.output import _build_report_synthesis_prompt
 
-        prompt = _build_report_synthesis_prompt(
-            "sample entries detail", product_family="report"
-        )
+        prompt = _build_report_synthesis_prompt("sample entries detail", product_family="report")
         assert "Executive Summary" in prompt
         assert "market-direction, motive, or forward-looking claim" in prompt
 

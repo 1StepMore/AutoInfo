@@ -18,6 +18,7 @@ per-finding — only a global References bibliography — so claims like
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +29,17 @@ from autoinfo.output import (
     _deterministic_synthesis_fallback,
     generate_digest,
 )
+
+
+def _recent_iso(*, days_ago: int, hour: int = 0) -> str:
+    """Return a UTC ISO timestamp *days_ago* days before now.
+
+    Fixtures derive their timestamps from the current time so they never fall
+    outside the digest/report freshness window as the calendar advances.
+    """
+    stamp = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return stamp.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+
 
 _ENTRY: dict[str, Any] = {
     "entry_id": "entry-001",
@@ -41,7 +53,7 @@ _ENTRY: dict[str, Any] = {
     "relevance_score": 92.0,
     "tags": '["EA", "funding"]',
     "tier": "01-Raw",
-    "collected_at": "2026-08-01T10:00:00Z",
+    "collected_at": _recent_iso(days_ago=1, hour=10),
 }
 
 
@@ -67,9 +79,7 @@ class TestDigestPromptSourceUrl:
 
     def test_prompt_omits_url_line_value_when_entry_has_none(self) -> None:
         """Entries without a source_url render the em-dash placeholder."""
-        prompt = _build_digest_llm_prompt(
-            [{"title": "T", "summary": "S", "tags": "[]"}]
-        )
+        prompt = _build_digest_llm_prompt([{"title": "T", "summary": "S", "tags": "[]"}])
         assert "Source URL: \u2014" in prompt
 
     def test_prompt_instructs_inline_citation(self) -> None:
@@ -111,9 +121,11 @@ class TestDeterministicFallbackProvenance:
         """Entries with a source_url yield ``{text, source_url}`` findings."""
         result = _deterministic_synthesis_fallback([_ENTRY])
         assert result["key_findings"] == [
-            {"text": "Acme raises $55B for EA expansion: Acme announced a "
-                     "$55B capital raise for EA expansion.",
-             "source_url": "https://x.com/a"}
+            {
+                "text": "Acme raises $55B for EA expansion: Acme announced a "
+                "$55B capital raise for EA expansion.",
+                "source_url": "https://x.com/a",
+            }
         ]
 
     def test_entry_without_url_keeps_legacy_string_finding(self) -> None:

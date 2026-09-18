@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -33,6 +33,16 @@ import pytest
 # ---------------------------------------------------------------------------
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "docs" / "schemas"
+
+
+def _recent_iso(*, days_ago: int, hour: int = 0) -> str:
+    """Return a UTC ISO timestamp *days_ago* days before now.
+
+    Fixtures derive their timestamps from the current time so they never fall
+    outside the digest/report freshness window as the calendar advances.
+    """
+    stamp = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return stamp.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
 
 
 def _load_schema(name: str) -> dict[str, Any]:
@@ -68,7 +78,7 @@ _CJK_ENTRY: dict[str, Any] = {
     "relevance_score": 88.0,
     "tags": json.dumps(["quantum-computing", "分子シミュレーション"], ensure_ascii=False),
     "tier": "01-Raw",
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": _recent_iso(days_ago=1, hour=9),
     "domain": "medical-research",
 }
 
@@ -83,7 +93,7 @@ _ENGLISH_ENTRY: dict[str, Any] = {
     "relevance_score": 92.0,
     "tags": json.dumps(["crispr", "gene-editing"]),
     "tier": "01-Raw",
-    "collected_at": "2026-07-15T10:00:00Z",
+    "collected_at": _recent_iso(days_ago=2, hour=10),
     "domain": "medical-research",
 }
 
@@ -115,9 +125,7 @@ CREATE TABLE entries (
 )"""
 
 
-def _seed_entries(
-    conn: sqlite3.Connection, entries: list[dict[str, Any]]
-) -> None:
+def _seed_entries(conn: sqlite3.Connection, entries: list[dict[str, Any]]) -> None:
     """Insert test entries into a SQLite connection."""
     conn.execute(_ENTRY_DDL)
     for e in entries:
@@ -127,11 +135,20 @@ def _seed_entries(
         conn.execute(
             "INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                e["entry_id"], e["title"], e["domain"], e.get("tier", "01-Raw"),
-                e.get("source_url", ""), e.get("source_type", ""),
-                e.get("source_platform", ""), e.get("collected_at", ""),
-                e.get("summary", ""), 1, e.get("relevance_score", 0),
-                "unique", "", tags_val,
+                e["entry_id"],
+                e["title"],
+                e["domain"],
+                e.get("tier", "01-Raw"),
+                e.get("source_url", ""),
+                e.get("source_type", ""),
+                e.get("source_platform", ""),
+                e.get("collected_at", ""),
+                e.get("summary", ""),
+                1,
+                e.get("relevance_score", 0),
+                "unique",
+                "",
+                tags_val,
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
@@ -145,9 +162,7 @@ def _setup_export_project(tmp_path: Path, entries: list[dict[str, Any]]) -> Path
     project_dir.mkdir()
     autoinfo_dir = project_dir / ".autoinfo"
     autoinfo_dir.mkdir()
-    (autoinfo_dir / "config.yaml").write_text(
-        "llm:\n  provider: openai\n  model: gpt-4\n"
-    )
+    (autoinfo_dir / "config.yaml").write_text("llm:\n  provider: openai\n  model: gpt-4\n")
     db_path = project_dir / "autoinfo.db"
     conn = sqlite3.connect(str(db_path))
     _seed_entries(conn, entries)
@@ -181,9 +196,7 @@ def _validate_against_schema(payload: dict[str, Any], schema: dict[str, Any]) ->
 def _assert_cjk_survives(data: dict[str, Any], cjk_string: str) -> None:
     """Assert a CJK string survives JSON round-trip without corruption."""
     serialized = json.dumps(data, ensure_ascii=False)
-    assert cjk_string in serialized, (
-        f"CJK string '{cjk_string}' lost during JSON serialization"
-    )
+    assert cjk_string in serialized, f"CJK string '{cjk_string}' lost during JSON serialization"
     round_tripped = json.loads(serialized)
     # Walk all string values to find the CJK content
     found = False
@@ -202,9 +215,7 @@ def _assert_cjk_survives(data: dict[str, Any], cjk_string: str) -> None:
                 _search(v)
 
     _search(round_tripped)
-    assert found, (
-        f"CJK string '{cjk_string}' not found after JSON round-trip"
-    )
+    assert found, f"CJK string '{cjk_string}' not found after JSON round-trip"
 
 
 def _assert_utf8_safety(data: dict[str, Any]) -> None:
@@ -347,9 +358,7 @@ class TestDigestAgentSchema:
         # Schema validation
         _validate_against_schema(data, SCHEMA_DIGEST)
 
-    def test_digest_agent_has_uuid(
-        self, cjk_and_english_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_digest_agent_has_uuid(self, cjk_and_english_entries: list[dict[str, Any]]) -> None:
         """Agent digest must include a UUID."""
         from autoinfo.output import generate_digest
 
@@ -763,8 +772,9 @@ class TestConstantsSchemaAlignment:
         """_JSONLD_PRESENTATION @context/@type must match knowledge-presentation-v1.json"""
         from autoinfo.output import _JSONLD_PRESENTATION
 
-        assert _JSONLD_PRESENTATION["@context"] == (
-            SCHEMA_PRESENTATION["properties"]["@context"]["const"]
+        assert (
+            _JSONLD_PRESENTATION["@context"]
+            == (SCHEMA_PRESENTATION["properties"]["@context"]["const"])
         )
         assert _JSONLD_PRESENTATION["@type"] == SCHEMA_PRESENTATION["properties"]["@type"]["const"]
 

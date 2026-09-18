@@ -63,7 +63,10 @@ jobs:
           # Same merge-base pattern as ci.yml's ruff/mypy changed-files steps.
           BASE="$(git merge-base "${{ github.event.pull_request.base.sha }}" HEAD)"
           echo "BASE_SHA=$BASE" >> "$GITHUB_ENV"
-          mapfile -t FILES < <(git diff --name-only "$BASE" HEAD -- '*.py')
+          # --diff-filter=d skips deletions: a removed module (e.g. the
+          # untracked .omo/ tree) has no coverage to measure and cannot be
+          # installed into the base worktree.
+          mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
           : > changed-files.txt
           for f in "${FILES[@]}"; do echo "$f" >> changed-files.txt; done
           echo "changed Python files: ${#FILES[@]}"

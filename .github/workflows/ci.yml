@@ -41,7 +41,10 @@ jobs:
           else
             BASE="$(git rev-parse HEAD^ 2>/dev/null || echo HEAD)"
           fi
-          mapfile -t FILES < <(git diff --name-only "$BASE" HEAD -- '*.py')
+          # --diff-filter=d skips deletions: a removed module (e.g. the
+          # untracked .omo/ tree) is not a readable target, and passing it on
+          # makes ruff/mypy abort with E902 / "Cannot read file".
+          mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No changed Python files - skipping ruff."
           else
@@ -81,7 +84,10 @@ jobs:
           else
             BASE="$(git rev-parse HEAD^ 2>/dev/null || echo HEAD)"
           fi
-          mapfile -t FILES < <(git diff --name-only "$BASE" HEAD -- '*.py')
+          # --diff-filter=d skips deletions: a removed module (e.g. the
+          # untracked .omo/ tree) is not a readable target, and passing it on
+          # makes ruff/mypy abort with E902 / "Cannot read file".
+          mapfile -t FILES < <(git diff --name-only --diff-filter=d "$BASE" HEAD -- '*.py')
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No changed Python files - skipping mypy."
           else

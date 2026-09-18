@@ -88,7 +88,21 @@ jobs:
           # Re-install editable from the base worktree so `import autoinfo`
           # resolves to the base code (the earlier install points at HEAD).
           pip install -e ".[dev,ebook]" >/dev/null
+          # The merge-base tree is immutable history. Its suite can be red for
+          # reasons this PR cannot fix -- fixture dates that rotted as the
+          # wall-clock moved past them, for instance (the 272-commit sync hit
+          # 31 such base failures). This step MEASURES base coverage, so a
+          # non-zero pytest exit here must not abort it: otherwise every PR
+          # touching src/ inherits the base's red and the gate never runs. The
+          # PR head run above stays hard-gated; the base log is still uploaded
+          # as an artifact for inspection.
+          set +e
           pytest -m "not real_api" --cov=src/autoinfo --cov-report=term-missing -q 2>&1 | tee "$GITHUB_WORKSPACE/coverage-base-pytest.log"
+          _base_rc=$?
+          set -e
+          if [ "$_base_rc" -ne 0 ]; then
+            echo "NOTE: base suite exited $_base_rc at $BASE_SHA; coverage still measured."
+          fi
           cp .coverage "$GITHUB_WORKSPACE/.coverage.base"
           echo "Base coverage measured at $BASE_SHA"
       - name: Gate coverage on changed modules (baseline-aware)

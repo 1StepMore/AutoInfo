@@ -35,8 +35,15 @@ from autoinfo.output import (
 # 贝达药业 + DURAVYU; the remaining 7 terms (华能/株冶/平安好医生/SEC 8-K/
 # 10-Q/财报/年报) still leak through product generation.
 _FULL_AI_NOISE_SET = [
-    "华能", "株冶", "平安好医生", "贝达药业", "DURAVYU",
-    "SEC 8-K", "10-Q", "财报", "年报",
+    "华能",
+    "株冶",
+    "平安好医生",
+    "贝达药业",
+    "DURAVYU",
+    "SEC 8-K",
+    "10-Q",
+    "财报",
+    "年报",
 ]
 
 # The SEC-form dilution terms for financial-intelligence (#332): the
@@ -272,9 +279,7 @@ class TestEnglishDriftExclusions:
             "autoinfo.output._get_domain_exclude_keywords",
             return_value=_ENGLISH_DRIFT_TERMS,
         ):
-            kept = _filter_entries_by_domain_exclusions(
-                self._LEGIT_AI_ENTRIES, "ai-commercial"
-            )
+            kept = _filter_entries_by_domain_exclusions(self._LEGIT_AI_ENTRIES, "ai-commercial")
         assert kept == self._LEGIT_AI_ENTRIES
 
     def test_ai_commercial_seed_has_english_drift_terms(self) -> None:
@@ -299,9 +304,7 @@ class TestEnglishDriftExclusions:
         (tmp_path / ".autoinfo" / "config.yaml").unlink()
         got = _seed_domain_exclude_keywords("ai-commercial")
         for term in _ENGLISH_DRIFT_TERMS:
-            assert term in got, (
-                f"seed fallback exclude_keywords missing {term!r}; got {got!r}"
-            )
+            assert term in got, f"seed fallback exclude_keywords missing {term!r}; got {got!r}"
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._group_by_theme")
@@ -342,14 +345,10 @@ class TestEnglishDriftExclusions:
             yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
         )
         monkeypatch.chdir(tmp_path)
-        mock_kb.return_value = _digest_mock_store(
-            [*self._DRIFT_ENTRIES, *self._LEGIT_AI_ENTRIES]
-        )
+        mock_kb.return_value = _digest_mock_store([*self._DRIFT_ENTRIES, *self._LEGIT_AI_ENTRIES])
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
-        body = _as_text(generate_report(
-            domain="ai-commercial", period="weekly", format="markdown"
-        ))
+        body = _as_text(generate_report(domain="ai-commercial", period="weekly", format="markdown"))
         for title in ("Peacock", "Fairphone", "Einride", "Plask", "Grounded"):
             assert title not in body, f"English drift entry leaked: {title!r}"
         assert "OpenAI releases new AI model for startups" in body
@@ -417,10 +416,14 @@ class TestDigestExcludeKeywords:
             "recommendations": [],
         }
         mock_kb_store.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="ai-commercial", period="weekly", format="markdown",
-            include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="ai-commercial",
+                period="weekly",
+                format="markdown",
+                include_stale=True,
+            )
+        )
         # Excluded medical entries never reach the LLM prompt nor the body.
         prompt = mock_llm.call_args[0][0]
         assert "贝达药业" not in prompt
@@ -444,10 +447,14 @@ class TestDigestExcludeKeywords:
             "recommendations": [],
         }
         mock_kb_store.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="ai-commercial", period="weekly", format="markdown",
-            include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="ai-commercial",
+                period="weekly",
+                format="markdown",
+                include_stale=True,
+            )
+        )
         assert "贝达药业" in body
         assert "DURAVYU" in body
 
@@ -476,13 +483,15 @@ class TestDigestExcludeKeywords:
             ai_entries if domain == "ai-commercial" else med_entries
         )
         mock_kb_store.return_value = store
-        body = _as_text(generate_digest(
-            domain="ai-commercial",
-            domains=["ai-commercial", "medical-research"],
-            period="weekly",
-            format="markdown",
-            include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="ai-commercial",
+                domains=["ai-commercial", "medical-research"],
+                period="weekly",
+                format="markdown",
+                include_stale=True,
+            )
+        )
         # The ai-commercial medical entry is excluded; the medical-research
         # entry (its own domain has an empty exclude list) is kept.
         assert "贝达药业 半年报" not in body
@@ -513,9 +522,7 @@ class TestReportExcludeKeywords:
         mock_kb.return_value = _digest_mock_store(_MIXED_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
-        body = _as_text(generate_report(
-            domain="ai-commercial", period="weekly", format="markdown"
-        ))
+        body = _as_text(generate_report(domain="ai-commercial", period="weekly", format="markdown"))
         assert "贝达药业" not in body
         assert "DURAVYU" not in body
         assert "AI startup raises series A" in body
@@ -539,7 +546,9 @@ class TestTutorialExcludeKeywords:
         # entry titles/summaries verbatim — the strongest leak surface.
         mock_llm.return_value = {}
         mock_kb_store.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_tutorial(domain="ai-commercial", format="markdown", include_stale=True))
+        body = _as_text(
+            generate_tutorial(domain="ai-commercial", format="markdown", include_stale=True)
+        )
         assert "贝达药业" not in body
         assert "DURAVYU" not in body
         assert "AI startup raises series A" in body
@@ -567,9 +576,11 @@ class TestPresentationExcludeKeywords:
             ],
         }
         mock_kb_store.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_presentation(
-            domain="ai-commercial", topic="医药", format="markdown", allow_empty=True
-        ))
+        body = _as_text(
+            generate_presentation(
+                domain="ai-commercial", topic="医药", format="markdown", allow_empty=True
+            )
+        )
         # The noise entries never reach the LLM prompt nor the rendered body.
         prompt = mock_llm.call_args[0][0]
         assert "贝达药业" not in prompt
@@ -586,9 +597,7 @@ class TestPresentationExcludeKeywords:
 
 
 class TestSeedFallback:
-    def test_seed_fallback_when_config_lacks_key(
-        self, tmp_path: Any, monkeypatch: Any
-    ) -> None:
+    def test_seed_fallback_when_config_lacks_key(self, tmp_path: Any, monkeypatch: Any) -> None:
         # Runtime config WITHOUT exclude_keywords (the pre-#319 live shape).
         cfg_dir = tmp_path / ".autoinfo"
         cfg_dir.mkdir(parents=True)
@@ -634,14 +643,9 @@ class TestSeedFallback:
         (tmp_path / ".autoinfo" / "config.yaml").unlink()
         got = _get_domain_exclude_keywords("ai-commercial")
         for term in _FULL_AI_NOISE_SET:
-            assert term in got, (
-                f"ai-commercial seed exclude_keywords missing {term!r}; "
-                f"got {got!r}"
-            )
+            assert term in got, f"ai-commercial seed exclude_keywords missing {term!r}; got {got!r}"
 
-    def test_financial_seed_excludes_sec_forms(
-        self, tmp_path: Any, monkeypatch: Any
-    ) -> None:
+    def test_financial_seed_excludes_sec_forms(self, tmp_path: Any, monkeypatch: Any) -> None:
         """#332 — the financial-intelligence seed declares ``exclude_keywords``
         for SEC form dilution (8-K/10-K/10-Q/10Q) so stale SEC filings never
         reach financial products.  RED today: the seed declares no
@@ -653,13 +657,10 @@ class TestSeedFallback:
         got = _get_domain_exclude_keywords("financial-intelligence")
         for term in _SEC_FORM_TERMS:
             assert term in got, (
-                f"financial-intelligence seed exclude_keywords missing {term!r}; "
-                f"got {got!r}"
+                f"financial-intelligence seed exclude_keywords missing {term!r}; got {got!r}"
             )
 
-    def test_explicit_empty_list_wins_over_seed(
-        self, tmp_path: Any, monkeypatch: Any
-    ) -> None:
+    def test_explicit_empty_list_wins_over_seed(self, tmp_path: Any, monkeypatch: Any) -> None:
         # An explicitly declared empty list means "no filtering" — the seed
         # fallback must NOT override it (backward compatible).
         _write_config(tmp_path, [])
@@ -690,7 +691,10 @@ class TestDigestFiltersHuanengNoise:
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_digest_filters_huaneng_noise(
-        self, mock_llm: MagicMock, mock_kb_store: MagicMock, tmp_path: Any,
+        self,
+        mock_llm: MagicMock,
+        mock_kb_store: MagicMock,
+        tmp_path: Any,
         monkeypatch: Any,
     ) -> None:
         """#319 — a digest built from entries whose title/summary contains
@@ -731,10 +735,14 @@ class TestDigestFiltersHuanengNoise:
             "recommendations": [],
         }
         mock_kb_store.return_value = _digest_mock_store(_HUANENG_NOISE_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="ai-commercial", period="weekly", format="markdown",
-            include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="ai-commercial",
+                period="weekly",
+                format="markdown",
+                include_stale=True,
+            )
+        )
         prompt = mock_llm.call_args[0][0]
         assert "华能" not in prompt
         assert "平安好医生" not in prompt
@@ -804,9 +812,9 @@ class TestReportFiltersSecFilingEntries:
         mock_kb.return_value = _digest_mock_store(_SEC_FILING_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
-        body = _as_text(generate_report(
-            domain="financial-intelligence", period="weekly", format="markdown"
-        ))
+        body = _as_text(
+            generate_report(domain="financial-intelligence", period="weekly", format="markdown")
+        )
         assert "8-K Apple Inc." not in body
         assert "10-Q Apple Inc." not in body
         assert "Fed holds rates steady" in body

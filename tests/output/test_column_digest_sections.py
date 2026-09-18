@@ -25,8 +25,8 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 import re
+from datetime import date, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -62,9 +62,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
 ]
 
 _SAMPLE_LLM_SYNTHESIS: dict[str, Any] = {
-    "executive_summary": (
-        "This week's column covers ten studies on IVF time-lapse imaging."
-    ),
+    "executive_summary": ("This week's column covers ten studies on IVF time-lapse imaging."),
     "key_findings": [
         {"topic": "Time-lapse imaging", "detail": "Live birth rates improved."},
     ],
@@ -414,13 +412,10 @@ class TestColumnValueDrain:
         out = _render_column_template(flat)
 
         changed, _ = _section_block(out, "## What Changed This Week")
-        bullets = [
-            ln for ln in changed.splitlines() if ln.startswith("- **")
-        ]
+        bullets = [ln for ln in changed.splitlines() if ln.startswith("- **")]
         # Capped delta: at most 8 titles in What Changed.
         assert len(bullets) <= 8, (
-            f"What Changed lists {len(bullets)} titles (must be capped <= 8): "
-            f"{bullets[:3]}..."
+            f"What Changed lists {len(bullets)} titles (must be capped <= 8): {bullets[:3]}..."
         )
         # Never the full reference dump: at most 8 of the 60 titles appear.
         titles = [str(r.get("title") or "") for r in flat["references"]]
@@ -479,12 +474,10 @@ class TestColumnValueDrain:
         for section in flat["sections"]:
             for entry in section.get("entries") or []:
                 assert str(entry.get("title") or "") not in changed, (
-                    f"What Changed duplicates Deep Dive entry "
-                    f"{entry.get('title')!r}"
+                    f"What Changed duplicates Deep Dive entry {entry.get('title')!r}"
                 )
                 assert str(entry.get("title") or "") in out, (
-                    f"Deep Dive entry missing from full document "
-                    f"{entry.get('title')!r}"
+                    f"Deep Dive entry missing from full document {entry.get('title')!r}"
                 )
 
     # --- Implications & Outlook (issue #17.2) --------------------------
@@ -510,8 +503,7 @@ class TestColumnValueDrain:
                     # #129: implications are rendered per-section so-what
                     # phrasing; provide one per section so the bullets render.
                     "implications": [
-                        f"So-what phrasing {i}: adopt time-lapse imaging."
-                        for i in range(1, 9)
+                        f"So-what phrasing {i}: adopt time-lapse imaging." for i in range(1, 9)
                     ],
                 }
             ),
@@ -523,8 +515,7 @@ class TestColumnValueDrain:
         implications, _ = _section_block(out, "## Implications & Outlook")
         bullets = [ln for ln in implications.splitlines() if ln.startswith("- **")]
         assert len(bullets) == len(sections), (
-            f"Implications has {len(bullets)} bullets for "
-            f"{len(sections)} sections"
+            f"Implications has {len(bullets)} bullets for {len(sections)} sections"
         )
         for i, section in enumerate(sections):
             content = str(section["content"]).strip()
@@ -569,18 +560,14 @@ class TestColumnValueDrain:
             "medical-research",
             product_family="column",
         )
-        assert flat["implications"] == [], (
-            "hermetic setup: synthesis carries no implications"
-        )
+        assert flat["implications"] == [], "hermetic setup: synthesis carries no implications"
         out = _render_column_template(flat)
 
         # #129 + #133: with no implications in the synthesis, the whole
         # Implications & Outlook section (heading included) is omitted —
         # never a hollow "Covered in the Deep Dive" promise, never an empty
         # heading followed by the next section.
-        assert "Covered in the Deep Dive" not in out, (
-            f"hollow placeholder rendered:\n{out}"
-        )
+        assert "Covered in the Deep Dive" not in out, f"hollow placeholder rendered:\n{out}"
         assert "## Implications & Outlook" not in out, (
             f"empty Implications & Outlook section rendered:\n{out}"
         )
@@ -615,8 +602,7 @@ class TestColumnValueDrain:
         # So-what phrasing, not section content.
         for section in flat["sections"]:
             assert str(section["content"]).strip() not in implications_block, (
-                f"Implications copies section content verbatim: "
-                f"{str(section['content']).strip()!r}"
+                f"Implications copies section content verbatim: {str(section['content']).strip()!r}"
             )
 
     # --- Reader Takeaways (issue #17.3) ---------------------------------
@@ -645,9 +631,7 @@ class TestColumnValueDrain:
         assert "Track the What Changed This Week list" not in takeaways
         assert "Follow the referenced sources" not in takeaways
         for action in action_required:
-            assert action in takeaways, (
-                f"action_required item missing from Takeaways: {action!r}"
-            )
+            assert action in takeaways, f"action_required item missing from Takeaways: {action!r}"
 
     def test_reader_takeaways_fallback_to_recommendations(self) -> None:
         """No ``action_required`` → numbered recommendations render."""
@@ -673,9 +657,7 @@ class TestColumnValueDrain:
         assert "Track the What Changed This Week list" not in takeaways
         assert "Follow the referenced sources" not in takeaways
         for rec in recommendations:
-            assert rec in takeaways, (
-                f"recommendation missing from Takeaways: {rec!r}"
-            )
+            assert rec in takeaways, f"recommendation missing from Takeaways: {rec!r}"
 
     def test_reader_takeaways_section_derived_fallback(self) -> None:
         """Neither field present → takeaways derive from section titles."""

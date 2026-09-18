@@ -9,9 +9,9 @@ sections) and `datetime.now(timezone.utc)` is frozen.  Run from repo root:
 
 The captured bytes are then committed as the golden fixture.
 """
+
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch

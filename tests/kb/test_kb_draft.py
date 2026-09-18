@@ -164,7 +164,9 @@ class TestCreateKbDraft:
         assert fp.is_file()
         assert "02-Draft" in fp.parts
 
-    def test_auto_generates_summary_when_not_passed(self, store: KBStore, raw_entry_ids: list[str]) -> None:
+    def test_auto_generates_summary_when_not_passed(
+        self, store: KBStore, raw_entry_ids: list[str]
+    ) -> None:
         """Issue #176: create_kb_draft without a summary must auto-generate a
         deterministic one from the source Raw summaries/titles, so the Draft
         never renders as an empty shell in digest/report."""
@@ -186,9 +188,7 @@ class TestCreateKbDraft:
         )
         assert draft.summary == "Explicit custom summary"
 
-    def test_rejects_draft_from_short_raw_entry(
-        self, store: KBStore
-    ) -> None:
+    def test_rejects_draft_from_short_raw_entry(self, store: KBStore) -> None:
         """A Draft compiled from a Raw entry whose merged content is below
         MIN_KB_CONTENT_CHARS is rejected (issue #279 — the same 50-char
         floor process/import paths enforce must hold at Draft creation)."""
@@ -222,9 +222,9 @@ class TestCreateKbDraft:
                 raw_ids=[raw.entry_id],
                 title="Draft from short raw",
             )
-        assert not list(
-            (store.base_path / "medical-research" / "02-Draft").rglob("*.md")
-        ), "no Draft file may be written for short content"
+        assert not list((store.base_path / "medical-research" / "02-Draft").rglob("*.md")), (
+            "no Draft file may be written for short content"
+        )
 
     def test_draft_tier_is_02_draft(self, store: KBStore, raw_entry_ids: list[str]) -> None:
         draft = store.create_kb_draft(
@@ -679,10 +679,7 @@ class TestExpandedFrontmatter:
         cf = json.loads(cf_raw)
         assert cf == {}
         # KBEntry constructed from filtered meta should have defaults
-        kb_fields = {
-            k: v for k, v in meta.items()
-            if k in KBEntry.__dataclass_fields__
-        }
+        kb_fields = {k: v for k, v in meta.items() if k in KBEntry.__dataclass_fields__}
         kb_fields["custom_fields"] = cf
         loaded = KBEntry(**kb_fields)
         assert loaded.author == ""
@@ -727,9 +724,7 @@ class TestExpandedFrontmatter:
 
 
 class TestPromoteKbDraft:
-    def test_promote_moves_draft_to_03_wiki(
-        self, store: KBStore, raw_entry_ids: list[str]
-    ) -> None:
+    def test_promote_moves_draft_to_03_wiki(self, store: KBStore, raw_entry_ids: list[str]) -> None:
         """Unit test: promote a Draft -> 03-Wiki."""
         draft = store.create_kb_draft(
             raw_ids=[raw_entry_ids[0]],
@@ -772,16 +767,12 @@ class TestPromoteKbDraft:
         with pytest.raises(ValueError, match="not found"):
             store.promote_kb_draft(draft_id="nonexistent-draft")
 
-    def test_promote_raw_entry_raises_error(
-        self, store: KBStore, raw_entry_ids: list[str]
-    ) -> None:
+    def test_promote_raw_entry_raises_error(self, store: KBStore, raw_entry_ids: list[str]) -> None:
         """Negative test: promote a Raw entry (not Draft) -> ValueError."""
         with pytest.raises(ValueError, match="not a Draft"):
             store.promote_kb_draft(draft_id=raw_entry_ids[0])
 
-    def test_promote_preserves_entry_id(
-        self, store: KBStore, raw_entry_ids: list[str]
-    ) -> None:
+    def test_promote_preserves_entry_id(self, store: KBStore, raw_entry_ids: list[str]) -> None:
         """Unit test: entry_id stays the same after promotion."""
         draft = store.create_kb_draft(
             raw_ids=[raw_entry_ids[0]],
@@ -807,9 +798,7 @@ class TestPromoteKbDraft:
         assert raw_meta is not None
         assert raw_meta["tier"] == "01-Raw"
 
-    def test_promote_cli_integration(
-        self, store: KBStore, raw_entry_ids: list[str]
-    ) -> None:
+    def test_promote_cli_integration(self, store: KBStore, raw_entry_ids: list[str]) -> None:
         """Integration test: simulate CLI promote via direct API call
         (matching the CLI pattern exactly)."""
         draft = store.create_kb_draft(
@@ -844,9 +833,7 @@ class TestEnsureNotWiki:
         with pytest.raises(PermissionError, match="03-Wiki is append-only"):
             store.store_entry(sample_item_1, tier="03-Wiki")
 
-    def test_store_entry_to_01_raw_is_allowed(
-        self, store: KBStore, sample_item_1: Item
-    ) -> None:
+    def test_store_entry_to_01_raw_is_allowed(self, store: KBStore, sample_item_1: Item) -> None:
         """Unit test: writing to 01-Raw is not blocked."""
         entry = store.store_entry(sample_item_1)
         assert entry.tier == "01-Raw"
@@ -906,16 +893,12 @@ class TestPromotionProvenance:
         assert "promotion_source" not in fm
         assert "promoted_by" not in fm
 
-    def test_draft_carries_forward_raw_scores(
-        self, store: KBStore, sample_item_1: Item
-    ) -> None:
+    def test_draft_carries_forward_raw_scores(self, store: KBStore, sample_item_1: Item) -> None:
         """A Draft created from a scored Raw entry inherits the exact
         G1/G3-derived values instead of hardcoded 0/1."""
         from autoinfo.quality import QualityResult
 
-        g3 = QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=87.5
-        )
+        g3 = QualityResult(gate_name="G3-RelevanceScoring", passed=True, score=87.5)
         g1 = QualityResult(
             gate_name="G1-SourceAuthority",
             passed=True,
@@ -997,8 +980,7 @@ class TestPromotionProvenance:
             source_score=58.0,
             dedup_status="unique",
             file_path=str(
-                store.base_path / "medical-research" / "02-Draft"
-                / "general" / "legacy-draft.md"
+                store.base_path / "medical-research" / "02-Draft" / "general" / "legacy-draft.md"
             ),
         )
         store.index.index_entry(entry)

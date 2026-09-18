@@ -153,13 +153,12 @@ def _load_batch_history(snapshot_dir: Path) -> list[dict[str, Any]]:
     return cards
 
 
-def _find_product_row(
-    card: dict[str, Any], domain: str, product: str
-) -> dict[str, Any] | None:
+def _find_product_row(card: dict[str, Any], domain: str, product: str) -> dict[str, Any] | None:
     """The (domain, product) row of one report card, or None when absent."""
     return next(
         (
-            p for p in card.get("products", [])
+            p
+            for p in card.get("products", [])
             if p.get("domain") == domain and p.get("product") == product
         ),
         None,
@@ -175,9 +174,7 @@ def _row_passes(card: dict[str, Any], domain: str, product: str) -> bool:
     return all(a.get("passed") for a in row.get("assertions", []))
 
 
-def _consecutive_passes(
-    history: list[dict[str, Any]], domain: str, product: str
-) -> int:
+def _consecutive_passes(history: list[dict[str, Any]], domain: str, product: str) -> int:
     """TRAILING count of consecutive fully-passing batches for (domain,
     product); a failing/missing row anywhere in the middle resets the count."""
     count = 0
@@ -189,9 +186,7 @@ def _consecutive_passes(
     return count
 
 
-def _last_pass_commit(
-    history: list[dict[str, Any]], domain: str, product: str
-) -> str | None:
+def _last_pass_commit(history: list[dict[str, Any]], domain: str, product: str) -> str | None:
     """The commit of the newest trailing fully-passing batch, or None when the
     newest batch's row is missing or failing."""
     if not history or not _row_passes(history[-1], domain, product):
@@ -199,9 +194,7 @@ def _last_pass_commit(
     return history[-1].get("commit")
 
 
-def _code_changed(
-    since_commit: str, product: str, domain: str, template_paths: list[str]
-) -> bool:
+def _code_changed(since_commit: str, product: str, domain: str, template_paths: list[str]) -> bool:
     """True when any tracked file under the product's template/render paths
     changed since ``since_commit``.  Conservative on failure: a git error
     returns True (regenerate rather than skip on unknown state)."""
@@ -211,7 +204,10 @@ def _code_changed(
     try:
         out = subprocess.run(
             ["git", "diff", "--name-only", f"{since_commit}..HEAD", "--", *paths],
-            capture_output=True, text=True, cwd=Path.cwd(), timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=Path.cwd(),
+            timeout=5,
         )
         if out.returncode != 0:
             return True
@@ -255,9 +251,7 @@ def _should_skip(
     if _consecutive_passes(history, domain, product) < threshold:
         return False
     last_commit = _last_pass_commit(history, domain, product)
-    if last_commit is not None and _code_changed(
-        last_commit, product, domain, template_paths
-    ):
+    if last_commit is not None and _code_changed(last_commit, product, domain, template_paths):
         return False
     if history:
         recorded = history[-1].get("summary", {}).get("raw_counts", {}).get(domain)
@@ -291,15 +285,67 @@ _SKELETON_ECHO = re.compile(r"<[a-z][a-z0-9 _-]+>", re.IGNORECASE)
 # rich-text source content, rendered as images) are legitimate, NOT template
 # placeholders.  Only a skeleton echo shaped like a *template* slot
 # ("<finding 1>", "<takeaway>") stays flagged.
-_HTML_TAG_NAMES = frozenset({
-    "div", "figure", "img", "figcaption", "span", "p", "a", "br", "hr",
-    "ul", "ol", "li", "table", "tr", "td", "th", "thead", "tbody",
-    "section", "article", "header", "footer", "nav", "main", "aside",
-    "h1", "h2", "h3", "h4", "h5", "h6", "em", "strong", "b", "i", "u",
-    "small", "blockquote", "pre", "code", "video", "audio", "source",
-    "picture", "button", "input", "iframe", "style", "script", "svg",
-    "form", "textarea", "select", "option", "label", "meta", "link",
-})
+_HTML_TAG_NAMES = frozenset(
+    {
+        "div",
+        "figure",
+        "img",
+        "figcaption",
+        "span",
+        "p",
+        "a",
+        "br",
+        "hr",
+        "ul",
+        "ol",
+        "li",
+        "table",
+        "tr",
+        "td",
+        "th",
+        "thead",
+        "tbody",
+        "section",
+        "article",
+        "header",
+        "footer",
+        "nav",
+        "main",
+        "aside",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "em",
+        "strong",
+        "b",
+        "i",
+        "u",
+        "small",
+        "blockquote",
+        "pre",
+        "code",
+        "video",
+        "audio",
+        "source",
+        "picture",
+        "button",
+        "input",
+        "iframe",
+        "style",
+        "script",
+        "svg",
+        "form",
+        "textarea",
+        "select",
+        "option",
+        "label",
+        "meta",
+        "link",
+    }
+)
 _LIST_MARKER = re.compile(r"^[-*•]?\s*(?:\[\s*[ xX]\s*\])?\s*")
 # #338 — internal keyword-search/counting lines must never reach the product:
 # keyword-group descriptions, "entry(ies) not matched/covered" catch-alls,
@@ -359,9 +405,7 @@ _BY_YEAR_RE = re.compile(
 )
 # A year range "2025-2030" / "2027–2030" / short form "2026-27" is inherently
 # forward-looking.
-_YEAR_RANGE_RE = re.compile(
-    r"\b(?:18|19|20)\d{2}\s*[-–]\s*(?:18|19|20)?\d{2}\b"
-)
+_YEAR_RANGE_RE = re.compile(r"\b(?:18|19|20)\d{2}\s*[-–]\s*(?:18|19|20)?\d{2}\b")
 # "set to arrive in early 2027" / "set to premiere" — a strong forward marker.
 _SET_TO_RE = re.compile(r"\bset\s+to\b", re.IGNORECASE)
 # "end of new PlayStation discs from 2028" / "from 2027 the route opens" —
@@ -417,11 +461,32 @@ _FRANCHISE_YEAR_RE = re.compile(
     r"|\b(?:[^\W\d_][^\W_]*[\s-]+){1,4}"
     r"[0-9]{1,3}\s*\(\s*(?:18|19|20)\d{2}\s*\)"
 )
-_FUNCTION_YEAR_WORDS = frozenset({
-    "in", "on", "at", "by", "for", "from", "since", "after", "before",
-    "during", "until", "the", "a", "an", "as", "of", "to", "with",
-    "into", "over", "under", "within",
-})
+_FUNCTION_YEAR_WORDS = frozenset(
+    {
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "from",
+        "since",
+        "after",
+        "before",
+        "during",
+        "until",
+        "the",
+        "a",
+        "an",
+        "as",
+        "of",
+        "to",
+        "with",
+        "into",
+        "over",
+        "under",
+        "within",
+    }
+)
 
 # Fenced code blocks are never acceptable in a delivered product.
 _FENCE_RE = re.compile(r"```[\s\S]*?```")
@@ -438,22 +503,36 @@ _LONG_B64_RE = re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}\b")
 # Broken-reference shapes (#351): [View Source](...) targets that are empty or
 # scheme-less; References entries carrying no URL/identifier-bearing token.
 _VIEW_SOURCE_RE = re.compile(r"\[View Source\]\(([^)]*)\)")
-_REF_URL_TOKEN = re.compile(
-    r"https?://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE
-)
+_REF_URL_TOKEN = re.compile(r"https?://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE)
 # Cross-domain noise markers (issue #319) / financial dilution markers.
 _AI_COMMERCIAL_NOISE = (
-    "贝达药业", "华能", "株冶", "平安好医生", "DURAVYU", "SEC 8-K", "SEC 8K",
-    "10-Q", "10Q", "财报", "年报",
+    "贝达药业",
+    "华能",
+    "株冶",
+    "平安好医生",
+    "DURAVYU",
+    "SEC 8-K",
+    "SEC 8K",
+    "10-Q",
+    "10Q",
+    "财报",
+    "年报",
 )
 # #332: bare form ids ("8-K", "10-K") are included — stale SEC KB entries
 # carry titles like "8-K Apple Inc. (2026-07-30)" / "10-K Apple Inc.
 # (2026-01-15)" with no "SEC"/"filing" qualifier, so the dilution markers
 # must match the bare form string too.
 _FIN_DILUTION = (
-    "SEC 8-K", "SEC 8K", "8-K", "8K",
-    "10-Q", "10Q", "10-K", "10K",
-    "8-K filing", "8K filing",
+    "SEC 8-K",
+    "SEC 8K",
+    "8-K",
+    "8K",
+    "10-Q",
+    "10Q",
+    "10-K",
+    "10K",
+    "8-K filing",
+    "8K filing",
 )
 
 _X = "cross-domain-noise-filter"
@@ -479,7 +558,12 @@ def _title_first(text: str, domain: str, product: str) -> AssertionResult:
     first = next((ln for ln in text.splitlines() if ln.strip()), "")
     ok = bool(first) and not _ANSI.search(first) and not _LITELLM.search(first)
     return AssertionResult(
-        "_title_first", ok, "#318", "P0", domain, product,
+        "_title_first",
+        ok,
+        "#318",
+        "P0",
+        domain,
+        product,
         f"first line={first[:60]!r}",
     )
 
@@ -495,7 +579,12 @@ def _no_error_leak(text: str, domain: str, product: str) -> AssertionResult:
     if _TRACEBACK.search(text):
         bad.append("traceback")
     return AssertionResult(
-        "_no_error_leak", not bad, "#328", "P0", domain, product,
+        "_no_error_leak",
+        not bad,
+        "#328",
+        "P0",
+        domain,
+        product,
         "; ".join(bad) if bad else "clean header",
     )
 
@@ -505,15 +594,25 @@ def _references_numbered(text: str, domain: str, product: str) -> AssertionResul
     m = _REFS_HEADING.search(text)
     if not m:
         return AssertionResult(
-            "_references_numbered", True, "#322", "P1", domain,
-            product, "no References section",
+            "_references_numbered",
+            True,
+            "#322",
+            "P1",
+            domain,
+            product,
+            "no References section",
         )
-    body = text[m.end():]
+    body = text[m.end() :]
     # A markdown ordered list renders 1.,2.,3. — pick only the numbered ones.
     numbered = [int(g) for g in re.findall(r"^\s*(\d+)\.\s", body, re.MULTILINE)]
     ok = all(n == i for i, n in enumerate(numbered, start=1))
     return AssertionResult(
-        "_references_numbered", ok, "#322", "P1", domain, product,
+        "_references_numbered",
+        ok,
+        "#322",
+        "P1",
+        domain,
+        product,
         f"numbers={numbered}" if numbered else "no numbered refs",
     )
 
@@ -533,13 +632,16 @@ def _source_labels_specific(text: str, domain: str, product: str) -> AssertionRe
     # Remove the Type-row value so a bare TYPE label ("rss") is not mistaken
     # for an unresolved generic source label (#41 FP-3) — while a generic
     # source label that is neither a feed name nor a Type row still flags.
-    _TYPE_ROW = re.compile(
-        r"^\s*\|?\s*\*\*Type\*\*\s*\|[^|\n]*\|?\s*$", re.MULTILINE
-    )
-    body = _TYPE_ROW.sub("", body)
+    type_row = re.compile(r"^\s*\|?\s*\*\*Type\*\*\s*\|[^|\n]*\|?\s*$", re.MULTILINE)
+    body = type_row.sub("", body)
     matches = _RSS_LABEL.findall(body)
     return AssertionResult(
-        "_source_labels_specific", not matches, "#325", "P1", domain, product,
+        "_source_labels_specific",
+        not matches,
+        "#325",
+        "P1",
+        domain,
+        product,
         f"RSS label x{len(matches)}" if matches else "no RSS label",
     )
 
@@ -580,7 +682,12 @@ def _no_placeholder(text: str, domain: str, product: str) -> AssertionResult:
     including the premium/enterprise analysis layer (issues #329, #334)."""
     found = _collect_placeholder_tokens(text)
     return AssertionResult(
-        "_no_placeholder", not found, "#329", "P0", domain, product,
+        "_no_placeholder",
+        not found,
+        "#329",
+        "P0",
+        domain,
+        product,
         "placeholders=" + ", ".join(found) if found else "none",
     )
 
@@ -591,7 +698,12 @@ def _no_internal_leak(text: str, domain: str, product: str) -> AssertionResult:
     keyword``, per-theme count bullets, source-group counts)."""
     found = sorted(set(_INTERNAL_LEAK_RE.findall(text)))
     return AssertionResult(
-        "_no_internal_leak", not found, "#338", "P0", domain, product,
+        "_no_internal_leak",
+        not found,
+        "#338",
+        "P0",
+        domain,
+        product,
         "leak=" + ", ".join(found) if found else "none",
     )
 
@@ -601,19 +713,34 @@ def _column_deep_dive(text: str, domain: str, product: str) -> AssertionResult:
     or is absent (non-column products skip; this is an informational pass)."""
     if product != "column":
         return AssertionResult(
-            "_column_deep_dive", True, "#316", "P1", domain, product,
+            "_column_deep_dive",
+            True,
+            "#316",
+            "P1",
+            domain,
+            product,
             "not a column product",
         )
     m = re.search(r"^##+\s+Deep Dive", text, re.MULTILINE)
     if not m:
         return AssertionResult(
-            "_column_deep_dive", False, "#316", "P1", domain, product,
+            "_column_deep_dive",
+            False,
+            "#316",
+            "P1",
+            domain,
+            product,
             "missing Deep Dive section",
         )
-    tail = text[m.end():]
+    tail = text[m.end() :]
     subs = re.findall(r"^###\s+\S", tail, re.MULTILINE)
     return AssertionResult(
-        "_column_deep_dive", len(subs) >= 1, "#316", "P1", domain, product,
+        "_column_deep_dive",
+        len(subs) >= 1,
+        "#316",
+        "P1",
+        domain,
+        product,
         f"subsections={len(subs)}",
     )
 
@@ -623,19 +750,34 @@ def _report_sections(text: str, domain: str, product: str) -> AssertionResult:
     semantic grouping), not an empty shell."""
     if product not in ("report", "column"):
         return AssertionResult(
-            "_report_sections", True, "#311", "P1", domain, product,
+            "_report_sections",
+            True,
+            "#311",
+            "P1",
+            domain,
+            product,
             "not a report/column product",
         )
     m = re.search(r"\*\*Sections\*\*:\s*(\d+)", text)
     if not m:
         ok = "## " in text and len(text.strip()) > 200
         return AssertionResult(
-            "_report_sections", ok, "#311", "P1", domain, product,
+            "_report_sections",
+            ok,
+            "#311",
+            "P1",
+            domain,
+            product,
             "no Sections metadata" + ("" if ok else " (empty shell)"),
         )
     n = int(m.group(1))
     return AssertionResult(
-        "_report_sections", n >= 1, "#311", "P1", domain, product,
+        "_report_sections",
+        n >= 1,
+        "#311",
+        "P1",
+        domain,
+        product,
         f"Sections={n}",
     )
 
@@ -645,13 +787,23 @@ def _metadata_consistency(text: str, domain: str, product: str) -> AssertionResu
     m = re.search(r"\*\*Sections\*\*:\s*(\d+)", text)
     if not m:
         return AssertionResult(
-            "_metadata_consistency", True, "—", "P2", domain, product,
+            "_metadata_consistency",
+            True,
+            "—",
+            "P2",
+            domain,
+            product,
             "no Sections metadata",
         )
     actual = len(re.findall(r"^###\s+\S", text, re.MULTILINE))
     n = int(m.group(1))
     return AssertionResult(
-        "_metadata_consistency", n == actual, "—", "P2", domain, product,
+        "_metadata_consistency",
+        n == actual,
+        "—",
+        "P2",
+        domain,
+        product,
         f"metadata={n} actual={actual}",
     )
 
@@ -661,12 +813,22 @@ def _no_cross_domain_noise(text: str, domain: str, product: str) -> AssertionRes
     noise entries (贝达药业/华能/SEC 8-K/财报 etc.)."""
     if domain != "ai-commercial":
         return AssertionResult(
-            "_no_cross_domain_noise", True, "#319", "P1", domain, product,
+            "_no_cross_domain_noise",
+            True,
+            "#319",
+            "P1",
+            domain,
+            product,
             "not ai-commercial",
         )
     found = sorted({k for k in _AI_COMMERCIAL_NOISE if k in text})
     return AssertionResult(
-        "_no_cross_domain_noise", not found, "#319", "P1", domain, product,
+        "_no_cross_domain_noise",
+        not found,
+        "#319",
+        "P1",
+        domain,
+        product,
         "noise=" + ", ".join(found) if found else "clean",
     )
 
@@ -676,12 +838,22 @@ def _no_financial_dilution(text: str, domain: str, product: str) -> AssertionRes
     dilution (v1.1 solved, v3 regressed — must be guarded)."""
     if domain != "financial-intelligence":
         return AssertionResult(
-            "_no_financial_dilution", True, "—", "P1", domain, product,
+            "_no_financial_dilution",
+            True,
+            "—",
+            "P1",
+            domain,
+            product,
             "not financial",
         )
     found = sorted({k for k in _FIN_DILUTION if k in text})
     return AssertionResult(
-        "_no_financial_dilution", not found, "—", "P1", domain, product,
+        "_no_financial_dilution",
+        not found,
+        "—",
+        "P1",
+        domain,
+        product,
         "dilution=" + ", ".join(found) if found else "clean",
     )
 
@@ -690,7 +862,12 @@ def _not_empty(text: str, domain: str, product: str) -> AssertionResult:
     """#294 — the product is not empty (has a title + some body)."""
     ok = bool(text.strip()) and len(text.strip()) > 10
     return AssertionResult(
-        "_not_empty", ok, "#294", "P1", domain, product,
+        "_not_empty",
+        ok,
+        "#294",
+        "P1",
+        domain,
+        product,
         f"{len(text.strip())} chars",
     )
 
@@ -722,7 +899,7 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
     EXCLUDED — legitimate citations carry old years.  URL-embedded 4-digit
     runs never fire."""
     refs = _REFS_HEADING.search(text)
-    body = text[:refs.start()] if refs else text
+    body = text[: refs.start()] if refs else text
     body = _URL_RE.sub(" ", body)
     offending: list[str] = []
     for m in _MONTH_YEAR_RE.finditer(body):
@@ -734,9 +911,7 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
         ):
             offending.append(f"future bare month-year {m.group(0)!r} ({year})")
         elif year < _MIN_PLAUSIBLE_YEAR:
-            offending.append(
-                f"distant-past bare month-year {m.group(0)!r} ({year}) — human review"
-            )
+            offending.append(f"distant-past bare month-year {m.group(0)!r} ({year}) — human review")
     for m in _YEAR_RE.finditer(body):
         year = int(m.group(0))
         if (
@@ -749,8 +924,12 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
             offending.append(f"distant-past year {year} — human review")
     severe = any(o.startswith(("future", "implausible")) for o in offending)
     return AssertionResult(
-        "_no_year_hallucination", not offending, "#351",
-        "P0" if severe else "P1", domain, product,
+        "_no_year_hallucination",
+        not offending,
+        "#351",
+        "P0" if severe else "P1",
+        domain,
+        product,
         "; ".join(dict.fromkeys(offending)) if offending else "no year issues",
     )
 
@@ -801,7 +980,7 @@ def _is_named_year(text: str, m: re.Match[str]) -> bool:
         if named.start() <= lo and hi <= named.end():
             return True
     for named in _FRANCHISE_YEAR_RE.finditer(line):
-        span = line[named.start():named.end()]
+        span = line[named.start() : named.end()]
         if not (named.start() <= lo and hi <= named.end()):
             continue
         # A franchise/title run must contain at least one real name word —
@@ -855,7 +1034,12 @@ def _no_code_or_key_leak(text: str, domain: str, product: str) -> AssertionResul
     for m in _LONG_B64_RE.finditer(body):
         bad.append(f"long base64 run ({len(m.group(0))} chars)")
     return AssertionResult(
-        "_no_code_or_key_leak", not bad, "#351", "P0", domain, product,
+        "_no_code_or_key_leak",
+        not bad,
+        "#351",
+        "P0",
+        domain,
+        product,
         "leak=" + ", ".join(dict.fromkeys(bad)) if bad else "no code/key shapes",
     )
 
@@ -874,11 +1058,16 @@ def _no_broken_reference(text: str, domain: str, product: str) -> AssertionResul
             bad.append(f"[View Source] target {target[:30]!r} has no scheme")
     refs = _REFS_HEADING.search(text)
     if refs:
-        for line in text[refs.start():].splitlines():
+        for line in text[refs.start() :].splitlines():
             if _REF_ENTRY.match(line) and not _REF_URL_TOKEN.search(line):
                 bad.append(f"reference without URL/identifier: {line[:40]!r}")
     return AssertionResult(
-        "_no_broken_reference", not bad, "#351", "P0", domain, product,
+        "_no_broken_reference",
+        not bad,
+        "#351",
+        "P0",
+        domain,
+        product,
         "broken=" + "; ".join(bad) if bad else "no broken references",
     )
 
@@ -896,7 +1085,12 @@ def _no_external_error_text(text: str, domain: str, product: str) -> AssertionRe
     if _TRACEBACK.search(text):
         bad.append("traceback")
     return AssertionResult(
-        "_no_external_error_text", not bad, "#351", "P0", domain, product,
+        "_no_external_error_text",
+        not bad,
+        "#351",
+        "P0",
+        domain,
+        product,
         "; ".join(bad) if bad else "no external error text",
     )
 
@@ -926,12 +1120,18 @@ _BULLET_ITEM_RE = re.compile(r"^-\s+(?:\[\s*[ xX]\s*\]\s*)?(.+)$", re.MULTILINE)
 _BOLD_BULLET_TITLE_RE = re.compile(r"^-\s*\*\*(.+?)\*\*", re.MULTILINE)
 # generic risk label blocklist (case-insensitive exact match)
 _GENERIC_RISK_LABELS = (
-    "valuation bubble risk", "market risk", "general risk",
-    "unknown risk", "n/a risk", "risk risk",
+    "valuation bubble risk",
+    "market risk",
+    "general risk",
+    "unknown risk",
+    "n/a risk",
+    "risk risk",
 )
 # deterministic no-LLM fallback formula prefixes (lowered)
 _FORMULAIC_PREFIXES = (
-    "monitor developments around", "track ", "uncertain trajectory for",
+    "monitor developments around",
+    "track ",
+    "uncertain trajectory for",
 )
 
 
@@ -948,7 +1148,7 @@ def _premium_takeaways(text: str) -> list[dict[str, str]]:
     m = re.search(r"^##\s+Key Takeaways", text, re.MULTILINE)
     if not m:
         return []
-    tail = text[m.end():]
+    tail = text[m.end() :]
     refs = _REFS_HEADING.search(tail)
     if refs:
         tail = tail[: refs.start()]
@@ -959,13 +1159,15 @@ def _premium_takeaways(text: str) -> list[dict[str, str]]:
         heading = ""
         if lines:
             heading = _SOURCE_SUFFIX_RE.sub("", lines[0].strip()).strip()
-        takeaways.append({
-            "heading": heading,
-            "so_what": _takeaway_field(lines, _SO_WHAT_RE),
-            "risk": _takeaway_field(lines, _RISK_LINE_RE),
-            "risk_title": _takeaway_field(lines, _RISK_TITLE_RE),
-            "actions": _takeaway_field(lines, _ACTIONS_LINE_RE),
-        })
+        takeaways.append(
+            {
+                "heading": heading,
+                "so_what": _takeaway_field(lines, _SO_WHAT_RE),
+                "risk": _takeaway_field(lines, _RISK_LINE_RE),
+                "risk_title": _takeaway_field(lines, _RISK_TITLE_RE),
+                "actions": _takeaway_field(lines, _ACTIONS_LINE_RE),
+            }
+        )
     return takeaways
 
 
@@ -1044,7 +1246,12 @@ def _so_what_substantive(text: str, domain: str, product: str) -> AssertionResul
     informationally (like ``_column_deep_dive`` does for non-column)."""
     if product not in _PAID_ANALYSIS_PRODUCTS:
         return AssertionResult(
-            "_so_what_substantive", True, "#357", "P1", domain, product,
+            "_so_what_substantive",
+            True,
+            "#357",
+            "P1",
+            domain,
+            product,
             "not a paid-analysis product",
         )
     weak: list[str] = []
@@ -1072,7 +1279,12 @@ def _so_what_substantive(text: str, domain: str, product: str) -> AssertionResul
         if recs and not _BULLET_ITEM_RE.search(recs):
             weak.append("Recommendations empty")
     return AssertionResult(
-        "_so_what_substantive", not weak, "#357", "P1", domain, product,
+        "_so_what_substantive",
+        not weak,
+        "#357",
+        "P1",
+        domain,
+        product,
         "; ".join(weak) if weak else "substantive analysis present",
     )
 
@@ -1088,36 +1300,29 @@ def _recommendation_labels(text: str, product: str) -> list[str]:
             labels.append(tk["risk_title"])
             labels.append(tk["actions"])
     elif product == "enterprise-briefing":
-        labels.extend(
-            _BULLET_ITEM_RE.findall(_section_text(text, "Action Required"))
-        )
-        labels.extend(
-            _BULLET_ITEM_RE.findall(_section_text(text, "Recommendations"))
-        )
+        labels.extend(_BULLET_ITEM_RE.findall(_section_text(text, "Action Required")))
+        labels.extend(_BULLET_ITEM_RE.findall(_section_text(text, "Recommendations")))
         labels.extend(_table_first_cells(_section_text(text, "Risk Matrix")))
     elif product == "column":
-        labels.extend(
-            _BOLD_BULLET_TITLE_RE.findall(
-                _section_text(text, "Implications & Outlook")
-            )
-        )
+        labels.extend(_BOLD_BULLET_TITLE_RE.findall(_section_text(text, "Implications & Outlook")))
     elif product == "report":
-        labels.extend(
-            _BULLET_ITEM_RE.findall(_section_text(text, "Recommendations"))
-        )
+        labels.extend(_BULLET_ITEM_RE.findall(_section_text(text, "Recommendations")))
     return labels
 
 
-def _recommendation_relevant(
-    text: str, domain: str, product: str
-) -> AssertionResult:
+def _recommendation_relevant(text: str, domain: str, product: str) -> AssertionResult:
     """#357 — recommendation/risk labels are not generic boilerplate (the
     prompt forbids labels like "Valuation Bubble Risk") and not placeholders.
     Only clearly-generic labels with no concrete entity flag; no cross-domain
     relevance scoring."""
     if product not in _PAID_ANALYSIS_PRODUCTS:
         return AssertionResult(
-            "_recommendation_relevant", True, "#357", "P1", domain, product,
+            "_recommendation_relevant",
+            True,
+            "#357",
+            "P1",
+            domain,
+            product,
             "not a paid-analysis product",
         )
     flagged: list[str] = []
@@ -1130,21 +1335,29 @@ def _recommendation_relevant(
         elif stripped.lower() in _GENERIC_RISK_LABELS:
             flagged.append(f"generic label {stripped[:40]!r}")
     return AssertionResult(
-        "_recommendation_relevant", not flagged, "#357", "P1", domain, product,
+        "_recommendation_relevant",
+        not flagged,
+        "#357",
+        "P1",
+        domain,
+        product,
         "; ".join(flagged) if flagged else "no generic risk labels",
     )
 
 
-def _analysis_not_mere_repeat(
-    text: str, domain: str, product: str
-) -> AssertionResult:
+def _analysis_not_mere_repeat(text: str, domain: str, product: str) -> AssertionResult:
     """#357 — premium-briefing So-what analysis must not merely restate the
     takeaway heading (which derives from the KB entry title/summary).  Flags
     word-Jaccard > 0.75 between So-what and heading on a short (< 120 chars)
     So-what — mostly repeating the heading with little added analysis."""
     if product != "premium-briefing":
         return AssertionResult(
-            "_analysis_not_mere_repeat", True, "#357", "P1", domain, product,
+            "_analysis_not_mere_repeat",
+            True,
+            "#357",
+            "P1",
+            domain,
+            product,
             "not a premium-briefing product",
         )
     repetitive: list[str] = []
@@ -1156,7 +1369,11 @@ def _analysis_not_mere_repeat(
         if _word_jaccard(so_what, heading) > 0.75:
             repetitive.append(f"takeaway {i} So-what restates heading")
     return AssertionResult(
-        "_analysis_not_mere_repeat", not repetitive, "#357", "P1", domain,
+        "_analysis_not_mere_repeat",
+        not repetitive,
+        "#357",
+        "P1",
+        domain,
         product,
         "; ".join(repetitive) if repetitive else "analysis adds beyond heading",
     )
@@ -1211,33 +1428,45 @@ def _current_commit() -> str:
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, cwd=Path.cwd(), timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=Path.cwd(),
+            timeout=5,
         )
         return out.stdout.strip() if out.returncode == 0 else "unknown"
     except Exception:
         return "unknown"
 
 
-def _generate_product(
-    domain: str, product: str, product_template: Any
-) -> str:
+def _generate_product(domain: str, product: str, product_template: Any) -> str:
     """Call the REAL generation functions (deterministic fallbacks apply when
     no LLM key is set) — the path `output digest --product`/`report` uses."""
     from autoinfo.output import generate_digest, generate_report
 
-    if product in ("report", "premium-briefing", "enterprise-briefing",
-                   "column", "magazine-digest"):
-        return _as_str(generate_report(
-            domain, format="markdown", product_template=product_template,
-        ))
-    return _as_str(generate_digest(
-        domain, format="markdown", product_template=product_template,
-    ))
+    if product in (
+        "report",
+        "premium-briefing",
+        "enterprise-briefing",
+        "column",
+        "magazine-digest",
+    ):
+        return _as_str(
+            generate_report(
+                domain,
+                format="markdown",
+                product_template=product_template,
+            )
+        )
+    return _as_str(
+        generate_digest(
+            domain,
+            format="markdown",
+            product_template=product_template,
+        )
+    )
 
 
-def _persisted_product_paths(
-    domain: str, product: str, base_dir: Path | None = None
-) -> list[Path]:
+def _persisted_product_paths(domain: str, product: str, base_dir: Path | None = None) -> list[Path]:
     """Locate previously-persisted product files under ``<base>/<domain>/``.
 
     ``base`` defaults to the shared ``outputs/`` for backward compatibility;
@@ -1250,13 +1479,11 @@ def _persisted_product_paths(
     # Prefer the newest matching file; names like digest-<product>-* or
     # report-<product>-*.md / digest-markdown-*.md
     candidates = [
-        p for p in base.iterdir()
+        p
+        for p in base.iterdir()
         if p.is_file()
         and p.suffix in (".md", ".txt", ".html")
-        and (
-            product in p.name
-            or ("digest-" if product == "digest" else product) in p.name
-        )
+        and (product in p.name or ("digest-" if product == "digest" else product) in p.name)
     ]
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates
@@ -1269,8 +1496,14 @@ def _product_templates() -> list[tuple[str, Any]]:
 
 
 MATRIX_PRODUCTS: tuple[str, ...] = (
-    "digest", "report", "column", "premium-briefing",
-    "enterprise-briefing", "magazine-digest", "tutorial", "presentation",
+    "digest",
+    "report",
+    "column",
+    "premium-briefing",
+    "enterprise-briefing",
+    "magazine-digest",
+    "tutorial",
+    "presentation",
 )
 
 
@@ -1309,12 +1542,8 @@ def run_matrix(
     chosen = list(products or MATRIX_PRODUCTS)
     templates: dict[str, Any] = dict(_product_templates())
     commit = _current_commit()
-    batch_id = batch_id or (
-        f"{commit}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    )
-    batch_root = (
-        (artifacts_dir / batch_id / "products") if artifacts_dir is not None else None
-    )
+    batch_id = batch_id or (f"{commit}-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    batch_root = (artifacts_dir / batch_id / "products") if artifacts_dir is not None else None
     report = MatrixReport(
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         commit=commit,
@@ -1329,8 +1558,7 @@ def run_matrix(
     skipped_products: list[str] = []
 
     skip_enabled = (
-        skip is not None and skip.allow_skip and not only_assert
-        and artifacts_dir is not None
+        skip is not None and skip.allow_skip and not only_assert and artifacts_dir is not None
     )
     history: list[dict[str, Any]] = []
     raw_counts: dict[str, int] = {}
@@ -1344,9 +1572,7 @@ def run_matrix(
         artifacts_root = artifacts_dir
         history = _load_batch_history(artifacts_root)
         if skip.data_dir is not None:
-            raw_counts = {
-                d: _raw_entry_count(d, skip.data_dir) for d in domains
-            }
+            raw_counts = {d: _raw_entry_count(d, skip.data_dir) for d in domains}
         template_paths = [
             "src/autoinfo/data/templates",
             "src/autoinfo/output",
@@ -1356,50 +1582,62 @@ def run_matrix(
 
     for domain in domains:
         for product in chosen:
-            if skip_policy is not None and artifacts_root is not None and _should_skip(
-                history, domain, product,
-                policy=skip_policy, template_paths=template_paths,
-                raw_counts=raw_counts,
+            if (
+                skip_policy is not None
+                and artifacts_root is not None
+                and _should_skip(
+                    history,
+                    domain,
+                    product,
+                    policy=skip_policy,
+                    template_paths=template_paths,
+                    raw_counts=raw_counts,
+                )
             ):
                 reused_batch = history[-1]["batch_id"]
                 paths = _persisted_product_paths(
-                    domain, product,
+                    domain,
+                    product,
                     base_dir=artifacts_root / reused_batch / "products",
                 )
                 if paths:
-                    reused_text = paths[0].read_text(
-                        encoding="utf-8", errors="replace"
-                    )
+                    reused_text = paths[0].read_text(encoding="utf-8", errors="replace")
                     reused_results = run_assertions(
-                        reused_text, domain=domain, product=product,
+                        reused_text,
+                        domain=domain,
+                        product=product,
                         include_slow=include_slow,
                     )
                     reused_failing = [r for r in reused_results if not r.passed]
                     if not reused_failing:
-                        reused_row = _find_product_row(
-                            history[-1], domain, product
-                        ) or {}
-                        per_product[product].append({
-                            "domain": domain, "product": product, "status": "ok",
-                            "frozen": True, "reused_batch": reused_batch,
-                            "freshness": "stale",
-                            "consecutive_passes": _consecutive_passes(
-                                history, domain, product
-                            ),
-                            "assertions": reused_row.get("assertions", []),
-                        })
+                        reused_row = _find_product_row(history[-1], domain, product) or {}
+                        per_product[product].append(
+                            {
+                                "domain": domain,
+                                "product": product,
+                                "status": "ok",
+                                "frozen": True,
+                                "reused_batch": reused_batch,
+                                "freshness": "stale",
+                                "consecutive_passes": _consecutive_passes(history, domain, product),
+                                "assertions": reused_row.get("assertions", []),
+                            }
+                        )
                         skipped_products.append(product)
                         continue
             template = templates.get(product)
             if only_assert:
-                paths = _persisted_product_paths(
-                    domain, product, base_dir=batch_root
-                )
+                paths = _persisted_product_paths(domain, product, base_dir=batch_root)
                 if not paths:
-                    per_product[product].append({
-                        "domain": domain, "product": product, "status": "missing",
-                        "assertions": [], "error": "no persisted product file",
-                    })
+                    per_product[product].append(
+                        {
+                            "domain": domain,
+                            "product": product,
+                            "status": "missing",
+                            "assertions": [],
+                            "error": "no persisted product file",
+                        }
+                    )
                     summary_failures += 1
                     missing_products += 1
                     continue
@@ -1408,17 +1646,20 @@ def run_matrix(
                 try:
                     text = _generate_product(domain, product, template)
                 except Exception as exc:  # generation failure -> reportable
-                    per_product[product].append({
-                        "domain": domain, "product": product, "status": "error",
-                        "assertions": [], "error": str(exc)[:200],
-                    })
+                    per_product[product].append(
+                        {
+                            "domain": domain,
+                            "product": product,
+                            "status": "error",
+                            "assertions": [],
+                            "error": str(exc)[:200],
+                        }
+                    )
                     summary_failures += 1
                     error_products += 1
                     continue
                 if batch_root is not None:
-                    out_path = (
-                        batch_root / domain / f"{product}-markdown-{batch_id}.md"
-                    )
+                    out_path = batch_root / domain / f"{product}-markdown-{batch_id}.md"
                     out_path.parent.mkdir(parents=True, exist_ok=True)
                     out_path.write_text(text, encoding="utf-8")
             results = run_assertions(
@@ -1428,10 +1669,14 @@ def run_matrix(
             failing = [r for r in results if not r.passed]
             failing_assertions += len(failing)
             summary_failures += len(failing)
-            per_product[product].append({
-                "domain": domain, "product": product, "status": "ok",
-                "assertions": [r.to_dict() for r in results],
-            })
+            per_product[product].append(
+                {
+                    "domain": domain,
+                    "product": product,
+                    "status": "ok",
+                    "assertions": [r.to_dict() for r in results],
+                }
+            )
 
     products_out = []
     for product in chosen:
@@ -1481,9 +1726,7 @@ def card_issue_counts(card: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def save_report_card(
-    report: MatrixReport, out_dir: Path
-) -> Path:
+def save_report_card(report: MatrixReport, out_dir: Path) -> Path:
     """Persist the report card as JSON; returns the written path."""
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -1508,6 +1751,7 @@ def diff_report_cards(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, An
     counts reconcile with the failure count a reader computes from the
     cards: ``cur issues == new + regressed + existing_failing``.
     """
+
     def index(card: dict[str, Any]) -> dict[tuple[str, str, str], bool]:
         idx: dict[tuple[str, str, str], bool] = {}
         for p in card.get("products", []):
@@ -1543,8 +1787,10 @@ def diff_report_cards(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, An
         "fixed": fixed,
         "existing_failing": existing,
         "counts": {
-            "new": len(new), "regressed": len(regressed),
-            "fixed": len(fixed), "existing_failing": len(existing),
+            "new": len(new),
+            "regressed": len(regressed),
+            "fixed": len(fixed),
+            "existing_failing": len(existing),
         },
     }
 
@@ -1554,9 +1800,7 @@ def diff_report_cards(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, An
 # ---------------------------------------------------------------------------
 
 
-def _newest_persisted_product(
-    products_root: Path, domain: str, product: str
-) -> Path | None:
+def _newest_persisted_product(products_root: Path, domain: str, product: str) -> Path | None:
     """Newest ``<product>-markdown-*.md`` for (domain, product), or None.
 
     Newest = highest ``-markdown-*`` suffix (lexical; the #335 stamps are
@@ -1567,8 +1811,7 @@ def _newest_persisted_product(
     if not base.is_dir():
         return None
     matches = sorted(
-        (p for p in base.iterdir()
-         if p.is_file() and p.name.startswith(f"{product}-markdown-")),
+        (p for p in base.iterdir() if p.is_file() and p.name.startswith(f"{product}-markdown-")),
         key=lambda p: p.name,
         reverse=True,
     )
@@ -1599,20 +1842,30 @@ def assert_persisted_batch(
         for product in products:
             path = _newest_persisted_product(batch_root, domain, product)
             if path is None:
-                rows.append({
-                    "domain": domain, "product": product, "status": "missing",
-                    "assertions": [], "error": "no persisted product file",
-                })
+                rows.append(
+                    {
+                        "domain": domain,
+                        "product": product,
+                        "status": "missing",
+                        "assertions": [],
+                        "error": "no persisted product file",
+                    }
+                )
                 missing += 1
                 failures += 1
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError as exc:
-                rows.append({
-                    "domain": domain, "product": product, "status": "error",
-                    "assertions": [], "error": str(exc)[:200],
-                })
+                rows.append(
+                    {
+                        "domain": domain,
+                        "product": product,
+                        "status": "error",
+                        "assertions": [],
+                        "error": str(exc)[:200],
+                    }
+                )
                 error += 1
                 failures += 1
                 continue
@@ -1622,10 +1875,14 @@ def assert_persisted_batch(
             failing = [r for r in results if not r.passed]
             failures += len(failing)
             total += len(results)
-            rows.append({
-                "domain": domain, "product": product, "status": "ok",
-                "assertions": [r.to_dict() for r in results],
-            })
+            rows.append(
+                {
+                    "domain": domain,
+                    "product": product,
+                    "status": "ok",
+                    "assertions": [r.to_dict() for r in results],
+                }
+            )
     batch_id = batch_root.name
     summary = {
         "batch_id": batch_id,
@@ -1667,12 +1924,8 @@ def diff_batches(
     ``include_slow`` (#352) threads the opt-in link-reachability assertion
     into both batch re-assertions.
     """
-    prev_card = assert_persisted_batch(
-        prev_root, domains, products, include_slow=include_slow
-    )
-    cur_card = assert_persisted_batch(
-        cur_root, domains, products, include_slow=include_slow
-    )
+    prev_card = assert_persisted_batch(prev_root, domains, products, include_slow=include_slow)
+    cur_card = assert_persisted_batch(cur_root, domains, products, include_slow=include_slow)
     diff = diff_report_cards(prev_card, cur_card)
     stable = diff["counts"]["regressed"] == 0 and diff["counts"]["new"] == 0
     return {
@@ -1756,7 +2009,12 @@ def _references_reachable(text: str, domain: str, product: str) -> AssertionResu
     bad_form = [u for u in urls if not re.match(r"^https?://", u)]
     if bad_form:
         return AssertionResult(
-            "_references_reachable", False, "#352", "P1", domain, product,
+            "_references_reachable",
+            False,
+            "#352",
+            "P1",
+            domain,
+            product,
             f"invalid reference URL(s): {', '.join(repr(u) for u in bad_form)}",
         )
     http_urls = [u for u in urls if re.match(r"^https?://", u)]
@@ -1775,14 +2033,25 @@ def _references_reachable(text: str, domain: str, product: str) -> AssertionResu
             dead.append(url)
     if dead:
         return AssertionResult(
-            "_references_reachable", False, "#352", "P1", domain, product,
+            "_references_reachable",
+            False,
+            "#352",
+            "P1",
+            domain,
+            product,
             "unreachable reference URL(s): " + ", ".join(dead),
         )
     detail = f"checked {len(http_urls)} URL(s)"
     if unknown:
         detail += f"; {len(unknown)} timeout/unreachable treated as unknown"
     return AssertionResult(
-        "_references_reachable", True, "#352", "P1", domain, product, detail,
+        "_references_reachable",
+        True,
+        "#352",
+        "P1",
+        domain,
+        product,
+        detail,
     )
 
 

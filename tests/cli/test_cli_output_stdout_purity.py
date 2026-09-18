@@ -29,16 +29,16 @@ def _runner() -> CliRunner:
     return CliRunner()
 
 
-def test_logger_diagnostics_go_to_stderr_not_stdout(
-    capsys: Any, caplog: Any
-) -> None:
+def test_logger_diagnostics_go_to_stderr_not_stdout(capsys: Any, caplog: Any) -> None:
     """logger.warning from quality/kb/llm must never appear on stdout."""
     # Emit the exact diagnostic classes issue #128 flagged, on the loggers
     # the product pipeline uses.  Without any stdout handler configured,
     # these MUST land on stderr (lastResort) and NOT stdout.  pytest's
     # logging plugin captures the stderr via caplog, so we assert both:
     # stdout holds only the product body, and the diagnostics were emitted.
-    logging.getLogger("autoinfo.quality").warning("G0 first attempt failed for fields: ['source_platform']")
+    logging.getLogger("autoinfo.quality").warning(
+        "G0 first attempt failed for fields: ['source_platform']"
+    )
     logging.getLogger("autoinfo.kb").warning(
         "Promotion rejected for medical-research-draft-1 "
         "(incomplete-source-provenance) — marker written to /tmp/_failed/"

@@ -2,6 +2,19 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.12.1](https://github.com/1StepMore/AutoInfo/compare/v1.12.0...v1.12.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **config:** single source of truth for domain default TTL ([#366](https://github.com/1StepMore/AutoInfo/issues/366)) ([#373](https://github.com/1StepMore/AutoInfo/issues/373)) ([60473b8](https://github.com/1StepMore/AutoInfo/commit/60473b8fb1488ec09bc696a6a5865971a6e77868))
+* **mcp:** classify expected failures into semantic error codes ([#364](https://github.com/1StepMore/AutoInfo/issues/364)) ([#372](https://github.com/1StepMore/AutoInfo/issues/372)) ([3faa45f](https://github.com/1StepMore/AutoInfo/commit/3faa45fbd63491737ce576ee01b58c792e1f18ac))
+
+
+### Tests
+
+* **collectors:** annotate hackernews tests for strict mypy ([#367](https://github.com/1StepMore/AutoInfo/issues/367)) ([#371](https://github.com/1StepMore/AutoInfo/issues/371)) ([d3e4613](https://github.com/1StepMore/AutoInfo/commit/d3e461312157f987e7044d95f0a4e6c6959a6ddb))
+
 ## [1.12.0](https://github.com/1StepMore/AutoInfo/compare/v1.11.0...v1.12.0) (2026-09-18)
 
 

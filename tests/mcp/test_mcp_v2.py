@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
+from autoinfo.config import ConfigNotFoundError
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
@@ -130,10 +131,10 @@ class TestListDomains:
                 assert domain["topic_count"] == 1
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
+        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
             result = _handle_list_domains()
             assert result["success"] is False
-            assert result["error"]["code"] == "InternalError"
+            assert result["error"]["code"] == "ConfigNotFound"
 
 
 class TestGetDomainSchema:
@@ -183,10 +184,10 @@ class TestListAvailableModels:
         assert "task" in model
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
+        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
             result = _handle_list_available_models()
             assert result["success"] is False
-            assert result["error"]["code"] == "InternalError"
+            assert result["error"]["code"] == "ConfigNotFound"
 
 
 class TestGetEffectiveLLMConfig:

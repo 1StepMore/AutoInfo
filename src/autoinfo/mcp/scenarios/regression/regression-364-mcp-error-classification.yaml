@@ -1,0 +1,82 @@
+# Regression #364: MCP tools flattened expected failures (missing project
+# config, unknown domain) into the generic `InternalError` code, so an agent
+# could not tell "run `autoinfo init` first" from a genuine server bug.
+#
+# The fix routes both `_error_from_exc` and `_error_response` through a single
+# `_classify_exception` mapper (`ConfigNotFoundError` → `ConfigNotFound`,
+# unknown domain → `DomainNotFound`).  This scenario drives the real MCP tool
+# handlers in a hermetic temp dir with NO project config and asserts the
+# semantic codes, then initialises a config and asserts an unknown domain is
+# `DomainNotFound` — never `InternalError`.  No LLM, no network.
+name: regression-364-mcp-error-classification
+description: "Regression #364: missing config and unknown domain surface semantic error codes, not InternalError"
+category: failure
+pyramid_layer: e2e
+pipeline_stage: A7
+user_level: B2.1
+regression: true
+regression_issue: "#364"
+requires_env: []
+steps:
+  - name: "no project config -> ConfigNotFound (not InternalError)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, tempfile
+      tmp = tempfile.mkdtemp(prefix="ai364-noconfig-")
+      os.chdir(tmp)
+      os.environ["HOME"] = tmp
+      os.environ["AUTOINFO_CONFIG_DIR"] = tmp
+      os.environ["AUTOINFO_HOME"] = tmp
+      from autoinfo.mcp.server import (
+          _handle_list_domains,
+          _handle_list_projects,
+          _handle_activate_domain,
+      )
+      checks = {
+          "list_domains": _handle_list_domains(),
+          "list_projects": _handle_list_projects(),
+          "activate_domain": _handle_activate_domain("nope"),
+      }
+      for label, env in checks.items():
+          code = env["error"]["code"]
+          assert code == "ConfigNotFound", f"{label}: expected ConfigNotFound, got {code!r}"
+          assert code != "InternalError", f"{label}: still InternalError"
+      print("MCP_CONFIG_NOT_FOUND_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["MCP_CONFIG_NOT_FOUND_OK"]
+
+  - name: "initialised config + unknown domain -> DomainNotFound"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, tempfile
+      from pathlib import Path
+      tmp = tempfile.mkdtemp(prefix="ai364-init-")
+      os.chdir(tmp)
+      os.environ["HOME"] = tmp
+      os.environ["AUTOINFO_CONFIG_DIR"] = tmp
+      os.environ["AUTOINFO_HOME"] = tmp
+      cfg_dir = Path(tmp) / ".autoinfo"
+      cfg_dir.mkdir(parents=True, exist_ok=True)
+      (cfg_dir / "config.yaml").write_text(
+          "project:\n  name: T\n"
+          "llm:\n  provider: openai\n  model: gpt-4o-mini\n"
+          "domains:\n  - name: test-domain\n    active: true\n",
+          encoding="utf-8",
+      )
+      from autoinfo.mcp.server import _handle_activate_domain
+      env = _handle_activate_domain("nope")
+      assert env["success"] is False, env
+      code = env["error"]["code"]
+      assert code == "DomainNotFound", f"expected DomainNotFound, got {code!r}"
+      assert code != "InternalError", "still InternalError"
+      print("MCP_DOMAIN_NOT_FOUND_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["MCP_DOMAIN_NOT_FOUND_OK"]

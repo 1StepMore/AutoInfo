@@ -421,7 +421,7 @@ class TestMCPAddTopic:
             result = _handle_add_topic(domain="medical-research", name="Test")
 
         assert result["success"] is False
-        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
+        assert result["error"]["code"] == ErrorCode.CONFIG_NOT_FOUND.value
 
 
 # ======================================================================
@@ -478,7 +478,7 @@ class TestMCPRemoveTopic:
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
 
         assert result["success"] is False
-        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
+        assert result["error"]["code"] == ErrorCode.CONFIG_NOT_FOUND.value
 
 
 # ======================================================================
@@ -537,7 +537,7 @@ class TestMCPListTopics:
             result = _handle_list_topics(domain="medical-research")
 
         assert result["success"] is False
-        assert result["error"]["code"] == ErrorCode.INTERNAL_ERROR.value
+        assert result["error"]["code"] == ErrorCode.CONFIG_NOT_FOUND.value
 
 
 # ======================================================================

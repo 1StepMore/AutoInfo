@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.0](https://github.com/1StepMore/AutoInfo/compare/v1.12.1...v1.13.0) (2026-09-21)
+
+
+### Features
+
+* **scripts:** add real-product assertion scanner + closure rule ([#356](https://github.com/1StepMore/AutoInfo/issues/356)) ([#376](https://github.com/1StepMore/AutoInfo/issues/376)) ([1853f18](https://github.com/1StepMore/AutoInfo/commit/1853f18fd3ac475a244a6a4abc90ee50abe966d5))
+
+
+### Bug Fixes
+
+* **validation:** remove year/RSS assertion false positives ([#351](https://github.com/1StepMore/AutoInfo/issues/351), [#325](https://github.com/1StepMore/AutoInfo/issues/325)) ([#375](https://github.com/1StepMore/AutoInfo/issues/375)) ([abbf8ac](https://github.com/1StepMore/AutoInfo/commit/abbf8ac5026f519b5fc04e38bc0a8ad204c8da14))
+
 ## [1.12.1](https://github.com/1StepMore/AutoInfo/compare/v1.12.0...v1.12.1) (2026-09-21)
 
 

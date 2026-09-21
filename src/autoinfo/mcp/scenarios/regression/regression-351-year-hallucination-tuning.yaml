@@ -1,25 +1,31 @@
-# Regression #351: _no_year_hallucination tuning — plausible month-year prose
-# must not be flagged.
+# Regression #351: _no_year_hallucination tuning.
 #
 # The bare-month-year loop previously flagged EVERY "Month Year" in prose as
 # P1 — including legitimate references like "In March 2020, the market
 # crashed" or "founded in June 1995" (13 false positives in the real-product
-# run).  After the fix, a bare month-year only fires when its YEAR is
-# out of range (< 1950 or > current year), the same gate as the standalone
-# year check.  This scenario pins:
+# run).  A second false-positive class matched 4-digit runs inside numeric
+# tokens (UUID groups like "-1831-" and decimals like "1800.128").  The
+# maintainer decision downgraded DISTANT-PAST years (< 1950) from a failure to
+# an informational note — historical references are legitimate.  This scenario
+# pins:
 #
-#   Step 1 — out-of-range month-years in the BODY still FAIL (future
-#            "In 2031, adoption tripled" + pre-1950 "back in 1850, ...").
+#   Step 1 — a FUTURE year in the BODY still FAILS P0; a pre-1950
+#            "back in 1850, ..." is informational and PASSES.
 #   Step 2 — legitimate plausible prose PASSES: "In March 2020, the market
 #            crashed", "founded in June 1995", and a current-year month-year
 #            ("In July {current_year}, growth continued").
 #   Step 3 — a plausible bare month-year "In July 2023, the team shipped"
 #            passes (not flagged).
+#   Step 4 — forward-looking future years pass; a bare future year still
+#            fails P0; "founded in 1917" is informational and passes.
+#   Step 5 — title/guide publication-name future years pass (#351 V5).
+#   Step 6 — 4-digit runs inside UUID-like tokens and decimal numbers do not
+#            fire.
 #
 # Deterministic (requires_env: []): exercises _no_year_hallucination directly
 # on defect + clean bodies — no LLM, no network.
 name: regression-351-year-hallucination-tuning
-description: "Regression #351: _no_year_hallucination no longer flags plausible month-year prose (March 2020 / June 1995 / current year), while future and pre-1950 month-years still fail"
+description: "Regression #351: _no_year_hallucination no longer flags plausible month-year prose (March 2020 / June 1995 / current year) nor distant-past years (pre-1950 informational), while future years still fail P0"
 category: edge_case
 pyramid_layer: unit
 pipeline_stage: A4
@@ -28,21 +34,25 @@ regression: true
 regression_issue: "#351"
 requires_env: []
 steps:
-  - name: "out-of-range month-years still fail in the body"
+  - name: "future years still fail; pre-1950 is informational and passes"
     kind: cli
     command: |-
       python3 -c '
       from autoinfo.validation_matrix import _no_year_hallucination
 
-      # Future month-year in the BODY (not References) — must fail.
-      BODY = "# T\n\nIn 2031, adoption tripled\n\nback in 1850, the crisis deepened\n"
-      assert not _no_year_hallucination(BODY, "d", "report").passed
-      print("YEAR_HALLUCINATION_OUT_OF_RANGE_FAILS_OK")
+      # Future year in the BODY (not References) — must fail P0.
+      r = _no_year_hallucination("# T\n\nIn 2031, adoption tripled\n", "d", "report")
+      assert not r.passed and r.severity == "P0", r.details
+      # Pre-1950 year in the BODY — informational, NOT a failure.
+      r = _no_year_hallucination("# T\n\nback in 1850, the crisis deepened\n", "d", "report")
+      assert r.passed and r.severity == "P1", r.details
+      assert "informational" in r.details and "distant-past" in r.details, r.details
+      print("YEAR_HALLUCINATION_OUT_OF_RANGE_TUNED_OK")
       '
     expect:
       success: true
       exit_code: 0
-      stdout_has: ["YEAR_HALLUCINATION_OUT_OF_RANGE_FAILS_OK"]
+      stdout_has: ["YEAR_HALLUCINATION_OUT_OF_RANGE_TUNED_OK"]
 
   - name: "plausible month-year prose passes (no false positive)"
     kind: cli
@@ -115,10 +125,10 @@ steps:
       # A future year asserted as a completed fact still fails P0.
       r = _no_year_hallucination("# T\n\nIn 2031, adoption tripled\n", "d", "report")
       assert not r.passed and r.severity == "P0", r.details
-      # A distant-past year surfaces for human review (P1, not P0).
+      # A distant-past year is informational only (P1, passes).
       r = _no_year_hallucination("# T\n\nfounded in 1917\n", "d", "report")
-      assert not r.passed and r.severity == "P1", r.details
-      assert "human review" in r.details, r.details
+      assert r.passed and r.severity == "P1", r.details
+      assert "informational" in r.details, r.details
       print("YEAR_HALLUCINATION_FORWARD_LOOKING_OK")
       '
     expect:
@@ -154,3 +164,27 @@ steps:
       success: true
       exit_code: 0
       stdout_has: ["YEAR_HALLUCINATION_NAMED_YEAR_OK"]
+
+  - name: "numeric-token false positives do not fire (UUID group / decimal)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.validation_matrix import _no_year_hallucination
+
+      # The #351 tuning false-positive class: a 4-digit run inside a
+      # hex/UUID-like token or a decimal measurement is not a year.
+      for body in (
+          "# T\n\ntrace_id: 7c8cc68a-1831-4653-ab65-a2fad98a50fe\n",
+          "# T\n\nffmpeg -t 1800.128 out.mp4\n",
+      ):
+          r = _no_year_hallucination(body, "d", "report")
+          assert r.passed, r.details
+      # Real years still match: a bare future year still fails P0.
+      r = _no_year_hallucination("# T\n\nIn 2031, adoption tripled\n", "d", "report")
+      assert not r.passed and r.severity == "P0", r.details
+      print("YEAR_HALLUCINATION_NON_YEAR_NUMERIC_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["YEAR_HALLUCINATION_NON_YEAR_NUMERIC_OK"]

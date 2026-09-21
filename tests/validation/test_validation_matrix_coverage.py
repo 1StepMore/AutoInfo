@@ -32,8 +32,7 @@ def test_load_batch_history_handles_missing_and_corrupt(tmp_path: Path) -> None:
     good_batch = snap / "good"
     good_batch.mkdir()
     (good_batch / "report-card-good.json").write_text(
-        json.dumps({"generated_at": "2026-08-01T00:00:00Z", "batch_id": "g",
-                    "products": []}),
+        json.dumps({"generated_at": "2026-08-01T00:00:00Z", "batch_id": "g", "products": []}),
         encoding="utf-8",
     )
     history = vm._load_batch_history(snap)
@@ -43,7 +42,7 @@ def test_load_batch_history_handles_missing_and_corrupt(tmp_path: Path) -> None:
 
 def test_no_error_leak_flags_traceback() -> None:
     """_no_error_leak catches a Python traceback in the product header."""
-    leaky = "# T\n\nTraceback (most recent call last):\n  File \"x\", line 1\n"
+    leaky = '# T\n\nTraceback (most recent call last):\n  File "x", line 1\n'
     r = vm._no_error_leak(leaky, "d", "report")
     assert not r.passed
     assert "traceback" in r.details
@@ -61,16 +60,15 @@ def test_report_sections_fallback_without_metadata() -> None:
     metadata line exists (empty shell -> fail, substantive body -> pass)."""
     shell = "# T\n\n## Summary\n\nshort\n"
     assert not vm._report_sections(shell, "d", "report").passed
-    substantive = (
-        "# T\n\n## Summary\n\n" + "word " * 250 + "\n\n## Deep Dive\n\nbody\n"
-    )
+    substantive = "# T\n\n## Summary\n\n" + "word " * 250 + "\n\n## Deep Dive\n\nbody\n"
     assert vm._report_sections(substantive, "d", "report").passed
 
 
 def test_current_commit_unknown_on_git_failure() -> None:
     """_current_commit returns 'unknown' (never raises) when git fails."""
-    with patch("autoinfo.validation_matrix.subprocess.run",
-               side_effect=FileNotFoundError("no git")):
+    with patch(
+        "autoinfo.validation_matrix.subprocess.run", side_effect=FileNotFoundError("no git")
+    ):
         assert vm._current_commit() == "unknown"
 
 
@@ -79,17 +77,25 @@ def test_card_issue_counts_breaks_down_missing_and_error() -> None:
     assertions independently (the #336 breakdown)."""
     card = {
         "products": [
-            {"product": "a", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": False}]},
+            {
+                "product": "a",
+                "status": "ok",
+                "assertions": [{"assertion": "_not_empty", "passed": False}],
+            },
             {"product": "b", "status": "missing", "assertions": []},
             {"product": "c", "status": "error", "assertions": [], "error": "boom"},
-            {"product": "d", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": True}]},
+            {
+                "product": "d",
+                "status": "ok",
+                "assertions": [{"assertion": "_not_empty", "passed": True}],
+            },
         ]
     }
     counts = vm.card_issue_counts(card)
     assert counts == {
-        "failing_assertions": 1, "missing_products": 1, "error_products": 1,
+        "failing_assertions": 1,
+        "missing_products": 1,
+        "error_products": 1,
     }
 
 
@@ -122,27 +128,24 @@ def test_code_changed_real_git_roundtrip(tmp_path: Path) -> None:
             subprocess.run(cmd, check=True, capture_output=True)
         base = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         # No change yet.
-        assert vm._code_changed(
-            base, "report", "d", ["tpl", "autoinfo/output.py"]
-        ) is False
+        assert vm._code_changed(base, "report", "d", ["tpl", "autoinfo/output.py"]) is False
         # Touch a template file, commit it.
         (repo / "tpl" / "report.md.j2").write_text("v2", encoding="utf-8")
         subprocess.run(["git", "add", "."], check=True, capture_output=True)
         subprocess.run(["git", "commit", "-qm", "touch"], check=True, capture_output=True)
-        assert vm._code_changed(
-            base, "report", "d", ["tpl", "autoinfo/output.py"]
-        ) is True
+        assert vm._code_changed(base, "report", "d", ["tpl", "autoinfo/output.py"]) is True
     finally:
         os.chdir(old)
 
 
 def test_code_changed_git_error_is_failsafe() -> None:
     """_code_changed returns True (regenerate) when git itself errors."""
-    with patch("autoinfo.validation_matrix.subprocess.run",
-               side_effect=RuntimeError("boom")):
+    with patch("autoinfo.validation_matrix.subprocess.run", side_effect=RuntimeError("boom")):
         assert vm._code_changed("c1", "report", "d", ["tpl"]) is True
 
 
@@ -171,13 +174,13 @@ def test_raw_entry_count_real_kb_scan(tmp_path: Path) -> None:
 
 
 def test_year_regex_edges() -> None:
-    """_no_year_hallucination's real regex branches: a bare month-year form is
-    pinned as P1 when its YEAR is out of range (future / pre-1950); future
-    years asserted as completed facts are P0, pre-1950 years are P1 "human
-    review"; the year regex does not fire on 4-digit runs inside URLs or on
-    plausible years; a bare month-year with a plausible year (1950..current
-    year) passes (#351 tuning); the References section (from the
-    ``## References`` heading) is excluded from scanning."""
+    """_no_year_hallucination's real regex branches: future years asserted as
+    completed facts are P0; a bare month-year with a plausible year
+    (1950..current year) passes (#351 tuning); pre-1950 years are INFORMATIONAL
+    (listed in details, but ``passed``), not failures.  The year regex does not
+    fire on 4-digit runs inside URLs, plausible years, hex/UUID-like tokens or
+    decimal numbers; the References section (from the ``## References``
+    heading) is excluded from scanning."""
     r = vm._no_year_hallucination("# T\n\nJuly 2023\n", "d", "report")
     assert r.passed  # plausible bare month-year — NOT flagged (#351 tuning)
     assert r.severity == "P1"
@@ -185,28 +188,33 @@ def test_year_regex_edges() -> None:
     assert not r.passed
     assert r.severity == "P0"
     r = vm._no_year_hallucination("# T\n\nback in June 1850, the crisis deepened\n", "d", "report")
-    assert not r.passed
-    assert r.severity == "P1"  # pre-1950 → P1 human review, not P0 (#351 V4)
+    assert r.passed  # pre-1950 → informational, not a failure (#351 tuning)
+    assert r.severity == "P1"
+    assert "informational" in r.details
     r = vm._no_year_hallucination("# T\n\nIn 2031, adoption tripled\n", "d", "report")
     assert not r.passed
     assert r.severity == "P0"
     r = vm._no_year_hallucination("# T\n\na 1947 patent\n", "d", "report")
-    assert not r.passed
-    assert r.severity == "P1"  # pre-1950 → P1 human review, not P0 (#351 V4)
-    # Plausible years, plausible bare month-years and URL-embedded 4-digit
-    # runs pass in prose — the #351 false-positive class is gone.
+    assert r.passed  # pre-1950 → informational, not a failure (#351 tuning)
+    assert r.severity == "P1"
+    assert "informational" in r.details
+    # Plausible years, plausible bare month-years, URL-embedded 4-digit runs,
+    # UUID-like tokens and decimal measurements all pass in prose — the #351
+    # false-positive class is gone.
     assert vm._no_year_hallucination(
         "# T\n\nFounded in 2024, growth continued.\n", "d", "report"
     ).passed
     assert vm._no_year_hallucination(
         "# T\n\nIn March 2020, the market crashed\n", "d", "report"
     ).passed
-    assert vm._no_year_hallucination(
-        "# T\n\nfounded in June 1995\n", "d", "report"
-    ).passed
+    assert vm._no_year_hallucination("# T\n\nfounded in June 1995\n", "d", "report").passed
     assert vm._no_year_hallucination(
         "# T\n\nSee https://example.com/2023-report\n", "d", "report"
     ).passed
+    assert vm._no_year_hallucination(
+        "# T\n\ntrace_id: 7c8cc68a-1831-4653-ab65-a2fad98a50fe\n", "d", "report"
+    ).passed
+    assert vm._no_year_hallucination("# T\n\nffmpeg -t 1800.128 out.mp4\n", "d", "report").passed
     # References section is exempt: old citation years must not fail.
     refs = "# T\n\nbody\n\n## References\n\n1. **A** — https://x.com (1999)\n"
     assert vm._no_year_hallucination(refs, "d", "report").passed
@@ -218,20 +226,12 @@ def test_key_regex_length_thresholds() -> None:
     and the prefix shapes (sk-/AIza/AKIA/ghp_/eyJ) fail at any length."""
     # Long hex run (>=32 chars) fails; short hex passes.
     long_hex = "0" * 32
-    assert not vm._no_code_or_key_leak(
-        f"# T\n\ntoken {long_hex}\n", "d", "report"
-    ).passed
-    assert vm._no_code_or_key_leak(
-        "# T\n\nsha1 0a1b2c3d4e5f\n", "d", "report"
-    ).passed
+    assert not vm._no_code_or_key_leak(f"# T\n\ntoken {long_hex}\n", "d", "report").passed
+    assert vm._no_code_or_key_leak("# T\n\nsha1 0a1b2c3d4e5f\n", "d", "report").passed
     # Long base64 (>=40 chars) fails; a short base64-looking slug passes.
     long_b64 = "a" * 40
-    assert not vm._no_code_or_key_leak(
-        f"# T\n\npayload {long_b64}==\n", "d", "report"
-    ).passed
-    assert vm._no_code_or_key_leak(
-        "# T\n\nid abcdefghijklmnop\n", "d", "report"
-    ).passed
+    assert not vm._no_code_or_key_leak(f"# T\n\npayload {long_b64}==\n", "d", "report").passed
+    assert vm._no_code_or_key_leak("# T\n\nid abcdefghijklmnop\n", "d", "report").passed
     # Prefix shapes fail regardless of length.
     assert not vm._no_code_or_key_leak("# T\n\nsk-abc\n", "d", "report").passed
     assert not vm._no_code_or_key_leak("# T\n\nghp_abc\n", "d", "report").passed
@@ -241,12 +241,8 @@ def test_reference_url_parse_edges() -> None:
     """_no_broken_reference's real parse branches: empty View Source targets,
     scheme-less targets, and bare (identifier) placeholders fail; the legit
     identifier schemes (doi:/pmid:/arxiv:/isbn:) pass."""
-    assert not vm._no_broken_reference(
-        "# T\n\n[View Source]()\n", "d", "report"
-    ).passed
-    assert not vm._no_broken_reference(
-        "# T\n\n[View Source](not a url)\n", "d", "report"
-    ).passed
+    assert not vm._no_broken_reference("# T\n\n[View Source]()\n", "d", "report").passed
+    assert not vm._no_broken_reference("# T\n\n[View Source](not a url)\n", "d", "report").passed
     assert not vm._no_broken_reference(
         "# T\n\n## References\n\n1. **A** — (pubmed)\n", "d", "report"
     ).passed
@@ -255,11 +251,13 @@ def test_reference_url_parse_edges() -> None:
     ).passed
     assert vm._no_broken_reference(
         "# T\n\n## References\n\n1. **A** — (doi:10.1000/xyz123)\n",
-        "d", "report",
+        "d",
+        "report",
     ).passed
     assert vm._no_broken_reference(
         "# T\n\n## References\n\n1. **A** — (arxiv:2301.00001)\n",
-        "d", "report",
+        "d",
+        "report",
     ).passed
 
 

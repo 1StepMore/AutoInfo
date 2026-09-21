@@ -7,6 +7,7 @@ guard used by CLI commands.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any, Final
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Source type registry — single source of truth
@@ -270,6 +273,28 @@ class TopicConfig:
     relevance_threshold: int = 30
 
 
+# ---------------------------------------------------------------------------
+# Domain freshness defaults — single source of truth (issue #366)
+# ---------------------------------------------------------------------------
+#
+# The domain -> default-TTL mapping used to live only in
+# ``DomainConfig.__post_init__``, so consumers without a config file fell back
+# to a hardcoded ``ttl_days = 90`` and judged the SAME domain stale
+# differently depending on whether a project config was present.  These
+# module-level constants are the one place the mapping lives; every consumer
+# resolves through :func:`resolve_domain_freshness`.
+
+DEFAULT_TTL_DAYS = 90
+DEFAULT_FRESHNESS_THRESHOLD = 0.5
+DOMAIN_DEFAULT_TTL_DAYS: dict[str, int] = {
+    "medical-research": 180,
+    "ai-commercial": 30,
+    "financial-intelligence": 7,
+    "tech-ai-developer": 90,
+    "language-learning": 365,
+}
+
+
 @dataclass
 class DomainConfig:
     name: str = ""
@@ -312,17 +337,10 @@ class DomainConfig:
 
     def __post_init__(self) -> None:
         """Apply domain-specific TTL defaults for built-in demo domains."""
-        domain_defaults = {
-            "medical-research": 180,
-            "ai-commercial": 30,
-            "financial-intelligence": 7,
-            "tech-ai-developer": 90,
-            "language-learning": 365,
-        }
-        if self.name in domain_defaults and self.ttl_days == 90:
+        if self.name in DOMAIN_DEFAULT_TTL_DAYS and self.ttl_days == DEFAULT_TTL_DAYS:
             # Only override when ttl_days is the global default (90),
             # preserving any explicitly configured value.
-            self.ttl_days = domain_defaults[self.name]
+            self.ttl_days = DOMAIN_DEFAULT_TTL_DAYS[self.name]
 
 
 @dataclass
@@ -816,6 +834,10 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 gloss_language=str(d.get("gloss_language", "")),
                 min_product_relevance=int(d.get("min_product_relevance", 0)),
                 exclude_keywords=list(d.get("exclude_keywords", [])),
+                ttl_days=int(d.get("ttl_days", DEFAULT_TTL_DAYS)),
+                freshness_threshold=float(
+                    d.get("freshness_threshold", DEFAULT_FRESHNESS_THRESHOLD)
+                ),
             )
         )
 
@@ -1003,6 +1025,40 @@ def get_config_path() -> Path | None:
         if candidate.is_file():
             return candidate.resolve()
     return None
+
+
+def resolve_domain_freshness(domain: str) -> tuple[int, float]:
+    """Single source of truth for (ttl_days, freshness_threshold) of a domain.
+
+    Reads the config file when present and the domain is configured; otherwise
+    falls back to DOMAIN_DEFAULT_TTL_DAYS / DEFAULT_TTL_DAYS.  Never raises:
+    a missing/unreadable config is the normal no-project case.
+    """
+    try:
+        config_path = get_config_path()
+        if config_path and config_path.is_file():
+            cfg = load_config(config_path)
+            for dc in cfg.domains:
+                if dc.name == domain:
+                    logger.debug(
+                        "resolve_domain_freshness(%r): ttl_days=%d "
+                        "freshness_threshold=%s from config %s",
+                        domain,
+                        dc.ttl_days,
+                        dc.freshness_threshold,
+                        config_path,
+                    )
+                    return dc.ttl_days, dc.freshness_threshold
+    except Exception:
+        pass
+    ttl_days = DOMAIN_DEFAULT_TTL_DAYS.get(domain, DEFAULT_TTL_DAYS)
+    logger.debug(
+        "resolve_domain_freshness(%r): ttl_days=%d freshness_threshold=%s from defaults",
+        domain,
+        ttl_days,
+        DEFAULT_FRESHNESS_THRESHOLD,
+    )
+    return ttl_days, DEFAULT_FRESHNESS_THRESHOLD
 
 
 # ---------------------------------------------------------------------------

@@ -4510,23 +4510,11 @@ class KBStore:
             filter_custom_fields=filter_custom_fields,
         )
 
-        # Resolve domain-specific TTL and freshness threshold from config.
-        ttl_days = 90
-        freshness_threshold = 0.5
-        if domain:
-            try:
-                from autoinfo.config import get_config_path, load_config
+        # Resolve domain-specific TTL and freshness threshold from the single
+        # source of truth (issue #366).
+        from autoinfo.config import resolve_domain_freshness
 
-                config_path = get_config_path()
-                if config_path:
-                    cfg = load_config(config_path)
-                    for dc in cfg.domains:
-                        if dc.name == domain:
-                            ttl_days = dc.ttl_days
-                            freshness_threshold = dc.freshness_threshold
-                            break
-            except Exception:
-                pass
+        ttl_days, freshness_threshold = resolve_domain_freshness(domain)
 
         entries = results.get("entries", [])
         scored_entries: list[dict[str, Any]] = []

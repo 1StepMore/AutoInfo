@@ -3701,22 +3701,11 @@ def generate_digest(
     # --- Stale filtering (F51) -----------------------------------------------
     excluded_stale_count = 0
     if not include_stale:
-        # Resolve domain-specific TTL and freshness threshold from config.
-        ttl_days = 90
-        freshness_threshold = 0.5
-        try:
-            from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
+        # Resolve domain-specific TTL and freshness threshold from the single
+        # source of truth (issue #366).
+        from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
 
-            config_path = get_config_path()
-            if config_path and config_path.is_file():
-                cfg = load_config(config_path)
-                for dc in cfg.domains:
-                    if dc.name == domain:
-                        ttl_days = dc.ttl_days
-                        freshness_threshold = dc.freshness_threshold
-                        break
-        except Exception:
-            pass
+        ttl_days, freshness_threshold = resolve_domain_freshness(domain)
 
         from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
 
@@ -7732,25 +7721,14 @@ def _filter_stale_entries(
     after a source swap (backup issue #60).
 
     Returns a NEW list containing only non-stale entries (TTL resolution
-    from config, defaults ``ttl_days=90`` / ``freshness_threshold=0.5``).
+    via ``resolve_domain_freshness``: config when present, else
+    ``DOMAIN_DEFAULT_TTL_DAYS`` / ``DEFAULT_TTL_DAYS``).
     """
     if include_stale:
         return list(entries)
-    ttl_days = 90
-    freshness_threshold = 0.5
-    try:
-        from autoinfo.config import get_config_path, load_config  # noqa: PLC0415
+    from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
 
-        config_path = get_config_path()
-        if config_path and config_path.is_file():
-            cfg = load_config(config_path)
-            for dc in cfg.domains:
-                if dc.name == domain:
-                    ttl_days = dc.ttl_days
-                    freshness_threshold = dc.freshness_threshold
-                    break
-    except Exception:
-        pass
+    ttl_days, freshness_threshold = resolve_domain_freshness(domain)
 
     from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
 

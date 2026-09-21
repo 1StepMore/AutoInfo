@@ -25,37 +25,39 @@ import yaml
 # webhook receiver, not ``_build_handler``) and six forward-declared types
 # (T7-T10). Adding a type requires updating BOTH this set and ``_build_handler``
 # — enforced by the parity test in ``tests/test_source_dispatch.py``.
-VALID_SOURCE_TYPES: frozenset[str] = frozenset({
-    "akshare",
-    "api",
-    "ap_api",
-    "apple_podcasts",
-    "bilibili",
-    "core",
-    "dblp",
-    "edx_sitemap",
-    "email",
-    "email_imap",
-    "gdelt",
-    "hackernews",
-    "huggingface",
-    "kaggle",
-    "nyt",
-    "openalex",
-    "pdf",
-    "quandl",
-    "reddit",
-    "reuters_mcp",
-    "rss",
-    "sec_edgar",
-    "spotify",
-    "ssrn",
-    "unpaywall",
-    "web",
-    "webhook",
-    "yahoo_finance",
-    "youtube",
-})
+VALID_SOURCE_TYPES: frozenset[str] = frozenset(
+    {
+        "akshare",
+        "api",
+        "ap_api",
+        "apple_podcasts",
+        "bilibili",
+        "core",
+        "dblp",
+        "edx_sitemap",
+        "email",
+        "email_imap",
+        "gdelt",
+        "hackernews",
+        "huggingface",
+        "kaggle",
+        "nyt",
+        "openalex",
+        "pdf",
+        "quandl",
+        "reddit",
+        "reuters_mcp",
+        "rss",
+        "sec_edgar",
+        "spotify",
+        "ssrn",
+        "unpaywall",
+        "web",
+        "webhook",
+        "yahoo_finance",
+        "youtube",
+    }
+)
 
 # Source type -> env var names that supply its credential(s).  Single source
 # of truth for source-key requirements (D4), consumed by ``alerts.py``
@@ -92,15 +94,17 @@ TIER_TOS_MAP: dict[int, str] = {
 
 # Top-level keys belonging to ``SourceConfig`` itself; everything else in a
 # source dict is treated as custom ``settings``.
-SOURCE_CORE_KEYS: frozenset[str] = frozenset({
-    "name",
-    "type",
-    "url",
-    "quality_tier",
-    "tos_classification",
-    "fetch_depth",
-    "requires_key",
-})
+SOURCE_CORE_KEYS: frozenset[str] = frozenset(
+    {
+        "name",
+        "type",
+        "url",
+        "quality_tier",
+        "tos_classification",
+        "fetch_depth",
+        "requires_key",
+    }
+)
 
 # Allowed ``action`` values for hard and soft quality gates.
 HARD_GATE_ACTIONS: frozenset[str] = frozenset({"block", "retry"})
@@ -134,9 +138,7 @@ SOFT_GATE_ACTIONS: frozenset[str] = frozenset({"retry", "flag", "skip", "archive
 # Task names whose model ALWAYS resolves to the effective judgment model
 # (``llm.judgment_model`` → ``llm.model`` → hard error), regardless of any
 # ``llm.tasks[<name>].model`` runtime drift.
-JUDGMENT_TASKS: frozenset[str] = frozenset(
-    {"g4_factual", "g5_translation", "llm_judge"}
-)
+JUDGMENT_TASKS: frozenset[str] = frozenset({"g4_factual", "g5_translation", "llm_judge"})
 
 
 class JudgmentModelNotConfiguredError(RuntimeError):
@@ -148,6 +150,18 @@ class JudgmentModelNotConfiguredError(RuntimeError):
     back to a guessed model (the #127 ghost-model failure mode) — an
     unconfigured deployment fails loudly with an actionable message.
     """
+
+
+class ConfigNotFoundError(FileNotFoundError):
+    """Raised when a project config file is missing.
+
+    Issue #364: a missing config is an expected, actionable state — not an
+    internal failure.  Subclassing :class:`FileNotFoundError` keeps every
+    existing ``except FileNotFoundError`` caller working while allowing MCP
+    error classification to surface ``CONFIG_NOT_FOUND`` instead of the
+    generic ``INTERNAL_ERROR``.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -314,6 +328,7 @@ class DomainConfig:
 @dataclass
 class CEFRConfig:
     """CEFR (Common European Framework of Reference) classification settings."""
+
     enabled: bool = False
     languages: list[str] = field(default_factory=lambda: ["en", "zh", "ja"])
     model: str = ""
@@ -322,6 +337,7 @@ class CEFRConfig:
 @dataclass
 class EmailConfig:
     """Email notification / collection settings."""
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -371,6 +387,7 @@ class DeliveryGateConfig:
 @dataclass
 class LLMRateConfig:
     """Per-model LLM token pricing."""
+
     input_per_1k: float = 0.0
     output_per_1k: float = 0.0
 
@@ -378,12 +395,14 @@ class LLMRateConfig:
 @dataclass
 class ApiCallRateConfig:
     """Per-source-type API call pricing."""
+
     per_call: float = 0.0
 
 
 @dataclass
 class StorageRateConfig:
     """Storage pricing — per item + per MB."""
+
     per_item: float = 0.0
     per_mb: float = 0.0
 
@@ -407,9 +426,7 @@ class CostRatesConfig:
                 "deepseek/deepseek-chat": LLMRateConfig(
                     input_per_1k=0.00015, output_per_1k=0.00060
                 ),
-                "gpt-4o-mini": LLMRateConfig(
-                    input_per_1k=0.00015, output_per_1k=0.00060
-                ),
+                "gpt-4o-mini": LLMRateConfig(input_per_1k=0.00015, output_per_1k=0.00060),
             },
             api_calls={
                 "pubmed": ApiCallRateConfig(per_call=0.005),
@@ -443,6 +460,7 @@ class CostAlertsConfig:
 @dataclass
 class RestAPIConfig:
     """REST API server settings."""
+
     enabled: bool = True
     port: int = 8741
     host: str = "127.0.0.1"
@@ -451,6 +469,7 @@ class RestAPIConfig:
 @dataclass
 class StripeConfig:
     """Stripe integration settings."""
+
     webhook_secret: str = ""
 
 
@@ -467,6 +486,7 @@ class FreeTierConfig:
 @dataclass
 class VectorSearchConfig:
     """Vector / hybrid search settings (FTS5 + embeddings)."""
+
     enabled: bool = False
     model: str = ""
     hybrid_weight_fts5: float = 0.7
@@ -476,6 +496,7 @@ class VectorSearchConfig:
 @dataclass
 class CronConfig:
     """Scheduled task (cron) settings."""
+
     auto_install: bool = False
     install_path: str = ""
 
@@ -483,6 +504,7 @@ class CronConfig:
 @dataclass
 class MultiUserConfig:
     """Multi-user / multi-tenant settings."""
+
     enabled: bool = False
     default_user_id: str = "default"
 
@@ -547,6 +569,7 @@ class TTSConfig:
         https://github.com/rany2/edge-tts#voices-list
         for available voices.  Defaults to ``"en-US-JennyNeural"``.
     """
+
     engine: str = "local"
     local_voice: str = "en-US-JennyNeural"
 
@@ -598,8 +621,10 @@ def _as_bool(value: Any) -> bool:
 
 def _resolve_env_vars(value: str) -> str:
     """Replace ``${VAR_NAME}`` placeholders with environment variable values."""
+
     def _replace(match: re.Match[str]) -> str:
         return os.environ.get(match.group(1), "")
+
     return _ENV_VAR_PATTERN.sub(_replace, value)
 
 
@@ -652,8 +677,9 @@ def load_config(path: Path | str) -> Config:
 
     Raises
     ------
-    FileNotFoundError
-        If *path* does not exist.
+    ConfigNotFoundError
+        If *path* does not exist.  Subclass of :class:`FileNotFoundError`,
+        so existing ``except FileNotFoundError`` callers are unaffected.
     yaml.YAMLError
         If the YAML is malformed.  The error message includes the file path
         and line number.
@@ -661,7 +687,7 @@ def load_config(path: Path | str) -> Config:
     path = Path(path)
 
     if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
+        raise ConfigNotFoundError(f"Config file not found: {path}")
 
     raw: dict[str, Any]
     try:
@@ -783,12 +809,10 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 webhook_urls=list(d.get("webhook_urls", [])),
                 quality_gates=domain_quality_gates,
                 delivery_gates=domain_delivery_gates,
-                auto_keyword_discovery=_as_bool(
-                    d.get("auto_keyword_discovery", True)
-                ),
+                auto_keyword_discovery=_as_bool(d.get("auto_keyword_discovery", True)),
                 max_auto_keywords=int(d.get("max_auto_keywords", 100)),
                 auto_keyword_min_length=int(d.get("auto_keyword_min_length", 2)),
-default_language=str(d.get("default_language", "")),
+                default_language=str(d.get("default_language", "")),
                 gloss_language=str(d.get("gloss_language", "")),
                 min_product_relevance=int(d.get("min_product_relevance", 0)),
                 exclude_keywords=list(d.get("exclude_keywords", [])),
@@ -1030,8 +1054,7 @@ def validate_config(config: Config) -> list[str]:
             errors.append("active domain missing name")
         if not domain.sources:
             errors.append(
-                f"active domain '{domain.name or '(unnamed)'}' "
-                "must have at least one source"
+                f"active domain '{domain.name or '(unnamed)'}' must have at least one source"
             )
         if domain.search_mode not in ("keyword", "hybrid"):
             errors.append(
@@ -1181,11 +1204,13 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         raw["llm"]["tasks"] = {}
         for task_name, tc in config.llm.tasks.items():
             raw["llm"]["tasks"][task_name] = {
-                k: v for k, v in {
+                k: v
+                for k, v in {
                     "model": tc.model,
                     "provider": tc.provider,
                     "max_tokens": tc.max_tokens,
-                }.items() if v
+                }.items()
+                if v
             }
 
     # Serialize v1.2 config sections
@@ -1558,10 +1583,7 @@ def get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
         model = base.model
         max_tokens = 0
 
-    fallback_chain = [
-        {"provider": fb.provider, "model": fb.model}
-        for fb in base.fallback
-    ]
+    fallback_chain = [{"provider": fb.provider, "model": fb.model} for fb in base.fallback]
 
     return {
         "task": task or "default",

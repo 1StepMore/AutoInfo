@@ -40,7 +40,7 @@ from mcp.types import TextContent, Tool
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
-from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES
+from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES, ConfigNotFoundError
 from autoinfo.kb import DirectorOnlyError, is_director
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
@@ -444,7 +444,7 @@ def _handle_collect_sources(
 
         config_path = get_config_path()
         if config_path is None:
-            raise FileNotFoundError("No configuration found. Run 'autoinfo init' first.")
+            raise ConfigNotFoundError("No configuration found. Run 'autoinfo init' first.")
         config = load_config(config_path)
         active_domains = [d.name for d in config.domains if d.active]
 
@@ -832,9 +832,7 @@ def _handle_list_domains() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return _error_from_exc(
-            exc, "Failed to load the project configuration", code=ErrorCode.INTERNAL_ERROR
-        )
+        return _error_from_exc(exc, "Failed to load the project configuration")
 
     domains = []
     for d in config.domains:
@@ -1476,9 +1474,7 @@ def _handle_list_available_models() -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return _error_from_exc(
-            exc, "Failed to load the project configuration", code=ErrorCode.INTERNAL_ERROR
-        )
+        return _error_from_exc(exc, "Failed to load the project configuration")
 
     api_key_configured = bool(config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY"))
 
@@ -1752,7 +1748,7 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
             results.append(
                 {
                     "index": idx,
-                    **_error_from_exc(exc, "Failed to add sources", code=ErrorCode.INTERNAL_ERROR),
+                    **_error_from_exc(exc, "Failed to add sources"),
                 }
             )
 
@@ -2880,7 +2876,7 @@ def _handle_reject_kb_draft(
     try:
         return _canonicalize(store.reject_kb_draft(draft_id=draft_id, reason=reason, action=action))
     except (ValueError, FileNotFoundError) as exc:
-        return _error_from_exc(exc, "Failed to reject the KB draft", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "Failed to reject the KB draft")
 
 
 def _handle_list_kb_tier(
@@ -4626,7 +4622,7 @@ def _handle_init_project(
         }
     except Exception as exc:
         logger.exception("Init project failed for domain '%s'", domain)
-        return _error_from_exc(exc, "Init project failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "Init project failed")
 
 
 def _validate_llm_pool_params(
@@ -4884,7 +4880,7 @@ def _handle_configure_llm(
 
     except Exception as exc:
         logger.exception("configure_llm failed")
-        return _error_from_exc(exc, "configure_llm failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "configure_llm failed")
 
 
 def _handle_list_projects(status: str = "") -> dict[str, Any]:
@@ -4892,7 +4888,7 @@ def _handle_list_projects(status: str = "") -> dict[str, Any]:
     try:
         config = _load_config()
     except Exception as exc:
-        return _error_from_exc(exc, "Failed to list projects", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "Failed to list projects")
 
     from autoinfo.config import get_config_path
 
@@ -5293,9 +5289,7 @@ def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
     try:
         active = _list_active()
     except Exception as exc:
-        return _error_from_exc(
-            exc, "Failed to list active collections", code=ErrorCode.INTERNAL_ERROR
-        )
+        return _error_from_exc(exc, "Failed to list active collections")
 
     if domain:
         active = [c for c in active if c.get("domain") == domain]
@@ -6455,7 +6449,7 @@ def _handle_activate_trial(
         return _canonicalize(activate_trial(end_user_id=end_user_id, days=days))
     except Exception as exc:
         logger.exception("activate_trial failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "activate_trial failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "activate_trial failed")
 
 
 def _handle_check_trial_expiry(end_user_id: str) -> dict[str, Any]:
@@ -6466,7 +6460,7 @@ def _handle_check_trial_expiry(end_user_id: str) -> dict[str, Any]:
         return _canonicalize(check_trial_expiry(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("check_trial_expiry failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "check_trial_expiry failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "check_trial_expiry failed")
 
 
 # ---------------------------------------------------------------------------
@@ -6503,7 +6497,7 @@ def _handle_create_checkout_session(
         )
     except Exception as exc:
         logger.exception("create_checkout_session failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "create_checkout_session failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "create_checkout_session failed")
 
 
 def _handle_get_subscription_status(end_user_id: str = "") -> dict[str, Any]:
@@ -6515,7 +6509,7 @@ def _handle_get_subscription_status(end_user_id: str = "") -> dict[str, Any]:
         return _canonicalize(get_subscription_status(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("get_subscription_status failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "get_subscription_status failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "get_subscription_status failed")
 
 
 def _handle_get_billing_summary(
@@ -6550,7 +6544,7 @@ def _handle_get_billing_summary(
         subscription = get_subscription_status(end_user_id=user_id)
     except Exception as exc:
         logger.exception("get_billing_summary failed for '%s'", user_id)
-        return _error_from_exc(exc, "get_billing_summary failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "get_billing_summary failed")
 
     return {
         "user_id": user_id,
@@ -6591,7 +6585,7 @@ def _handle_get_enduser_usage(
         return _canonicalize(meter.get_enduser_usage(end_user_id=end_user_id, period=period))
     except Exception as exc:
         logger.exception("get_enduser_usage failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "get_enduser_usage failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "get_enduser_usage failed")
 
 
 def _handle_get_enduser_invoice(
@@ -6610,7 +6604,7 @@ def _handle_get_enduser_invoice(
         return _canonicalize(meter.get_enduser_invoice(end_user_id=end_user_id, period=period))
     except Exception as exc:
         logger.exception("get_enduser_invoice failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "get_enduser_invoice failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "get_enduser_invoice failed")
 
 
 # ---------------------------------------------------------------------------
@@ -6646,7 +6640,7 @@ def _handle_update_preferences(
         return _canonicalize(update_preferences(end_user_id=end_user_id, preferences=preferences))
     except Exception as exc:
         logger.exception("update_preferences failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "update_preferences failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "update_preferences failed")
 
 
 def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
@@ -6657,7 +6651,7 @@ def _handle_get_preferences(end_user_id: str) -> dict[str, Any]:
         return _canonicalize(get_preferences(end_user_id=end_user_id))
     except Exception as exc:
         logger.exception("get_preferences failed for '%s'", end_user_id)
-        return _error_from_exc(exc, "get_preferences failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "get_preferences failed")
 
 
 # ---------------------------------------------------------------------------
@@ -6812,7 +6806,7 @@ def _handle_set_agent_callback(
         return _error_from_exc(exc, "set_agent_callback failed", code=ErrorCode.VALIDATION_ERROR)
     except Exception as exc:
         logger.exception("set_agent_callback failed")
-        return _error_from_exc(exc, "set_agent_callback failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "set_agent_callback failed")
 
 
 def _handle_list_agent_callbacks() -> dict[str, Any] | list[dict[str, Any]]:
@@ -6823,7 +6817,7 @@ def _handle_list_agent_callbacks() -> dict[str, Any] | list[dict[str, Any]]:
         return _canonicalize(list_agent_callbacks())
     except Exception as exc:
         logger.exception("list_agent_callbacks failed")
-        return _error_from_exc(exc, "list_agent_callbacks failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "list_agent_callbacks failed")
 
 
 def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
@@ -6841,7 +6835,7 @@ def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
         )
     except Exception as exc:
         logger.exception("remove_agent_callback failed")
-        return _error_from_exc(exc, "remove_agent_callback failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "remove_agent_callback failed")
 
 
 # ---------------------------------------------------------------------------
@@ -7055,7 +7049,7 @@ def _handle_recommend_content(
         }
     except Exception as exc:
         logger.error("recommend_content failed: %s", exc)
-        return _error_from_exc(exc, "recommend_content failed", code=ErrorCode.INTERNAL_ERROR)
+        return _error_from_exc(exc, "recommend_content failed")
 
 
 # ---------------------------------------------------------------------------
@@ -7704,6 +7698,51 @@ def _handle_cost_allocation(
         return _error_from_exc(exc, "Cost allocation failed")
 
 
+def _classify_exception(exc: Exception) -> ErrorCode:
+    """Map *exc* to a semantic :class:`ErrorCode`.
+
+    Issue #364: expected failures (missing config, unknown domain, invalid
+    input, network timeouts, auth errors) must not be flattened into
+    ``INTERNAL_ERROR``.  Resolution is by exception type, checked from the
+    most specific to the least specific:
+
+    - :class:`~autoinfo.kb.DirectorOnlyError` → ``DIRECTOR_ONLY``
+    - :class:`~autoinfo.config.ConfigNotFoundError` → ``CONFIG_NOT_FOUND``
+    - :class:`FileNotFoundError` → ``NOT_FOUND``
+    - :class:`ValueError` / :class:`KeyError` → ``VALIDATION_ERROR``
+    - :class:`ConnectionError` → ``TIMEOUT``
+    - ``httpx.ConnectError`` → ``TIMEOUT``
+    - ``litellm.exceptions.AuthenticationError`` → ``LLM_NOT_CONFIGURED``
+    - anything else → ``INTERNAL_ERROR``
+
+    ``INTERNAL_ERROR`` is therefore reserved for genuinely unexpected
+    server-internal failures.
+    """
+    if isinstance(exc, DirectorOnlyError):
+        return ErrorCode.DIRECTOR_ONLY
+    if isinstance(exc, ConfigNotFoundError):
+        return ErrorCode.CONFIG_NOT_FOUND
+    if isinstance(exc, FileNotFoundError):
+        return ErrorCode.NOT_FOUND
+    if isinstance(exc, (ValueError, KeyError)):
+        return ErrorCode.VALIDATION_ERROR
+    if isinstance(exc, ConnectionError):
+        return ErrorCode.TIMEOUT
+    try:
+        if isinstance(exc, httpx.ConnectError):
+            return ErrorCode.TIMEOUT
+    except Exception:
+        pass
+    try:
+        import litellm.exceptions
+
+        if isinstance(exc, litellm.exceptions.AuthenticationError):
+            return ErrorCode.LLM_NOT_CONFIGURED
+    except ImportError:
+        pass
+    return ErrorCode.INTERNAL_ERROR
+
+
 def _error_from_exc(
     exc: Exception,
     context: str,
@@ -7718,19 +7757,22 @@ def _error_from_exc(
 
     ``code`` preserves the semantic :class:`ErrorCode` a call site used to
     pass to ``error_response`` (e.g. ``COLLECTION_FAILED``,
-    ``DIRECTOR_ONLY``); when omitted the error is ``INTERNAL_ERROR``.
+    ``DIRECTOR_ONLY``).  When ``code`` is omitted **or** is the generic
+    ``INTERNAL_ERROR``, the code is resolved from the exception type via
+    :func:`_classify_exception` (issue #364: classify first; use
+    ``INTERNAL_ERROR`` only for genuinely unknown exceptions).
 
     Returns the canonical error envelope
     ``{success: False, error: {code, message, actionable}}`` so callers can
     return it directly and the standard ``call_tool`` wrapping passes it
     through unchanged (idempotent).
     """
-    if isinstance(code, ErrorCode):
+    if code is None or code is ErrorCode.INTERNAL_ERROR:
+        code_str = _classify_exception(exc).value
+    elif isinstance(code, ErrorCode):
         code_str = code.value
-    elif code:
-        code_str = str(code)
     else:
-        code_str = ErrorCode.INTERNAL_ERROR.value
+        code_str = str(code)
     message_str = (
         f"{context}: {exc}. Check the request parameters and retry, "
         "or consult the docs for supported inputs."
@@ -7823,36 +7865,7 @@ def _error_response(exc: Exception) -> dict[str, Any]:
     Returns the uniform ``{success: False, error: {...}}`` dict; the caller
     packs it into the MCP content/structured-content tuple.
     """
-    # -- Determine ErrorCode from exception type ---------------------------
-    if isinstance(exc, DirectorOnlyError):
-        code = ErrorCode.DIRECTOR_ONLY
-    elif isinstance(exc, FileNotFoundError):
-        code = ErrorCode.NOT_FOUND
-    elif isinstance(exc, (ValueError, KeyError)):
-        code = ErrorCode.VALIDATION_ERROR
-    elif isinstance(exc, ConnectionError):
-        code = ErrorCode.TIMEOUT
-    else:
-        code = ErrorCode.INTERNAL_ERROR
-        # httpx.ConnectError → Timeout (httpx is optional)
-        try:
-            import httpx
-
-            if isinstance(exc, httpx.ConnectError):
-                code = ErrorCode.TIMEOUT
-        except ImportError:
-            pass
-
-    # Lazy litellm check — AuthenticationError → LLM_NOT_CONFIGURED
-    if code == ErrorCode.INTERNAL_ERROR:
-        try:
-            import litellm.exceptions
-
-            if isinstance(exc, litellm.exceptions.AuthenticationError):
-                code = ErrorCode.LLM_NOT_CONFIGURED
-        except ImportError:
-            pass
-
+    code = _classify_exception(exc)
     return {
         "success": False,
         "error": {

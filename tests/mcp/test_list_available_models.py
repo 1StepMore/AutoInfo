@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
+from autoinfo.config import ConfigNotFoundError
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import _handle_list_available_models
 
@@ -137,10 +138,10 @@ class TestListAvailableModelsFullPool:
 
     def test_error_branch_preserved(self) -> None:
         """Missing config → canonical error envelope."""
-        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
+        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
             result = _handle_list_available_models()
 
         assert result["success"] is False
-        assert result["error"]["code"] == "InternalError"
+        assert result["error"]["code"] == "ConfigNotFound"
         assert "message" in result["error"]
         assert result["error"]["actionable"] is True

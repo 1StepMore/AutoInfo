@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+from autoinfo.config import ConfigNotFoundError
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
     _handle_archive_project,
@@ -162,10 +163,10 @@ class TestListProjects:
         assert first["total_topics"] >= 1
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
+        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
             result = _handle_list_projects()
             assert result["success"] is False
-            assert result["error"]["code"] == "InternalError"
+            assert result["error"]["code"] == "ConfigNotFound"
 
     def test_includes_llm_info(self, tmp_config: Path) -> None:
         result = _handle_list_projects()
@@ -476,10 +477,10 @@ class TestGetConfig:
         assert result["error"]["actionable"] is True
 
     def test_handles_config_load_error(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=FileNotFoundError("no config")):
+        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
             result = _handle_get_config(section="")
             assert result["success"] is False
-            assert result["error"]["code"] == "InternalError"
+            assert result["error"]["code"] == "ConfigNotFound"
 
 
 # ======================================================================

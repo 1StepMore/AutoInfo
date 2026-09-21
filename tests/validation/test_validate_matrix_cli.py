@@ -78,7 +78,8 @@ class TestAssertionSet:
     def test_source_labels_specific_rejects_rss(self) -> None:
         """#325 — the whole body is scanned, not just the References section:
         RSS residue in the masthead/byline position (no References heading)
-        must fail loudly."""
+        must fail loudly.  Only the GENERIC residue fires — a specific source
+        name embedding "RSS" and the #167 mixed-platform theme label pass."""
         bad = "# T\n\n*RSS* · relevance 90.0/100\n\n## Entries\n\n| **Source** | RSS |\n"
         assert not vm._source_labels_specific(bad, "d", "magazine-digest").passed
         # RSS residue BEFORE a References section also fails (whole-body scan).
@@ -86,10 +87,25 @@ class TestAssertionSet:
             "# T\n\n*RSS* · relevance 90.0/100\n\n## References\n\n"
             "1. **A** — https://x.com (techcrunch)\n"
         )
+        assert not vm._source_labels_specific(bad_with_refs, "d", "magazine-digest").passed
+        # A parenthetical (RSS) citation label is residue too.
         assert not vm._source_labels_specific(
-            bad_with_refs, "d", "magazine-digest"
+            "# T\n\n## References\n\n1. **A** — https://x.com (RSS)\n",
+            "d",
+            "report",
         ).passed
         assert vm._source_labels_specific(CLEAN, "d", "report").passed
+        # NOT residues (#325 precision): a specific source name embedding
+        # "RSS" and the #167 mixed-platform theme label must PASS — pre-#325
+        # the bare \bRSS\b scan reported these as false failures.
+        for clean in (
+            "# T\n\n| **Source** | Substack RSS (tech) — Pragmatic Engineer |\n",
+            "# T\n\n**Source**: Substack RSS (tech) — Pragmatic Engineer\n",
+            "# T\n\n### RSS\n\nUpdates and analysis from rss sources.\n",
+            "# T\n\n- **RSS** — Covered in the Deep Dive (4 item(s)).\n",
+        ):
+            r = vm._source_labels_specific(clean, "d", "report")
+            assert r.passed, f"false positive {r.details!r} on {clean!r}"
 
     def test_no_placeholder(self) -> None:
         bad = "# T\n\n_No implication captured for this takeaway._\n"
@@ -127,8 +143,7 @@ class TestAssertionSet:
         for i, sample in enumerate(analysis_samples):
             r = vm._no_placeholder(sample, "ai-commercial", "enterprise-briefing")
             assert not r.passed, (
-                f"analysis-layer placeholder sample #{i} escaped detection: "
-                f"{r.details!r}"
+                f"analysis-layer placeholder sample #{i} escaped detection: {r.details!r}"
             )
 
     def test_no_placeholder_all_template_empty_states(self) -> None:
@@ -213,36 +228,48 @@ class TestAssertionSet:
         assert vm._no_internal_leak(CLEAN, "ai-commercial", "report").passed
 
     def test_no_year_hallucination(self) -> None:
-        """#351 — hallucinated years in PRODUCT PROSE fail: a FUTURE year or
-        bare month-year asserted as a completed fact (no forward-looking
-        marker on the line) fires P0; a DISTANT-PAST year (< 1950) fires P1
-        "human review" so plausible historical references surface for a human
-        to judge rather than auto-failing as P0.  Forward-looking projections
-        ("by 2030", "targeting 2027", "2025-2030") and plausible prose years
-        (1950..current year) PASS.  The References section is EXCLUDED."""
+        """#351 — hallucinated years in PRODUCT PROSE fail only when they are
+        FUTURE: a future year or bare month-year asserted as a completed fact
+        (no forward-looking marker on the line) fires P0.  A DISTANT-PAST year
+        (< 1950) is INFORMATIONAL only — plausible historical references
+        (founded in 1917, Ada Lovelace 1842) no longer fail the assertion.
+        Forward-looking projections ("by 2030", "targeting 2027", "2025-2030")
+        and plausible prose years (1950..current year) PASS.  The References
+        section is EXCLUDED."""
         # Future month-year, no forward-looking marker (P0).
         future = "# T\n\nIn March 2031, adoption tripled\n"
         r = vm._no_year_hallucination(future, "d", "report")
         assert not r.passed, r.details
         assert r.issue == "#351"
         assert r.severity == "P0"
-        # Distant-past month-year, pre-1950 (P1 human review, not P0).
+        # Distant-past month-year, pre-1950 → informational, PASS (not a failure).
         past = "# T\n\nfounded in June 1850, the firm collapsed\n"
         r = vm._no_year_hallucination(past, "d", "report")
-        assert not r.passed, r.details
+        assert r.passed, r.details
         assert r.severity == "P1"
-        assert "human review" in r.details
+        assert "informational" in r.details
+        assert "distant-past bare month-year" in r.details
         # Future year, no forward-looking marker (P0).
         future_plain = "# T\n\nIn 2031, adoption tripled\n"
         r = vm._no_year_hallucination(future_plain, "d", "report")
         assert not r.passed, r.details
         assert r.severity == "P0"
-        # Distant past, pre-1950 (P1 human review, not P0).
+        # Distant past, pre-1950 → informational, PASS (not a failure).
         past_plain = "# T\n\na 1947 patent\n"
         r = vm._no_year_hallucination(past_plain, "d", "report")
-        assert not r.passed, r.details
+        assert r.passed, r.details
         assert r.severity == "P1"
-        assert "human review" in r.details
+        assert "informational" in r.details
+        assert "distant-past year 1947" in r.details
+        # A 4-digit run embedded in a numeric/identifier token is NOT a year
+        # (#351 tuning): UUID-like trace_id groups and decimal measurements
+        # must not fire.
+        for sample in (
+            "# T\n\ntrace_id: 7c8cc68a-1831-4653-ab65-a2fad98a50fe\n",
+            "# T\n\nffmpeg -t 1800.128 out.mp4\n",
+        ):
+            r = vm._no_year_hallucination(sample, "d", "report")
+            assert r.passed, f"non-year numeric token falsely flagged: {r.details!r}"
         # Forward-looking future years are NOT flagged (#351 V4) — the
         # 2027/2030 false-positive class from the real-product matrix.
         for sample in (
@@ -332,11 +359,10 @@ class TestAssertionSet:
         assert r.severity == "P0"
         # Mid-body litellm marker (whole-body, not header-only).
         litellm_mid = (
-            "# T\n\nprose\n\nGive Feedback / Get Help: "
-            "https://github.com/BerriAI/litellm\n"
+            "# T\n\nprose\n\nGive Feedback / Get Help: https://github.com/BerriAI/litellm\n"
         )
         assert not vm._no_external_error_text(litellm_mid, "d", "report").passed
-        traceback = "# T\n\nTraceback (most recent call last):\n  File \"x\", line 1\n"
+        traceback = '# T\n\nTraceback (most recent call last):\n  File "x", line 1\n'
         assert not vm._no_external_error_text(traceback, "d", "report").passed
         assert vm._no_external_error_text(CLEAN, "d", "report").passed
 
@@ -354,9 +380,10 @@ class TestMatrix:
     def test_run_matrix_only_assert(self, tmp_path: Path) -> None:
         fixture = tmp_path / "digest-report-a.md"
         fixture.write_text(CLEAN, encoding="utf-8")
-        with patch("autoinfo.validation_matrix._persisted_product_paths",
-                   return_value=[fixture]), \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
+        with (
+            patch("autoinfo.validation_matrix._persisted_product_paths", return_value=[fixture]),
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
             report = vm.run_matrix(["ai-commercial"], ["report"], only_assert=True)
         assert report.summary["total_products"] == 1
         assert report.summary["failures"] == 0
@@ -369,9 +396,10 @@ class TestMatrix:
         assert report.summary["failures"] >= 1
 
     def test_run_matrix_generation_error_path(self) -> None:
-        with patch("autoinfo.validation_matrix._generate_product",
-                   side_effect=RuntimeError("boom")), \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
+        with (
+            patch("autoinfo.validation_matrix._generate_product", side_effect=RuntimeError("boom")),
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
             report = vm.run_matrix(["d"], ["digest"], only_assert=False)
         assert report.summary["failures"] >= 1
         assert any(p.get("status") == "error" for p in report.products)
@@ -389,23 +417,32 @@ class TestMatrix:
             pairs: list[tuple[str, str, bool]],
         ) -> vm.MatrixReport:
             m = vm.MatrixReport(generated_at="t", commit="c")
-            m.products = [{
-                "domain": "d", "product": p, "status": "ok",
-                "assertions": [{"assertion": a, "passed": ps}],
-            } for p, a, ps in pairs]
+            m.products = [
+                {
+                    "domain": "d",
+                    "product": p,
+                    "status": "ok",
+                    "assertions": [{"assertion": a, "passed": ps}],
+                }
+                for p, a, ps in pairs
+            ]
             return m
 
-        prev = card([
-            ("p", "_title_first", True),
-            ("p", "_not_empty", False),
-            ("p", "_no_leak", False),
-        ])
-        cur = card([
-            ("p", "_title_first", False),   # regressed
-            ("p", "_not_empty", True),      # fixed
-            ("q", "_not_empty", False),     # new
-            ("p", "_no_leak", False),       # existing-failing
-        ])
+        prev = card(
+            [
+                ("p", "_title_first", True),
+                ("p", "_not_empty", False),
+                ("p", "_no_leak", False),
+            ]
+        )
+        cur = card(
+            [
+                ("p", "_title_first", False),  # regressed
+                ("p", "_not_empty", True),  # fixed
+                ("q", "_not_empty", False),  # new
+                ("p", "_no_leak", False),  # existing-failing
+            ]
+        )
         d = vm.diff_report_cards(prev.to_dict(), cur.to_dict())
         assert d["counts"] == {"new": 1, "regressed": 1, "fixed": 1, "existing_failing": 1}
         assert ("d", "p", "_title_first") in d["regressed"]
@@ -418,6 +455,7 @@ class TestMatrix:
         would compute by hand from the cards: every cur issue (failing
         assertion OR missing/error product) lands in exactly one of
         new / regressed / existing_failing."""
+
         def card(products: list[dict[str, Any]]) -> dict[str, Any]:
             m = vm.MatrixReport(generated_at="t", commit="c")
             m.products = products
@@ -429,35 +467,49 @@ class TestMatrix:
                 for p in card_data["products"]
                 for a in p.get("assertions", [])
                 if not a.get("passed")
-            ) + sum(
-                1
-                for p in card_data["products"]
-                if p.get("status", "ok") not in ("ok",)
-            )
+            ) + sum(1 for p in card_data["products"] if p.get("status", "ok") not in ("ok",))
 
-        prev = card([
-            {"product": "a", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": True}]},
-            {"product": "b", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": True}]},
-            {"product": "c", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": True}]},
-        ])
-        cur = card([
-            {"product": "a", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": False}]},
-            {"product": "b", "status": "missing", "assertions": []},
-            {"product": "c", "status": "ok",
-             "assertions": [{"assertion": "_not_empty", "passed": True}]},
-            {"product": "d", "status": "error", "assertions": [], "error": "boom"},
-        ])
+        prev = card(
+            [
+                {
+                    "product": "a",
+                    "status": "ok",
+                    "assertions": [{"assertion": "_not_empty", "passed": True}],
+                },
+                {
+                    "product": "b",
+                    "status": "ok",
+                    "assertions": [{"assertion": "_not_empty", "passed": True}],
+                },
+                {
+                    "product": "c",
+                    "status": "ok",
+                    "assertions": [{"assertion": "_not_empty", "passed": True}],
+                },
+            ]
+        )
+        cur = card(
+            [
+                {
+                    "product": "a",
+                    "status": "ok",
+                    "assertions": [{"assertion": "_not_empty", "passed": False}],
+                },
+                {"product": "b", "status": "missing", "assertions": []},
+                {
+                    "product": "c",
+                    "status": "ok",
+                    "assertions": [{"assertion": "_not_empty", "passed": True}],
+                },
+                {"product": "d", "status": "error", "assertions": [], "error": "boom"},
+            ]
+        )
         d = vm.diff_report_cards(prev, cur)
         c = d["counts"]
         reconciled = c["new"] + c["regressed"] + c["existing_failing"]
         assert cur_issues(cur) == 3
         assert reconciled == cur_issues(cur), (
-            f"diff counts {c} fail to reconcile with hand-counted cur issues "
-            f"{cur_issues(cur)}"
+            f"diff counts {c} fail to reconcile with hand-counted cur issues {cur_issues(cur)}"
         )
         assert c == {"new": 1, "regressed": 2, "fixed": 0, "existing_failing": 0}
         assert ("", "b", vm.PRODUCT_STATUS) in d["regressed"]
@@ -469,6 +521,7 @@ class TestMatrix:
         collides across domains and drops failures.  With the domain in the
         key, every cur failure (incl. missing/error products) lands in
         exactly one bucket and ``cur issues == new + regressed + existing``."""
+
         def card(
             domain_products: list[tuple[str, str, str, list[dict[str, Any]]]],
         ) -> dict[str, Any]:
@@ -491,35 +544,46 @@ class TestMatrix:
                 for p in card_data["products"]
                 for a in p.get("assertions", [])
                 if not a.get("passed")
-            ) + sum(
-                1
-                for p in card_data["products"]
-                if p.get("status", "ok") not in ("ok",)
-            )
+            ) + sum(1 for p in card_data["products"] if p.get("status", "ok") not in ("ok",))
 
-        prev = card([
-            ("ai-commercial", "report", "ok", [ok("_no_cross_domain_noise"), ok("_not_empty")]),
-            ("medical-research", "report", "ok", [ok("_not_empty")]),
-            ("financial-intelligence", "report", "ok", [ok("_no_financial_dilution")]),
-            ("ai-commercial", "digest", "ok", []),
-        ])
-        cur = card([
-            ("ai-commercial", "report", "ok",
-             [fail("_no_cross_domain_noise"), ok("_not_empty")]),
-            ("medical-research", "report", "ok",
-             [fail("_references_numbered"), fail("_not_empty")]),
-            ("financial-intelligence", "report", "ok",
-             [fail("_no_financial_dilution"), fail("_not_empty")]),
-            ("ai-commercial", "digest", "missing", []),
-        ])
+        prev = card(
+            [
+                ("ai-commercial", "report", "ok", [ok("_no_cross_domain_noise"), ok("_not_empty")]),
+                ("medical-research", "report", "ok", [ok("_not_empty")]),
+                ("financial-intelligence", "report", "ok", [ok("_no_financial_dilution")]),
+                ("ai-commercial", "digest", "ok", []),
+            ]
+        )
+        cur = card(
+            [
+                (
+                    "ai-commercial",
+                    "report",
+                    "ok",
+                    [fail("_no_cross_domain_noise"), ok("_not_empty")],
+                ),
+                (
+                    "medical-research",
+                    "report",
+                    "ok",
+                    [fail("_references_numbered"), fail("_not_empty")],
+                ),
+                (
+                    "financial-intelligence",
+                    "report",
+                    "ok",
+                    [fail("_no_financial_dilution"), fail("_not_empty")],
+                ),
+                ("ai-commercial", "digest", "missing", []),
+            ]
+        )
         d = vm.diff_report_cards(prev, cur)
         c = d["counts"]
         reconciled = c["new"] + c["regressed"] + c["existing_failing"]
         hand = cur_issues(cur)
         assert hand == 6
         assert reconciled == hand, (
-            f"#340: diff buckets {c} fail to reconcile across domains "
-            f"(hand-counted {hand})"
+            f"#340: diff buckets {c} fail to reconcile across domains (hand-counted {hand})"
         )
         # Domain is part of every bucket item's identity.
         assert c == {"new": 2, "regressed": 4, "fixed": 0, "existing_failing": 0}
@@ -533,12 +597,19 @@ class TestMatrix:
         """#336 — the matrix report summary must break down failures into
         failing_assertions + missing_products + error_products so
         ``failures`` reconciles without hand-reading the JSON."""
-        with patch("autoinfo.validation_matrix._generate_product",
-                   side_effect=[CLEAN, RuntimeError("boom")]), \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
+        with (
+            patch(
+                "autoinfo.validation_matrix._generate_product",
+                side_effect=[CLEAN, RuntimeError("boom")],
+            ),
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
             report = vm.run_matrix(
-                ["ai-commercial"], ["digest", "report"], only_assert=False,
-                batch_id="b1", artifacts_dir=tmp_path,
+                ["ai-commercial"],
+                ["digest", "report"],
+                only_assert=False,
+                batch_id="b1",
+                artifacts_dir=tmp_path,
             )
         s = report.summary
         assert s["error_products"] == 1
@@ -567,12 +638,16 @@ class TestBatchIsolation:
     ``--only-assert`` scans that batch tree, never the shared ``outputs/``."""
 
     def test_full_mode_persists_products_per_batch(self, tmp_path: Path) -> None:
-        with patch("autoinfo.validation_matrix._generate_product",
-                   return_value="rendered body"), \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
+        with (
+            patch("autoinfo.validation_matrix._generate_product", return_value="rendered body"),
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
             report = vm.run_matrix(
-                ["ai-commercial"], ["digest"], only_assert=False,
-                batch_id="b1", artifacts_dir=tmp_path,
+                ["ai-commercial"],
+                ["digest"],
+                only_assert=False,
+                batch_id="b1",
+                artifacts_dir=tmp_path,
             )
         prod = tmp_path / "b1" / "products" / "ai-commercial" / "digest-markdown-b1.md"
         assert prod.is_file()
@@ -580,13 +655,19 @@ class TestBatchIsolation:
         assert report.batch_id == "b1"
 
     def test_batches_are_isolated_no_overwrite(self, tmp_path: Path) -> None:
-        with patch("autoinfo.validation_matrix._generate_product",
-                   side_effect=["batch-1-body", "batch-2-body"]), \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
-            vm.run_matrix(["d"], ["digest"], only_assert=False,
-                          batch_id="b1", artifacts_dir=tmp_path)
-            vm.run_matrix(["d"], ["digest"], only_assert=False,
-                          batch_id="b2", artifacts_dir=tmp_path)
+        with (
+            patch(
+                "autoinfo.validation_matrix._generate_product",
+                side_effect=["batch-1-body", "batch-2-body"],
+            ),
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
+            vm.run_matrix(
+                ["d"], ["digest"], only_assert=False, batch_id="b1", artifacts_dir=tmp_path
+            )
+            vm.run_matrix(
+                ["d"], ["digest"], only_assert=False, batch_id="b2", artifacts_dir=tmp_path
+            )
         b1 = tmp_path / "b1" / "products" / "d" / "digest-markdown-b1.md"
         b2 = tmp_path / "b2" / "products" / "d" / "digest-markdown-b2.md"
         assert b1.is_file() and b1.read_text(encoding="utf-8") == "batch-1-body"
@@ -599,12 +680,16 @@ class TestBatchIsolation:
         polluted = tmp_path / "outputs" / "ai-commercial" / "digest-markdown-zzz.md"
         polluted.parent.mkdir(parents=True)
         polluted.write_text(
-            "_No key takeaways were extracted for this period._", encoding="utf-8",
+            "_No key takeaways were extracted for this period._",
+            encoding="utf-8",
         )
         with patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
             report = vm.run_matrix(
-                ["ai-commercial"], ["digest"], only_assert=True,
-                batch_id="b1", artifacts_dir=tmp_path,
+                ["ai-commercial"],
+                ["digest"],
+                only_assert=True,
+                batch_id="b1",
+                artifacts_dir=tmp_path,
             )
         assert report.summary["failures"] == 0
         assert not any(p.get("status") == "missing" for p in report.products)
@@ -612,9 +697,12 @@ class TestBatchIsolation:
     def test_artifacts_dir_none_keeps_legacy_outputs_scan(self, tmp_path: Path) -> None:
         fixture = tmp_path / "digest-report-a.md"
         fixture.write_text(CLEAN, encoding="utf-8")
-        with patch("autoinfo.validation_matrix._persisted_product_paths",
-                   return_value=[fixture]) as lookup, \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"):
+        with (
+            patch(
+                "autoinfo.validation_matrix._persisted_product_paths", return_value=[fixture]
+            ) as lookup,
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+        ):
             report = vm.run_matrix(["ai-commercial"], ["digest"], only_assert=True)
         assert report.summary["failures"] == 0
         assert report.batch_id
@@ -626,14 +714,24 @@ class TestValidateCli:
         fixture = tmp_path / "outputs" / "ai-commercial" / "digest-report-a.md"
         fixture.parent.mkdir(parents=True)
         fixture.write_text(CLEAN, encoding="utf-8")
-        with patch("autoinfo.validation_matrix._current_commit", return_value="abc"), \
-             patch("autoinfo.validation_matrix._persisted_product_paths",
-                   return_value=[fixture]):
+        with (
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+            patch("autoinfo.validation_matrix._persisted_product_paths", return_value=[fixture]),
+        ):
             result = runner.invoke(
                 app,
-                ["matrix", "--only-assert", "--domains", "ai-commercial",
-                 "--products", "report", "--json-out", str(tmp_path / "card.json"),
-                 "--snapshot-dir", str(tmp_path / "snap")],
+                [
+                    "matrix",
+                    "--only-assert",
+                    "--domains",
+                    "ai-commercial",
+                    "--products",
+                    "report",
+                    "--json-out",
+                    str(tmp_path / "card.json"),
+                    "--snapshot-dir",
+                    str(tmp_path / "snap"),
+                ],
             )
         assert result.exit_code == 0, result.output
         data = json.loads((tmp_path / "card.json").read_text(encoding="utf-8"))
@@ -641,24 +739,54 @@ class TestValidateCli:
         assert bool((tmp_path / "snap").iterdir())
 
     def test_matrix_nonzero_exit_on_failure(self, tmp_path: Path) -> None:
-        with patch("autoinfo.validation_matrix._current_commit", return_value="abc"), \
-             patch("autoinfo.validation_matrix._persisted_product_paths", return_value=[]):
+        with (
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+            patch("autoinfo.validation_matrix._persisted_product_paths", return_value=[]),
+        ):
             result = runner.invoke(
                 app,
-                ["matrix", "--only-assert", "--domains", "d", "--products", "digest",
-                 "--snapshot-dir", str(tmp_path / "snap")],
+                [
+                    "matrix",
+                    "--only-assert",
+                    "--domains",
+                    "d",
+                    "--products",
+                    "digest",
+                    "--snapshot-dir",
+                    str(tmp_path / "snap"),
+                ],
             )
         assert result.exit_code == 1
 
     def test_diff_command_highlights_regression(self, tmp_path: Path) -> None:
         prev = tmp_path / "prev.json"
         cur = tmp_path / "cur.json"
-        prev.write_text(json.dumps({"products": [{
-            "product": "p", "assertions": [{"assertion": "_title_first", "passed": True}],
-        }]}), encoding="utf-8")
-        cur.write_text(json.dumps({"products": [{
-            "product": "p", "assertions": [{"assertion": "_title_first", "passed": False}],
-        }]}), encoding="utf-8")
+        prev.write_text(
+            json.dumps(
+                {
+                    "products": [
+                        {
+                            "product": "p",
+                            "assertions": [{"assertion": "_title_first", "passed": True}],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cur.write_text(
+            json.dumps(
+                {
+                    "products": [
+                        {
+                            "product": "p",
+                            "assertions": [{"assertion": "_title_first", "passed": False}],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         result = runner.invoke(app, ["diff", str(prev), str(cur)])
         assert "regressed" in result.output
         assert result.exit_code == 1
@@ -669,17 +797,39 @@ class TestValidateCli:
         WARNING and continue."""
         prev = tmp_path / "prev.json"
         cur = tmp_path / "cur.json"
-        prev.write_text(json.dumps({"products": [{
-            "product": "p", "assertions": [{"assertion": "_title_first", "passed": True}],
-        }]}), encoding="utf-8")
-        cur.write_text(json.dumps({"products": [{
-            "product": "p", "assertions": [{"assertion": "_title_first", "passed": True}],
-        }]}), encoding="utf-8")
-        with patch("autoinfo.cli.validate.card_issue_counts",
-                   side_effect=[{"failing_assertions": 0, "missing_products": 0,
-                                 "error_products": 0},
-                                {"failing_assertions": 99, "missing_products": 0,
-                                 "error_products": 0}]):
+        prev.write_text(
+            json.dumps(
+                {
+                    "products": [
+                        {
+                            "product": "p",
+                            "assertions": [{"assertion": "_title_first", "passed": True}],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cur.write_text(
+            json.dumps(
+                {
+                    "products": [
+                        {
+                            "product": "p",
+                            "assertions": [{"assertion": "_title_first", "passed": True}],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch(
+            "autoinfo.cli.validate.card_issue_counts",
+            side_effect=[
+                {"failing_assertions": 0, "missing_products": 0, "error_products": 0},
+                {"failing_assertions": 99, "missing_products": 0, "error_products": 0},
+            ],
+        ):
             result = runner.invoke(app, ["diff", str(prev), str(cur)])
         assert "do not reconcile" in result.output
         assert result.exit_code == 1
@@ -697,13 +847,24 @@ class TestValidateCli:
         shared outputs/ scan (backward compatible)."""
         report = vm.MatrixReport(generated_at="t", commit="abc", batch_id="abc-1")
         report.summary = {"failures": 0, "domains": ["d"], "products": ["digest"]}
-        with patch("autoinfo.cli.validate.run_matrix", return_value=report) as rm, \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"), \
-             patch("autoinfo.cli.validate.save_report_card"):
-            result = runner.invoke(app, [
-                "matrix", "--only-assert", "--domains", "ai-commercial",
-                "--products", "digest", "--snapshot-dir", str(tmp_path / "snap"),
-            ])
+        with (
+            patch("autoinfo.cli.validate.run_matrix", return_value=report) as rm,
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+            patch("autoinfo.cli.validate.save_report_card"),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "matrix",
+                    "--only-assert",
+                    "--domains",
+                    "ai-commercial",
+                    "--products",
+                    "digest",
+                    "--snapshot-dir",
+                    str(tmp_path / "snap"),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert rm.call_args.kwargs["artifacts_dir"] is None
         assert rm.call_args.kwargs["batch_id"]
@@ -714,14 +875,26 @@ class TestValidateCli:
         report = vm.MatrixReport(generated_at="t", commit="abc", batch_id="b1")
         report.summary = {"failures": 0, "domains": ["d"], "products": ["digest"]}
         snap = tmp_path / "snap"
-        with patch("autoinfo.cli.validate.run_matrix", return_value=report) as rm, \
-             patch("autoinfo.validation_matrix._current_commit", return_value="abc"), \
-             patch("autoinfo.cli.validate.save_report_card"):
-            result = runner.invoke(app, [
-                "matrix", "--only-assert", "--batch", "b1",
-                "--domains", "ai-commercial", "--products", "digest",
-                "--snapshot-dir", str(snap),
-            ])
+        with (
+            patch("autoinfo.cli.validate.run_matrix", return_value=report) as rm,
+            patch("autoinfo.validation_matrix._current_commit", return_value="abc"),
+            patch("autoinfo.cli.validate.save_report_card"),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "matrix",
+                    "--only-assert",
+                    "--batch",
+                    "b1",
+                    "--domains",
+                    "ai-commercial",
+                    "--products",
+                    "digest",
+                    "--snapshot-dir",
+                    str(snap),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert rm.call_args.kwargs["artifacts_dir"] == snap
         assert rm.call_args.kwargs["batch_id"] == "b1"
@@ -810,46 +983,30 @@ class TestPaidTierWeakAssertions:
     _recommendation_relevant, _analysis_not_mere_repeat."""
 
     def test_so_what_substantive_flags_premium_weak_fields(self) -> None:
-        r = vm._so_what_substantive(
-            _PREMIUM_DEFECT, "ai-commercial", "premium-briefing"
-        )
+        r = vm._so_what_substantive(_PREMIUM_DEFECT, "ai-commercial", "premium-briefing")
         assert not r.passed
         assert r.issue == "#357"
         assert r.severity == "P1"
         assert "so-what" in r.details or "actions" in r.details
-        assert vm._so_what_substantive(
-            _PREMIUM_CLEAN, "ai-commercial", "premium-briefing"
-        ).passed
+        assert vm._so_what_substantive(_PREMIUM_CLEAN, "ai-commercial", "premium-briefing").passed
 
     def test_so_what_substantive_enterprise_column_report(self) -> None:
-        ent = (
-            "# E\n\n## Action Required\n\n"
-            "_No actions required in this period._\n"
-        )
-        assert not vm._so_what_substantive(
-            ent, "d", "enterprise-briefing"
-        ).passed
+        ent = "# E\n\n## Action Required\n\n_No actions required in this period._\n"
+        assert not vm._so_what_substantive(ent, "d", "enterprise-briefing").passed
         ent_ok = (
             "# E\n\n## Action Required\n\n"
             "- [ ] Draft the Q3 filing.\n\n"
             "## Recommendations\n\n- Monitor market shifts.\n"
         )
-        assert vm._so_what_substantive(
-            ent_ok, "d", "enterprise-briefing"
-        ).passed
-        col = (
-            "# C\n\n## Implications & Outlook\n\n"
-            "_No outlook sections available._\n"
-        )
+        assert vm._so_what_substantive(ent_ok, "d", "enterprise-briefing").passed
+        col = "# C\n\n## Implications & Outlook\n\n_No outlook sections available._\n"
         assert not vm._so_what_substantive(col, "d", "column").passed
         col_ok = (
             "# C\n\n## Implications & Outlook\n\n"
             "- **EU rollout** — regulatory delay risk is elevated.\n"
         )
         assert vm._so_what_substantive(col_ok, "d", "column").passed
-        rep = (
-            "# R\n\n## Recommendations\n\n(no bullets)\n"
-        )
+        rep = "# R\n\n## Recommendations\n\n(no bullets)\n"
         assert not vm._so_what_substantive(rep, "d", "report").passed
         assert vm._so_what_substantive(CLEAN, "d", "report").passed
 
@@ -861,9 +1018,7 @@ class TestPaidTierWeakAssertions:
     def test_recommendation_relevant_flags_generic_and_placeholder(
         self,
     ) -> None:
-        r = vm._recommendation_relevant(
-            _PREMIUM_DEFECT, "ai-commercial", "premium-briefing"
-        )
+        r = vm._recommendation_relevant(_PREMIUM_DEFECT, "ai-commercial", "premium-briefing")
         assert not r.passed
         assert r.issue == "#357"
         assert "Valuation Bubble Risk" in r.details
@@ -873,17 +1028,13 @@ class TestPaidTierWeakAssertions:
             "|------|-----------|--------|------------|\n"
             "| Market Risk | High | Medium | Watch |\n"
         )
-        assert not vm._recommendation_relevant(
-            ent, "d", "enterprise-briefing"
-        ).passed
+        assert not vm._recommendation_relevant(ent, "d", "enterprise-briefing").passed
         assert vm._recommendation_relevant(
             _PREMIUM_CLEAN, "ai-commercial", "premium-briefing"
         ).passed
 
     def test_analysis_not_mere_repeat_flags_restatement(self) -> None:
-        r = vm._analysis_not_mere_repeat(
-            _PREMIUM_DEFECT, "ai-commercial", "premium-briefing"
-        )
+        r = vm._analysis_not_mere_repeat(_PREMIUM_DEFECT, "ai-commercial", "premium-briefing")
         assert not r.passed
         assert r.issue == "#357"
         assert "takeaway 2" in r.details

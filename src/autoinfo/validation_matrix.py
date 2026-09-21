@@ -266,7 +266,20 @@ def _should_skip(
 
 _REFS_HEADING = re.compile(r"^##\s+References", re.MULTILINE)
 _REF_ENTRY = re.compile(r"^\s*(?:(\d+)\.|[-*])\s+\S", re.MULTILINE)
-_RSS_LABEL = re.compile(r"\bRSS\b")
+# #325 — the GENERIC RSS source-label residue, only in the label surfaces a
+# product ships: an italic bare label (``*RSS*`` in a masthead/byline), a bare
+# table cell (``| RSS |``), a parenthetical citation label (``(RSS)``), or a
+# ``**Source**:`` field whose whole value is the generic platform.  It is
+# deliberately NOT a bare ``\bRSS\b``: a SPECIFIC source name may legitimately
+# embed the word ("Substack RSS (tech) — Pragmatic Engineer"), and the #167
+# mixed-platform fallback renders a provenance-neutral THEME label
+# ("### RSS" / "- **RSS** — ...").  Those are not residues and must pass.
+_RSS_LABEL = re.compile(
+    r"(?<!\*)\*RSS\*(?!\*)"  # *RSS* — italic bare label
+    r"|\|\s*RSS\s*\|"  # | RSS | — bare table cell
+    r"|\(RSS\)"  # (RSS) — parenthetical residue
+    r"|\*\*Source\*\*\s*[:|]\s*RSS\b"  # **Source**: RSS / **Source** | RSS
+)
 _PLACEHOLDER = re.compile(r"_No [^_]+_")
 # #334 — premium/enterprise analysis layer can fill N/A / None / TBD style
 # standalone cells (LLM filler), plus deterministic/skeleton echoes.
@@ -364,16 +377,31 @@ _LITELLM = re.compile(
     r"Give Feedback / Get Help|BerriAI|LiteLLM\.Info|litellm\._turn_on_debug",
     re.IGNORECASE,
 )
-# #351 — hard security assertions.  Years below 1950 (and any future year) are
-# treated as hallucination in product prose; years 1950..current year are the
-# only plausible ones.  ``datetime.now()`` is a small helper so tests can patch
-# the current year without touching the module's regex constants.
+# #351 — hard security assertions.  The only year hallucination that FAILS is
+# a FUTURE year (or bare month-year) asserted as a completed fact (P0).  Years
+# 1950..current year are plausible prose.  DISTANT-PAST years (< 1950) are
+# surfaced as INFORMATIONAL notes only — historical references ("founded in
+# 1917", "Ada Lovelace ... in 1842", "pneumatic tubes 1893–1953") are
+# legitimate in some products, so they no longer fail the matrix (#351 tuning).
+# ``_MIN_PLAUSIBLE_YEAR`` is the informational boundary; ``datetime.now()`` is
+# a small helper so tests can patch the current year without touching the
+# module's regex constants.
 _MIN_PLAUSIBLE_YEAR = 1950
 _YEAR_RE = re.compile(r"\b(?:18|19|20)\d{2}\b")
 _MONTH_YEAR_RE = re.compile(
     r"\b(?:January|February|March|April|May|June|July|August|September|"
     r"October|November|December)\s+(?P<y>(?:18|19|20)\d{2})\b"
 )
+# #351 tuning — a 4-digit run is NOT a year when it is embedded in a
+# hex/UUID-like identifier or a decimal number.  Two real false positives under
+# ``demo-packages/*/raw/kb-01-Raw/``:
+#   * ``trace_id: 7c8cc68a-1831-4653-ab65-a2fad98a50fe`` → the ``1831`` UUID
+#     group is matched by ``_YEAR_RE``;
+#   * ``-t 1800.128`` (FFmpeg) → the ``1800`` integer part is matched.
+# ``_is_non_year_number`` rejects both while leaving real years and year ranges
+# (``1893–1953``, ``2025-2030``) intact.
+_HEX_HYPHEN_CHARS = frozenset("0123456789abcdefABCDEF-")
+_HEX_RUN_RE = re.compile(r"[0-9A-Fa-f]{8,}")
 # URL-embedded 4-digit runs (e.g. "https://x.com/2023/01") are legitimate —
 # never fire the year checks on the path/query portion of a URL.
 _URL_RE = re.compile(r"https?://\S+")
@@ -619,12 +647,19 @@ def _references_numbered(text: str, domain: str, product: str) -> AssertionResul
 
 def _source_labels_specific(text: str, domain: str, product: str) -> AssertionResult:
     """#325 — every label surface (masthead/byline/table/references) carries a
-    specific source name; '(RSS)' residue is 0 anywhere in the product.
+    specific source name; generic RSS source-label residue is 0 anywhere in
+    the product.
 
     Scans the WHOLE body (not just the References section): stale
     pre-#323 entries can render the generic ``(RSS)`` label in the magazine
     byline/clusters, the digest entry table, or the masthead — all of which
     sit BEFORE the References heading and previously escaped detection.
+
+    Only the GENERIC residue fires (see ``_RSS_LABEL``): a specific source
+    name that embeds the word RSS ("Substack RSS (tech) — Pragmatic Engineer")
+    and the #167 mixed-platform theme label ("### RSS" / "- **RSS** — ...")
+    are legitimate and must PASS — pre-#325 the bare ``\\bRSS\\b`` scan
+    reported those as false failures on real products.
     """
     body = text
     # The product metadata table carries an HONEST entry-type annotation
@@ -878,16 +913,16 @@ def _current_year() -> int:
 
 
 def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionResult:
-    """#351 — product prose carries no hallucinated years.  A year is a TRUE
-    hallucination only when it is implausible for the claim's context:
-      * a FUTURE year (or bare month-year) asserted as a completed fact — no
-        forward-looking marker (``by 2030`` / ``target`` / ``forecast`` /
-        ``projected`` / ``fiscal`` / ``set to`` / ``delayed to`` / a
-        ``2025-2030`` range) on the same line — fires P0;
-      * a DISTANT-PAST year (< 1950) is surfaced as a P1 ``human review``
-        failure: historical references (e.g. ``founded in 1917``) are plausible
-        in some products, so they still ``fail`` but at P1 so a human can
-        judge — they are NOT future-year hallucinations (#351).
+    """#351 — product prose carries no hallucinated years.  Only a FUTURE year
+    is a TRUE hallucination: a future year (or bare month-year) asserted as a
+    completed fact — no forward-looking marker (``by 2030`` / ``target`` /
+    ``forecast`` / ``projected`` / ``fiscal`` / ``set to`` / ``delayed to`` / a
+    ``2025-2030`` range) on the same line — sets ``passed=False`` at P0.
+    A DISTANT-PAST year (< 1950) is INFORMATIONAL only: historical references
+    (e.g. ``founded in 1917``, ``Ada Lovelace ... in 1842``) are plausible in
+    some products, so they are listed in ``details`` prefixed
+    ``informational (historical reference, not a failure)`` but do NOT make the
+    assertion fail (#351 maintainer decision).
     A future year that stands as part of a title/list/guide/ranking/
     publication NAME, an election/event name, or a game/franchise/product/
     series title (e.g. "The Princeton Review's 2027 Best Colleges guide", "the
@@ -897,41 +932,79 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
     Plausible prose years (1950..current year) and forward-looking projections
     pass.  The References section (from the ``## References`` heading) is
     EXCLUDED — legitimate citations carry old years.  URL-embedded 4-digit
-    runs never fire."""
+    runs never fire.  A 4-digit run inside a hex/UUID-like token or a decimal
+    number is not a year (``_is_non_year_number``).  ``severity`` is ``P0``
+    when a future failure exists, else ``P1``."""
     refs = _REFS_HEADING.search(text)
     body = text[: refs.start()] if refs else text
     body = _URL_RE.sub(" ", body)
-    offending: list[str] = []
+    failures: list[str] = []
+    informational: list[str] = []
     for m in _MONTH_YEAR_RE.finditer(body):
+        if _is_non_year_number(body, m):
+            continue
         year = int(m.group("y"))
         if (
             year > _current_year()
             and not _is_forward_looking(body, m)
             and not _is_named_year(body, m)
         ):
-            offending.append(f"future bare month-year {m.group(0)!r} ({year})")
+            failures.append(f"future bare month-year {m.group(0)!r} ({year})")
         elif year < _MIN_PLAUSIBLE_YEAR:
-            offending.append(f"distant-past bare month-year {m.group(0)!r} ({year}) — human review")
+            informational.append(
+                "informational (historical reference, not a failure): "
+                f"distant-past bare month-year {m.group(0)!r} ({year})"
+            )
     for m in _YEAR_RE.finditer(body):
+        if _is_non_year_number(body, m):
+            continue
         year = int(m.group(0))
         if (
             year > _current_year()
             and not _is_forward_looking(body, m)
             and not _is_named_year(body, m)
         ):
-            offending.append(f"future year {year}")
+            failures.append(f"future year {year}")
         elif year < _MIN_PLAUSIBLE_YEAR:
-            offending.append(f"distant-past year {year} — human review")
-    severe = any(o.startswith(("future", "implausible")) for o in offending)
+            informational.append(
+                f"informational (historical reference, not a failure): distant-past year {year}"
+            )
+    severe = bool(failures)
+    notes = "; ".join(dict.fromkeys(failures + informational))
     return AssertionResult(
         "_no_year_hallucination",
-        not offending,
+        not failures,
         "#351",
         "P0" if severe else "P1",
         domain,
         product,
-        "; ".join(dict.fromkeys(offending)) if offending else "no year issues",
+        notes if notes else "no year issues",
     )
+
+
+def _is_non_year_number(text: str, m: re.Match[str]) -> bool:
+    """True when ``m`` (a 4-digit run matched by ``_YEAR_RE`` /
+    ``_MONTH_YEAR_RE``) is NOT a calendar year but rather part of a longer
+    numeric token (#351 tuning):
+      * a decimal number — the run touches a ``.`` with a digit on its far
+        side (``1800.128``);
+      * a hex/UUID-like identifier — the run sits in a hyphenated run of hex
+        characters containing an 8+ hex-digit group
+        (``7c8cc68a-1831-4653-ab65-a2fad98a50fe``).
+    A prose year or a year range (``1893–1953``, ``2025-2030``) is neither
+    adjacent to a decimal point nor part of an 8+ hex run, so it still
+    matches."""
+    if text[m.end() : m.end() + 1] == "." and text[m.end() + 1 : m.end() + 2].isdigit():
+        return True
+    if m.start() >= 2 and text[m.start() - 1] == "." and text[m.start() - 2].isdigit():
+        return True
+    left, right = m.start(), m.end()
+    while left > 0 and text[left - 1] in _HEX_HYPHEN_CHARS:
+        left -= 1
+    while right < len(text) and text[right] in _HEX_HYPHEN_CHARS:
+        right += 1
+    token = text[left:right]
+    return "-" in token and _HEX_RUN_RE.search(token) is not None
 
 
 def _is_forward_looking(text: str, m: re.Match[str]) -> bool:

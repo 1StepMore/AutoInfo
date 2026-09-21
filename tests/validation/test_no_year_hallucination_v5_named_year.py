@@ -5,8 +5,9 @@ gate: a FUTURE year used as part of a title/list/guide/ranking/survey/
 publication NAME ("The Princeton Review's 2027 Best Colleges guide") is a
 legitimate reference — the year names the edition of the guide — not a
 hallucinated fact.  Those must PASS.  Bare future years asserted as
-completed facts ("In 2031, adoption tripled") must STILL fail P0, and
-pre-1950 years ("founded in 1917") must STILL fail P1 "human review".
+completed facts ("In 2031, adoption tripled") must STILL fail P0.  Pre-1950
+years ("founded in 1917") are INFORMATIONAL only (#351 maintainer decision):
+they are listed in ``details`` but do NOT fail the assertion.
 
 Deterministic unit test: no LLM, no network.  Exercises the real
 ``_no_year_hallucination`` paths directly.
@@ -77,14 +78,16 @@ def test_bare_future_month_year_still_p0_fails() -> None:
     assert r.severity == "P0"
 
 
-def test_pre_1950_still_p1_human_review() -> None:
-    """Pre-1950 years ("founded in 1917") still surface P1 "human review"
-    for the human to judge — V4's design intent is preserved by V5."""
+def test_pre_1950_informational_pass() -> None:
+    """Pre-1950 years ("founded in 1917") are INFORMATIONAL, not failures:
+    historical references are legitimate in some products, so the assertion
+    passes at P1 and keeps the find visible in ``details``."""
     r = vm._no_year_hallucination(
         "# T\n\nFounded in 1917, the bank survived two wars.\n",
         "financial-intelligence",
         "report",
     )
-    assert not r.passed
+    assert r.passed, r.details
     assert r.severity == "P1"
-    assert "human review" in r.details
+    assert "informational" in r.details
+    assert "distant-past year 1917" in r.details

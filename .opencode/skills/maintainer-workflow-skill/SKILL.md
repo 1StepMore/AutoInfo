@@ -62,6 +62,13 @@ Close rules:
 - **Wontfix** → close with explicit rationale in this order: thank → explain
   the scope mismatch → suggest a concrete improvement → link relevant docs.
   If the same request recurs, update the documentation so the answer is findable.
+- **Assertion-fix closure** → real-product evidence required (issue #356). When
+  the fix added or changed a `validate` assertion
+  (`src/autoinfo/validation_matrix.py`), run
+  `python3 scripts/real_product_assertions.py --assertions <name> --issue N`.
+  Failures → keep the issue open and apply `needs-real-verification`; clean
+  (exit 0) → attach the generated `--md-out` / `--json-out` as the close
+  evidence (see `GOVERNANCE.md` §Issue closure requires real-product evidence).
 
 ## PR review
 
@@ -180,3 +187,7 @@ Before declaring a maintainer action complete:
 3. Merge: squash-merge used, stale approvals dismissed, no manual history edits.
 4. No MUST NOT constraint from the table above was violated.
 5. First-contributor interaction ended with a welcome and clear next steps.
+6. Assertion-fix closure (#356): the real-product scan
+   (`python3 scripts/real_product_assertions.py --assertions <name> --issue N`)
+   exited 0 and its evidence is attached; otherwise the issue stays open with
+   `needs-real-verification`.

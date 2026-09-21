@@ -97,6 +97,27 @@ A response means a maintainer has acknowledged the report and said what
 happens next, not necessarily that it is resolved. `SECURITY.md` overrides
 these windows with faster commitments for vulnerability reports.
 
+## Issue closure requires real-product evidence
+
+A merged fix is not by itself proof that the reported defect is gone from the
+products the project actually ships. Before closing an issue whose fix added or
+changed a `validate` assertion (`src/autoinfo/validation_matrix.py`), run that
+assertion over the real product tree:
+
+```bash
+python3 scripts/real_product_assertions.py --assertions <name> --issue N
+```
+
+- **Failures reported** → the flagged assertion is not cleared; keep the issue
+  open and apply the `needs-real-verification` label.
+- **Clean (exit 0)** → attach the generated `--md-out` / `--json-out` evidence
+  to the issue as the close artifact.
+
+The scanner is deterministic and offline (no LLM, no network); its exit code is
+the gate (`0` = no P0/P1 failure, `1` = P0/P1 failures, `2` = usage error). This
+closes the loop from issue #356: the maintainer never hand-scans real products
+again.
+
 ## Stale policy
 
 AutoInfo does **not** use an aggressive stale bot, and this is a deliberate,

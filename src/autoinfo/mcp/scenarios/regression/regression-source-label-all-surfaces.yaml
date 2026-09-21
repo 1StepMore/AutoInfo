@@ -14,6 +14,11 @@
 # templates render source_label; the report agent path derives the label per
 # item; and _source_labels_specific scans the WHOLE body.
 #
+# Follow-up precision (#325): the whole-body scan matches only the GENERIC
+# residue (*RSS* / | RSS | / (RSS)); a specific name embedding "RSS" and the
+# #167 mixed-platform theme label ("### RSS" / "- **RSS** —") are legitimate
+# and must PASS.
+#
 # Deterministic (requires_env: []): KBStore + LLM seams are patched in the
 # subprocess (same pattern as tests/output/test_source_label_surfaces.py), so
 # the scenario runs in a bare sandbox — no LLM key, no network.  Runs in an
@@ -371,6 +376,24 @@ steps:
           "## References\n\n1. **A** — https://techcrunch.com/1 (techcrunch)\n"
       )
       assert vm._source_labels_specific(clean, "ai-commercial", "magazine-digest").passed
+
+      # NOT residues (#325 precision): a specific source name embedding "RSS"
+      # and the #167 mixed-platform theme label must PASS.
+      for ok in (
+          "# T\n\n| **Source** | Substack RSS (tech) — Pragmatic Engineer |\n",
+          "# T\n\n**Source**: Substack RSS (tech) — Pragmatic Engineer\n",
+          "# T\n\n### RSS\n\nUpdates and analysis from rss sources.\n",
+          "# T\n\n- **RSS** — Covered in the Deep Dive (4 item(s)).\n",
+      ):
+          rr = vm._source_labels_specific(ok, "ai-commercial", "magazine-digest")
+          assert rr.passed, f"#325 false positive: {rr.details!r}"
+      # A parenthetical (RSS) citation label is still residue.
+      r3 = vm._source_labels_specific(
+          "# T\n\n## References\n\n1. **A** — https://x.com (RSS)\n",
+          "ai-commercial",
+          "magazine-digest",
+      )
+      assert not r3.passed, f"(RSS) citation escaped: {r3.details!r}"
       print("SOURCE_SURFACE_OK")
       '
     expect:

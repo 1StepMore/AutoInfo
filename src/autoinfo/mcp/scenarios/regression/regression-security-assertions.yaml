@@ -5,9 +5,10 @@
 # external-lib error text).  #351 codified them as 4 deterministic assertions
 # in ASSERTION_FUNCS so every matrix run checks them:
 #
-#   _no_year_hallucination   — future (> current year) / pre-1950 / bare
-#                              month-year "dead date" forms in product PROSE
-#                              (References section excluded).
+#   _no_year_hallucination   — future (> current year) / bare month-year
+#                              "dead date" forms in product PROSE fail P0;
+#                              pre-1950 (< 1950) years are INFORMATIONAL and
+#                              pass (References section excluded).
 #   _no_code_or_key_leak     — fenced code blocks + sk-/AIza/AKIA/ghp_/eyJ
 #                              key shapes + long hex (>=32) / base64 (>=40).
 #   _no_broken_reference     — empty/scheme-less [View Source] targets and
@@ -37,18 +38,17 @@ steps:
           _no_broken_reference, _no_external_error_text,
       )
 
-      # Year hallucination: future year, pre-1950, out-of-range bare
-      # month-year (plausible bare month-years like "July 2023" are prose —
-      # see regression-351-year-hallucination-tuning.yaml).
+      # Year hallucination: future year and future bare month-year fail P0;
+      # pre-1950 is informational only (plausible bare month-years like
+      # "July 2023" are prose — see regression-351-year-hallucination-tuning).
       assert not _no_year_hallucination(
           "# T\n\nIn 2031, adoption tripled\n", "d", "report"
       ).passed
       assert not _no_year_hallucination(
-          "# T\n\na 1947 patent\n", "d", "report"
-      ).passed
-      assert not _no_year_hallucination(
           "# T\n\nJuly 2031 marked a turning point\n", "d", "report"
       ).passed
+      r = _no_year_hallucination("# T\n\na 1947 patent\n", "d", "report")
+      assert r.passed and "informational" in r.details, r.details
 
       # Code / key leak: fenced block, sk- key, JWT.
       assert not _no_code_or_key_leak(

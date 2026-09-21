@@ -1,0 +1,142 @@
+# Regression #366: domain→default-TTL mapping lived in TWO places and
+# disagreed.  ``DomainConfig.__post_init__`` mapped ``medical-research`` to
+# 180 only when a config file containing the domain was loaded, while the
+# digest / tutorial / KB-search consumers fell back to a hardcoded
+# ``ttl_days = 90`` when no config file was present — so the SAME domain was
+# judged stale differently on different machines.
+#
+# The fix centralizes the mapping in ``DOMAIN_DEFAULT_TTL_DAYS`` +
+# ``resolve_domain_freshness`` (src/autoinfo/config.py) and routes all three
+# consumers through it.  This scenario proves, deterministically, that the
+# resolver returns 180 for medical-research BOTH with and without a config
+# file, that unknown domains fall back to 90, and that an explicit configured
+# ttl_days wins.
+#
+# Deterministic (requires_env: []): no LLM, no network.  Each step runs in an
+# ABSOLUTE temp cwd with HOME redirected into that temp tree, so the machine's
+# real ``.autoinfo/config.yaml`` can never influence the result.
+name: regression-366-domain-ttl-single-source
+description: "Regression #366: one resolver for domain default TTL — medical-research is 180 with and without a config file, unknown domains are 90"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.3
+regression: true
+regression_issue: "#366"
+requires_env: []
+steps:
+  - name: "medical-research resolves to 180 with NO config file; unknown is 90"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from autoinfo.config import resolve_domain_freshness
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-366-a-"))
+      old_cwd = os.getcwd()
+      old_home = os.environ.get("HOME")
+      try:
+          os.chdir(tmp)
+          os.environ["HOME"] = str(tmp / "home")
+          assert resolve_domain_freshness("medical-research") == (180, 0.5), \
+              resolve_domain_freshness("medical-research")
+          assert resolve_domain_freshness("totally-unknown") == (90, 0.5), \
+              resolve_domain_freshness("totally-unknown")
+          print("DOMAIN_TTL_DEFAULT_OK")
+      finally:
+          os.chdir(old_cwd)
+          if old_home is None:
+              os.environ.pop("HOME", None)
+          else:
+              os.environ["HOME"] = old_home
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOMAIN_TTL_DEFAULT_OK"]
+
+  - name: "medical-research is still 180 with a config file containing the domain"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      import yaml
+      from autoinfo.config import resolve_domain_freshness
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-366-b-"))
+      old_cwd = os.getcwd()
+      old_home = os.environ.get("HOME")
+      try:
+          cfg_dir = tmp / ".autoinfo"
+          cfg_dir.mkdir(parents=True)
+          cfg = {
+              "project": {"name": "test"},
+              "llm": {"provider": "openai", "model": "deepseek-v4-flash"},
+              "domains": [{"name": "medical-research", "active": True,
+                           "sources": [], "topics": []}],
+          }
+          (cfg_dir / "config.yaml").write_text(
+              yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False),
+              encoding="utf-8")
+          os.chdir(tmp)
+          os.environ["HOME"] = str(tmp / "home")
+          assert resolve_domain_freshness("medical-research") == (180, 0.5), \
+              resolve_domain_freshness("medical-research")
+          print("DOMAIN_TTL_CONFIG_OK")
+      finally:
+          os.chdir(old_cwd)
+          if old_home is None:
+              os.environ.pop("HOME", None)
+          else:
+              os.environ["HOME"] = old_home
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOMAIN_TTL_CONFIG_OK"]
+
+  - name: "an explicit configured ttl_days wins over the domain default"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      import yaml
+      from autoinfo.config import resolve_domain_freshness
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-366-c-"))
+      old_cwd = os.getcwd()
+      old_home = os.environ.get("HOME")
+      try:
+          cfg_dir = tmp / ".autoinfo"
+          cfg_dir.mkdir(parents=True)
+          cfg = {
+              "project": {"name": "test"},
+              "llm": {"provider": "openai", "model": "deepseek-v4-flash"},
+              "domains": [{"name": "medical-research", "active": True,
+                           "sources": [], "topics": [], "ttl_days": 42}],
+          }
+          (cfg_dir / "config.yaml").write_text(
+              yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False),
+              encoding="utf-8")
+          os.chdir(tmp)
+          os.environ["HOME"] = str(tmp / "home")
+          assert resolve_domain_freshness("medical-research") == (42, 0.5), \
+              resolve_domain_freshness("medical-research")
+          print("DOMAIN_TTL_EXPLICIT_OK")
+      finally:
+          os.chdir(old_cwd)
+          if old_home is None:
+              os.environ.pop("HOME", None)
+          else:
+              os.environ["HOME"] = old_home
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOMAIN_TTL_EXPLICIT_OK"]

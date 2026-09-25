@@ -1,0 +1,193 @@
+# Regression #378 — the agent-outbox drain worker must be contained, tracked,
+# joined before interpreter finalization, and must not be scheduled after
+# shutdown begins.
+#
+# Defect: `enqueue_agent_notification` -> `_schedule_drain()` started a fresh
+# `daemon=True` thread named `agent-outbox-drain` and discarded its handle.
+# `_drain_outbox` had no exception boundary, so an unexpected drain failure
+# (e.g. a corrupt outbox payload row) escaped into `threading.excepthook` as a
+# buffered-stderr traceback. When that traceback overlapped interpreter
+# finalization, CPython hit `Fatal Python error: _enter_buffered_busy` and
+# aborted (CI job 106313918530 exited 134). Nothing stopped or joined the
+# worker before finalization.
+#
+# This scenario drives the REAL module in isolated subprocesses (no mocks of
+# the worker target, no network, no LLM key):
+#   1. corrupt outbox row -> real `_drain_outbox` failure -> no escaped thread
+#      exception (RED on HEAD: JSONDecodeError reaches `threading.excepthook`).
+#   2. a scheduled worker is tracked in `_drain_threads` and a shutdown join
+#      removes it (RED on HEAD: the lifecycle interface does not exist).
+#   3. `_schedule_drain()` after `_shutdown_event` is set is suppressed — a
+#      seeded valid pending row is never drained (RED on HEAD: no guard).
+#
+# The lifecycle interface bound here is the one locked by
+# `tests/mcp/test_agent_callback_shutdown.py`: `_DRAIN_JOIN_TIMEOUT`,
+# `_drain_threads`, `_shutdown_event`, `_drain_worker`,
+# `_join_drain_threads(timeout=...)`, `_register_shutdown_hook()`.
+name: regression-378-agent-outbox-shutdown
+description: "Regression #378: agent outbox drain worker is contained (no escaped thread exception on a corrupt outbox row), tracked and joined on shutdown, and never scheduled after shutdown begins"
+category: failure
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.5
+regression: true
+regression_issue: "#378"
+requires_env: []
+timeout: 90
+steps:
+  - name: "corrupt outbox row -> real drain failure is contained (no escaped thread exception)"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile, threading
+
+      tmp = tempfile.mkdtemp(prefix="ai378-containment-")
+      old = os.getcwd()
+      os.chdir(tmp)
+      os.environ["HOME"] = tmp
+      os.environ["AUTOINFO_CONFIG_DIR"] = tmp
+      os.environ["AUTOINFO_HOME"] = tmp
+
+      escaped = []
+
+      def _record(args):
+          escaped.append(type(args.exc_value).__name__)
+
+      threading.excepthook = _record
+      try:
+          import autoinfo.agent_callback as ac
+          with ac._connect() as conn:
+              conn.execute(
+                  "INSERT INTO agent_outbox (event, payload, schema_version, trace_id, product_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  ("new_digest", "{corrupt-json", 1, "trace-378-corrupt", "", "pending", "2026-09-25T00:00:00+00:00"),
+              )
+              conn.commit()
+          row_id = ac.enqueue_agent_notification(event="new_digest", payload={"probe": 1}, trace_id="trace-378-probe")
+          assert row_id > 0, "probe outbox row was not persisted"
+          for t in threading.enumerate():
+              if t.name == "agent-outbox-drain":
+                  t.join(30.0)
+      finally:
+          threading.excepthook = threading.__excepthook__
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+
+      assert escaped == [], "escaped thread exception(s): " + repr(escaped)
+      print("AGENT_OUTBOX_CONTAINMENT_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AGENT_OUTBOX_CONTAINMENT_OK"]
+
+  - name: "scheduled drain worker is tracked and shutdown joins + removes it"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import json, os, shutil, sqlite3, tempfile, threading
+      from pathlib import Path
+
+      tmp = tempfile.mkdtemp(prefix="ai378-lifecycle-")
+      old = os.getcwd()
+      os.chdir(tmp)
+      os.environ["HOME"] = tmp
+      os.environ["AUTOINFO_CONFIG_DIR"] = tmp
+      os.environ["AUTOINFO_HOME"] = tmp
+
+      blocker = None
+      try:
+          import autoinfo.agent_callback as ac
+          for attr in ("_DRAIN_JOIN_TIMEOUT", "_drain_threads", "_shutdown_event", "_drain_worker", "_join_drain_threads", "_register_shutdown_hook"):
+              assert hasattr(ac, attr), "lifecycle interface missing: " + attr
+          with ac._connect() as conn:
+              conn.execute(
+                  "INSERT INTO agent_outbox (event, payload, schema_version, trace_id, product_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  ("new_digest", json.dumps({"probe": 2}), 1, "trace-378-life", "", "pending", "2026-09-25T00:00:00+00:00"),
+              )
+              conn.commit()
+          blocker = sqlite3.connect(str(Path.cwd() / "autoinfo.db"), isolation_level=None)
+          blocker.execute("BEGIN IMMEDIATE")
+          ac._register_shutdown_hook()
+          ac._schedule_drain()
+          registry = ac._drain_threads
+          if isinstance(registry, dict):
+              tracked = [v for v in registry.values() if isinstance(v, threading.Thread)]
+          else:
+              tracked = [t for t in registry if isinstance(t, threading.Thread)]
+          assert tracked, "scheduled drain worker was not tracked in _drain_threads"
+          worker = tracked[0]
+          ac._shutdown_event.set()
+          blocker.rollback()
+          blocker.close()
+          blocker = None
+          ac._join_drain_threads(timeout=ac._DRAIN_JOIN_TIMEOUT)
+          assert not worker.is_alive(), "shutdown did not join the drain worker"
+          assert worker not in ac._drain_threads, "joined worker was left in _drain_threads"
+          print("AGENT_OUTBOX_LIFECYCLE_OK")
+      finally:
+          if blocker is not None:
+              blocker.close()
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AGENT_OUTBOX_LIFECYCLE_OK"]
+
+  - name: "scheduling after shutdown begins is suppressed (no drain runs)"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile, threading
+
+      tmp = tempfile.mkdtemp(prefix="ai378-shutdown-")
+      old = os.getcwd()
+      os.chdir(tmp)
+      os.environ["HOME"] = tmp
+      os.environ["AUTOINFO_CONFIG_DIR"] = tmp
+      os.environ["AUTOINFO_HOME"] = tmp
+
+      try:
+          import autoinfo.agent_callback as ac
+          for attr in ("_drain_threads", "_shutdown_event", "_schedule_drain", "_register_shutdown_hook"):
+              assert hasattr(ac, attr), "lifecycle interface missing: " + attr
+          ac._register_shutdown_hook()
+          with ac._connect() as conn:
+              conn.execute(
+                  "INSERT INTO agent_outbox (event, payload, schema_version, trace_id, product_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  ("new_digest", "{}", 1, "trace-378-gate-valid", "", "pending", "2026-09-25T00:00:00+00:00"),
+              )
+              conn.execute(
+                  "INSERT INTO agent_outbox (event, payload, schema_version, trace_id, product_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  ("new_digest", "{corrupt-json", 1, "trace-378-gate-corrupt", "", "pending", "2026-09-25T00:00:00+00:00"),
+              )
+              conn.commit()
+          ac._shutdown_event.set()
+          ac._schedule_drain()
+          live = [t for t in threading.enumerate() if t.name == "agent-outbox-drain"]
+          for t in live:
+              t.join(30.0)
+          assert not live, "a drain worker started after shutdown began"
+          registry = ac._drain_threads
+          if isinstance(registry, dict):
+              tracked = [v for v in registry.values() if isinstance(v, threading.Thread)]
+          else:
+              tracked = [t for t in registry if isinstance(t, threading.Thread)]
+          assert not tracked, "a drain worker was tracked after shutdown began"
+          with ac._connect() as conn:
+              row = conn.execute("SELECT status FROM agent_outbox WHERE trace_id = ?", ("trace-378-gate-valid",)).fetchone()
+          assert row is not None, "valid outbox row disappeared"
+          assert row["status"] == "pending", "drain ran after shutdown: valid row status=" + str(row["status"])
+          print("AGENT_OUTBOX_SHUTDOWN_GUARD_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AGENT_OUTBOX_SHUTDOWN_GUARD_OK"]

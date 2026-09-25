@@ -35,6 +35,8 @@ per-test ``ac_module`` fixture redirects ``_default_db_path``).
 
 from __future__ import annotations
 
+import atexit
+import logging
 import threading
 from typing import Any
 
@@ -269,3 +271,224 @@ def test_thread_spy_observes_scheduling_when_shutdown_is_clear(ac_module, monkey
         assert started, "spy did not observe Thread.start()"
     finally:
         _reset_drain_lifecycle(ac_module)
+
+
+# ---------------------------------------------------------------------------
+# (d) Bounded join: current-thread skip and expired-budget break
+# ---------------------------------------------------------------------------
+
+
+def test_join_drain_threads_skips_current_thread(ac_module):
+    """Given the registry holds the current thread, When joining, Then skip it.
+
+    ``_join_drain_threads`` must never join the calling thread — a self-join
+    would raise. Registering the current thread directly exercises the skip
+    deterministically, without racing a real worker.
+    """
+    _reset_drain_lifecycle(ac_module)
+    try:
+        ac._drain_threads.add(threading.current_thread())
+
+        # When: joining a registry that contains only the current thread.
+        joined = ac._join_drain_threads(timeout=1.0)
+
+        # Then: nothing was joined and the caller did not deadlock.
+        assert joined == 0, "joining the current thread must be a no-op"
+    finally:
+        _reset_drain_lifecycle(ac_module)
+
+
+def test_join_drain_threads_honours_expired_budget(ac_module):
+    """Given an expired budget and a live worker, When joining, Then return promptly.
+
+    The zero-remaining branch must break out instead of joining the still-live
+    worker, so a worker that outlives the join budget never makes shutdown
+    hang. The worker is a real thread blocked on an :class:`threading.Event`.
+    """
+    release = threading.Event()
+    started = threading.Event()
+
+    def _blocking_target() -> None:
+        started.set()
+        release.wait(10.0)
+
+    _reset_drain_lifecycle(ac_module)
+    worker = threading.Thread(target=_blocking_target, daemon=True)
+    try:
+        worker.start()
+        assert started.wait(5.0), "join-probe worker never started"
+        ac._drain_threads.add(worker)
+
+        # When: the join budget is already exhausted.
+        joined = ac._join_drain_threads(timeout=0.0)
+
+        # Then: no join was attempted and the live worker stays tracked.
+        assert joined == 0, "expired-budget join reported a join it did not perform"
+        assert worker.is_alive(), "expired-budget join unexpectedly waited for the worker"
+        assert worker in ac._drain_threads, "live worker was pruned from the registry"
+    finally:
+        release.set()
+        worker.join(5.0)
+        _reset_drain_lifecycle(ac_module)
+
+
+# ---------------------------------------------------------------------------
+# (e) Scheduling race + start() failure containment
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_drain_race_under_lock_starts_no_worker(ac_module, monkeypatch):
+    """Given shutdown flips during construction, When scheduling, Then no worker runs.
+
+    ``_schedule_drain`` re-checks ``_shutdown_event`` under the registry lock
+    after the thread is built and before it is published/started. The fake
+    thread flips shutdown inside ``__init__`` — the deterministic injection
+    point for shutdown winning the race after the fast pre-check.
+    """
+    started: list[threading.Thread] = []
+
+    class _ShutdownRacingThread(threading.Thread):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            ac._shutdown_event.set()
+            super().__init__(*args, **kwargs)
+
+        def start(self) -> None:
+            started.append(self)
+            super().start()
+
+    _reset_drain_lifecycle(ac_module)
+    monkeypatch.setattr(threading, "Thread", _ShutdownRacingThread)
+    try:
+        assert not ac._shutdown_event.is_set(), "test precondition: shutdown must start clear"
+
+        # When: scheduling begins and shutdown wins the race under the lock.
+        ac._schedule_drain()
+
+        # Then: the worker was neither started nor left tracked.
+        assert started == [], "worker started despite shutdown winning the race"
+        assert ac._drain_threads == set(), "raced worker was left in the registry"
+    finally:
+        _reset_drain_lifecycle(ac_module)
+
+
+def test_schedule_drain_start_failure_is_contained_and_untracked(ac_module, monkeypatch, caplog):
+    """Given ``Thread.start()`` fails, When scheduling, Then warn, untrack, never raise.
+
+    A failed start must not leak the worker into ``_drain_threads`` and must
+    not propagate out of ``_schedule_drain`` — the enqueue path calls it
+    fire-and-forget.
+    """
+    constructed: list[threading.Thread] = []
+
+    class _StartFailingThread(threading.Thread):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            constructed.append(self)
+
+        def start(self) -> None:
+            raise RuntimeError("synthetic thread start failure")
+
+    _reset_drain_lifecycle(ac_module)
+    monkeypatch.setattr(threading, "Thread", _StartFailingThread)
+    caplog.set_level(logging.WARNING, logger=ac.logger.name)
+    try:
+        # When: start() raises. The call must not propagate the error.
+        ac._schedule_drain()
+
+        # Then: the failed worker is not tracked.
+        assert constructed, "start-failure test never constructed a thread"
+        assert ac._drain_threads == set(), (
+            f"failed-start worker was left in the registry: {[t.name for t in ac._drain_threads]}"
+        )
+    finally:
+        _reset_drain_lifecycle(ac_module)
+
+    assert any(
+        record.levelno == logging.WARNING and record.name == ac.logger.name
+        for record in caplog.records
+    ), "failed worker start was not logged"
+
+
+# ---------------------------------------------------------------------------
+# (f) Shutdown hook: handler + registration fallback
+# ---------------------------------------------------------------------------
+
+
+def test_shutdown_handler_sets_event_and_joins(ac_module):
+    """Given no tracked workers, When the shutdown hook runs, Then event set + join safe.
+
+    The handler is the atexit entry point: it must flip shutdown state and run
+    the bounded join. An empty registry makes the join an immediate,
+    deterministic no-op.
+    """
+    _reset_drain_lifecycle(ac_module)
+    try:
+        assert not ac._shutdown_event.is_set(), "test precondition: shutdown must start clear"
+
+        # When: the shutdown hook runs.
+        ac._shutdown_handler()
+
+        # Then: shutdown state is latched.
+        assert ac._shutdown_event.is_set(), "shutdown handler did not set the shutdown event"
+    finally:
+        _reset_drain_lifecycle(ac_module)
+
+
+def test_register_shutdown_hook_falls_back_to_atexit(ac_module, monkeypatch, caplog):
+    """Given ``threading._register_atexit`` raises, When registering, Then atexit used.
+
+    The fallback keeps the shutdown join wired on runtimes where the private
+    threading hook is unavailable or fails.
+    """
+    registered: list[Any] = []
+
+    def _raising_register(callback: Any) -> None:
+        raise RuntimeError("synthetic threading._register_atexit failure")
+
+    def _recording_atexit(callback: Any) -> Any:
+        registered.append(callback)
+        return callback
+
+    monkeypatch.setattr(ac, "_shutdown_hook_registered", False)
+    monkeypatch.setattr(threading, "_register_atexit", _raising_register)
+    monkeypatch.setattr(atexit, "register", _recording_atexit)
+    caplog.set_level(logging.WARNING, logger=ac.logger.name)
+
+    # When: registration runs and the private threading hook fails.
+    ac._register_shutdown_hook()
+
+    # Then: the atexit fallback registered the real shutdown handler.
+    assert registered == [ac._shutdown_handler], (
+        "atexit fallback did not register the shutdown handler"
+    )
+    assert ac._shutdown_hook_registered is True, "registration was not latched"
+    assert any(
+        record.levelno == logging.WARNING and record.name == ac.logger.name
+        for record in caplog.records
+    ), "threading._register_atexit failure was not logged"
+
+
+def test_register_shutdown_hook_contains_atexit_failure(ac_module, monkeypatch, caplog):
+    """Given both registrars fail, When registering, Then import never breaks.
+
+    Registration is best-effort: an unavailable threading hook plus a failing
+    ``atexit.register`` must be contained so module import still succeeds.
+    """
+    monkeypatch.setattr(ac, "_shutdown_hook_registered", False)
+    monkeypatch.delattr(threading, "_register_atexit", raising=False)
+    monkeypatch.setattr(
+        atexit,
+        "register",
+        lambda callback: (_ for _ in ()).throw(RuntimeError("synthetic atexit.register failure")),
+    )
+    caplog.set_level(logging.WARNING, logger=ac.logger.name)
+
+    # When: no registrar is usable. The call must not raise.
+    ac._register_shutdown_hook()
+
+    # Then: the failure is contained and logged.
+    assert ac._shutdown_hook_registered is True, "registration was not latched"
+    assert any(
+        record.levelno == logging.WARNING and record.name == ac.logger.name
+        for record in caplog.records
+    ), "atexit.register failure was not logged"

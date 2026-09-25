@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.1](https://github.com/1StepMore/AutoInfo/compare/v1.13.0...v1.13.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **agent-callback:** contain, track, and join the outbox drain worker ([#378](https://github.com/1StepMore/AutoInfo/issues/378)) ([#382](https://github.com/1StepMore/AutoInfo/issues/382)) ([787fad6](https://github.com/1StepMore/AutoInfo/commit/787fad610d91456d4b5f746add8ed6a55cadd9bb))
+
 ## [1.13.0](https://github.com/1StepMore/AutoInfo/compare/v1.12.1...v1.13.0) (2026-09-21)
 
 

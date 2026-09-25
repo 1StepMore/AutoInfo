@@ -25,10 +25,13 @@ Usage::
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import sqlite3
+import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,6 +92,25 @@ _delivery_failures_total = 0
 _delivery_failures_lock = threading.Lock()
 # Serializes outbox drains so concurrent drains never double-deliver.
 _drain_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Drain-worker lifecycle (issue #378)
+#
+# Every scheduled drain worker is tracked until it terminates. Registration
+# happens under ``_drain_registry_lock`` so a concurrent shutdown can never
+# miss a live worker: it either observes the registered thread and joins it,
+# or wins the race before the thread is published.
+# ---------------------------------------------------------------------------
+
+# Bounded budget for joining live drain workers during shutdown.
+_DRAIN_JOIN_TIMEOUT = 5.0
+
+_drain_threads: set[threading.Thread] = set()
+_drain_registry_lock = threading.Lock()
+# Set by the shutdown hook; once set, ``_schedule_drain`` starts no new worker.
+_shutdown_event = threading.Event()
+# Idempotence guard for ``_register_shutdown_hook``.
+_shutdown_hook_registered = False
 
 
 # ---------------------------------------------------------------------------
@@ -167,17 +189,12 @@ def register_agent_callback(agent_url: str, events: list[str]) -> str:
     """
     if not agent_url.startswith(("http://", "https://")):
         raise ValueError(
-            (
-                f"Invalid agent_url: must start with http:// or https://, "
-                f"got {agent_url!r}"
-            )
+            (f"Invalid agent_url: must start with http:// or https://, got {agent_url!r}")
         )
 
     invalid = [e for e in events if e not in _VALID_EVENTS]
     if invalid:
-        raise ValueError(
-            f"Invalid events: {invalid}. Valid events: {sorted(_VALID_EVENTS)}"
-        )
+        raise ValueError(f"Invalid events: {invalid}. Valid events: {sorted(_VALID_EVENTS)}")
 
     callback_id = str(uuid.uuid4())[:8]
     now = _now_utc()
@@ -186,8 +203,8 @@ def register_agent_callback(agent_url: str, events: list[str]) -> str:
     with _connect() as conn:
         _ = conn.execute(
             (
-                "INSERT INTO agent_callbacks (callback_id, agent_url, events, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)"
+                "INSERT INTO agent_callbacks (callback_id, agent_url, events, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
             ),
             (callback_id, agent_url, events_json, now, now),
         )
@@ -195,7 +212,9 @@ def register_agent_callback(agent_url: str, events: list[str]) -> str:
 
     logger.info(
         "Registered agent callback %s for %s (events: %s)",
-        callback_id, agent_url, events,
+        callback_id,
+        agent_url,
+        events,
     )
     return callback_id
 
@@ -344,9 +363,7 @@ def enqueue_agent_notification(
     try:
         payload_json = json.dumps(payload, default=str)
     except (TypeError, ValueError):
-        logger.warning(
-            "Payload for event %r is not JSON-serialisable", event, exc_info=True
-        )
+        logger.warning("Payload for event %r is not JSON-serialisable", event, exc_info=True)
         return 0
 
     now = _now_utc()
@@ -361,16 +378,19 @@ def enqueue_agent_notification(
                     "VALUES (?, ?, ?, ?, ?, ?, ?)"
                 ),
                 (
-                    event, payload_json, _SCHEMA_VERSION, trace_id, product_id,
-                    _OUTBOX_STATUS_PENDING, now,
+                    event,
+                    payload_json,
+                    _SCHEMA_VERSION,
+                    trace_id,
+                    product_id,
+                    _OUTBOX_STATUS_PENDING,
+                    now,
                 ),
             )
             conn.commit()
             row_id = int(cursor.lastrowid or 0)
     except Exception:
-        logger.warning(
-            "Failed to persist outbox row for event %r", event, exc_info=True
-        )
+        logger.warning("Failed to persist outbox row for event %r", event, exc_info=True)
         return 0
 
     _schedule_drain()
@@ -393,9 +413,7 @@ def requeue_undelivered() -> int:
             conn.commit()
             return int(cursor.rowcount or 0)
     except Exception:
-        logger.warning(
-            "Failed to requeue undelivered outbox rows", exc_info=True
-        )
+        logger.warning("Failed to requeue undelivered outbox rows", exc_info=True)
         return 0
 
 
@@ -413,14 +431,124 @@ def list_outbox(limit: int = 50) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def _drain_worker() -> None:
+    """Drain the outbox on a tracked daemon worker, containing failures.
+
+    An uncontained drain traceback written to buffered stderr while the
+    interpreter finalizes triggers CPython's ``_enter_buffered_busy`` fatal
+    path (issue #378). Contains ``Exception`` — never ``BaseException``, so
+    ``SystemExit``/``KeyboardInterrupt`` still propagate — and records the
+    warning only outside shutdown/finalization, where it is diagnostically
+    meaningful. Always removes itself from the registry.
+    """
+    try:
+        _drain_outbox()
+    except Exception:
+        if not _shutdown_event.is_set() and not sys.is_finalizing():
+            logger.warning(
+                "Agent outbox drain worker failed; outbox rows remain pending",
+                exc_info=True,
+            )
+    finally:
+        with _drain_registry_lock:
+            _drain_threads.discard(threading.current_thread())
+
+
 def _schedule_drain() -> None:
-    """Start a daemon worker thread that drains the outbox."""
+    """Start a tracked daemon worker that drains the outbox.
+
+    Never raises into the caller: an already-begun shutdown suppresses
+    scheduling, and a ``start()`` failure is logged and unwound. The worker
+    is registered before ``start()`` under the registry lock, and the
+    shutdown state is re-checked under that same lock — so a concurrent
+    shutdown either sees the worker and joins it, or wins the race before it
+    is ever published.
+    """
+    if _shutdown_event.is_set():
+        return
     thread = threading.Thread(
-        target=_drain_outbox,
+        target=_drain_worker,
         name="agent-outbox-drain",
         daemon=True,
     )
-    thread.start()
+    with _drain_registry_lock:
+        if _shutdown_event.is_set():
+            return
+        _drain_threads.add(thread)
+        try:
+            thread.start()
+        except (RuntimeError, OSError):
+            _drain_threads.discard(thread)
+            logger.warning("Failed to start agent outbox drain worker", exc_info=True)
+
+
+def _join_drain_threads(timeout: float = _DRAIN_JOIN_TIMEOUT) -> int:
+    """Join live tracked drain workers within *timeout*; return how many joined.
+
+    The registry is snapshotted under ``_drain_registry_lock``, but each
+    worker is joined **outside** the lock: a worker's ``finally`` needs that
+    lock, so joining while holding it would deadlock. Terminated entries are
+    pruned from the registry afterwards.
+    """
+    deadline = time.monotonic() + timeout
+    with _drain_registry_lock:
+        snapshot = list(_drain_threads)
+    joined = 0
+    for thread in snapshot:
+        if thread is threading.current_thread() or not thread.is_alive():
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        thread.join(remaining)
+        if not thread.is_alive():
+            joined += 1
+    with _drain_registry_lock:
+        for thread in list(_drain_threads):
+            if not thread.is_alive():
+                _drain_threads.discard(thread)
+    return joined
+
+
+def _shutdown_handler() -> None:
+    """Shutdown hook: stop scheduling and bounded-join live drain workers.
+
+    Deliberately silent — logging from a shutdown/atexit hook overlaps
+    interpreter finalization and can itself deadlock on buffered stdio, the
+    exact failure mode #378 removes.
+    """
+    _shutdown_event.set()
+    _ = _join_drain_threads()
+
+
+def _register_shutdown_hook() -> None:
+    """Register the shutdown hook once, before interpreter finalization.
+
+    Prefers ``threading._register_atexit`` — invoked by ``threading._shutdown``
+    before non-daemon threads are joined and before stdio teardown, the
+    earliest safe join point — and falls back to ``atexit`` where that private
+    hook is unavailable. Registration failures are contained so an
+    unregistered hook never breaks module import; containment in
+    ``_drain_worker`` remains the primary defense.
+    """
+    global _shutdown_hook_registered
+    if _shutdown_hook_registered:
+        return
+    _shutdown_hook_registered = True
+    register_atexit = getattr(threading, "_register_atexit", None)
+    if register_atexit is not None:
+        try:
+            register_atexit(_shutdown_handler)
+            return
+        except (AttributeError, RuntimeError):
+            logger.warning(
+                "threading._register_atexit unavailable; using atexit",
+                exc_info=True,
+            )
+    try:
+        _ = atexit.register(_shutdown_handler)
+    except (AttributeError, RuntimeError):
+        logger.warning("Failed to register agent outbox shutdown hook", exc_info=True)
 
 
 def _update_outbox_status(
@@ -433,15 +561,12 @@ def _update_outbox_status(
     try:
         with _connect() as conn:
             conn.execute(
-                "UPDATE agent_outbox SET status = ?, delivered_at = ?, "
-                "last_error = ? WHERE id = ?",
+                "UPDATE agent_outbox SET status = ?, delivered_at = ?, last_error = ? WHERE id = ?",
                 (status, delivered_at, last_error, row_id),
             )
             conn.commit()
     except Exception:
-        logger.warning(
-            "Failed to update outbox row %s", row_id, exc_info=True
-        )
+        logger.warning("Failed to update outbox row %s", row_id, exc_info=True)
 
 
 def _drain_outbox() -> None:
@@ -471,9 +596,7 @@ def _drain_outbox() -> None:
         target_by_event: dict[str, list[tuple[str, str]]] = {}
         for cb in cb_rows:
             for ev in json.loads(cb["events"]):
-                target_by_event.setdefault(ev, []).append(
-                    (cb["callback_id"], cb["agent_url"])
-                )
+                target_by_event.setdefault(ev, []).append((cb["callback_id"], cb["agent_url"]))
 
         with httpx.Client(timeout=10.0) as client:
             for row in rows:
@@ -486,9 +609,7 @@ def _drain_outbox() -> None:
                 }
                 subs = target_by_event.get(row["event"], [])
                 if not subs:
-                    _update_outbox_status(
-                        row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc()
-                    )
+                    _update_outbox_status(row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc())
                     continue
                 delivered = True
                 for callback_id, agent_url in subs:
@@ -501,22 +622,25 @@ def _drain_outbox() -> None:
                         _ = resp.raise_for_status()
                         logger.info(
                             "Notified agent %s for event %s: HTTP %s",
-                            callback_id, row["event"], resp.status_code,
+                            callback_id,
+                            row["event"],
+                            resp.status_code,
                         )
                     except Exception:
                         delivered = False
                         logger.warning(
                             "Failed to notify agent %s at %s (outbox row %s)",
-                            callback_id, agent_url, row["id"],
+                            callback_id,
+                            agent_url,
+                            row["id"],
                             exc_info=True,
                         )
                 if delivered:
-                    _update_outbox_status(
-                        row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc()
-                    )
+                    _update_outbox_status(row["id"], _OUTBOX_STATUS_DELIVERED, _now_utc())
                 else:
                     _update_outbox_status(
-                        row["id"], _OUTBOX_STATUS_FAILED,
+                        row["id"],
+                        _OUTBOX_STATUS_FAILED,
                         last_error="delivery failed",
                     )
                     global _delivery_failures_total
@@ -546,11 +670,12 @@ def _startup_requeue() -> None:
         pass
     if requeued or undelivered:
         logger.info(
-            "Startup: %d requeued, %d undelivered agent outbox row(s); "
-            "scheduling drain",
-            requeued, undelivered,
+            "Startup: %d requeued, %d undelivered agent outbox row(s); scheduling drain",
+            requeued,
+            undelivered,
         )
         _schedule_drain()
 
 
+_register_shutdown_hook()
 _startup_requeue()

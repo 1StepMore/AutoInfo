@@ -462,9 +462,11 @@ def test_concurrent_outbox_writes_no_lost_events(ac_module, monkeypatch):
     concurrency) hit ``sqlite3.OperationalError: database is locked`` on the
     outbox INSERT because ``_connect()`` set no ``busy_timeout`` — SQLite's
     default 0 makes a write fail immediately under WAL contention, and
-    ``enqueue_agent_notification`` swallows the error returning 0, silently
-    dropping the event.  With the KB pipeline's busy_timeout applied, the
-    writers wait for the lock instead.
+    ``enqueue_agent_notification`` swallowed the error, silently dropping the
+    event. With the KB pipeline's busy_timeout applied, the writers wait for
+    the lock instead. Since #395 a dropped row returns
+    ``_OUTBOX_PERSIST_FAILED`` (-1), not 0, so ``r > 0`` below now fails for
+    both "dropped" and "returned a bogus id" — the guard is strictly tighter.
     """
     import threading
 

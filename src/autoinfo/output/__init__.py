@@ -122,7 +122,13 @@ def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
     The event is persisted to the durable outbox (SQLite) BEFORE any
     delivery attempt; a background worker performs the HTTP POST. This
     hook NEVER raises — generation success is inviolable. Failures are
-    logged and counted via the ``delivery_failures_total`` metric.
+    logged and counted via the ``outbox_persist_failures_total`` metric
+    (a row lost here never reaches the drain, so ``delivery_failures_total``
+    cannot observe it).
+
+    The return value is deliberately discarded: a lost notification must not
+    fail product generation. That is why the loss is counted and logged with
+    ``product_id`` rather than raised (#395).
     """
     try:
         from autoinfo.agent_callback import enqueue_agent_notification
@@ -409,6 +415,7 @@ _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
         "learning objectives",
         "main findings",
         "introduction",
+        "key takeaways",
     ),
     "summary": (
         "summary",
@@ -427,6 +434,7 @@ _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
         "further reading",
         "action items",
         "next actions",
+        "recommended actions",
     ),
 }
 

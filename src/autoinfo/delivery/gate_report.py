@@ -59,6 +59,7 @@ _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
         "learning objectives",
         "main findings",
         "introduction",
+        "key takeaways",
     ),
     "summary": (
         "summary",
@@ -77,6 +78,7 @@ _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
         "further reading",
         "action items",
         "next actions",
+        "recommended actions",
     ),
 }
 

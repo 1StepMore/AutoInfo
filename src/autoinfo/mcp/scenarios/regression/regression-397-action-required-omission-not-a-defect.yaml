@@ -1,0 +1,108 @@
+# Regression #397: an OMITTED `Action Required` section is not a defect.
+#
+# History: `_so_what_substantive` required `- [ ]` checkboxes inside the
+# `## Action Required` section unconditionally. But #380/#391 established the
+# product rule that a section with no content is OMITTED ENTIRELY rather than
+# shipped as a hollow heading or a `_No ..._` filler. So a correctly rendered
+# enterprise-briefing with no action items omitted the section, and the gate
+# then failed it P1 with "Action Required has no - [ ] item" — a false
+# positive contradicting the product's own rendering rule.
+#
+# Fix: `_section_text` returns "" for an absent section and "\n" for a
+# present-but-empty one, so a truthiness guard separates the two — absent is
+# legitimate, present-but-empty is still a P1 defect. This mirrors the
+# `Recommendations` guard, which already used this idiom; `Action Required`
+# was the outlier.
+#
+# BOTH directions are asserted, because a "fix" that simply dropped the check
+# would pass the false-positive case and silently stop catching the real one.
+#
+# Deterministic (requires_env: []): pure assertion evaluation over literal
+# markdown; no LLM, no network, no env gating.
+name: regression-397-action-required-omission-not-a-defect
+description: "Regression #397: an omitted `## Action Required` section passes so-what, while a rendered-but-empty one still fails P1"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
+regression: true
+regression_issue: "#397"
+requires_env: []
+steps:
+  - name: "omitted section passes (no false P1)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.validation_matrix import _so_what_substantive
+
+      # Correct rendering: no action items, so the section is omitted.
+      OMITTED = (
+          "# Enterprise Briefing\n\n"
+          "## Executive Summary\nSector quiet this week.\n\n"
+          "## Recommendations\n- Keep monitoring the vendor landscape\n"
+      )
+      r = _so_what_substantive(OMITTED, "ai-commercial", "enterprise-briefing")
+      assert r.passed is True, "false P1 on an omitted section: " + r.details
+      assert "Action Required" not in r.details, r.details
+      print("ACTION_REQUIRED_OMISSION_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ACTION_REQUIRED_OMISSION_OK"]
+
+  - name: "present-but-empty section still fails P1 (defect not masked)"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.validation_matrix import _so_what_substantive
+
+      HOLLOW = (
+          "# Enterprise Briefing\n\n"
+          "## Executive Summary\nSector quiet this week.\n\n"
+          "## Action Required\n\n"
+          "## Recommendations\n"
+      )
+      r = _so_what_substantive(HOLLOW, "ai-commercial", "enterprise-briefing")
+      assert r.passed is False, "a hollow rendered section must not pass"
+      assert r.severity == "P1", r.severity
+      assert "Action Required has no - [ ] item" in r.details, r.details
+
+      POPULATED = (
+          "# Enterprise Briefing\n\n"
+          "## Executive Summary\nSector quiet this week.\n\n"
+          "## Action Required\n- [ ] Audit vendor contracts\n\n"
+          "## Recommendations\n- Keep monitoring the vendor landscape\n"
+      )
+      ok = _so_what_substantive(POPULATED, "ai-commercial", "enterprise-briefing")
+      assert ok.passed is True, ok.details
+      print("ACTION_REQUIRED_HOLLOW_STILL_FAILS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ACTION_REQUIRED_HOLLOW_STILL_FAILS_OK"]
+
+  - name: "omission must not mask a genuine defect elsewhere"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.validation_matrix import _so_what_substantive
+
+      # Action Required correctly omitted; Recommendations genuinely empty.
+      BROKEN = (
+          "# Enterprise Briefing\n\n"
+          "## Executive Summary\nSector quiet this week.\n\n"
+          "## Recommendations\n"
+      )
+      r = _so_what_substantive(BROKEN, "ai-commercial", "enterprise-briefing")
+      assert r.passed is False, r.details
+      assert "Recommendations empty" in r.details, r.details
+      assert "Action Required" not in r.details, (
+          "omitted Action Required must not be reported: " + r.details)
+      print("ACTION_REQUIRED_OMISSION_NOT_MASKING_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ACTION_REQUIRED_OMISSION_NOT_MASKING_OK"]

@@ -1338,7 +1338,15 @@ def _so_what_substantive(text: str, domain: str, product: str) -> AssertionResul
                 if _is_weak_analysis(field):
                     weak.append(f"takeaway {i} {label} is weak")
     elif product == "enterprise-briefing":
-        if not _CHECKBOX_ITEM_RE.search(_section_text(text, "Action Required")):
+        # #397: an ABSENT section is the correct rendering when it has no
+        # content — #380/#391 established that empty content omits the whole
+        # section rather than shipping a filler or a hollow heading. So only a
+        # section that is actually rendered without a checkbox is weak. This
+        # mirrors the Recommendations guard below: `_section_text` returns ""
+        # for an absent section and "\n" for a present-but-empty one, so the
+        # truthiness test separates the two.
+        actions = _section_text(text, "Action Required")
+        if actions and not _CHECKBOX_ITEM_RE.search(actions):
             weak.append("Action Required has no - [ ] item")
         recs = _section_text(text, "Recommendations")
         if recs and not _BULLET_ITEM_RE.search(recs):

@@ -1,0 +1,120 @@
+# Regression #395: a notification lost at enqueue time must be
+# distinguishable from a deliberate skip, and must be counted.
+#
+# History: `enqueue_agent_notification` had three `return 0` paths with
+# different meanings — (1) unknown event name, a programming error where
+# nothing was ever owed; (2) payload not JSON-serialisable; (3) SQLite write
+# failure e.g. `database is locked`. Paths (2)/(3) silently DROP a
+# notification the end user was owed. #387 is the demonstrated cost: 8 of
+# 2400 events lost under concurrency, surfaced only as a `logger.warning`
+# with no trace/product identity, and `delivery_failures_total` structurally
+# cannot observe it because a lost row never reaches the drain.
+#
+# Fix: three-valued return — `> 0` persisted (row id), `0` deliberately not
+# enqueued, `_OUTBOX_PERSIST_FAILED` (-1) lost — plus structured logging with
+# event/trace_id/product_id and an `outbox_persist_failures_total` counter.
+#
+# Deterministic (requires_env: []): the DB is redirected to a temp dir and the
+# persistence failure is injected by raising from `_connect`, so no sleep,
+# thread race, network or env gating is involved. Fresh process => the
+# in-process counter starts at 0.
+name: regression-395-outbox-persist-failure-distinguishable
+description: "Regression #395: enqueue_agent_notification distinguishes a lost notification (-1, counted) from a deliberate skip (0, uncounted)"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B2.4
+regression: true
+regression_issue: "#395"
+requires_env: []
+steps:
+  - name: "three return semantics are distinct and the loss is counted"
+    kind: cli
+    command: |-
+      python3 -c '
+      import shutil, sqlite3, tempfile
+      from pathlib import Path
+      import autoinfo.agent_callback as ac
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-395-"))
+      try:
+          ac._default_db_path = lambda: tmp / "autoinfo.db"
+          ac._schedule_drain = lambda: None
+
+          persisted = ac.enqueue_agent_notification(
+              event="new_digest", payload={"k": "v"},
+              trace_id="t-1", product_id="p-1")
+          assert persisted > 0, "success must return a positive row id: %r" % (persisted,)
+
+          skipped = ac.enqueue_agent_notification(
+              event="not_a_real_event", payload={"k": "v"},
+              trace_id="t-2", product_id="p-2")
+          assert skipped == 0, "unknown event must return 0: %r" % (skipped,)
+          assert ac.get_outbox_persist_failures() == 0, (
+              "a programming error loses nothing and must not pollute the "
+              "data-loss counter: %r" % (ac.get_outbox_persist_failures(),))
+
+          real_connect = ac._connect
+          def _boom():
+              raise sqlite3.OperationalError("database is locked")
+          ac._connect = _boom
+          try:
+              lost = ac.enqueue_agent_notification(
+                  event="new_digest", payload={"k": "v"},
+                  trace_id="t-3", product_id="p-3")
+          finally:
+              ac._connect = real_connect
+
+          assert lost == ac._OUTBOX_PERSIST_FAILED, (
+              "a write failure must return the dedicated sentinel, not 0: %r" % (lost,))
+          assert lost < skipped < persisted, (
+              "outcomes must be mutually ordered: %r %r %r"
+              % (lost, skipped, persisted))
+          assert ac.get_outbox_persist_failures() == 1, (
+              "the lost notification must be counted: %r"
+              % (ac.get_outbox_persist_failures(),))
+          print("OUTBOX_PERSIST_FAILURE_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["OUTBOX_PERSIST_FAILURE_OK"]
+
+  - name: "unserialisable payload is counted as loss, and exported as a metric"
+    kind: cli
+    command: |-
+      python3 -c '
+      import shutil, tempfile
+      from pathlib import Path
+      import autoinfo.agent_callback as ac
+      from autoinfo.metrics import METRIC_NAMES, format_prometheus, get_metrics
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-395-"))
+      try:
+          ac._default_db_path = lambda: tmp / "autoinfo.db"
+          ac._schedule_drain = lambda: None
+
+          circular = {}
+          circular["self"] = circular
+          lost = ac.enqueue_agent_notification(
+              event="new_digest", payload=circular,
+              trace_id="t-9", product_id="prod-lost")
+          assert lost == ac._OUTBOX_PERSIST_FAILED, lost
+          assert ac.get_outbox_persist_failures() == 1
+
+          # The counter must be operator-visible, not log-only.
+          assert "outbox_persist_failures_total" in METRIC_NAMES, METRIC_NAMES.keys()
+          metrics = get_metrics()
+          assert metrics["outbox_persist_failures_total"] == 1, metrics.get(
+              "outbox_persist_failures_total")
+          assert "outbox_persist_failures_total 1" in format_prometheus(metrics)
+          print("OUTBOX_PERSIST_METRIC_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["OUTBOX_PERSIST_METRIC_OK"]

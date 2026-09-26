@@ -4,8 +4,10 @@
 run the busy handler for it, so ``busy_timeout`` does not cover it. With many
 threads opening a fresh database, the losers raised
 ``OperationalError: database is locked``, which
-``enqueue_agent_notification`` swallows into a return of 0 — a silently dropped
-outbox row.
+``enqueue_agent_notification`` swallowed into a return of 0 — a silently dropped
+outbox row. #395 renamed that return to ``_OUTBOX_PERSIST_FAILED`` (-1) and
+counted it, so such a drop is now both distinguishable and counted rather than
+indistinguishable from a correct skip.
 
 ``scripts/repro_outbox_lock.py`` demonstrates the failure probabilistically
 (8 drops per 2400 writes before the fix, 0 after). These tests lock the

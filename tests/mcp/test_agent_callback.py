@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -129,9 +129,7 @@ def _wait_outbox(ac_module, row_id: int, timeout: float = 5.0) -> dict[str, Any]
         if row["status"] != ac._OUTBOX_STATUS_PENDING:
             return row
         time.sleep(0.02)
-    raise AssertionError(
-        f"outbox row {row_id} never left 'pending' (status: {row['status']!r})"
-    )
+    raise AssertionError(f"outbox row {row_id} never left 'pending' (status: {row['status']!r})")
 
 
 def _assert_canonical_payload(
@@ -247,9 +245,7 @@ def test_register_list_remove_callbacks(ac_module):
 # ---------------------------------------------------------------------------
 
 
-def test_failure_url_down_enqueue_succeeds_row_failed_metric_incremented(
-    ac_module, monkeypatch
-):
+def test_failure_url_down_enqueue_succeeds_row_failed_metric_incremented(ac_module, monkeypatch):
     """Callback URL down: enqueue/generation still succeeds; row→failed; metric+1.
 
     The failure is exercised at the enqueue/worker level: the outbox row is
@@ -298,9 +294,7 @@ def test_unknown_event_never_enqueued(ac_module):
 # ---------------------------------------------------------------------------
 
 
-def test_outbox_row_written_before_delivery_survives_undrained_window(
-    ac_module, monkeypatch
-):
+def test_outbox_row_written_before_delivery_survives_undrained_window(ac_module, monkeypatch):
     """Row persisted before any POST; an undrained row is re-delivered later.
 
     Simulates "kill the worker before delivery": the drain is suppressed
@@ -444,8 +438,10 @@ def test_multi_callback_event_filtering(ac_module, monkeypatch):
     ac_module.register_agent_callback(url_b, ["new_digest"])
 
     row_id = ac_module.enqueue_agent_notification(
-        event="new_digest", payload={"title": "Weekly Digest"},
-        trace_id=_TRACE_ID, product_id=_PRODUCT_ID,
+        event="new_digest",
+        payload={"title": "Weekly Digest"},
+        trace_id=_TRACE_ID,
+        product_id=_PRODUCT_ID,
     )
     assert _wait_outbox(ac_module, row_id)["status"] == "delivered"
 
@@ -455,14 +451,14 @@ def test_multi_callback_event_filtering(ac_module, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 5. High-concurrency outbox writes (backup issue #67)
+# 5. High-concurrency outbox writes (issue #387)
 # ---------------------------------------------------------------------------
 
 
 def test_concurrent_outbox_writes_no_lost_events(ac_module, monkeypatch):
     """N threads writing distinct events to the same outbox DB lose none.
 
-    Issue #67: parallel product generation (multi-domain × high LLM
+    Issue #387: parallel product generation (multi-domain × high LLM
     concurrency) hit ``sqlite3.OperationalError: database is locked`` on the
     outbox INSERT because ``_connect()`` set no ``busy_timeout`` — SQLite's
     default 0 makes a write fail immediately under WAL contention, and

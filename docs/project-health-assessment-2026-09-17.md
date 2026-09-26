@@ -437,5 +437,5 @@
 | `CONTRIBUTING.md` 的数字不在 `doc_inventory.py` 覆盖内 | 该脚本只查 README / AGENTS.md / SKILL.md，故 28→31 这类漂移不会被自动发现 |
 | `.pre-commit-config.yaml` 的 `no-credential-url` 自指误报 | 钩子扫描到自身配置里的 URL 样例即失败，导致该文件无法被提交 |
 | `.opencode/.gitignore` 与跟踪状态冲突 | 注释称 `skills/` 「never committed」，但 4 个 `SKILL.md` 被跟踪 |
-| 机器负载下的两个非封闭失败 | EPUB 导出边界 + 并发 outbox 写。已登记在 `tests/TRIAGE.md` 的「Load-sensitive flake」小节；其中 outbox 写失败会**丢通知行**（真实数据丢失路径），且**常规诊断已被证伪**：`agent_callback._connect` 自 2026-08-28（`502a63c5`，#67）起就在 WAL 之前设了 `busy_timeout`，本次失败仍发生在 `PRAGMA journal_mode=WAL` 上 —— 需要专门的 16 线程复现才能定性，属 P2 范围故本轮不修 |
+| 机器负载下的两个非封闭失败 | EPUB 导出边界 + 并发 outbox 写。已登记在 `tests/TRIAGE.md` 的「Load-sensitive flake」小节；其中 outbox 写失败会**丢通知行**（真实数据丢失路径），且**常规诊断已被证伪**：`agent_callback._connect` 自 2026-08-28（`502a63c5`，#387）起就在 WAL 之前设了 `busy_timeout`，本次失败仍发生在 `PRAGMA journal_mode=WAL` 上 —— 需要专门的 16 线程复现才能定性，属 P2 范围故本轮不修 |
 | 仓库整体未过 `ruff format` | `ruff format --check src/` 在 `HEAD` 上报 **71** 个文件待格式化，本轮结束时仍剩 **46**（0.16.8 与钩子的 v0.9.10 结论一致，无版本分歧）。CI 没有 format 门禁，而 `.pre-commit-config.yaml` 的 `ruff-format` 只处理**被暂存的文件**——于是任何触碰这些文件的人都会被自动重排整文件。清偿提交因此是 **47 files changed, 1097 insertions(+), 963 deletions(-)**，其中多数为格式化输出（非语义）。若要根治，应把 `ruff format` 作为独立的一次性格式化提交落地并加进 CI，而不是让它在每次改动里零散发生 |

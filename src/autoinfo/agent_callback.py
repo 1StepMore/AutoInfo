@@ -129,7 +129,7 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     Creates the ``agent_callbacks`` table on first connection (idempotent).
     Uses WAL journal mode for better concurrency with the KB pipeline, and a
     busy_timeout so parallel writers wait for the lock instead of raising
-    ``OperationalError: database is locked`` (issue #67 — high-concurrency
+    ``OperationalError: database is locked`` (issue #387 — high-concurrency
     product generation drops outbox events without it).
     """
     resolved = db_path or _default_db_path()
@@ -137,7 +137,7 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     # busy_timeout FIRST — before any other pragma — so the WAL transition
     # and every later statement wait on the lock instead of raising
-    # OperationalError under write contention (issue #67).  Same contract as
+    # OperationalError under write contention (issue #387).  Same contract as
     # the KB pipeline (kb.py): default 30s, env-configurable via
     # AUTOINFO_DB_BUSY_TIMEOUT_MS.
     from autoinfo.kb import _db_busy_timeout_ms  # noqa: PLC0415

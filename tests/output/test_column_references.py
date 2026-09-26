@@ -10,8 +10,9 @@ section that does not exist.  This locks the fix:
   ref-dict shape the column render contexts already carry (report path:
   ``labeled_refs``; digest path: ``_normalize_digest_product_context``), and
   the same rendering idiom as ``report.md.j2``.
-- With an empty ``references`` list the section renders the honest
-  "No sources for this edition." empty-state (no KeyError, no crash).
+- With an empty ``references`` list the section (heading and body) is
+  OMITTED entirely — no ``_No ..._`` filler and no hollow heading
+  (no KeyError, no crash).
 
 Hermetic — renders the already-normalized flat context directly through the
 ``column`` ProductTemplate (mirrors ``test_column_digest_sections``); no
@@ -53,8 +54,7 @@ def _context(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "entries": entries,
         "llm_synthesis": {
             "executive_summary": (
-                "This week's column covers IVF imaging and neuroplasticity "
-                "studies."
+                "This week's column covers IVF imaging and neuroplasticity studies."
             ),
             "key_findings": [],
             "recommendations": [],
@@ -143,13 +143,15 @@ class TestColumnReferencesSection:
         # The in-body promise still points at the (now real) section.
         assert "full source list in References" in out
 
-    def test_empty_references_renders_graceful_no_sources(self) -> None:
-        """Empty references → the "No sources for this edition." empty-state,
-        no KeyError / crash."""
+    def test_empty_references_omits_section(self) -> None:
+        """Empty references → the References section is omitted as a unit
+        (no filler, no hollow heading, no KeyError / crash)."""
         flat = _normalize_digest_product_context(
             _context([]), "medical-research", product_family="column"
         )
         assert flat["references"] == []
         out = _render_column(flat)
 
-        assert "No sources for this edition." in _references_block(out)
+        assert "## References" not in out
+        assert "_No " not in out
+        assert "No sources for this edition." not in out

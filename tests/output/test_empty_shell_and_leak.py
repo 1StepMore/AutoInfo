@@ -1,6 +1,6 @@
 """Tests for issue #303: empty-shell products + internal-state leak.
 
-- column with sections=[] renders fallback text (no silent empty headings)
+- column with sections=[] omits the Deep Dive section (no silent empty headings)
 - presentation with LLM synthesis returning no slides: no internal-state leak
 
 TDD: these tests should fail (RED) before the fix, pass (GREEN) after.
@@ -25,7 +25,11 @@ class TestColumnEmptyShell:
 
         tpl_path = (
             Path(__file__).parent.parent.parent
-            / "src" / "autoinfo" / "data" / "templates" / "column.md.j2"
+            / "src"
+            / "autoinfo"
+            / "data"
+            / "templates"
+            / "column.md.j2"
         )
         content = tpl_path.read_text()
 
@@ -42,23 +46,25 @@ class TestColumnEmptyShell:
         tmpl = env.from_string(content)
 
         defaults = {
-            "title": "Test Column", "domain": "test", "generated_at": "2026-01-01",
-            "executive_summary": "Summary.", "sections": sections,
-            "references": [], "appendices": [],
+            "title": "Test Column",
+            "domain": "test",
+            "generated_at": "2026-01-01",
+            "executive_summary": "Summary.",
+            "sections": sections,
+            "references": [],
+            "appendices": [],
         }
         defaults.update(kwargs)
         return tmpl.render(**defaults)
 
-    def test_deep_dive_empty_shows_fallback(self) -> None:
+    def test_deep_dive_empty_omits_section(self) -> None:
+        # Empty sections → the Deep Dive section (heading and body) is
+        # omitted as a unit: never a hollow heading, never a `_No ..._` filler.
         result = self._render_column(sections=[])
-        # Must NOT have an empty "## Deep Dive" heading with nothing under it
-        assert (
-            "No deep-dive" in result
-            or "no deep-dive" in result.lower()
-            or "no sections" in result.lower()
-        ), (
-            f"Expected fallback text in Deep Dive section, got:\n{result}"
+        assert "## Deep Dive" not in result, (
+            f"Expected the empty Deep Dive section to be omitted, got:\n{result}"
         )
+        assert "_No " not in result, f"Expected no empty-state filler, got:\n{result}"
 
     def test_implications_empty_omits_section(self) -> None:
         # Issue #133: with no implications the whole "## Implications &
@@ -100,12 +106,8 @@ class TestPresentationLeak:
         slides = _fallback_slides_from_entries(entries, slide_count=3)
         for slide in slides:
             notes = slide.get("notes", "")
-            assert "KB-derived slide" not in notes, (
-                f"Internal-state leak in notes: {notes!r}"
-            )
-            assert "returned no slides" not in notes, (
-                f"Internal-state leak in notes: {notes!r}"
-            )
+            assert "KB-derived slide" not in notes, f"Internal-state leak in notes: {notes!r}"
+            assert "returned no slides" not in notes, f"Internal-state leak in notes: {notes!r}"
 
     def test_kb_fallback_notes_are_neutral(self) -> None:
         """KB-derived slide notes should be neutral or empty."""

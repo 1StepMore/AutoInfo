@@ -1,10 +1,11 @@
 # Regression #303: empty-shell products + internal-state leak.
 # ① column.md.j2 rendered a silent empty "## Deep Dive" when ``sections``
-#    was empty — now the ``{% else %}`` branch renders fallback text
-#    ("_No deep-dive sections available for this column.").  The empty
-#    "Implications & Outlook" case was later tightened by #133: with no
-#    implications the WHOLE section (heading included) is omitted, never a
-#    fallback-text shell.
+#    was empty.  It was then given fallback text, which was still a visible
+#    unfilled slot.  #133 established the rule for the empty "Implications &
+#    Outlook" case — with no content the WHOLE section (heading included) is
+#    omitted, never a fallback-text shell — and the Deep Dive half now follows
+#    that same rule (#391): no content means the section is omitted, so a
+#    column never ships a `_No ..._` placeholder.
 # ② the KB-derived presentation fallback exposed internal state in speaker
 #    notes ("KB-derived slide" / "returned no slides") — now the notes are
 #    neutral ("Prepared from knowledge base sources.") and the rendered
@@ -15,7 +16,7 @@
 # (deterministic, no network, no LLM).  A regression that reverts either fix
 # fails here.
 name: regression-303-empty-shell-notes
-description: "Regression #303: column empty sections render fallback text; presentation notes never leak internal state"
+description: "Regression #303: column empty sections are omitted entirely; presentation notes never leak internal state"
 category: edge_case
 pyramid_layer: component
 pipeline_stage: A4
@@ -24,7 +25,7 @@ regression: true
 regression_issue: "#303"
 requires_env: []
 steps:
-  - name: "column with empty sections renders fallback text (no silent empty Deep Dive)"
+  - name: "column with empty sections omits the empty sections (no filler, no hollow heading)"
     kind: cli
     command: |-
       python3 -c '
@@ -41,8 +42,15 @@ steps:
           references=[],
           appendices=[],
       )
-      assert "No deep-dive sections available for this column." in out, (
-          "empty Deep Dive must render fallback text:\n" + out
+      # #391: the Deep Dive section follows the #133 rule (the rule #133
+      # already applied to Implications & Outlook) — with no sections it is
+      # omitted entirely.  Never a `_No ..._` placeholder, and never a
+      # hollow heading with nothing under it.
+      assert "Deep Dive" not in out, (
+          "empty Deep Dive section must be omitted:\n" + out
+      )
+      assert "_No " not in out, (
+          "empty-state filler must not reach the product:\n" + out
       )
       # #133: with no implications in the synthesis, the whole Implications &
       # Outlook section (heading included) is omitted — never an empty

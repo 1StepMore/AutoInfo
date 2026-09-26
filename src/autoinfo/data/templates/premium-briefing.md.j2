@@ -11,16 +11,15 @@
 
 ---
 
+{% if executive_summary %}
 ## Executive Summary
 
-{% if executive_summary %}
 {{ executive_summary }}
-{% else %}
-_No executive summary available for this period._
-{% endif %}
 
 ---
+{% endif %}
 
+{% if key_findings %}
 ## Key Takeaways
 
 {% for f in key_findings %}
@@ -28,24 +27,17 @@ _No executive summary available for this period._
 
 {% if implications and implications|length > loop.index0 %}
 > **So what**: {{ implications[loop.index0] }}
-{% else %}
-> _No implication captured for this takeaway._
-{% endif %}
 
+{% endif %}
 {% if risks and risks|length > loop.index0 %}
 **Risk / Opportunity:** {{ risks[loop.index0].title | default('') }} — likelihood {{ risks[loop.index0].likelihood | default('') }} / impact {{ risks[loop.index0].impact | default('') }}; mitigation: {{ risks[loop.index0].mitigation | default('') }}
-{% else %}
-_No material risks or opportunities identified for this takeaway._
-{% endif %}
 
+{% endif %}
 {% if action_required and action_required|length > loop.index0 %}
 **Actions:** {{ action_required[loop.index0] }}
-{% else %}
-_No follow-up actions suggested._
 {% endif %}
-{% else %}
-_No key takeaways were extracted for this period._
 {% endfor %}
+{% endif %}
 
 {% set _kf_len = key_findings|default([])|length %}
 {% if risks and risks|length > _kf_len %}
@@ -67,6 +59,7 @@ _No key takeaways were extracted for this period._
 {% endif %}
 {% endfor %}
 {% endif %}
+{% if references %}
 
 ---
 
@@ -74,9 +67,8 @@ _No key takeaways were extracted for this period._
 
 {% for ref in references %}
 {{ loop.index }}. **{{ ref.title | default('') }}**{{ (" — " ~ ref.source_url) if ref.source_url else "" }}{{ (" — " ~ ref.description) if ref.description and ref.description != ref.title else "" }}{{ (" (" ~ user_source_label(ref) ~ ")") if user_source_label(ref) else "" }}
-{% else %}
-_No source references available for this briefing._
 {% endfor %}
+{% endif %}
 
 ---
 

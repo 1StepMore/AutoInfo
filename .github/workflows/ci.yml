@@ -272,7 +272,7 @@ jobs:
       # the autoinfo package through the standard interpreter on PATH — no
       # absolute venv path, exactly what #347 fixes.
       - name: Install package
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,ebook]"
       - name: Guard test — no dev-machine absolute paths in scenarios
         run: pytest tests/validation/test_no_dev_abs_paths.py -q
       # #381: enumerate the keyless/networkless subset at RUNTIME (via

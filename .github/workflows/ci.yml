@@ -275,22 +275,16 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Guard test — no dev-machine absolute paths in scenarios
         run: pytest tests/validation/test_no_dev_abs_paths.py -q
-      - name: "Run ported regression scenarios (requires_env: [], no LLM/network)"
-        run: |
-          python3 - <<'PY'
-          import asyncio
-          from autoinfo.mcp.validation import run_scenario
-
-          async def main():
-              for name in ("regression-no-placeholder-magazine-tutorial",
-                           "regression-source-label-all-surfaces"):
-                  result = await run_scenario(name, dispatch=None)
-                  status = result.get("status")
-                  print(f"{name}: {status}")
-                  assert status == "passed", result
-
-          asyncio.run(main())
-          PY
+      # #381: enumerate the keyless/networkless subset at RUNTIME (via
+      # load_scenarios() — never a hardcoded list or count) and run every
+      # candidate through a real server.call_tool dispatch. The candidate set,
+      # exclusions and per-scenario results all live in
+      # scripts/scenario_portability_gate.py. Any non-passing candidate must be
+      # in that script's committed known-red baseline, and a baseline entry
+      # that starts passing fails this step too — so the baseline can never
+      # grow silently.
+      - name: "Run keyless scenario subset (runtime-enumerated)"
+        run: python3 scripts/scenario_portability_gate.py
       - name: Full scenario library parses
         run: |
           python3 -c "from autoinfo.mcp.validation import load_scenarios; print(len(load_scenarios()))"

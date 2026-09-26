@@ -26,6 +26,7 @@ import re
 from typing import Any, cast
 
 from autoinfo.output import (
+    _TEMPLATES_DIR,
     PRODUCT_TEMPLATES,
     ProductTemplate,
     ReportData,
@@ -87,8 +88,7 @@ def _make_digest_context(n_findings: int, n_entries: int) -> dict[str, Any]:
         "llm_synthesis": {
             "executive_summary": "This briefing details 20 selected items.",
             "key_findings": [
-                {"topic": f"Topic {i}", "detail": f"Detail {i}."}
-                for i in range(1, n_findings + 1)
+                {"topic": f"Topic {i}", "detail": f"Detail {i}."} for i in range(1, n_findings + 1)
             ],
             "recommendations": ["Watch the trial results."],
         },
@@ -139,9 +139,7 @@ class TestEnterpriseTemplateScopeLabel:
     def test_enterprise_template_annotates_selected_count(self) -> None:
         """Report path: 9 findings + 20 references render the scope label."""
         flat = _report_data_to_dict(_make_report_data(9, 20))
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert "9 key points · drawn from 20 sources" in out
         assert "of 20 key findings" not in out
         # The deterministic label sits between the summary and the findings.
@@ -149,21 +147,15 @@ class TestEnterpriseTemplateScopeLabel:
 
     def test_enterprise_digest_path_annotates_too(self) -> None:
         """Digest path: same label through ``_normalize_digest_product_context``."""
-        flat = _normalize_digest_product_context(
-            _make_digest_context(9, 20), "medical-research"
-        )
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        flat = _normalize_digest_product_context(_make_digest_context(9, 20), "medical-research")
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert "9 key points · drawn from 20 sources" in out
         assert "of 20 key findings" not in out
 
     def test_scope_label_absent_when_no_findings(self) -> None:
         """No key findings -> no scope label (empty-state unchanged)."""
         flat = _report_data_to_dict(_make_report_data(0, 3))
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert "精选" not in out
         assert "**Scope**" not in out
 
@@ -171,9 +163,7 @@ class TestEnterpriseTemplateScopeLabel:
         """Findings without references never expose an "N of 0" counting
         syntax — the references clause degrades to "no source references"."""
         flat = _report_data_to_dict(_make_report_data(3, 0))
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert "3 key points · no source links" in out
         assert "of 0" not in out
         assert "key points · 0 sources" not in out
@@ -188,9 +178,7 @@ class TestScopeLabelSingleLanguageNoCjk:
         """A hermetic enterprise-briefing render (3 findings + 60 references)
         contains NO CJK characters anywhere in the body."""
         flat = _report_data_to_dict(_make_report_data(3, 60))
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert not re.search(r"[\u4e00-\u9fff]", out), (
             f"CJK characters leaked into the enterprise-briefing body:\n{out}"
         )
@@ -201,22 +189,15 @@ class TestScopeLabelSingleLanguageNoCjk:
         no "items detailed below" claim the flat References list cannot support,
         and never an "of M key findings" counting syntax (issue #49)."""
         flat = _report_data_to_dict(_make_report_data(3, 60))
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         scope_m = re.search(r"> \*\*In this briefing\*\*: (.+)$", out, re.MULTILINE)
         assert scope_m, f"scope line missing from render:\n{out}"
         scope_line = scope_m.group(1)
         count_m = re.search(r"(\d+) key points · drawn from (\d+) sources", scope_line)
-        assert count_m, (
-            f"N key points · M sources counts missing "
-            f"from scope line:\n{scope_line}"
-        )
+        assert count_m, f"N key points · M sources counts missing from scope line:\n{scope_line}"
         n, m = int(count_m.group(1)), int(count_m.group(2))
         assert "of key findings" not in scope_line
-        findings_m = re.search(
-            r"## Key Findings\n(.*?)(?:\n## |\Z)", out, re.DOTALL
-        )
+        findings_m = re.search(r"## Key Findings\n(.*?)(?:\n## |\Z)", out, re.DOTALL)
         assert findings_m, f"Key Findings section missing:\n{out}"
         rendered_findings = len(re.findall(r"-\s+\S", findings_m.group(1)))
         assert n == rendered_findings, (
@@ -225,6 +206,74 @@ class TestScopeLabelSingleLanguageNoCjk:
         refs_m = re.search(r"## References\n(.*?)(?:\n---|\Z)", out, re.DOTALL)
         assert refs_m, f"References section missing:\n{out}"
         rendered_refs = len(re.findall(r"^\d+\. ", refs_m.group(1), re.MULTILINE))
-        assert m == rendered_refs, (
-            f"scope M={m} but References renders {rendered_refs} entries"
+        assert m == rendered_refs, f"scope M={m} but References renders {rendered_refs} entries"
+
+
+# ===================================================================
+# Issue #380 — empty optional sections are omitted, never filled
+# ===================================================================
+
+
+class TestEnterpriseEmptySectionsOmitted:
+    """Issue #380: empty optional sections are OMITTED entirely rather than
+    rendered as ``_No ..._`` template filler.
+
+    enterprise-briefing is the highest paid tier; its documented contract
+    (file header, spec §6) is that every optional section is guarded by an
+    explicit empty-state rule.  A rendered ``_No actions required in this
+    period._`` block is an unfilled slot — 宁缺毋滥 — so the section (heading
+    AND body) must disappear when its backing data is empty.  The templates
+    previously hardcoded the four ``_No ..._`` literals this class locks out.
+    """
+
+    _EMPTY_HEADINGS = (
+        "## Executive Summary",
+        "## Action Required",
+        "## Risk Matrix",
+        "## References",
+    )
+
+    def _render_empty_optional_sections(self) -> str:
+        """Render with empty executive_summary/action_required/risks/references.
+
+        Key Findings stay non-empty so this exercises a legitimately
+        sparse-but-real product, not the all-empty shell (which the
+        min-content guard blocks anyway).
+        """
+        flat = _report_data_to_dict(_make_report_data(2, 0))
+        flat["executive_summary"] = ""
+        flat["action_required"] = []
+        flat["risks"] = []
+        flat["references"] = []
+        assert flat["key_findings"], "fixture must keep >=1 key finding"
+        return _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
+
+    def test_empty_optional_section_headings_are_omitted(self) -> None:
+        """None of the four empty headings render (#380 acceptance)."""
+        out = self._render_empty_optional_sections()
+        for heading in self._EMPTY_HEADINGS:
+            assert heading not in out, f"{heading!r} still renders for an empty section:\n{out}"
+
+    def test_empty_optional_sections_emit_no_placeholder_literal(self) -> None:
+        """No ``_No ..._`` placeholder survives anywhere in the render."""
+        out = self._render_empty_optional_sections()
+        assert "_No " not in out, f"empty-state placeholder leaked:\n{out}"
+
+    def test_empty_optional_sections_pass_no_placeholder_assertion(self) -> None:
+        """The assertion layer's P0 ``_no_placeholder`` gate now passes."""
+        from autoinfo import validation_matrix as vm
+
+        out = self._render_empty_optional_sections()
+        result = vm._no_placeholder(out, "medical-research", "enterprise-briefing")
+        assert result.passed, (
+            f"#380 regression: _no_placeholder still flags the render: {result.details!r}\n{out}"
+        )
+
+    def test_template_source_contains_no_placeholder_literals(self) -> None:
+        """The template itself hardcodes zero ``_No ..._`` literals (#380)."""
+        template_path = _TEMPLATES_DIR / "enterprise-briefing.md.j2"
+        text = template_path.read_text(encoding="utf-8")
+        matches = re.findall(r"_No [^_]+_", text)
+        assert not matches, (
+            f"enterprise-briefing.md.j2 still hardcodes placeholder literals: {matches}"
         )

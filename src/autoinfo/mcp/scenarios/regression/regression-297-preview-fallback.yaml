@@ -43,8 +43,8 @@ steps:
           ]
           result = _handle_generate_digest(domain="medical-research", format="markdown")
           assert result["success"] is True, result
-          assert result.get("status") != "noop", "preview suppressed content the generator would produce"
-          assert "# Digest" in result["content"], result
+          assert result["data"].get("status") != "noop", "preview suppressed content the generator would produce"
+          assert "# Digest" in result["data"]["content"], result
           calls = mock_kb.return_value.list_entries.call_args_list
           assert len(calls) == 2, "expected window query + full-domain fallback query"
           assert "date_from" in calls[0].kwargs, "first query must be the window query"
@@ -72,8 +72,8 @@ steps:
           ]
           result = _handle_generate_report(domain="medical-research", format="markdown")
           assert result["success"] is True, result
-          assert result.get("status") != "noop", "preview suppressed content the generator would produce"
-          assert "# Report" in result["content"], result
+          assert result["data"].get("status") != "noop", "preview suppressed content the generator would produce"
+          assert "# Report" in result["data"]["content"], result
           calls = mock_kb.return_value.list_entries.call_args_list
           assert len(calls) == 2, "expected window query + full-domain fallback query"
           assert "date_from" in calls[0].kwargs, "first query must be the window query"

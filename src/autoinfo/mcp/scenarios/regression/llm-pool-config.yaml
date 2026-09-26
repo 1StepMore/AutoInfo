@@ -55,12 +55,12 @@ steps:
       success: true
       data_has: ["models", "count"]
 
-  - name: "test_llm_connection without key returns LLM_NOT_CONFIGURED"
+  - name: "test_llm_connection without key returns LLMNotConfigured"
     tool: test_llm_connection
     arguments: {}
     expect:
       success: false
-      error_code: "LLM_NOT_CONFIGURED"
+      error_code: "LLMNotConfigured"
       error_actionable: true
     recovery_steps:
       - name: "test_llm_connection with key is connectable"

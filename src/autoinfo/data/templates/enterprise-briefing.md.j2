@@ -11,27 +11,25 @@
    explicitly (per-section empty-state rules in spec §6). #}
 # {{ title|default('Enterprise Briefing', true) }}
 
-**Domain**: {{ domain_display_name(domain) }}  
-**Generated**: {{ generated_at|default('') }}  
+**Domain**: {{ domain_display_name(domain) }}
+**Generated**: {{ generated_at|default('') }}
 
 ---
 
+{% if executive_summary %}
 ## Executive Summary
 
-{% if executive_summary %}
 {{ executive_summary }}
-{% else %}
-_No executive summary available for this period._
-{% endif %}
 
+{% endif %}
 {% if key_findings %}
 {% if references %}
 > **In this briefing**: {{ key_findings|length }} key points · drawn from {{ references|length }} sources.
 {% else %}
 > **In this briefing**: {{ key_findings|length }} key points · no source links.
 {% endif %}
-{% endif %}
 
+{% endif %}
 {% if key_findings %}
 ## Key Findings
 {% for f in key_findings %}
@@ -48,34 +46,33 @@ _No executive summary available for this period._
 | {{ m.metric }} | {{ m.value }} | {{ m.source }} |
 {% endfor %}
 {% endif %}
+{% if action_required %}
 
 ## Action Required
 
 {% for a in action_required %}
 - [ ] {{ a }}
-{% else %}
-_No actions required in this period._
 {% endfor %}
-
+{% endif %}
 {% if recommendations %}
+
 ## Recommendations
 
 {% for r in recommendations %}
 - {{ r }}
 {% endfor %}
-
 {% endif %}
+{% if risks %}
+
 ## Risk Matrix
 
-{% if risks %}
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 {% for r in risks %}
 | {{ r.title }} | {{ r.likelihood }} | {{ r.impact }} | {{ r.mitigation }} |
 {% endfor %}
-{% else %}
-_No material risks identified in this period._
 {% endif %}
+{% if references %}
 
 ---
 
@@ -83,9 +80,8 @@ _No material risks identified in this period._
 
 {% for ref in references %}
 {{ loop.index }}. **{{ ref.title }}**{{ (" — " ~ ref.source_url) if ref.source_url else "" }}{{ (" — " ~ ref.description) if ref.description and ref.description != ref.title else "" }}{{ (" (" ~ user_source_label(ref) ~ ")") if user_source_label(ref) else "" }}
-{% else %}
-_No source references available for this briefing._
 {% endfor %}
+{% endif %}
 
 ---
 

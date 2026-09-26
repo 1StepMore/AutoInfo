@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.5](https://github.com/1StepMore/AutoInfo/compare/v1.13.4...v1.13.5) (2026-09-26)
+
+
+### Bug Fixes
+
+* **gates:** premium section aliases, Action Required omission, outbox loss observability ([#395](https://github.com/1StepMore/AutoInfo/issues/395), [#396](https://github.com/1StepMore/AutoInfo/issues/396), [#397](https://github.com/1StepMore/AutoInfo/issues/397)) ([#398](https://github.com/1StepMore/AutoInfo/issues/398)) ([d3b7426](https://github.com/1StepMore/AutoInfo/commit/d3b7426f2c11838a1e3e3a44a2da1b94f03d8e93))
+
 ## [1.13.4](https://github.com/1StepMore/AutoInfo/compare/v1.13.3...v1.13.4) (2026-09-26)
 
 

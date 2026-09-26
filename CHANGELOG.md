@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.4](https://github.com/1StepMore/AutoInfo/compare/v1.13.3...v1.13.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* **callbacks:** convert the journal mode only when not already WAL ([#387](https://github.com/1StepMore/AutoInfo/issues/387)) ([#394](https://github.com/1StepMore/AutoInfo/issues/394)) ([e0f5d78](https://github.com/1StepMore/AutoInfo/commit/e0f5d78a27c9ad759a8eabd78bd62b4590173a12))
+* **templates:** drop the last _No ..._ fillers from column and report ([#391](https://github.com/1StepMore/AutoInfo/issues/391)) ([6506256](https://github.com/1StepMore/AutoInfo/commit/65062565c1ed65ec5092889df13a64b1060f8109))
+
 ## [1.13.3](https://github.com/1StepMore/AutoInfo/compare/v1.13.2...v1.13.3) (2026-09-26)
 
 

@@ -47,7 +47,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -55,51 +58,20 @@ from autoinfo.mcp import server
 from autoinfo.mcp.validation import load_scenarios, run_scenario
 
 # Known-red baseline: scenario name -> reason it still fails in the keyless,
-# networkless, unconfigured CI checkout.  Every entry is checked in both
-# directions: an unlisted non-pass fails the gate, and a listed scenario that
-# PASSES fails the gate as a stale entry (so this dict cannot grow silently).
+# networkless CI checkout.  Every entry is checked in both directions: an
+# unlisted non-pass fails the gate, and a listed scenario that PASSES fails the
+# gate as a stale entry (so this dict cannot grow silently).
 #
 # The candidate set is derived at runtime; this baseline was computed from a
 # full gate run on the commit that introduced it.  Every reason names the
-# observed failure, not a guess.  Entries fall into three classes:
-#   (a) the scenario needs a configured project (`.autoinfo/config.yaml`);
-#       the portability job installs the package but never runs `autoinfo init`
-#       and never configures a domain, so these hit ConfigNotFound;
-#   (b) the scenario pins a hardcoded `collected_at` date that has since aged
+# observed failure, not a guess.  Entries fall into two classes:
+#   (a) the scenario pins a hardcoded `collected_at` date that has since aged
 #       past the domain freshness threshold, so the generator refuses the now
 #       stale entry (a scenario time-bomb, not a product defect);
-#   (c) the scenario asserts a wall-clock threshold that a shared runner
+#   (b) the scenario asserts a wall-clock threshold that a shared runner
 #       cannot reproduce, so it measures runner load rather than the code.
 KNOWN_RED_BASELINE: dict[str, str] = {
-    # -- (a) requires a configured project / configured domain ---------------
-    "cli-ops": (
-        "needs a configured project: the `email config` CLI step exits 1 with "
-        "'No configuration found. Run autoinfo init first.'"
-    ),
-    "cost-budget": (
-        "needs a configured project: get_budget_thresholds returns "
-        "ConfigNotFound (no .autoinfo/config.yaml in a bare checkout)"
-    ),
-    "delivery-channels": ("needs a configured project: email_config view returns ConfigNotFound"),
-    "discovery": (
-        "needs a configured project: list_domains returns ConfigNotFound "
-        "instead of the configured-domain list"
-    ),
-    "error-boundary": (
-        "needs a configured project: an unconfigured project yields "
-        "ConfigNotFound where the scenario expects DomainNotFound"
-    ),
-    "kb-import-export": (
-        "needs a configured project: export_kb returns NotFound "
-        "('No configuration found. Run autoinfo init first.')"
-    ),
-    "output-discovery": ("needs a configured project: get_config returns ConfigNotFound"),
-    "projects-config": ("needs a configured project: list_projects returns ConfigNotFound"),
-    "regression-llm-pool-config": (
-        "needs a configured project: configure_llm returns ConfigNotFound "
-        "('Run init_project first')"
-    ),
-    # -- (b) hardcoded-date time-bomb: entry now exceeds freshness -----------
+    # -- (a) hardcoded-date time-bomb: entry now exceeds freshness -----------
     "fault-injection": (
         "time-bomb: the seeded entry's collected_at 2026-08-01 is now older "
         "than the ai-commercial freshness threshold, so generate_digest raises "
@@ -110,7 +82,7 @@ KNOWN_RED_BASELINE: dict[str, str] = {
         "than the general-news freshness threshold, so generate_digest raises "
         "StaleSourceError"
     ),
-    # -- (c) wall-clock threshold, not reproducible on a shared runner ------
+    # -- (b) wall-clock threshold, not reproducible on a shared runner ------
     "perf-concurrency": (
         "machine-dependent timing: asserts 10 concurrent runs finish within "
         "2.0x a single run's wall time. Observed 4.27x on a GitHub runner "
@@ -119,6 +91,31 @@ KNOWN_RED_BASELINE: dict[str, str] = {
         "harness with a load-relative threshold, not a fixed ratio"
     ),
 }
+
+# Scenarios that assert against a *configured* project.  These were previously
+# baselined as "needs a configured project" because the gate ran in a bare
+# checkout and they all returned ConfigNotFound.  They are run in a second pass
+# against a throwaway project instead, so they are real assertions rather than
+# permanently-exempt known-red.  Listed explicitly (not detected by retrying on
+# failure) so that one of them breaking is reported as a failure rather than
+# silently retried into a pass.
+PROJECT_SCENARIOS: frozenset[str] = frozenset(
+    {
+        "cli-ops",
+        "cost-budget",
+        "delivery-channels",
+        "discovery",
+        "error-boundary",
+        "kb-import-export",
+        "output-discovery",
+        "projects-config",
+        "regression-llm-pool-config",
+    }
+)
+
+#: Domain initialised for the project pass; the scenarios only assert that a
+#: configured project resolves, not any domain-specific content.
+_PROJECT_DOMAIN = "medical-research"
 
 
 def _steps(scenario: dict[str, Any]) -> list[dict[str, Any]]:
@@ -198,6 +195,37 @@ async def _run_candidate(name: str, timeout: float) -> tuple[str, str, str]:
     return name, status, _failure_reason(result)
 
 
+async def _run_project_pass(names: list[str], timeout: float) -> dict[str, tuple[str, str]]:
+    """Run *names* against a throwaway initialised project.
+
+    These scenarios read project config, so a bare checkout makes every one of
+    them return ``ConfigNotFound`` and assert nothing.  Initialising a project
+    in a temp cwd turns them into real assertions.  The cwd and the directory
+    are always restored/removed, so the pass leaves no state behind and cannot
+    affect the scenarios that run before it.
+    """
+    results: dict[str, tuple[str, str]] = {}
+    if not names:
+        return results
+    previous = Path.cwd()
+    workdir = Path(tempfile.mkdtemp(prefix="scenario-gate-project-"))
+    try:
+        os.chdir(workdir)
+        envelope = await _dispatch("init_project", {"domain": _PROJECT_DOMAIN})
+        if not envelope.get("success"):
+            reason = f"init_project failed: {envelope.get('error')}"[:300]
+            return {name: ("failed", reason) for name in names}
+        for index, name in enumerate(names, start=1):
+            _, status, reason = await _run_candidate(name, timeout)
+            results[name] = (status, reason)
+            suffix = "" if status == "passed" else f"  <-- {reason}"
+            print(f"[project {index}/{len(names)}] {name}: {status}{suffix}", flush=True)
+    finally:
+        os.chdir(previous)
+        shutil.rmtree(workdir, ignore_errors=True)
+    return results
+
+
 async def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true", help="list candidates and exit")
@@ -222,6 +250,16 @@ async def _main(argv: list[str]) -> int:
         return 1
 
     candidates = select_candidates(scenarios)
+    candidate_names = {c["name"] for c in candidates}
+    unknown_project = sorted(PROJECT_SCENARIOS - candidate_names)
+    if unknown_project:
+        for name in unknown_project:
+            print(
+                f"PROJECT_SCENARIOS names {name!r}, which is not a runtime candidate "
+                "(renamed, or newly gated on env/LLM/HTTP/domain)",
+                file=sys.stderr,
+            )
+        return 1
     if args.only:
         wanted = {n for n in args.only.split(",") if n}
         candidates = [c for c in candidates if c["name"] in wanted]
@@ -241,12 +279,27 @@ async def _main(argv: list[str]) -> int:
     # a long run is observable.
     statuses: dict[str, str] = {}
     reasons: dict[str, str] = {}
+    project_names: list[str] = []
+    plain_names: list[str] = []
+    for scenario in candidates:
+        name = scenario["name"]
+        if name in PROJECT_SCENARIOS:
+            project_names.append(name)
+        else:
+            plain_names.append(name)
+
     for index, scenario in enumerate(candidates, start=1):
+        if scenario["name"] in PROJECT_SCENARIOS:
+            continue
         name, status, reason = await _run_candidate(scenario["name"], args.timeout)
         statuses[name] = status
         reasons[name] = reason
         suffix = "" if status == "passed" else f"  <-- {reason}"
         print(f"[{index}/{len(candidates)}] {name}: {status}{suffix}", flush=True)
+
+    for name, (status, reason) in (await _run_project_pass(project_names, args.timeout)).items():
+        statuses[name] = status
+        reasons[name] = reason
     if args.json:
         Path(args.json).write_text(
             json.dumps(
@@ -269,7 +322,10 @@ async def _main(argv: list[str]) -> int:
             print(f"  {name}: {statuses[name]} -- {reasons.get(name, '')}")
 
     unlisted = sorted(n for n in non_passing if n not in KNOWN_RED_BASELINE)
-    stale = sorted(n for n in KNOWN_RED_BASELINE if n not in non_passing)
+    # A restricted `--only` run does not execute the whole candidate set, so any
+    # baseline entry it skipped would look stale. Judge only the direction that
+    # the run can actually speak to.
+    stale = [] if args.only else sorted(n for n in KNOWN_RED_BASELINE if n not in non_passing)
     if unlisted:
         print("\nNon-passing scenarios NOT in the known-red baseline:", file=sys.stderr)
         for name in unlisted:

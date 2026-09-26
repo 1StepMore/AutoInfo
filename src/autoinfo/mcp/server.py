@@ -3064,6 +3064,31 @@ _PERSIST_EXT_BY_FORMAT: dict[str, str] = {
     "audiobook": ".zip",
 }
 
+#: Sentence ``_render_empty_report`` emits for a no-curated-data report.
+_NO_DATA_REPORT_MARKER = "This edition has no curated items yet"
+
+
+def _is_no_data_product(result: Any, format: str) -> bool:
+    """True when a generated report is the no-curated-data empty shell.
+
+    The pre-flight ``list_entries`` guard cannot detect this case:
+    ``list_entries`` applies no tier filter, so unprocessed ``01-Raw`` rows
+    satisfy it, while ``generate_report``'s product/empty/synthesized filters
+    still drop every candidate and fall through to ``_render_empty_report``.
+    Judging the rendered artifact instead of re-running the filter chain keeps
+    this from drifting away from the generator's own behaviour.
+    """
+    if format in ("json", "agent"):
+        data = result
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (ValueError, TypeError):
+                return False
+        entries = data.get("entries") if isinstance(data, dict) else None
+        return isinstance(entries, list) and not entries
+    return isinstance(result, str) and _NO_DATA_REPORT_MARKER in result
+
 
 def _persist_output(
     domain: str,
@@ -3414,6 +3439,21 @@ def _handle_generate_report(
             language=language,
             ref_limit=ref_limit,
         )
+        if _is_no_data_product(result, format):
+            return success_response(
+                {
+                    "domain": domain,
+                    "format": format,
+                    "period": period,
+                    "status": "noop",
+                    "content": "",
+                    "message": (
+                        f"No curated entries for domain '{domain}' produced a "
+                        "deliverable report; nothing was written. Run "
+                        "collect_sources() + process_collection() first."
+                    ),
+                }
+            )
         if format in ("json", "agent"):
             import json as _json
 

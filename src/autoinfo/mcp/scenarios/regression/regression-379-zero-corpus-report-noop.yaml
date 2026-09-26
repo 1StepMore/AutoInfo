@@ -1,0 +1,117 @@
+# Regression #379 — a domain with no KB entries must not persist an
+# empty-shell report artifact.
+#
+# Defect: `generate_report` renders a neutral zero-entry stub via
+# `_render_empty_report` ("This edition has no curated items yet. Check back
+# after the next collection run."), and the MCP `generate_report` handler
+# persisted it via `_persist_output` as
+# `outputs/<domain>/<product>-<format>-<stamp>.md` (e.g.
+# `outputs/gaming/column-markdown-20260925-173136.md`).  Downstream,
+# `scripts/real_product_assertions.py` flagged those files as P1
+# ("missing Deep Dive section" / "no Sections metadata") and
+# `scripts/coverage_matrix.py` counted them as `produced`, inflating the
+# coverage number.
+#
+# Fix: `_handle_generate_report` carries the same zero-entry pre-check as
+# `_handle_generate_digest` — a window preview query (`date_from = today -
+# period days`, limit=1), then a full-domain preview fallback (so
+# stale-but-present content still generates, matching the generator's
+# data-staleness relaxation), and a `noop` success envelope when both are
+# empty.  The envelope returns BEFORE `_generate_report` /
+# `_maybe_persist_output`, so nothing is written to disk.  Policy: no-data
+# means no artifact.
+#
+# Deterministic (requires_env: []): the handler drives a mocked KBStore (both
+# preview queries empty) and a stubbed `generate_report`, so the scenario
+# runs in a bare sandbox — no LLM key, no network.  Runs in an ABSOLUTE temp
+# cwd (tempfile.mkdtemp + try/finally cleanup); nothing is written into the
+# repo.  The generator stub returns content so that if the guard regresses
+# the handler persists it and the no-artifact assertion fails.
+name: regression-379-zero-corpus-report-noop
+description: "Regression #379: zero-entry domain report returns a noop envelope and persists no artifact"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
+regression: true
+regression_issue: "#379"
+requires_env: []
+timeout: 60
+steps:
+  - name: "zero-entry report returns noop and writes no artifact under outputs/"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from unittest.mock import patch
+      from autoinfo.mcp.server import _handle_generate_report
+
+      tmp = Path(tempfile.mkdtemp(prefix="ai379-noop-report-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          with patch("autoinfo.kb.KBStore") as mock_kb, \
+                  patch("autoinfo.output.generate_report") as mock_gen:
+              mock_kb.return_value.list_entries.return_value = []
+              mock_gen.return_value = "# Report\n\nThis edition has no curated items yet."
+              result = _handle_generate_report(
+                  domain="gaming",
+                  format="markdown",
+                  period="monthly",
+                  report_type="column",
+                  persist=True,
+              )
+          assert result["success"] is True, result
+          assert result["data"]["status"] == "noop", result
+          assert result["data"]["content"] == "", result
+          assert "persisted_path" not in result["data"], result
+          assert mock_kb.return_value.list_entries.call_count == 2, "expected window + full-domain preview queries"
+          mock_gen.assert_not_called()
+          outputs = tmp / "outputs"
+          assert not outputs.exists(), "zero-entry report persisted an artifact: " + repr(list(outputs.rglob("*")))
+          print("ZERO_ENTRY_REPORT_NOOP_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ZERO_ENTRY_REPORT_NOOP_OK"]
+
+  - name: "unknown product still returns a validation error before the noop pre-check"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from unittest.mock import patch
+      from autoinfo.mcp.server import _handle_generate_report
+
+      tmp = Path(tempfile.mkdtemp(prefix="ai379-product-order-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          with patch("autoinfo.kb.KBStore") as mock_kb:
+              mock_kb.return_value.list_entries.return_value = []
+              result = _handle_generate_report(
+                  domain="gaming",
+                  format="markdown",
+                  period="monthly",
+                  product="definitely-not-a-product",
+              )
+          assert result["success"] is False, result
+          assert result["error"]["code"] == "ValidationError", result
+          assert not (tmp / "outputs").exists(), "validation error persisted an artifact"
+          print("ZERO_ENTRY_REPORT_PRODUCT_ORDER_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ZERO_ENTRY_REPORT_PRODUCT_ORDER_OK"]

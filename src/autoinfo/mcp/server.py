@@ -41,7 +41,7 @@ from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES, ConfigNotFoundError
-from autoinfo.kb import DirectorOnlyError, is_director
+from autoinfo.kb import DirectorOnlyError, PromotionRejected, is_director
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
@@ -7747,6 +7747,7 @@ def _classify_exception(exc: Exception) -> ErrorCode:
     most specific to the least specific:
 
     - :class:`~autoinfo.kb.DirectorOnlyError` → ``DIRECTOR_ONLY``
+    - :class:`~autoinfo.kb.PromotionRejected` → ``VALIDATION_ERROR``
     - :class:`~autoinfo.config.ConfigNotFoundError` → ``CONFIG_NOT_FOUND``
     - :class:`FileNotFoundError` → ``NOT_FOUND``
     - :class:`ValueError` / :class:`KeyError` → ``VALIDATION_ERROR``
@@ -7756,10 +7757,15 @@ def _classify_exception(exc: Exception) -> ErrorCode:
     - anything else → ``INTERNAL_ERROR``
 
     ``INTERNAL_ERROR`` is therefore reserved for genuinely unexpected
-    server-internal failures.
+    server-internal failures.  A promotion admission rejection is a *designed*
+    outcome — the draft stays in 02-Draft with a ``_failed/`` marker — not an
+    internal fault, so it classifies as ``VALIDATION_ERROR``: the caller passed
+    a draft that did not meet the gate criteria and can act on that.
     """
     if isinstance(exc, DirectorOnlyError):
         return ErrorCode.DIRECTOR_ONLY
+    if isinstance(exc, PromotionRejected):
+        return ErrorCode.VALIDATION_ERROR
     if isinstance(exc, ConfigNotFoundError):
         return ErrorCode.CONFIG_NOT_FOUND
     if isinstance(exc, FileNotFoundError):

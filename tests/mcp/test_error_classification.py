@@ -16,7 +16,7 @@ import httpx
 import pytest
 
 from autoinfo.config import ConfigNotFoundError
-from autoinfo.kb import DirectorOnlyError
+from autoinfo.kb import DirectorOnlyError, PromotionRejected
 from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
     _classify_exception,
@@ -72,6 +72,16 @@ class TestClassifyException:
 
     def test_config_not_found(self) -> None:
         assert _classify_exception(ConfigNotFoundError("missing")) == ErrorCode.CONFIG_NOT_FOUND
+
+    def test_promotion_rejected_is_validation_error(self) -> None:
+        # A gate rejection is a designed outcome — the draft stays in 02-Draft
+        # with a _failed/ marker — so it must not be flattened into
+        # INTERNAL_ERROR. PromotionRejected is a plain Exception, so without an
+        # explicit mapping it fell through to the INTERNAL_ERROR fallback.
+        assert (
+            _classify_exception(PromotionRejected(["source-score-below-threshold"]))
+            == ErrorCode.VALIDATION_ERROR
+        )
 
     def test_generic_file_not_found(self) -> None:
         assert _classify_exception(FileNotFoundError("missing")) == ErrorCode.NOT_FOUND

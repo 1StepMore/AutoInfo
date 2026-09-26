@@ -21,11 +21,14 @@
 # Deterministic: real KBStore seeds with QualityResult scores (same call
 # path as process_collection), real MCP calls for draft/promote/force/sweep.
 #
-# Error-code note (do not collapse these to one code): the idempotency path —
-# re-promoting an already-promoted (non-Draft) entry — raises ValueError,
-# which the #364 classifier maps to ValidationError.  The admission
-# rejections (unresolvable source, below-threshold) raise PromotionRejected,
-# a plain Exception, which the same classifier maps to InternalError.
+# Error-code note: all three refusal paths are ValidationError, but by two
+# different routes.  The idempotency path — re-promoting an already-promoted
+# (non-Draft) entry — raises ValueError.  The admission rejections
+# (unresolvable source, below-threshold) raise PromotionRejected, which the
+# #364 classifier now maps explicitly; it is a plain Exception, so before that
+# mapping it fell through to InternalError even though a gate rejection is a
+# designed outcome (the draft stays in 02-Draft with a _failed/ marker), not an
+# internal fault.
 name: promotion-triggers
 description: "Promotion triggers: agent promote, unresolvable-source fail-fast, re-promotion idempotency, director force bypass, curated-first consumption"
 category: edge_case
@@ -107,7 +110,7 @@ steps:
       entry_id: medical-research-draft-t9-trigger-vanished-draft
     expect:
       success: false
-      error_code: "InternalError"
+      error_code: "ValidationError"
       error_actionable: true
 
   - name: "verify _failed marker written and draft preserved"
@@ -227,7 +230,7 @@ steps:
       entry_id: medical-research-draft-t9-trigger-low-draft
     expect:
       success: false
-      error_code: "InternalError"
+      error_code: "ValidationError"
       error_actionable: true
 
   - name: "director force_promote bypasses the admission gate"

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.2](https://github.com/1StepMore/AutoInfo/compare/v1.13.1...v1.13.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **output:** block no-data products, drop premium filler, and gate the keyless scenario subset ([#385](https://github.com/1StepMore/AutoInfo/issues/385)) ([86c8e12](https://github.com/1StepMore/AutoInfo/commit/86c8e12f43e5d2eb3d15db96b28ea29c9289cc06))
+
 ## [1.13.1](https://github.com/1StepMore/AutoInfo/compare/v1.13.0...v1.13.1) (2026-09-25)
 
 

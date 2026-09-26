@@ -952,6 +952,112 @@ class TestGenerateOutputPreviewFallback:
         assert mock_kb.return_value.list_entries.call_count == 2
         mock_gen.assert_not_called()
 
+    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.generate_report")
+    def test_report_noop_writes_no_artifact_when_zero_entries(
+        self,
+        mock_gen: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Zero-entry domain -> noop AND no artifact persisted (issue #379).
+
+        A domain with no KB entries must not persist an empty-shell report
+        artifact.  The noop envelope is returned before ``_generate_report``
+        and ``_maybe_persist_output`` are reached, so with ``persist=True``
+        nothing is written.  If the guard regresses, the stubbed generator
+        returns content and ``_persist_output`` writes a file under
+        ``OUTPUTS_DIR`` (redirected to ``tmp_path`` here) — failing both the
+        envelope and the no-artifact assertions.
+        """
+        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        mock_kb.return_value.list_entries.return_value = []
+        mock_gen.return_value = "# Report\n\nempty-shell stub"
+
+        result = _handle_generate_report(
+            domain="gaming",
+            format="markdown",
+            period="monthly",
+            report_type="column",
+            persist=True,
+        )
+
+        assert result["success"] is True
+        assert result["data"]["status"] == "noop"
+        assert result["data"]["content"] == ""
+        assert "persisted_path" not in result["data"]
+        assert mock_kb.return_value.list_entries.call_count == 2
+        mock_gen.assert_not_called()
+        assert list(tmp_path.iterdir()) == [], "zero-entry report persisted an artifact"
+
+    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.generate_report")
+    def test_report_noop_writes_no_artifact_when_all_rows_filtered_out(
+        self,
+        mock_gen: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Rows present but no curated content -> noop AND no artifact (#379).
+
+        The pre-flight guard only proves *some* row exists.  ``list_entries``
+        applies no tier filter, so unprocessed ``01-Raw`` rows satisfy it while
+        ``generate_report``'s product/empty/synthesized filters drop every
+        candidate and fall through to ``_render_empty_report``.  The rendered
+        artifact is therefore judged directly, so that stub never reaches disk.
+        """
+        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        mock_kb.return_value.list_entries.return_value = [
+            {"id": "raw-1", "title": "unprocessed", "tier": "01-Raw"}
+        ]
+        mock_gen.return_value = (
+            "# Gaming — Report\n\nThis edition has no curated items yet. "
+            "Check back after the next collection run."
+        )
+
+        result = _handle_generate_report(
+            domain="gaming",
+            format="markdown",
+            period="monthly",
+            report_type="column",
+            persist=True,
+        )
+
+        assert result["success"] is True
+        assert result["data"]["status"] == "noop"
+        assert result["data"]["content"] == ""
+        assert "persisted_path" not in result["data"]
+        assert list(tmp_path.iterdir()) == [], "no-data stub was persisted"
+
+    @patch("autoinfo.kb.KBStore")
+    @patch("autoinfo.output.generate_report")
+    def test_report_persists_real_report_unaffected_by_no_data_guard(
+        self,
+        mock_gen: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A genuine report must still be persisted (#379 no-regression)."""
+        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        mock_kb.return_value.list_entries.return_value = [{"id": "wiki-1"}]
+        mock_gen.return_value = "# Gaming — Report\n\n## Executive Summary\n\nReal content."
+
+        result = _handle_generate_report(
+            domain="gaming",
+            format="markdown",
+            period="monthly",
+            report_type="column",
+            persist=True,
+        )
+
+        assert result["success"] is True
+        assert "status" not in result["data"]
+        assert result["data"]["persisted_path"]
+        assert list(tmp_path.rglob("*.md"))
+
 
 # ======================================================================
 # _handle_test_source — suggested_extract_fields

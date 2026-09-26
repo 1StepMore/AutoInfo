@@ -1,8 +1,8 @@
 # {{ title }}
 
-**Domain**: {{ domain_display_name(domain) }}  
-**Generated**: {{ generated_at }}  
-{% if collection_id %}**Collection**: {{ collection_id }}  
+**Domain**: {{ domain_display_name(domain) }}
+**Generated**: {{ generated_at }}
+{% if collection_id %}**Collection**: {{ collection_id }}
 {% endif %}**Cadence**: Weekly column
 
 ---
@@ -11,6 +11,7 @@
 
 {{ executive_summary }}
 
+{% if sections %}
 ---
 
 ## Deep Dive
@@ -34,10 +35,10 @@
 {% endif %}
 {% endif %}
 
-{% else %}
-_No deep-dive sections available for this column._
 {% endfor %}
+{% endif %}
 
+{% if references %}
 ---
 
 ## What Changed This Week
@@ -52,8 +53,6 @@ Top developments this week (full source list in References):
 {% set _ = selected.append(ref) %}
 {% set ns.shown = ns.shown + 1 %}
 {% endif %}
-{% else %}
-_No developments this week._
 {% endfor %}
 {% if not selected and references %}
 {% set selected = references[:8] %}
@@ -61,10 +60,18 @@ _No developments this week._
 {% for ref in selected %}
 - **{{ ref.title }}**{{ (" — " ~ ref.source_url) if ref.source_url else "" }}{{ (" (" ~ user_source_label(ref) ~ ")") if user_source_label(ref) else "" }}
 {% endfor %}
+{% endif %}
 
+{% set ns_impl = namespace(has=false) %}
+{% for sec in sections %}
+{% if sec.marker is defined %}{% else %}
+{% set _impl = implications[loop.index0] if (implications and implications[loop.index0] is defined and implications[loop.index0]) else "" %}
+{% if _impl %}{% set ns_impl.has = true %}{% endif %}
+{% endif %}
+{% endfor %}
+{% if ns_impl.has %}
 ---
 
-{% if implications %}
 ## Implications & Outlook
 
 {% for sec in sections %}
@@ -74,8 +81,6 @@ _No developments this week._
 - **{{ sec.title }}** — {{ _impl }}
 {% endif %}
 {% endif %}
-{% else %}
-_No outlook sections available._
 {% endfor %}
 {% endif %}
 
@@ -110,15 +115,15 @@ _No outlook sections available._
 {% endfor %}
 {% endif %}
 
+{% if references %}
 ---
 
 ## References
 
 {% for ref in references %}
 {{ loop.index }}. **{{ ref.title }}**{{ (" — " ~ ref.source_url) if ref.source_url else "" }}{{ (" (" ~ user_source_label(ref) ~ ")") if user_source_label(ref) else "" }}
-{% else %}
-_No sources for this edition._
 {% endfor %}
+{% endif %}
 
 ---
 

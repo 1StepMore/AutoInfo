@@ -50,16 +50,35 @@ _ENTRY_KEYS = frozenset(
 # the per-product-type required-section rules in _build_product_output.
 _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
     "key_findings": (
-        "key findings", "key_findings", "key-findings", "key points",
-        "slide", "slides", "learning objectives", "main findings", "introduction",
+        "key findings",
+        "key_findings",
+        "key-findings",
+        "key points",
+        "slide",
+        "slides",
+        "learning objectives",
+        "main findings",
+        "introduction",
+        "key takeaways",
     ),
     "summary": (
-        "summary", "executive summary", "overview",
-        "entries", "content", "executive overview", "body",
+        "summary",
+        "executive summary",
+        "overview",
+        "entries",
+        "content",
+        "executive overview",
+        "body",
     ),
     "recommendations": (
-        "recommendations", "conclusion", "next steps",
-        "exercises", "further reading", "action items", "next actions",
+        "recommendations",
+        "conclusion",
+        "next steps",
+        "exercises",
+        "further reading",
+        "action items",
+        "next actions",
+        "recommended actions",
     ),
 }
 
@@ -85,11 +104,11 @@ _EMPTY_PLACEHOLDER_RE = re.compile(r"^\s*_no\s+.+_\.?\s*$", re.IGNORECASE)
 # must genuinely carry all three canonical sections.
 _PRODUCT_TYPE_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
     "report": ("key_findings", "summary", "recommendations"),
-    "presentation": ("key_findings",),          # at least one Slide N heading
-    "digest": ("summary",),                     # Entries section / entries present
+    "presentation": ("key_findings",),  # at least one Slide N heading
+    "digest": ("summary",),  # Entries section / entries present
     "tutorial": ("key_findings", "recommendations"),  # Learning Objectives + Exercises
-    "column": ("key_findings",),                # at least one content heading
-    "magazine": ("key_findings",),              # at least one content heading
+    "column": ("key_findings",),  # at least one content heading
+    "magazine": ("key_findings",),  # at least one content heading
     # Briefing products render via the report template family (Executive
     # Summary + Sections + References); the only canonical section they
     # genuinely produce is the summary (#172 follow-up).
@@ -113,10 +132,15 @@ _PRODUCT_TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
 # Column-template headings (column.md.j2). generate_report persists every
 # report (including report_type="column") under the "report" product name, so
 # classify by content when the filename alone says report (#172).
-_COLUMN_HEADINGS = frozenset({
-    "the big idea", "deep dive", "reader takeaways",
-    "implications & outlook", "what changed this week",
-})
+_COLUMN_HEADINGS = frozenset(
+    {
+        "the big idea",
+        "deep dive",
+        "reader takeaways",
+        "implications & outlook",
+        "what changed this week",
+    }
+)
 
 # Canonical D1 sections -> JSON top-level / llm_synthesis key aliases.
 _SECTION_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
@@ -245,16 +269,13 @@ def _detect_product_type(file_path: Path, body: str = "") -> str:
         if keyword in rel:
             return ptype
     if body and any(
-        line.strip().lstrip("#").strip().lower() in _COLUMN_HEADINGS
-        for line in body.splitlines()
+        line.strip().lstrip("#").strip().lower() in _COLUMN_HEADINGS for line in body.splitlines()
     ):
         return "column"
     return "report"
 
 
-def _sections_from_headings(
-    text: str, product_type: str = "report"
-) -> dict[str, str]:
+def _sections_from_headings(text: str, product_type: str = "report") -> dict[str, str]:
     """Map canonical D1 sections to non-empty heading content (md/html).
 
     Headings are matched against :data:`_SECTION_HEADING_ALIASES`, with
@@ -275,9 +296,11 @@ def _sections_from_headings(
         converted: list[str] = []
         pos = 0
         for m in heading_re.finditer(text):
-            converted.append(text[pos:m.start()])
+            converted.append(text[pos : m.start()])
             converted.append(
-                "\n" + "#" * int(m.group(1)) + " "
+                "\n"
+                + "#" * int(m.group(1))
+                + " "
                 + re.sub(r"<[^>]+>", "", m.group(2)).strip()
                 + "\n"
             )
@@ -303,10 +326,7 @@ def _sections_from_headings(
     def _block_content(heading: str, lines: list[str]) -> str:
         # Templates separate sections with "---" horizontal rules; those are
         # not content and would mask an empty-state placeholder (#172).
-        body_lines = [
-            line for line in lines
-            if line and not re.match(r"^[-*=_]{3,}\s*$", line)
-        ]
+        body_lines = [line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)]
         content = " ".join(body_lines)
         if _is_empty_placeholder(content):
             return ""
@@ -319,8 +339,7 @@ def _sections_from_headings(
                 content = _block_content(heading, lines)
                 if content or _is_empty_placeholder(
                     " ".join(
-                        line for line in lines
-                        if line and not re.match(r"^[-*=_]{3,}\s*$", line)
+                        line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)
                     )
                 ):
                     # Real content, or an empty-state placeholder (kept empty).
@@ -375,9 +394,7 @@ def _section_value(parsed: dict[str, Any], aliases: tuple[str, ...]) -> Any:
 _D1_NON_REQUIRED_MARKER = "present"
 
 
-def _apply_format_sections(
-    sections: dict[str, str], product_type: str
-) -> dict[str, str]:
+def _apply_format_sections(sections: dict[str, str], product_type: str) -> dict[str, str]:
     """Map a product's detected sections onto the three D1 canonical keys.
 
     The D1 gate always requires ``key_findings``/``summary``/``recommendations``
@@ -446,14 +463,11 @@ def _build_product_output(file_path: Path, bucket: str) -> dict[str, Any]:
             entries = _json_entries(parsed)
             if isinstance(parsed, dict):
                 sections = {
-                    "key_findings": _section_value(
-                        parsed, _SECTION_SOURCE_KEYS["key_findings"]
-                    ),
+                    "key_findings": _section_value(parsed, _SECTION_SOURCE_KEYS["key_findings"]),
                     "summary": _section_value(parsed, _SECTION_SOURCE_KEYS["summary"]),
                     "recommendations": _section_value(
                         parsed, _SECTION_SOURCE_KEYS["recommendations"]
                     ),
-
                 }
     key_findings = sections.get("key_findings")
     summary = sections.get("summary")
@@ -724,27 +738,33 @@ def _build_qa_gate_report(
     ]
     if rejected_reason:
         md.append(f"- Rejection reason: {rejected_reason}")
-    md.extend([
-        "",
-        "## Gates",
-        "",
-        "| Gate | Passed | Details |",
-        "|------|--------|---------|",
-    ])
+    md.extend(
+        [
+            "",
+            "## Gates",
+            "",
+            "| Gate | Passed | Details |",
+            "|------|--------|---------|",
+        ]
+    )
     for row in payload["gates"]:
         details = row["details"]
         if isinstance(details, dict):
-            details = details.get("error") or details.get("reason") or json.dumps(
-                details, ensure_ascii=False, default=str
+            details = (
+                details.get("error")
+                or details.get("reason")
+                or json.dumps(details, ensure_ascii=False, default=str)
             )
         md.append(f"| {row['gate']} | {'PASS' if row['passed'] else 'FAIL'} | {details} |")
-    md.extend([
-        "",
-        "## Scope Note",
-        "",
-        _QA_LAYER_NOTE,
-        "",
-    ])
+    md.extend(
+        [
+            "",
+            "## Scope Note",
+            "",
+            _QA_LAYER_NOTE,
+            "",
+        ]
+    )
     return "\n".join(md), json_text
 
 

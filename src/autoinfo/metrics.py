@@ -24,8 +24,14 @@ METRIC_NAMES: dict[str, str] = {
     "errors_total": "Total number of errors recorded across the pipeline",
     "active_users": "Number of active (non-cancelled) end-user profiles",
     "storage_bytes": "Total bytes used by knowledge base Markdown files",
-    "billing_stripe_sync_failures_total": "Total number of stripe_customer_id persistence failures in billing sync",
+    "billing_stripe_sync_failures_total": (
+        "Total number of stripe_customer_id persistence failures in billing sync"
+    ),
     "delivery_failures_total": "Total number of failed agent callback deliveries (durable outbox)",
+    "outbox_persist_failures_total": (
+        "Total number of agent notifications lost before persistence "
+        "(unserialisable payload or outbox write failure)"
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -72,6 +78,9 @@ def get_metrics() -> dict[str, Any]:
     # --- delivery_failures_total -------------------------------------------
     delivery_failures_total = _get_delivery_failures()
 
+    # --- outbox_persist_failures_total ------------------------------------
+    outbox_persist_failures_total = _get_outbox_persist_failures()
+
     return {
         "items_collected_total": items_collected_total,
         "items_processed_total": items_processed_total,
@@ -81,6 +90,7 @@ def get_metrics() -> dict[str, Any]:
         "storage_bytes": storage_bytes,
         "billing_stripe_sync_failures_total": billing_stripe_sync_failures_total,
         "delivery_failures_total": delivery_failures_total,
+        "outbox_persist_failures_total": outbox_persist_failures_total,
     }
 
 
@@ -109,10 +119,8 @@ def format_prometheus(metrics: dict[str, Any]) -> str:
             # Metric with labels: value is {labels_dict: numeric}
             for labels, v in value.items():
                 if isinstance(labels, dict) and labels:
-                    label_str = ",".join(
-                        f'{k}="{v}"' for k, v in sorted(labels.items())
-                    )
-                    lines.append(f'{name}{{{label_str}}} {v}')
+                    label_str = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+                    lines.append(f"{name}{{{label_str}}} {v}")
                 else:
                     lines.append(f"{name} {v}")
         else:
@@ -145,9 +153,7 @@ def _count_items_collected(db_path: Path, knowledge_dir: Path) -> int:
             import sqlite3
 
             conn = sqlite3.connect(str(db_path))
-            row = conn.execute(
-                "SELECT COUNT(*) FROM entries WHERE deleted_at = ''"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM entries WHERE deleted_at = ''").fetchone()
             conn.close()
             if row:
                 total = row[0]
@@ -209,9 +215,7 @@ def _count_errors(db_path: Path, collections_dir: Path) -> int:
             import sqlite3
 
             conn = sqlite3.connect(str(db_path))
-            row = conn.execute(
-                "SELECT COUNT(*) FROM entries WHERE quality_tier = 5"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM entries WHERE quality_tier = 5").fetchone()
             conn.close()
             if row:
                 error_count += row[0]
@@ -260,5 +264,15 @@ def _get_delivery_failures() -> int:
         from autoinfo.agent_callback import get_delivery_failures
 
         return get_delivery_failures()
+    except Exception:
+        return 0
+
+
+def _get_outbox_persist_failures() -> int:
+    """Return the in-memory counter of notifications lost before persistence."""
+    try:
+        from autoinfo.agent_callback import get_outbox_persist_failures
+
+        return get_outbox_persist_failures()
     except Exception:
         return 0

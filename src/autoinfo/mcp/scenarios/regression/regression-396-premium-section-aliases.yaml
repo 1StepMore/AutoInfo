@@ -1,0 +1,91 @@
+# Regression #396: premium-briefing headings must map to D1 gate sections.
+#
+# History: `premium-briefing.md.j2` renders `## Key Takeaways` and
+# `## Recommended Actions`, but `_SECTION_HEADING_ALIASES` only knew the
+# report-family spellings (`key findings` / `recommendations`). A premium
+# product therefore parsed with `summary` alone — `key_findings` and
+# `recommendations` came back ABSENT even though the body carried real
+# content, so the D1 product-completeness gate saw a structurally empty
+# product (and #380's placeholder sweep had nothing legitimate to find).
+#
+# Fix: add the premium spellings as aliases. The table is duplicated in
+# `autoinfo.delivery.gate_report` and `autoinfo.output` (both consume it), so
+# both were updated and a parity assertion locks them together — the two
+# tables happened to be identical before, which made the duplication a silent
+# drift hazard.
+#
+# Deterministic (requires_env: []): pure heading->section string parsing of a
+# literal markdown product; no files, no LLM, no network.
+name: regression-396-premium-section-aliases
+description: "Regression #396: premium-briefing `## Key Takeaways` / `## Recommended Actions` resolve to key_findings / recommendations in both alias tables"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
+regression: true
+regression_issue: "#396"
+requires_env: []
+steps:
+  - name: "premium headings resolve in both consumers of the alias table"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.delivery import gate_report as gr
+      from autoinfo.output import _sections_from_headings as out_sections
+      from autoinfo.output import _SECTION_HEADING_ALIASES as out_aliases
+
+      MD = (
+          "# Premium Briefing\n\n"
+          "## Executive Summary\n"
+          "Market shifted this week.\n\n"
+          "## Key Takeaways\n"
+          "1. Hospitals adopt AI triage at growing scale\n\n"
+          "## Risks & Opportunities\n"
+          "- Regulatory drift in two states\n\n"
+          "## Recommended Actions\n"
+          "- Audit vendor contracts before renewal\n\n"
+          "## References\n"
+          "- https://example.org/a\n"
+      )
+
+      assert gr._SECTION_HEADING_ALIASES == out_aliases, "alias tables drifted"
+      for table, name in ((gr._SECTION_HEADING_ALIASES, "gate_report"),
+                          (out_aliases, "output")):
+          assert "key takeaways" in table["key_findings"], name
+          assert "recommended actions" in table["recommendations"], name
+
+      for parser, name in ((gr._sections_from_headings, "gate_report"),
+                           (out_sections, "output")):
+          sections = parser(MD, "report")
+          assert sections["summary"] == "Market shifted this week.", (name, sections)
+          assert "Hospitals adopt AI triage" in sections["key_findings"], (name, sections)
+          assert "Audit vendor contracts" in sections["recommendations"], (name, sections)
+      print("PREMIUM_SECTION_ALIASES_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PREMIUM_SECTION_ALIASES_OK"]
+
+  - name: "report-family headings are not regressed by the new aliases"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.delivery import gate_report as gr
+
+      MD = (
+          "# Weekly Report\n\n"
+          "## Executive Summary\nSummary body.\n\n"
+          "## Key Findings\nFinding body.\n\n"
+          "## Recommendations\nRecommendation body.\n"
+      )
+      sections = gr._sections_from_headings(MD, "report")
+      assert sections["summary"] == "Summary body.", sections
+      assert sections["key_findings"] == "Finding body.", sections
+      assert sections["recommendations"] == "Recommendation body.", sections
+      print("REPORT_ALIASES_UNCHANGED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REPORT_ALIASES_UNCHANGED_OK"]

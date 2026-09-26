@@ -366,6 +366,50 @@ def get_delivery_failures() -> int:
         return _delivery_failures_total
 
 
+#: Returned by :func:`enqueue_agent_notification` when a notification that
+#: SHOULD have been persisted was not (#395).  Distinct from ``0``, which means
+#: "deliberately not enqueued" and loses nothing.
+_OUTBOX_PERSIST_FAILED = -1
+
+#: In-process count of notifications lost at enqueue time.  Distinct from
+#: ``delivery_failures_total``, which counts rows that were persisted and then
+#: failed to POST — a lost row never becomes a delivery failure, so before this
+#: counter existed a dropped notification was invisible in metrics entirely.
+_outbox_persist_failures_total = 0
+_outbox_persist_failures_lock = threading.Lock()
+
+
+def get_outbox_persist_failures() -> int:
+    """Return the in-process count of notifications lost at enqueue time."""
+    with _outbox_persist_failures_lock:
+        return _outbox_persist_failures_total
+
+
+def _record_persist_failure(
+    reason: str,
+    event: str,
+    trace_id: str,
+    product_id: str,
+) -> None:
+    """Count and log a notification that should have been persisted but was not.
+
+    Carries ``event`` / ``trace_id`` / ``product_id`` as structured fields so an
+    operator can find which product's notification was lost.  A warning alone
+    was not actionable: #387 lost 8 of 2400 rows this way and nothing surfaced.
+    """
+    global _outbox_persist_failures_total
+    with _outbox_persist_failures_lock:
+        _outbox_persist_failures_total += 1
+    logger.warning(
+        "Outbox row LOST (not persisted): reason=%s event=%r trace_id=%r product_id=%r",
+        reason,
+        event,
+        trace_id,
+        product_id,
+        exc_info=True,
+    )
+
+
 def enqueue_agent_notification(
     event: str,
     payload: Any,
@@ -388,7 +432,23 @@ def enqueue_agent_notification(
         product_id: Product identifier, e.g. ``"medical-research-week"``.
 
     Returns:
-        The outbox row id, or ``0`` if the event could not be persisted.
+        The outbox row id on success.  Failure modes are deliberately
+        distinguishable so a caller can tell "nothing to send" from "the
+        notification was LOST" (#395):
+
+        - ``> 0`` — persisted; the value is the outbox row id.
+        - ``0`` — deliberately not enqueued.  The event name is not a valid
+          event, so this is a programming error and **no** notification was
+          expected.  Nothing is lost.
+        - :data:`_OUTBOX_PERSIST_FAILED` (-1) — the notification SHOULD have
+          been persisted but was not: the payload was not JSON-serialisable,
+          or the database write failed.  **This is data loss** — the end user
+          never gets the notification.  It is also counted in
+          ``outbox_persist_failures_total`` and logged with ``event`` /
+          ``trace_id`` / ``product_id``.
+
+        Before #395 all three returned ``0``, so a dropped row was
+        indistinguishable from a correct skip.
     """
     if event not in _VALID_EVENTS:
         logger.warning("Unknown event %r — skipping notification", event)
@@ -396,8 +456,8 @@ def enqueue_agent_notification(
     try:
         payload_json = json.dumps(payload, default=str)
     except (TypeError, ValueError):
-        logger.warning("Payload for event %r is not JSON-serialisable", event, exc_info=True)
-        return 0
+        _record_persist_failure("payload_not_serialisable", event, trace_id, product_id)
+        return _OUTBOX_PERSIST_FAILED
 
     now = _now_utc()
     row_id = 0
@@ -423,8 +483,8 @@ def enqueue_agent_notification(
             conn.commit()
             row_id = int(cursor.lastrowid or 0)
     except Exception:
-        logger.warning("Failed to persist outbox row for event %r", event, exc_info=True)
-        return 0
+        _record_persist_failure("db_write_failed", event, trace_id, product_id)
+        return _OUTBOX_PERSIST_FAILED
 
     _schedule_drain()
     return row_id

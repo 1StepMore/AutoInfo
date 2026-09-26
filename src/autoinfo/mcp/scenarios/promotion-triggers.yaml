@@ -20,6 +20,12 @@
 #
 # Deterministic: real KBStore seeds with QualityResult scores (same call
 # path as process_collection), real MCP calls for draft/promote/force/sweep.
+#
+# Error-code note (do not collapse these to one code): the idempotency path —
+# re-promoting an already-promoted (non-Draft) entry — raises ValueError,
+# which the #364 classifier maps to ValidationError.  The admission
+# rejections (unresolvable source, below-threshold) raise PromotionRejected,
+# a plain Exception, which the same classifier maps to InternalError.
 name: promotion-triggers
 description: "Promotion triggers: agent promote, unresolvable-source fail-fast, re-promotion idempotency, director force bypass, curated-first consumption"
 category: edge_case
@@ -179,7 +185,7 @@ steps:
       entry_id: medical-research-draft-t9-trigger-eligible-draft
     expect:
       success: false
-      error_code: "InternalError"
+      error_code: "ValidationError"
       error_actionable: true
 
   # ---- trigger 4: director force bypass ------------------------------------

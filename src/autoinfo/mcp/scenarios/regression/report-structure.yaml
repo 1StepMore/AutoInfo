@@ -1,16 +1,16 @@
 # Regression #121: _handle_generate_report markdown/default branch returned
 # a flat {status, message} dict missing domain/format/period/content keys,
 # while json/audio/epub branches returned the full contract.  8 tests failed.
-# Fix: all format branches now return consistent {success, domain, format,
+# Fix: all format branches now return consistent payload keys {domain, format,
 # period, content} (noop path returns content: "").
 # This scenario uses the MCP generate_report tool with a nonexistent domain
 # (noop path) — deterministic, no LLM or KB content needed.
 #
-# Envelope note: _handle_generate_report returns a FLAT dual-format envelope
-# {success, domain, format, period, status, content, message} — call_tool
-# passes it through unchanged (no `data` key), so `data_has` cannot be used.
-# The MCP steps assert `success: true` on the envelope; a CLI step then
-# verifies the full contract keys on the flat dict for every format branch.
+# Envelope note: _handle_generate_report now returns the canonical
+# {success, data} envelope — the payload keys {domain, format, period, status,
+# content, message} live under `data` (noop path returns content: "").  The
+# MCP steps assert `success: true` on the envelope; a CLI step then verifies
+# the full contract keys on `out["data"]` for every format branch.
 name: regression-report-structure
 description: "Regression #121: generate_report markdown branch returns domain/format/period/content keys"
 category: happy_path
@@ -44,7 +44,7 @@ steps:
     expect:
       success: true
 
-  - name: "every format branch carries full contract keys (flat envelope)"
+  - name: "every format branch carries full contract keys (envelope data)"
     kind: cli
     command: |-
       python3 -c '
@@ -55,10 +55,11 @@ steps:
               args["format"] = fmt
           out = _handle_generate_report(**args)
           assert out.get("success") is True, out
+          data = out["data"]
           for k in ("domain", "format", "period", "content"):
-              assert k in out, "missing key " + k + " for format " + (fmt or "default")
-          assert out.get("content") == "", "noop content must be empty, got " + str(out.get("content"))
-          print("CONTRACT_OK " + (fmt or "default") + " " + out.get("format", ""))
+              assert k in data, "missing key " + k + " for format " + (fmt or "default")
+          assert data.get("content") == "", "noop content must be empty, got " + str(data.get("content"))
+          print("CONTRACT_OK " + (fmt or "default") + " " + data.get("format", ""))
       print("REPORT_STRUCTURE_OK")
       '
     expect:

@@ -112,7 +112,7 @@ steps:
       entry_id: medical-research-draft-t9-provenance-draft
     expect:
       success: false
-      error_code: "InternalError"
+      error_code: "ValidationError"
       error_actionable: true
 
 # Always-run best-effort cleanup (never affects scenario status).  Director-

@@ -43,12 +43,21 @@ steps:
           old = os.getcwd()
           os.chdir(tmp)
           try:
-              # -- full mode regression: runtime-derived count ---------
-              # Same source list_tools() uses — never a hardcoded literal.
-              expected_full = len(server._full_tool_list())
-              assert expected_full >= 4
-              tools = await server.list_tools()
-              assert len(tools) == expected_full, (len(tools), expected_full)
+              # list_tools() withholds _DIRECTOR_ONLY_TOOLS from a non-director
+              # caller (T-S-08). Compare the exact SET DIFFERENCE, not the count:
+              # a count would still pass if one tool were hidden and another
+              # wrongly advertised.
+              full_names = {t.name for t in server._full_tool_list()}
+              listed = {t.name for t in await server.list_tools()}
+              if server._caller_is_director():
+                  expected_names = full_names
+              else:
+                  expected_names = full_names - set(server._DIRECTOR_ONLY_TOOLS)
+              assert listed == expected_names, (
+                  sorted(full_names - listed),
+                  sorted(listed - full_names),
+              )
+              assert len(full_names) >= 4
               print("FULL_MODE_DYNAMIC_OK")
 
               # -- prep (full mode): config for the agent export -------
@@ -59,7 +68,7 @@ steps:
               init = await server.call_tool(
                   "init_project", {"domain": "medical-research"}
               )
-              assert json.loads(init[0].text)["success"] is True
+              assert json.loads(init[0][0].text)["success"] is True
               from autoinfo.kb import SQLiteIndex
 
               SQLiteIndex(tmp / "autoinfo.db").init_db()
@@ -79,7 +88,7 @@ steps:
                   ("init_project", {"domain": "medical-research"}),
               ):
                   res = await server.call_tool(tool, args)
-                  body = json.loads(res[0].text)
+                  body = json.loads(res[0][0].text)
                   assert body["success"] is False, (tool, body)
                   assert (
                       body["error"]["code"]
@@ -90,7 +99,7 @@ steps:
 
               # -- whitelisted tool dispatches in readonly mode --------
               res = await server.call_tool("list_validation_scenarios", {})
-              assert json.loads(res[0].text)["success"] is True
+              assert json.loads(res[0][0].text)["success"] is True
               print("READONLY_LVS_OK")
 
               # -- pure-function agent export with NO LLM key ----------
@@ -98,7 +107,7 @@ steps:
                   "export_kb",
                   {"domain": "medical-research", "format": "agent"},
               )
-              body = json.loads(res[0].text)
+              body = json.loads(res[0][0].text)["data"]
               assert body.get("@type") == "KnowledgeBaseExport", body
               assert body["stats"]["total_entries"] == 0
               print("READONLY_AGENT_EXPORT_OK")

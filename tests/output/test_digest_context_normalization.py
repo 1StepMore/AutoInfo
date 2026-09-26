@@ -163,9 +163,7 @@ def _render_digest(
 class TestNormalizeDigestProductContext:
     """The flat-context normalizer (digest path, §2.3)."""
 
-    def _context(
-        self, llm_synthesis: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _context(self, llm_synthesis: dict[str, Any] | None = None) -> dict[str, Any]:
         return {
             "title": "Weekly Digest \u2014 medical-research",
             "domain": "medical-research",
@@ -175,9 +173,7 @@ class TestNormalizeDigestProductContext:
             "date_to": "2026-08-10",
             "generated_at": "2026-08-10T00:00:00+00:00",
             "entries": _SAMPLE_ENTRIES,
-            "llm_synthesis": (
-                _SAMPLE_LLM_SYNTHESIS if llm_synthesis is None else llm_synthesis
-            ),
+            "llm_synthesis": (_SAMPLE_LLM_SYNTHESIS if llm_synthesis is None else llm_synthesis),
             "target_audience": "",
             "source_tier_badge": False,
         }
@@ -191,12 +187,11 @@ class TestNormalizeDigestProductContext:
         assert flat["key_findings"] == [
             {
                 "text": "Time-lapse imaging: Significant improvement in live "
-                        "birth rates (48.2% vs 39.5%).",
+                "birth rates (48.2% vs 39.5%).",
                 "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
             },
             {
-                "text": "AI embryo selection: Promising but lacks prospective "
-                        "clinical validation.",
+                "text": "AI embryo selection: Promising but lacks prospective clinical validation.",
                 "source_url": "https://pubmed.ncbi.nlm.nih.gov/87654321/",
             },
         ]
@@ -223,9 +218,7 @@ class TestNormalizeDigestProductContext:
             ],
             "recommendations": [],
         }
-        flat = _normalize_digest_product_context(
-            self._context(synthesis), "medical-research"
-        )
+        flat = _normalize_digest_product_context(self._context(synthesis), "medical-research")
         assert flat["key_findings"] == [
             {"text": "Full: Both parts"},
             {"text": "Topic only"},
@@ -234,9 +227,7 @@ class TestNormalizeDigestProductContext:
 
     def test_missing_synthesis_returns_empty_flat_values(self) -> None:
         """Absent synthesis yields ``""`` summary and empty lists (never None)."""
-        flat = _normalize_digest_product_context(
-            self._context({}), "medical-research"
-        )
+        flat = _normalize_digest_product_context(self._context({}), "medical-research")
         assert flat["executive_summary"] == ""
         assert flat["key_findings"] == []
         assert flat["recommendations"] == []
@@ -256,9 +247,7 @@ class TestNormalizeDigestProductContext:
                 "source_type": "api",
                 "source_platform": "pubmed",
                 "domain": "medical-research",
-                "description": (
-                    "Time-lapse imaging improves live birth rates in IVF."
-                ),
+                "description": ("Time-lapse imaging improves live birth rates in IVF."),
             },
             {
                 "title": "AI-driven embryo selection: a systematic review",
@@ -266,9 +255,7 @@ class TestNormalizeDigestProductContext:
                 "source_type": "api",
                 "source_platform": "pubmed",
                 "domain": "medical-research",
-                "description": (
-                    "AI models show promise but lack prospective validation."
-                ),
+                "description": ("AI models show promise but lack prospective validation."),
             },
         ]
         for ref in flat["references"]:
@@ -312,13 +299,9 @@ class TestNormalizeDigestProductContext:
                 }
             ],
             "action_required": ["Fund prospective validation"],
-            "key_metrics": [
-                {"metric": "Live birth rate", "value": "48.2%", "source": "RCT"}
-            ],
+            "key_metrics": [{"metric": "Live birth rate", "value": "48.2%", "source": "RCT"}],
         }
-        flat = _normalize_digest_product_context(
-            self._context(synthesis), "medical-research"
-        )
+        flat = _normalize_digest_product_context(self._context(synthesis), "medical-research")
         assert flat["implications"] == ["Implication one"]
         assert flat["risks"] == synthesis["risks"]
         assert flat["action_required"] == ["Fund prospective validation"]
@@ -415,13 +398,15 @@ class TestPremiumBriefingDigestPath:
         # Recommendations section
         assert "## Recommendations" in result
         assert "- Consider time-lapse imaging as standard of care" in result
-        # Key Metrics (#129): with no key_metrics in the synthesis, the whole
-        # Key Metrics section is omitted — no hollow heading + empty-state
-        # note.  Risk Matrix keeps its honest empty-state line.
+        # Empty optional sections are OMITTED entirely (#380): the template
+        # renders neither a hollow heading nor a `_No ..._` empty-state filler
+        # for Key Metrics / Risk Matrix — the paid-tier contract is 宁缺毋滥.
         assert "## Key Metrics" not in result
         assert "_No quantified metrics" not in result
-        assert "## Risk Matrix" in result
-        assert "_No material risks identified in this period._" in result
+        assert "## Risk Matrix" not in result
+        assert "_No material risks identified in this period._" not in result
+        assert "## Action Required" not in result
+        assert "_No actions required in this period._" not in result
         # References derived from entries
         assert "## References" in result
         assert "https://pubmed.ncbi.nlm.nih.gov/12345678/" in result
@@ -455,9 +440,7 @@ class TestNonTemplatePathsUntouched:
         assert payload["digest_type"] == "digest"
         assert "llm_synthesis" in payload
         assert payload["entry_count"] == 2
-        assert payload["llm_synthesis"]["key_findings"][0]["topic"] == (
-            "Time-lapse imaging"
-        )
+        assert payload["llm_synthesis"]["key_findings"][0]["topic"] == ("Time-lapse imaging")
 
     def test_agent_format_without_template_keeps_raw_shape(self) -> None:
         """format=agent without product_template keeps the JSON-LD digest shape."""

@@ -1,0 +1,102 @@
+# Regression #380: enterprise-briefing must OMIT empty optional sections,
+# never render hardcoded `_No ..._` empty-state filler.
+#
+# History: enterprise-briefing.md.j2 (highest paid tier) hardcoded four
+# empty-state literals:
+#   Executive Summary -> "_No executive summary available for this period._"
+#   Action Required   -> "_No actions required in this period._"
+#   Risk Matrix       -> "_No material risks identified in this period._"
+#   References        -> "_No source references available for this briefing._"
+# The repo assertion layer flags each as P0 (validation_matrix.py
+# `_PLACEHOLDER = re.compile(r"_No [^_]+_")` + `_no_placeholder`).  A concrete
+# failing artifact rendered `## Action Required` followed by the literal even
+# when the underlying corpus had exactly 1 source.
+#
+# Fix (template-only, option (a) in #380): wrap each section heading AND its
+# body in the section's own `{% if %}` guard, so an absent section is more
+# dignified than a placeholder section (宁缺毋滥).  Non-empty output is
+# byte-for-byte unchanged.
+#
+# Deterministic (requires_env: []): hermetic flat context rendered through the
+# registry ProductTemplate via `_report_data_to_dict`; no LLM, no network.
+name: regression-380-enterprise-briefing-no-placeholder
+description: "Regression #380: enterprise-briefing omits empty Action Required / Risk Matrix / Executive Summary / References instead of rendering _No ..._ placeholders"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
+regression: true
+regression_issue: "#380"
+requires_env: []
+steps:
+  - name: "empty optional sections are omitted, no _No placeholder leaked"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import PRODUCT_TEMPLATES, ReportData, _report_data_to_dict
+
+      def tmpl(name):
+          return next(r["template"] for r in PRODUCT_TEMPLATES if r["name"] == name)
+
+      rd = ReportData(
+          title="medical-research - Enterprise Briefing",
+          generated_at="2026-09-25 18:02 UTC",
+          domain="medical-research",
+          executive_summary="",
+          key_findings=[{"text": "Finding number 1"}, {"text": "Finding number 2"}],
+          references=[],
+      )
+      flat = _report_data_to_dict(rd)
+      flat["executive_summary"] = ""
+      flat["action_required"] = []
+      flat["risks"] = []
+      flat["references"] = []
+      out = tmpl("enterprise-briefing").render("enterprise-briefing", "md", flat)
+      assert isinstance(out, str), type(out)
+      for heading in ("## Executive Summary", "## Action Required",
+                      "## Risk Matrix", "## References"):
+          assert heading not in out, "empty section heading rendered: " + heading
+      assert "_No " not in out, "empty-state placeholder leaked:\n" + out
+      print("ENTERPRISE_EMPTY_SECTIONS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTERPRISE_EMPTY_SECTIONS_OK"]
+
+  - name: "real Action Required / Risk Matrix / References content still renders"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import PRODUCT_TEMPLATES, ReportData, _report_data_to_dict
+
+      def tmpl(name):
+          return next(r["template"] for r in PRODUCT_TEMPLATES if r["name"] == name)
+
+      rd = ReportData(
+          title="medical-research - Enterprise Briefing",
+          generated_at="2026-09-25 18:02 UTC",
+          domain="medical-research",
+          executive_summary="This briefing covers the selected period.",
+          key_findings=[{"text": "Finding number 1"}],
+          references=[{"title": "Reference 1", "source_url": "https://example.com/1",
+                       "source_type": "api", "source_platform": "pubmed",
+                       "domain": "medical-research"}],
+      )
+      flat = _report_data_to_dict(rd)
+      flat["action_required"] = ["Review the Phase III protocol."]
+      flat["risks"] = [{"title": "Regulatory delay", "likelihood": "Medium",
+                        "impact": "High", "mitigation": "Pre-submission meeting"}]
+      out = tmpl("enterprise-briefing").render("enterprise-briefing", "md", flat)
+      for heading in ("## Executive Summary", "## Action Required",
+                      "## Risk Matrix", "## References"):
+          assert heading in out, "heading missing for real content: " + heading
+      assert "- [ ] Review the Phase III protocol." in out
+      assert "| Regulatory delay | Medium | High | Pre-submission meeting |" in out
+      assert "_No " not in out, "placeholder leaked:\n" + out
+      print("ENTERPRISE_REAL_SECTIONS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTERPRISE_REAL_SECTIONS_OK"]

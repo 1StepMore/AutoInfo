@@ -79,10 +79,20 @@ _DEMO_DOMAINS_DIR = Path(__file__).resolve().parent.parent / "data" / "domains"
 # ``user``, ``market``) whose normalized form is a bare generic word.  A group
 # whose normalized theme lands here is dropped in ``_merge_theme_groups`` and
 # its entries reassigned to the nearest surviving group or "Additional Topics".
-_GENERIC_THEME_LABELS: Final[frozenset[str]] = frozenset({
-    "new", "year", "the year", "user", "activity", "growth",
-    "apps", "market", "update", "summary",
-})
+_GENERIC_THEME_LABELS: Final[frozenset[str]] = frozenset(
+    {
+        "new",
+        "year",
+        "the year",
+        "user",
+        "activity",
+        "growth",
+        "apps",
+        "market",
+        "update",
+        "summary",
+    }
+)
 
 # Theme synonym map (issue #9): canonical spelling -> the key every variant
 # normalizes to.  Applied in ``_normalize_theme_text`` BEFORE the near-dup
@@ -98,9 +108,12 @@ _THEME_SYNONYMS: Final[dict[str, str]] = {
 # own sections.  Exempt from the generic-label blocklist (they are not
 # keyword-derived noise) and excluded when deciding whether a keyword
 # grouping found any meaningful theme at all.
-_STRUCTURAL_THEME_LABELS: Final[frozenset[str]] = frozenset({
-    "general", "additional topics",
-})
+_STRUCTURAL_THEME_LABELS: Final[frozenset[str]] = frozenset(
+    {
+        "general",
+        "additional topics",
+    }
+)
 
 
 def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
@@ -123,7 +136,9 @@ def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
     except Exception:
         logger.warning(
             "Failed to enqueue agent notification for event %r (product %s)",
-            event, product_id, exc_info=True,
+            event,
+            product_id,
+            exc_info=True,
         )
 
 
@@ -385,16 +400,33 @@ def _resolve_delivery_gate_configs(
 
 _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
     "key_findings": (
-        "key findings", "key_findings", "key-findings", "key points",
-        "slide", "slides", "learning objectives", "main findings", "introduction",
+        "key findings",
+        "key_findings",
+        "key-findings",
+        "key points",
+        "slide",
+        "slides",
+        "learning objectives",
+        "main findings",
+        "introduction",
     ),
     "summary": (
-        "summary", "executive summary", "overview",
-        "entries", "content", "executive overview", "body",
+        "summary",
+        "executive summary",
+        "overview",
+        "entries",
+        "content",
+        "executive overview",
+        "body",
     ),
     "recommendations": (
-        "recommendations", "conclusion", "next steps",
-        "exercises", "further reading", "action items", "next actions",
+        "recommendations",
+        "conclusion",
+        "next steps",
+        "exercises",
+        "further reading",
+        "action items",
+        "next actions",
     ),
 }
 
@@ -518,9 +550,7 @@ def _strip_entry_refs(text: str) -> str:
 # be removed from the rendered deck.  \s* is INSIDE the negative lookahead
 # so a real URL is never consumed (a leading space must not let the
 # lookahead pass); only non-URL citations are stripped.
-_FABRICATED_SOURCE_RE = re.compile(
-    r"\(Source:(?!\s*(?:https?://|\[))[^)\n]*\)", re.IGNORECASE
-)
+_FABRICATED_SOURCE_RE = re.compile(r"\(Source:(?!\s*(?:https?://|\[))[^)\n]*\)", re.IGNORECASE)
 
 # Backup issue #101: the shape pass above only rejects citations that are
 # NOT URL-shaped.  A well-formed but fabricated URL (e.g.
@@ -545,9 +575,7 @@ def _source_url_verifiable(url: str, allowed_urls: set[str]) -> bool:
         if candidate == real_norm:
             return True
         longer, shorter = (
-            (real_norm, candidate)
-            if len(real_norm) >= len(candidate)
-            else (candidate, real_norm)
+            (real_norm, candidate) if len(real_norm) >= len(candidate) else (candidate, real_norm)
         )
         boundary = longer[len(shorter) : len(shorter) + 1]
         if longer.startswith(shorter) and boundary in ("/", "?", "#"):
@@ -588,9 +616,7 @@ def _strip_unverifiable_presentation_sources(text: str, allowed_urls: set[str]) 
     return "".join(out)
 
 
-def _sanitize_presentation_sources(
-    text: str, allowed_urls: set[str] | None = None
-) -> str:
+def _sanitize_presentation_sources(text: str, allowed_urls: set[str] | None = None) -> str:
     """Strip fabricated source citations from rendered presentation
     text (backup issue #93).
 
@@ -658,9 +684,7 @@ def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
             j += 1
         citation = text[m.start() : j]
         urls = _REPORT_CITE_URL_RE.findall(citation)
-        keep = bool(urls) and all(
-            _source_url_verifiable(u, allowed_urls) for u in urls
-        )
+        keep = bool(urls) and all(_source_url_verifiable(u, allowed_urls) for u in urls)
         out.append(citation if keep else "")
         pos = j
     out.append(text[pos:])
@@ -683,9 +707,11 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
         converted: list[str] = []
         pos = 0
         for m in heading_re.finditer(text):
-            converted.append(text[pos:m.start()])
+            converted.append(text[pos : m.start()])
             converted.append(
-                "\n" + "#" * int(m.group(1)) + " "
+                "\n"
+                + "#" * int(m.group(1))
+                + " "
                 + re.sub(r"<[^>]+>", "", m.group(2)).strip()
                 + "\n"
             )
@@ -708,10 +734,7 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
         blocks.append((cur_heading, cur_lines))
 
     def _block_content(heading: str, lines: list[str]) -> str:
-        body_lines = [
-            line for line in lines
-            if line and not re.match(r"^[-*=_]{3,}\s*$", line)
-        ]
+        body_lines = [line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)]
         content = " ".join(body_lines)
         if _is_empty_placeholder(content):
             return ""
@@ -723,8 +746,7 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
                 content = _block_content(heading, lines)
                 if content or _is_empty_placeholder(
                     " ".join(
-                        line for line in lines
-                        if line and not re.match(r"^[-*=_]{3,}\s*$", line)
+                        line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)
                     )
                 ):
                     found[canonical] = content or ""
@@ -755,9 +777,7 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
     return found
 
 
-def _apply_format_sections(
-    sections: dict[str, str], product_type: str
-) -> dict[str, str]:
+def _apply_format_sections(sections: dict[str, str], product_type: str) -> dict[str, str]:
     """Map a product's detected sections onto the three D1 canonical keys."""
     required = _PRODUCT_TYPE_REQUIRED_SECTIONS.get(
         product_type, _PRODUCT_TYPE_REQUIRED_SECTIONS["report"]
@@ -841,7 +861,7 @@ def _build_product_judge_prompt(body: str, output_format: str) -> str:
         f"{output_format} product body and decide whether it contains "
         "non-trivial content covering the required sections (executive "
         "summary, key findings, recommendations).\n\n"
-        "Return ONLY a JSON object: {\"ok\": true|false, \"reason\": \"...\"}.\n"
+        'Return ONLY a JSON object: {"ok": true|false, "reason": "..."}.\n'
         "Set ok=false when the body is empty, garbled, or missing required "
         "sections.\n\n"
         f"--- BODY START ---\n{body}\n--- BODY END ---"
@@ -850,8 +870,7 @@ def _build_product_judge_prompt(body: str, output_format: str) -> str:
 
 def _escalate_product_judge_prompt(prompt: str, reason: str) -> str:
     return (
-        prompt
-        + f"\n\nA previous review found the body inadequate: {reason}. "
+        prompt + f"\n\nA previous review found the body inadequate: {reason}. "
         "Re-review carefully and return the same JSON verdict shape."
     )
 
@@ -930,9 +949,7 @@ def _apply_min_content_guard(
     if not entries and product_type != "RAW":
         result.delivery_blocked = True
         if not any("min-content guard" in w for w in result.warnings):
-            result.warnings.append(
-                "min-content guard: 0 usable entries after filtering"
-            )
+            result.warnings.append("min-content guard: 0 usable entries after filtering")
     return result
 
 
@@ -998,9 +1015,7 @@ def _apply_delivery_gates(
     # body that is empty/garbled but whose synthesis dict is non-empty must
     # fail D1.  Fall back to the synthesis dict only when the body cannot be
     # parsed (json/agent/audio/...).
-    body_sections = _sections_from_rendered_body(
-        rendered_output, output_format, product_type
-    )
+    body_sections = _sections_from_rendered_body(rendered_output, output_format, product_type)
     if body_sections is not None:
         key_findings: Any = body_sections.get("key_findings", "")
         summary: Any = body_sections.get("summary", "")
@@ -1072,11 +1087,7 @@ def _apply_delivery_gates(
                         "error": (
                             f"insufficient content: {text_len} chars, "
                             f"{heading_count} headings"
-                            + (
-                                "; raw LLM error text detected"
-                                if _leak_detected
-                                else ""
-                            )
+                            + ("; raw LLM error text detected" if _leak_detected else "")
                         ),
                         "content_chars": text_len,
                         "heading_count": heading_count,
@@ -1311,12 +1322,19 @@ def _ref_sort_key(e: dict[str, Any]) -> tuple[bool, float]:
 # ``discount`` are deliberately NOT used, so a legit sentence ("pricing models
 # to promote value", "discounts up to 10% in regions") never fires.
 
-_REF_LANG_LEARNING_DOMAINS: frozenset[str] = frozenset({
-    "language-learning",
-    "english-learning", "french-learning", "spanish-learning",
-    "hindi-learning", "korean-learning", "portuguese-learning",
-    "russian-learning", "italian-learning",
-})
+_REF_LANG_LEARNING_DOMAINS: frozenset[str] = frozenset(
+    {
+        "language-learning",
+        "english-learning",
+        "french-learning",
+        "spanish-learning",
+        "hindi-learning",
+        "korean-learning",
+        "portuguese-learning",
+        "russian-learning",
+        "italian-learning",
+    }
+)
 
 _REF_LOW_VALUE_PATTERNS: dict[str, tuple[str, ...]] = {
     "promo": (
@@ -1377,11 +1395,16 @@ def _low_value_signal_penalty(entry: dict[str, Any]) -> int:
     celebrity) matched across the title + first ~200 chars of the
     summary/content.  0 = clean.  Deterministic: no LLM, no randomness.
     """
-    haystack = " ".join(filter(None, (
-        str(entry.get("title") or ""),
-        str(entry.get("summary") or "")[:_REF_LOW_VALUE_CONTEXT_CHARS],
-        str(entry.get("content") or "")[:_REF_LOW_VALUE_CONTEXT_CHARS],
-    )))
+    haystack = " ".join(
+        filter(
+            None,
+            (
+                str(entry.get("title") or ""),
+                str(entry.get("summary") or "")[:_REF_LOW_VALUE_CONTEXT_CHARS],
+                str(entry.get("content") or "")[:_REF_LOW_VALUE_CONTEXT_CHARS],
+            ),
+        )
+    )
     return sum(
         1
         for patterns in _COMPILED_LOW_VALUE_PATTERNS.values()
@@ -1481,8 +1504,7 @@ def _sorted_ref_entries(
             commercial_flagged.append(entry)
     clean_sorted = sorted(clean, key=_ref_sort_key, reverse=True)
     drop_commercial = (
-        commercial_flagged and not lang_mode
-        and len(clean) >= _REF_LOW_VALUE_MIN_REAL_ENTRIES
+        commercial_flagged and not lang_mode and len(clean) >= _REF_LOW_VALUE_MIN_REAL_ENTRIES
     )
     kept = lang_flagged + ([] if drop_commercial else commercial_flagged)
     if not kept:
@@ -1536,9 +1558,7 @@ def _promote_eligible_drafts(
         config = None
     for domain in domains:
         try:
-            drafts = store.list_kb_tier(
-                domain=domain, tier="02-Draft", limit=10000
-            )
+            drafts = store.list_kb_tier(domain=domain, tier="02-Draft", limit=10000)
         except Exception as exc:
             logger.warning(
                 "promote_eligible: could not list 02-Draft for '%s': %s",
@@ -1551,9 +1571,7 @@ def _promote_eligible_drafts(
             if not draft_id:
                 continue
             try:
-                store.promote_kb_draft(
-                    draft_id=draft_id, config=config, caller=caller
-                )
+                store.promote_kb_draft(draft_id=draft_id, config=config, caller=caller)
                 summary["promoted"].append(draft_id)
                 logger.info(
                     "Product-driven promotion of %s (caller=%s)",
@@ -1569,9 +1587,7 @@ def _promote_eligible_drafts(
                 )
             except Exception as exc:
                 summary["failed"].append({"entry_id": draft_id, "error": str(exc)})
-                logger.warning(
-                    "Promotion failed for %s: %s", draft_id, exc
-                )
+                logger.warning("Promotion failed for %s: %s", draft_id, exc)
     return summary
 
 
@@ -1594,11 +1610,10 @@ def _resolve_content_preference(user_id: str) -> str:
             get_preferences,
             resolve_content_preference,
         )
+
         prefs_result = get_preferences(user_id)
         if "preferences" in prefs_result:
-            content_preference = resolve_content_preference(
-                prefs_result["preferences"]
-            )
+            content_preference = resolve_content_preference(prefs_result["preferences"])
             logger.debug(
                 "Applied stored content_preference='%s' for user '%s'",
                 content_preference,
@@ -1749,8 +1764,8 @@ class ProductTemplate:
         candidates = [
             f"{product_type}/{variant}.j2",
             f"{product_type}/default.j2",
-            f"{product_type}.{variant}.j2",   # legacy flat naming
-            f"{product_type}.default.j2",      # legacy default
+            f"{product_type}.{variant}.j2",  # legacy flat naming
+            f"{product_type}.default.j2",  # legacy default
         ]
 
         for name in candidates:
@@ -1761,8 +1776,7 @@ class ProductTemplate:
                 continue
 
         raise FileNotFoundError(
-            f"No template found for domain={self.domain}, "
-            f"type={product_type}, variant={variant}"
+            f"No template found for domain={self.domain}, type={product_type}, variant={variant}"
         )
 
     # ------------------------------------------------------------------
@@ -1922,9 +1936,7 @@ def _resolve_digest_product_type(template: ProductTemplate, variant: str) -> str
     return "digest"
 
 
-def _resolve_report_product_type(
-    template: ProductTemplate, variant: str, report_type: str
-) -> str:
+def _resolve_report_product_type(template: ProductTemplate, variant: str, report_type: str) -> str:
     """Map a ProductTemplate instance back to its report template family.
 
     ``generate_report``'s *product_template* parameter is expected to be a
@@ -1988,9 +2000,7 @@ _DIGEST_FIELD_DESCRIPTIONS = [
     # surface — its summary voice invited unhedged market-direction/motive
     # assertions.  Hedge/grounding now pinned (mirrors editorial_intro).
     '"executive_summary": "2-3 sentence overview of the period\'s key '
-    "developments grounded in the entries. "
-    + EDITORIAL_OPENING_HEDGE_CONSTRAINT
-    + '"',
+    "developments grounded in the entries. " + EDITORIAL_OPENING_HEDGE_CONSTRAINT + '"',
     '"key_findings": [{"topic": "Topic name", "detail": "Key finding sentence"}], '
     "list 3-5 most important findings",
     '"trends": ["Trend or pattern observed across multiple entries"], '
@@ -2032,26 +2042,21 @@ _DIGEST_ENTERPRISE_METRICS_FIELDS: list[str] = [
 # unless the field prompt pins it to sourced facts.  The field says what it
 # must be: grounded in entries, concrete numbers/dates/companies, inference
 # explicitly hedged or omitted.
-_DIGEST_MAGAZINE_EDITORIAL_FIELDS: list[str] = (
-    _DIGEST_PRODUCT_BASE_FIELDS
-    + [
-        # Issue #210: the Editor's Note is an editorial-OPENING surface — its
-        # "opinionated but factual" voice invited unhedged market-direction /
-        # motive assertions (R6/R7: "the smart money is betting on…").  The
-        # hedge constraint (#191 discipline) now pins it to sourced+hedged.
-        '"editorial_intro": "A 2-3 sentence editorial introduction paragraph '
-        'for this magazine edition \u2014 the editor\'s framing of the week, '
-        'written in a magazine voice (opinionated but factual). '
-        + EDITORIAL_OPENING_HEDGE_CONSTRAINT
-        + '"',
-        '"feature_story": "A 3-5 paragraph personality profile / deep-dive '
-        "story on one notable person, company, or trend from the period, in "
-        "magazine feature style \u2014 a narrative that connects and "
-        "interprets the entries' stated facts. "
-        + FEATURE_STORY_GROUNDING_CONSTRAINT
-        + '"',
-    ]
-)
+_DIGEST_MAGAZINE_EDITORIAL_FIELDS: list[str] = _DIGEST_PRODUCT_BASE_FIELDS + [
+    # Issue #210: the Editor's Note is an editorial-OPENING surface — its
+    # "opinionated but factual" voice invited unhedged market-direction /
+    # motive assertions (R6/R7: "the smart money is betting on…").  The
+    # hedge constraint (#191 discipline) now pins it to sourced+hedged.
+    '"editorial_intro": "A 2-3 sentence editorial introduction paragraph '
+    "for this magazine edition \u2014 the editor's framing of the week, "
+    "written in a magazine voice (opinionated but factual). "
+    + EDITORIAL_OPENING_HEDGE_CONSTRAINT
+    + '"',
+    '"feature_story": "A 3-5 paragraph personality profile / deep-dive '
+    "story on one notable person, company, or trend from the period, in "
+    "magazine feature style \u2014 a narrative that connects and "
+    "interprets the entries' stated facts. " + FEATURE_STORY_GROUNDING_CONSTRAINT + '"',
+]
 
 # Issue #316: column deep-dive sections — the column template renders a
 # Deep Dive from a ``sections`` array (each ``{title, content}``), so the
@@ -2061,20 +2066,18 @@ _DIGEST_MAGAZINE_EDITORIAL_FIELDS: list[str] = (
 # market-direction/motive judgments as fact.
 _DIGEST_COLUMN_SECTIONS_FIELDS: list[str] = [
     '"sections": [{"title": "Subsection title", "content": "2-3 paragraphs '
-    'of analysis grounded in specific entries \u2014 quote concrete numbers, '
-    'dates, and named companies/studies from the source material; no filler '
+    "of analysis grounded in specific entries \u2014 quote concrete numbers, "
+    "dates, and named companies/studies from the source material; no filler "
     "paragraphs. "
     + EDITORIAL_OPENING_HEDGE_CONSTRAINT
     + '"}], 8-10 distinct deep-dive subsections, each with '
-    'substantive content',
+    "substantive content",
 ]
 
 _DIGEST_PRODUCT_FIELD_DESCRIPTIONS: dict[str, list[str]] = {
     "premium-briefing": _DIGEST_PRODUCT_BASE_FIELDS,
     "magazine-digest": _DIGEST_MAGAZINE_EDITORIAL_FIELDS,
-    "enterprise-briefing": (
-        _DIGEST_PRODUCT_BASE_FIELDS + _DIGEST_ENTERPRISE_METRICS_FIELDS
-    ),
+    "enterprise-briefing": (_DIGEST_PRODUCT_BASE_FIELDS + _DIGEST_ENTERPRISE_METRICS_FIELDS),
     "column": _DIGEST_COLUMN_SECTIONS_FIELDS,
 }
 
@@ -2214,7 +2217,8 @@ def _digest_entry_text(entry: dict[str, Any], rate: float) -> tuple[str, str]:
 
 
 def _build_digest_llm_prompt(
-    entries: list[dict[str, Any]], product_family: str = "digest",
+    entries: list[dict[str, Any]],
+    product_family: str = "digest",
     rmb_usd_rate: float | None = None,
 ) -> str:
     """Build the user prompt for LLM digest synthesis.
@@ -2361,8 +2365,7 @@ def _call_llm_for_digest(
             return parsed
         last = parsed
         logger.warning(
-            "LLM digest synthesis returned empty/missing fields "
-            "(attempt %d/2) — retrying",
+            "LLM digest synthesis returned empty/missing fields (attempt %d/2) — retrying",
             _attempt + 1,
         )
 
@@ -2455,15 +2458,10 @@ def _deterministic_synthesis_fallback(
         }
 
     title_line = ", ".join(str(e["title"]).strip() for e in titled[:8])
-    executive_summary = (
-        f"{summary_prefix} the latest developments this period: {title_line}."
-    )
+    executive_summary = f"{summary_prefix} the latest developments this period: {title_line}."
     key_findings: list[Any] = []
     for e in titled[:8]:
-        text = (
-            f"{str(e['title']).strip()}: "
-            f"{str(e.get('summary') or e['title']).strip()}"
-        )
+        text = f"{str(e['title']).strip()}: {str(e.get('summary') or e['title']).strip()}"
         src = str(e.get("source_url") or "").strip()
         key_findings.append({"text": text, "source_url": src} if src else text)
     recommendations = [
@@ -2558,9 +2556,7 @@ def _is_source_active_in_config(entry: dict[str, Any], domain: str) -> bool:
     return False
 
 
-def _filter_drifted_entries(
-    entries: list[dict[str, Any]], domain: str
-) -> list[dict[str, Any]]:
+def _filter_drifted_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
     """Selection-time source-drift filter over an entry list (digest /
     presentation paths, #119).
 
@@ -2584,7 +2580,10 @@ def _filter_drifted_entries(
         logger.info(
             "Excluded %d drifted entr%s from source '%s' absent from domain "
             "'%s' config (selection-time source-drift filter)",
-            count, "y" if count == 1 else "ies", source_name, domain,
+            count,
+            "y" if count == 1 else "ies",
+            source_name,
+            domain,
         )
     return kept
 
@@ -2693,9 +2692,7 @@ def _label_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str,
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        entry["source_label"] = _derive_source_label(
-            entry, str(entry.get("domain") or domain)
-        )
+        entry["source_label"] = _derive_source_label(entry, str(entry.get("domain") or domain))
     return entries
 
 
@@ -2752,19 +2749,13 @@ def _build_attribution_footer(
 
     lines: list[str] = []
     for s in unique:
-        lines.append(
-            f"- **{s.name}** ({s.url}) — "
-            f"Tier {s.quality_tier}, {s.tos_classification}"
-        )
+        lines.append(f"- **{s.name}** ({s.url}) — Tier {s.quality_tier}, {s.tos_classification}")
     body = "\n".join(lines)
 
     if output_format == "html":
         escaped_lines = "\n".join(
             "    <li>"
-            + html.escape(
-                f"{s.name} ({s.url}) — "
-                f"Tier {s.quality_tier}, {s.tos_classification}"
-            )
+            + html.escape(f"{s.name} ({s.url}) — Tier {s.quality_tier}, {s.tos_classification}")
             + "</li>"
             for s in unique
         )
@@ -2833,7 +2824,8 @@ def _deterministic_column_sections(
     # One section per entry (title + summary) — real content, never
     # fabricated, and never an empty Deep Dive when entries exist.
     _log_grouping_degraded(
-        "entry_level", "entry_level",
+        "entry_level",
+        "entry_level",
         f"deterministic column sections fell back to one section per entry "
         f"({len(entries)} sections) — <8 theme sections were derivable",
     )
@@ -2895,19 +2887,16 @@ def _deterministic_takeaway_fields(
         )
         risks.append(
             {
-                "title": "No differentiated risk signal this period — "
-                "revisit next period.",
+                "title": "No differentiated risk signal this period — revisit next period.",
                 "likelihood": "n/a",
                 "impact": "n/a",
                 "mitigation": (
-                    "Revisit next period and validate against additional "
-                    "sources before rating."
+                    "Revisit next period and validate against additional sources before rating."
                 ),
             }
         )
         action_required.append(
-            f"Revisit {title} ({url}) next period for a differentiated "
-            "assessment."
+            f"Revisit {title} ({url}) next period for a differentiated assessment."
         )
     return implications, risks, action_required
 
@@ -3096,9 +3085,11 @@ def _normalize_digest_product_context(
     flat["key_findings"] = findings
 
     raw_recommendations = synthesis.get("recommendations", [])
-    flat["recommendations"] = [
-        _strip_entry_refs(str(r)) for r in raw_recommendations
-    ] if isinstance(raw_recommendations, list) else []
+    flat["recommendations"] = (
+        [_strip_entry_refs(str(r)) for r in raw_recommendations]
+        if isinstance(raw_recommendations, list)
+        else []
+    )
 
     # --- References derived from entries (report-path item shape) ----------
     # #325: derive the specific source label for entries whose stored
@@ -3108,24 +3099,28 @@ def _normalize_digest_product_context(
     _ref_limit = ref_limit if ref_limit is not None else _output_config_ref_limit()
     _src_configs = _get_domain_source_configs(domain)
     flat["references"] = []
-    for e in _sorted_ref_entries(
-        [e for e in entries_list if isinstance(e, dict)], domain=domain
-    )[:_ref_limit]:
+    for e in _sorted_ref_entries([e for e in entries_list if isinstance(e, dict)], domain=domain)[
+        :_ref_limit
+    ]:
         _label = _derive_source_label(
-            e, e.get("domain", domain), source_configs=_src_configs,
+            e,
+            e.get("domain", domain),
+            source_configs=_src_configs,
         )
-        flat["references"].append({
-            "title": e.get("title", ""),
-            "source_url": e.get("source_url", ""),
-            "source_type": e.get("source_type", ""),
-            "source_platform": _label,
-            "domain": e.get("domain", domain),
-            "description": (
-                str(e.get("summary") or "").strip()
-                or str(e.get("content") or "")[:120].strip()
-                or f"{_label} item"
-            ),
-        })
+        flat["references"].append(
+            {
+                "title": e.get("title", ""),
+                "source_url": e.get("source_url", ""),
+                "source_type": e.get("source_type", ""),
+                "source_platform": _label,
+                "domain": e.get("domain", domain),
+                "description": (
+                    str(e.get("summary") or "").strip()
+                    or str(e.get("content") or "")[:120].strip()
+                    or f"{_label} item"
+                ),
+            }
+        )
 
     # --- Enterprise/premium key_findings cap (issue #11, decision a) ------
     # The enterprise-briefing template renders the selection-scope label
@@ -3134,9 +3129,7 @@ def _normalize_digest_product_context(
     # families so a ref_limit below the findings count can never invert the
     # label (``selected 9 of 8``).
     if product_family in ("premium-briefing", "enterprise-briefing"):
-        flat["key_findings"] = _cap_product_key_findings(
-            flat["key_findings"], flat["references"]
-        )
+        flat["key_findings"] = _cap_product_key_findings(flat["key_findings"], flat["references"])
 
     # --- Product-specific fields (todo 7), flattened generically ----------
     # List-shaped fields flow through as-is; string-shaped editorial fields
@@ -3166,8 +3159,11 @@ def _normalize_digest_product_context(
     if product_family == "premium-briefing" and entries_list:
         flat["implications"], flat["risks"], flat["action_required"] = (
             _fill_premium_takeaway_fields(
-                flat.get("implications"), flat.get("risks"),
-                flat.get("action_required"), entries_list, domain,
+                flat.get("implications"),
+                flat.get("risks"),
+                flat.get("action_required"),
+                entries_list,
+                domain,
             )
         )
 
@@ -3189,9 +3185,11 @@ def _normalize_digest_product_context(
             # are a degraded (non-semantic) grouping — the rendered Deep Dive
             # must carry the honest "grouped by source" marker so readers
             # never mistake one-section-per-entry for semantic topics.
-            sections = [{
-                "marker": _grouping_degradation_marker("entry_level"),
-            }] + sections
+            sections = [
+                {
+                    "marker": _grouping_degradation_marker("entry_level"),
+                }
+            ] + sections
     flat["sections"] = sections
 
     # --- Tutorial sections (issue #342) -----------------------------------
@@ -3206,9 +3204,7 @@ def _normalize_digest_product_context(
     # template's neutral prose render (never a placeholder).
     if product_family == "tutorial":
         if entries_list:
-            _objectives, _content, _exercises, _further = _entry_derived_sections(
-                entries_list
-            )
+            _objectives, _content, _exercises, _further = _entry_derived_sections(entries_list)
         else:
             _objectives, _content, _exercises, _further = [], [], [], []
         flat.setdefault("objectives", _objectives)
@@ -3313,9 +3309,10 @@ def _select_story_set(
     entries = period_entries
     if not entries:
         logger.info(
-            "No entries for domain '%s' in period %s..%s — falling "
-            "back to full domain set",
-            domain, date_from, date_to,
+            "No entries for domain '%s' in period %s..%s — falling back to full domain set",
+            domain,
+            date_from,
+            date_to,
         )
         entries = store.list_entries(
             domain=domain,
@@ -3463,7 +3460,6 @@ def generate_digest(
         user_id=user_id, domain=domain, product_type="digest", raise_on_block=True
     )
 
-
     # --- Determine cross-domain mode -----------------------------------------
     is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
     if is_cross_domain_digest:
@@ -3484,6 +3480,7 @@ def generate_digest(
             from autoinfo.user_store import (  # noqa: PLC0415
                 get_preferences,
             )
+
             prefs_result = get_preferences(user_id)
             if "preferences" in prefs_result:
                 stored_prefs: dict[str, Any] = prefs_result["preferences"]
@@ -3578,7 +3575,11 @@ def generate_digest(
     else:
         # Single-domain story set — shared with presentation/report (#119).
         entries, (date_from, date_to), period_was_empty = _select_story_set(
-            store, domain, period=period, product="digest", query_limit=query_limit,
+            store,
+            domain,
+            period=period,
+            product="digest",
+            query_limit=query_limit,
         )
         entries = _filter_drifted_entries(entries, domain)
 
@@ -3640,13 +3641,13 @@ def generate_digest(
                 logger.info(
                     "No '%s'-language entries in the '%s' window for domain '%s' "
                     "- relaxing the date window, keeping the language filter",
-                    effective_language, period, domain,
+                    effective_language,
+                    period,
+                    domain,
                 )
                 relaxed = store.list_entries(domain=domain, limit=query_limit)
                 if relaxed:
-                    filtered_entries = _filter_entries_by_language(
-                        relaxed, effective_language
-                    )
+                    filtered_entries = _filter_entries_by_language(relaxed, effective_language)
             entries = filtered_entries
 
     # --- Per-domain exclude_keywords filter (issue #319) ---------------------
@@ -3685,13 +3686,10 @@ def generate_digest(
 
     # --- Content-preference tier filtering (B-001) ---------------------------
     if content_preference != "both":
-        filtered_entries = _filter_entries_by_content_preference(
-            entries, content_preference
-        )
+        filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
         if len(filtered_entries) != len(entries):
             logger.info(
-                "Excluded %d entries from digest for domain '%s' "
-                "due to content_preference='%s'",
+                "Excluded %d entries from digest for domain '%s' due to content_preference='%s'",
                 len(entries) - len(filtered_entries),
                 domain,
                 content_preference,
@@ -3782,12 +3780,8 @@ def generate_digest(
         # entry subset (data layer) so their references diverge — a prompt
         # directive alone cannot change a fixed reference set.  The subset
         # feeds both the LLM synthesis and the reference derivation below.
-        synthesis_entries = _select_family_entry_subset(
-            synthesis_entries, digest_family
-        )
-        prompt = _build_digest_llm_prompt(
-            synthesis_entries, product_family=digest_family
-        )
+        synthesis_entries = _select_family_entry_subset(synthesis_entries, digest_family)
+        prompt = _build_digest_llm_prompt(synthesis_entries, product_family=digest_family)
         if custom_instructions:
             prompt += f"\n\nAdditional instructions: {custom_instructions}"
         audience = _normalize_report_audience(target_audience)
@@ -3824,8 +3818,13 @@ def generate_digest(
             _val = llm_synthesis.get(_key)
             if isinstance(_val, str) and _val:
                 llm_synthesis[_key] = _sanitize_report_urls(_val, _digest_whitelist)
-        for _key in ("key_findings", "recommendations", "implications",
-                     "action_required", "trends"):
+        for _key in (
+            "key_findings",
+            "recommendations",
+            "implications",
+            "action_required",
+            "trends",
+        ):
             _vals = llm_synthesis.get(_key)
             if isinstance(_vals, list):
                 for _i, _v in enumerate(_vals):
@@ -3834,9 +3833,7 @@ def generate_digest(
                     elif isinstance(_v, dict):
                         for _field in _v:
                             if isinstance(_v[_field], str) and _v[_field]:
-                                _v[_field] = _sanitize_report_urls(
-                                    _v[_field], _digest_whitelist
-                                )
+                                _v[_field] = _sanitize_report_urls(_v[_field], _digest_whitelist)
         for _key in ("risks", "key_metrics"):
             _vals = llm_synthesis.get(_key)
             if isinstance(_vals, list):
@@ -3845,9 +3842,7 @@ def generate_digest(
                         continue
                     for _field in _v:
                         if isinstance(_v[_field], str) and _v[_field]:
-                            _v[_field] = _sanitize_report_urls(
-                                _v[_field], _digest_whitelist
-                            )
+                            _v[_field] = _sanitize_report_urls(_v[_field], _digest_whitelist)
 
     # --- Build template context ----------------------------------------------
     # Issue #138: day-granularity timestamp (no microseconds) — the full
@@ -3890,9 +3885,7 @@ def generate_digest(
     # LLM synthesis slides when present, else derive KB-backed slides from the
     # entries (same fallback the standalone generate_presentation uses).
     if digest_family == "presentation":
-        synth_slides = (
-            llm_synthesis.get("slides") if isinstance(llm_synthesis, dict) else None
-        )
+        synth_slides = llm_synthesis.get("slides") if isinstance(llm_synthesis, dict) else None
         slides = (
             synth_slides
             if isinstance(synth_slides, list) and synth_slides
@@ -3901,11 +3894,13 @@ def generate_digest(
         context["slides"] = slides
         context["topic"] = (
             str(llm_synthesis.get("topic") or period_label).strip()
-            if isinstance(llm_synthesis, dict) else period_label
+            if isinstance(llm_synthesis, dict)
+            else period_label
         )
         context["description"] = (
             str(llm_synthesis.get("description") or "").strip()
-            if isinstance(llm_synthesis, dict) else ""
+            if isinstance(llm_synthesis, dict)
+            else ""
         )
         # Issue #182: keep the deck header Audience populated even when the
         # digest path did not receive an explicit target_audience.
@@ -3925,7 +3920,10 @@ def generate_digest(
     elif product_template is not None:
         product_type = digest_family
         pt_context = _normalize_digest_product_context(
-            context, domain, product_family=digest_family, ref_limit=ref_limit,
+            context,
+            domain,
+            product_family=digest_family,
+            ref_limit=ref_limit,
         )
         rendered = product_template.render(product_type, variant, pt_context)
         rendered = _clean_skeleton_placeholders(rendered)
@@ -3966,14 +3964,9 @@ def generate_digest(
         src_configs = _get_domain_source_configs(domain)
     if src_configs and entries:
         entry_urls = {
-            (e.get("source_url") or "").strip().rstrip("/")
-            for e in entries
-            if e.get("source_url")
+            (e.get("source_url") or "").strip().rstrip("/") for e in entries if e.get("source_url")
         }
-        used_sources = [
-            s for s in src_configs
-            if (s.url or "").strip().rstrip("/") in entry_urls
-        ]
+        used_sources = [s for s in src_configs if (s.url or "").strip().rstrip("/") in entry_urls]
         if used_sources:
             attribution = _build_attribution_footer(used_sources, format)
             if attribution:
@@ -3983,9 +3976,7 @@ def generate_digest(
                         data["sources"] = json.loads(
                             _build_attribution_footer(used_sources, "json")
                         )
-                        rendered = json.dumps(
-                            data, indent=2, ensure_ascii=False, default=str
-                        )
+                        rendered = json.dumps(data, indent=2, ensure_ascii=False, default=str)
                     except (json.JSONDecodeError, TypeError):
                         pass
                 else:
@@ -4058,9 +4049,7 @@ def generate_digest(
             product_type="digest",
             title=f"{period_label} {digest_h1_word} \u2014 {digest_title_domain_display}",
         )
-    _fire_agent_notification(
-        "new_digest", rendered, product_id=f"{digest_title_domain}-{period}"
-    )
+    _fire_agent_notification("new_digest", rendered, product_id=f"{digest_title_domain}-{period}")
     return rendered
 
 
@@ -4212,8 +4201,7 @@ def generate_report(
 
     if report_type not in _VALID_REPORT_TYPES:
         raise ValueError(
-            f"Unknown report type: {report_type!r}. "
-            f"Supported: {', '.join(_VALID_REPORT_TYPES)}"
+            f"Unknown report type: {report_type!r}. Supported: {', '.join(_VALID_REPORT_TYPES)}"
         )
 
     if period not in PERIOD_DAYS:
@@ -4290,7 +4278,11 @@ def generate_report(
         # The report's downstream filters (product/empty/lang/stale) still
         # run on the shared set; content MAY change vs the old all-time load.
         entries, _date_range, _select_story_was_empty = _select_story_set(
-            kb_store, domain, period=period, product="report", query_limit=5000,
+            kb_store,
+            domain,
+            period=period,
+            product="report",
+            query_limit=5000,
         )
 
     # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
@@ -4302,13 +4294,10 @@ def generate_report(
 
     # --- Content-preference tier filtering (B-001) ---------------------------
     if content_preference != "both":
-        filtered_entries = _filter_entries_by_content_preference(
-            entries, content_preference
-        )
+        filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
         if len(filtered_entries) != len(entries):
             logger.info(
-                "Excluded %d entries from report for domain '%s' "
-                "due to content_preference='%s'",
+                "Excluded %d entries from report for domain '%s' due to content_preference='%s'",
                 len(entries) - len(filtered_entries),
                 domain,
                 content_preference,
@@ -4338,9 +4327,7 @@ def generate_report(
             domain,
         )
         entries = _filter_product_entries(
-            _enrich_product_entries(
-                kb_store.list_entries(domain=domain, limit=5000)
-            )
+            _enrich_product_entries(kb_store.list_entries(domain=domain, limit=5000))
         )
         entries = _converge_near_duplicates(entries)
 
@@ -4350,15 +4337,11 @@ def generate_report(
     # contributing domain shares the same non-bilingual default_language
     # (issue #186): a cross ai+fin English report must drop Chinese 36kr raw
     # entries so the product stays language-coherent.
-    effective_language = _resolve_effective_language(
-        language, domain, cross_domain=is_cross_domain
-    )
+    effective_language = _resolve_effective_language(language, domain, cross_domain=is_cross_domain)
     if not effective_language and is_cross_domain:
         effective_language = _cross_domain_shared_language(report_domains)
     if effective_language:
-        entries, _ = _filter_entries_by_language_product_safe(
-            entries, effective_language
-        )
+        entries, _ = _filter_entries_by_language_product_safe(entries, effective_language)
 
     # --- Per-domain exclude_keywords filter (issue #319) ---------------------
     # Cross-domain noise guard: drop entries matching their own domain's
@@ -4458,29 +4441,35 @@ def generate_report(
     references = []
     for e in _sorted_ref_entries(entries, domain=domain)[:_ref_limit]:
         _label = _derive_source_label(
-            e, e.get("domain", domain), source_configs=_src_configs,
+            e,
+            e.get("domain", domain),
+            source_configs=_src_configs,
         )
-        references.append({
-            "title": e.get("title", ""),
-            "source_url": e.get("source_url", ""),
-            "source_type": e.get("source_type", ""),
-            # Raw internal platform id + derived user-facing label (#325):
-            # user_source_label shows the label only when it differs.
-            "source_platform": e.get("source_platform", ""),
-            "source_label": _label,
-            "domain": e.get("domain", domain),
-            "description": (
-                str(e.get("summary") or "").strip()
-                or str(e.get("content") or "")[:120].strip()
-                or f"{_label} item"
-            ),
-        })
+        references.append(
+            {
+                "title": e.get("title", ""),
+                "source_url": e.get("source_url", ""),
+                "source_type": e.get("source_type", ""),
+                # Raw internal platform id + derived user-facing label (#325):
+                # user_source_label shows the label only when it differs.
+                "source_platform": e.get("source_platform", ""),
+                "source_label": _label,
+                "domain": e.get("domain", domain),
+                "description": (
+                    str(e.get("summary") or "").strip()
+                    or str(e.get("content") or "")[:120].strip()
+                    or f"{_label} item"
+                ),
+            }
+        )
 
     # -- Thematic grouping via LLM ----------------------------------------
     extractor = LLMExtractor()
     _reset_grouping_degraded()
     groupings = _group_by_theme(
-        extractor, entries, domain=domain,
+        extractor,
+        entries,
+        domain=domain,
         domains=report_domains if is_cross_domain else None,
     )
 
@@ -4490,9 +4479,7 @@ def generate_report(
         type_prompt = _REPORT_TYPE_PROMPTS.get(report_type, "")
         if type_prompt:
             effective_instructions = (
-                f"{custom_instructions}\n\n{type_prompt}"
-                if custom_instructions
-                else type_prompt
+                f"{custom_instructions}\n\n{type_prompt}" if custom_instructions else type_prompt
             )
 
     # -- Generate executive summary via LLM --------------------------------
@@ -4510,7 +4497,10 @@ def generate_report(
         else ("column" if report_type == "column" else "report")
     )
     summary_result = _generate_executive_summary(
-        extractor, entries, groupings, effective_instructions,
+        extractor,
+        entries,
+        groupings,
+        effective_instructions,
         target_audience=target_audience,
         domains=report_domains if is_cross_domain else None,
         product_family=report_family,
@@ -4526,15 +4516,9 @@ def generate_report(
             f if isinstance(f, dict) else {"text": str(f)}
             for f in (summary_result.get("key_findings") or [])
         ]
-        recommendations = [
-            str(r) for r in (summary_result.get("recommendations") or [])
-        ]
-        implications = [
-            str(i) for i in (summary_result.get("implications") or [])
-        ]
-        action_required = [
-            str(a) for a in (summary_result.get("action_required") or [])
-        ]
+        recommendations = [str(r) for r in (summary_result.get("recommendations") or [])]
+        implications = [str(i) for i in (summary_result.get("implications") or [])]
+        action_required = [str(a) for a in (summary_result.get("action_required") or [])]
         risks = [
             {
                 k: str(v)
@@ -4545,11 +4529,7 @@ def generate_report(
             if isinstance(r, dict)
         ]
         key_metrics = [
-            {
-                k: str(v)
-                for k, v in m.items()
-                if k in ("metric", "value", "source")
-            }
+            {k: str(v) for k, v in m.items() if k in ("metric", "value", "source")}
             for m in (summary_result.get("key_metrics") or [])
             if isinstance(m, dict)
         ]
@@ -4638,7 +4618,11 @@ def generate_report(
     # above), only for premium; placeholder-element case #357.
     if report_family == "premium-briefing":
         implications, risks, action_required = _fill_premium_takeaway_fields(
-            implications, risks, action_required, entries, domain,
+            implications,
+            risks,
+            action_required,
+            entries,
+            domain,
         )
 
     # -- Enterprise/premium key_findings cap (issue #11, decision a) --------
@@ -4671,16 +4655,12 @@ def generate_report(
                     "source_type": e.get("source_type", ""),
                     "source_platform": (
                         e.get("source_label", "")
-                        or _derive_source_label(
-                            e, str(e.get("domain") or domain)
-                        )
+                        or _derive_source_label(e, str(e.get("domain") or domain))
                         or e.get("source_platform", "")
                     ),
                     "source_label": (
                         e.get("source_label", "")
-                        or _derive_source_label(
-                            e, str(e.get("domain") or domain)
-                        )
+                        or _derive_source_label(e, str(e.get("domain") or domain))
                         or e.get("source_platform", "")
                     ),
                     "relevance_score": e.get("relevance_score", 0),
@@ -4715,12 +4695,12 @@ def generate_report(
     # The digest/column paths annotate at their own seams; the report path
     # consumes the module-level flag the degradation seams set.
     report_degraded_reason = (
-        "no_groups" if _single_general_group(groupings) else "llm_failure"
-    ) if _grouping_degraded else ""
-    grouping_degradation_marker = (
-        _grouping_degradation_marker(report_degraded_reason)
-        if report_degraded_reason
+        ("no_groups" if _single_general_group(groupings) else "llm_failure")
+        if _grouping_degraded
         else ""
+    )
+    grouping_degradation_marker = (
+        _grouping_degradation_marker(report_degraded_reason) if report_degraded_reason else ""
     )
 
     # -- Body-citation URL whitelist sanitizer (issue #207) -----------------
@@ -4741,15 +4721,9 @@ def generate_report(
         for _f in key_findings:
             if isinstance(_f, dict) and _f.get("text"):
                 _f["text"] = _sanitize_report_urls(str(_f["text"]), _report_whitelist)
-        recommendations = [
-            _sanitize_report_urls(r, _report_whitelist) for r in recommendations
-        ]
-        implications = [
-            _sanitize_report_urls(i, _report_whitelist) for i in implications
-        ]
-        action_required = [
-            _sanitize_report_urls(a, _report_whitelist) for a in action_required
-        ]
+        recommendations = [_sanitize_report_urls(r, _report_whitelist) for r in recommendations]
+        implications = [_sanitize_report_urls(i, _report_whitelist) for i in implications]
+        action_required = [_sanitize_report_urls(a, _report_whitelist) for a in action_required]
         for _r in risks:
             for _k in ("title", "likelihood", "impact", "mitigation"):
                 if _r.get(_k):
@@ -4794,21 +4768,21 @@ def generate_report(
         agent_entries: list[dict[str, Any]] = []
         for section in report_data.sections:
             for item in section.items:
-                agent_entries.append({
-                    "entry_id": item.get("entry_id", ""),
-                    "title": item.get("title", ""),
-                    "summary": item.get("summary", ""),
-                    "source_url": item.get("source_url", ""),
-                    # #325: derive the specific source label for stale
-                    # pre-#323 entries (source_platform='rss') so the agent
-                    # payload never carries the generic "rss" label.
-                    "source_platform": _derive_source_label(
-                        item, item.get("domain", domain)
-                    ),
-                    "collected_at": item.get("date", ""),
-                    "relevance_score": item.get("relevance_score", 0),
-                    "tags": [],
-                })
+                agent_entries.append(
+                    {
+                        "entry_id": item.get("entry_id", ""),
+                        "title": item.get("title", ""),
+                        "summary": item.get("summary", ""),
+                        "source_url": item.get("source_url", ""),
+                        # #325: derive the specific source label for stale
+                        # pre-#323 entries (source_platform='rss') so the agent
+                        # payload never carries the generic "rss" label.
+                        "source_platform": _derive_source_label(item, item.get("domain", domain)),
+                        "collected_at": item.get("date", ""),
+                        "relevance_score": item.get("relevance_score", 0),
+                        "tags": [],
+                    }
+                )
         # The llm_synthesis carries the per-product analysis fields from
         # ReportData (todo 7); _render_agent_json surfaces them (todo 22).
         agent_context: dict[str, Any] = {
@@ -4870,9 +4844,7 @@ def generate_report(
             report_chapters = [
                 (
                     report_data.title,
-                    _render_report_template(
-                        report_data, source_tier_badge=source_tier_badge
-                    ),
+                    _render_report_template(report_data, source_tier_badge=source_tier_badge),
                 )
             ]
         if format == "epub":
@@ -4890,19 +4862,19 @@ def generate_report(
         report_sections: list[dict[str, str]] = []
         for section in report_data.sections:
             for item in section.items:
-                report_sections.append({
-                    "heading": item.get("title", ""),
-                    "body": item.get("summary", ""),
-                })
+                report_sections.append(
+                    {
+                        "heading": item.get("title", ""),
+                        "body": item.get("summary", ""),
+                    }
+                )
         rendered = _render_video_scaffold(
             {},
             report_data.title if hasattr(report_data, "title") else report_title_domain,
             sections=report_sections,
         )
     else:
-        rendered = _render_report_template(
-            report_data, source_tier_badge=source_tier_badge
-        )
+        rendered = _render_report_template(report_data, source_tier_badge=source_tier_badge)
 
     # -- Source attribution (F46) --------------------------------------------
     if is_cross_domain:
@@ -4914,14 +4886,9 @@ def generate_report(
         src_configs = _get_domain_source_configs(domain)
     if src_configs and entries:
         entry_urls = {
-            (e.get("source_url") or "").strip().rstrip("/")
-            for e in entries
-            if e.get("source_url")
+            (e.get("source_url") or "").strip().rstrip("/") for e in entries if e.get("source_url")
         }
-        used_sources = [
-            s for s in src_configs
-            if (s.url or "").strip().rstrip("/") in entry_urls
-        ]
+        used_sources = [s for s in src_configs if (s.url or "").strip().rstrip("/") in entry_urls]
         if used_sources:
             attribution = _build_attribution_footer(used_sources, format)
             if attribution:
@@ -4931,9 +4898,7 @@ def generate_report(
                         data["sources"] = json.loads(
                             _build_attribution_footer(used_sources, "json")
                         )
-                        rendered = json.dumps(
-                            data, indent=2, ensure_ascii=False, default=str
-                        )
+                        rendered = json.dumps(data, indent=2, ensure_ascii=False, default=str)
                     except (json.JSONDecodeError, TypeError):
                         pass
                 else:
@@ -5007,9 +4972,7 @@ def generate_report(
             product_type="report",
             title=f"{report_title_domain_display} \u2014 {report_h1_word}",
         )
-    _fire_agent_notification(
-        "new_report", rendered, product_id=f"{report_title_domain}-{period}"
-    )
+    _fire_agent_notification("new_report", rendered, product_id=f"{report_title_domain}-{period}")
     return rendered
 
 
@@ -5067,9 +5030,7 @@ _GROUPING_TARGET_MIN_SIMILARITY: Final[float] = 0.4
 # column sections), the rendered product must say so plainly instead of
 # silently showing source-type/keyword headings as if they were semantic
 # topics.  The marker is pinned byte-for-byte — tests assert the exact string.
-_GROUPING_DEGRADATION_MARKER: Final[str] = (
-    "> *This edition groups developments by source*"
-)
+_GROUPING_DEGRADATION_MARKER: Final[str] = "> *This edition groups developments by source*"
 
 # Module-level degradation flag: set by ``_log_grouping_degraded`` on every
 # degradation path, consumed by ``generate_report`` (after ``_group_by_theme``)
@@ -5099,9 +5060,7 @@ def _grouping_degradation_marker(reason: str) -> str:
     return _GROUPING_DEGRADATION_MARKER
 
 
-def _log_grouping_degraded(
-    reason: str, grouping: str, detail: str
-) -> None:
+def _log_grouping_degraded(reason: str, grouping: str, detail: str) -> None:
     """Structured ``event="grouping_degraded"`` warning (issue #120, C4).
 
     Emitted on EVERY silent-hop degradation path so operators can observe that
@@ -5158,7 +5117,8 @@ def _deterministic_grouping_kind(groups: list[dict[str, Any]] | None) -> str:
         if entries:
             labels = {
                 str(_derive_source_label(e, str(e.get("domain") or "")))
-                for e in entries if isinstance(e, dict)
+                for e in entries
+                if isinstance(e, dict)
             }
             if labels and theme in labels:
                 source_type_hits += 1
@@ -5228,6 +5188,7 @@ def _group_by_theme(
         return []
 
     from autoinfo.output import fault_inject  # noqa: PLC0415
+
     _reset_grouping_degraded()
 
     try:
@@ -5262,9 +5223,7 @@ def _group_by_theme(
         ]
 
     batch_size = _GROUPING_BATCH_SIZE
-    batches = [
-        entries[i : i + batch_size] for i in range(0, len(entries), batch_size)
-    ]
+    batches = [entries[i : i + batch_size] for i in range(0, len(entries), batch_size)]
 
     merged = _merge_theme_groups(
         _run_grouping_batches(extractor, batches, domain=domain, domains=domains)
@@ -5278,9 +5237,7 @@ def _group_by_theme(
     # retries → timeout / 0-byte output. Treat such results as unreliable and
     # fall back to deterministic grouping (same sanitization as the ==1-group /
     # no-group fallback paths).
-    if len(merged) > 20 or sum(
-        1 for g in merged if len(g.get("entries", [])) <= 1
-    ) > 6:
+    if len(merged) > 20 or sum(1 for g in merged if len(g.get("entries", [])) <= 1) > 6:
         logger.warning(
             "LLM grouping produced %d themes (%d single-entry) — exceeded "
             "chaos thresholds, falling back to deterministic grouping",
@@ -5297,13 +5254,12 @@ def _group_by_theme(
                 "single-entry), chaos guard fell back to deterministic "
                 f"grouping with {len(deterministic)} groups",
             )
-            merged = _merge_theme_groups(
-                deterministic, target_count=_GROUPING_TARGET_RANGE
-            )
+            merged = _merge_theme_groups(deterministic, target_count=_GROUPING_TARGET_RANGE)
         else:
             _log_grouping_degraded(
-                "chaos", "general", "no distinct topics detectable after "
-                "chaos fallback, single General group",
+                "chaos",
+                "general",
+                "no distinct topics detectable after chaos fallback, single General group",
             )
 
     return _ensure_all_entries_grouped(merged, entries)
@@ -5360,14 +5316,16 @@ def _group_batch_by_theme(
         groups = _deterministic_grouping(entries, domain=domain)
         if groups is not None:
             _log_grouping_degraded(
-                "llm_failure", _deterministic_grouping_kind(groups),
+                "llm_failure",
+                _deterministic_grouping_kind(groups),
                 f"LLM returned no groups for a {len(entries)}-entry batch; "
                 f"deterministic fallback produced {len(groups)} groups",
             )
             return _merge_theme_groups(groups, target_count=_GROUPING_TARGET_RANGE)
         _log_grouping_degraded(
-            "no_groups", "general", "no distinct topics detectable for a "
-            f"{len(entries)}-entry batch, single General group",
+            "no_groups",
+            "general",
+            f"no distinct topics detectable for a {len(entries)}-entry batch, single General group",
         )
         return [
             {
@@ -5385,17 +5343,15 @@ def _group_batch_by_theme(
 
     result: list[dict[str, Any]] = []
     for g in groups_raw:
-        group_entries = [
-            entry_map[eid]
-            for eid in g.get("entry_ids", [])
-            if eid in entry_map
-        ]
+        group_entries = [entry_map[eid] for eid in g.get("entry_ids", []) if eid in entry_map]
         if group_entries:
-            result.append({
-                "theme": g.get("theme", "Untitled"),
-                "description": g.get("description", ""),
-                "entries": group_entries,
-            })
+            result.append(
+                {
+                    "theme": g.get("theme", "Untitled"),
+                    "description": g.get("description", ""),
+                    "entries": group_entries,
+                }
+            )
 
     # -- Coverage guard -----------------------------------------------------
     # The LLM sometimes returns parseable JSON whose entry_ids do not match
@@ -5405,21 +5361,23 @@ def _group_batch_by_theme(
     matched_count = sum(len(g["entries"]) for g in result)
     if matched_count < max(1, len(entries) // 2):
         logger.warning(
-            "LLM groups matched only %d/%d entries, falling back to "
-            "deterministic grouping",
+            "LLM groups matched only %d/%d entries, falling back to deterministic grouping",
             matched_count,
             len(entries),
         )
         groups = _deterministic_grouping(entries, domain=domain)
         if groups is not None:
             _log_grouping_degraded(
-                "llm_failure", _deterministic_grouping_kind(groups),
+                "llm_failure",
+                _deterministic_grouping_kind(groups),
                 f"LLM groups matched only {matched_count}/{len(entries)} "
                 f"entries; deterministic fallback produced {len(groups)} groups",
             )
             return _merge_theme_groups(groups, target_count=_GROUPING_TARGET_RANGE)
         _log_grouping_degraded(
-            "no_groups", "general", f"LLM groups matched only "
+            "no_groups",
+            "general",
+            f"LLM groups matched only "
             f"{matched_count}/{len(entries)} entries and no distinct topics "
             "were detectable, single General group",
         )
@@ -5433,20 +5391,19 @@ def _group_batch_by_theme(
 
     # Ensure no entry is left out (ungrouped entries go into a catch-all)
     grouped_ids: set[str] = {
-        e.get("entry_id", "")
-        for g in result
-        for e in g["entries"]
-        if e.get("entry_id")
+        e.get("entry_id", "") for g in result for e in g["entries"] if e.get("entry_id")
     }
     ungrouped = [e for e in entries if e.get("entry_id", "") not in grouped_ids]
     if ungrouped:
-        result.append({
-            "theme": "Additional Topics",
-            # #338: the previous "N entry(ies) not covered by other themes."
-            # count line leaked internal grouping mechanics to end users.
-            "description": "Other notable developments across the tracked sources.",
-            "entries": ungrouped,
-        })
+        result.append(
+            {
+                "theme": "Additional Topics",
+                # #338: the previous "N entry(ies) not covered by other themes."
+                # count line leaked internal grouping mechanics to end users.
+                "description": "Other notable developments across the tracked sources.",
+                "entries": ungrouped,
+            }
+        )
 
     return result
 
@@ -5483,10 +5440,10 @@ def _llm_group_batch(
         )
 
     prompt = (
-        cross_domain_instruction +
-        "Group the following knowledge base entries into 3\u20135 themes. "
+        cross_domain_instruction
+        + "Group the following knowledge base entries into 3\u20135 themes. "
         "Each entry goes into exactly one theme. Do NOT use catch-all names "
-        "like \"General\" or \"Additional\". "
+        'like "General" or "Additional". '
         "Give each theme a SHORT SEMANTIC title: a concise noun phrase "
         "(2-6 words) naming the theme (e.g. 'Funding & M&A Momentum', "
         "'Reproductive Health Outcomes'). Never use a raw keyword list, "
@@ -5512,11 +5469,10 @@ def _llm_group_batch(
             len(groups_raw),
         )
         retry_prompt = (
-            cross_domain_instruction +
-            "STRICT RETRY: You previously grouped entries into a single "
+            cross_domain_instruction + "STRICT RETRY: You previously grouped entries into a single "
             "theme. Re-read the entries below and identify at least "
             "2\u20133 DISTINCT themes. Do NOT use catch-all themes like "
-            "\"General\", \"Miscellaneous\", or \"Other\". Each entry must "
+            '"General", "Miscellaneous", or "Other". Each entry must '
             "be assigned to the most specific theme that describes its "
             "content. "
             "Give each theme a SHORT SEMANTIC title: a concise noun phrase "
@@ -5537,14 +5493,14 @@ def _llm_group_batch(
         # If retry STILL produced only 1 group, treat as failure → fallback
         if groups_raw and len(groups_raw) <= 1:
             logger.warning(
-                "Strict retry returned only %d group(s), falling back to "
-                "deterministic grouping",
+                "Strict retry returned only %d group(s), falling back to deterministic grouping",
                 len(groups_raw),
             )
             groups_raw = None
 
     result: list[dict[str, Any]] | None = groups_raw
     return result
+
 
 # Issue #167: source-type group headings must state WHERE content came from,
 # never WHAT it is — a semantic-sounding label ("Platform & API News") can
@@ -5660,13 +5616,10 @@ def _deterministic_grouping(
     if len(domain_groups) >= 2:
         return [
             {
-                "theme": (
-                    d.replace("-", " ").title() if d != "Unknown" else "Other Sources"
-                ),
+                "theme": (d.replace("-", " ").title() if d != "Unknown" else "Other Sources"),
                 # #338: user-facing lead, no internal "N entries from" count.
                 "description": (
-                    f"Developments across "
-                    f"{d if d and d != 'Unknown' else 'other sources'}."
+                    f"Developments across {d if d and d != 'Unknown' else 'other sources'}."
                 ),
                 "entries": es,
             }
@@ -5728,9 +5681,7 @@ def _keyword_group_entries(
 
     groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for e in entries:
-        text = _normalize_text(
-            f"{e.get('title', '')} {e.get('summary', '')}"
-        )
+        text = _normalize_text(f"{e.get('title', '')} {e.get('summary', '')}")
         best = _match_keyword(text, norm_topics)
         groups[best if best else "__unmatched__"].append(e)
 
@@ -5758,14 +5709,16 @@ def _keyword_group_entries(
             folded.extend(es)
             continue
         resolved_names.append(name)
-        result.append({
-            "theme": label,
-            # #338: the old "N entries related to '<kw>'." description exposed
-            # the internal keyword-search/counting to end users — use a
-            # user-facing section lead instead.
-            "description": f"Key developments and analysis on {label}.",
-            "entries": es,
-        })
+        result.append(
+            {
+                "theme": label,
+                # #338: the old "N entries related to '<kw>'." description exposed
+                # the internal keyword-search/counting to end users — use a
+                # user-facing section lead instead.
+                "description": f"Key developments and analysis on {label}.",
+                "entries": es,
+            }
+        )
 
     if not resolved_names:
         return None
@@ -5774,13 +5727,15 @@ def _keyword_group_entries(
 
     unmatched = groups.get("__unmatched__", []) + folded
     if unmatched:
-        result.append({
-            "theme": "Additional Topics",
-            # #338: no internal "N entry(ies) not matched to a topic keyword."
-            # count line in the delivered product.
-            "description": "Other notable developments across the tracked sources.",
-            "entries": unmatched,
-        })
+        result.append(
+            {
+                "theme": "Additional Topics",
+                # #338: no internal "N entry(ies) not matched to a topic keyword."
+                # count line in the delivered product.
+                "description": "Other notable developments across the tracked sources.",
+                "entries": unmatched,
+            }
+        )
 
     # Issue #9 (reopened): the generic-label blocklist must hold on EVERY
     # caller of this function, not just the ``_merge_theme_groups`` path the
@@ -5791,8 +5746,7 @@ def _keyword_group_entries(
     # return ``None`` so the caller's source-type / domain fallback engages.
     sanitized = _merge_theme_groups(result)
     meaningful = [
-        g for g in sanitized
-        if _normalize_theme_text(g["theme"]) not in _STRUCTURAL_THEME_LABELS
+        g for g in sanitized if _normalize_theme_text(g["theme"]) not in _STRUCTURAL_THEME_LABELS
     ]
     if not meaningful:
         return None
@@ -5820,9 +5774,7 @@ def _load_keyword_topics(domain: str) -> list[str]:
     path = Path("knowledge") / domain / "_keywords.yaml"
     if path.is_file():
         try:
-            raw: dict[str, Any] = yaml.safe_load(
-                path.read_text(encoding="utf-8")
-            ) or {}
+            raw: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception as exc:
             logger.warning("Failed to read keyword file %s: %s", path, exc)
             raw = {}
@@ -5858,7 +5810,7 @@ def _seed_topic_keywords(domain: str) -> list[str]:
         return []
     keywords: list[str] = []
     for topic in seed.get("topics") or []:
-        for kw in (topic.get("keywords") or []):
+        for kw in topic.get("keywords") or []:
             if isinstance(kw, str) and kw.strip():
                 keywords.append(kw.strip())
     return keywords
@@ -5894,9 +5846,7 @@ def _keyword_topic_labels(domain: str) -> dict[str, str]:
                         label = (t.group or t.name or "").strip()
                         if not label:
                             continue
-                        for key in (
-                            [t.name, t.group] if t.group else [t.name]
-                        ):
+                        for key in [t.name, t.group] if t.group else [t.name]:
                             nk = _normalize_text(key)
                             if nk:
                                 labels[nk] = label
@@ -5914,14 +5864,14 @@ def _keyword_topic_labels(domain: str) -> dict[str, str]:
         except Exception:
             seed = {}
         for topic in seed.get("topics") or []:
-            label = (str(topic.get("group") or "") or
-                     str(topic.get("name") or "")).strip()
+            label = (str(topic.get("group") or "") or str(topic.get("name") or "")).strip()
             if not label:
                 continue
-            for key in ([str(topic.get("name"))]
-                        if not str(topic.get("group") or "").strip()
-                        else [str(topic.get("name")),
-                              str(topic.get("group"))]):
+            for key in (
+                [str(topic.get("name"))]
+                if not str(topic.get("group") or "").strip()
+                else [str(topic.get("name")), str(topic.get("group"))]
+            ):
                 nk = _normalize_text(key)
                 if nk:
                     labels.setdefault(nk, label)
@@ -5993,9 +5943,7 @@ def _merge_theme_groups(
     result: list[dict[str, Any]] = []
     for merged in by_name.values():
         theme = merged[0]["theme"]
-        description = next(
-            (g["description"] for g in merged if g.get("description")), ""
-        )
+        description = next((g["description"] for g in merged if g.get("description")), "")
         seen: set[str] = set()
         entries: list[dict[str, Any]] = []
         for g in merged:
@@ -6006,11 +5954,13 @@ def _merge_theme_groups(
                 if eid:
                     seen.add(eid)
                 entries.append(e)
-        result.append({
-            "theme": theme,
-            "description": description,
-            "entries": entries,
-        })
+        result.append(
+            {
+                "theme": theme,
+                "description": description,
+                "entries": entries,
+            }
+        )
 
     # -- Near-duplicate theme merge pass ------------------------------------
     # The exact-name pass above merges themes that normalize to the same
@@ -6040,10 +5990,7 @@ def _merge_theme_groups(
                     group["theme"] = other["theme"]
                 if not group.get("description") and other.get("description"):
                     group["description"] = other["description"]
-                seen = {
-                    e.get("entry_id", "") for e in group["entries"]
-                    if e.get("entry_id")
-                }
+                seen = {e.get("entry_id", "") for e in group["entries"] if e.get("entry_id")}
                 for e in other["entries"]:
                     eid = e.get("entry_id", "")
                     if eid and eid in seen:
@@ -6051,9 +5998,7 @@ def _merge_theme_groups(
                     if eid:
                         seen.add(eid)
                     group["entries"].append(e)
-                group_tokens = set(
-                    _normalize_theme_text(group["theme"]).split()
-                )
+                group_tokens = set(_normalize_theme_text(group["theme"]).split())
             else:
                 rest.append(other)
         final.append(group)
@@ -6067,14 +6012,8 @@ def _merge_theme_groups(
     # (by Jaccard on normalized tokens) or to "Additional Topics", so no
     # entry is ever lost.  "General" / "Additional Topics" are structural
     # catch-alls and deliberately exempt.
-    survivors = [
-        g for g in final
-        if _normalize_theme_text(g["theme"]) not in _GENERIC_THEME_LABELS
-    ]
-    blocklisted = [
-        g for g in final
-        if _normalize_theme_text(g["theme"]) in _GENERIC_THEME_LABELS
-    ]
+    survivors = [g for g in final if _normalize_theme_text(g["theme"]) not in _GENERIC_THEME_LABELS]
+    blocklisted = [g for g in final if _normalize_theme_text(g["theme"]) in _GENERIC_THEME_LABELS]
     if not blocklisted:
         return _apply_grouping_target(survivors, target_count)
 
@@ -6084,10 +6023,12 @@ def _merge_theme_groups(
         by_norm.setdefault(nt, g)
     survivor_pairs: list[tuple[set[str], dict[str, Any]]] = []
     for g in survivors:
-        survivor_pairs.append((
-            set(_normalize_theme_text(g["theme"]).split()),
-            g,
-        ))
+        survivor_pairs.append(
+            (
+                set(_normalize_theme_text(g["theme"]).split()),
+                g,
+            )
+        )
 
     for g in blocklisted:
         g_tokens = set(_normalize_theme_text(g["theme"]).split())
@@ -6110,11 +6051,13 @@ def _merge_theme_groups(
                 None,
             )
         if target is None:
-            survivors.append({
-                "theme": "Additional Topics",
-                "description": "Other notable developments across the tracked sources.",
-                "entries": [],
-            })
+            survivors.append(
+                {
+                    "theme": "Additional Topics",
+                    "description": "Other notable developments across the tracked sources.",
+                    "entries": [],
+                }
+            )
             target = survivors[-1]
         seen = {e.get("entry_id", "") for e in target["entries"] if e.get("entry_id")}
         for e in g["entries"]:
@@ -6170,9 +6113,7 @@ def _apply_grouping_target(
             pending[i]["theme"] = pending[j]["theme"]
         if not pending[i].get("description") and pending[j].get("description"):
             pending[i]["description"] = pending[j]["description"]
-        seen = {
-            e.get("entry_id", "") for e in pending[i]["entries"] if e.get("entry_id")
-        }
+        seen = {e.get("entry_id", "") for e in pending[i]["entries"] if e.get("entry_id")}
         for e in pending[j]["entries"]:
             eid = e.get("entry_id", "")
             if eid and eid in seen:
@@ -6201,24 +6142,19 @@ def _ensure_all_entries_grouped(
         ]
 
     grouped_ids: set[str] = {
-        e.get("entry_id", "")
-        for g in groups
-        for e in g["entries"]
-        if e.get("entry_id")
+        e.get("entry_id", "") for g in groups for e in g["entries"] if e.get("entry_id")
     }
-    missing = [
-        e
-        for e in entries
-        if not (e.get("entry_id", "") and e["entry_id"] in grouped_ids)
-    ]
+    missing = [e for e in entries if not (e.get("entry_id", "") and e["entry_id"] in grouped_ids)]
     if missing:
         if len(groups) >= 2:
-            groups.append({
-                "theme": "Additional Topics",
-                # #338: no internal "N entry(ies) not covered by other themes."
-                "description": "Other notable developments across the tracked sources.",
-                "entries": missing,
-            })
+            groups.append(
+                {
+                    "theme": "Additional Topics",
+                    # #338: no internal "N entry(ies) not covered by other themes."
+                    "description": "Other notable developments across the tracked sources.",
+                    "entries": missing,
+                }
+            )
         else:
             groups[0]["entries"].extend(missing)
     return groups
@@ -6314,10 +6250,7 @@ def _build_report_entries_detail(
         picked = [e for e in g["entries"] if id(e) in picked_ids]
         for e in picked:
             title, summary = _digest_entry_text(e, rmb_usd_rate)
-            line = (
-                f"- [{g['theme']}] {title or '(no title)'}: "
-                f"{summary[: max_entry_summary_chars]}"
-            )
+            line = f"- [{g['theme']}] {title or '(no title)'}: {summary[:max_entry_summary_chars]}"
             # Issue #279: thread source_url into the synthesis context.
             src = str(e.get("source_url") or "").strip()
             if src:
@@ -6329,8 +6262,7 @@ def _build_report_entries_detail(
             detail_lines.append(line)
         if not truncated and len(picked) < len(g["entries"]):
             detail_lines.append(
-                f"- [{g['theme']}] (+{len(g['entries']) - len(picked)} more "
-                "entries in this theme)"
+                f"- [{g['theme']}] (+{len(g['entries']) - len(picked)} more entries in this theme)"
             )
     if truncated:
         detail_lines.append("(further entries omitted for brevity)")
@@ -6359,8 +6291,7 @@ def _build_report_synthesis_prompt(
         )
 
     prompt = (
-        cross_domain_prefix +
-        "Write a report synthesis analyzing the following knowledge base "
+        cross_domain_prefix + "Write a report synthesis analyzing the following knowledge base "
         "entries (grouped by theme). Use the actual content: cite specific "
         "findings, studies, and data points from the entries. When a key "
         "finding, recommendation, or trend is backed by a specific entry, "
@@ -6459,9 +6390,7 @@ def _build_product_sections_prompt(
         ((f.get("text") if isinstance(f, dict) else f) or "").strip()
         for f in (parsed.get("key_findings") or [])[:max_findings]
     ]
-    findings = "\n".join(
-        f"- {t[:max_finding_chars].rstrip()}" for t in finding_texts
-    )
+    findings = "\n".join(f"- {t[:max_finding_chars].rstrip()}" for t in finding_texts)
     return (
         "You are a report synthesis assistant. Below are the executive summary "
         "and key findings already produced for a briefing. Emit ONLY the "
@@ -6529,9 +6458,7 @@ def _generate_executive_summary(
     try:
         fault_inject.maybe_fault("summary")
     except Exception:
-        fallback = _deterministic_synthesis_fallback(
-            entries, summary_prefix="This report covers"
-        )
+        fallback = _deterministic_synthesis_fallback(entries, summary_prefix="This report covers")
         return {
             "executive_summary": fallback["executive_summary"],
             "key_findings": fallback["key_findings"],
@@ -6580,9 +6507,7 @@ def _generate_executive_summary(
             )
             sleep_fn(retry_backoff_seconds)
         attempt_prompt = prompt if attempt == 1 else retry_prompt
-        parsed = _parse_report_markdown(
-            _call_llm_for_report_synthesis(attempt_prompt)
-        )
+        parsed = _parse_report_markdown(_call_llm_for_report_synthesis(attempt_prompt))
         if parsed.get("executive_summary"):
             break
 
@@ -6630,9 +6555,7 @@ def _generate_executive_summary(
     # N entries grouped into M themes: - **API**: N entry(ies)") leaked the
     # internal grouping/search mechanics to end users — use the user-facing
     # summary derived from the real entry titles instead.
-    fallback = _deterministic_synthesis_fallback(
-        entries, summary_prefix="This report covers"
-    )
+    fallback = _deterministic_synthesis_fallback(entries, summary_prefix="This report covers")
     return {
         "executive_summary": fallback["executive_summary"],
         "key_findings": fallback["key_findings"],
@@ -6713,9 +6636,7 @@ def _split_glued_bullets(text: str) -> list[str]:
     return [part for part in _GLUED_BULLET_SEP.split(text) if part]
 
 
-def _parse_report_markdown(
-    content: str, require_exec_summary: bool = True
-) -> dict[str, Any]:
+def _parse_report_markdown(content: str, require_exec_summary: bool = True) -> dict[str, Any]:
     """Parse a Markdown report synthesis into the report context schema.
 
     Handles the structure requested by the report-synthesis prompt:
@@ -6846,9 +6767,7 @@ def _llm_json_extract(
     return value
 
 
-def _report_data_to_dict(
-    report_data: ReportData, source_tier_badge: bool = True
-) -> dict[str, Any]:
+def _report_data_to_dict(report_data: ReportData, source_tier_badge: bool = True) -> dict[str, Any]:
     """Convert a :class:`ReportData` instance to a flat dict for Jinja2 rendering.
 
     Maps ``ReportSection.items`` → ``entries`` to match the variable
@@ -6955,16 +6874,19 @@ def _render_report_json(report_data: ReportData, period: str = "weekly") -> str:
                 continue
             if url:
                 seen_urls.add(url)
-            entries_list.append({
-                "title": title,
-                "summary": summary,
-                "url": url,
-                "source_url": url,
-                "source_type": item.get("source_type", ""),
-                "source_platform": item.get("source_label", "") or item.get("source_platform", ""),
-                "date": item.get("collected_at", ""),
-                "domain": item.get("domain", ""),
-            })
+            entries_list.append(
+                {
+                    "title": title,
+                    "summary": summary,
+                    "url": url,
+                    "source_url": url,
+                    "source_type": item.get("source_type", ""),
+                    "source_platform": item.get("source_label", "")
+                    or item.get("source_platform", ""),
+                    "date": item.get("collected_at", ""),
+                    "domain": item.get("domain", ""),
+                }
+            )
 
     # Also include any references not already covered
     for ref in report_data.references:
@@ -6973,16 +6895,18 @@ def _render_report_json(report_data: ReportData, period: str = "weekly") -> str:
             continue
         if url:
             seen_urls.add(url)
-        entries_list.append({
-            "title": ref.get("title", ""),
-            "summary": "",
-            "url": url,
-            "source_url": url,
-            "source_type": ref.get("source_type", ""),
-            "source_platform": ref.get("source_label", "") or ref.get("source_platform", ""),
-            "date": "",
-            "domain": ref.get("domain", ""),
-        })
+        entries_list.append(
+            {
+                "title": ref.get("title", ""),
+                "summary": "",
+                "url": url,
+                "source_url": url,
+                "source_type": ref.get("source_type", ""),
+                "source_platform": ref.get("source_label", "") or ref.get("source_platform", ""),
+                "date": "",
+                "domain": ref.get("domain", ""),
+            }
+        )
 
     output = {
         "title": report_data.title,
@@ -7025,9 +6949,7 @@ def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
                 if not title.strip() or _is_empty_summary(summary):
                     continue
                 row_idx += 1
-                rows.append(
-                    f"| {row_idx} | {title} | {summary} |"
-                )
+                rows.append(f"| {row_idx} | {title} | {summary} |")
             if row_idx:
                 body = f"{body}\n\n{chr(10).join(rows)}".strip()
         chapters.append((section.title or f"Section {idx}", body))
@@ -7045,9 +6967,7 @@ def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
 def _render_report_template(report_data: ReportData, source_tier_badge: bool = True) -> str:
     """Render the report data through the Jinja2 template."""
     if not TEMPLATE_PATH.is_file():
-        raise FileNotFoundError(
-            f"Report template not found at {TEMPLATE_PATH}"
-        )
+        raise FileNotFoundError(f"Report template not found at {TEMPLATE_PATH}")
 
     template_source = TEMPLATE_PATH.read_text(encoding="utf-8")
     env = _get_jinja_env()
@@ -7130,10 +7050,9 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
         import markdown as md_lib  # noqa: PLC0415
 
         def _md_to_html(md_text: str) -> str:
-            return str(
-                md_lib.markdown(md_text or "", extensions=["fenced_code", "tables"])
-            )
+            return str(md_lib.markdown(md_text or "", extensions=["fenced_code", "tables"]))
     except (ImportError, ModuleNotFoundError):
+
         def _md_to_html(md_text: str) -> str:
             return html.escape(md_text or "").replace("\n", "<br>\n")
 
@@ -7156,11 +7075,13 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
                 content_md = (content_md + "\n\n" + "\n".join(rows)).strip()
 
         section_id = f"section-{idx}"
-        html_sections.append({
-            "id": section_id,
-            "heading": section.title,
-            "content_html": _md_to_html(content_md),
-        })
+        html_sections.append(
+            {
+                "id": section_id,
+                "heading": section.title,
+                "content_html": _md_to_html(content_md),
+            }
+        )
 
     html_references: list[dict[str, Any]] = []
     for idx, ref in enumerate(report_data.references, 1):
@@ -7170,11 +7091,13 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
         text = title
         if platform:
             text = f"{title} ({platform})" if title else platform
-        html_references.append({
-            "id": f"ref-{idx}",
-            "text": text,
-            "url": url,
-        })
+        html_references.append(
+            {
+                "id": f"ref-{idx}",
+                "text": text,
+                "url": url,
+            }
+        )
 
     exec_summary = report_data.executive_summary or ""
     exec_summary_html = _md_to_html(exec_summary) if exec_summary else ""
@@ -7257,16 +7180,11 @@ def _build_translation_prompt(
             }
             if do_not_translate:
                 prompt_parts.append(
-                    "The following terms MUST NOT be translated: "
-                    f"{', '.join(do_not_translate)}.\n"
+                    f"The following terms MUST NOT be translated: {', '.join(do_not_translate)}.\n"
                 )
             if preferred:
                 lines = [f"  {term} → {trans}" for term, trans in preferred.items()]
-                prompt_parts.append(
-                    "Use these preferred translations:\n"
-                    + "\n".join(lines)
-                    + "\n"
-                )
+                prompt_parts.append("Use these preferred translations:\n" + "\n".join(lines) + "\n")
 
     return "".join(prompt_parts)
 
@@ -7421,7 +7339,7 @@ def localize_content(
                 if raw.startswith("---"):
                     end_idx = raw.find("---", 3)
                     if end_idx != -1:
-                        body = raw[end_idx + 3:].strip()
+                        body = raw[end_idx + 3 :].strip()
                     else:
                         body = raw
                 else:
@@ -7506,9 +7424,7 @@ def _write_translated_file(
     if not orig.is_file():
         return None
 
-    translated_path = orig.with_name(
-        f"{orig.stem}.{target_lang}{orig.suffix}"
-    )
+    translated_path = orig.with_name(f"{orig.stem}.{target_lang}{orig.suffix}")
 
     raw = orig.read_text(encoding="utf-8")
     frontmatter: dict[str, Any] = {}
@@ -7518,8 +7434,9 @@ def _write_translated_file(
         if end_idx != -1:
             fm_raw = raw[3:end_idx]
             import yaml  # noqa: PLC0415
+
             frontmatter = yaml.safe_load(fm_raw) or {}
-            body = raw[end_idx + 3:].strip()
+            body = raw[end_idx + 3 :].strip()
 
     frontmatter["translated_from"] = source_lang
     frontmatter["translated_to"] = target_lang
@@ -7669,8 +7586,8 @@ _REPORT_PRODUCT_BASE_SECTIONS = (
     "latency SLO breaches; reassess the primary provider when p95 exceeds "
     "800ms'.\n\n"
     "The Executive Summary's opening coverage sentence MUST name exactly the "
-    "number of Key Findings you detail below — e.g. \"This briefing details N "
-    "selected items from the period.\" Never state a coverage count larger "
+    'number of Key Findings you detail below — e.g. "This briefing details N '
+    'selected items from the period." Never state a coverage count larger '
     "than the number of Key Findings bullets you actually write."
 )
 
@@ -7684,9 +7601,7 @@ _REPORT_ENTERPRISE_METRICS_SECTION = (
 _REPORT_PRODUCT_SYNTHESIS_PROMPTS: dict[str, str] = {
     "premium-briefing": _REPORT_PRODUCT_BASE_SECTIONS,
     "magazine-digest": _REPORT_PRODUCT_BASE_SECTIONS,
-    "enterprise-briefing": (
-        _REPORT_PRODUCT_BASE_SECTIONS + _REPORT_ENTERPRISE_METRICS_SECTION
-    ),
+    "enterprise-briefing": (_REPORT_PRODUCT_BASE_SECTIONS + _REPORT_ENTERPRISE_METRICS_SECTION),
 }
 
 _REPORT_AUDIENCE_DESCRIPTIONS: dict[str, str] = {
@@ -7746,7 +7661,9 @@ def _filter_stale_entries(
     if excluded:
         logger.info(
             "Excluded %d stale entries from %s for domain '%s'",
-            excluded, product, domain,
+            excluded,
+            product,
+            domain,
         )
     return active
 
@@ -7803,10 +7720,7 @@ def generate_tutorial(
         If *format* or *target_audience* is unsupported.
     """
     if format not in ("markdown", "agent"):
-        raise ValueError(
-            f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, agent"
-        )
+        raise ValueError(f"Unsupported output format: {format!r}. Supported: markdown, agent")
 
     if target_audience not in _VALID_AUDIENCES:
         raise ValueError(
@@ -7824,13 +7738,10 @@ def generate_tutorial(
     # --- Content-preference tier filtering (B-001) ---------------------------
     content_preference: str = _resolve_content_preference(user_id)
     if content_preference != "both":
-        filtered_entries = _filter_entries_by_content_preference(
-            entries, content_preference
-        )
+        filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
         if len(filtered_entries) != len(entries):
             logger.info(
-                "Excluded %d entries from tutorial for domain '%s' "
-                "due to content_preference='%s'",
+                "Excluded %d entries from tutorial for domain '%s' due to content_preference='%s'",
                 len(entries) - len(filtered_entries),
                 domain,
                 content_preference,
@@ -7988,7 +7899,10 @@ def generate_tutorial(
                 domain,
             )
         llm_result = _ensure_tutorial_complete(
-            llm_result, domain, entries, target_audience,
+            llm_result,
+            domain,
+            entries,
+            target_audience,
             lang_learning=lang_learning,
             target_language=target_language,
             gloss_language=gloss_language,
@@ -8028,14 +7942,16 @@ def generate_tutorial(
         if not url or url in _seen_urls:
             continue
         _seen_urls.add(url)
-        kb_references.append({
-            "title": entry.get("title") or "",
-            "source_url": url,
-            "source_type": entry.get("source_type") or "",
-            "source_platform": entry.get("source_platform") or "",
-            "source_label": entry.get("source_label") or "",
-            "domain": entry.get("domain") or domain,
-        })
+        kb_references.append(
+            {
+                "title": entry.get("title") or "",
+                "source_url": url,
+                "source_type": entry.get("source_type") or "",
+                "source_platform": entry.get("source_platform") or "",
+                "source_label": entry.get("source_label") or "",
+                "domain": entry.get("domain") or domain,
+            }
+        )
 
     context = {
         "title": llm_result.get("title", f"{_domain_display_name(domain)} — Tutorial"),
@@ -8060,9 +7976,7 @@ def generate_tutorial(
         rendered_agent = _render_tutorial_agent_json(
             llm_result, domain, target_audience, generated_at, entries
         )
-        _fire_agent_notification(
-            "new_tutorial", rendered_agent, product_id=f"{domain}-tutorial"
-        )
+        _fire_agent_notification("new_tutorial", rendered_agent, product_id=f"{domain}-tutorial")
         return rendered_agent
 
     # -- Render via Jinja2 template ---------------------------------------
@@ -8093,9 +8007,7 @@ def generate_tutorial(
         )
         return result
 
-    _fire_agent_notification(
-        "new_tutorial", rendered_tutorial, product_id=f"{domain}-tutorial"
-    )
+    _fire_agent_notification("new_tutorial", rendered_tutorial, product_id=f"{domain}-tutorial")
     return rendered_tutorial
 
 
@@ -8110,34 +8022,40 @@ def _render_tutorial_agent_json(
     # Derive source entries from KB
     source_entries: list[dict[str, Any]] = []
     for e in entries[:50]:
-        source_entries.append({
-            "entry_id": e.get("entry_id", ""),
-            "title": e.get("title", ""),
-            "source_url": e.get("source_url", ""),
-            "source_platform": e.get("source_platform", ""),
-        })
+        source_entries.append(
+            {
+                "entry_id": e.get("entry_id", ""),
+                "title": e.get("title", ""),
+                "source_url": e.get("source_url", ""),
+                "source_platform": e.get("source_platform", ""),
+            }
+        )
 
     # Build steps from content sections
     steps: list[dict[str, Any]] = []
     for i, section in enumerate(llm_result.get("content", []), 1):
-        steps.append({
-            "step": i,
-            "heading": section.get("heading", ""),
-            "body": section.get("body", ""),
-            "code_example": section.get("code_example"),
-            "code_language": section.get("code_language"),
-            "key_takeaway": section.get("key_takeaway"),
-        })
+        steps.append(
+            {
+                "step": i,
+                "heading": section.get("heading", ""),
+                "body": section.get("body", ""),
+                "code_example": section.get("code_example"),
+                "code_language": section.get("code_language"),
+                "key_takeaway": section.get("key_takeaway"),
+            }
+        )
 
     # Build exercises
     exercises: list[dict[str, Any]] = []
     for ex in llm_result.get("exercises", []):
-        exercises.append({
-            "title": ex.get("title", ""),
-            "description": ex.get("description", ""),
-            "hint": ex.get("hint"),
-            "solution": ex.get("solution"),
-        })
+        exercises.append(
+            {
+                "title": ex.get("title", ""),
+                "description": ex.get("description", ""),
+                "hint": ex.get("hint"),
+                "solution": ex.get("solution"),
+            }
+        )
 
     output: dict[str, Any] = {
         **_JSONLD_TUTORIAL,
@@ -8237,8 +8155,8 @@ def _build_tutorial_json_prompt(
         '  - "duration": estimated reading/completion time (string, e.g. "45 minutes")\n'
         '  - "prerequisites": comma-separated prerequisites (string)\n'
         '  - "objectives": array of 3-5 learning objective strings, each a '
-        'learning-verb goal (Understand / Analyze / Apply / Evaluate), NEVER '
-        'a verbatim copy of a KB entry title\n'
+        "learning-verb goal (Understand / Analyze / Apply / Evaluate), NEVER "
+        "a verbatim copy of a KB entry title\n"
         '  - "content": array of section objects, each with:\n'
         '      - "heading": section heading\n'
         '      - "body": 2-4 paragraph section content\n'
@@ -8253,11 +8171,9 @@ def _build_tutorial_json_prompt(
         '  - "summary": 2-3 sentence summary of the tutorial\n'
         '  - "further_reading": array of reference strings\n\n'
         f"KB Entries:\n{entry_summaries}\n\n"
-        "In every \"content\" section body, follow each key claim with an "
-        "inline citation to its source entry, e.g. \"(Source: <source_url>)\". "
-        "Only cite URLs present in the KB Entries list. "
-        + URL_VERBATIM_CONSTRAINT
-        + "\n"
+        'In every "content" section body, follow each key claim with an '
+        'inline citation to its source entry, e.g. "(Source: <source_url>)". '
+        "Only cite URLs present in the KB Entries list. " + URL_VERBATIM_CONSTRAINT + "\n"
         "Return all fields in a single JSON object. Adapt depth, terminology, "
         f"and examples specifically for a {target_audience} audience."
     )
@@ -8268,10 +8184,10 @@ def _build_tutorial_json_prompt(
         prompt += (
             f"\n\nThis is a LANGUAGE-LEARNING tutorial for {lang_label}. "
             "Write the tutorial as a language course, not a news summary:\n"
-            "- \"objectives\" MUST be language-ability goals for learners of "
-            f"{lang_label} (e.g. \"Understand how to report on current "
-            "events in the target language\"), NOT copies of the KB entry titles.\n"
-            f"- \"content\" sections MUST be written IN {lang_label} "
+            '- "objectives" MUST be language-ability goals for learners of '
+            f'{lang_label} (e.g. "Understand how to report on current '
+            'events in the target language"), NOT copies of the KB entry titles.\n'
+            f'- "content" sections MUST be written IN {lang_label} '
             "(target-language prose adapted to a graded learner level), not "
             "an English retelling.\n"
             '- add two extra keys to the JSON: "vocabulary" (array of objects '
@@ -8345,10 +8261,8 @@ def _build_tutorial_markdown_prompt(
         "- <reference 1>\n"
         "- <reference 2>\n\n"
         "In every content paragraph, follow each key claim with an inline "
-        "citation to its source entry, e.g. \"(Source: <source_url>)\". Only "
-        "cite URLs present in the KB Entries list. "
-        + URL_VERBATIM_CONSTRAINT
-        + "\n\n"
+        'citation to its source entry, e.g. "(Source: <source_url>)". Only '
+        "cite URLs present in the KB Entries list. " + URL_VERBATIM_CONSTRAINT + "\n\n"
         "Use exactly the heading names above. Do NOT wrap your answer in a "
         "code fence or emit JSON.\n\n"
         f"KB Entries:\n{entry_summaries}\n\n"
@@ -8365,8 +8279,8 @@ def _build_tutorial_markdown_prompt(
             f"\n\nThis is a LANGUAGE-LEARNING tutorial for {lang_label}. "
             "Write the tutorial as a language course, not a news summary:\n"
             f"- Learning Objectives MUST be language-ability goals for learners "
-            f"of {lang_label} (e.g. \"Understand how to report on current "
-            "events in the target language\"), NOT copies of the KB article titles.\n"
+            f'of {lang_label} (e.g. "Understand how to report on current '
+            'events in the target language"), NOT copies of the KB article titles.\n'
             f"- The tutorial body MUST be written in the target language "
             f"({lang_label}); target-language prose adapted to a graded "
             "learner level, not an English retelling. Only technical terms may "
@@ -8454,18 +8368,14 @@ def _parse_tutorial_markdown(content: str) -> dict[str, Any]:
             result["exercises"].append(
                 {
                     "title": exercise_title,
-                    "description": "\n\n".join(
-                        line.strip() for line in exercise_body
-                    ).strip(),
+                    "description": "\n\n".join(line.strip() for line in exercise_body).strip(),
                 }
             )
             exercise_title = ""
             exercise_body = []
 
     def is_bullet(text: str) -> bool:
-        return bool(
-            re.match(r"^(?:[-*]|\d+[.)])\s+\S", text)
-        )
+        return bool(re.match(r"^(?:[-*]|\d+[.)])\s+\S", text))
 
     def bullet_text(text: str) -> str:
         return re.sub(r"^(?:[-*]|\d+[.)])\s+", "", text).strip()
@@ -8506,12 +8416,15 @@ def _parse_tutorial_markdown(content: str) -> dict[str, Any]:
             if stripped.startswith("### "):
                 flush_exercise()
                 heading = stripped.lstrip("#").strip()
-                exercise_title = re.sub(
-                    r"^Exercise\s*(\d+)?\s*[:.)-]?\s*",
-                    "",
-                    heading,
-                    flags=re.IGNORECASE,
-                ).strip() or heading
+                exercise_title = (
+                    re.sub(
+                        r"^Exercise\s*(\d+)?\s*[:.)-]?\s*",
+                        "",
+                        heading,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    or heading
+                )
                 exercise_body = []
             elif is_bullet(stripped):
                 flush_exercise()
@@ -8676,9 +8589,7 @@ def _ensure_tutorial_complete(
     # are bare entry-title copies.
     llm_objectives = llm_result.get("objectives") or []
     entry_titles = {str(e.get("title") or "").strip() for e in entries}
-    title_copies = sum(
-        1 for o in llm_objectives if str(o).strip() in entry_titles
-    )
+    title_copies = sum(1 for o in llm_objectives if str(o).strip() in entry_titles)
     if title_copies >= 2:
         llm_objectives = objectives
 
@@ -8703,13 +8614,10 @@ def _ensure_tutorial_complete(
             if len(llm_vocabulary) >= 5:
                 break
     if lang_learning and not llm_grammar:
-        first_summary = next(
-            (str(e.get("summary") or "") for e in entries if e.get("summary")), ""
-        )
+        first_summary = next((str(e.get("summary") or "") for e in entries if e.get("summary")), "")
         if first_summary:
             llm_grammar.append(
-                f"Sentence structure — follow the clause order in "
-                f"\"{first_summary.strip()[:60]}\""
+                f'Sentence structure — follow the clause order in "{first_summary.strip()[:60]}"'
             )
     # Issue #92: treat placeholder duration/prerequisites ("TBD", "None",
     # "0 minutes") as empty so a shell LLM result is filled deterministically.
@@ -8735,10 +8643,9 @@ def _ensure_tutorial_complete(
         # 5 non-empty).  Drop empty-bodied exercises; if fewer than 2 real
         # exercises survive, fall back to the deterministic KB-derived set so
         # the tutorial never ships a hollow exercise section.
-        "exercises": _validated_exercises(
-            llm_result.get("exercises") or [], exercises
-        ),
-        "summary": llm_result.get("summary") or (
+        "exercises": _validated_exercises(llm_result.get("exercises") or [], exercises),
+        "summary": llm_result.get("summary")
+        or (
             f"This tutorial walks through {len(entries)} knowledge base "
             f"entries in the {domain} domain, covering the key findings "
             f"for a {target_audience} audience."
@@ -8830,8 +8737,7 @@ def generate_presentation(
     """
     if format not in ("markdown", "html", "mkslides", "agent"):
         raise ValueError(
-            f"Unsupported output format: {format!r}. "
-            f"Supported: markdown, html, mkslides, agent"
+            f"Unsupported output format: {format!r}. Supported: markdown, html, mkslides, agent"
         )
 
     if target_audience not in _VALID_AUDIENCES:
@@ -8855,15 +8761,17 @@ def generate_presentation(
     # all-time (limit=5000, no window) to the same-week shared set, so a deck
     # and its digest/report reference the same stories.
     entries, _date_range, _period_was_empty = _select_story_set(
-        kb_store, domain, period="weekly", product="presentation", query_limit=5000,
+        kb_store,
+        domain,
+        period="weekly",
+        product="presentation",
+        query_limit=5000,
     )
 
     # --- Content-preference tier filtering (B-001) ---------------------------
     content_preference: str = _resolve_content_preference(user_id)
     if content_preference != "both":
-        filtered_entries = _filter_entries_by_content_preference(
-            entries, content_preference
-        )
+        filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
         if len(filtered_entries) != len(entries):
             logger.info(
                 "Excluded %d entries from presentation for domain '%s' "
@@ -8900,9 +8808,7 @@ def generate_presentation(
     # fills in.
     effective_language = _resolve_effective_language(language, domain)
     if effective_language:
-        entries, _ = _filter_entries_by_language_product_safe(
-            entries, effective_language
-        )
+        entries, _ = _filter_entries_by_language_product_safe(entries, effective_language)
 
     # --- Staleness filter (backup #60) ---------------------------------------
     # Teaching-layer products must never silently regenerate from an old
@@ -8966,12 +8872,12 @@ def generate_presentation(
         f"KB Entries:\n{entry_summaries}\n\n"
         "Return all fields in a single JSON object. Adapt depth and terminology "
         f"specifically for a {target_audience} audience.\n"
-        'When a claim comes from a specific KB entry, end that bullet with '
+        "When a claim comes from a specific KB entry, end that bullet with "
         '" (Source: <the exact http(s) entry URL>)". '
         'NEVER write "Source: KB:", "Source: KB-N", "knowledgebase.local", '
         '"knowledgebase.example.com", or a bare publication/person name as '
-        'a source — every (Source: ...) must be a real http(s) URL from the '
-        'KB Entries list above.'
+        "a source — every (Source: ...) must be a real http(s) URL from the "
+        "KB Entries list above."
     )
 
     if custom_instructions:
@@ -9018,9 +8924,7 @@ def generate_presentation(
     # agent output (same template context, same content).
     rendered = _render_presentation_template(context, format=format)
     rendered_check = (
-        _render_presentation_template(context, format="markdown")
-        if format == "agent"
-        else rendered
+        _render_presentation_template(context, format="markdown") if format == "agent" else rendered
     )
     # Issue #93: strip fabricated (non-URL) source citations from the
     # rendered markdown/html/mkslides deck — the LLM may substitute names
@@ -9037,9 +8941,7 @@ def generate_presentation(
     }
     if format != "agent":
         rendered = _sanitize_presentation_sources(rendered, allowed_urls=all_source_urls)
-    rendered_check = _sanitize_presentation_sources(
-        rendered_check, allowed_urls=all_source_urls
-    )
+    rendered_check = _sanitize_presentation_sources(rendered_check, allowed_urls=all_source_urls)
     if not allow_empty and (len(slides) < 1 or len(rendered_check.strip()) < 500):
         raise ValueError(
             f"Presentation generation produced no usable content for "
@@ -9049,7 +8951,9 @@ def generate_presentation(
 
     # -- Agent-native JSON-LD format ----------------------------------------
     if format == "agent":
-        return _render_presentation_agent_json(llm_result, domain, topic, target_audience, generated_at, topic_entries)  # noqa: E501
+        return _render_presentation_agent_json(
+            llm_result, domain, topic, target_audience, generated_at, topic_entries
+        )  # noqa: E501
 
     # --- Delivery gates (D1-D3) ---------------------------------------------
     if delivery_gate_configs is not None:
@@ -9084,20 +8988,24 @@ def _render_presentation_agent_json(
     """Render presentation data as agent-native JSON-LD (``@type: KnowledgePresentation``)."""
     slides: list[dict[str, Any]] = []
     for s in llm_result.get("slides", []):
-        slides.append({
-            "title": s.get("title", ""),
-            "content": s.get("content", ""),
-            "bullets": s.get("bullets", []),
-            "notes": s.get("notes"),
-        })
+        slides.append(
+            {
+                "title": s.get("title", ""),
+                "content": s.get("content", ""),
+                "bullets": s.get("bullets", []),
+                "notes": s.get("notes"),
+            }
+        )
 
     sources: list[dict[str, Any]] = []
     for e in topic_entries[:50]:
-        sources.append({
-            "entry_id": e.get("entry_id", ""),
-            "title": e.get("title", ""),
-            "source_url": e.get("source_url", ""),
-        })
+        sources.append(
+            {
+                "entry_id": e.get("entry_id", ""),
+                "title": e.get("title", ""),
+                "source_url": e.get("source_url", ""),
+            }
+        )
 
     output: dict[str, Any] = {
         **_JSONLD_PRESENTATION,
@@ -9348,8 +9256,7 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
                 )
             except FileNotFoundError:
                 logger.warning(
-                    "mkslides is not installed — falling back to "
-                    "standalone HTML presentation."
+                    "mkslides is not installed — falling back to standalone HTML presentation."
                 )
                 return _render_presentation_html(context)
             except subprocess.TimeoutExpired:
@@ -9385,8 +9292,7 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
             return html_candidates[0].read_text(encoding="utf-8")
     except Exception as exc:
         logger.warning(
-            "mkslides rendering failed (%s) — falling back to standalone "
-            "HTML presentation.",
+            "mkslides rendering failed (%s) — falling back to standalone HTML presentation.",
             exc,
         )
         return _render_presentation_html(context)
@@ -9588,9 +9494,7 @@ def _render_video_scaffold(
         sections = [{"heading": title, "body": "No content sections available."}]
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(
-        os.environ.get("AUTOINFO_TMPDIR", "/tmp/autoinfo/video"), timestamp
-    )
+    output_dir = os.path.join(os.environ.get("AUTOINFO_TMPDIR", "/tmp/autoinfo/video"), timestamp)
     os.makedirs(output_dir, exist_ok=True)
 
     # Map context-level settings to VideoConfig
@@ -9699,7 +9603,10 @@ def _render_audio_openai(
             raise RuntimeError("OpenAI TTS API returned empty audio data")
         logger.info(
             "Generated audio: %d chars text → %d bytes MP3 (model=%s, voice=%s)",
-            len(text), len(mp3_bytes), model, voice,
+            len(text),
+            len(mp3_bytes),
+            model,
+            voice,
         )
         return mp3_bytes
     except httpx.HTTPStatusError as exc:
@@ -9710,14 +9617,11 @@ def _render_audio_openai(
             detail = exc.response.text
         logger.error("OpenAI TTS API error: %s %s", exc.response.status_code, detail)
         raise RuntimeError(
-            f"OpenAI TTS API error (HTTP {exc.response.status_code}): "
-            f"{detail}"
+            f"OpenAI TTS API error (HTTP {exc.response.status_code}): {detail}"
         ) from exc
     except httpx.RequestError as exc:
         logger.error("OpenAI TTS network error: %s", exc)
-        raise RuntimeError(
-            f"OpenAI TTS network error: {exc}"
-        ) from exc
+        raise RuntimeError(f"OpenAI TTS network error: {exc}") from exc
 
 
 def _render_audio_whisper(
@@ -9734,17 +9638,13 @@ def _render_audio_whisper(
     unavailable or the API request fails.
     """
     try:
-        return _render_audio_openai(
-            text, voice=voice, timeout=timeout, model="whisper-1"
-        )
+        return _render_audio_openai(text, voice=voice, timeout=timeout, model="whisper-1")
     except Exception:
         logger.warning(
             "Whisper TTS model unavailable — falling back to OpenAI TTS.",
             exc_info=True,
         )
-        return _render_audio_openai(
-            text, voice=voice, timeout=timeout, model="tts-1"
-        )
+        return _render_audio_openai(text, voice=voice, timeout=timeout, model="tts-1")
 
 
 def _run_coro_in_new_thread(coro: Any) -> Any:
@@ -9799,14 +9699,11 @@ def _render_audio_edge_tts(
 
     # CJK detection (CJK Unified Ideographs, Hiragana/Katakana, Hangul).
     cjk_ranges = (
-        (0x4E00, 0x9FFF),   # CJK Unified Ideographs
-        (0x3040, 0x30FF),   # Hiragana + Katakana
-        (0xAC00, 0xD7AF),   # Hangul Syllables
+        (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+        (0x3040, 0x30FF),  # Hiragana + Katakana
+        (0xAC00, 0xD7AF),  # Hangul Syllables
     )
-    has_cjk = any(
-        any(lo <= ord(ch) <= hi for lo, hi in cjk_ranges)
-        for ch in text
-    )
+    has_cjk = any(any(lo <= ord(ch) <= hi for lo, hi in cjk_ranges) for ch in text)
     effective_voice = "zh-CN-XiaoxiaoNeural" if has_cjk else voice
 
     async def _synthesize() -> bytes:
@@ -9826,19 +9723,17 @@ def _render_audio_edge_tts(
         except RuntimeError:
             running = False
         if running:
-            mp3_bytes = _run_coro_in_new_thread(
-                asyncio.wait_for(_synthesize(), timeout=timeout)
-            )
+            mp3_bytes = _run_coro_in_new_thread(asyncio.wait_for(_synthesize(), timeout=timeout))
         else:
             mp3_bytes = asyncio.run(asyncio.wait_for(_synthesize(), timeout=timeout))
     except asyncio.TimeoutError:
-        raise RuntimeError(
-            f"Local TTS (edge-tts) timed out after {timeout:.0f}s"
-        ) from None
+        raise RuntimeError(f"Local TTS (edge-tts) timed out after {timeout:.0f}s") from None
 
     logger.info(
         "Generated audio (local/edge-tts): %d chars text → %d bytes MP3 (voice=%s)",
-        len(text), len(mp3_bytes), voice,
+        len(text),
+        len(mp3_bytes),
+        voice,
     )
     return cast(bytes, mp3_bytes)
 
@@ -9885,18 +9780,22 @@ def _digest_chapters(context: dict[str, Any]) -> list[tuple[str, str]]:
     ]
     llm_synthesis = context.get("llm_synthesis") or {}
     if llm_synthesis.get("executive_summary"):
-        front_matter.extend([
-            "",
-            "## Executive Summary",
-            "",
-            str(llm_synthesis["executive_summary"]),
-        ])
+        front_matter.extend(
+            [
+                "",
+                "## Executive Summary",
+                "",
+                str(llm_synthesis["executive_summary"]),
+            ]
+        )
     chapters: list[tuple[str, str]] = [("Front Matter", "\n".join(front_matter))]
     for entry in context.get("entries") or []:
-        chapters.append((
-            str(entry.get("title", "Untitled")),
-            str(entry.get("summary", "") or ""),
-        ))
+        chapters.append(
+            (
+                str(entry.get("title", "Untitled")),
+                str(entry.get("summary", "") or ""),
+            )
+        )
     return chapters
 
 
@@ -9946,7 +9845,7 @@ def _render_digest_html(context: dict[str, Any]) -> str:
     # accepts {text, source_url} objects and plain strings (issue #279
     # fallback shape), threading source_url through for inline citation.
     key_findings: list[dict[str, Any]] = []
-    for f in (synthesis.get("key_findings") or []):
+    for f in synthesis.get("key_findings") or []:
         if isinstance(f, dict):
             topic = str(f.get("topic") or "").strip()
             detail = str(f.get("detail") or "").strip()
@@ -10085,8 +9984,7 @@ def _persist_product_analysis_to_kb(
             store.update_entry_metadata(target_id, metadata)
         except Exception:
             logger.warning(
-                "Failed to persist product analysis metadata for %r — "
-                "output unaffected",
+                "Failed to persist product analysis metadata for %r — output unaffected",
                 entry_id or source_url,
                 exc_info=True,
             )
@@ -10140,10 +10038,7 @@ def _render_agent_json(
                 tags = [tags_raw] if tags_raw else []
 
         # Derive entities from tags
-        entities = [
-            {"name": tag, "type": "topic", "relation": "tagged"}
-            for tag in tags
-        ]
+        entities = [{"name": tag, "type": "topic", "relation": "tagged"} for tag in tags]
 
         # Confidence score: use relevance_score/100 as proxy if available
         relevance = e.get("relevance_score")
@@ -10162,18 +10057,20 @@ def _render_agent_json(
             sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
             key_points = [s.strip() for s in sentences[:3] if s.strip()]
 
-        agent_entries.append({
-            "uuid": entry_uuid,
-            "title": e.get("title", ""),
-            "tl_dr": summary,
-            "source_url": e.get("source_url", ""),
-            "source_platform": e.get("source_label") or e.get("source_platform", ""),
-            "collected_at": e.get("collected_at", ""),
-            "relevance_score": e.get("relevance_score"),
-            "confidence_score": confidence,
-            "key_points": key_points,
-            "entities": entities,
-        })
+        agent_entries.append(
+            {
+                "uuid": entry_uuid,
+                "title": e.get("title", ""),
+                "tl_dr": summary,
+                "source_url": e.get("source_url", ""),
+                "source_platform": e.get("source_label") or e.get("source_platform", ""),
+                "collected_at": e.get("collected_at", ""),
+                "relevance_score": e.get("relevance_score"),
+                "confidence_score": confidence,
+                "key_points": key_points,
+                "entities": entities,
+            }
+        )
 
     # --- Build trends from LLM synthesis --------------------------------------
     trends: list[dict[str, Any]] = []
@@ -10272,8 +10169,7 @@ def simplify_text(
             "simplified_level": "unknown",
             "verified": False,
             "error": (
-                f"Invalid target_level: '{target_level}'. "
-                "Must be one of A1, A2, B1, B2, C1."
+                f"Invalid target_level: '{target_level}'. Must be one of A1, A2, B1, B2, C1."
             ),
         }
 
@@ -10369,11 +10265,7 @@ def simplify_text(
 
     target_rank = _CEFR_RANK.get(target_level, 0)
     simplified_rank = _CEFR_RANK.get(simplified_level, 0)
-    verified: bool = (
-        simplified_rank > 0
-        and target_rank > 0
-        and simplified_rank <= target_rank
-    )
+    verified: bool = simplified_rank > 0 and target_rank > 0 and simplified_rank <= target_rank
 
     return {
         "simplified": simplified,

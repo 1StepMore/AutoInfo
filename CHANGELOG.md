@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.3](https://github.com/1StepMore/AutoInfo/compare/v1.13.2...v1.13.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* **templates, mcp:** drop premium filler and classify PromotionRejected as a validation error ([#390](https://github.com/1StepMore/AutoInfo/issues/390)) ([0365f40](https://github.com/1StepMore/AutoInfo/commit/0365f40319763ba33311c298b8406427f53565dc))
+
+
+### Documentation
+
+* **callbacks:** repoint outbox lock references from [#67](https://github.com/1StepMore/AutoInfo/issues/67) to [#387](https://github.com/1StepMore/AutoInfo/issues/387) ([#388](https://github.com/1StepMore/AutoInfo/issues/388)) ([e95436c](https://github.com/1StepMore/AutoInfo/commit/e95436c060ff8f39463be4c075a1f206e218374a))
+
 ## [1.13.2](https://github.com/1StepMore/AutoInfo/compare/v1.13.1...v1.13.2) (2026-09-26)
 
 

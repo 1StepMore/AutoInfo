@@ -158,6 +158,40 @@ class _OpenBlock:
         self.lines: list[str] = []
 
 
+#: Every markdown product template ends with a provenance footer of one
+#: uniform shape — ``*<Product> · <domain> · <generated_at>]*`` (column.md.j2:130,
+#: digest.md.j2:84, enterprise-briefing.md.j2:88, magazine-digest.md.j2:78,
+#: premium-briefing.md.j2:75, presentation.md.j2:44, report.md.j2:79,
+#: tutorial.md.j2:115).  The footer is a plain text line, not a heading, so the
+#: block walker files it as ordinary body text of whatever section is last;
+#: when that section feeds a canonical key the canonical value ends with
+#: metadata (measured: premium-briefing -> ``recommendations``; column,
+#: magazine-digest, presentation -> ``key_findings``) (#403).
+_FOOTER_RE = re.compile(r"^\*[^*\n]*·[^*\n]*·[^*\n]*\*$")
+
+
+def _drop_trailing_footer(lines: list[str]) -> list[str]:
+    """Return *lines* without the template provenance footer, if present.
+
+    Position is load-bearing, not just the shape: all 8 footers are the
+    document's LAST non-empty line, so anchoring on the tail keeps this from
+    degenerating into a blanket "drop anything footer-shaped" that would eat
+    legitimate body prose.  A footer-shaped line in the middle of a document is
+    ordinary content and is preserved.
+
+    Only the parsed value loses the footer — the rendered product keeps it,
+    since it is user-facing provenance.
+    """
+    for index in range(len(lines) - 1, -1, -1):
+        stripped = lines[index].strip()
+        if not stripped:
+            continue
+        if _FOOTER_RE.match(stripped):
+            return lines[:index] + lines[index + 1 :]
+        return lines
+    return lines
+
+
 def _sections_from_headings(text: str, product_type: str = "report") -> dict[str, str]:
     """Map canonical D1 sections to non-empty heading content (md/html).
 
@@ -190,6 +224,7 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
             pos = m.end()
         converted.append(text[pos:])
         text = re.sub(r"<[^>]+>", " ", "".join(converted))
+    lines = _drop_trailing_footer(text.splitlines())
     # Level-aware splitting (Pandoc ``--section-divs``): a heading owns
     # everything up to the next heading of the SAME OR HIGHER level, but every
     # heading stays its own block — a SUPERSET, not absorption, so digest's
@@ -207,7 +242,7 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
 
     fence_char: str | None = None
     fence_len = 0
-    for line in text.splitlines():
+    for line in lines:
         stripped = line.strip()
         if fence_char is not None:
             _append_to_open(stripped)

@@ -14,10 +14,17 @@
 # tables happened to be identical before, which made the duplication a silent
 # drift hazard.
 #
-# Deterministic (requires_env: []): pure heading->section string parsing of a
-# literal markdown product; no files, no LLM, no network.
+# Fixture note (#400): the original step asserted on HAND-WRITTEN flat markdown
+# — one structural tier simpler than the real template — which is exactly why
+# #400 shipped unnoticed.  The premium step now renders the REAL template
+# (premium-briefing.md.j2) through the repo's own Jinja environment so the
+# alias assertion runs against production output, including the H2/H3 nesting
+# that #400 fixed.
+#
+# Deterministic (requires_env: []): real template render + pure heading->section
+# string parsing; no files, no LLM, no network, no domain.
 name: regression-396-premium-section-aliases
-description: "Regression #396: premium-briefing `## Key Takeaways` / `## Recommended Actions` resolve to key_findings / recommendations in both alias tables"
+description: "Regression #396: premium-briefing `## Key Takeaways` / `## Recommended Actions` resolve to key_findings / recommendations in both alias tables, asserted on the REAL rendered template (#400 fixture upgrade)"
 category: edge_case
 pyramid_layer: component
 pipeline_stage: A4
@@ -31,22 +38,38 @@ steps:
     command: |-
       python3 -c '
       from autoinfo.delivery import gate_report as gr
+      from autoinfo.output import _get_jinja_env
       from autoinfo.output import _sections_from_headings as out_sections
       from autoinfo.output import _SECTION_HEADING_ALIASES as out_aliases
 
-      MD = (
-          "# Premium Briefing\n\n"
-          "## Executive Summary\n"
-          "Market shifted this week.\n\n"
-          "## Key Takeaways\n"
-          "1. Hospitals adopt AI triage at growing scale\n\n"
-          "## Risks & Opportunities\n"
-          "- Regulatory drift in two states\n\n"
-          "## Recommended Actions\n"
-          "- Audit vendor contracts before renewal\n\n"
-          "## References\n"
-          "- https://example.org/a\n"
-      )
+      ctx = {
+          "title": "Premium Briefing",
+          "domain": "ai-commercial",
+          "generated_at": "2026-09-27 10:00 UTC",
+          "executive_summary": "Market shifted this week.",
+          "key_findings": [
+              {"text": "Hospitals adopt AI triage at growing scale"},
+              {"text": "Reimbursement codes remain the main blocker"},
+          ],
+          "implications": ["So what one", "So what two"],
+          "risks": [
+              {"title": "Regulatory drift in two states", "likelihood": "Medium",
+               "impact": "High", "mitigation": "Lobby"},
+              {"title": "Vendor lock-in", "likelihood": "Low",
+               "impact": "Medium", "mitigation": "Multi-vendor"},
+              {"title": "Talent gap", "likelihood": "High",
+               "impact": "High", "mitigation": "Train"},
+          ],
+          "action_required": [
+              "Audit vendor contracts before renewal",
+              "Update reimbursement playbook",
+              "Run pilot with two hospitals",
+          ],
+          "references": [{"title": "Ref One", "source_url": "https://e/1"}],
+      }
+      body = _get_jinja_env().get_template("premium-briefing.md.j2").render(ctx)
+      assert "## Key Takeaways" in body
+      assert "## Recommended Actions" in body
 
       assert gr._SECTION_HEADING_ALIASES == out_aliases, "alias tables drifted"
       for table, name in ((gr._SECTION_HEADING_ALIASES, "gate_report"),
@@ -56,10 +79,12 @@ steps:
 
       for parser, name in ((gr._sections_from_headings, "gate_report"),
                            (out_sections, "output")):
-          sections = parser(MD, "report")
-          assert sections["summary"] == "Market shifted this week.", (name, sections)
-          assert "Hospitals adopt AI triage" in sections["key_findings"], (name, sections)
-          assert "Audit vendor contracts" in sections["recommendations"], (name, sections)
+          sections = parser(body, "premium_briefing")
+          assert sections.get("summary", "") == "Market shifted this week.", (name, sections)
+          assert "Hospitals adopt AI triage at growing scale" in sections.get(
+              "key_findings", ""), (name, sections)
+          assert "Run pilot with two hospitals" in sections.get(
+              "recommendations", ""), (name, sections)
       print("PREMIUM_SECTION_ALIASES_OK")
       '
     expect:

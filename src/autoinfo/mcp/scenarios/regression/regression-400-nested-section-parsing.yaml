@@ -1,0 +1,147 @@
+# Regression #400: level-aware markdown section parsing.
+#
+# History: the product section splitter closed a block on ANY heading level
+# (`re.match(r"^#{1,6}\s+(.+?)", line.strip())`).  A template that renders an
+# H2 heading immediately followed by H3 children (premium-briefing.md.j2's
+# `## Key Takeaways` -> `### N. ...`) therefore registered the parent H2 with
+# an EMPTY direct body.  Canonical sections are matched against the alias
+# table BY DOCUMENT ORDER, so `key_findings` came back ABSENT while the body
+# clearly carried the takeaway text.  #396's alias fix was half-effective for
+# the same reason: it added the alias spelling but the block was still empty.
+#
+# Root cause of the shipped bug: the previous regression fixture was
+# HAND-WRITTEN flat markdown — one structural tier simpler than the real
+# template.  This scenario renders the REAL premium template through the
+# repo's own Jinja environment.
+#
+# Fix: parsing becomes LEVEL-AWARE as a SUPERSET — every heading stays its own
+# block, and each block's content also absorbs descendant text until the next
+# heading of level <= its own — plus fence awareness (``` / ~~~) so a
+# tutorial's LLM-generated code fence cannot create headings or hijack a
+# canonical section.
+#
+# Deterministic (requires_env: []): real template render + pure string
+# parsing; no files, no LLM, no network, no domain.
+name: regression-400-nested-section-parsing
+description: "Regression #400: an H2 with H3 children (real premium-briefing render) must populate key_findings; siblings stay disjoint; fenced code is not headings; hyphen/underscore product types resolve alike"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.4
+regression: true
+regression_issue: "#400"
+requires_env: []
+steps:
+  - name: "real premium render exposes H3 takeaway text as key_findings"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.delivery import gate_report as gr
+      from autoinfo.output import _get_jinja_env
+
+      ctx = {
+          "title": "Premium Briefing",
+          "domain": "ai-commercial",
+          "generated_at": "2026-09-27 10:00 UTC",
+          "executive_summary": "Executive summary body.",
+          "key_findings": [
+              {"text": "Hospitals adopt AI triage at growing scale"},
+              {"text": "Reimbursement codes remain the main blocker"},
+          ],
+          "implications": ["So what one", "So what two"],
+          "risks": [
+              {"title": "Regulatory drift", "likelihood": "Medium",
+               "impact": "High", "mitigation": "Lobby"},
+              {"title": "Vendor lock-in", "likelihood": "Low",
+               "impact": "Medium", "mitigation": "Multi-vendor"},
+              {"title": "Talent gap", "likelihood": "High",
+               "impact": "High", "mitigation": "Train"},
+          ],
+          "action_required": [
+              "Audit vendor contracts",
+              "Update reimbursement playbook",
+              "Run pilot with two hospitals",
+          ],
+          "references": [{"title": "Ref One", "source_url": "https://e/1"}],
+      }
+      body = _get_jinja_env().get_template("premium-briefing.md.j2").render(ctx)
+      assert "## Key Takeaways" in body
+      assert "### 1. Hospitals adopt AI triage at growing scale" in body
+      sections = gr._sections_from_headings(body, "premium_briefing")
+      key_findings = sections.get("key_findings", "")
+      assert "Hospitals adopt AI triage at growing scale" in key_findings, sections
+      assert "Reimbursement codes remain the main blocker" in key_findings, sections
+      print("PREMIUM_REAL_KEY_FINDINGS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PREMIUM_REAL_KEY_FINDINGS_OK"]
+
+  - name: "sibling close-before-attribute and fenced code are not headings"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.delivery import gate_report as gr
+
+      ordered = (
+          "## Key Findings\n"
+          "### Nested Finding\n"
+          "NestedFindingBody\n"
+          "## Recommendations\n"
+          "RecommendationBody\n"
+      )
+      sec = gr._sections_from_headings(ordered, "report")
+      key_findings = sec.get("key_findings", "")
+      assert "NestedFindingBody" in key_findings, sec
+      assert "RecommendationBody" not in key_findings, sec
+      assert sec.get("recommendations", "") == "RecommendationBody", sec
+
+      fenced = (
+          "## Content\n"
+          "### Lesson\n"
+          "EnclosingBody\n"
+          "```python\n"
+          "# not a heading\n"
+          "## Recommendations\n"
+          "evil = 1\n"
+          "```\n"
+          "## Exercises\n"
+          "_No exercises provided._\n"
+      )
+      fsec = gr._sections_from_headings(fenced, "tutorial")
+      assert "evil = 1" in fsec.get("summary", ""), fsec
+      assert "evil = 1" not in fsec.get("recommendations", ""), fsec
+      print("SECTION_ORDER_AND_FENCE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SECTION_ORDER_AND_FENCE_OK"]
+
+  - name: "premium hyphen and underscore spellings resolve to the same sections"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.delivery import gate_report as gr
+      from autoinfo.output import _SECTION_HEADING_ALIASES as out_aliases
+      from autoinfo.output import _sections_from_headings as out_sections
+
+      assert gr._SECTION_HEADING_ALIASES == out_aliases, "alias tables drifted"
+
+      hyphen = gr._apply_format_sections({}, "premium-briefing")
+      underscore = gr._apply_format_sections({}, "premium_briefing")
+      assert hyphen == underscore, (hyphen, underscore)
+
+      for spelling in ("premium-briefing", "premium_briefing"):
+          for parser, name in ((gr._sections_from_headings, "gate_report"),
+                               (out_sections, "output")):
+              sections = parser("## Key Takeaways\nHospitals adopt AI triage\n", spelling)
+              assert "Hospitals adopt AI triage" in sections.get("key_findings", ""), (
+                  name, spelling, sections)
+      print("PREMIUM_SPELLINGS_RESOLVE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["PREMIUM_SPELLINGS_RESOLVE_OK"]

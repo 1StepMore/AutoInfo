@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.6](https://github.com/1StepMore/AutoInfo/compare/v1.13.5...v1.13.6) (2026-09-27)
+
+
+### Bug Fixes
+
+* **gates:** keep the template provenance footer out of parsed sections ([#403](https://github.com/1StepMore/AutoInfo/issues/403)) ([#404](https://github.com/1StepMore/AutoInfo/issues/404)) ([d17e63c](https://github.com/1StepMore/AutoInfo/commit/d17e63c01da6827fe53b41efdf41275c5894fe6a))
+* **output:** parse nested section headings and single-source the D1 parser ([#400](https://github.com/1StepMore/AutoInfo/issues/400)) ([#401](https://github.com/1StepMore/AutoInfo/issues/401)) ([40daf39](https://github.com/1StepMore/AutoInfo/commit/40daf39930767da3fe8bb99d9a1d137387c121d1))
+
 ## [1.13.5](https://github.com/1StepMore/AutoInfo/compare/v1.13.4...v1.13.5) (2026-09-26)
 
 

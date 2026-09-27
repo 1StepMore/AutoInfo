@@ -16,6 +16,7 @@ Runs after validation scenarios that declare collect_artifacts. Builds:
 Usage:
     python3 scripts/validation_delivery.py [--scenarios-dir ...] [--out ...]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,6 +43,7 @@ from autoinfo.quality import run_delivery_gates as _quality_run_delivery_gates  
 
 def _configured_domains() -> list[str]:
     from autoinfo.config import get_config_path, load_config
+
     try:
         cfg_path = get_config_path()
         if not cfg_path:
@@ -61,9 +63,7 @@ def _requires_llm_key(scenario_path: Path) -> bool:
     except Exception:
         return False
     envs = data.get("requires_env") or []
-    return any(
-        "LLM" in e or "OPENAI" in e or "OPENROUTER" in e for e in envs
-    )
+    return any("LLM" in e or "OPENAI" in e or "OPENROUTER" in e for e in envs)
 
 
 # Issue #234: scenario scheduling groups by side-effect signature.
@@ -76,17 +76,35 @@ def _requires_llm_key(scenario_path: Path) -> bool:
 #   Safe to run concurrently under the shared LLM rate limiter (#da5362a).
 # - Everything else (kb-*/promote/collect/delete/cli + output-premium-products)
 #   mutates shared KB/DB/collections state and stays serial.
-_READONLY_SCENARIOS = frozenset({
-    "collect-failure-recovery", "collectors-e2e", "delivery-channels",
-    "discovery", "error-boundary", "kb-lifecycle", "llm-failure-recovery",
-    "llm-gated", "meta-validation", "observability", "output-discovery",
-    "output-simplify-recommend", "projects-config", "rest-api",
-    "system-health",
-})
-_OUTPUT_GEN_SCENARIOS = frozenset({
-    "output-column", "output-digest-report", "output-ebook",
-    "output-tutorial-presentation", "output-video", "enduser-journey",
-})
+_READONLY_SCENARIOS = frozenset(
+    {
+        "collect-failure-recovery",
+        "collectors-e2e",
+        "delivery-channels",
+        "discovery",
+        "error-boundary",
+        "kb-lifecycle",
+        "llm-failure-recovery",
+        "llm-gated",
+        "meta-validation",
+        "observability",
+        "output-discovery",
+        "output-simplify-recommend",
+        "projects-config",
+        "rest-api",
+        "system-health",
+    }
+)
+_OUTPUT_GEN_SCENARIOS = frozenset(
+    {
+        "output-column",
+        "output-digest-report",
+        "output-ebook",
+        "output-tutorial-presentation",
+        "output-video",
+        "enduser-journey",
+    }
+)
 _PARALLEL_SCENARIOS = _READONLY_SCENARIOS | _OUTPUT_GEN_SCENARIOS
 _READONLY_MAX_WORKERS = 4
 # Output-gen scenarios are LLM-heavy; full parallel fan-out under sustained
@@ -121,11 +139,13 @@ async def _run_one_scenario(
         results.append({"name": name, "status": "error", "detail": str(e)[:200]})
         return
     data = res.get("data", res)
-    results.append({
-        "name": name,
-        "status": data.get("status"),
-        "summary": data.get("summary", {}),
-    })
+    results.append(
+        {
+            "name": name,
+            "status": data.get("status"),
+            "summary": data.get("summary", {}),
+        }
+    )
     for a in data.get("artifacts", []):
         artifacts.append(a)
 
@@ -225,16 +245,33 @@ _ENTRY_KEYS = frozenset(
 # the per-product-type required-section rules in _build_product_output.
 _SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
     "key_findings": (
-        "key findings", "key_findings", "key-findings", "key points",
-        "slide", "slides", "learning objectives", "main findings", "introduction",
+        "key findings",
+        "key_findings",
+        "key-findings",
+        "key points",
+        "slide",
+        "slides",
+        "learning objectives",
+        "main findings",
+        "introduction",
     ),
     "summary": (
-        "summary", "executive summary", "overview",
-        "entries", "content", "executive overview", "body",
+        "summary",
+        "executive summary",
+        "overview",
+        "entries",
+        "content",
+        "executive overview",
+        "body",
     ),
     "recommendations": (
-        "recommendations", "conclusion", "next steps",
-        "exercises", "further reading", "action items", "next actions",
+        "recommendations",
+        "conclusion",
+        "next steps",
+        "exercises",
+        "further reading",
+        "action items",
+        "next actions",
     ),
 }
 
@@ -260,11 +297,11 @@ _EMPTY_PLACEHOLDER_RE = re.compile(r"^\s*_no\s+.+_\.?\s*$", re.IGNORECASE)
 # must genuinely carry all three canonical sections.
 _PRODUCT_TYPE_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
     "report": ("key_findings", "summary", "recommendations"),
-    "presentation": ("key_findings",),          # at least one Slide N heading
-    "digest": ("summary",),                     # Entries section / entries present
+    "presentation": ("key_findings",),  # at least one Slide N heading
+    "digest": ("summary",),  # Entries section / entries present
     "tutorial": ("key_findings", "recommendations"),  # Learning Objectives + Exercises
-    "column": ("key_findings",),                # at least one content heading
-    "magazine": ("key_findings",),              # at least one content heading
+    "column": ("key_findings",),  # at least one content heading
+    "magazine": ("key_findings",),  # at least one content heading
     # Briefing products render via the report template family (Executive
     # Summary + Sections + References); the only canonical section they
     # genuinely produce is the summary (#172 follow-up).
@@ -288,10 +325,15 @@ _PRODUCT_TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
 # Column-template headings (column.md.j2). generate_report persists every
 # report (including report_type="column") under the "report" product name, so
 # classify by content when the filename alone says report (#172).
-_COLUMN_HEADINGS = frozenset({
-    "the big idea", "deep dive", "reader takeaways",
-    "implications & outlook", "what changed this week",
-})
+_COLUMN_HEADINGS = frozenset(
+    {
+        "the big idea",
+        "deep dive",
+        "reader takeaways",
+        "implications & outlook",
+        "what changed this week",
+    }
+)
 
 # Canonical D1 sections -> JSON top-level / llm_synthesis key aliases.
 _SECTION_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
@@ -420,16 +462,13 @@ def _detect_product_type(file_path: Path, body: str = "") -> str:
         if keyword in rel:
             return ptype
     if body and any(
-        line.strip().lstrip("#").strip().lower() in _COLUMN_HEADINGS
-        for line in body.splitlines()
+        line.strip().lstrip("#").strip().lower() in _COLUMN_HEADINGS for line in body.splitlines()
     ):
         return "column"
     return "report"
 
 
-def _sections_from_headings(
-    text: str, product_type: str = "report"
-) -> dict[str, str]:
+def _sections_from_headings(text: str, product_type: str = "report") -> dict[str, str]:
     """Map canonical D1 sections to non-empty heading content (md/html).
 
     Headings are matched against :data:`_SECTION_HEADING_ALIASES`, with
@@ -450,9 +489,11 @@ def _sections_from_headings(
         converted: list[str] = []
         pos = 0
         for m in heading_re.finditer(text):
-            converted.append(text[pos:m.start()])
+            converted.append(text[pos : m.start()])
             converted.append(
-                "\n" + "#" * int(m.group(1)) + " "
+                "\n"
+                + "#" * int(m.group(1))
+                + " "
                 + re.sub(r"<[^>]+>", "", m.group(2)).strip()
                 + "\n"
             )
@@ -478,10 +519,7 @@ def _sections_from_headings(
     def _block_content(heading: str, lines: list[str]) -> str:
         # Templates separate sections with "---" horizontal rules; those are
         # not content and would mask an empty-state placeholder (#172).
-        body_lines = [
-            line for line in lines
-            if line and not re.match(r"^[-*=_]{3,}\s*$", line)
-        ]
+        body_lines = [line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)]
         content = " ".join(body_lines)
         if _is_empty_placeholder(content):
             return ""
@@ -494,8 +532,7 @@ def _sections_from_headings(
                 content = _block_content(heading, lines)
                 if content or _is_empty_placeholder(
                     " ".join(
-                        line for line in lines
-                        if line and not re.match(r"^[-*=_]{3,}\s*$", line)
+                        line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)
                     )
                 ):
                     # Real content, or an empty-state placeholder (kept empty).
@@ -550,9 +587,7 @@ def _section_value(parsed: dict[str, Any], aliases: tuple[str, ...]) -> Any:
 _D1_NON_REQUIRED_MARKER = "present"
 
 
-def _apply_format_sections(
-    sections: dict[str, str], product_type: str
-) -> dict[str, str]:
+def _apply_format_sections(sections: dict[str, str], product_type: str) -> dict[str, str]:
     """Map a product's detected sections onto the three D1 canonical keys.
 
     The D1 gate always requires ``key_findings``/``summary``/``recommendations``
@@ -621,14 +656,11 @@ def _build_product_output(file_path: Path, bucket: str) -> dict[str, Any]:
             entries = _json_entries(parsed)
             if isinstance(parsed, dict):
                 sections = {
-                    "key_findings": _section_value(
-                        parsed, _SECTION_SOURCE_KEYS["key_findings"]
-                    ),
+                    "key_findings": _section_value(parsed, _SECTION_SOURCE_KEYS["key_findings"]),
                     "summary": _section_value(parsed, _SECTION_SOURCE_KEYS["summary"]),
                     "recommendations": _section_value(
                         parsed, _SECTION_SOURCE_KEYS["recommendations"]
                     ),
-
                 }
     key_findings = sections.get("key_findings")
     summary = sections.get("summary")
@@ -898,27 +930,33 @@ def _build_qa_gate_report(
     ]
     if rejected_reason:
         md.append(f"- Rejection reason: {rejected_reason}")
-    md.extend([
-        "",
-        "## Gates",
-        "",
-        "| Gate | Passed | Details |",
-        "|------|--------|---------|",
-    ])
+    md.extend(
+        [
+            "",
+            "## Gates",
+            "",
+            "| Gate | Passed | Details |",
+            "|------|--------|---------|",
+        ]
+    )
     for row in payload["gates"]:
         details = row["details"]
         if isinstance(details, dict):
-            details = details.get("error") or details.get("reason") or json.dumps(
-                details, ensure_ascii=False, default=str
+            details = (
+                details.get("error")
+                or details.get("reason")
+                or json.dumps(details, ensure_ascii=False, default=str)
             )
         md.append(f"| {row['gate']} | {'PASS' if row['passed'] else 'FAIL'} | {details} |")
-    md.extend([
-        "",
-        "## Scope Note",
-        "",
-        _QA_LAYER_NOTE,
-        "",
-    ])
+    md.extend(
+        [
+            "",
+            "## Scope Note",
+            "",
+            _QA_LAYER_NOTE,
+            "",
+        ]
+    )
     return "\n".join(md), json_text
 
 
@@ -960,13 +998,15 @@ def _write_qa_gates_section(
         json_name = f"gate-report-{key}.json"
         (qa_dir / md_name).write_text(md_text, encoding="utf-8")
         (qa_dir / json_name).write_text(json_text, encoding="utf-8")
-        reports.append({
-            "product": product,
-            "report_md": f"{_QA_GATES_DIR_NAME}/{md_name}",
-            "report_json": f"{_QA_GATES_DIR_NAME}/{json_name}",
-            "delivered": delivered,
-            "quality": quality,
-        })
+        reports.append(
+            {
+                "product": product,
+                "report_md": f"{_QA_GATES_DIR_NAME}/{md_name}",
+                "report_json": f"{_QA_GATES_DIR_NAME}/{json_name}",
+                "delivered": delivered,
+                "quality": quality,
+            }
+        )
 
     # Report only real products (RAW/KB/PROCESSED). Generated packager
     # artifacts registered in ``manifest`` after the base write (04-MATRIX
@@ -1131,8 +1171,7 @@ def _build_matrix_section(
             "not_applicable": sum(1 for s in cells.values() if s == cm.NOT_APPLICABLE),
         },
         "gaps": [
-            {"domain": d, "product": p, "format": f, "cell_state": cm.GAP}
-            for d, p, f in gaps
+            {"domain": d, "product": p, "format": f, "cell_state": cm.GAP} for d, p, f in gaps
         ],
         "unconfigured": [
             {"domain": d, "product": p, "format": f, "cell_state": cm.UNCONFIGURED}
@@ -1172,8 +1211,11 @@ def _ux_metrics(results: list[dict[str, Any]]) -> dict[str, Any] | None:
     report/manifest simply omit the UX block — advisory, never blocking.
     """
     journey = next(
-        (r for r in results
-         if r.get("name") == _UX_JOURNEY_SCENARIO or r.get("scenario") == _UX_JOURNEY_SCENARIO),
+        (
+            r
+            for r in results
+            if r.get("name") == _UX_JOURNEY_SCENARIO or r.get("scenario") == _UX_JOURNEY_SCENARIO
+        ),
         None,
     )
     if journey is None:
@@ -1197,17 +1239,20 @@ def _ux_metrics(results: list[dict[str, Any]]) -> dict[str, Any] | None:
         "passed": passed or 0,
         "total": total,
         "steps": [
-            {"name": s.get("name"), "status": s.get("status")}
-            for s in (journey.get("steps") or [])
+            {"name": s.get("name"), "status": s.get("status")} for s in (journey.get("steps") or [])
         ],
     }
 
 
-def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out: Path,
-             *,
-             spec_path: Path | None = None,
-             evidence_dir: Path | None = None,
-             llm_available: bool | None = None) -> Path:
+def _package(
+    artifacts: list[dict[str, Any]],
+    results: list[dict[str, Any]],
+    out: Path,
+    *,
+    spec_path: Path | None = None,
+    evidence_dir: Path | None = None,
+    llm_available: bool | None = None,
+) -> Path:
     """Copy artifact files into a staged dir, write report, zip it.
 
     E7 (#131): every artifact is checked with :func:`run_delivery_gates`
@@ -1328,14 +1373,16 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
                     shutil.copy2(src, rej_dest)
                 except OSError:
                     pass
-            rejected.append({
-                "file": str(rej_dest.relative_to(stage)),
-                "source": rel,
-                "reason": _failure_reason(gates),
-                # 01-QA-GATES: the gate determinations at rejection time, so
-                # the rejected product's gate report is honest too.
-                "gates": gates,
-            })
+            rejected.append(
+                {
+                    "file": str(rej_dest.relative_to(stage)),
+                    "source": rel,
+                    "reason": _failure_reason(gates),
+                    # 01-QA-GATES: the gate determinations at rejection time, so
+                    # the rejected product's gate report is honest too.
+                    "gates": gates,
+                }
+            )
         else:
             manifest.append(entry)
 
@@ -1367,8 +1414,7 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
     report.append("")
     for m in manifest:
         report.append(
-            f"- `{m['file']}` ({m['kind']}, {m['size']}B, "
-            f"{m['quality']}, from {m['source']})"
+            f"- `{m['file']}` ({m['kind']}, {m['size']}B, {m['quality']}, from {m['source']})"
         )
     if rejected:
         report.append("")
@@ -1400,8 +1446,7 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             report.append(f"- `{d}`")
         report.append("")
         print(
-            f"WARNING: missing domains in delivery (zero artifacts): "
-            f"{', '.join(missing_domains)}",
+            f"WARNING: missing domains in delivery (zero artifacts): {', '.join(missing_domains)}",
             file=sys.stderr,
         )
 
@@ -1430,13 +1475,15 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
     if matrix_meta is not None:
         for name in ("matrix-report.md", "coverage-gaps.json"):
             matrix_file = stage / _MATRIX_DIR_NAME / name
-            manifest.append({
-                "file": f"{_MATRIX_DIR_NAME}/{name}",
-                "kind": "MATRIX",
-                "source": "generated:coverage_matrix.py (E8)",
-                "size": matrix_file.stat().st_size,
-                "quality": "PASS",
-            })
+            manifest.append(
+                {
+                    "file": f"{_MATRIX_DIR_NAME}/{name}",
+                    "kind": "MATRIX",
+                    "source": "generated:coverage_matrix.py (E8)",
+                    "size": matrix_file.stat().st_size,
+                    "quality": "PASS",
+                }
+            )
         report.append("## Coverage Matrix (E8)")
         report.append("")
         msum = matrix_meta["summary"]
@@ -1446,9 +1493,7 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             f"gap={msum['gap']}, unconfigured={msum['unconfigured']}, "
             f"not-applicable={msum['not_applicable']}"
         )
-        report.append(
-            f"- LLM available: {'yes' if matrix_meta['llm_available'] else 'no'}"
-        )
+        report.append(f"- LLM available: {'yes' if matrix_meta['llm_available'] else 'no'}")
         report.append("")
         report.append("### COVERAGE_GAP (required cells with no evidence)")
         report.append("")
@@ -1456,9 +1501,7 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             for g in matrix_meta["gaps"]:
                 report.append(f"- `{g['domain']} × {g['product']} × {g['format']}`")
         else:
-            report.append(
-                "- None — every required cell is 有produced or 未配置unconfigured."
-            )
+            report.append("- None — every required cell is 有produced or 未配置unconfigured.")
         report.append("")
 
     # E9 (#141): UX metrics — advisory report section (never blocks).
@@ -1471,8 +1514,7 @@ def _package(artifacts: list[dict[str, Any]], results: list[dict[str, Any]], out
             f"threshold {ux_metrics['threshold']})"
         )
         report.append(
-            f"- Journey: `{_UX_JOURNEY_SCENARIO}` "
-            f"(status: {ux_metrics['scenario_status']})"
+            f"- Journey: `{_UX_JOURNEY_SCENARIO}` (status: {ux_metrics['scenario_status']})"
         )
         report.append("- Steps:")
         for step in ux_metrics["steps"]:
@@ -1601,8 +1643,7 @@ def _honesty_gate(readme_text: str, artifact_texts: dict[str, str]) -> list[str]
             tag_count = len(_RESIDUAL_HTML_TAG_RE.findall(content))
             if tag_count:
                 failures.append(
-                    f"honesty: README claims clean but {name} has {tag_count} "
-                    "residual HTML tags"
+                    f"honesty: README claims clean but {name} has {tag_count} residual HTML tags"
                 )
     return failures
 
@@ -1657,14 +1698,19 @@ def _scan_package_zip(zip_path: Path) -> list[str]:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Package validation artifacts")
-    parser.add_argument("--scenarios-dir", type=Path,
-                        default=Path("src/autoinfo/mcp/scenarios"))
+    parser.add_argument("--scenarios-dir", type=Path, default=Path("src/autoinfo/mcp/scenarios"))
     parser.add_argument("--out", type=Path, default=Path("validation-deliveries"))
-    parser.add_argument("--skip-llm-scenarios", action="store_true",
-                        help="Skip scenarios that require an LLM key (faster smoke run)")
-    parser.add_argument("--check-readme", type=Path,
-                        help="Run template-leak + honesty gates on a README and its "
-                             "sibling artifacts, then exit (no scenario execution)")
+    parser.add_argument(
+        "--skip-llm-scenarios",
+        action="store_true",
+        help="Skip scenarios that require an LLM key (faster smoke run)",
+    )
+    parser.add_argument(
+        "--check-readme",
+        type=Path,
+        help="Run template-leak + honesty gates on a README and its "
+        "sibling artifacts, then exit (no scenario execution)",
+    )
     args = parser.parse_args()
 
     # #70: standalone gate run — short-circuits BEFORE scenario execution so
@@ -1681,6 +1727,7 @@ async def main() -> None:
     # Load LLM key from Hermes env (mirrors other validation scripts) so the
     # delivery run can execute LLM-gated scenarios without shell exports.
     import os
+
     key = ""
     env_path = Path(os.path.expanduser("~/.hermes/.env"))
     if env_path.exists():
@@ -1703,6 +1750,7 @@ async def main() -> None:
     # never blocks delivery even if persistence fails.
     try:
         from autoinfo.mcp.validation import save_scenario_results
+
         save_scenario_results(results)
     except Exception as e:  # noqa: BLE001
         print(f"WARN: could not persist scenario results: {e}", file=sys.stderr)

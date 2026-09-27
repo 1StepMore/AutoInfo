@@ -67,6 +67,40 @@ from autoinfo.quality_constraints import (
     URL_VERBATIM_CONSTRAINT,
 )
 
+# Section parser — canonical module re-exported so every historical copy now
+# shares ONE implementation (#400). The ``X as X`` idiom keeps each name a
+# module attribute for callers/tests and for static analysis.
+from autoinfo.section_parser import (
+    _D1_NON_REQUIRED_MARKER as _D1_NON_REQUIRED_MARKER,
+)
+from autoinfo.section_parser import (
+    _EMPTY_PLACEHOLDER_RE as _EMPTY_PLACEHOLDER_RE,
+)
+from autoinfo.section_parser import (
+    _ENTRY_HEADING_RE as _ENTRY_HEADING_RE,
+)
+from autoinfo.section_parser import (
+    _LLM_SKELETON_RE as _LLM_SKELETON_RE,
+)
+from autoinfo.section_parser import (
+    _PRODUCT_TYPE_REQUIRED_SECTIONS as _PRODUCT_TYPE_REQUIRED_SECTIONS,
+)
+from autoinfo.section_parser import (
+    _SECTION_HEADING_ALIASES as _SECTION_HEADING_ALIASES,
+)
+from autoinfo.section_parser import (
+    _SLIDE_HEADING_RE as _SLIDE_HEADING_RE,
+)
+from autoinfo.section_parser import (
+    _apply_format_sections as _apply_format_sections,
+)
+from autoinfo.section_parser import (
+    _is_empty_placeholder as _is_empty_placeholder,
+)
+from autoinfo.section_parser import (
+    _sections_from_headings as _sections_from_headings,
+)
+
 logger = logging.getLogger(__name__)
 
 # Demo-domain seed directory (issue #319): the same seed ``init`` reads when
@@ -399,76 +433,12 @@ def _resolve_delivery_gate_configs(
 # ---------------------------------------------------------------------------
 # D1 section detection on the rendered body (issue #298 — layer 2)
 # ---------------------------------------------------------------------------
-# Brought in from scripts/validation_delivery.py (do NOT import from scripts):
-# D1 completeness must be checked against the RENDERED body, not just the LLM
+# The parser now lives in ``autoinfo.section_parser`` and is re-exported at
+# module top (issue #400): ONE implementation shared with
+# ``autoinfo.delivery.gate_report`` and ``scripts/validation_delivery.py``.
+# D1 completeness is checked against the RENDERED body, not just the LLM
 # synthesis dict — a body that is empty/garbled but whose synthesis dict is
 # non-empty must fail D1.
-
-_SECTION_HEADING_ALIASES: dict[str, tuple[str, ...]] = {
-    "key_findings": (
-        "key findings",
-        "key_findings",
-        "key-findings",
-        "key points",
-        "slide",
-        "slides",
-        "learning objectives",
-        "main findings",
-        "introduction",
-        "key takeaways",
-    ),
-    "summary": (
-        "summary",
-        "executive summary",
-        "overview",
-        "entries",
-        "content",
-        "executive overview",
-        "body",
-    ),
-    "recommendations": (
-        "recommendations",
-        "conclusion",
-        "next steps",
-        "exercises",
-        "further reading",
-        "action items",
-        "next actions",
-        "recommended actions",
-    ),
-}
-
-_SLIDE_HEADING_RE = re.compile(r"^slide\s*\d+\s*:", re.IGNORECASE)
-_ENTRY_HEADING_RE = re.compile(r"^\d+[.)]\s+\S", re.IGNORECASE)
-_EMPTY_PLACEHOLDER_RE = re.compile(r"^\s*_no\s+.+_\.?\s*$", re.IGNORECASE)
-_LLM_SKELETON_RE = re.compile(
-    r"^\s*[-*|]?\s*<[a-z0-9 _\-]+>"
-    r"(\s*[-*|]\s*<[a-z0-9 _\-]+>)*\s*$",
-    re.IGNORECASE,
-)
-
-_PRODUCT_TYPE_REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {
-    "report": ("key_findings", "summary", "recommendations"),
-    "presentation": ("key_findings",),
-    "digest": ("summary",),
-    "tutorial": ("key_findings", "recommendations"),
-    "column": ("key_findings",),
-    "magazine": ("key_findings",),
-    "enterprise_briefing": ("summary",),
-    "premium_briefing": ("summary",),
-    "magazine_digest": ("summary",),
-}
-
-_D1_NON_REQUIRED_MARKER = "present"
-
-
-def _is_empty_placeholder(content: str) -> bool:
-    """True when *content* is an empty-state placeholder or LLM skeleton echo."""
-    stripped = content.strip()
-    if not stripped:
-        return False
-    return bool(_EMPTY_PLACEHOLDER_RE.match(stripped) or _LLM_SKELETON_RE.match(stripped))
-
 
 _SKELETON_TOKEN_RE = re.compile(r"<[a-z][a-z0-9 _\-]+>", re.IGNORECASE)
 
@@ -705,98 +675,6 @@ def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
         return match.group(1)
 
     return _REPORT_MD_LINK_RE.sub(_replace, text)
-
-
-def _sections_from_headings(text: str, product_type: str = "report") -> dict[str, str]:
-    """Map canonical D1 sections to non-empty heading content (md/html)."""
-    found: dict[str, str] = {}
-    heading_re = re.compile(r"<h([1-6])[^>]*>(.*?)</h\1>", re.IGNORECASE | re.DOTALL)
-    if heading_re.search(text):
-        converted: list[str] = []
-        pos = 0
-        for m in heading_re.finditer(text):
-            converted.append(text[pos : m.start()])
-            converted.append(
-                "\n"
-                + "#" * int(m.group(1))
-                + " "
-                + re.sub(r"<[^>]+>", "", m.group(2)).strip()
-                + "\n"
-            )
-            pos = m.end()
-        converted.append(text[pos:])
-        text = re.sub(r"<[^>]+>", " ", "".join(converted))
-    blocks: list[tuple[str, list[str]]] = []
-    cur_heading: str | None = None
-    cur_lines: list[str] = []
-    for line in text.splitlines():
-        hm = re.match(r"^#{1,6}\s+(.+?)\s*$", line.strip())
-        if hm:
-            if cur_heading:
-                blocks.append((cur_heading, cur_lines))
-            cur_heading = hm.group(1).lower().replace("*", "").replace("`", "").strip()
-            cur_lines = []
-        elif cur_heading:
-            cur_lines.append(line.strip())
-    if cur_heading:
-        blocks.append((cur_heading, cur_lines))
-
-    def _block_content(heading: str, lines: list[str]) -> str:
-        body_lines = [line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)]
-        content = " ".join(body_lines)
-        if _is_empty_placeholder(content):
-            return ""
-        return content
-
-    for canonical, aliases in _SECTION_HEADING_ALIASES.items():
-        for heading, lines in blocks:
-            if heading in aliases and canonical not in found:
-                content = _block_content(heading, lines)
-                if content or _is_empty_placeholder(
-                    " ".join(
-                        line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)
-                    )
-                ):
-                    found[canonical] = content or ""
-    if "key_findings" not in found:
-        slide_parts: list[str] = []
-        for heading, lines in blocks:
-            if _SLIDE_HEADING_RE.match(heading):
-                content = _block_content(heading, lines)
-                if content:
-                    slide_parts.append(content)
-        if slide_parts:
-            found["key_findings"] = " ".join(slide_parts)
-    if "summary" not in found:
-        entry_count = 0
-        for heading, lines in blocks:
-            if _ENTRY_HEADING_RE.match(heading):
-                content = _block_content(heading, lines)
-                if content:
-                    entry_count += 1
-        if entry_count:
-            found["summary"] = "present"
-    if product_type in ("column", "magazine") and not found:
-        for heading, lines in blocks:
-            content = _block_content(heading, lines)
-            if content:
-                found["key_findings"] = content
-                break
-    return found
-
-
-def _apply_format_sections(sections: dict[str, str], product_type: str) -> dict[str, str]:
-    """Map a product's detected sections onto the three D1 canonical keys."""
-    required = _PRODUCT_TYPE_REQUIRED_SECTIONS.get(
-        product_type, _PRODUCT_TYPE_REQUIRED_SECTIONS["report"]
-    )
-    mapped: dict[str, str] = {}
-    for canonical in ("key_findings", "summary", "recommendations"):
-        value = sections.get(canonical, "")
-        if canonical not in required and not value:
-            value = _D1_NON_REQUIRED_MARKER
-        mapped[canonical] = value
-    return mapped
 
 
 def _sections_from_rendered_body(

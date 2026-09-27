@@ -141,6 +141,23 @@ def _is_empty_placeholder(content: str) -> bool:
     return bool(_EMPTY_PLACEHOLDER_RE.match(stripped) or _LLM_SKELETON_RE.match(stripped))
 
 
+class _OpenBlock:
+    """A heading block still open while later lines are scanned.
+
+    ``lines`` is mutated in place. :func:`_sections_from_headings` appends the
+    ``(heading, lines)`` tuple to its ``blocks`` list at PUSH time, so document
+    order is fixed the moment a heading is seen even though the block stays
+    open and keeps absorbing descendant content (#400).
+    """
+
+    __slots__ = ("heading", "level", "lines")
+
+    def __init__(self, heading: str, level: int) -> None:
+        self.heading = heading
+        self.level = level
+        self.lines: list[str] = []
+
+
 def _sections_from_headings(text: str, product_type: str = "report") -> dict[str, str]:
     """Map canonical D1 sections to non-empty heading content (md/html).
 
@@ -173,20 +190,55 @@ def _sections_from_headings(text: str, product_type: str = "report") -> dict[str
             pos = m.end()
         converted.append(text[pos:])
         text = re.sub(r"<[^>]+>", " ", "".join(converted))
+    # Level-aware splitting (Pandoc ``--section-divs``): a heading owns
+    # everything up to the next heading of the SAME OR HIGHER level, but every
+    # heading stays its own block — a SUPERSET, not absorption, so digest's
+    # standalone ``### Key Findings`` keeps supplying ``key_findings``. Fenced
+    # code suppresses heading detection because ``tutorial.md.j2`` wraps
+    # LLM-generated code in a ```python fence. Tracked limitation (#400):
+    # ``---``/``===`` are not treated as setext headings (``_block_content``
+    # filters ``^[-*=_]{3,}$`` as horizontal rules; no template emits setext).
     blocks: list[tuple[str, list[str]]] = []
-    cur_heading: str | None = None
-    cur_lines: list[str] = []
+    open_blocks: list[_OpenBlock] = []
+
+    def _append_to_open(line: str) -> None:
+        for open_block in open_blocks:
+            open_block.lines.append(line)
+
+    fence_char: str | None = None
+    fence_len = 0
     for line in text.splitlines():
-        hm = re.match(r"^#{1,6}\s+(.+?)\s*$", line.strip())
+        stripped = line.strip()
+        if fence_char is not None:
+            _append_to_open(stripped)
+            close = re.match(r"^(`{3,}|~{3,})\s*$", stripped)
+            if close and close.group(1)[0] == fence_char and len(close.group(1)) >= fence_len:
+                fence_char = None
+                fence_len = 0
+            continue
+        opener = re.match(r"^(`{3,}|~{3,})(.*)$", stripped)
+        if opener and not (opener.group(1)[0] == "`" and "`" in opener.group(2)):
+            fence_char = opener.group(1)[0]
+            fence_len = len(opener.group(1))
+            _append_to_open(stripped)
+            continue
+        hm = re.match(r"^#{1,6}\s+(.+?)\s*$", stripped)
         if hm:
-            if cur_heading:
-                blocks.append((cur_heading, cur_lines))
-            cur_heading = hm.group(1).lower().replace("*", "").replace("`", "").strip()
-            cur_lines = []
-        elif cur_heading:
-            cur_lines.append(line.strip())
-    if cur_heading:
-        blocks.append((cur_heading, cur_lines))
+            level = len(stripped) - len(stripped.lstrip("#"))
+            # Close at-or-below level FIRST: attributing the heading text before
+            # closing would let a closing sibling swallow the next sibling's
+            # heading and regress the B-04 ``_No exercises provided._`` rejection.
+            while open_blocks and open_blocks[-1].level >= level:
+                open_blocks.pop()
+            # Survivors gain the child heading text, so an H2 whose only body is
+            # H3 children is no longer empty; the new heading stays its own block.
+            for open_block in open_blocks:
+                open_block.lines.append(hm.group(1))
+            block = _OpenBlock(hm.group(1).lower().replace("*", "").replace("`", "").strip(), level)
+            blocks.append((block.heading, block.lines))
+            open_blocks.append(block)
+        else:
+            _append_to_open(stripped)
 
     def _block_content(heading: str, lines: list[str]) -> str:
         body_lines = [line for line in lines if line and not re.match(r"^[-*=_]{3,}\s*$", line)]

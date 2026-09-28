@@ -21,7 +21,7 @@
 #
 # 1. `pull_request_target` runs in the BASE branch's context with a privileged
 #    token. That is only safe because this workflow NEVER executes PR-supplied
-#    code: there is no `actions/checkout` of the head ref anywhere below, and
+#    code: there is no checkout action of the head ref anywhere below, and
 #    the only inputs consumed are the PR's author, head branch and title, all
 #    read through the API. Do not add a checkout or a `run` of repo/PR code to
 #    this file without a full re-review.
@@ -44,6 +44,14 @@
 # If the token in a given repository is not permitted to approve runs of other
 # workflows, the step logs a warning and the PR still gets auto-merge enabled —
 # a human approving the runs is then still enough to let it land.
+#
+# NOTE ON `GH_REPO`: because this job never checks out (security model note 1),
+# there is no `.git` directory for `gh` to infer the repository from, so every
+# `gh pr view` aborted with "fatal: not a git repository" and `set -euo pipefail`
+# turned that into a failed gate step. The job-level `GH_REPO` below supplies the
+# repository context explicitly, without adding a checkout. Its absence meant the
+# version added by #405 failed at the gate on every PR — including release PRs —
+# so the auto-merge never actually ran.
 
 name: Release PR auto-merge
 on:
@@ -64,6 +72,12 @@ jobs:
     # Gate 1: same-repo PR only. See security model note 2.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      # This job deliberately never checks out the repository (security model
+      # note 2: no PR-supplied code is read or executed). Without a checkout
+      # `gh` cannot infer the repository and dies with "fatal: not a git
+      # repository", so GH_REPO supplies the context explicitly (#408).
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Gate — is this a release-please release PR?
         id: gate

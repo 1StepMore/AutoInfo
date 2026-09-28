@@ -10,9 +10,14 @@
 
 name: PR title check
 
+permissions:
+  contents: read
+
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    # `labeled`/`unlabeled` re-run the release-scope job when an
+    # escape-hatch label (release:user-visible / release:skip) is applied.
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
 
 jobs:
   conventional-title:
@@ -47,3 +52,36 @@ jobs:
             echo "::error::Expected 'type(scope): subject', e.g. 'feat(collect): add GDELT fulltext depth'"
             exit 1
           fi
+
+  # Type-vs-path release-scope gate (issue #406).
+  #
+  # release-please keys off the conventional-commit TYPE only, so an
+  # internal-only PR typed `fix(ci):`/`fix(release):` cuts a public release
+  # whose only difference is the version number — and this repo auto-merges
+  # release PRs, so nothing human stands in the way. Fail the mismatch; the
+  # `release:user-visible`/`release:skip` labels are the explicit escape
+  # hatches. Unknown paths default to user-visible, so a mis-classification
+  # demands a release rather than silently suppressing one.
+  release-scope:
+    name: Release scope
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check changed paths against the PR title's release scope
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ github.base_ref }}"
+          # No `--depth=1` fetch here: actions/checkout with fetch-depth: 0
+          # already has full history and tags, and a shallow ref would break
+          # the merge base the three-dot diff needs.
+          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+            git fetch origin "$BASE_REF"
+          fi
+          git rev-parse --verify "origin/$BASE_REF^{commit}"
+          git diff --name-only "origin/$BASE_REF...HEAD" \
+            | python3 scripts/check_release_scope.py --files - --title "$PR_TITLE" --labels "$LABELS"

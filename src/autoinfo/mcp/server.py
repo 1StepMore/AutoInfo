@@ -11341,7 +11341,7 @@ def _full_tool_list() -> list[Tool]:
                                     },
                                     "provider": {
                                         "type": "string",
-                                        "description": "Fallback provider; empty inherits the primary provider",
+                                        "description": "Fallback provider; empty inherits the primary provider (provider inheritance does not grant the primary API key — key inheritance requires a matching base_url)",
                                     },
                                     "base_url": {
                                         "type": "string",
@@ -11349,7 +11349,7 @@ def _full_tool_list() -> list[Tool]:
                                     },
                                     "api_key": {
                                         "type": "string",
-                                        "description": "Fallback API key (env var reference ${...}); empty inherits the primary key",
+                                        "description": "Fallback API key (env var reference ${...}); empty inherits the primary key ONLY when base_url matches the primary gateway — a cross-endpoint fallback must carry its own explicit key",
                                     },
                                     "json_mode": {
                                         "type": "boolean",

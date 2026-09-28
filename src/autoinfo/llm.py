@@ -32,6 +32,8 @@ from autoinfo.config import (
     _resolve_task_llm_config,
     get_config_path,
     load_config,
+    resolve_fallback_api_key,
+    resolve_primary_api_key,
 )
 from autoinfo.models import ExtractionResult, Item
 
@@ -717,11 +719,11 @@ def call_with_fallback(
         model or config.llm.resolve_model() or f"{provider}/{config.llm.model or DEFAULT_MODEL}"
     )
 
-    # Primary api_key falls back to config.llm.api_key (which may hold a
-    # ${ENV} placeholder) — matches the fallback entries below (#166/#119).
-    primary_key = api_key or config.llm.api_key or ""
-    if primary_key.startswith("${") and primary_key.endswith("}"):
-        primary_key = os.environ.get(primary_key[2:-1], "")
+    # Primary api_key precedence (shared with llm_fallback_health, config.py):
+    # explicit parameter -> config.llm.api_key -> ${ENV} expansion ->
+    # AUTOINFO_LLM_API_KEY (#166/#119).
+    primary_key = resolve_primary_api_key(api_key or "", config)
+    primary_base_url = base_url or (config.llm.base_url or "")
 
     chain: list[dict[str, str]] = [
         {
@@ -732,7 +734,7 @@ def call_with_fallback(
             # follow-up: callers like cefr/quality/qa/keywords pass no base_url,
             # so without this the primary silently hits the provider default
             # endpoint (e.g. api.openai.com) instead of the configured one).
-            "base_url": base_url or (config.llm.base_url or ""),
+            "base_url": primary_base_url,
             "api_key": primary_key,
         }
     ]
@@ -741,9 +743,31 @@ def call_with_fallback(
         fb_full = f"{fb_provider}/{fb.model or config.llm.model or DEFAULT_MODEL}"
         if fb_full == primary:
             continue
-        fb_key = fb.api_key or ""
-        if fb_key.startswith("${") and fb_key.endswith("}"):
-            fb_key = os.environ.get(fb_key[2:-1], "")
+        fb_key, key_status = resolve_fallback_api_key(
+            fallback_api_key=fb.api_key or "",
+            fallback_base_url=fb.base_url or "",
+            primary_api_key=primary_key,
+            primary_base_url=primary_base_url,
+        )
+        if key_status == "cross_endpoint_no_key":
+            # The primary key must never be transmitted to a different
+            # vendor's gateway (director decision: same-gateway only).
+            logger.warning(
+                "LLM fallback %s will run without an API key: its endpoint %r "
+                "differs from the primary endpoint %r, so the primary key is not "
+                "inherited; set an explicit api_key (or ${ENV} reference) on the "
+                "fallback entry",
+                fb_full,
+                fb.base_url or "(provider default)",
+                primary_base_url or "(none)",
+            )
+        elif key_status == "no_primary_key":
+            logger.warning(
+                "LLM fallback %s has no usable API key: it shares the primary "
+                "gateway but no primary key is configured (set "
+                "AUTOINFO_LLM_API_KEY or llm.api_key)",
+                fb_full,
+            )
         chain.append(
             {
                 "model": fb_full,

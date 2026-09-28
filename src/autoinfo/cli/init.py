@@ -68,7 +68,11 @@ def _print_llm_guidance() -> None:
     typer.echo("         fallback:")
     typer.echo("           - model: mimo-v2.5")
     typer.echo("             base_url: https://opencode.ai/zen/go/v1")
-    typer.echo("     An empty provider/api_key inherits the primary provider/key.")
+    typer.echo(
+        "     An empty provider inherits the primary provider. An empty api_key inherits the"
+    )
+    typer.echo("     primary key ONLY when base_url matches the primary gateway; a cross-endpoint")
+    typer.echo("     fallback needs its own explicit ${ENV} key.")
     typer.echo()
     typer.echo("  3. Mark the primary model as a reasoning model (if applicable):")
     typer.echo("     Edit .autoinfo/config.yaml → llm.reasoning_model: true")

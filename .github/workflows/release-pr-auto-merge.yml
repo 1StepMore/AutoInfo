@@ -1,0 +1,139 @@
+# Auto-merge release-please PRs (#275 follow-up)
+#
+# WHY THIS EXISTS
+# GitHub's 2026-06-11 change requires manual approval before workflows run on
+# PRs authored by `github-actions[bot]`. release-please opens its release PR as
+# the bot, so all 6 required status checks concluded `action_required` with
+# zero jobs, and the `main-protection` ruleset (which requires Lint, Mypy, the
+# test subset, the coverage gate, the title check and DCO) could never be
+# satisfied. Every release therefore stalled until a human clicked through the
+# pending runs AND merged the PR.
+#
+# `release-please.yml` documents the historical fix as "authenticate as a
+# human with a fine-grained PAT". This workflow removes the need for that
+# credential entirely: it does programmatically what a maintainer did by hand
+# for v1.13.5 and v1.13.6 — approve the blocked runs, then enable auto-merge.
+# No PAT, no long-lived secret, nothing to rotate or leak.
+#
+# SECURITY MODEL — read before widening anything
+# This workflow holds `actions: write` + `contents: write` and is triggered by
+# pull-request events, so the gate below is the security boundary.
+#
+# 1. `pull_request_target` runs in the BASE branch's context with a privileged
+#    token. That is only safe because this workflow NEVER executes PR-supplied
+#    code: there is no `actions/checkout` of the head ref anywhere below, and
+#    the only inputs consumed are the PR's author, head branch and title, all
+#    read through the API. Do not add a checkout or a `run` of repo/PR code to
+#    this file without a full re-review.
+# 2. `if: head.repo.full_name == github.repository` runs FIRST. A fork's head
+#    ref arrives as `user:branch` and its head repo differs, so an external
+#    contributor cannot reach the steps below at all — they cannot spoof a
+#    `release-please--*` branch name from a fork.
+# 3. The remaining three gates (bot author, release-please branch prefix,
+#    `chore(main): release ` title) are each required. Combined with (2), an
+#    attacker would need write access to this repository to open a branch named
+#    `release-please--branches--...` — at which point they could merge directly
+#    and this workflow is moot.
+# 4. Steps that act are individually guarded on the gate's output, so a
+#    non-release PR exits having done nothing rather than falling through.
+#
+# The required checks are NOT bypassed. This approves and waits for them, so
+# the ruleset guarantee stays real; it only stops a human being the bottleneck.
+#
+# NOTE ON THE APPROVAL STEP: approving a workflow run requires `actions: write`.
+# If the token in a given repository is not permitted to approve runs of other
+# workflows, the step logs a warning and the PR still gets auto-merge enabled —
+# a human approving the runs is then still enough to let it land.
+
+name: Release PR auto-merge
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: write # approve workflow runs blocked on bot approval (#275)
+  contents: write # enable auto-merge
+  pull-requests: write
+
+concurrency:
+  group: release-pr-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    # Gate 1: same-repo PR only. See security model note 2.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate — is this a release-please release PR?
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          author="$(gh pr view "$PR_NUMBER" --json author --jq '.author.login')"
+          head_ref="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')"
+          title="$(gh pr view "$PR_NUMBER" --json title --jq '.title')"
+          echo "author=$author"
+          echo "head_ref=$head_ref"
+          echo "title=$title"
+
+          eligible=true
+          case "$author" in
+            "github-actions[bot]" | "app/github-actions") ;;
+            *) echo "::notice::author '$author' is not release-please; skipping."; eligible=false ;;
+          esac
+          if [ "$eligible" = true ]; then
+            case "$head_ref" in
+              release-please--branches--*) ;;
+              *) echo "::notice::head '$head_ref' is not a release-please branch; skipping."; eligible=false ;;
+            esac
+          fi
+          if [ "$eligible" = true ]; then
+            case "$title" in
+              "chore(main): release "*) ;;
+              *) echo "::notice::title is not a release bump; skipping."; eligible=false ;;
+            esac
+          fi
+
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+
+      - name: Approve workflow runs blocked on bot approval (#275)
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Runs that concluded `action_required` are waiting for exactly this
+          # approval; without it they never execute and never report a status.
+          blocked="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+            --jq '.workflow_runs[] | select(.conclusion == "action_required") | .id')"
+          if [ -z "$blocked" ]; then
+            echo "No runs awaiting approval."
+            exit 0
+          fi
+          for run_id in $blocked; do
+            name="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.name')"
+            echo "Approving run ${run_id} (${name})"
+            if gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" >/dev/null 2>&1; then
+              echo "::notice::approved ${name}"
+            else
+              echo "::warning::could not approve run ${run_id} (${name}); it may need a human."
+            fi
+          done
+
+      - name: Enable auto-merge (squash — the only method main-protection allows)
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # --auto hands the "wait for required checks" decision to GitHub, so
+          # the ruleset's required statuses are honoured rather than skipped.
+          # squash is the only allowed_merge_methods value on main-protection.
+          gh pr merge "$PR_NUMBER" --squash --auto --delete-branch
+          echo "Auto-merge enabled; will land once the required checks pass."

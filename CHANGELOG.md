@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.14.0](https://github.com/1StepMore/AutoInfo/compare/v1.13.8...v1.14.0) (2026-09-29)
+
+
+### Features
+
+* **quality:** add deterministic G7 entity-fact consistency gate ([#418](https://github.com/1StepMore/AutoInfo/issues/418)) ([b4e5218](https://github.com/1StepMore/AutoInfo/commit/b4e5218d1857e6066d28b32c45eff899b77ffa75))
+
 ## [1.13.8](https://github.com/1StepMore/AutoInfo/compare/v1.13.7...v1.13.8) (2026-09-29)
 
 

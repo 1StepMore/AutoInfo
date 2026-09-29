@@ -9,33 +9,41 @@
 # satisfied. Every release therefore stalled until a human clicked through the
 # pending runs AND merged the PR.
 #
-# `release-please.yml` documents the historical fix as "authenticate as a
-# human with a fine-grained PAT". This workflow removes the need for that
-# credential entirely: it does programmatically what a maintainer did by hand
-# for v1.13.5 and v1.13.6 — approve the blocked runs, then enable auto-merge.
-# No PAT, no long-lived secret, nothing to rotate or leak.
+# WHY `workflow_run` AND NOT A PR-EVENT TRIGGER
+# The original version of this file listened on the privileged PR event, but
+# that trigger NEVER fired for the release PR. release-please opens and updates
+# the release PR using the default `GITHUB_TOKEN`, and GitHub does not create
+# new workflow runs for events caused by that token — so the PR event simply
+# never happened. Proof: release PR #411 (1.13.7) carried four
+# runs stuck at conclusion `action_required`, `mergeStateStatus=BLOCKED`, no
+# `autoMergeRequest`, and this workflow recorded ZERO runs for it, while a
+# human-created PR (#410) did trigger it.
+#
+# `workflow_run` fires when a *named workflow completes*, and is not subject to
+# the token-caused-event suppression in the same way — the run it observes is
+# the `Release` workflow on main (which itself is user-caused). This workflow
+# therefore triggers on completion of `Release` (see `.github/workflows/
+# release-please.yml`, `name: Release`), re-reads the open release PR through
+# the API, approves the blocked runs, enables auto-merge, and finally cuts the
+# tag if the merge did not fire `Release`.
 #
 # SECURITY MODEL — read before widening anything
-# This workflow holds `actions: write` + `contents: write` and is triggered by
-# pull-request events, so the gate below is the security boundary.
+# This workflow holds `actions: write` + `contents: write` + `pull-requests:
+# write`, so the gate below is the security boundary.
 #
-# 1. `pull_request_target` runs in the BASE branch's context with a privileged
-#    token. That is only safe because this workflow NEVER executes PR-supplied
-#    code: there is no checkout action of the head ref anywhere below, and
-#    the only inputs consumed are the PR's author, head branch and title, all
-#    read through the API. Do not add a checkout or a `run` of repo/PR code to
+# 1. This workflow NEVER executes PR-supplied code: there is no checkout
+#    action, no `uses:` and no `run:` of repo/PR code anywhere below. The only
+#    inputs consumed are the PR's author, head branch and title, all read
+#    through the `gh` API. Do not add a checkout or a `run` of repo/PR code to
 #    this file without a full re-review.
-# 2. `if: head.repo.full_name == github.repository` runs FIRST. A fork's head
-#    ref arrives as `user:branch` and its head repo differs, so an external
-#    contributor cannot reach the steps below at all — they cannot spoof a
-#    `release-please--*` branch name from a fork.
-# 3. The remaining three gates (bot author, release-please branch prefix,
-#    `chore(main): release ` title) are each required. Combined with (2), an
-#    attacker would need write access to this repository to open a branch named
-#    `release-please--branches--...` — at which point they could merge directly
-#    and this workflow is moot.
-# 4. Steps that act are individually guarded on the gate's output, so a
-#    non-release PR exits having done nothing rather than falling through.
+# 2. The three eligibility gates (bot author, release-please branch prefix,
+#    `chore(main): release ` title) are each required. An attacker would need
+#    write access to this repository to open a branch named
+#    `release-please--branches--...` and to spoof the bot author — at which
+#    point they could merge directly and this workflow is moot.
+# 3. Steps that act are individually guarded on the gate's output, so a
+#    non-release completion exits having done nothing rather than falling
+#    through.
 #
 # The required checks are NOT bypassed. This approves and waits for them, so
 # the ruleset guarantee stays real; it only stops a human being the bottleneck.
@@ -47,78 +55,103 @@
 #
 # NOTE ON `GH_REPO`: because this job never checks out (security model note 1),
 # there is no `.git` directory for `gh` to infer the repository from, so every
-# `gh pr view` aborted with "fatal: not a git repository" and `set -euo pipefail`
-# turned that into a failed gate step. The job-level `GH_REPO` below supplies the
-# repository context explicitly, without adding a checkout. Its absence meant the
-# version added by #405 failed at the gate on every PR — including release PRs —
-# so the auto-merge never actually ran.
+# `gh` command would abort with "fatal: not a git repository" and
+# `set -euo pipefail` would turn that into a failed gate step. The job-level
+# `GH_REPO` below supplies the repository context explicitly, without adding a
+# checkout.
+#
+# NOTE ON TAG CREATION: `workflow_run` gives no PR number and its `head_branch`
+# is `main`, so the PR is discovered through `gh pr list`. If the auto-merge is
+# attributed to `GITHUB_TOKEN`, the resulting push to main does NOT create a
+# `Release` workflow run, so the git tag / GitHub release would never be cut.
+# After the PR reports MERGED this workflow therefore dispatches
+# `release-please.yml` explicitly via `workflow_dispatch`, which ALWAYS creates
+# a run (even for a token-caused merge) because it uses the default-branch copy
+# of the workflow files.
 
 name: Release PR auto-merge
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    # Must match the target workflow's `name:` in release-please.yml exactly.
+    workflows: ["Release"]
+    types: [completed]
+    branches: [main]
 
 permissions:
-  actions: write # approve workflow runs blocked on bot approval (#275)
+  actions: write # approve workflow runs blocked on bot approval (#275) + dispatch Release
   contents: write # enable auto-merge
   pull-requests: write
 
 concurrency:
-  group: release-pr-auto-merge-${{ github.event.pull_request.number }}
+  group: release-pr-auto-merge-${{ github.event.workflow_run.id }}
   cancel-in-progress: false
 
 jobs:
   auto-merge:
-    # Gate 1: same-repo PR only. See security model note 2.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only react to a successful Release run; a failed run means there is no
+    # fresh release PR to unblock.
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       # This job deliberately never checks out the repository (security model
-      # note 2: no PR-supplied code is read or executed). Without a checkout
+      # note 1: no PR-supplied code is read or executed). Without a checkout
       # `gh` cannot infer the repository and dies with "fatal: not a git
-      # repository", so GH_REPO supplies the context explicitly (#408).
+      # repository", so GH_REPO supplies the context explicitly.
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Gate — is this a release-please release PR?
+      - name: Gate — discover and validate the release-please PR
         id: gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          author="$(gh pr view "$PR_NUMBER" --json author --jq '.author.login')"
-          head_ref="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')"
-          title="$(gh pr view "$PR_NUMBER" --json title --jq '.title')"
-          echo "author=$author"
-          echo "head_ref=$head_ref"
-          echo "title=$title"
+          # `workflow_run` carries no PR number and its head_branch is `main`,
+          # so find the open release-please PR through the API and apply the
+          # three eligibility gates below before acting on it.
+          prs="$(gh pr list --state open \
+            --search 'head:release-please--branches--' \
+            --json number,author,headRefName,title --limit 100)"
 
-          eligible=true
-          case "$author" in
-            "github-actions[bot]" | "app/github-actions") ;;
-            *) echo "::notice::author '$author' is not release-please; skipping."; eligible=false ;;
-          esac
-          if [ "$eligible" = true ]; then
+          eligible=false
+          pr_number=""
+          while IFS=$'\t' read -r number author head_ref title; do
+            [ -n "${number:-}" ] || continue
+            echo "candidate PR #${number}: author=${author} head=${head_ref} title=${title}"
+
+            case "$author" in
+              "github-actions[bot]" | "app/github-actions") ;;
+              *) echo "::notice::author '$author' is not release-please; skipping."; continue ;;
+            esac
             case "$head_ref" in
               release-please--branches--*) ;;
-              *) echo "::notice::head '$head_ref' is not a release-please branch; skipping."; eligible=false ;;
+              *) echo "::notice::head '$head_ref' is not a release-please branch; skipping."; continue ;;
             esac
-          fi
-          if [ "$eligible" = true ]; then
             case "$title" in
               "chore(main): release "*) ;;
-              *) echo "::notice::title is not a release bump; skipping."; eligible=false ;;
+              *) echo "::notice::title is not a release bump; skipping."; continue ;;
             esac
+
+            pr_number="$number"
+            eligible=true
+            break
+          done < <(printf '%s' "$prs" | jq -r '.[] | [.number, .author.login, .headRefName, .title] | @tsv')
+
+          if [ "$eligible" != true ] || [ -z "$pr_number" ]; then
+            echo "::notice::no eligible release-please PR is open; nothing to do."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          head_sha="$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid')"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
 
       - name: Approve workflow runs blocked on bot approval (#275)
         if: steps.gate.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
         run: |
           set -euo pipefail
           # Runs that concluded `action_required` are waiting for exactly this
@@ -143,7 +176,7 @@ jobs:
         if: steps.gate.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
         run: |
           set -euo pipefail
           # --auto hands the "wait for required checks" decision to GitHub, so
@@ -151,3 +184,34 @@ jobs:
           # squash is the only allowed_merge_methods value on main-protection.
           gh pr merge "$PR_NUMBER" --squash --auto --delete-branch
           echo "Auto-merge enabled; will land once the required checks pass."
+
+      - name: Cut the release tag after the auto-merge lands
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          # Bounded wait for the merge. GitHub's native auto-merge (or the
+          # token-driven push) may not fire a `Release` run, so once the PR is
+          # MERGED we dispatch `Release` explicitly: a `workflow_dispatch`
+          # event ALWAYS creates a run, even for a token-caused merge, because
+          # the default-branch copy of the workflow files is used.
+          merged=false
+          for _ in $(seq 1 90); do
+            state="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
+            echo "PR #${PR_NUMBER} state=${state}"
+            if [ "$state" = "MERGED" ]; then
+              merged=true
+              break
+            fi
+            sleep 20
+          done
+
+          if [ "$merged" != true ]; then
+            echo "::warning::PR #${PR_NUMBER} did not report MERGED within the bounded wait; not dispatching Release."
+            exit 0
+          fi
+
+          gh workflow run release-please.yml
+          echo "::notice::dispatched Release to cut the tag after #${PR_NUMBER} merged."

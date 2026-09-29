@@ -65,6 +65,7 @@ def _result_with_fallback_configured() -> dict[str, Any]:
                     "model": "mimo-v2.5",
                     "inherits_provider": True,
                     "inherits_key": True,
+                    "key_status": "inherited_same_gateway",
                 }
             ],
         },
@@ -81,10 +82,49 @@ def test_doctor_prints_fallback_chain_count(capsys: pytest.CaptureFixture[str]) 
 
 
 def test_doctor_prints_inheritance_flags(capsys: pytest.CaptureFixture[str]) -> None:
-    """Entries inheriting provider/key must be annotated."""
+    """A same-gateway keyless fallback inherits provider and key."""
     _print_human(_result_with_fallback_configured())
     out = capsys.readouterr().out
     assert "inherits provider, key" in out
+
+
+def test_doctor_marks_cross_endpoint_keyless_fallback(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A cross-endpoint keyless fallback must be shown as having no usable key."""
+    result = _result_with_fallback_configured()
+    result["fallback_health"]["entries"].append(
+        {
+            "model": "glm-4.7-flash",
+            "inherits_provider": True,
+            "inherits_key": False,
+            "key_status": "cross_endpoint_no_key",
+        }
+    )
+    _print_human(result)
+    out = capsys.readouterr().out
+    assert "glm-4.7-flash" in out
+    assert "no usable key" in out
+    assert "endpoint differs from the primary gateway" in out
+
+
+def test_doctor_marks_same_gateway_without_primary_key(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A same-gateway fallback with no primary key also has no usable key."""
+    result = _result_with_fallback_configured()
+    result["fallback_health"]["entries"] = [
+        {
+            "model": "mimo-v2.5",
+            "inherits_provider": True,
+            "inherits_key": False,
+            "key_status": "no_primary_key",
+        }
+    ]
+    _print_human(result)
+    out = capsys.readouterr().out
+    assert "no usable key" in out
+    assert "no primary key is configured" in out
 
 
 def test_doctor_prints_primary_flags(capsys: pytest.CaptureFixture[str]) -> None:

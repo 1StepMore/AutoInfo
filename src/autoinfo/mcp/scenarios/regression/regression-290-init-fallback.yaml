@@ -7,7 +7,9 @@
 # (b) `_handle_diagnose_system` now returns a `fallback_health` section
 # (configured / count / entries / primary) derived from the config via the
 # shared `llm_fallback_health` helper (config.py), where an empty fallback
-# `provider`/`api_key` reports `inherits_provider`/`inherits_key` True.
+# `provider` reports `inherits_provider` True and `inherits_key` follows the
+# same-gateway rule (the primary here has no base_url, so the keyless
+# fallback reports `inherits_key` False / `key_status: cross_endpoint_no_key`).
 #
 # This scenario asserts both contracts deterministically (requires_env: []):
 # the CLI init runs against a temp dir (no network — init never calls
@@ -75,9 +77,12 @@ steps:
       assert fh["count"] == 1, fh
       entry = fh["entries"][0]
       assert entry["model"] == "mimo-v2.5", entry
-      # Empty provider / empty api_key -> inherits the primary provider/key.
+      # Empty provider -> inherits the primary provider.  The keyless fallback
+      # has a base_url but the primary does not, so they are NOT the same
+      # gateway and the primary key is never shared across endpoints.
       assert entry["inherits_provider"] is True, entry
-      assert entry["inherits_key"] is True, entry
+      assert entry["inherits_key"] is False, entry
+      assert entry["key_status"] == "cross_endpoint_no_key", entry
       assert fh["primary"]["model"] == "gpt-4o", fh
       assert fh["primary"]["provider"] == "openai", fh
       print("DIAGNOSE_FALLBACK_HEALTH_OK")

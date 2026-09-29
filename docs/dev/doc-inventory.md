@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 107 |
-| Total lines | 35673 |
+| Total lines | 35675 |
 | Active files | 79 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 9 files / 458 lines |
 | Category — specs | 12 files / 9716 lines |
 | Category — validation-reports | 14 files / 3186 lines |
-| Category — docs/dev | 30 files / 10875 lines |
+| Category — docs/dev | 30 files / 10877 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -91,7 +91,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
 | `dev/plans/README.md` | 50 | docs/dev | active | plan-index |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
-| `dev/required-api-keys.md` | 144 | docs/dev | active | — |
+| `dev/required-api-keys.md` | 146 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
 | `dev/specs/delivery.md` | 1268 | specs | active | — |

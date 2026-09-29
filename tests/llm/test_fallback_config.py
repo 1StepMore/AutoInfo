@@ -2,9 +2,11 @@
 
 Asserts that :func:`autoinfo.config.load_config` parses ``llm.fallback``
 from the repository's real ``.autoinfo/config.yaml`` (the single
-authorized direct config edit): three fallback entries with different
-providers (zhipu, nvidia, agnes).  The primary provider/model must stay
-untouched (deepseek-v4-flash stays primary).
+authorized direct config edit): the cross-endpoint ``mimo-v2.5`` fallback on
+``https://opencode.ai/zen/go/v1``.  The primary provider/model must stay
+untouched (``openai/deepseek/deepseek-v4.1-flash`` on the commandcode
+gateway).  This is a deployment-config pin: when the authorized config
+changes, these expectations move with it.
 
 The config path is resolved relative to this test file (repo root) so the
 assertions hold regardless of the current working directory.
@@ -29,37 +31,29 @@ pytestmark = pytest.mark.skipif(
     reason=".autoinfo/config.yaml absent (gitignored) — deployment-config test",
 )
 
-PRIMARY_MODEL = "openai/mimo-v2.5"
+PRIMARY_MODEL = "openai/deepseek/deepseek-v4.1-flash"
 PRIMARY_PROVIDER = "openai"
-PRIMARY_BASE_URL = "https://opencode.ai/zen/go/v1"
+PRIMARY_BASE_URL = "https://api.commandcode.ai/provider/v1"
+FALLBACK_MODEL = "mimo-v2.5"
+FALLBACK_BASE_URL = "https://opencode.ai/zen/go/v1"
 
 
 def test_fallback_chain_parsed_from_real_config() -> None:
-    """The loader parses all three fallback entries verbatim."""
+    """The loader parses the configured fallback entry verbatim."""
     cfg = load_config(CONFIG_PATH)
 
-    assert len(cfg.llm.fallback) == 3, (
-        f"expected exactly 3 fallback entries, got {len(cfg.llm.fallback)}"
+    assert len(cfg.llm.fallback) == 1, (
+        f"expected exactly 1 fallback entry, got {len(cfg.llm.fallback)}"
     )
 
-    # First fallback: glm-4.7-flash on zhipu
+    # Cross-endpoint fallback: mimo-v2.5 on the opencode gateway.
     fb0 = cfg.llm.fallback[0]
-    assert fb0.model == "glm-4.7-flash"
-    assert fb0.base_url == "https://open.bigmodel.cn/api/paas/v4"
-
-    # Second fallback: nvidia/llama on nvidia
-    fb1 = cfg.llm.fallback[1]
-    assert fb1.model == "nvidia/llama-3.3-nemotron-super-49b-v1"
-    assert fb1.base_url == "https://integrate.api.nvidia.com/v1"
-
-    # Third fallback: agnes-2.5-flash
-    fb2 = cfg.llm.fallback[2]
-    assert fb2.model == "agnes-2.5-flash"
-    assert fb2.base_url == "https://apihub.agnes-ai.com/v1"
+    assert fb0.model == FALLBACK_MODEL
+    assert fb0.base_url == FALLBACK_BASE_URL
 
 
 def test_primary_unchanged() -> None:
-    """openai/mimo-v2.5 stays the primary model/provider."""
+    """openai/deepseek/deepseek-v4.1-flash stays the primary model/provider."""
     cfg = load_config(CONFIG_PATH)
 
     assert cfg.llm.provider == PRIMARY_PROVIDER
@@ -75,4 +69,4 @@ def test_fallback_model_resolves_with_primary_provider() -> None:
     fb0 = cfg.llm.fallback[0]
     effective_provider = fb0.provider or cfg.llm.provider
     effective_model = fb0.model or cfg.llm.model
-    assert f"{effective_provider}/{effective_model}" == "openai/glm-4.7-flash"
+    assert f"{effective_provider}/{effective_model}" == "openai/mimo-v2.5"

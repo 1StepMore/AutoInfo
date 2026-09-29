@@ -1651,6 +1651,79 @@ def get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
     }
 
 
+def expand_env_reference(value: str) -> str:
+    """Expand a ``${ENV_VAR}`` reference from the environment.
+
+    A literal value is returned unchanged.  An unset reference resolves to
+    the empty string (matching the historical ``os.environ.get(name, "")``
+    call sites — same rule as the primary key, #119/#166).
+    """
+    if value.startswith("${") and value.endswith("}"):
+        return os.environ.get(value[2:-1], "")
+    return value
+
+
+def resolve_primary_api_key(api_key: str, config: Config) -> str:
+    """Resolve the effective primary LLM API key (single source of truth).
+
+    Precedence: explicit *api_key* argument → ``config.llm.api_key`` → a
+    ``${ENV}`` wrapper expanded from the environment → the
+    ``AUTOINFO_LLM_API_KEY`` environment variable when still empty.
+
+    Shared with :func:`call_with_fallback` (llm.py) and
+    :func:`llm_fallback_health` so the call path and the doctor report
+    cannot drift.
+    """
+    resolved = api_key or config.llm.api_key or ""
+    resolved = expand_env_reference(resolved)
+    if not resolved:
+        resolved = os.environ.get("AUTOINFO_LLM_API_KEY", "")
+    return resolved
+
+
+def is_same_gateway(primary_base_url: str, fallback_base_url: str) -> bool:
+    """Return True only when both endpoints are non-empty and equal.
+
+    Whitespace and a single trailing ``/`` are ignored on both sides.  A
+    fallback with no ``base_url`` resolves to its provider's default
+    endpoint, which is never the primary's explicit endpoint — so it does
+    not match.
+    """
+    primary = (primary_base_url or "").strip().rstrip("/")
+    fallback = (fallback_base_url or "").strip().rstrip("/")
+    return bool(primary) and bool(fallback) and primary == fallback
+
+
+def resolve_fallback_api_key(
+    *,
+    fallback_api_key: str,
+    fallback_base_url: str,
+    primary_api_key: str,
+    primary_base_url: str,
+) -> tuple[str, str]:
+    """Resolve a fallback entry's effective API key and machine-readable status.
+
+    An explicit entry key (literal or ``${ENV}`` reference) is honored
+    as-is and is NEVER overridden.  An empty entry key inherits
+    *primary_api_key* **only** when the entry targets the same gateway as
+    the primary — otherwise one vendor's key would be transmitted to a
+    different vendor's gateway (director decision: same-gateway only).
+
+    Returned status is one of: ``"explicit"``, ``"explicit_env"``,
+    ``"inherited_same_gateway"``, ``"no_primary_key"`` (same gateway but no
+    primary key configured), ``"cross_endpoint_no_key"``.
+    """
+    if fallback_api_key.startswith("${") and fallback_api_key.endswith("}"):
+        return expand_env_reference(fallback_api_key), "explicit_env"
+    if fallback_api_key:
+        return fallback_api_key, "explicit"
+    if is_same_gateway(primary_base_url, fallback_base_url):
+        if primary_api_key:
+            return primary_api_key, "inherited_same_gateway"
+        return "", "no_primary_key"
+    return "", "cross_endpoint_no_key"
+
+
 def llm_fallback_health(config: Config) -> dict[str, Any]:
     """Derive the LLM fallback-chain health state from *config*.
 
@@ -1659,15 +1732,22 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
     dict
         Keys: ``configured`` (bool — a non-empty ``llm.fallback`` list),
         ``count`` (int), ``entries`` (list of per-fallback-entry dicts with
-        ``model``/``provider``/``inherits_provider``/``inherits_key``), and
-        ``primary`` (dict with ``model``/``provider``/``reasoning_model``/
-        ``json_mode``).
+        ``model``/``provider``/``inherits_provider``/``inherits_key``/
+        ``key_status``), and ``primary`` (dict with ``model``/``provider``/
+        ``reasoning_model``/``json_mode``).
 
         ``inherits_provider`` is True when the entry's ``provider`` is empty
         (``call_with_fallback`` resolves it to the primary provider);
-        ``inherits_key`` is True when the entry's ``api_key`` is empty (the
-        primary key — or its ``${ENV}`` reference — applies).  An explicit
-        ``${ENV}`` reference on the entry is NOT inheritance.
+        ``inherits_key`` is True **only** when the entry's ``api_key`` is
+        empty AND the entry targets the same ``base_url`` as the primary —
+        the same-gateway rule enforced by ``call_with_fallback``.  A
+        cross-endpoint fallback never receives the primary key (one vendor's
+        key must not reach another vendor's gateway), so it reports
+        ``inherits_key`` False.  An explicit ``${ENV}`` reference on the
+        entry is NOT inheritance.  ``key_status`` carries the
+        machine-readable outcome: ``explicit`` / ``explicit_env`` /
+        ``inherited_same_gateway`` / ``no_primary_key`` /
+        ``cross_endpoint_no_key``.
     """
     llm = config.llm
     primary = {
@@ -1676,15 +1756,25 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
         "reasoning_model": llm.reasoning_model,
         "json_mode": llm.json_mode,
     }
-    entries = [
-        {
-            "model": fb.model,
-            "provider": fb.provider,
-            "inherits_provider": not bool(fb.provider),
-            "inherits_key": not bool(fb.api_key),
-        }
-        for fb in llm.fallback
-    ]
+    primary_key = resolve_primary_api_key("", config)
+    primary_base_url = llm.base_url or ""
+    entries = []
+    for fb in llm.fallback:
+        _, key_status = resolve_fallback_api_key(
+            fallback_api_key=fb.api_key or "",
+            fallback_base_url=fb.base_url or "",
+            primary_api_key=primary_key,
+            primary_base_url=primary_base_url,
+        )
+        entries.append(
+            {
+                "model": fb.model,
+                "provider": fb.provider,
+                "inherits_provider": not bool(fb.provider),
+                "inherits_key": key_status == "inherited_same_gateway",
+                "key_status": key_status,
+            }
+        )
     return {
         "configured": bool(llm.fallback),
         "count": len(llm.fallback),

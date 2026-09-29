@@ -6,8 +6,9 @@ resolved via ``LLMExtractor._get_litellm`` (the same seam todo 1's
 test_rate_limit_429.py uses).  The PRIMARY model raises a retryable HTTP
 429 every attempt; the chain must exhaust the primary and walk through to
 the configured fallback, and the fallback completion call must carry
-model ``openai/mimo-v2.5`` on the opencode gateway with no key of its own
-(the gateway inherits the primary key).  Zero real sleeps (``time.sleep``
+model ``openai/mimo-v2.5`` on the opencode gateway; because it targets the
+same gateway as the primary it inherits the primary key (here empty when no
+key is configured in the environment).  Zero real sleeps (``time.sleep``
 patched), zero network — fully deterministic.
 
 Hermetic config (T4, 2026-09-11): the unit tests load a **temporary config
@@ -127,11 +128,12 @@ class TestFallbackInjection:
         assert models_called[-1] == fallback_model
         assert resp.choices[0].message.content == "ok"
 
-        # The fallback call carries the opencode gateway and no key of its
-        # own — the gateway inherits the primary key.
+        # The fallback call carries the opencode gateway and — because it
+        # targets the SAME gateway as the primary — inherits the primary key
+        # (whatever it resolved to; None when no key is configured).
         fallback_kwargs = called[-1]
         assert fallback_kwargs["api_base"] == OPENGATE_BASE_URL
-        assert fallback_kwargs["api_key"] is None
+        assert fallback_kwargs["api_key"] == called[0]["api_key"]
         # Reasoned primary still suppresses response_format (issue #178)
         # and sends the disable-thinking body — the fallback is a reasoning
         # model on the same gateway, so the same controls apply.

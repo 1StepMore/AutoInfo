@@ -1,0 +1,115 @@
+# Regression: the documented LLM fallback key inheritance was never
+# implemented.  The docs claimed an empty fallback `api_key` inherits the
+# primary key unconditionally; `call_with_fallback` actually passed None for
+# every fallback.  The fix implements inheritance ONLY for fallbacks that
+# target the SAME gateway as the primary — inheriting across endpoints would
+# transmit one vendor's key to a different vendor's gateway.
+#
+# This scenario asserts the real behavior through `call_with_fallback` with
+# the LiteLLM seam monkeypatched (same pattern as regression-llm-key-resolution
+# and regression-290): same gateway inherits, cross gateway never receives the
+# key, an explicit fallback key always wins, and the shared `llm_fallback_health`
+# diagnostic reports the same outcome via `key_status`.
+name: regression-fallback-key-same-gateway
+description: "Regression: fallback api_key inherits the primary key only on the same gateway; cross-endpoint fallbacks get no key"
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A7
+user_level: B3.1
+regression: true
+# No issue was filed for this defect, so this is the scenario contract's
+# #-prefixed task-tag form — do not "fix" it into a number.
+regression_issue: "#fallback-key-inheritance"
+requires_env: []
+steps:
+  - name: "same-gateway inherits; cross-gateway never leaks; explicit key wins"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os
+      from unittest.mock import MagicMock, patch
+      from autoinfo.config import Config, LLMConfig, llm_fallback_health
+      from autoinfo.llm import LLMExtractor, call_with_fallback
+
+      PRIMARY = "https://api.commandcode.ai/provider/v1"
+      OTHER = "https://opencode.ai/zen/go/v1"
+      os.environ["AUTOINFO_LLM_API_KEY"] = "primary-gateway-key"
+
+      def run(primary_url, fallback_url, fb_key):
+          cfg = Config(llm=LLMConfig(
+              provider="openai",
+              model="deepseek-v4.1-flash",
+              base_url=primary_url,
+              api_key="",
+              fallback=[LLMConfig(model="mimo-v2.5", base_url=fallback_url, api_key=fb_key)],
+          ))
+          primary_model = cfg.llm.resolve_model()
+          calls = []
+
+          def stub(**kwargs):
+              calls.append(kwargs)
+              if str(kwargs["model"]) == primary_model:
+                  raise RuntimeError("primary failed")
+              return MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
+
+          mock_lm = MagicMock()
+          mock_lm.completion.side_effect = stub
+          with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm), \
+               patch("autoinfo.llm._is_retryable_error", return_value=False):
+              call_with_fallback(
+                  messages=[{"role": "user", "content": "x"}],
+                  config=cfg,
+                  max_tokens=16,
+              )
+          return calls
+
+      # Same gateway -> the keyless fallback inherits the primary key.
+      same = run(PRIMARY, PRIMARY, "")
+      assert same[0]["api_key"] == "primary-gateway-key", same[0]
+      assert same[-1]["api_key"] == "primary-gateway-key", same[-1]
+      print("SAME_GATEWAY_INHERITS_OK")
+
+      # Cross gateway -> the primary key is NEVER transmitted.
+      cross = run(PRIMARY, OTHER, "")
+      assert cross[-1]["api_key"] is None, cross[-1]
+      print("CROSS_GATEWAY_NO_KEY_OK")
+
+      # A fallback with no base_url is not the primary gateway -> no key.
+      nobase = run(PRIMARY, "", "")
+      assert nobase[-1]["api_key"] is None, nobase[-1]
+      print("NO_BASE_URL_NO_KEY_OK")
+
+      # An explicit fallback key is always honored, never overridden.
+      explicit = run(PRIMARY, PRIMARY, "fallback-own-key")
+      assert explicit[-1]["api_key"] == "fallback-own-key", explicit[-1]
+      print("EXPLICIT_KEY_WINS_OK")
+
+      # The shared diagnostic reports the same rule.
+      same_cfg = Config(llm=LLMConfig(
+          provider="openai", model="m", base_url=PRIMARY, api_key="",
+          fallback=[LLMConfig(model="mimo-v2.5", base_url=PRIMARY)],
+      ))
+      fh = llm_fallback_health(same_cfg)
+      assert fh["entries"][0]["inherits_key"] is True, fh
+      assert fh["entries"][0]["key_status"] == "inherited_same_gateway", fh
+
+      cross_cfg = Config(llm=LLMConfig(
+          provider="openai", model="m", base_url=PRIMARY, api_key="",
+          fallback=[LLMConfig(model="mimo-v2.5", base_url=OTHER)],
+      ))
+      fh2 = llm_fallback_health(cross_cfg)
+      assert fh2["entries"][0]["inherits_key"] is False, fh2
+      assert fh2["entries"][0]["key_status"] == "cross_endpoint_no_key", fh2
+      print("HEALTH_REFLECTS_RULE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has:
+        [
+          "SAME_GATEWAY_INHERITS_OK",
+          "CROSS_GATEWAY_NO_KEY_OK",
+          "NO_BASE_URL_NO_KEY_OK",
+          "EXPLICIT_KEY_WINS_OK",
+          "HEALTH_REFLECTS_RULE_OK",
+        ]

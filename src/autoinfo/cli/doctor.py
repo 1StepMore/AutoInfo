@@ -108,6 +108,21 @@ def _print_human(result: dict[str, Any]) -> None:
                     inherited.append("key")
                 inherit_str = f" (inherits {', '.join(inherited)})" if inherited else ""
                 typer.echo(f"       ↳ {entry.get('model', '?')}{inherit_str}")
+                key_status = entry.get("key_status")
+                if key_status == "cross_endpoint_no_key":
+                    typer.echo(
+                        "          ⚠ no usable key: endpoint differs from the "
+                        "primary gateway (keys are never shared across "
+                        "gateways) — set an explicit api_key or ${ENV} "
+                        "reference on this fallback entry"
+                    )
+                elif key_status == "no_primary_key":
+                    typer.echo(
+                        "          ⚠ no usable key: same gateway as the primary "
+                        "but no primary key is configured — set "
+                        "AUTOINFO_LLM_API_KEY (or llm.api_key), or give this "
+                        "fallback its own api_key"
+                    )
         else:
             typer.echo(
                 "  ⚠ LLM fallback chain: not configured (add llm.fallback to .autoinfo/config.yaml)"

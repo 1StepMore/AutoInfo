@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 107 |
-| Total lines | 35675 |
+| Total lines | 35681 |
 | Active files | 79 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
@@ -22,7 +22,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 9 files / 458 lines |
-| Category — specs | 12 files / 9716 lines |
+| Category — specs | 12 files / 9722 lines |
 | Category — validation-reports | 14 files / 3186 lines |
 | Category — docs/dev | 30 files / 10877 lines |
 | Category — docs/root | 5 files / 983 lines |
@@ -95,7 +95,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
 | `dev/specs/delivery.md` | 1268 | specs | active | — |
-| `dev/specs/end-user-matrix.yaml` | 1920 | specs | active | — |
+| `dev/specs/end-user-matrix.yaml` | 1926 | specs | active | — |
 | `dev/specs/expectations.md` | 1228 | specs | active | — |
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
 | `dev/specs/mcp-tools.md` | 85 | specs | active | — |

@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.7](https://github.com/1StepMore/AutoInfo/compare/v1.13.6...v1.13.7) (2026-09-29)
+
+
+### Bug Fixes
+
+* **llm:** implement same-gateway fallback key inheritance ([#410](https://github.com/1StepMore/AutoInfo/issues/410)) ([9355d96](https://github.com/1StepMore/AutoInfo/commit/9355d9644d3ab01375a52bbb89c7d483b71822fe))
+
+
+### Miscellaneous Chores
+
+* **release:** exempt release-please's own release PR from the release-scope gate ([#413](https://github.com/1StepMore/AutoInfo/issues/413)) ([1e6d109](https://github.com/1StepMore/AutoInfo/commit/1e6d1096e34e0250bc83fd3e013a51a201745c0b))
+
 ## [1.13.6](https://github.com/1StepMore/AutoInfo/compare/v1.13.5...v1.13.6) (2026-09-27)
 
 

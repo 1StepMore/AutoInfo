@@ -40,9 +40,16 @@ def test_blindspots_yaml_loads_all_families() -> None:
     bs = _load_bs()
     families = {m["family"] for m in bs}
     assert {
-        "digest", "magazine-digest", "column", "premium-briefing",
-        "enterprise-briefing", "report", "presentation", "cross-domain",
-        "all", "bilingual-domains",
+        "digest",
+        "magazine-digest",
+        "column",
+        "premium-briefing",
+        "enterprise-briefing",
+        "report",
+        "presentation",
+        "cross-domain",
+        "all",
+        "bilingual-domains",
     } <= families
 
 
@@ -205,3 +212,161 @@ def test_battery_preview_defect_dir_reports_l0() -> None:
     report = bat.run_battery(_FIXTURES / "three-person-drift", semantic=False)
     assert report["l0_defects"]  # C6 catches the three-person drift
     assert report["summary"]["l0_failed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Hardened verdict parsing (#battery-verdict-parse): RC1-RC5
+# ---------------------------------------------------------------------------
+# A litellm-shaped response stub.  ``content`` may be a str, a list of
+# content parts, or None — exactly the provider shapes ``_extract_text`` must
+# survive (RC2); ``finish_reason`` surfaces a truncated reply (RC1).
+
+
+class _Msg:
+    def __init__(self, content: Any) -> None:
+        self.content = content
+
+
+class _Choice:
+    def __init__(self, content: Any, finish_reason: str = "stop") -> None:
+        self.message = _Msg(content)
+        self.finish_reason = finish_reason
+
+
+class _Resp:
+    def __init__(self, content: Any, finish_reason: str = "stop") -> None:
+        self.choices = [_Choice(content, finish_reason)]
+
+
+def _judge_response(resp: Any, want_json: bool = False) -> dict[str, Any]:
+    """Run the REAL judge with the LLM channel mocked to return *resp*."""
+    sys.path.insert(0, str(_REPO_ROOT_SRC))
+    try:
+        with patch("autoinfo.llm.call_with_fallback", return_value=resp):
+            return bat._judge_with_llm("prompt", want_json=want_json)
+    finally:
+        sys.path.remove(str(_REPO_ROOT_SRC))
+
+
+# --- RC3: parser tolerates heading/colon/bold drift ------------------------
+
+
+def test_parse_markdown_verdicts_tolerant_heading_and_fullwidth_colon() -> None:
+    text = (
+        "# Verdict\n"
+        "**blind_spot**: claim-fabrication-vs-hedge\n"
+        "**verdict**： FLAG\n"
+        "**evidence**: `magazine-digest.md:24`\n"
+        "**note**: drift detected\n"
+    )
+    parsed = bat._parse_markdown_verdicts(text)
+    assert len(parsed) == 1
+    assert parsed[0]["verdict"] == "FLAG"
+    assert parsed[0]["evidence"] == "magazine-digest.md:24"
+
+
+def test_parse_markdown_verdicts_accepts_bold_heading_and_lowercase() -> None:
+    text = "### **Verdict**\n- **Blind_spot**: x\n- **Verdict**: pass\n- **Evidence**: a.md:1\n"
+    parsed = bat._parse_markdown_verdicts(text)
+    assert len(parsed) == 1
+    assert parsed[0]["verdict"] == "PASS"
+
+
+# --- RC2: content part lists / None must not become a repr -----------------
+
+
+def test_extract_text_none_is_empty_not_repr() -> None:
+    assert bat._extract_text(_Resp(None)) == ""
+
+
+def test_extract_text_joins_list_of_parts() -> None:
+    resp = _Resp([{"type": "text", "text": "## Verdict\n"}, {"type": "text", "text": "- x"}])
+    assert bat._extract_text(resp) == "## Verdict\n- x"
+
+
+def test_judge_accepts_list_of_content_parts() -> None:
+    text = "## Verdict\n- **blind_spot**: x\n- **verdict**: PASS\n- **evidence**: a.md:1\n"
+    res = _judge_response(_Resp([{"type": "text", "text": text}]))
+    assert res["verdict"] == "PASS"
+
+
+def test_judge_content_none_escalates_not_passes() -> None:
+    res = _judge_response(_Resp(None))
+    assert res["verdict"] == "ESCALATE"
+
+
+# --- RC5: empty field must never adopt the next line -----------------------
+
+
+def test_parse_markdown_verdicts_empty_evidence_does_not_adopt_next_line() -> None:
+    text = (
+        "## Verdict\n"
+        "- **blind_spot**: x\n"
+        "- **verdict**: PASS\n"
+        "- **evidence**:\n"
+        "- **note**: this line must never become the evidence\n"
+    )
+    assert bat._parse_markdown_verdicts(text) == []
+
+
+def test_judge_empty_evidence_escalates_never_passes() -> None:
+    text = (
+        "## Verdict\n"
+        "- **blind_spot**: x\n"
+        "- **verdict**: PASS\n"
+        "- **evidence**:\n"
+        "- **note**: adjacent line\n"
+    )
+    res = _judge_response(_Resp(text))
+    assert res["verdict"] != "PASS"
+    assert res["verdict"] == "ESCALATE"
+
+
+def test_parse_markdown_verdicts_requires_all_three_fields() -> None:
+    # A block missing ``blind_spot`` is invalid and must be dropped.
+    text = "## Verdict\n- **verdict**: PASS\n- **evidence**: a.md:1\n"
+    assert bat._parse_markdown_verdicts(text) == []
+
+
+# --- RC4: JSON path must actually request json_mode ------------------------
+
+
+def test_json_path_requests_json_mode() -> None:
+    payload = '{"verdict": "PASS", "evidence": "a.md:1", "note": "ok"}'
+    sys.path.insert(0, str(_REPO_ROOT_SRC))
+    try:
+        with patch("autoinfo.llm.call_with_fallback", return_value=_Resp(payload)) as mock_call:
+            res = bat._judge_with_llm("prompt", want_json=True)
+    finally:
+        sys.path.remove(str(_REPO_ROOT_SRC))
+    assert res["verdict"] == "PASS"
+    assert mock_call.call_args.kwargs.get("json_mode") is True
+
+
+def test_json_path_tolerates_fenced_json() -> None:
+    payload = '```json\n{"verdict": "ESCALATE", "evidence": "x", "note": "n"}\n```'
+    res = _judge_response(_Resp(payload), want_json=True)
+    assert res["verdict"] == "ESCALATE"
+
+
+# --- RC1: truncation is distinguishable from a malformed reply -------------
+
+
+def test_judge_truncated_reply_escalates_with_truncation_note() -> None:
+    resp = _Resp("## Verdict\n- **blind_spot**: x\n- **verdict**: PA", finish_reason="length")
+    res = _judge_response(resp)
+    assert res["verdict"] == "ESCALATE"
+    assert "trunc" in res["note"].lower()
+
+
+# --- invariant: garbage / empty is never a PASS ---------------------------
+
+
+def test_judge_garbage_escalates_never_passes() -> None:
+    res = _judge_response(_Resp("totally unrelated prose with no verdict block"))
+    assert res["verdict"] == "ESCALATE"
+
+
+def test_judge_empty_string_escalates_never_passes() -> None:
+    res = _judge_response(_Resp(""))
+    assert res["verdict"] == "ESCALATE"

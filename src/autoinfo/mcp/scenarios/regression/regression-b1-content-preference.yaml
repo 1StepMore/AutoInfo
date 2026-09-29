@@ -1,0 +1,195 @@
+# Regression #b1-content-preference — the AC1 B1 three-value
+# `content_preference` delivery contract was never exercised end to end.
+#
+# `docs/archive/acceptance-run-20260816.md:34` (B-03, P2) records that the
+# contract had no real-run evidence. The guard lives in
+# `_handle_send_to_enduser` (src/autoinfo/mcp/server.py): before dispatch it
+# resolves the user's stored preference and refuses a product whose kind
+# conflicts, instead of silently bypassing the gate.
+#
+# `resolve_content_preference` (src/autoinfo/user_store.py) accepts exactly
+# {"raw_only", "processed_only", "both"} and defaults to "both", so
+# preference dicts predating the field keep the pre-B-001 behavior.
+#
+# The scenario drives the REAL handler over a temp user store, with
+# `deliver_with_retry` / `get_channel` stubbed. That stub is what makes the
+# two directions distinguishable: a CONFLICT is rejected by the preference
+# gate before dispatch, while a NON-conflict reaches delivery and is recorded
+# by the stub. Without it the permitted cases fall through to real SMTP
+# retries, which is neither hermetic nor bounded in time.
+name: regression-b1-content-preference
+description: "Regression #b1-content-preference: the three-value content_preference guard blocks raw_only/processed_only conflicts end-to-end, permits 'both' and the default, and falls back to 'both' on unknown values"
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#b1-content-preference"
+requires_env: []
+timeout: 120
+steps:
+  - name: "raw_only blocks a processed product; processed_only blocks a raw product"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import tempfile
+      from pathlib import Path
+      from unittest.mock import patch
+
+      import autoinfo.delivery as delivery
+      import autoinfo.user_store as us
+      from autoinfo.mcp.server import _handle_send_to_enduser
+      from autoinfo.models import DeliveryResult
+
+      # Hermetic user store: never touch the repo .autoinfo/users.db.
+      tmp = tempfile.mkdtemp(prefix="b1pref-")
+      us._DB_PATH = Path(tmp) / "users.db"
+
+      class StubChannel:
+          def __init__(self, name):
+              self.name = name
+
+      # Record whether dispatch was reached, and never touch a real channel.
+      # deliver_with_retry must return a real DeliveryResult -- the handler
+      # reads .status / .recipient_count / .error off it.
+      dispatched = []
+      def fake_deliver(**kw):
+          dispatched.append(kw.get("channel"))
+          return DeliveryResult(
+              product_id=kw["product"].id,
+              channel=getattr(kw.get("channel"), "name", "stub"),
+              status="success",
+              timestamp="2026-01-01T00:00:00+00:00",
+              recipient_count=1,
+          )
+      def fake_get_channel(name):
+          return StubChannel(name)
+
+      def make(pref):
+          uid = "u-" + pref
+          us.create_profile(uid, "B1 Tester", uid + "@example.com")
+          us.update_preferences(uid, {"content_preference": pref})
+          return uid
+
+      with patch.object(delivery, "deliver_with_retry", fake_deliver), \
+           patch.object(delivery, "get_channel", fake_get_channel):
+
+          def send(uid, ptype):
+              before = len(dispatched)
+              r = _handle_send_to_enduser(uid, ptype, uid + "-" + ptype)
+              reached = len(dispatched) > before
+              blocked = (not r.get("success")) and "content_preference" in str(r.get("error", ""))
+              return blocked, reached
+
+          # raw_only wants 01-Raw only, so a PROCESSED product is refused
+          # BEFORE dispatch and never reaches the channel.
+          uid = make("raw_only")
+          blocked, reached = send(uid, "processed")
+          assert blocked, "raw_only must refuse a processed product"
+          assert not reached, "a blocked delivery must not reach the channel"
+
+          # The matching raw product passes the gate and IS dispatched.
+          blocked, reached = send(uid, "raw")
+          assert not blocked, "raw_only must permit a raw product"
+          assert reached, "a permitted delivery must reach the channel"
+
+          # processed_only is the mirror image.
+          uid2 = make("processed_only")
+          blocked, reached = send(uid2, "raw")
+          assert blocked, "processed_only must refuse a raw product"
+          assert not reached, "a blocked delivery must not reach the channel"
+
+          blocked, reached = send(uid2, "processed")
+          assert not blocked, "processed_only must permit a processed product"
+          assert reached, "a permitted delivery must reach the channel"
+
+      print("CONFLICT_BLOCKED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CONFLICT_BLOCKED_OK"]
+
+  - name: "'both', missing, and unknown preferences all permit both product kinds"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import tempfile
+      from pathlib import Path
+      from unittest.mock import patch
+
+      import autoinfo.delivery as delivery
+      import autoinfo.user_store as us
+      from autoinfo.mcp.server import _handle_send_to_enduser
+      from autoinfo.models import DeliveryResult
+
+      tmp = tempfile.mkdtemp(prefix="b1pref-")
+      us._DB_PATH = Path(tmp) / "users.db"
+
+      class StubChannel:
+          def __init__(self, name):
+              self.name = name
+
+      dispatched = []
+      def fake_deliver(**kw):
+          dispatched.append(kw.get("channel"))
+          return DeliveryResult(
+              product_id=kw["product"].id,
+              channel=getattr(kw.get("channel"), "name", "stub"),
+              status="success",
+              timestamp="2026-01-01T00:00:00+00:00",
+              recipient_count=1,
+          )
+      def fake_get_channel(name):
+          return StubChannel(name)
+
+      def make(pref):
+          uid = "u-" + (pref or "none")
+          us.create_profile(uid, "B1 Tester", uid + "@example.com")
+          if pref is not None:
+              us.update_preferences(uid, {"content_preference": pref})
+          return uid
+
+      with patch.object(delivery, "deliver_with_retry", fake_deliver), \
+           patch.object(delivery, "get_channel", fake_get_channel):
+
+          def permitted(uid, ptype):
+              before = len(dispatched)
+              # _handle_send_to_enduser returns a flat payload
+              # (status/error/...), not the {success, data} envelope that
+              # the surrounding MCP handlers return.
+              r = _handle_send_to_enduser(uid, ptype, uid + "-" + ptype)
+              assert r.get("status") == "success", r
+              assert not r.get("error"), r
+              assert len(dispatched) > before, "expected dispatch for " + ptype
+
+          # Explicit "both" permits either kind.
+          ub = make("both")
+          permitted(ub, "raw")
+          permitted(ub, "processed")
+
+          # No stored preference at all defaults to "both" (pre-B-001).
+          un = make(None)
+          permitted(un, "raw")
+          permitted(un, "processed")
+
+          # An unknown value also falls back to "both" rather than silently
+          # blocking every delivery.
+          uu = make("banana")
+          permitted(uu, "raw")
+          permitted(uu, "processed")
+
+      # The resolver reports exactly the documented default.
+      assert us.resolve_content_preference({}) == "both"
+      assert us.resolve_content_preference({"content_preference": "banana"}) == "both"
+      assert us.resolve_content_preference({"content_preference": "raw_only"}) == "raw_only"
+      assert us.resolve_content_preference({"content_preference": "processed_only"}) == "processed_only"
+
+      print("DEFAULT_BOTH_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DEFAULT_BOTH_OK"]

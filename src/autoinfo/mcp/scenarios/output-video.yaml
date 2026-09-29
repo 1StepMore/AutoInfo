@@ -29,8 +29,19 @@ pipeline_stage: A4
 user_level: B2.4
 requires_env: ["AUTOINFO_LLM_API_KEY"]
 matrix_domains:
-  - online-video
+  - ai-commercial
+  - b2b
+  - financial-intelligence
+  - financial-news
   - gaming
+  - general-news
+  - language-learning
+  - legal-compliance
+  - medical-research
+  - online-education
+  - online-video
+  - retail
+  - tech-ai-developer
 collect_artifacts:
   - "outputs/**/*.mp4"
   - "outputs/**/*.json"

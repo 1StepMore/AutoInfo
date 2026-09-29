@@ -29,7 +29,7 @@
 
 | 类 | 表现 | 影响 |
 |---|---|---|
-| battery LLM 格式失败 | ~13/40 条目 ESCALATE "no parseable verdict block" | L1 覆盖不全;fail-loud 正确(绝不静默 PASS) |
+| battery LLM 格式失败 | **已加固（#battery-verdict-parse，2026-09-29）**：此前部署跑 ~13/40 条目误报 "no parseable verdict block"，根因是 5 因叠加——repr 陷阱（list/None content 被字符串化）、解析器过严（只认 `## Verdict` + 小写加粗键）、JSON 路径从未真正传 `json_mode=True`、截断不可见（finish_reason=length 被当乱码）、空字段正则吞下一行（把相邻 note 当 evidence）。现解析器容忍 `#`/`###`/加粗标题与全角冒号漂移，空字段同行为空即整块丢弃，截断显式标注，JSON 路径真正请求 json_mode 并用宽容解析，外加一次格式修复重试 | L1 覆盖恢复；**不可达或修复后仍不可解析的输出依旧 ESCALATE——这是有意的 fail-loud，不是缺陷**；markdown 表格形态仍不解析（丢弃→ESCALATE），需要时另登记 |
 | gate 良性误报 | H1 常见词(month/backing)、H2 源标签(npr-news)、包根 C3 | 每次需人工裁决;是保守设计不是 bug |
 | presentation LLM 合成失败 | 连续空 slides → KB-derived 兜底(确定性输出) | 产物有效但非 LLM 合成;#220 已知 |
 

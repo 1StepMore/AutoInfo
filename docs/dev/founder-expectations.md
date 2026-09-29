@@ -6,7 +6,7 @@
 > **This is an index document.** The full content of most sections has been extracted to standalone spec files
 > under `docs/dev/specs/`. See each section for its cross-reference.
 >
-> **Keystone definition of "what" the system needs to be:** `docs/dev/cross-dimensional-catalog.md` (A1-A7 Pipeline × B1/B2/B3 Users — 42 capability cells cataloged). This document (founder-expectations) defines **why**; the catalog defines **what**; `docs/dev/specs/*.md` defines **how**.
+> **Keystone definition of "what" the system needs to be:** `docs/dev/cross-dimensional-catalog.md` (A1-A7 Pipeline × B1/B2/B3 Users — 126 cells (7×18 lifecycle stages) with 42 catalogued gaps). This document (founder-expectations) defines **why**; the catalog defines **what**; `docs/dev/specs/*.md` defines **how**.
 >
 > Backup before split: `docs/archive/founder-expectations-pre-split.md` (2108 lines, 2026-07-26).
 
@@ -72,7 +72,7 @@ The system serves three distinct user roles. Unlike traditional multi-user syste
 | Role | Code | Description | Interface | Example | Lifecycle |
 |------|------|-------------|-----------|---------|-----------|
 | **End User** (最终用户 / 付费客户) | **B1** | **The paying customer.** Consumes curated knowledge products. Interacts in natural language; the B2 Agent (powered by LLM) translates NL into structured subscription config via the NL→Config pipeline. | Delivered products (email, Telegram, WeChat, API feeds); NL interaction with Agent for config changes; self-service portal | A pharmaceutical company subscribing to an "IVF Research Weekly" digest delivered via email + WeChat Work; a VC firm paying for "AI Competitive Intelligence" data feeds | B1.1 Discover → B1.2 Subscribe → B1.3 Onboard → B1.4 Consume → B1.5 Modify Config → B1.6 Churn → B1.7 Reactivate |
-| **Direct User** (直接执行者 / Agent) | **B2** | **The operator.** Executes automation commands via structured tools. **Agent-first**: all capabilities are MCP tools for AI agents. The agent is the primary execution layer. | MCP tools (146 across 35 categories — primary), CLI (31 command groups — fallback) | An AI agent calling `collect_sources()` and `generate_digest()`; a human running `autoinfo collect` for ad-hoc operations | B2.1 Discover → B2.2 Connect → B2.3 Configure → B2.4 Operate → B2.5 Monitor → B2.6 Report |
+| **Direct User** (直接执行者 / Agent) | **B2** | **The operator.** Executes automation commands via structured tools. **Agent-first**: all capabilities are MCP tools for AI agents. The agent is the primary execution layer. | MCP tools (149 across 35 categories — primary), CLI (31 command groups — fallback) | An AI agent calling `collect_sources()` and `generate_digest()`; a human running `autoinfo collect` for ad-hoc operations | B2.1 Discover → B2.2 Connect → B2.3 Configure → B2.4 Operate → B2.5 Monitor → B2.6 Report |
 | **Director User** (人类指挥者) | **B3** | **The commander.** Sets policy at deploy time, monitors passively, intervenes only on critical errors that B2 cannot self-heal. Never daily-operates the pipeline. | Dashboard + B2-generated reports; CLI for emergency intervention | "帮我追踪本周辅助生殖领域的重要论文，按创新程度排序，出一份简报" | B3.1 Configure → B3.2 Monitor → B3.3 Intervene |
 
 **Design principle**: Agent-oriented by default, human-capable by design. All system capabilities are exposed as structured MCP tools first (for B2 agent), with CLI as an accessible alternative. B3 communicates intent through B2, not through AutoInfo directly. B1's requirements for quality, reliability, and delivery channel flexibility are embedded as hard constraints in every subsystem — see F36-F40 plus F65-F72 for the full lifecycle specification.
@@ -279,7 +279,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | Framework design | ✅ Documented (this file) |
 | Expectation catalog | ✅ 72 expectations across 16 phases — 55/72 implemented (✅), 6/72 partially implemented (🟡), 11/72 not implemented (❌). See `docs/dev/specs/user-lifecycle-definition.md` for the root lifecycle model. |
 | Quality gates | ✅ G1-G5 hard/soft split (G0/G4 hard with retry→block, G1-G3/G5 soft with configurable thresholds); production delivery gates D1-D3; per-domain gate configuration |
-| Demo domains | ✅ 13 defined with curated sources |
+| Demo domains | ✅ 21 defined with curated sources |
 | Market positioning | ✅ Researched — whitespace confirmed |
 | Target user persona | ✅ Defined — information-intensive professionals |
 | Pricing reference | ✅ Drafted for v1 individual tier |
@@ -288,8 +288,8 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ ~4925 tests across 100+ test files (includes new collector tests) |
-| MCP tools | ✅ 146 tools across 35 categories |
+| Tests | ✅ ~5726 tests across 100+ test files (includes new collector tests) |
+| MCP tools | ✅ 149 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 31 command groups |
 
@@ -379,57 +379,47 @@ The following items represent the remaining delta between the founder's full vis
 
 | Pillar | Expectations | New Modules | Key Deliverables |
 |--------|-------------|-------------|------------------|
-| **End User Lifecycle** | F36-F40 | `user_store.py`, `delivery_log.py`, `delivery/adapters/*` | UserProfile/Subscription CRUD, 10 delivery channels, lifecycle state machine (trial→active→suspended→cancelled), DeliveryLog with SLA tracking, CLI self-service portal |
+| **End User Lifecycle** | F36-F40 | `user_store.py`, `delivery_log.py`, `delivery/adapters/*` | UserProfile/Subscription CRUD, 13 delivery channels, lifecycle state machine (trial→active→suspended→cancelled), DeliveryLog with SLA tracking, CLI self-service portal |
 | **Cost Governance** | F41-F45 | `cost.py` | Cost metering (LLM tokens, storage, API calls), per-domain/per-user allocation, cost dashboard, budget alerts with auto-remediation |
 | **Data Privacy** | F46-F48 | `audit.py` | Source ToS compliance tiers, soft-delete with 30-day auto-cleanup + GDPR export, immutable audit log |
 | **Knowledge Lifecycle** | F49-F53 | KB pipeline enhancements | Per-domain TTL, versioned re-collection with structured diff, stale content handling, decay metrics, cross-collection dedup & merge |
 | **Operational Observability** | F54-F57 | `logging.py` | JSON structured pipeline logging, UUID trace_id propagation, enhanced `doctor --verbose`, Prometheus `/metrics` |
 
-### 🔴 v1.6+ Residual Gaps (Low Effort)
+### 🔴 v1.6+ Residual Gaps
+
+The eleven gaps catalogued here in the v1.6+ pass have since closed, all but one: the LLM fallback chain now guards every call path; source-type validation covers 29 types; `collect` ships `--force-full`; the CLI has `topics` and `topic-group` commands; a `Dockerfile` exists; the release manifest tracks the current version; CSV export and GraphML are available through both CLI and MCP; REST API and file export are registered DeliveryChannels; and the `BaseHandler` ABC is in place. The one genuinely open item:
 
 | Gap | Related Expectation | Effort |
 |-----|--------------------|--------|
-| LLM fallback chain never used | F04 — LLM Config | Low |
-| CLI/MCP source type validation limited to rss/api/web | F08 — Custom Sources | Low |
-| No `--force-full` flag | F11 — Collection | Low |
-| No CLI `topics group` command | F09 — Topics | Low |
-| No Dockerfile | F01 — Installation | Low |
-| Version mismatch (1.3.0 vs 1.5.0) | F01 — Installation | Trivial |
-| Relation types are free-form strings | F19 — Cross-ref | Low |
-| CSV export missing from export_kb() | F26 — Export | Low |
-| GraphML export only via CLI, not MCP | F26 — Export | Low |
-| REST API and file/export not in DeliveryChannel registry | F27 — Delivery | Low |
-| No BaseHandler ABC for source handlers | F13/F33 — Handlers | Medium |
+| Relation types: the `RelationType` / `RELATION_TYPES` enum exists, but the write path does not enforce it — `link_items` and the MCP handler persist any relation string. | F19 — Cross-ref | Low |
 
-> Full detail (file evidence, fix approach) in the backup at `docs/archive/founder-expectations-pre-split.md §14`.
+> Historical detail (pre-split file evidence, fix approach) in the backup at `docs/archive/founder-expectations-pre-split.md §14`.
 
-### 🟢 Consumer-Facing Output Gaps (New — 2026-07-26)
+### ✅ Consumer-Facing Output Gaps (Resolved)
 
-Consumer requirements identified from global information payment research (5 reports: Reuters Institute DNR 2025/2026, Chinese knowledge payment market data, agent-mediated content trends). These are consumer-facing output/delivery gaps that the existing product pipeline does not yet address:
+The six consumer-facing output/delivery gaps identified on 2026-07-26 from global information payment research (5 reports: Reuters Institute DNR 2025/2026, Chinese knowledge payment market data, agent-mediated content trends) have all been delivered:
 
-| Gap | Severity | Effort | Description |
-|-----|----------|--------|-------------|
-| **Audio output** (TTS podcast-style digest) | 🔴 Critical | Medium | 14% user preference for audio, 42% willingness to pay. TTS pipeline renders digest/report as MP3. New delivery channel: podcast RSS feed. |
-| **Agent-native JSON format** | 🔴 Critical | Low-Med | Fastest-growing content channel (10% users, +3pp/y). Structured JSON-LD (`@type: "KnowledgeDigest"`) optimized for LLM re-consumption. MCP `format="agent"` parameter. |
-| **RSS delivery channel** | 🟡 Medium | Low | 400M+ podcasts use RSS. `export_kb(format="rss")` exists but no scheduled RSS feed generation, no `RSSDeliveryChannel` class, no podcast RSS for audio. |
-| **Agent push delivery** | 🟡 Medium | Medium | Agent subscriptions (Perplexity Comet, ChatGPT Tasks pattern). Webhook callback for product generation events. `set_agent_callback` MCP tool. |
-| **Role-aware digest/report** | 🟡 Medium | Low | `target_audience` param already exists on tutorial/presentation but missing from digest/report. Consumer demand for persona-adapted content. |
-| **Stored preference profiles** | 🟢 Small | Low | `UserProfile.delivery_preferences` not linked to output personalization. `generate_digest(user_id=usr_xxx)` should auto-apply user's format/timezone/channel preferences. |
+- **Audio output** — TTS-rendered digest/report MP3 (`format="audio"`) plus a podcast RSS channel.
+- **Agent-native JSON** — `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`).
+- **RSS delivery** — `RSSDeliveryChannel` is registered in the channel registry and schedulable.
+- **Agent push** — `set_agent_callback` registers persistent callbacks that fire on `new_digest` / `new_report` / `new_tutorial`.
+- **Role-aware digest/report** — `target_audience` threads through digest and report on both CLI and MCP.
+- **Stored preference profiles** — passing `user_id` auto-loads stored preferences (`target_audience`, `format`, `max_items`, channel) into output personalization.
 
-> Full cross-reference: `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036 — 10 gaps across 5 dimensions with priority matrix.
+> Cross-reference: `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036 — 5 dimension gaps, all resolved.
 
 ### 🔵 Longer-Term (v2.0+)
 
+Stripe billing integration and the PROCESSED product template system (8 Jinja2 product families) are shipped and are no longer gaps. The remaining deferred items:
+
 | Gap | Related Expectation | Effort |
 |-----|--------------------|--------|
-| Stripe / billing integration | F30 — Subscription & Billing | ✅ Fully implemented (Stripe webhook endpoint with signature verification, stripe-mock dev setup, freemium gating, usage-based billing) |
-| Feature gating / usage metering | F30 — Subscription & Billing | 🟡 Partially implemented (check_access enforced in output.py; MCP layer gating pending) |
+| Feature gating / usage metering | F30 — Subscription & Billing | 🟡 Partially implemented (`check_access()` enforced in output.py and on MCP `list_output_templates`; gating on MCP product-generation tools still pending) |
 | Delivery analytics dashboard | F39 — Delivery Reliability | Medium |
-| Collaboration / teams | §10.3 Explicit "No" | High |
-| Mobile app | §10.3 Explicit "No" | High |
-| Citation management (BibTeX) | §10.3 Explicit "No" | Medium |
-| Image/video processing | §10.3 Explicit "No" | High |
-| PROCESSED product template system | F29 | Low |
+| Collaboration / teams | §10.3 Explicit "No" (deferred by design) | High |
+| Mobile app | §10.3 Explicit "No" (deferred by design) | High |
+| Citation management (BibTeX) | §10.3 Explicit "No" (deferred by design) | Medium |
+| Image/video processing | §10.3 Explicit "No" (deferred by design; video output is shipped, media ingestion is not) | High |
 
 ### v1.6 Gap Analysis Metrics
 
@@ -438,24 +428,24 @@ Consumer requirements identified from global information payment research (5 rep
 | Expectations documented | 72 F-expectations across 16 phases (F01-F57 original + F58-F64 blank spaces + F65-F72 lifecycle coverage) + consumer-facing output requirements (see `docs/dev/cross-dimensional-catalog.md` CD-032..CD-036) |
 | Value propositions fulfilled | 5/5 |
 | True Test passing | 13/13 |
-| MCP tools | 146 across 35 categories |
+| MCP tools | 149 across 35 categories |
 | Source handlers | 30 collector handlers (PubMed, arXiv, Semantic Scholar, CrossRef, DBLP, OpenAlex, USPTO, NYT, RSS, Web, Webhook, Email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, HackerNews, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, Yahoo Finance, HTTP API, AKShare, SEC EDGAR, edX sitemap) + crontab installer |
 | Quality gates | All 6 (G0-G5: G0/G4 hard, G1-G3/G5 soft) + 3 delivery gates (D1-D3) |
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams) |
 | Delivery channels | 13 channels ✅ (SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push). Email as mandatory fallback. |
-| Subscription/billing | ✅ Fully implemented | Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
-| Tests | ~4925 (includes new collector tests) |
-| Demo domains | 13 with curated sources |
-| **🔴 v1.6+ residual gaps** | **11 low-effort fixes** |
-| **🟢 Consumer-facing output gaps** | **6 items** (see §14 consumer gaps) |
-| **🔵 v2.0+ deferred** | **8 items** |
+| Subscription/billing | ✅ Fully implemented — Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
+| Tests | ~5726 (includes new collector tests) |
+| Demo domains | 21 with curated sources |
+| **🔴 v1.6+ residual gaps** | **1 low-effort fix** (relation-type write-path validation — see above) |
+| **🟢 Consumer-facing output gaps** | **0 items** (all six delivered — see above) |
+| **🔵 v2.0+ deferred** | **6 items** |
 
 ---
 
 ## References
 
 - This document — D3: Founder's expectations for AutoInfo v1 (index)
-- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users — 42 capability cells. The "what" that derives from the "why" in this document.
+- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users — 126 cells (7×18 lifecycle stages); 42 catalogued gaps. The "what" that derives from the "why" in this document.
 - `docs/archive/founder-expectations-pre-split.md` — Exact backup before splitting (2108 lines)
 - `docs/dev/specs/expectations.md` — Expectation Catalog F01-F72
 - `docs/dev/specs/quality-gates.md` — G0-G5, D1-D3 gate catalog & configuration, testing strategy
@@ -463,7 +453,7 @@ Consumer requirements identified from global information payment research (5 rep
 - `docs/dev/specs/delivery.md` — Output generation, delivery channels, error recovery, end user lifecycle
 - `docs/dev/specs/operations.md` — Cost governance, data privacy, knowledge lifecycle, observability
 - `docs/dev/specs/market-positioning.md` — Priority matrix, competitive landscape, pricing, personas
-- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (146 tools, 35 categories)
+- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (149 tools, 35 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/specs/user-lifecycle-definition.md` — **Root spec**: B1/B2/B3 user types and complete lifecycle definitions
 - `docs/dev/specs/multi-tenancy-auth.md` — Multi-tenancy, authentication, rate limiting, admin dashboard (architectural design; deferred until SSE transport)

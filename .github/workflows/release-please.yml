@@ -23,11 +23,17 @@
 # checks concluded `action_required` with zero jobs and the release PR stayed
 # blocked.
 #
-# RESOLVED CREDENTIAL-FREE by `release-pr-auto-merge.yml` (added 2026-09-28):
-# on a release PR that workflow approves the blocked runs and enables
-# auto-merge, so the required checks still run and the ruleset is still
-# honoured — only the human bottleneck is gone. NO secret is involved, which is
-# strictly better than the historical fix below.
+# DELEGATED CREDENTIAL-FREE to `release-pr-auto-merge.yml`: that workflow
+# triggers on `workflow_run` completion of THIS `Release` workflow (not on
+# `pull_request_target`, which never fired — GitHub does not create runs for
+# events caused by the default `GITHUB_TOKEN` that release-please uses to open
+# the PR). On a matching release PR (bot author + `release-please--branches--*`
+# head + `chore(main): release ` title) it approves the blocked runs, enables
+# squash auto-merge, waits for the merge, and then dispatches THIS workflow via
+# `workflow_dispatch` so the tag is still cut even when the merge is
+# token-attributed and the push to main therefore fires no `Release` run. The
+# required checks still run and the ruleset is still honoured — only the human
+# bottleneck is gone, and NO secret is involved.
 #
 # Historical note, kept because the `RELEASE_PLEASE_PAT` fallback in the steps
 # still exists: an earlier fix was to have release-please authenticate as a

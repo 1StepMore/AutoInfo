@@ -2,6 +2,23 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.13.8](https://github.com/1StepMore/AutoInfo/compare/v1.13.7...v1.13.8) (2026-09-29)
+
+
+### Bug Fixes
+
+* **battery:** harden L1 verdict parsing without weakening fail-loud ([#417](https://github.com/1StepMore/AutoInfo/issues/417)) ([e922b20](https://github.com/1StepMore/AutoInfo/commit/e922b2023c3ece5ebe8fbe5314e75bab1d63c3f4))
+
+
+### Documentation
+
+* **coverage:** reconcile the E8 required_sources count with reality ([#416](https://github.com/1StepMore/AutoInfo/issues/416)) ([daf2e95](https://github.com/1StepMore/AutoInfo/commit/daf2e95829c1d0d010007d386130c400b82f24d2))
+
+
+### Miscellaneous Chores
+
+* **expectations:** correct the §14 deferred-gaps catalog against the code ([#414](https://github.com/1StepMore/AutoInfo/issues/414)) ([ac5278c](https://github.com/1StepMore/AutoInfo/commit/ac5278cade0295823d575885a866b637c59fea94))
+
 ## [1.13.7](https://github.com/1StepMore/AutoInfo/compare/v1.13.6...v1.13.7) (2026-09-29)
 
 

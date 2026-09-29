@@ -1,0 +1,189 @@
+# Regression #battery-verdict-parse — the L1 agent-review battery's verdict
+# parsing was hardened after the deployed demo run ESCALATEd ~13/40 items with
+# "no parseable verdict block". Five stacked causes were fixed at once:
+#
+#   RC2  _extract_text returned the ModelResponse repr (literal "\n" escapes)
+#        for a list-of-parts or None content, so the line-based parser starved.
+#   RC3  the parser demanded a literal "## Verdict" heading and lowercase
+#        bold keys — # / ### / **Verdict** / full-width colons all starved it.
+#   RC4  the JSON path never passed json_mode=True, so the capability-probed
+#        structured request was cosmetic.
+#   RC1  a finish_reason=length (truncated) reply was indistinguishable from
+#        a malformed one.
+#   RC5  the field regex allowed \s* after the colon, so an EMPTY
+#        **evidence**: silently adopted the NEXT line as its value —
+#        manufacturing evidence and weakening fail-loud.
+#
+# This scenario drives the REAL battery module (no mocks of the parser) with
+# an LLM-shaped stub channel — keyless and networkless:
+#   1. a drifting-but-well-formed verdict (# heading, full-width colon,
+#      backticked evidence) parses; an empty **evidence**: is DROPPED, never
+#      adopted from the next line (RED on HEAD: both starve / mis-adopt);
+#   2. list-of-parts content parses, None content and a truncated reply
+#      (finish_reason=length) ESCALATE with a truncation note — never PASS;
+#   3. the JSON path actually requests json_mode=True.
+name: regression-battery-verdict-parse
+description: "Regression #battery-verdict-parse: L1 battery verdict parsing tolerates heading/colon drift, never adopts an empty field from the next line, survives list-of-parts/None content, reports truncation, requests json_mode, and ESCALATEs (never PASS) on unparseable/unreachable output"
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#battery-verdict-parse"
+requires_env: []
+timeout: 120
+steps:
+  - name: "drifting verdict parses; empty evidence is dropped, never adopted"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      import battery
+
+      drift = (
+          "# Verdict\n"
+          "**blind_spot**: claim-fabrication-vs-hedge\n"
+          "**verdict**\uff1a FLAG\n"
+          "**evidence**: `magazine-digest.md:24`\n"
+          "**note**: hedging absent\n"
+      )
+      blocks = battery._parse_markdown_verdicts(drift)
+      assert len(blocks) == 1, "drifted block did not parse: " + repr(blocks)
+      assert blocks[0]["verdict"] == "FLAG", blocks[0]
+      assert blocks[0]["evidence"] == "magazine-digest.md:24", blocks[0]
+
+      bold = (
+          "### **Verdict**\n"
+          "- **Blind_spot**: x\n"
+          "- **Verdict**: pass\n"
+          "- **Evidence**: a.md:1\n"
+      )
+      blocks = battery._parse_markdown_verdicts(bold)
+      assert len(blocks) == 1 and blocks[0]["verdict"] == "PASS", blocks
+
+      trap = (
+          "## Verdict\n"
+          "- **blind_spot**: x\n"
+          "- **verdict**: PASS\n"
+          "- **evidence**:\n"
+          "- **note**: adjacent line\n"
+      )
+      assert battery._parse_markdown_verdicts(trap) == [], (
+          "empty evidence adopted the next line"
+      )
+      print("BATTERY_PARSE_TOLERANT_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["BATTERY_PARSE_TOLERANT_OK"]
+
+  - name: "LLM-shaped responses: parts/None/truncation route to PASS or ESCALATE, never a fabricated PASS"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "src"))
+      import battery
+      import autoinfo.llm as llm
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      verdict_text = (
+          "## Verdict\n"
+          "- **blind_spot**: bs-1\n"
+          "- **verdict**: PASS\n"
+          "- **evidence**: digest.md:10\n"
+      )
+      llm.call_with_fallback = lambda *a, **k: Resp([{"type": "text", "text": verdict_text}])
+      res = battery._judge_with_llm("prompt", want_json=False)
+      assert res["verdict"] == "PASS", res
+
+      llm.call_with_fallback = lambda *a, **k: Resp(None)
+      res = battery._judge_with_llm("prompt", want_json=False)
+      assert res["verdict"] == "ESCALATE", res
+
+      truncated = Resp(
+          "## Verdict\n- **blind_spot**: x\n- **verdict**: PA",
+          finish_reason="length",
+      )
+      llm.call_with_fallback = lambda *a, **k: truncated
+      res = battery._judge_with_llm("prompt", want_json=False)
+      assert res["verdict"] == "ESCALATE", res
+      assert "trunc" in res["note"].lower(), res["note"]
+
+      llm.call_with_fallback = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("provider down"))
+      res = battery._judge_with_llm("prompt", want_json=False)
+      assert res["verdict"] == "ESCALATE", res
+      assert "unreachable" in res["evidence"], res
+      print("BATTERY_FAIL_LOUD_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["BATTERY_FAIL_LOUD_OK"]
+
+  - name: "JSON path requests json_mode=True and parses via the tolerant parser"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "src"))
+      import battery
+      import autoinfo.llm as llm
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      seen = {}
+
+      def fake_call(*args, **kwargs):
+          seen.update(kwargs)
+          return Resp("```json\n{\"verdict\": \"ESCALATE\", \"evidence\": \"x\", \"note\": \"n\"}\n```")
+
+      llm.call_with_fallback = fake_call
+      res = battery._judge_with_llm("prompt", want_json=True)
+      assert seen.get("json_mode") is True, "json_mode was not requested: " + repr(seen)
+      assert res["verdict"] == "ESCALATE", res
+      print("BATTERY_JSON_MODE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["BATTERY_JSON_MODE_OK"]

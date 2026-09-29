@@ -1,0 +1,151 @@
+# Regression #entity-fact-gate — G7, the deterministic Entity/Number Fact
+# Consistency gate, did not exist.
+#
+# `docs/known-limitations/demo-quality-residuals.md:13` registered: entity
+# factual errors (numbers/facts inconsistent with the source) are P1 with
+# "no deterministic gate" — independent review was the only backstop. G4 does
+# exist but is LLM-based (`quality.py` docstring: "G4 is optional — it requires
+# an LLM call"), so nothing checked a number deterministically.
+#
+# This scenario drives the REAL gate over the REAL `Item` /
+# `ExtractionResult` models — no mocks, no LLM, no network:
+#   1. a fabricated number absent from the source is FLAGGED;
+#   2. an honest hedge (EN + ZH) is NOT flagged even when a fabricated number
+#      shares the sentence, and an unhedged fabrication beside it still is
+#      (the #179/#191 invariant — the reason the gate ships soft/flag);
+#   3. a rounded/recast number derivable from the source is NOT flagged, the
+#      default action is `flag` (not `block`), and two identical calls return
+#      identical output (determinism).
+name: regression-entity-fact-gate
+description: "Regression #entity-fact-gate: deterministic G7 flags extraction numbers/entities absent from the source, never flags an honest hedge (EN/ZH), accepts rounded/recast values, and defaults to soft flag"
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#entity-fact-gate"
+requires_env: []
+timeout: 120
+steps:
+  - name: "fabricated number is flagged; hedged sentence is not"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      from autoinfo.models import ExtractionResult, Item
+      from autoinfo.quality import G7EntityFactConsistency
+
+      SOURCE = (
+          "The trial enrolled 500 patients. The live birth rate was 48.2% in "
+          "the treatment arm versus 39.5% in the control arm. Annual revenue "
+          "was $1,200,000 (1.2 million). In 2024, spending reached 五百万 yuan."
+      )
+
+      def item():
+          return Item(
+              id="g7-item", source_name="pubmed", source_type="api",
+              source_platform="pubmed", source_url="https://example.com/g7",
+              title="IVF outcomes and revenue", content=SOURCE,
+              content_type="text", collected_at="2026-09-20T10:00:00Z",
+              language="en", domain="medical-research", topic_tags=["IVF"],
+              quality_tier=1,
+          )
+
+      def extraction(tl_dr):
+          return ExtractionResult(
+              item_id="g7-item", title="IVF outcomes and revenue",
+              tl_dr=tl_dr, key_points=[], entities=[],
+              relevance_score=90.0,
+          )
+
+      gate = G7EntityFactConsistency()
+
+      # (1) A number present nowhere in the source is flagged.
+      r = gate.check(item(), extraction(
+          "The live birth rate reached 95.7% in the treatment arm."))
+      assert r.gate_name == "G7-EntityFactConsistency", r.gate_name
+      assert r.flagged is True, "fabricated 95.7% was not flagged"
+      assert r.passed is True, "soft default must not block"
+      assert r.details["action"] == "flag", r.details["action"]
+      assert any("95.7" in str(c.get("claim")) for c in r.details["unsupported_claims"]), r.details
+
+      # (2) An honest hedge is CORRECT behaviour and must never be flagged,
+      #     even with a fabricated number inside the same sentence (#179/#191).
+      for hedged in (
+          "The specific participant count was not disclosed.",
+          "具体人数未披露，有报道称99,999名参与者。",
+      ):
+          rh = gate.check(item(), extraction(hedged))
+          assert rh.flagged is False, ("hedge must not be flagged: " + hedged)
+
+      # Hedging one sentence must not MASK a fabrication in a DIFFERENT
+      # sentence. The splitter breaks on "." (it does not break on the
+      # ideographic "。", so a fully-hedged CJK run stays one sentence and is
+      # skipped whole -- the conservative, under-flag direction).
+      rm = gate.check(item(), extraction(
+          "The number of patients was not disclosed. The trial reported a 95.7% success rate."))
+      assert rm.flagged is True, "unhedged fabrication beside a hedge must be flagged"
+      assert any("95.7" in str(c.get("claim")) for c in rm.details["unsupported_claims"]), rm.details
+
+      print("FLAG_AND_HEDGE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["FLAG_AND_HEDGE_OK"]
+
+  - name: "rounded values pass, default is soft/flag, and results are deterministic"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      from autoinfo.config import _DEFAULT_QUALITY_GATES
+      from autoinfo.models import ExtractionResult, Item
+      from autoinfo.quality import G7EntityFactConsistency
+
+      SOURCE = (
+          "The trial enrolled 500 patients. The live birth rate was 48.2% in "
+          "the treatment arm versus 39.5% in the control arm. Annual revenue "
+          "was $1,200,000 (1.2 million). In 2024, spending reached 五百万 yuan."
+      )
+
+      def item():
+          return Item(
+              id="g7-item", source_name="pubmed", source_type="api",
+              source_platform="pubmed", source_url="https://example.com/g7",
+              title="IVF outcomes and revenue", content=SOURCE,
+              content_type="text", collected_at="2026-09-20T10:00:00Z",
+              language="en", domain="medical-research", topic_tags=["IVF"],
+              quality_tier=1,
+          )
+
+      def extraction(tl_dr):
+          return ExtractionResult(
+              item_id="g7-item", title="IVF outcomes and revenue",
+              tl_dr=tl_dr, key_points=[], entities=[],
+              relevance_score=90.0,
+          )
+
+      gate = G7EntityFactConsistency()
+
+      # A recast/rounded value that IS derivable from the source is accepted.
+      recast = "The trial enrolled about five hundred patients."
+      r = gate.check(item(), extraction(recast))
+      assert r.flagged is False, ("derivable number over-flagged: " + str(r.details))
+
+      # Default configuration is soft/flag, never block (over-flagging a
+      # legitimate paraphrase is the dominant failure mode).
+      assert _DEFAULT_QUALITY_GATES["G7"] == {"category": "soft", "action": "flag"}, _DEFAULT_QUALITY_GATES["G7"]
+
+      # Determinism: identical input, identical verdict.
+      a = gate.check(item(), extraction("The live birth rate reached 95.7%."))
+      b = gate.check(item(), extraction("The live birth rate reached 95.7%."))
+      assert a.flagged == b.flagged, "non-deterministic flagged"
+      assert a.details["unsupported_claims"] == b.details["unsupported_claims"], "non-deterministic claims"
+
+      print("RECAST_SOFT_DETERMINISTIC_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["RECAST_SOFT_DETERMINISTIC_OK"]

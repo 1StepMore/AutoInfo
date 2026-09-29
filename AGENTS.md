@@ -81,7 +81,7 @@ AutoInfo/
 │   │   ├── founder-expectations.md # Index doc (simplified; full content in specs/)
 │   │   ├── specs/                  # Extracted spec files (2026-07-26 restructuring)
 │   │   │   ├── expectations.md     # F01-F57 expectation catalog (57 expectations, 12 phases)
-│   │   │   ├── quality-gates.md    # G0-G5, D1-D3 gate catalog & configuration + testing strategy
+│   │   │   ├── quality-gates.md    # G0-G7, D1-D3 gate catalog & configuration + testing strategy
 │   │   │   ├── pipeline.md         # Collection pipeline, KB pipeline, LLM config, extraction, search, performance targets
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
@@ -110,7 +110,7 @@ AutoInfo/
 │       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video) — __init__.py + export.py (KB export family: export_kb + all format exporters) + entries.py (shared deterministic entry filters) + ebook.py (B23: EPUB/MOBI/audiobook) + video.py (HyperFrames HTML+GSAP→MP4, 36+8 themes) + video_assets/ (themes + templates) + seo.py + free_tier.py (free-tier product limits)
 │       ├── data/                     # Domain configs (domains/*/sources.yaml) + 8 output product templates (incl. premium-briefing.md.j2, enterprise-briefing.md.j2)
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
-│       ├── quality.py               # Quality gates G0-G5, D1-D3 delivery gates
+│       ├── quality.py               # Quality gates G0-G7, D1-D3 delivery gates
 │       ├── delivery.py              # Delivery channel abstraction (13 channels)
 │       ├── delivery/scheduler.py    # Delivery schedule management (cron integration)
 │       ├── delivery/gate_report.py   # Per-product gate reports (01-QA-GATES/ md+json for validation delivery)
@@ -172,6 +172,7 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | G3: Relevance scoring (0-100) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass (below threshold) |
 | G4: Factual consistency | 🔴 Hard | 🟡 P1 | 3× retry with escalating context → block |
 | G5: Translation accuracy | 🟡 Soft | 🟡 P1 | Configurable: archive/flag/pass |
+| G7: Entity-fact consistency (deterministic) | 🟡 Soft | 🟡 P1 | Default flag (no LLM); per-domain `block`; honest hedges never flagged |
 | D1: Product completeness | 🔴 Hard | 🔴 P0 | Blocks delivery |
 | D2: Format integrity | 🔴 Hard | 🔴 P0 | Blocks delivery |
 | D3: Freshness | 🟡 Soft | 🟡 P1 | Configurable threshold |
@@ -224,8 +225,8 @@ Category → key-tool mapping is maintained in the README, not duplicated here.
 
 **Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
-**Validation**: `list_validation_scenarios` / `run_validation_scenario` — 172 scenarios
-(86 functional + 86 regression in `src/autoinfo/mcp/scenarios/regression/`); per-scenario timeout,
+**Validation**: `list_validation_scenarios` / `run_validation_scenario` — 173 scenarios
+(86 functional + 87 regression in `src/autoinfo/mcp/scenarios/regression/`); per-scenario timeout,
 recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel;
 env-gated steps report `unconfigured` (never silently pass); `llm_assert` runs a real
 model call. Scenario authoring contract: `docs/dev/validation-scenario-contract.md`.
@@ -328,10 +329,10 @@ Key counts the agent must know without opening README:
 | MCP tools | **149 tools across 35 categories** |
 | CLI command groups | **31 command groups** |
 | Delivery channels | **13 channels** |
-| Validation scenarios | **172 scenarios** (86 functional + 86 regression) |
+| Validation scenarios | **173 scenarios** (86 functional + 87 regression) |
 | Demo domains | **21 demo domains** |
 | LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~5740 tests** |
+| Test suite | **~5766 tests** |
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):

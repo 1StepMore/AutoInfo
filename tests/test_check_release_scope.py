@@ -129,6 +129,85 @@ def test_empty_path_list_passes() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Release-please's OWN release PR is exempt (#412)
+# ---------------------------------------------------------------------------
+
+# A release-please release PR is the OUTPUT of this gate's classification: it
+# aggregates already-classified commits and rewrites the changelog. Applying
+# "hidden type must not touch user-visible paths" to it is a category error --
+# the release PR *is* the changelog, so it necessarily edits CHANGELOG.md,
+# the version marker and the manifest. Left un-exempted it fails its own
+# required check, which blocks every release indefinitely (#411, v1.13.7).
+
+RELEASE_PR_PATHS = [
+    "CHANGELOG.md",
+    ".release-please-manifest.json",
+    "src/autoinfo/_version.py",
+]
+
+
+def test_release_please_release_pr_passes_despite_user_visible_paths() -> None:
+    result = gate.assess_release_scope(
+        RELEASE_PR_PATHS,
+        "chore",
+        [],
+        title="chore(main): release 1.13.7",
+    )
+
+    assert result.passed is True, result.reason
+    assert "release pr" in result.reason.lower()
+
+
+def test_release_please_release_pr_passes_even_mixed_with_other_paths() -> None:
+    result = gate.assess_release_scope(
+        [*RELEASE_PR_PATHS, ".github/workflows/release-please.yml"],
+        "chore",
+        [],
+        title="chore(main): release 1.13.7",
+    )
+
+    assert result.passed is True, result.reason
+
+
+def test_a_normal_chore_pr_touching_changelog_is_still_judged() -> None:
+    """The exemption keys on the release PR's title, not on touching CHANGELOG.
+
+    Otherwise any hidden-type PR that happens to edit the changelog would
+    silently escape the gate.
+    """
+    result = gate.assess_release_scope(
+        RELEASE_PR_PATHS,
+        "chore",
+        [],
+        title="chore(docs): tidy the changelog",
+    )
+
+    assert result.passed is False, result.reason
+
+
+def test_exemption_needs_no_label() -> None:
+    result = gate.assess_release_scope(
+        RELEASE_PR_PATHS,
+        "chore",
+        ["autorelease: pending"],
+        title="chore(main): release 1.13.7",
+    )
+
+    assert result.passed is True, result.reason
+
+
+def test_release_pr_exemption_also_holds_for_a_visible_typed_title() -> None:
+    result = gate.assess_release_scope(
+        RELEASE_PR_PATHS,
+        "fix",
+        [],
+        title="chore(main): release 1.13.7",
+    )
+
+    assert result.passed is True, result.reason
+
+
+# ---------------------------------------------------------------------------
 # Fail-safe direction: unknown paths are user-visible
 # ---------------------------------------------------------------------------
 

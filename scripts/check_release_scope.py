@@ -31,6 +31,8 @@ HIDDEN_TYPES = frozenset({"chore", "ci", "test", "refactor", "build", "style"})
 USER_VISIBLE_LABEL = "release:user-visible"
 SKIP_LABEL = "release:skip"
 
+RELEASE_PR_TITLE_PREFIX = "chore(main): release "
+
 INTERNAL_PREFIXES = (".github/", "tests/", "scripts/", "docs/dev/")
 INTERNAL_EXACT = frozenset(
     {
@@ -98,12 +100,29 @@ def assess_release_scope(
     paths: list[str],
     title_type: str | None,
     labels: list[str],
+    title: str | None = None,
 ) -> Result:
-    """Judge one PR against the four-row release-scope table."""
+    """Judge one PR against the four-row release-scope table.
+
+    *title* is the full PR title. It is only consulted to recognise
+    release-please's own release PR, which this gate must not judge: that PR is
+    the OUTPUT of this classification, and it necessarily rewrites the
+    changelog and the version marker. Judging it fails the gate on its own
+    required check and blocks every release.
+    """
     label_set = {label.strip() for label in labels if label and label.strip()}
 
     if not paths:
         return Result(True, "No changed files to judge.", "")
+
+    if title and title.startswith(RELEASE_PR_TITLE_PREFIX):
+        return Result(
+            True,
+            f"release PR ({title!r}) — this is release-please's own changelog "
+            f"and version bump, the output of this gate rather than an input "
+            f"to it, so its scope is not judged here.",
+            "",
+        )
 
     known = VISIBLE_TYPES | HIDDEN_TYPES
     if title_type is None or title_type not in known:
@@ -214,7 +233,12 @@ def main(argv: list[str] | None = None) -> int:
 
     paths = _read_paths(args)
     title_type = parse_title_type(args.title)
-    result = assess_release_scope(paths, title_type, _parse_labels(args.labels))
+    result = assess_release_scope(
+        paths,
+        title_type,
+        _parse_labels(args.labels),
+        title=args.title,
+    )
 
     stream = sys.stdout if result.passed else sys.stderr
     print(result.reason, file=stream)

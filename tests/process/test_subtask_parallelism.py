@@ -377,11 +377,11 @@ class TestConcurrentGates:
 
 class TestReportOrder:
     def test_gates_reported_in_canonical_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """quality_results keys stay G0→G5 even when gates complete out of order.
+        """quality_results keys stay G0→G5, G7 even when gates complete out of order.
 
         G3's mock sleeps 0.3 s while G4/G5 return immediately — G3 finishes
         last, yet the dict passed to ``store_entry`` must list gates in
-        canonical G0→G5 order.
+        canonical G0→G5, G7 order.
         """
         captured: dict[str, Any] = {}
 
@@ -436,7 +436,8 @@ class TestReportOrder:
             "G3-RelevanceScoring",
             "G4-SummaryFactual",
             "G5-TranslationAccuracy",
-        ], "gate report order is not canonical G0→G5"
+            "G7-EntityFactConsistency",
+        ], "gate report order is not canonical G0→G5, G7"
 
 
 # ---------------------------------------------------------------------------

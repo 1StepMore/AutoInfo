@@ -402,6 +402,9 @@ class TestG7PipelineIntegration:
             mock_g7_cls.return_value.check.return_value = block_result
             result = run_processing("medical-research")
 
+        mock_g7_cls.return_value.check.assert_called_once()
         assert result.kb_entries_created == 0
         mock_store.store_entry.assert_not_called()
-        assert result.per_item_logs[0].get("status") == "g7_blocked"
+        # Blocked items are deliberately excluded from per_item_logs (matching
+        # the G4 hard-gate path), so the block is asserted via storage skip.
+        assert result.per_item_logs == []

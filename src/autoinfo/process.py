@@ -48,6 +48,7 @@ from autoinfo.quality import (
     G3RelevanceScoring,
     G4FactualConsistency,
     G5TranslationAccuracy,
+    G7EntityFactConsistency,
     QualityResult,
     check_inline_tags,
     check_length_ratio,
@@ -1479,6 +1480,23 @@ def run_processing(
                 if g5_result is not None:
                     quality_results["G5-TranslationAccuracy"] = g5_result
 
+            # G7 — deterministic entity/number fact consistency.  No LLM, no
+            # network, so it runs on every processed item; soft/flag-only by
+            # default (config `quality_gates.G7` can raise the action to
+            # "block", which then skips storage like the G4 hard gate).
+            g7_config = gate_config.get("G7-EntityFactConsistency") if gate_config else None
+            g7_result = G7EntityFactConsistency().check(item, extraction, gate_config=g7_config)
+            quality_results["G7-EntityFactConsistency"] = g7_result
+            if g7_result.flagged and g7_result.details.get("action") == "block":
+                item_log["status"] = "g7_blocked"
+                logger.warning(
+                    "G7 blocked item %s — unsupported claims: %s",
+                    item.id,
+                    g7_result.details.get("unsupported_claims"),
+                )
+                stats["logged"] = False
+                return item_log, stats
+
             g1 = quality_results.get("G1-SourceAuthority")
             g2 = quality_results.get("G2-Dedup")
             g3 = quality_results.get("G3-RelevanceScoring")
@@ -1510,6 +1528,12 @@ def run_processing(
                 item_log["g5_flagged"] = g5_result.flagged
                 item_log["g5_faithful"] = g5_result.details.get("faithful")
                 item_log["g5_composite_score"] = g5_result.details.get("composite_score")
+
+            # Log G7 (deterministic entity/number fact consistency)
+            g7_log = quality_results.get("G7-EntityFactConsistency")
+            if g7_log is not None:
+                item_log["g7_flagged"] = g7_log.flagged
+                item_log["g7_unsupported_claims"] = g7_log.details.get("unsupported_claims", [])
 
             # Step c0: Language detection — assign the language detected ahead
             # of the concurrent gates (Step a1).  Gates run before this
@@ -1756,9 +1780,10 @@ def run_processing(
     # -- Summary ------------------------------------------------------------
     g4_count = sum(1 for log in result.per_item_logs if log.get("g4_flagged") is not None)
     g5_count = sum(1 for log in result.per_item_logs if log.get("g5_flagged") is not None)
+    g7_count = sum(1 for log in result.per_item_logs if log.get("g7_flagged") is not None)
     logger.info(
         "Processing complete: %d items → %d passed G1-G3 → %d KB entries created "
-        "(batch=%d, remaining=%d, g4_checked=%d, g5_checked=%d)",
+        "(batch=%d, remaining=%d, g4_checked=%d, g5_checked=%d, g7_checked=%d)",
         result.total_items,
         result.passed_gates,
         result.kb_entries_created,
@@ -1766,6 +1791,7 @@ def run_processing(
         result.remaining_count,
         g4_count,
         g5_count,
+        g7_count,
     )
 
     # -- Auto-verify: compare expected entries vs KB store count ----------

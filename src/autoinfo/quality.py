@@ -1,14 +1,19 @@
-"""Quality gates G1-G5 for the AutoInfo pipeline.
+"""Quality gates G1-G5 and G7 for the AutoInfo pipeline.
 
 Runs advisory checks on collected items: source authority (G1),
 dedup status (G2), relevance scoring (G3), factual consistency (G4),
-and translation accuracy (G5).
+translation accuracy (G5), and deterministic entity/number fact
+consistency (G7).
 
 G4 is optional — it requires an LLM call and is only run when explicitly
 requested via the ``--check-factual`` flag.
 
 G5 is optional — it requires an LLM call and is only run when explicitly
 requested via the ``--check-translation`` flag.
+
+G7 is deterministic (no LLM, no network) and runs post-extraction on every
+processed item; it is soft/flag-only by default (config ``quality_gates.G7``
+can raise it to ``block``).
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ import html.parser
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1755,6 +1761,344 @@ class G5TranslationAccuracy:
         except (ImportError, ModuleNotFoundError):
             logger.error("litellm is not installed — run 'pip install litellm'")
             return None
+
+
+# ---------------------------------------------------------------------------
+# G7 — Entity / Number Fact Consistency (deterministic, no LLM)
+# ---------------------------------------------------------------------------
+
+#: Honest-hedge phrases.  A sentence containing any of these is NEVER flagged
+#: (issues #179/#191): "not disclosed in the available sources" is CORRECT
+#: behavior, not a defect.  Matched case-insensitively; the CJK entries match
+#: verbatim.
+_HEDGE_PHRASES: tuple[str, ...] = (
+    "not disclosed",
+    "not provided",
+    "not available",
+    "not specified",
+    "not stated",
+    "not mentioned",
+    "not reported",
+    "not given",
+    "not clear",
+    "not known",
+    "no data",
+    "no information",
+    "undisclosed",
+    "unavailable",
+    "unknown",
+    "未披露",
+    "未提供",
+    "未明确",
+    "未提及",
+    "未说明",
+    "暂无",
+    "不详",
+    "未知",
+    "尚无",
+    "没有提供",
+    "无数据",
+)
+
+#: ASCII digit runs with optional thousands separators / decimals.  The suffix
+#: alternation is ordered longest-first so ``百万`` wins over ``万``.  ``M``
+#: (million) is uppercase-only because lowercase ``m`` is ambiguous with
+#: minutes/metres.
+_NUMBER_RE = re.compile(
+    r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)"
+    r"(?P<suffix>"
+    r"percent|percentage|thousand|million|billion|trillion"
+    r"|千万|百万|十亿|万亿|K|M|B|T|k|%|千|万|亿"
+    r")?"
+)
+
+#: CJK numeral sequences (2+ chars): 十三 / 五百万 / 一百二十三.  Length 2+
+#: avoids parsing the ubiquitous single 一 inside ordinary words ("第一").
+_CN_NUMERAL_RE = re.compile(
+    r"[\u3007\u96f6\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d"
+    r"\u5341\u767e\u5343\u4e07\u4ebf]{2,}"
+)
+
+_CN_DIGITS: dict[str, int] = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+_CN_UNITS: dict[str, int] = {"十": 10, "百": 100, "千": 1000}
+_CN_SECTIONS: dict[str, int] = {"万": 10000, "亿": 100000000}
+_SUFFIX_MULTIPLIERS: dict[str, float] = {
+    "k": 1e3,
+    "thousand": 1e3,
+    "千": 1e3,
+    "m": 1e6,
+    "million": 1e6,
+    "百万": 1e6,
+    "b": 1e9,
+    "billion": 1e9,
+    "十亿": 1e9,
+    "t": 1e12,
+    "trillion": 1e12,
+    "万亿": 1e12,
+    "万": 1e4,
+    "千万": 1e7,
+    "亿": 1e8,
+}
+_PERCENT_SUFFIXES: frozenset[str] = frozenset({"%", "percent", "percentage"})
+
+#: Relative tolerance for "the claim is a rounding of a source value".
+#: Deliberately forgiving: the dominant failure mode is flagging a legitimate
+#: paraphrase, which is why the gate ships soft/flag-only by default.
+_REL_TOLERANCE = 0.05
+
+#: Split after sentence punctuation that is followed by whitespace/end.  The
+#: look-ahead keeps decimal points ("48.2") inside one sentence.
+_SENTENCE_RE = re.compile(r"(?<=[.!?。！？])(?=\s|$)")
+
+
+def _parse_chinese_number(text: str) -> float | None:
+    """Parse a CJK numeral sequence (十三 / 五百万 / 一百二十三) to a float."""
+    total = 0.0
+    section = 0.0
+    number = 0.0
+    for ch in text:
+        if ch in _CN_DIGITS:
+            number = float(_CN_DIGITS[ch])
+        elif ch in _CN_UNITS:
+            unit = _CN_UNITS[ch]
+            if number == 0:
+                number = 1.0
+            section += number * unit
+            number = 0.0
+        elif ch in _CN_SECTIONS:
+            unit = _CN_SECTIONS[ch]
+            section += number
+            if section == 0:
+                section = 1.0
+            total += section * unit
+            section = 0.0
+            number = 0.0
+        else:
+            return None
+    return total + section + number
+
+
+def _extract_numbers(text: str) -> list[tuple[float, bool, str]]:
+    """Extract ``(value, is_percent, raw)`` numeric tokens from *text*.
+
+    Normalises thousands separators, K/M/B/T suffixes, percent units, and CJK
+    numerals to a single canonical float so `1,200,000`, `1.2 million`, and
+    `120万` compare equal.
+    """
+    found: list[tuple[float, bool, str]] = []
+    for match in _NUMBER_RE.finditer(text):
+        raw_num = match.group("num")
+        raw_suffix = (match.group("suffix") or "").strip()
+        try:
+            value = float(raw_num.replace(",", ""))
+        except ValueError:
+            continue
+        suffix = raw_suffix.lower()
+        raw = match.group(0).strip()
+        if suffix in _PERCENT_SUFFIXES:
+            found.append((value, True, raw))
+        elif suffix in _SUFFIX_MULTIPLIERS:
+            found.append((value * _SUFFIX_MULTIPLIERS[suffix], False, raw))
+        else:
+            found.append((value, False, raw))
+    for cn_match in _CN_NUMERAL_RE.finditer(text):
+        cn_value = _parse_chinese_number(cn_match.group(0))
+        if cn_value is not None:
+            found.append((cn_value, False, cn_match.group(0)))
+    return found
+
+
+def _scalar_close(a: float, b: float, tolerance: float) -> bool:
+    """True when *a* equals *b*, rounds to it, or is within relative tolerance."""
+    if a == b:
+        return True
+    if b == 0:
+        return a == 0
+    if abs(a - b) / abs(b) <= tolerance:
+        return True
+    return any(a == round(b, ndigits) for ndigits in (0, 1, -1, -2))
+
+
+def _value_matches_source(
+    claim: float,
+    is_percent: bool,
+    source_values: list[tuple[float, bool, str]],
+    tolerance: float,
+) -> bool:
+    """True when *claim* has an equivalent (or percent-equivalent) source value."""
+    for source_value, source_percent, _ in source_values:
+        if _scalar_close(claim, source_value, tolerance):
+            return True
+        if source_percent and _scalar_close(claim, source_value / 100.0, tolerance):
+            return True
+        if (
+            not source_percent
+            and 0 < source_value <= 1.0
+            and _scalar_close(claim, source_value * 100.0, tolerance)
+        ):
+            return True
+    return False
+
+
+def _is_hedged(sentence: str) -> bool:
+    """True when *sentence* is an honest "not in the sources" hedge."""
+    low = sentence.lower()
+    return any(phrase in low for phrase in _HEDGE_PHRASES)
+
+
+def _candidate_sentences(extraction: ExtractionResult) -> list[str]:
+    """Return the extraction prose units eligible for fact checking."""
+    texts: list[str] = []
+    if extraction.title:
+        texts.append(extraction.title)
+    if extraction.tl_dr:
+        texts.extend(_SENTENCE_RE.split(extraction.tl_dr))
+    for point in extraction.key_points:
+        if isinstance(point, str):
+            texts.append(point)
+    return [text.strip() for text in texts if text and text.strip()]
+
+
+def _entity_names(extraction: ExtractionResult) -> list[str]:
+    """Return named entities from the structured extraction output."""
+    names: list[str] = []
+    for entity in extraction.entities:
+        if isinstance(entity, dict):
+            name = entity.get("name") or entity.get("text")
+            if isinstance(name, str) and name.strip():
+                names.append(name.strip())
+        elif isinstance(entity, str) and entity.strip():
+            names.append(entity.strip())
+    return names
+
+
+def _entity_supported(name: str, source_lower: str) -> bool:
+    """True when *name* (or a significant token of it) appears in the source."""
+    normalized = name.lower().strip()
+    if not normalized:
+        return True
+    if normalized in source_lower:
+        return True
+    # Short all-caps acronyms (IVF, GDP, API): the source may use the expanded
+    # form and no dictionary can map it reliably, so never flag them.
+    letters = "".join(ch for ch in name if ch.isalpha())
+    if letters and letters.isupper() and len(letters) <= 6:
+        return True
+    tokens = re.findall(r"[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}", normalized)
+    if not tokens:
+        return True
+    for token in tokens:
+        if re.fullmatch(r"[a-z0-9]+", token):
+            if re.search(rf"\b{re.escape(token)}\b", source_lower):
+                return True
+        elif token in source_lower:
+            return True
+    return False
+
+
+class G7EntityFactConsistency:
+    """Deterministic entity / number fact check against the source item.
+
+    Scans the LLM extraction's prose (title, TL;DR, key points) and its
+    structured entity names for numeric claims and named entities that do not
+    appear anywhere in the source item's title/content.  A number is supported
+    when an equivalent value occurs in the source after normalisation:
+    thousands separators, K/M/B/T suffixes, percent↔fraction, CJK numerals
+    (五百万), and rounding within a 5% relative tolerance.
+
+    **Deterministic.**  No LLM call, no network socket; the same input always
+    yields the same verdict.  Complements the LLM-based G4, which can miss a
+    fabricated figure that never directly contradicts the source prose.
+
+    **Honest hedges are never flagged** (#179/#191).  A sentence containing
+    "not disclosed" / "not provided" / "未披露" / "暂无" is skipped entirely,
+    even when it contains a number.
+
+    **Soft by default.**  The dominant failure mode is over-flagging a
+    legitimate paraphrase or an unverifiable derivation (e.g. a currency
+    conversion whose rate is not in the source).  The gate therefore ships
+    ``action="flag"``; operators may raise it to ``block`` per domain via the
+    ``quality_gates.G7`` config key.
+
+    **Documented non-goals** — this gate does NOT catch: qualitative claims,
+    causal/motive assertions, proper-noun renaming via paraphrase, or numeric
+    derivations that are arithmetically valid but absent verbatim (unit
+    conversions).  It only proves "the number/name appears in the source".
+    """
+
+    gate_name = "G7-EntityFactConsistency"
+
+    def __init__(self, *, relative_tolerance: float = _REL_TOLERANCE) -> None:
+        self._relative_tolerance = relative_tolerance
+
+    def check(
+        self,
+        item: Item,
+        extraction: ExtractionResult,
+        gate_config: QualityGateConfig | None = None,
+    ) -> QualityResult:
+        """Flag extraction claims that cannot be traced to *item*.
+
+        Returns a :class:`QualityResult` with ``details["unsupported_claims"]``
+        listing each unsupported ``{"kind", "claim", "sentence"?}`` claim.
+        ``action="block"`` (via *gate_config*) makes the gate fail
+        (``passed=False``); the default ``action="flag"`` leaves ``passed=True``.
+        """
+        action = gate_config.action if gate_config is not None else "flag"
+        source_lower = f"{item.title}\n{item.content}".lower()
+        source_values = _extract_numbers(source_lower)
+
+        unsupported: list[dict[str, object]] = []
+        checked = 0
+        for sentence in _candidate_sentences(extraction):
+            if _is_hedged(sentence):
+                continue
+            for value, is_percent, raw in _extract_numbers(sentence):
+                checked += 1
+                if not _value_matches_source(
+                    value, is_percent, source_values, self._relative_tolerance
+                ):
+                    unsupported.append({"kind": "number", "claim": raw, "sentence": sentence[:240]})
+
+        entity_names = _entity_names(extraction)
+        for name in entity_names:
+            if not _entity_supported(name, source_lower):
+                unsupported.append({"kind": "entity", "claim": name})
+
+        total_checked = checked + len(entity_names)
+        flagged = bool(unsupported)
+        passed = not (flagged and action == "block")
+        score = 1.0 if not flagged else max(0.0, 1.0 - len(unsupported) / max(1, total_checked))
+        explanation = (
+            "All numeric/entity claims trace to the source"
+            if not flagged
+            else f"{len(unsupported)} claim(s) not found in the source"
+        )
+        return QualityResult(
+            gate_name=self.gate_name,
+            passed=passed,
+            score=score,
+            flagged=flagged,
+            details={
+                "action": action,
+                "checked_claims": total_checked,
+                "unsupported_claims": unsupported,
+                "explanation": explanation,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

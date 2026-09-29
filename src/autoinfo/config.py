@@ -673,6 +673,7 @@ _GATE_CONFIG_KEY_MAP: dict[str, str] = {
     "G3": "G3-RelevanceScoring",
     "G4": "G4-SummaryFactual",
     "G5": "G5-TranslationAccuracy",
+    "G7": "G7-EntityFactConsistency",
 }
 
 
@@ -1139,6 +1140,7 @@ _DEFAULT_QUALITY_GATES: Final[dict[str, dict[str, Any]]] = {
         "action": "block",
     },
     "G5": {"category": "soft", "retries": 2, "action": "flag"},
+    "G7": {"category": "soft", "action": "flag"},
 }
 
 

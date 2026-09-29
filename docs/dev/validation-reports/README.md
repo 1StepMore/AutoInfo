@@ -49,11 +49,25 @@ keeping is promoted into `docs/dev/validation-reports/` (git-tracked), e.g.
 
 ## Closure status
 
-The 2026-08-08 first-run and 2026-08-12 second-run acceptance reports
-(`acceptance-2026-08-08.md`, `acceptance-2026-08-12.md`) are **archived**
-under `docs/archive/` (2026-08-23 doc-architecture wave) — historical run
-evidence per acceptance-framework §7.5. Summary of the closed state: the
-KB-curation gap-closure wave (2026-08-08) closed B-03..B-08 plus the
-query_collected CWD trap and FRED_API_KEY doc gap; the second run closed
-all 7 first-run FAIL blockers (B-01..B-07) and R-01, overall verdict PASS
-(sign-off candidate). Active closure evidence: `evidence-backup-issues-3-4.md`.
+Reports are listed newest-last with their **actual** verdicts. Do not read an
+earlier PASS as the current state — the sequence is not monotonic, and the
+newest report is the one that counts.
+
+| Report | Location | Verdict |
+|--------|----------|---------|
+| 2026-09-29 (1.14.0) | `acceptance-1.14.0-2026-09-29.md` (live, this directory) | **PENDING DIRECTOR SIGN-OFF** — 0 open V1 blockers; B-01/B-02/B-03 closed |
+| 2026-08-16 (1.9.1) | `docs/archive/acceptance-run-20260816.md` | **⚠️ NOT SIGNED OFF** — B-01..B-05, of which B-01/B-02/B-03 are closed by the 2026-09-29 report |
+| 2026-08-12 | `docs/archive/acceptance-2026-08-12.md` | PASS (sign-off candidate) — closed all 7 first-run FAIL blockers (B-01..B-07) and R-01 |
+| 2026-08-08 | `docs/archive/acceptance-2026-08-08.md` | first run; FAIL, closed by the 2026-08-12 wave |
+
+The 2026-08-08/12/16 reports are **archived** under `docs/archive/`
+(2026-08-23 doc-architecture wave) as historical run evidence per
+acceptance-framework §7.5. The KB-curation gap-closure wave (2026-08-08)
+closed B-03..B-08 plus the query_collected CWD trap and the FRED_API_KEY
+doc gap.
+
+**Why this section used to mislead:** it previously narrated closure only
+through 2026-08-12 ("overall verdict PASS (sign-off candidate)") and omitted
+the newer 2026-08-16 run entirely, so a reader reasonably concluded acceptance
+had passed. A reader must always be able to find the newest verdict from this
+file. Active closure evidence: `evidence-backup-issues-3-4.md`.

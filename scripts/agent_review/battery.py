@@ -44,6 +44,7 @@ from typing import Any, Sequence
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 _BLINDSPOTS_PATH = Path(__file__).resolve().parent / "blindspots.yaml"
+_SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src"
 
 # Blind-spot families that map to the file-name product families 1:1.
 _FILE_FAMILY_MAP = {
@@ -87,11 +88,7 @@ def run_l0_gate(directory: Path) -> list[str]:
         text=True,
         check=False,
     )
-    lines = [
-        ln.strip()
-        for ln in (proc.stdout or "").splitlines()
-        if ln.strip().startswith("- ")
-    ]
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip().startswith("- ")]
     return lines
 
 
@@ -214,9 +211,7 @@ def _judge_prompt(item: dict[str, Any]) -> str:
     :func:`_parse_markdown_verdicts` parses.
     """
     file_list = "\n".join(f"- {f}" for f in item["files"])
-    snippets = "\n\n".join(
-        f"--- File: {f} ---\n{_read_file_snippet(f)}" for f in item["files"]
-    )
+    snippets = "\n\n".join(f"--- File: {f} ---\n{_read_file_snippet(f)}" for f in item["files"])
     return (
         "You are a quality reviewer for a knowledge-digest product family.\n"
         f"Family: {item['family']}\n"
@@ -247,37 +242,124 @@ def _judge_prompt(item: dict[str, Any]) -> str:
     )
 
 
+_MARKDOWN_VERDICT_HEADING_RE = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?[ \t]*verdict[ \t]*(?:\*\*)?[ \t]*[:\uff1a]?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_VERDICT_FIELD_KEYS = ("blind_spot", "verdict", "evidence", "note")
+
+_VERDICT_VALUES = ("PASS", "FLAG", "ESCALATE")
+
+_VERDICT_TRIM_CHARS = "`*_\"'\u201c\u201d\u2018\u2019"
+
+
+def _clean_field_value(raw: str) -> str:
+    return raw.strip().strip(_VERDICT_TRIM_CHARS).strip()
+
+
+def _normalize_verdict(value: str) -> str | None:
+    token = _clean_field_value(value).upper()
+    match = re.search(r"\b(" + "|".join(_VERDICT_VALUES) + r")\b", token)
+    return match.group(1) if match else None
+
+
+def _parse_field(block: str, key: str) -> str:
+    """Read one ``key: value`` field, value strictly on the same line.
+
+    The value group is ``[^\\n]*`` (never crosses a newline) so an EMPTY
+    field cannot adopt the following line — that would manufacture evidence
+    out of an adjacent field and silently weaken the fail-loud invariant.
+    """
+    match = re.search(
+        rf"^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?\**{re.escape(key)}\**"
+        r"[ \t]*[:\uff1a][ \t]*([^\n]*)$",
+        block,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if not match:
+        return ""
+    return _clean_field_value(match.group(1))
+
+
 def _parse_markdown_verdicts(text: str) -> list[dict[str, str]]:
     """Deterministically parse markdown verdict blocks (non-json_mode path).
 
-    Expects one or more blocks of the form:
-
-        ## Verdict
-        - **blind_spot**: <id>
-        - **verdict**: PASS | FLAG | ESCALATE
-        - **evidence**: ...
-        - **note**: ...
-
-    Returns [{blind_spot, verdict, evidence, note}].  A block missing a
-    required field is dropped (its item then falls back to ESCALATE at
-    assembly — fail loud, never silent PASS).
+    Tolerates the format drift a real model emits: an ``#``/``###`` or bold
+    ``**Verdict**`` heading, an optional ``**`` around field keys, and a
+    full-width ``：`` colon.  A block is accepted only when ``blind_spot``,
+    ``verdict`` (one of PASS/FLAG/ESCALATE) and a non-empty same-line
+    ``evidence`` are all present — otherwise it is dropped so its item falls
+    back to ESCALATE (fail loud, never silent PASS).
     """
     out: list[dict[str, str]] = []
-    for block in re.split(r"(?=^## Verdict)", text, flags=re.MULTILINE):
-        if "## Verdict" not in block:
-            continue
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    for block in _MARKDOWN_VERDICT_HEADING_RE.split(normalized)[1:]:
         entry: dict[str, str] = {}
-        for key in ("blind_spot", "verdict", "evidence", "note"):
-            m = re.search(
-                rf"^\s*(?:- )?\*\*{re.escape(key)}\*\*:\s*(.+)$",
-                block,
-                re.MULTILINE,
-            )
-            if m:
-                entry[key] = m.group(1).strip()
-        if {"blind_spot", "verdict", "evidence"} <= entry.keys():
-            out.append(entry)
+        for key in _VERDICT_FIELD_KEYS:
+            value = _parse_field(block, key)
+            if value:
+                entry[key] = value
+        verdict = _normalize_verdict(entry.get("verdict", ""))
+        if verdict is None or not {"blind_spot", "evidence"} <= entry.keys():
+            continue
+        entry["verdict"] = verdict
+        out.append(entry)
     return out
+
+
+_JSON_SYSTEM_PROMPT = (
+    "You are a rigorous product-quality reviewer. Respond with "
+    "a single JSON object: "
+    '{"verdict": "PASS"|"FLAG"|"ESCALATE", '
+    '"evidence": "<file:line or URL>", "note": "<1-3 sentences>"}'
+)
+
+_MARKDOWN_REPAIR_INSTRUCTION = (
+    "Your previous response could not be parsed. Re-emit ONLY the verdict "
+    "using exactly this schema, with no prose, no code fences and no "
+    "explanation:\n"
+    "## Verdict\n"
+    "- **blind_spot**: <id>\n"
+    "- **verdict**: PASS | FLAG | ESCALATE\n"
+    "- **evidence**: <file:line or source URL>\n"
+    "- **note**: <1-3 sentences>\n"
+)
+
+_JSON_REPAIR_INSTRUCTION = (
+    "Your previous response was not valid JSON. Re-emit ONLY the JSON object "
+    '{"verdict": "PASS"|"FLAG"|"ESCALATE", "evidence": "<file:line or URL>", '
+    '"note": "<1-3 sentences>"} with no prose and no code fences.'
+)
+
+
+def _unparseable_note(resp: Any) -> str:
+    if _finish_reason(resp) == "length":
+        return "LLM output truncated (finish_reason=length) — no parseable verdict block"
+    return "no parseable verdict block in LLM output"
+
+
+def _call_markdown_verdict(call: Any, prompt: str, previous: str = "") -> Any:
+    messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+    if previous:
+        messages += [
+            {"role": "assistant", "content": previous},
+            {"role": "user", "content": _MARKDOWN_REPAIR_INSTRUCTION},
+        ]
+    return call(messages=messages, task="")
+
+
+def _call_json_verdict(call: Any, prompt: str, previous: str = "") -> Any:
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": _JSON_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+    if previous:
+        messages += [
+            {"role": "assistant", "content": previous},
+            {"role": "user", "content": _JSON_REPAIR_INSTRUCTION},
+        ]
+    return call(messages=messages, task="", json_mode=True)
 
 
 def _judge_with_llm(prompt: str, want_json: bool) -> dict[str, Any]:
@@ -285,45 +367,44 @@ def _judge_with_llm(prompt: str, want_json: bool) -> dict[str, Any]:
 
     Routes through ``autoinfo.llm.call_with_fallback`` with NO task routing
     (the base config model).  Structured output: when the resolved config
-    declares json_mode we request JSON; otherwise the model returns a
-    markdown verdict block parsed by :func:`_parse_markdown_verdicts`.
+    declares json_mode we request JSON (``json_mode=True``, parsed via the
+    repo's tolerant :func:`autoinfo.llm.parse_json_response`); otherwise the
+    model returns a markdown verdict block parsed by
+    :func:`_parse_markdown_verdicts`.
 
-    FAIL LOUD: any exception or unparseable output surfaces as an
-    ESCALATE-carrying result — never a PASS.
+    A single formatting-only repair retry runs when nothing parses; it never
+    re-judges, it only asks for the same verdict in the exact schema.  A
+    ``finish_reason == "length"`` reply is reported as truncation, not a
+    model refusal.
+
+    FAIL LOUD: any exception, truncation, or unparseable/empty output
+    surfaces as an ESCALATE-carrying result — never a PASS.
     """
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
+        if str(_SRC_DIR) not in sys.path:
+            sys.path.insert(0, str(_SRC_DIR))
         from autoinfo.llm import call_with_fallback
 
         if want_json:
-            system = (
-                "You are a rigorous product-quality reviewer. Respond with "
-                "a single JSON object: "
-                '{"verdict": "PASS"|"FLAG"|"ESCALATE", '
-                '"evidence": "<file:line or URL>", "note": "<1-3 sentences>"}'
-            )
-            resp = call_with_fallback(
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                task="",  # base config model — no judgment pin (battery is not a hard gate)
-            )
+            resp = _call_json_verdict(call_with_fallback, prompt)
             verdict = _extract_json_verdict(resp)
-            if verdict is None:
-                return _escalate("unparseable LLM output", _extract_text(resp)[:200])
-            return verdict
-        # Markdown path.
-        resp = call_with_fallback(
-            messages=[
-                {"role": "user", "content": prompt},
-            ],
-            task="",
-        )
+            if verdict is not None:
+                return verdict
+            resp = _call_json_verdict(call_with_fallback, prompt, _extract_text(resp))
+            verdict = _extract_json_verdict(resp)
+            if verdict is not None:
+                return verdict
+            return _escalate(_unparseable_note(resp), _extract_text(resp)[:200])
+
+        resp = _call_markdown_verdict(call_with_fallback, prompt)
         raw = _extract_text(resp)
         blocks = _parse_markdown_verdicts(raw)
         if not blocks:
-            return _escalate("no parseable verdict block in LLM output", raw[:200])
+            resp = _call_markdown_verdict(call_with_fallback, prompt, raw)
+            raw = _extract_text(resp)
+            blocks = _parse_markdown_verdicts(raw)
+        if not blocks:
+            return _escalate(_unparseable_note(resp), raw[:200])
         b = blocks[0]
         return {
             "verdict": str(b.get("verdict", "ESCALATE")).upper(),
@@ -334,38 +415,80 @@ def _judge_with_llm(prompt: str, want_json: bool) -> dict[str, Any]:
         return _escalate(f"LLM channel unreachable: {exc}", "")
 
 
-def _extract_json_verdict(content: Any) -> dict[str, Any] | None:
-    """Pull {verdict, evidence, note} from a JSON-mode LLM response."""
-    text = _extract_text(content)
-    # Strip possible ```json fences.
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
+def _extract_json_verdict(resp: Any) -> dict[str, Any] | None:
+    """Pull {verdict, evidence, note} from a JSON-mode LLM response.
+
+    Uses the repo's tolerant :func:`autoinfo.llm.parse_json_response` (direct
+    JSON, a fenced block, or the first brace-delimited object).  A response
+    carrying no recognized verdict token is unparseable and yields ``None``,
+    so the caller ESCALATEs.
+    """
+    text = _extract_text(resp)
+    if not text.strip():
         return None
-    if not isinstance(data, dict) or "verdict" not in data:
+    if str(_SRC_DIR) not in sys.path:
+        sys.path.insert(0, str(_SRC_DIR))
+    from autoinfo.llm import parse_json_response
+
+    try:
+        data = parse_json_response(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    verdict = _normalize_verdict(str(data.get("verdict", "")))
+    if verdict is None:
         return None
     return {
-        "verdict": str(data.get("verdict", "ESCALATE")).upper(),
-        "evidence": str(data.get("evidence", "")),
-        "note": str(data.get("note", "")),
+        "verdict": verdict,
+        "evidence": str(data.get("evidence") or ""),
+        "note": str(data.get("note") or ""),
     }
+
+
+def _content_part_text(part: Any) -> str:
+    if isinstance(part, str):
+        return part
+    if isinstance(part, dict):
+        text = part.get("text")
+        return text if isinstance(text, str) else ""
+    text = getattr(part, "text", None)
+    return text if isinstance(text, str) else ""
 
 
 def _extract_text(resp: Any) -> str:
     """Extract the message text from an LLM response.
 
     call_with_fallback returns a litellm ModelResponse whose text lives at
-    .choices[0].message.content; str() of it yields the repr with literal
+    .choices[0].message.content; str() of it yields a repr with literal
     backslash-n escapes that defeat line-based markdown parsing and
-    json.loads.  Robust to providers that already return a plain string.
+    json.loads.  Handles a plain string, a list of content parts, and a
+    ``None`` content.  For any choices-carrying response a repr is NEVER
+    returned — an unreadable body becomes ``""`` and therefore routes to
+    ESCALATE instead of masquerading as text.
     """
-    if hasattr(resp, "choices") and resp.choices:
-        msg = resp.choices[0].message
-        text = getattr(msg, "content", None)
-        if isinstance(text, str):
-            return text
+    if isinstance(resp, str):
+        return resp
+    if hasattr(resp, "choices"):
+        choices = resp.choices
+        if not choices:
+            return ""
+        content = getattr(getattr(choices[0], "message", None), "content", None)
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(_content_part_text(part) for part in content)
+        return ""
     return str(resp)
+
+
+def _finish_reason(resp: Any) -> str | None:
+    """Return ``choices[0].finish_reason`` ('length' means truncated)."""
+    if hasattr(resp, "choices") and resp.choices:
+        reason = getattr(resp.choices[0], "finish_reason", None)
+        if isinstance(reason, str):
+            return reason
+    return None
 
 
 def _escalate(reason: str, detail: str) -> dict[str, Any]:
@@ -436,11 +559,10 @@ def run_battery(directory: Path, *, semantic: bool = False) -> dict[str, Any]:
         "honesty": {
             "reviewed": reviewed if verdicts else [],
             "not_reviewed": (
-                [f"{i['blind_spot']} ({i['family']})" for i in worklist]
-                if not semantic
-                else []
+                [f"{i['blind_spot']} ({i['family']})" for i in worklist] if not semantic else []
             ),
-            "channel": "deterministic preview (no --semantic)" if not semantic
+            "channel": "deterministic preview (no --semantic)"
+            if not semantic
             else ("config.llm json_mode" if want_json else "config.llm markdown"),
         },
         "summary": {
@@ -457,9 +579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "directory", type=Path, help="delivery directory (domain-organized products)"
     )
-    parser.add_argument(
-        "--json", action="store_true", help="emit the machine-readable report"
-    )
+    parser.add_argument("--json", action="store_true", help="emit the machine-readable report")
     parser.add_argument(
         "--semantic",
         action="store_true",

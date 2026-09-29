@@ -1,7 +1,7 @@
 # End-User Coverage Matrix (E8, issue #131 — full-capability revision)
 #
 # AUTHORITATIVE 5-dimension matrix spec (v3): report demand surface -> code truth.
-# Dimensions: A sources (29 types / 89 required sources), B products (8) x formats (8),
+# Dimensions: A sources (29 types / 78 required sources), B products (8) x formats (8),
 # C channels (14), D domains (13), E capabilities (15). Derived from
 # docs/dev/research/综合报告-资讯付费与AI触达研究.md; calibrated against VALID_SOURCE_TYPES,
 # PRODUCT_TEMPLATES, _CHANNEL_REGISTRY and the MCP tool registry.
@@ -991,10 +991,16 @@ llm_gated_products:
   - tutorial
   - presentation
 
-# Required source coverage: all 13 configured demo domains, every configured
-# source in that domain's `src/autoinfo/data/domains/<domain>/sources.yaml`
-# (89 sources across 13 domains). Closing a gap = run `collect` for that domain,
-# then re-render the matrix — no config change required.
+# Required source coverage: the enabled, reachability-verified sources AutoInfo
+# tracks for per-domain evidence coverage across the 13 matrix demo domains.
+# The count is DERIVED from the length of the `required_sources` list below
+# (currently 78) — it is NOT a hand-maintained total, and it is a curated
+# subset rather than an exhaustive dump of each domain's sources.yaml: sources
+# disabled for GFW/dead-feed reachability stay in the domain config with
+# `enabled: false` and are intentionally excluded here (see each domain's
+# `sources.yaml` and docs/known-limitations/blocked-sources.md).
+# Closing a gap = run `collect` for that domain, then re-render the matrix —
+# no config change required.
 required_sources:
   - {domain: ai-commercial, source: techcrunch}
   - {domain: ai-commercial, source: producthunt}

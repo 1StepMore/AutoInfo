@@ -10,11 +10,27 @@ rows — and must only recover non-archived active content.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import generate_digest
 
 _ACTIVE_TITLES = [f"Active content {i}" for i in range(10)]
+
+
+def _collected_at_days_ago(days: int) -> str:
+    """`collected_at` relative to now, so a fixture cannot age into staleness.
+
+    The digest's stale filter (F51) scores each entry as ``1 - age/ttl`` against
+    ``resolve_domain_freshness(domain)``.  For ``online-education`` that is
+    ``ttl=90`` with a ``0.5`` cutoff, so an entry counts as *active* only while
+    it is at most 45 days old.  A hardcoded date therefore turns this file's
+    "active" fixtures stale as the calendar advances: ``2026-08-15`` crossed the
+    45-day line on 2026-09-29 and failed all four ``TestWindowFallback`` tests
+    on ``main``.  Expressing the age instead of the date keeps the intent
+    ("recent" vs "long expired") and makes the fixtures calendar-proof.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
 def _active_entry(i: int) -> dict[str, object]:
@@ -26,7 +42,7 @@ def _active_entry(i: int) -> dict[str, object]:
         "source_url": f"https://example.com/active/{i}",
         "source_type": "rss",
         "source_platform": "coursera",
-        "collected_at": "2026-08-15T00:00:00+00:00",
+        "collected_at": _collected_at_days_ago(1),
         "summary": f"Relevant summary {i}.",
         "quality_tier": 2,
         "relevance_score": 80.0,
@@ -178,7 +194,8 @@ class TestWindowFallback:
         stale_entry = dict(_active_entry(0))
         stale_entry.update(
             {
-                "collected_at": "2026-01-10T00:00:00+00:00",  # 230+ days old → stale
+                # 230 days vs online-education's ttl=90 → score 0.0 → stale
+                "collected_at": _collected_at_days_ago(230),
             }
         )
         store.list_entries.side_effect = [

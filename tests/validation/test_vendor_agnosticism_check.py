@@ -43,9 +43,28 @@ def test_blindspots_are_vendor_free(vendor_check: Any) -> None:
     assert check.ok, check.detail
 
 
-def test_battery_uses_config_channel(vendor_check: Any) -> None:
-    check = vendor_check._battery_channel_check()
+def test_judges_use_config_channel(vendor_check: Any) -> None:
+    check = vendor_check._judge_channel_check()
     assert check.ok, check.detail
+
+
+def test_ac5_review_path_is_scanned(vendor_check: Any) -> None:
+    """The AC5 draft judge must stay inside the vendor-literal contract.
+
+    Without this, dropping `AC5_REVIEW` from `JUDGE_PATHS` would silently
+    exempt a whole judge module from #195 and no test would fail.
+    """
+    assert vendor_check.AC5_REVIEW in vendor_check.JUDGE_PATHS
+    assert vendor_check.AC5_REVIEW.is_file(), f"{vendor_check.AC5_REVIEW} is missing"
+
+
+def test_channel_check_covers_every_judge_path(vendor_check: Any) -> None:
+    """`_judge_channel_check` must cover every scanned judge module, not a subset."""
+    detail = vendor_check._judge_channel_check().detail
+    for path in vendor_check.JUDGE_PATHS:
+        if path == vendor_check.ROOT / "src" / "autoinfo" / "quality.py":
+            continue  # not an LLM judge; channel check does not apply
+        assert path.name in detail, f"{path.name} is not asserted by the channel check"
 
 
 def test_docstrings_are_not_scanned(vendor_check: Any, tmp_path: Path) -> None:

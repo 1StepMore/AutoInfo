@@ -16,6 +16,31 @@ sources:
   access: free
   rate_limit: 60
   enabled: true
+- name: g1-globo
+  type: rss
+  url: https://g1.globo.com/rss/g1/
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: folha-de-sao-paulo
+  type: rss
+  url: https://feeds.folha.uol.com.br/emcimadahora/rss091.xml
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: publico-pt
+  type: rss
+  url: https://feeds.feedburner.com/PublicoRSS
+  quality_tier: 2
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+
 topics:
 - name: News & Politics
   keywords:

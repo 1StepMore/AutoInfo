@@ -15,6 +15,31 @@ sources:
   access: free
   rate_limit: 60
   enabled: true
+- name: bbc-hindi
+  type: rss
+  url: https://feeds.bbci.co.uk/hindi/rss.xml
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: ndtv-khabar
+  type: rss
+  url: https://feeds.feedburner.com/ndtvkhabar-latest
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: amar-ujala
+  type: rss
+  url: https://www.amarujala.com/rss/breaking-news.xml
+  quality_tier: 2
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+
 topics:
 - name: News & Politics
   keywords:

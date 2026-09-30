@@ -112,7 +112,7 @@ sources:
   type: rss
   url: https://wechat2rss.xlab.app/feed/{id}.xml
   quality_tier: 2
-  enabled: true
+  enabled: false
   tos_classification: open
   requires_key: false
   rate_limit: 10
@@ -121,6 +121,18 @@ sources:
     instance: wechat2rss.xlab.app — public third-party RSS service for WeChat official
       accounts (公众号)
     feed_id: <replace-me>
+# 替代源（2026-09-30 补）：wechat2rss 的 URL 是模板 /feed/{id}.xml，settings.feed_id
+# 一直是占位符 `<replace-me>`，从未填过真实公众号 id，实测该模板返回 404。
+- name: jiemian
+  type: rss
+  url: https://a.jiemian.com/index.php?m=article&a=rss
+  quality_tier: 2
+  enabled: true
+  tos_classification: open
+  requires_key: false
+  rate_limit: 10
+  fetch_depth: abstract
+
 - name: medium-user
   type: rss
   url: https://medium.com/feed/@user

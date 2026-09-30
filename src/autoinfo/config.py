@@ -307,7 +307,7 @@ class DomainConfig:
     webhook_urls: list[str] = field(default_factory=list)
     quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
     delivery_gates: dict[str, DeliveryGateConfig] = field(default_factory=dict)
-    ttl_days: int = 90
+    ttl_days: int | None = None  # None = unset; __post_init__ resolves the default (#425)
     freshness_threshold: float = 0.5
     # Default output language (issue #317): when a product is generated for
     # this domain without an explicit ``language`` param, entries are filtered
@@ -336,11 +336,14 @@ class DomainConfig:
     exclude_keywords: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """Apply domain-specific TTL defaults for built-in demo domains."""
-        if self.name in DOMAIN_DEFAULT_TTL_DAYS and self.ttl_days == DEFAULT_TTL_DAYS:
-            # Only override when ttl_days is the global default (90),
-            # preserving any explicitly configured value.
-            self.ttl_days = DOMAIN_DEFAULT_TTL_DAYS[self.name]
+        """Resolve an unset TTL to the domain default, else the global default (#425).
+
+        The sentinel is None, not the value 90: a value-based sentinel cannot
+        distinguish "unset" from "explicitly configured as 90", and silently
+        overwrote the latter with the domain default.
+        """
+        if self.ttl_days is None:
+            self.ttl_days = DOMAIN_DEFAULT_TTL_DAYS.get(self.name, DEFAULT_TTL_DAYS)
 
 
 @dataclass
@@ -835,7 +838,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                 gloss_language=str(d.get("gloss_language", "")),
                 min_product_relevance=int(d.get("min_product_relevance", 0)),
                 exclude_keywords=list(d.get("exclude_keywords", [])),
-                ttl_days=int(d.get("ttl_days", DEFAULT_TTL_DAYS)),
+                ttl_days=(int(d["ttl_days"]) if d.get("ttl_days") is not None else None),
                 freshness_threshold=float(
                     d.get("freshness_threshold", DEFAULT_FRESHNESS_THRESHOLD)
                 ),
@@ -1041,15 +1044,20 @@ def resolve_domain_freshness(domain: str) -> tuple[int, float]:
             cfg = load_config(config_path)
             for dc in cfg.domains:
                 if dc.name == domain:
+                    ttl_days = (
+                        dc.ttl_days
+                        if dc.ttl_days is not None
+                        else DOMAIN_DEFAULT_TTL_DAYS.get(domain, DEFAULT_TTL_DAYS)
+                    )
                     logger.debug(
                         "resolve_domain_freshness(%r): ttl_days=%d "
                         "freshness_threshold=%s from config %s",
                         domain,
-                        dc.ttl_days,
+                        ttl_days,
                         dc.freshness_threshold,
                         config_path,
                     )
-                    return dc.ttl_days, dc.freshness_threshold
+                    return ttl_days, dc.freshness_threshold
     except Exception:
         pass
     ttl_days = DOMAIN_DEFAULT_TTL_DAYS.get(domain, DEFAULT_TTL_DAYS)

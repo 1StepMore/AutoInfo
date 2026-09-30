@@ -9,6 +9,7 @@ invariant.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,18 @@ from autoinfo.config import (
     DEFAULT_TTL_DAYS,
     DomainConfig,
     resolve_domain_freshness,
+)
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Issue #425: the previous guard grepped for the literal ``"ttl_days = 90"``,
+# which never matched the real form ``ttl_days: int = 90`` — a vacuous test.
+# These case-sensitive patterns match the forms the consumers actually carried,
+# while leaving the canonical UPPERCASE constants untouched.
+_TTL_LITERAL_PATTERNS = (
+    re.compile(r"ttl_days[^=\n]{0,40}=\s*90\b"),  # ttl_days: int = 90 / ttl_days=90
+    re.compile(r'"default"\s*:\s*90\b'),  # "default": 90
+    re.compile(r"ttl_days[\"']\s*,\s*90\b"),  # arguments.get("ttl_days", 90)
 )
 
 
@@ -83,10 +96,14 @@ class TestResolveDomainFreshness:
 
 class TestNoDuplicateFallback:
     def test_consumers_have_no_hardcoded_ttl_literal(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
-        for rel in (
-            "src/autoinfo/output/__init__.py",
-            "src/autoinfo/kb.py",
-        ):
-            text = (repo_root / rel).read_text(encoding="utf-8")
-            assert "ttl_days = 90" not in text, f"duplicate TTL fallback in {rel}"
+        violations: list[str] = []
+        for py in sorted((_REPO_ROOT / "src" / "autoinfo").rglob("*.py")):
+            if py.name == "config.py":
+                continue
+            for lineno, line in enumerate(py.read_text(encoding="utf-8").splitlines(), start=1):
+                if any(p.search(line) for p in _TTL_LITERAL_PATTERNS):
+                    violations.append(f"{py.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
+        assert violations == [], (
+            "Hardcoded TTL literal(s) outside config.py — import DEFAULT_TTL_DAYS "
+            "instead:\n" + "\n".join(violations)
+        )

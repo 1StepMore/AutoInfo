@@ -140,3 +140,45 @@ steps:
       success: true
       exit_code: 0
       stdout_has: ["DOMAIN_TTL_EXPLICIT_OK"]
+
+  - name: "an explicit ttl_days of 90 wins over the domain default (#425)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      import yaml
+      from autoinfo.config import resolve_domain_freshness
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-425-d-"))
+      old_cwd = os.getcwd()
+      old_home = os.environ.get("HOME")
+      try:
+          cfg_dir = tmp / ".autoinfo"
+          cfg_dir.mkdir(parents=True)
+          cfg = {
+              "project": {"name": "test"},
+              "llm": {"provider": "openai", "model": "deepseek-v4-flash"},
+              "domains": [{"name": "medical-research", "active": True,
+                           "sources": [], "topics": [], "ttl_days": 90}],
+          }
+          (cfg_dir / "config.yaml").write_text(
+              yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False),
+              encoding="utf-8")
+          os.chdir(tmp)
+          os.environ["HOME"] = str(tmp / "home")
+          assert resolve_domain_freshness("medical-research") == (90, 0.5), \
+              resolve_domain_freshness("medical-research")
+          print("DOMAIN_TTL_EXPLICIT_90_OK")
+      finally:
+          os.chdir(old_cwd)
+          if old_home is None:
+              os.environ.pop("HOME", None)
+          else:
+              os.environ["HOME"] = old_home
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOMAIN_TTL_EXPLICIT_90_OK"]

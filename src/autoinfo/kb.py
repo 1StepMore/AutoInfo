@@ -30,7 +30,7 @@ from typing import Any
 
 import yaml
 
-from autoinfo.config import Config
+from autoinfo.config import DEFAULT_TTL_DAYS, Config
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.promotion import RejectionReason, check_promotion_admission
 from autoinfo.quality import QualityResult
@@ -204,7 +204,7 @@ def _decode_html_entities(text: str) -> str:
     return cleaned
 
 
-def calculate_freshness_score(entry: dict[str, Any], ttl_days: int = 90) -> float:
+def calculate_freshness_score(entry: dict[str, Any], ttl_days: int = DEFAULT_TTL_DAYS) -> float:
     """Calculate freshness score (0.0 to 1.0) based on age and TTL."""
     created_at = entry.get("collected_at") or entry.get("created_at") or ""
     if not created_at:
@@ -4927,7 +4927,7 @@ class KBStore:
             "user_id": user_id,
         }
 
-    def get_domain_decay(self, domain: str, ttl_days: int = 90) -> dict[str, Any]:
+    def get_domain_decay(self, domain: str, ttl_days: int = DEFAULT_TTL_DAYS) -> dict[str, Any]:
         """Compute decay / staleness metrics for a domain.
 
         Analyses all entries for *domain* and returns:

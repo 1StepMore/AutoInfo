@@ -60,6 +60,7 @@ from typing import Any, Sequence
 # scripts/agent_review/ is not a package, so the directory is on sys.path when
 # this module is imported (tests/scripts and the CLI entry add it).
 from battery import (
+    _VERDICT_SCHEMA_BLOCK,
     _channel_json_capable,
     _family_of_file,
     _judge_with_llm,
@@ -208,14 +209,7 @@ def _ac5_prompt(item: dict[str, str]) -> str:
         "- Every verdict MUST cite evidence (file:line or source URL). A "
         "verdict without evidence is invalid.\n"
         "- If you cannot reach a judgment for any reason, output ESCALATE — "
-        "never PASS on an unverified claim.\n\n"
-        "OUTPUT SCHEMA — respond with EXACTLY ONE block starting with the "
-        "header '## Verdict', followed by these four lines:\n"
-        "- **blind_spot**: <id>\n"
-        "- **verdict**: PASS | FLAG | ESCALATE\n"
-        "- **evidence**: <file:line or source URL>\n"
-        "- **note**: <1-3 sentences>\n"
-        "Output NOTHING outside that block.\n"
+        "never PASS on an unverified claim.\n\n" + _VERDICT_SCHEMA_BLOCK
     )
 
 

@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.14.1](https://github.com/1StepMore/AutoInfo/compare/v1.14.0...v1.14.1) (2026-09-29)
+
+
+### Documentation
+
+* **acceptance:** publish the 1.14.0 report and stop the closure doc lying ([#422](https://github.com/1StepMore/AutoInfo/issues/422)) ([c39bbad](https://github.com/1StepMore/AutoInfo/commit/c39bbad28dc91aea650f069e218513cab10c021f))
+
+
+### Tests
+
+* **acceptance:** close B-01 and B-03 with real scenario coverage ([#420](https://github.com/1StepMore/AutoInfo/issues/420)) ([fe1f4e4](https://github.com/1StepMore/AutoInfo/commit/fe1f4e41153e51dfccc0b3c27ef3d30d868a65d6))
+
 ## [1.14.0](https://github.com/1StepMore/AutoInfo/compare/v1.13.8...v1.14.0) (2026-09-29)
 
 

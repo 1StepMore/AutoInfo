@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.15.0](https://github.com/1StepMore/AutoInfo/compare/v1.14.2...v1.15.0) (2026-09-30)
+
+
+### Features
+
+* **validation:** add a machine acceptance reviewer that cannot self-certify ([#434](https://github.com/1StepMore/AutoInfo/issues/434)) ([c333ceb](https://github.com/1StepMore/AutoInfo/commit/c333ceb4d94e6df8cda8d3d870273fc13bbf6cae))
+
 ## [1.14.2](https://github.com/1StepMore/AutoInfo/compare/v1.14.1...v1.14.2) (2026-09-30)
 
 

@@ -13,7 +13,7 @@ Read this before reading the verdict.
 
 | | |
 |---|---|
-| Version under test | 1.14.0 (`src/autoinfo/_version.py`, manifest agrees) |
+| Version under test | 1.14.0 at run time. `main` has since advanced to **1.14.1** (`7385c5ad`); the v1.14.0→1.14.1 delta is `_version.py`, the release manifest, `CHANGELOG.md`, two scenario YAMLs and one test fixture — **no `src/autoinfo/**.py` runtime change**, so the evidence below still applies to 1.14.1. |
 | Deterministic evidence | `scripts/doc_inventory.py --check` (exit 0), `scripts/coverage_audit.py` |
 | Scenario library | 174 scenarios — 86 functional, 88 regression |
 | Test suite | 5766 collected |

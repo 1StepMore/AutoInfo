@@ -51,3 +51,4 @@ if the decision changes, write a new ADR and mark the old one `Superseded by NNN
 | [0005](0005-unified-success-error-envelope.md) | Unified `{success, data}` / `{success, error{code,message,actionable}}` envelope (v1.9) | Accepted |
 | [0006](0006-dev-process-workflow-charter.md) | Adopt the 7-stage agent-driven development workflow (2026-08-13) | Accepted |
 | [0007](0007-release-please-version-truth.md) | release-please owns version truth (2026-08-15) | Accepted |
+| [0008](0008-dependency-version-policy.md) | Selective dependency upper bounds, no lock file (2026-10-01) | Accepted |

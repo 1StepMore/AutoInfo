@@ -43,6 +43,7 @@ jobs:
 
       - name: Run full test suite (sequential)
         run: |
+          set -o pipefail
           pytest -m "not real_api" -q --junitxml=nightly-junit.xml 2>&1 | tee nightly-pytest.log
         # --timeout (180s) from pyproject applies; no xdist here by design.
 

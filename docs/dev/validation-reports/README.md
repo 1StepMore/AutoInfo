@@ -55,7 +55,7 @@ newest report is the one that counts.
 
 | Report | Location | Verdict |
 |--------|----------|---------|
-| 2026-09-29 (1.14.0) | `acceptance-1.14.0-2026-09-29.md` (live, this directory) | **PENDING DIRECTOR SIGN-OFF** — 0 open V1 blockers; B-01/B-02/B-03 closed |
+| 2026-09-29 (1.14.0) | `acceptance-1.14.0-2026-09-29.md` (live, this directory) | **PENDING DIRECTOR SIGN-OFF** — 0 open V1 blockers; B-01/B-02/B-03 closed. Core LLM path cleared by a targeted run on 2026-09-30 (3/5 scenarios, 9/12 steps, 0 auth failures); the `output-*` families (28 domain-expansions) remain unexecuted |
 | 2026-08-16 (1.9.1) | `docs/archive/acceptance-run-20260816.md` | **⚠️ NOT SIGNED OFF** — B-01..B-05, of which B-01/B-02/B-03 are closed by the 2026-09-29 report |
 | 2026-08-12 | `docs/archive/acceptance-2026-08-12.md` | PASS (sign-off candidate) — closed all 7 first-run FAIL blockers (B-01..B-07) and R-01 |
 | 2026-08-08 | `docs/archive/acceptance-2026-08-08.md` | first run; FAIL, closed by the 2026-08-12 wave |

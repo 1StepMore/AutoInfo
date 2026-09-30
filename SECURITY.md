@@ -62,6 +62,22 @@ These areas carry the most risk and receive the most scrutiny:
 - **MCP server**: the stdio transport is a local protocol. Do not bridge it
   to a remote or untrusted process.
 
+## Dependency management & updates
+
+- **Update mechanism**: `.github/dependabot.yml` runs weekly, covering both pip
+  and GitHub Actions. Major-version updates for `mcp` and `pytest` are ignored
+  because both majors broke this repo before (#245, #211).
+- **Upper-bound policy**: high-risk direct dependencies carry explicit upper
+  bounds in `pyproject.toml` (`httpx`, `fastapi`, `uvicorn`, `litellm`,
+  `trafilatura`, `lxml`, `beautifulsoup4`, `sqlite-vec`, `stripe`). Both
+  real-world breakages were direct-dependency major jumps caught after the fact;
+  the bounds move via a dependabot bound-bump PR that must pass CI.
+- **No lock file**: there is deliberately no lock file. See
+  [ADR 0008](docs/adr/0008-dependency-version-policy.md) for the rationale
+  (multi-interpreter CI, seven install sites, first-lock freeze-in) and its
+  revisit triggers (a third post-hoc bound, a cross-dependency conflict, or an
+  incident traceable to a transitive float).
+
 ## Responsible use
 
 - **Never commit secrets.** Not LLM keys, not webhook secrets, not

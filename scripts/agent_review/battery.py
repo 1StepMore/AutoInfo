@@ -61,6 +61,18 @@ _FILE_FAMILY_MAP = {
 # Cross-cutting manifests not tied to one file family.
 _SPECIAL_FAMILIES = ("cross-domain", "all", "bilingual-domains")
 
+# Single source for the markdown verdict-block output contract (issue #426).
+_VERDICT_SCHEMA_BLOCK = (
+    "OUTPUT SCHEMA — respond with EXACTLY ONE block starting with the "
+    "header '## Verdict', followed by these four lines:\n"
+    "- **blind_spot**: <id>\n"
+    "- **verdict**: PASS | FLAG | ESCALATE\n"
+    "- **evidence**: <file:line or source URL>\n"
+    "- **note**: <1-3 sentences>\n"
+    "Output NOTHING outside that block.  Do not add prose before or "
+    "after it.\n"
+)
+
 
 def _load_blindspots() -> list[dict[str, Any]]:
     import yaml  # PyYAML is a project dependency
@@ -231,15 +243,7 @@ def _judge_prompt(item: dict[str, Any]) -> str:
         "verdict without evidence is invalid.\n"
         "- If you cannot reach a judgment for any reason, output ESCALATE — "
         "never PASS on an unverified claim.\n\n"
-        "OUTPUT SCHEMA — respond with EXACTLY ONE block starting with the "
-        "header '## Verdict', followed by these four lines:\n"
-        "- **blind_spot**: <id>\n"
-        "- **verdict**: PASS | FLAG | ESCALATE\n"
-        "- **evidence**: <file:line or source URL>\n"
-        "- **note**: <1-3 sentences>\n"
-        "Output NOTHING outside that block.  Do not add prose before or "
-        "after it.\n"
-    )
+    ) + _VERDICT_SCHEMA_BLOCK
 
 
 _MARKDOWN_VERDICT_HEADING_RE = re.compile(

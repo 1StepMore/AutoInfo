@@ -17,7 +17,7 @@ import os
 
 import typer
 
-from autoinfo.keywords import KeywordsFile, KeywordState
+from autoinfo.keywords import KeywordsFile, KeywordState, keyword_suggestion_system_prompt
 from autoinfo.llm import call_with_fallback
 
 from ._output import emit_if_global, fail_if_global  # noqa: E402
@@ -207,13 +207,7 @@ def suggest(
         )
         raise typer.Exit(code=1)
 
-    system_prompt = (
-        "You are a keyword extraction assistant. Given a text, suggest "
-        f"up to {limit} relevant keywords or short phrases (2-5 words) "
-        "that capture the core topics. "
-        "Respond with valid JSON only: an array of strings. "
-        'Example: ["machine learning", "neural networks", "deep learning"]'
-    )
+    system_prompt = keyword_suggestion_system_prompt(limit)
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
 
     try:

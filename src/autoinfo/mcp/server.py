@@ -47,6 +47,7 @@ from autoinfo.config import (
     ConfigNotFoundError,
 )
 from autoinfo.kb import DirectorOnlyError, PromotionRejected, is_director
+from autoinfo.keywords import keyword_suggestion_system_prompt
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
@@ -2453,13 +2454,7 @@ def _handle_suggest_keywords(
             actionable=True,
         )
 
-    system_prompt = (
-        "You are a keyword extraction assistant. Given a text, suggest "
-        f"up to {limit} relevant keywords or short phrases (2-5 words) "
-        "that capture the core topics. "
-        "Respond with valid JSON only: an array of strings. "
-        'Example: ["machine learning", "neural networks", "deep learning"]'
-    )
+    system_prompt = keyword_suggestion_system_prompt(limit)
 
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
 

@@ -24,6 +24,27 @@
 
 **⚠️ 抗作弊说明（这条是踩出来的）**：**不能只看 `entries > 0`**。实测 19 个域在「从未跑过任何源」时仍报 `entries = 1`（幻影计数/残余数据），只看条数的门槛会被**空跑**满足。所以 ① 必须带 `total_runs > 0` 这个前置。
 
+### 「完成」的裁决是人工保留行（对齐本仓 `scripts/acceptance_report.py`）
+
+`nightly_gap.py` 退出 0 **只代表「机器可判的差距归零」，不等于项目完成**。
+
+本仓已有同一原则的先例（`scripts/acceptance_report.py`，见 #434）：它把
+`HUMAN_RESERVED = {"AC3-human", "AC5-director", "overall"}` 这三行**在结构上**排除出机器裁决 ——
+`_machine_row` 直接断言拒绝保留 id，`render_report` 断言总裁决必须是保留 token
+（`PENDING DIRECTOR SIGN-OFF`）。靠的是 dataclass 冻结 + 断言，不是靠约定。
+
+**「不眠计划」照此办理**：
+
+| 判据 | 谁判 |
+|:---|:---|
+| 三个项目差距矩阵归零（`nightly_gap.py` exit 0） | **机器**（agent 跑） |
+| 连续 2 轮不新增「挡住 DoD」的项 | **机器**（agent 跑） |
+| **「本计划完成 / 产出没问题」这个总裁决** | **owner（人工保留）** |
+
+**硬规矩**：coding agent **不得**在任何报告、提交信息、PR 描述或文档里宣布
+「不眠计划完成」「产出没问题」「AutoInfo 产出 OK」之类的**总裁决**。
+它只能说「差距矩阵归零，证据在此」，**最终裁决由 owner 做出**。
+
 ---
 
 ## 【冻结区】验收命令

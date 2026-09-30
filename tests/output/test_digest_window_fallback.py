@@ -10,11 +10,27 @@ rows — and must only recover non-archived active content.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import generate_digest
 
 _ACTIVE_TITLES = [f"Active content {i}" for i in range(10)]
+
+
+def _collected_at_days_ago(days: int) -> str:
+    """`collected_at` relative to now, so a fixture cannot age into staleness.
+
+    The digest's stale filter (F51) scores each entry as ``1 - age/ttl`` against
+    ``resolve_domain_freshness(domain)``.  For ``online-education`` that is
+    ``ttl=90`` with a ``0.5`` cutoff, so an entry counts as *active* only while
+    it is at most 45 days old.  A hardcoded date therefore turns this file's
+    "active" fixtures stale as the calendar advances: ``2026-08-15`` crossed the
+    45-day line on 2026-09-29 and failed all four ``TestWindowFallback`` tests
+    on ``main``.  Expressing the age instead of the date keeps the intent
+    ("recent" vs "long expired") and makes the fixtures calendar-proof.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
 def _active_entry(i: int) -> dict[str, object]:
@@ -26,7 +42,7 @@ def _active_entry(i: int) -> dict[str, object]:
         "source_url": f"https://example.com/active/{i}",
         "source_type": "rss",
         "source_platform": "coursera",
-        "collected_at": "2026-08-15T00:00:00+00:00",
+        "collected_at": _collected_at_days_ago(1),
         "summary": f"Relevant summary {i}.",
         "quality_tier": 2,
         "relevance_score": 80.0,
@@ -40,11 +56,13 @@ def _active_entry(i: int) -> dict[str, object]:
 
 def _archived_entry(i: int) -> dict[str, object]:
     e = _active_entry(i)
-    e.update({
-        "entry_id": f"archived-{i}",
-        "title": f"Archived content {i}",
-        "custom_fields": '{"status": "archived"}',
-    })
+    e.update(
+        {
+            "entry_id": f"archived-{i}",
+            "title": f"Archived content {i}",
+            "custom_fields": '{"status": "archived"}',
+        }
+    )
     return e
 
 
@@ -59,9 +77,7 @@ def _mock_llm_synthesis() -> dict[str, object]:
 
 class TestWindowFallback:
     def _render(self, mock_kb: MagicMock) -> str:
-        result = generate_digest(
-            domain="online-education", period="weekly", format="markdown"
-        )
+        result = generate_digest(domain="online-education", period="weekly", format="markdown")
         assert isinstance(result, str)
         return result
 
@@ -106,8 +122,7 @@ class TestWindowFallback:
 
         # Fallback fired once, then stopped (no third query).
         assert store.list_entries.call_count == 2
-        assert "no curated items" in out.lower() or "empty" in out.lower() \
-            or "no" in out.lower()
+        assert "no curated items" in out.lower() or "empty" in out.lower() or "no" in out.lower()
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
@@ -145,18 +160,18 @@ class TestWindowFallback:
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
-    def test_mixed_drain_triggers_fallback(
-        self, mock_llm: MagicMock, mock_kb: MagicMock
-    ) -> None:
+    def test_mixed_drain_triggers_fallback(self, mock_llm: MagicMock, mock_kb: MagicMock) -> None:
         """Window = archived + test/empty entries → drains to zero → fallback."""
         mock_llm.return_value = _mock_llm_synthesis()
         store = MagicMock()
         test_entry = dict(_active_entry(99))
-        test_entry.update({
-            "entry_id": "test-99",
-            "title": "Test Entry for pytest",
-            "custom_fields": '{"status": "test"}',
-        })
+        test_entry.update(
+            {
+                "entry_id": "test-99",
+                "title": "Test Entry for pytest",
+                "custom_fields": '{"status": "test"}',
+            }
+        )
         window = [_archived_entry(i) for i in range(4)] + [test_entry]
         store.list_entries.side_effect = [window, [_active_entry(i) for i in range(10)]]
         mock_kb.return_value = store
@@ -177,9 +192,12 @@ class TestWindowFallback:
         mock_llm.return_value = _mock_llm_synthesis()
         store = MagicMock()
         stale_entry = dict(_active_entry(0))
-        stale_entry.update({
-            "collected_at": "2026-01-10T00:00:00+00:00",  # 230+ days old → stale
-        })
+        stale_entry.update(
+            {
+                # 230 days vs online-education's ttl=90 → score 0.0 → stale
+                "collected_at": _collected_at_days_ago(230),
+            }
+        )
         store.list_entries.side_effect = [
             [_archived_entry(i) for i in range(5)],
             [stale_entry for _ in range(10)],
@@ -192,6 +210,4 @@ class TestWindowFallback:
             self._render(mock_kb)
         except StaleSourceError:
             return  # expected — stale fallback content is blocked
-        raise AssertionError(
-            "expected StaleSourceError when fallback content is all stale"
-        )
+        raise AssertionError("expected StaleSourceError when fallback content is all stale")

@@ -52,3 +52,4 @@ if the decision changes, write a new ADR and mark the old one `Superseded by NNN
 | [0006](0006-dev-process-workflow-charter.md) | Adopt the 7-stage agent-driven development workflow (2026-08-13) | Accepted |
 | [0007](0007-release-please-version-truth.md) | release-please owns version truth (2026-08-15) | Accepted |
 | [0008](0008-dependency-version-policy.md) | Selective dependency upper bounds, no lock file (2026-10-01) | Accepted |
+| [0009](0009-dco-squash-merge-signoff.md) | DCO author/sign-off mismatch is a squash artifact: document it, never rewrite history (2026-10-01) | Accepted |

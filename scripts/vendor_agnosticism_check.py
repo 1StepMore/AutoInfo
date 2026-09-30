@@ -18,8 +18,8 @@ a code constant.  This script makes that contract executable:
 3. Every L1 blind-spot ``check_desc`` is free of vendor/model names (the
    blind-spot manifest describes *what* a product must satisfy, never *which
    model* judges it).
-4. The battery calls the repo's config-driven channel (``call_with_fallback``)
-   rather than constructing a model string itself.
+4. Every judge module calls the repo's config-driven channel
+   (``call_with_fallback``) rather than constructing a model string itself.
 5. ``resolve_judgment_model`` is config-first: the deployment override wins,
    the deployment's own model is the fallback, and an unconfigured deployment
    raises ``JudgmentModelNotConfiguredError`` (never a guessed constant).
@@ -44,6 +44,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "autoinfo"
 BATTERY = ROOT / "scripts" / "agent_review" / "battery.py"
+AC5_REVIEW = ROOT / "scripts" / "agent_review" / "ac5_director_review.py"
 BLINDSPOTS = ROOT / "scripts" / "agent_review" / "blindspots.yaml"
 DEFAULT_CONFIG = SRC / "data" / "default_config.yaml"
 
@@ -55,6 +56,7 @@ DEFAULT_CONFIG = SRC / "data" / "default_config.yaml"
 JUDGE_PATHS: tuple[Path, ...] = (
     SRC / "quality.py",
     BATTERY,
+    AC5_REVIEW,
 )
 
 #: Vendor / model-name tokens that must never appear as an executable literal
@@ -181,16 +183,20 @@ def _blindspots_check() -> Check:
     return check.pass_(f"{len(families)} families scanned")
 
 
-def _battery_channel_check() -> Check:
-    check = Check("battery uses the config-driven llm channel")
-    if not BATTERY.is_file():
-        return check.fail(f"{BATTERY.relative_to(ROOT)} missing")
-    text = BATTERY.read_text(encoding="utf-8")
-    if "call_with_fallback" not in text:
-        return check.fail("battery does not call llm.call_with_fallback")
-    if "import litellm" in text or "from litellm" in text:
-        return check.fail("battery imports the vendor SDK directly")
-    return check.pass_("call_with_fallback referenced; no direct SDK import")
+def _judge_channel_check() -> Check:
+    check = Check("judge modules use the config-driven llm channel")
+    for path in (BATTERY, AC5_REVIEW):
+        if not path.is_file():
+            return check.fail(f"{_rel(path)} missing")
+        text = path.read_text(encoding="utf-8")
+        if "call_with_fallback" not in text:
+            return check.fail(f"{_rel(path)} does not call llm.call_with_fallback")
+        if "import litellm" in text or "from litellm" in text:
+            return check.fail(f"{_rel(path)} imports the vendor SDK directly")
+    return check.pass_(
+        "call_with_fallback referenced; no direct SDK import — "
+        + ", ".join(_rel(p) for p in (BATTERY, AC5_REVIEW))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +281,7 @@ def run_checks() -> list[Check]:
         _judgment_constant_check(),
         _judge_path_vendor_check(),
         _blindspots_check(),
-        _battery_channel_check(),
+        _judge_channel_check(),
     ]
     checks.extend(_resolution_checks())
     return checks

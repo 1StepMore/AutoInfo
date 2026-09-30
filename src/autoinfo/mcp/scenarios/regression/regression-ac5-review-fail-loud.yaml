@@ -1,0 +1,205 @@
+# Regression #ac5-review-fail-loud — the AC5 (product quality) director-sampling
+# review DRAFT (scripts/agent_review/ac5_director_review.py) exists to NOT be a
+# rubber stamp.  Its whole value is the RISK CEILING + fail-loud floor:
+#
+#   * a valid model PASS is COERCED to RISK on the way out (coerce_to_draft);
+#   * an unreachable channel is ESCALATE;
+#   * garbage / unparseable output is ESCALATE;
+#   * a truncated reply (finish_reason=length) is ESCALATE, with a truncation note;
+#   * the json_mode path is taken when the channel is capable — and still RISK.
+#
+# If this scenario ever passes while the module can emit a draft PASS, the
+# feature is worthless.  This scenario drives the REAL ac5_director_review
+# module (no mocks of the coercion or the parser) through an LLM-shaped stub
+# channel at the `autoinfo.llm.call_with_fallback` seam it inherits from
+# battery._judge_with_llm — keyless and networkless (`requires_env: []`).
+# An unreachable channel is a HANDLED state, never a skip.
+name: regression-ac5-review-fail-loud
+description: "Regression #ac5-review-fail-loud: the AC5 director-review DRAFT never rubber-stamps — a valid model PASS is coerced to RISK, an unreachable/garbage/truncated channel ESCALATEs, and the json_mode path still yields RISK (fail-loud, RISK ceiling)"
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#ac5-review-fail-loud"
+requires_env: []
+timeout: 120
+steps:
+  - name: "coerce_to_draft is total (never PASS); a confident model PASS becomes draft RISK"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import autoinfo.llm as llm
+
+      # THE INVARIANT: coerce_to_draft is total and never PASS.
+      assert ac5.coerce_to_draft("PASS") == "RISK"
+      assert ac5.coerce_to_draft("FLAG") == "RISK"
+      assert ac5.coerce_to_draft("RISK") == "RISK"
+      assert ac5.coerce_to_draft("ESCALATE") == "ESCALATE"
+      assert ac5.coerce_to_draft("totally unrelated prose") == "ESCALATE"
+      assert ac5.coerce_to_draft("") == "ESCALATE"
+      for raw in ("PASS", "pass", "  PASS  ", "**PASS**", "PASSING", "garbage", "0", "None"):
+          assert ac5.coerce_to_draft(raw) != "PASS", "mapped to PASS: " + repr(raw)
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      # The clean fixture is the input for the semantic step.
+      clean_dir = root / "tests" / "fixtures" / "known-defects" / "ac5-review-clean"
+      items = ac5.build_ac5_worklist(clean_dir)
+      assert items, "clean fixture worklist empty"
+      item = items[0]
+
+      # A confidently correct model PASS must be coerced to RISK on the way out.
+      model_pass = (
+          "## Verdict\n"
+          "- **blind_spot**: ac5-quality\n"
+          "- **verdict**: PASS\n"
+          "- **evidence**: magazine-digest.md:18\n"
+          "- **note**: satisfies the four quality concerns\n"
+      )
+      llm.call_with_fallback = lambda *a, **k: Resp(model_pass)
+      ac5._channel_json_capable = lambda: False
+      res = ac5.review_product(item, semantic=True)
+      assert res["llm_verdict"] == "PASS", res
+      assert res["draft_verdict"] == "RISK", res
+      print("AC5_PASS_TO_RISK_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_PASS_TO_RISK_OK"]
+
+  - name: "fail-loud: unreachable / garbage / truncated all ESCALATE, never PASS"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import autoinfo.llm as llm
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      clean_dir = root / "tests" / "fixtures" / "known-defects" / "ac5-review-clean"
+      item = ac5.build_ac5_worklist(clean_dir)[0]
+
+      # Exercise the markdown path deterministically (no capability probe).
+      ac5._channel_json_capable = lambda: False
+
+      # 1) Unreachable channel -> ESCALATE, never RISK/PASS.
+      def _unreachable(*a, **k):
+          raise RuntimeError("provider down")
+      llm.call_with_fallback = _unreachable
+      res = ac5.review_product(item, semantic=True)
+      assert res["llm_verdict"] == "ESCALATE", res
+      assert res["draft_verdict"] == "ESCALATE", res
+
+      # 2) Garbage / unparseable output -> ESCALATE.
+      llm.call_with_fallback = lambda *a, **k: Resp("totally unrelated prose with no verdict block")
+      res = ac5.review_product(item, semantic=True)
+      assert res["llm_verdict"] == "ESCALATE", res
+      assert res["draft_verdict"] == "ESCALATE", res
+
+      # 3) Truncated output (finish_reason=length) -> ESCALATE with a truncation note.
+      truncated = Resp(
+          "## Verdict\n- **blind_spot**: x\n- **verdict**: PA",
+          finish_reason="length",
+      )
+      llm.call_with_fallback = lambda *a, **k: truncated
+      res = ac5.review_product(item, semantic=True)
+      assert res["draft_verdict"] == "ESCALATE", res
+      assert "trunc" in res["note"].lower(), res["note"]
+      print("AC5_FAIL_LOUD_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_FAIL_LOUD_OK"]
+
+  - name: "capable channel takes the json_mode path; a JSON PASS is still coerced to RISK"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import autoinfo.llm as llm
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      clean_dir = root / "tests" / "fixtures" / "known-defects" / "ac5-review-clean"
+      item = ac5.build_ac5_worklist(clean_dir)[0]
+
+      # Capable channel: the JSON-mode path must be taken.
+      ac5._channel_json_capable = lambda: True
+      seen = {}
+
+      def fake_call(*args, **kwargs):
+          seen.update(kwargs)
+          return Resp("{\"verdict\": \"PASS\", \"evidence\": \"magazine-digest.md:18\", \"note\": \"looks fine\"}")
+
+      llm.call_with_fallback = fake_call
+      res = ac5.review_product(item, semantic=True)
+      assert seen.get("json_mode") is True, "json_mode was not requested: " + repr(seen)
+      assert res["llm_verdict"] == "PASS", res
+      assert res["draft_verdict"] == "RISK", res
+      print("AC5_JSON_MODE_RISK_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_JSON_MODE_RISK_OK"]

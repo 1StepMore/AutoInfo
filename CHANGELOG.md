@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.14.2](https://github.com/1StepMore/AutoInfo/compare/v1.14.1...v1.14.2) (2026-09-30)
+
+
+### Tests
+
+* **output:** make digest window-fallback fixtures calendar-proof ([#431](https://github.com/1StepMore/AutoInfo/issues/431)) ([0a685aa](https://github.com/1StepMore/AutoInfo/commit/0a685aaf4d66a27d4803e63dc725f9a0c3ccd1b1))
+
+
+### Miscellaneous Chores
+
+* **acceptance:** replace the missing-key gap with measured LLM evidence ([#430](https://github.com/1StepMore/AutoInfo/issues/430)) ([1518bef](https://github.com/1StepMore/AutoInfo/commit/1518bef75f0be21453247c6212f26c2dbe87a63c))
+
 ## [1.14.1](https://github.com/1StepMore/AutoInfo/compare/v1.14.0...v1.14.1) (2026-09-29)
 
 

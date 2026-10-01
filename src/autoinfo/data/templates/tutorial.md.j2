@@ -21,9 +21,15 @@ This edition has no learning objectives yet. Check back after the next collectio
 
 ---
 
+{% set ns_content = namespace(has=false) %}
+{% for section in content %}
+{% if section.body or section.code_example or section.key_takeaway %}{% set ns_content.has = true %}{% endif %}
+{% endfor %}
+{% if ns_content.has %}
 ## Content
 
 {% for section in content %}
+{% if section.body or section.code_example or section.key_takeaway %}
 ### {{ section.heading }}
 
 {{ section.body }}
@@ -39,7 +45,9 @@ This edition has no learning objectives yet. Check back after the next collectio
 > **Key Takeaway**: {{ section.key_takeaway }}
 {% endif %}
 
+{% endif %}
 {% endfor %}
+{% endif %}
 
 {% if vocabulary %}
 ## Vocabulary

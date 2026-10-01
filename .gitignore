@@ -76,3 +76,6 @@ mvp/
 
 # Demo packages (generated raw+processed bundles — reproducible, not for git)
 demo-packages/
+
+# 不眠计划运行期产物（差距矩阵/断言证据），不入库
+nightly/

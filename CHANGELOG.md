@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.0](https://github.com/1StepMore/AutoInfo/compare/v1.15.1...v1.16.0) (2026-10-01)
+
+
+### Features
+
+* **domains:** 补齐语言学习域采集源并处置两个失效源 ([#433](https://github.com/1StepMore/AutoInfo/issues/433)) ([0861872](https://github.com/1StepMore/AutoInfo/commit/0861872ed82e32d6011233b5d2280deb89a8de0b))
+
+
+### Miscellaneous Chores
+
+* **nightly:** 加「不眠计划」执行面（NIGHTLY.md + 差距计算器） ([#436](https://github.com/1StepMore/AutoInfo/issues/436)) ([aa2437d](https://github.com/1StepMore/AutoInfo/commit/aa2437dba11fdce1b1c9d478f09981edda138651))
+
 ## [1.15.1](https://github.com/1StepMore/AutoInfo/compare/v1.15.0...v1.15.1) (2026-10-01)
 
 

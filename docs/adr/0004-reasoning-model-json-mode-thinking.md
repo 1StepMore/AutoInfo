@@ -20,7 +20,7 @@ parameter (`BadRequest`), so `json_mode` could not be sent at all.
 
 When `reasoning_model: True` in LLM config: (1) **`response_format` is always
 skipped** — never send it, regardless of `json_mode`; (2) **chain-of-thought is
-disabled by default** via `additional_body={"thinking":{"type":"disabled"}}`.
+disabled by default** via `extra_body={"thinking":{"type":"disabled"}}`.
 Judgment gates (G4 factual, G5 translation, `llm_judge`, translation-QA judge,
 validation-scenario judge) **re-enable thinking** with a raised `max_tokens`
 (`disable_thinking=False`), because their verdict quality depends on reasoning

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.15.1](https://github.com/1StepMore/AutoInfo/compare/v1.15.0...v1.15.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **ci,config,prompts,deps,governance:** close issues 423-428 ([#437](https://github.com/1StepMore/AutoInfo/issues/437)) ([a3db252](https://github.com/1StepMore/AutoInfo/commit/a3db252c77bfb2ed7edbdcb9eb8a5a3faa9d7929))
+
 ## [1.15.0](https://github.com/1StepMore/AutoInfo/compare/v1.14.2...v1.15.0) (2026-09-30)
 
 

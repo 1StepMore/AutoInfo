@@ -192,7 +192,13 @@ def _detect_bilingual_domains(directory: Path) -> list[str]:
     return []
 
 
-_FILE_SNIPPET_CHAR_LIMIT = 8000
+#: Largest product form the review reads whole.  The largest file measured in
+#: the real ``outputs/`` tree is 132 757 chars, so this cap reads every real
+#: product in full and still bounds a pathological input.  Do not lower it for
+#: tidiness: the previous 8 000-char value looked like a sane default but made
+#: the reviewer judge 6-44% of each document, which produced 5 false ESCALATE
+#: rows against files that were complete.
+_FILE_SNIPPET_CHAR_LIMIT = 200000
 _TRUNCATION_MARKER = "\u2026[truncated]"
 
 

@@ -1,0 +1,432 @@
+# Regression #ac5-review-worklist-recovery — the AC5 (product quality) director-
+# sampling review DRAFT (scripts/agent_review/ac5_director_review.py) must be
+# RUNNABLE against a real delivery package, not just a 5-file synthetic fixture.
+#
+# Three defects made the draft unrecoverable against the real 3383-entry
+# delivery package (474 PROCESSED entries):
+#
+#   A) non-product artifacts entered the LLM worklist — only 298 of 474 were
+#      `.md`; the other 176 were 128 `.err`, 33 `.log`, 13 `.mp4`, 1 `.zip`,
+#      1 `.json`.  The first `.mp4` raised UnicodeDecodeError out of
+#      `_read_file_snippet` and aborted the WHOLE review run;
+#   B) the manifest-less fallback scan was non-recursive (`glob("*.md")`), so
+#      against the real product tree (products only in per-domain subdirs) it
+#      yielded 0 items and reported "all clean" — a false negative on the
+#      acceptance path;
+#   C) nothing streamed until the run returned, so two real 66-minute runs left
+#      a 278-byte log and "progressing" was indistinguishable from "hung".
+#
+# Plus the fail-loud floor this scenario re-asserts: an EMPTY or FULLY-EXCLUDED
+# worklist is a BLOCKED run (exit 2), never a "risk=0 escalate=0 passed=0"
+# clean bill of health.  The RISK ceiling / never-PASS invariant itself is
+# guarded by regression-ac5-review-fail-loud; this scenario guards the run's
+# ability to produce a draft at all.
+#
+# Every step drives the REAL module (no mock of the filter, the reader, or the
+# narration) through an LLM-shaped stub channel at the
+# `autoinfo.llm.call_with_fallback` seam it inherits from battery — keyless and
+# networkless (`requires_env: []`).  Real subprocess for the fail-loud step.
+name: regression-ac5-review-worklist-recovery
+description: "Regression #ac5-review-worklist-recovery: the AC5 director-review DRAFT survives a real-shaped delivery — binary/log PROCESSED artifacts are excluded from the worklist, an undecodable product ESCALATEs instead of raising UnicodeDecodeError, the manifest-less scan is recursive/deterministic, verdicts stream as they are judged, and an empty or fully-excluded worklist fails loud (exit 2) instead of reporting a clean run"
+category: failure
+pyramid_layer: component
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#ac5-review-worklist-recovery"
+requires_env: []
+timeout: 180
+steps:
+  - name: "A: the real 474-entry suffix mix yields 298 reviewable products and 176 recorded exclusions, and no binary raises UnicodeDecodeError"
+    kind: cli
+    timeout_seconds: 90
+    command: |-
+      python3 -c '
+      import json
+      import sys
+      import tempfile
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "scripts"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import battery
+      import autoinfo.llm as llm
+
+      # The measured shape of the real delivery package PROCESSED set.
+      MIX = {
+          ".md": 298,
+          ".err": 128,
+          ".log": 33,
+          ".mp4": 13,
+          ".zip": 1,
+          ".json": 1,
+      }
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      binary_blocks = 0
+      tmp = Path(tempfile.mkdtemp())
+      proc = tmp / "02-PROCESSED"
+      proc.mkdir(parents=True)
+      entries = []
+      for suffix, count in MIX.items():
+          for index in range(count):
+              name = f"product-{suffix.lstrip(chr(46))}-{index}{suffix}"
+              target = proc / name
+              if suffix == ".mp4":
+                  target.write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes(range(256)) * 2)
+              elif suffix == ".zip":
+                  target.write_bytes(b"PK\x03\x04" + bytes(range(256)) * 2)
+              else:
+                  target.write_text(f"# product {index}\n\nbody text\n", encoding="utf-8")
+              entries.append({
+                  "file": f"02-PROCESSED/{name}",
+                  "kind": "PROCESSED",
+                  "source": "s",
+                  "size": target.stat().st_size,
+                  "gates": {},
+                  "quality": "PASS",
+              })
+      entries.append({
+          "file": "01-Raw/raw-summary.json",
+          "kind": "RAW",
+          "source": "s",
+          "size": 2,
+          "gates": {},
+          "quality": "PASS",
+      })
+      (tmp / "manifest.json").write_text(
+          json.dumps({"files": entries, "rejected": []}), encoding="utf-8"
+      )
+
+      # PRECONDITION: the raw inherited reader really does raise on the binary
+      # artifacts — this is the exact abort that lost two real runs.
+      for suffix in (".mp4", ".zip"):
+          victim = next(proc.glob(f"product-{suffix.lstrip(chr(46))}-*{suffix}"))
+          try:
+              battery._read_file_snippet(str(victim))
+          except UnicodeDecodeError:
+              binary_blocks += 1
+      assert binary_blocks == 2, "fixture is not actually binary: " + str(binary_blocks)
+
+      worklist, excluded = ac5._ac5_candidates(tmp)
+      assert len(worklist) == 298, len(worklist)
+      assert len(excluded) == 176, len(excluded)
+      assert all(e["reason"] for e in excluded), "an exclusion must always carry a reason"
+      assert {e["suffix"] for e in excluded} == {".err", ".log", ".mp4", ".zip", ".json"}
+      assert all(Path(i["path"]).suffix == ".md" for i in worklist)
+
+      # DEFECT A: reading every reviewable product for a prompt must not raise.
+      for item in worklist:
+          snippet = ac5._read_product_snippet(item["path"])
+          assert snippet.reason == "", (item["file"], snippet.reason)
+          ac5._ac5_prompt(item, snippet.text)
+
+      # The full run completes and only the text products are judged.
+      calls = []
+      def fake_call(*args, **kwargs):
+          calls.append(kwargs.get("messages"))
+          return Resp(
+              "## Verdict\n"
+              "- **blind_spot**: ac5-quality\n"
+              "- **verdict**: PASS\n"
+              "- **evidence**: product.md:1\n"
+              "- **note**: judged\n"
+          )
+      llm.call_with_fallback = fake_call
+      ac5._channel_json_capable = lambda: False
+      report = ac5.run_ac5_review(tmp, semantic=True)
+      assert report["summary"]["total"] == 298, report["summary"]
+      assert report["summary"]["excluded"] == 176, report["summary"]
+      assert report["summary"]["blocked"] == "", report["summary"]
+      assert len(calls) == 298, "a binary artifact consumed a model call: " + str(len(calls))
+      assert report["summary"]["passed"] == 0, "a machine draft must never PASS"
+      print("AC5_BINARY_ARTIFACTS_EXCLUDED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_BINARY_ARTIFACTS_EXCLUDED_OK"]
+
+  - name: "A: a reviewable-suffix file whose bytes are not UTF-8 escalates visibly, with no model call and never a pass"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      import tempfile
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "scripts"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import autoinfo.llm as llm
+
+      tmp = Path(tempfile.mkdtemp())
+      corrupt = tmp / "corrupt-report.md"
+      corrupt.write_bytes(b"# report\n" + b"\xe8\x00\xff" * 8)
+      good = tmp / "report.md"
+      good.write_text("# report\n\nbody\n", encoding="utf-8")
+
+      boom = []
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      def fake_call(*args, **kwargs):
+          boom.append(kwargs.get("messages"))
+          return Resp(
+              "## Verdict\n"
+              "- **blind_spot**: ac5-quality\n"
+              "- **verdict**: PASS\n"
+              "- **evidence**: report.md:1\n"
+              "- **note**: judged\n"
+          )
+
+      llm.call_with_fallback = fake_call
+      ac5._channel_json_capable = lambda: False
+      lines = []
+      report = ac5.run_ac5_review(tmp, semantic=True, emit=lines.append)
+
+      # Exactly one judged product: the readable one.  The undecodable file
+      # must never reach the judge, and must not consume a model call.
+      assert len(boom) == 1, "expected 1 model call, got " + str(len(boom))
+      prompt = str(boom[0])
+      assert "report.md" in prompt, prompt[:400]
+      assert "corrupt-report.md" not in prompt, "undecodable bytes reached the judge"
+      assert report["summary"]["total"] == 2, report["summary"]
+      assert report["summary"]["passed"] == 0, report["summary"]
+      assert report["summary"]["escalate"] == 1, report["summary"]
+      assert report["summary"]["risk"] == 1, report["summary"]
+
+      # The skip is a visible row carrying its reason, not a dropped item.
+      rows = [v for v in report["verdicts"] if v["file"] == "corrupt-report.md"]
+      assert len(rows) == 1, rows
+      assert rows[0]["draft_verdict"] == "ESCALATE", rows
+      assert "unreadable" in rows[0]["note"].lower(), rows[0]["note"]
+      assert any("corrupt-report.md" in line for line in lines), lines
+      print("AC5_UNREADABLE_ESCALATES_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_UNREADABLE_ESCALATES_OK"]
+
+  - name: "B: the manifest-less fallback scan is recursive over per-domain subdirs and deterministic"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      import tempfile
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "scripts"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+
+      # Shaped like the real product tree: nothing at the top level, products
+      # only in per-domain subdirs (the old glob("*.md") found 0 here).
+      tmp = Path(tempfile.mkdtemp())
+      expected = []
+      for domain in ("medical-research", "general-news", "retail", "tech-ai-developer"):
+          d = tmp / domain
+          d.mkdir()
+          for form in ("report", "digest", "magazine-digest"):
+              (d / f"{form}.md").write_text(f"# {domain} {form}\n\nbody\n", encoding="utf-8")
+              expected.append(str(d / f"{form}.md"))
+          # Non-product artifacts in the tree must still be filtered out.
+          (d / "report-video.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+          (d / "bundle.zip").write_bytes(b"PK\x03\x04")
+          (d / "pipeline.log").write_text("INFO collected\n", encoding="utf-8")
+
+      first = ac5.build_ac5_worklist(tmp)
+      paths = [i["path"] for i in first]
+
+      assert len(first) == 12, "recursive scan found " + str(len(first))
+      assert paths == sorted(paths), "the scan is not sorted"
+      assert len(set(paths)) == len(paths), "the scan is not de-duplicated"
+      assert set(paths) == set(expected), sorted(set(paths) ^ set(expected))
+      assert paths == [i["path"] for i in ac5.build_ac5_worklist(tmp)], "not deterministic"
+
+      report = ac5.run_ac5_review(tmp, semantic=False)
+      assert report["summary"]["total"] == 12, report["summary"]
+      assert report["summary"]["blocked"] == "", "a populated tree must not read as blocked"
+      assert report["summary"]["passed"] == 0, report["summary"]
+      print("AC5_RECURSIVE_SCAN_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_RECURSIVE_SCAN_OK"]
+
+  - name: "C: verdicts stream as judged — header with the worklist size, one line per form, SUMMARY last"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      python3 -c '
+      import sys
+      import tempfile
+      from pathlib import Path
+
+      root = Path.cwd()
+      sys.path.insert(0, str(root / "scripts" / "agent_review"))
+      sys.path.insert(0, str(root / "scripts"))
+      sys.path.insert(0, str(root / "src"))
+
+      import ac5_director_review as ac5
+      import autoinfo.llm as llm
+
+      class Msg:
+          def __init__(self, content):
+              self.content = content
+
+      class Choice:
+          def __init__(self, content, finish_reason="stop"):
+              self.message = Msg(content)
+              self.finish_reason = finish_reason
+
+      class Resp:
+          def __init__(self, content, finish_reason="stop"):
+              self.choices = [Choice(content, finish_reason)]
+
+      tmp = Path(tempfile.mkdtemp())
+      for index in range(3):
+          (tmp / f"report-{index}.md").write_text(f"# {index}\n\nbody\n", encoding="utf-8")
+
+      # Interleaving proof: each model call records how many lines had already
+      # been emitted.  Buffered output would show 2, 2, 2.
+      seen = []
+      lines = []
+
+      def fake_call(*args, **kwargs):
+          seen.append(len(lines))
+          return Resp(
+              "## Verdict\n"
+              "- **blind_spot**: ac5-quality\n"
+              "- **verdict**: PASS\n"
+              "- **evidence**: report-0.md:1\n"
+              "- **note**: judged\n"
+          )
+
+      llm.call_with_fallback = fake_call
+      ac5._channel_json_capable = lambda: False
+      ac5.run_ac5_review(tmp, semantic=True, emit=lines.append)
+
+      assert seen == [2, 3, 4], "verdicts were buffered until the end: " + str(seen)
+      assert lines[0].startswith("AC5 director-review DRAFT"), lines[0]
+      assert lines[1] == "Worklist: 3 product form(s)", lines[1]
+      assert lines[-1].startswith("SUMMARY:"), lines[-1]
+      verdict_lines = [ln for ln in lines if "/3 " in ln]
+      assert len(verdict_lines) == 3, lines
+      for index, line in enumerate(verdict_lines, start=1):
+          assert f"{index}/3" in line, line
+          assert line.strip().startswith("[RISK]"), line
+      assert "passed=0" in lines[-1], lines[-1]
+      print("AC5_STREAMING_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_STREAMING_OK"]
+
+  - name: "fail-loud floor: an empty or fully-excluded worklist exits 2 and says it is NOT a clean run"
+    kind: cli
+    timeout_seconds: 60
+    command: |-
+      set -e
+      TMPD="$(mktemp -d)"
+      trap 'rm -rf "$TMPD"' EXIT
+      mkdir -p "$TMPD/empty"
+
+      set +e
+      python3 -u scripts/agent_review/ac5_director_review.py \
+        --delivery-dir "$TMPD/empty" --out "$TMPD" >"$TMPD/empty.log" 2>"$TMPD/empty.err"
+      EMPTY_RC=$?
+      set -e
+      if [ "$EMPTY_RC" -ne 2 ]; then
+        echo "expected exit 2 on an empty worklist, got $EMPTY_RC"
+        cat "$TMPD/empty.log" "$TMPD/empty.err"
+        exit 1
+      fi
+      grep -q "NOT a clean run" "$TMPD/empty.err" || {
+        echo "empty run did not fail loud"
+        cat "$TMPD/empty.err"
+        exit 1
+      }
+      grep -q "BLOCKED" "$TMPD/empty.log" || {
+        echo "blocked state missing from the narrated stream"
+        cat "$TMPD/empty.log"
+        exit 1
+      }
+
+      # A delivery whose every PROCESSED entry is a binary artifact is the same
+      # blocked shape: 0 reviewable products is not "risk=0, all clean".
+      mkdir -p "$TMPD/binary-only/02-PROCESSED"
+      printf '\000\000\000\030ftypmp42\001\002\003' > "$TMPD/binary-only/02-PROCESSED/report-video.mp4"
+      cat > "$TMPD/binary-only/manifest.json" <<'JSON'
+      {
+        "files": [
+          {
+            "file": "02-PROCESSED/report-video.mp4",
+            "kind": "PROCESSED",
+            "source": "s",
+            "size": 8,
+            "gates": {},
+            "quality": "PASS"
+          }
+        ],
+        "rejected": []
+      }
+      JSON
+      set +e
+      python3 -u scripts/agent_review/ac5_director_review.py \
+        --delivery-dir "$TMPD/binary-only" --out "$TMPD" >"$TMPD/bin.log" 2>"$TMPD/bin.err"
+      BIN_RC=$?
+      set -e
+      if [ "$BIN_RC" -ne 2 ]; then
+        echo "expected exit 2 on a fully-excluded worklist, got $BIN_RC"
+        cat "$TMPD/bin.log" "$TMPD/bin.err"
+        exit 1
+      fi
+      grep -q "NOT a clean run" "$TMPD/bin.err" || {
+        echo "fully-excluded run did not fail loud"
+        cat "$TMPD/bin.err"
+        exit 1
+      }
+      echo "AC5_EMPTY_WORKLIST_FAIL_LOUD_OK"
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AC5_EMPTY_WORKLIST_FAIL_LOUD_OK"]

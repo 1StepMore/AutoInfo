@@ -17,6 +17,31 @@ sources:
   access: free
   rate_limit: 60
   enabled: true
+- name: el-pais
+  type: rss
+  url: https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: el-mundo
+  type: rss
+  url: https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+- name: bbc-mundo
+  type: rss
+  url: https://feeds.bbci.co.uk/mundo/rss.xml
+  quality_tier: 1
+  frequency: daily
+  access: free
+  rate_limit: 60
+  enabled: true
+
 topics:
 - name: News & Current Affairs
   keywords:

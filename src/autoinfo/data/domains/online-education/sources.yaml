@@ -14,7 +14,7 @@ sources:
   type: rss
   url: https://www.edsurge.com/feed
   quality_tier: 2
-  enabled: false
+  enabled: true
   rate_limit: 10
   fetch_depth: abstract
   tos_classification: open
@@ -142,7 +142,7 @@ sources:
   type: api
   url: https://api.wanfangdata.com.cn/openwanfang/getQuery
   quality_tier: 1
-  enabled: true
+  enabled: false
   requires_key: true
   rate_limit: 5
   fetch_depth: abstract
@@ -192,6 +192,17 @@ sources:
     type: string
     description: Journal or publication source
     required: false
+# 替代源（2026-09-30 补）：wanfang requires_key + tos_classification=licensed，
+# owner 2026-09-30 决定本阶段不配密钥，故禁用；下面两个源分别顶替它的学术侧与教育新闻侧。
+- name: arxiv-cs-cy
+  type: rss
+  url: http://export.arxiv.org/rss/cs.CY
+  quality_tier: 2
+  enabled: true
+  tos_classification: open
+  requires_key: false
+  rate_limit: 20
+  fetch_depth: abstract
 - name: inside-higher-ed
   type: rss
   url: https://www.insidehighered.com/rss.xml

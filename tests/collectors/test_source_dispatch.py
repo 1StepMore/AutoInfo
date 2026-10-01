@@ -18,6 +18,7 @@ Dispatch rules (from ``collect.py`` ``_build_handler()``):
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
 from pathlib import Path
@@ -108,6 +109,9 @@ EXPECTED_PASS: dict[str, list[str]] = {
         "mastodon",
         "bluesky",
         "wechat2rss",
+        # #433: wechat2rss is disabled (its feed_id was a `<replace-me>`
+        # placeholder returning 404); this slot now carries jiemian instead.
+        "jiemian",
         "medium-user",
         "medium-publication",
         "medium-tag",
@@ -247,9 +251,8 @@ def test_source_dispatch_pass_fail() -> None:
     # -----------------------------------------------------------------------
 
     # 1. No unexpected exception types
-    assert not all_unexpected, (
-        f"Unexpected exceptions ({len(all_unexpected)}):\n" +
-        "\n".join(f"  {d}/{n}: {e}" for d, n, e in all_unexpected)
+    assert not all_unexpected, f"Unexpected exceptions ({len(all_unexpected)}):\n" + "\n".join(
+        f"  {d}/{n}: {e}" for d, n, e in all_unexpected
     )
 
     # 2. Pass / fail counts per domain match expected
@@ -268,12 +271,34 @@ def test_source_dispatch_pass_fail() -> None:
             f"  Got:      {sorted(domain_fail_names)}"
         )
 
-        # 3. Grand totals: 90 pass, 0 fail (all demo-domain sources now
-        #    dispatch — HttpApiHandler + per-type handlers cover every source;
-        #    disabled sources are still dispatchable, matching the count above)
-        assert len(all_pass) == 90, f"Expected 90 PASS, got {len(all_pass)}"
-        assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
-        assert total == 90, f"Expected 90 total sources, got {total}"
+    # 3. Grand totals, asserted ONCE, after every domain's per-name contract
+    #    above has been checked.
+    #
+    #    These used to sit INSIDE the `for domain in DOMAINS:` loop with
+    #    hardcoded literals (90 / 0 / 90). Two defects followed:
+    #      (a) The loop evaluated them on its FIRST iteration
+    #          (medical-research), so a later domain raised before its own
+    #          name-set assertion was reached. PR #433 tripped exactly this:
+    #          the real signal (a general-news name-set mismatch) was masked
+    #          and CI surfaced only "Expected 90 PASS, got 91".
+    #      (b) The literals were a second hand-maintained copy of a count
+    #          already fully determined by EXPECTED_PASS, so every source
+    #          addition required remembering to bump them.
+    #    The count is therefore DERIVED from DOMAINS x EXPECTED_PASS.
+    #    `total` stays a separate assertion because all_pass/all_fail are
+    #    LISTS: a duplicate source name within one domain collapses in the
+    #    per-domain SET comparison but still shows up in `total`.
+    #    `len(all_fail) == 0` stays a LITERAL on purpose — "no demo source may
+    #    fail dispatch" is a policy, and deriving it would let a future author
+    #    quiet a red dispatch by adding a name to EXPECTED_FAIL.
+    expected_pass_total = sum(len(EXPECTED_PASS[d]) for d in DOMAINS)
+    assert len(all_pass) == expected_pass_total, (
+        f"Expected {expected_pass_total} PASS, got {len(all_pass)}"
+    )
+    assert len(all_fail) == 0, f"Expected 0 FAIL, got {len(all_fail)}"
+    assert total == expected_pass_total, (
+        f"Expected {expected_pass_total} total sources, got {total}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,13 +309,15 @@ def test_source_dispatch_pass_fail() -> None:
 # * webhook — inbound push, delivered via the webhook receiver
 # * ssrn/gdelt/huggingface/kaggle/unpaywall/core — forward-declared types
 #   whose collectors land in later implementation tasks (T7-T10)
-_NON_DISPATCH_TYPES: frozenset[str] = frozenset({
-    "webhook",
-    "ssrn",
-    "gdelt",
-    "unpaywall",
-    "core",
-})
+_NON_DISPATCH_TYPES: frozenset[str] = frozenset(
+    {
+        "webhook",
+        "ssrn",
+        "gdelt",
+        "unpaywall",
+        "core",
+    }
+)
 
 # Matches `stype == "x"` and `stype in ("a", "b")` in _build_handler source.
 _DISPATCH_STYPE_RE = re.compile(
@@ -428,6 +455,60 @@ def test_fetch_depth_defaults_to_abstract_when_unset() -> None:
     ):
         handler = _build_handler(source)
         assert handler.config.get("fetch_depth") == "abstract"
-        assert isinstance(
-            handler, (UnpaywallHandler, YouTubeHandler, GDELTHandler)
+        assert isinstance(handler, (UnpaywallHandler, YouTubeHandler, GDELTHandler))
+
+
+def test_grand_totals_are_not_asserted_inside_the_domain_loop() -> None:
+    """Grand totals are asserted ONCE, after every per-domain contract.
+
+    Regression guard for the masking defect in PR #433: while the totals were
+    nested, the loop short-circuited on its first iteration (medical-research),
+    so a name-set mismatch in a LATER domain was never reported. The defect is
+    CONTROL-FLOW, so this guard is structural: it parses this module and fails
+    if an accumulator is COMPARED inside a loop over ``DOMAINS``.
+
+    It keys on ``ast.Assert`` nodes rather than bare references on purpose. The
+    loop body must legitimately *read* ``all_pass``/``all_fail`` -- that is how
+    it splits them per domain -- so flagging any reference would fail on correct
+    code. What must never appear inside the loop is a comparison.
+
+    Both directions are asserted so the guard cannot pass vacuously:
+    (1) every accumulator IS still compared by some assert, so deleting the
+        totals does not satisfy (2) by simply removing them;
+    (2) no accumulator is COMPARED inside a ``for ... in DOMAINS`` body.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    accumulators = {"all_pass", "all_fail", "total"}
+
+    def _asserted_names(node: ast.AST) -> set[str]:
+        return {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and n.id in accumulators}
+
+    compared: set[str] = set()
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        is_domains_loop = (
+            isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "DOMAINS"
         )
+        if is_domains_loop:
+            for stmt in ast.walk(node):
+                if isinstance(stmt, ast.Assert):
+                    hit = _asserted_names(stmt.test) & accumulators
+                    if hit:
+                        offenders.append(
+                            f"line {stmt.lineno}: assert compares {sorted(hit)} "
+                            f"inside 'for ... in DOMAINS:'"
+                        )
+        if isinstance(node, ast.Assert):
+            compared |= _asserted_names(node.test)
+
+    assert compared == accumulators, (
+        f"Grand totals no longer all asserted. Compared: {sorted(compared)}; "
+        f"expected: {sorted(accumulators)}"
+    )
+    assert not offenders, (
+        "Grand totals are asserted inside the per-domain loop again -- a mismatch "
+        "in any domain after the first will be masked by the total assertion:\n"
+        + "\n".join(f"  {o}" for o in offenders)
+    )

@@ -1,0 +1,79 @@
+# Regression #433: a demo-domain source addition surfaced ONLY as a count
+# drift ("Expected 90 PASS, got 91"), never by name. Root cause: the grand-total
+# assertions were nested INSIDE `for domain in DOMAINS:`, so the loop raised on
+# its first iteration (medical-research) and general-news' own name-set
+# assertion was never reached -- the real signal was masked.
+#
+# This pins the two properties that were missing:
+#   1. every DOMAINS entry's EXPECTED_PASS set equals its LIVE YAML `sources:`
+#      names, and the derived grand total is exactly 91;
+#   2. a DISABLED source is still dispatchable and still counted -- the
+#      general-news `wechat2rss` slot flipped to enabled:false in #433 and the
+#      count did not move, because dispatch keys on `type`, not `enabled`.
+#
+# Deterministic (requires_env: []): `_build_handler` only CONSTRUCTS a handler
+# from a SourceConfig; it performs no I/O. The repo root is derived from the
+# INSTALLED package location, never a dev-machine absolute path (issue #347,
+# see tests/validation/test_no_dev_abs_paths.py).
+name: regression-433-source-dispatch-grand-total
+description: "Regression #433: per-domain dispatch name-sets match the live YAML and the derived total is 91; a disabled source is still dispatchable and still counted"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A1
+user_level: B1.1
+regression: true
+regression_issue: "#433"
+requires_env: []
+steps:
+  - name: "every DOMAINS entry's expected pass-set equals its live YAML sources; derived total is 91"
+    kind: cli
+    timeout_seconds: 120
+    command: |-
+      python3 -c "
+      from tests.collectors.test_source_dispatch import (
+          DOMAINS, EXPECTED_FAIL, EXPECTED_PASS, _load_sources,
+      )
+
+      for d in DOMAINS:
+          live = sorted(s['name'] for s in _load_sources(d))
+          assert live == sorted(EXPECTED_PASS[d]), (d, live, sorted(EXPECTED_PASS[d]))
+
+      total = sum(len(EXPECTED_PASS[d]) for d in DOMAINS)
+      assert total == 91, f'expected grand total 91, got {total}'
+      assert 'jiemian' in EXPECTED_PASS['general-news'], EXPECTED_PASS['general-news']
+      assert all(len(EXPECTED_FAIL[d]) == 0 for d in DOMAINS), EXPECTED_FAIL
+      print('DISPATCH_NAME_SETS_OK')
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DISPATCH_NAME_SETS_OK"]
+
+  - name: "a disabled source is still dispatchable and still counted (wechat2rss enabled=false)"
+    kind: cli
+    timeout_seconds: 120
+    command: |-
+      python3 -c "
+      from pathlib import Path
+      import yaml
+      from autoinfo.collect import _build_handler
+      from autoinfo.config import SourceConfig
+
+      ROOT = Path(__import__('autoinfo').__file__).resolve().parents[2]
+      path = ROOT / 'src/autoinfo/data/domains/general-news/sources.yaml'
+      srcs = {s['name']: s for s in yaml.safe_load(path.read_text(encoding='utf-8'))['sources']}
+
+      for name in ('wechat2rss', 'jiemian'):
+          s = srcs[name]
+          cfg = SourceConfig(name=name, type=s['type'], url=s.get('url', ''))
+          assert _build_handler(cfg) is not None, name
+
+      assert srcs['wechat2rss']['enabled'] is False, srcs['wechat2rss']
+      assert srcs['jiemian']['enabled'] is True, srcs['jiemian']
+      assert srcs['jiemian']['type'] == 'rss', srcs['jiemian']
+      print('DISABLED_STILL_DISPATCHABLE_OK')
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DISABLED_STILL_DISPATCHABLE_OK"]

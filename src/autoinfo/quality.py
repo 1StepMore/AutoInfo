@@ -34,6 +34,7 @@ import yaml
 from autoinfo.config import QualityGateConfig
 from autoinfo.llm import call_with_fallback, parse_json_response
 from autoinfo.models import ExtractionResult, Item, KBEntry
+from autoinfo.self_claims import self_claim_orphan_entities, self_count_contradictions
 
 logger = logging.getLogger(__name__)
 
@@ -2666,16 +2667,7 @@ class D2FormatIntegrity:
         elif output_format == "json":
             result = self._check_json(body)
         elif output_format == "markdown":
-            result = QualityResult(
-                gate_name="D2-FormatIntegrity",
-                passed=True,
-                score=1.0,
-                details={
-                    "format": "markdown",
-                    "valid": True,
-                    "note": "Markdown trivially valid",
-                },
-            )
+            result = self._check_markdown_self_claim(body)
         elif output_format == "pdf":
             result = self._check_pdf(body)
         else:
@@ -2693,6 +2685,80 @@ class D2FormatIntegrity:
         # Merge ToS compliance info into format result
         result.details.update(tos_details)
         return result
+
+    def _check_markdown_self_claim(self, body: str) -> QualityResult:
+        """Markdown has no parse step, so D2 checks self-consistency instead.
+
+        Issue #445.  A rendered markdown product must not describe itself
+        inaccurately.  Two checks, two severities:
+
+        * A **self-count contradiction** — the product claims a number of
+          key findings / sources / entries / slides that the same product does
+          not render — is an unconditional hard ``block``, independent of the
+          configured ``action_on_failure``.  Both sides of that comparison come
+          from the rendered document, so it has no false-positive surface: a
+          mismatch proves the stated count and the rendered count were computed
+          from different sources, and a product that describes itself
+          incorrectly must never be delivered.  Weakening this to ``fallback``
+          would re-render the same contradiction as markdown and ship it.
+        * A **narrative entity the body never states** is ``flag``-only, with
+          the entity names carried in ``details`` so the escalation reaches
+          ``DeliveryOutput.warnings`` and the packaged per-product
+          ``01-QA-GATES/gate-report-*.json``.  Measured over the 222 real
+          product files under ``outputs/`` this fires on ~27% of them, almost
+          entirely on legitimate summary prose ("the Smoky Mountains",
+          "Southeast Asia"), so it must not block delivery.
+
+        Honours honest uncertainty: :mod:`autoinfo.grounding` exempts hedged
+        sentences ("not disclosed in the available sources"), which is
+        CORRECT behaviour (#179/#191).
+        """
+        contradictions = self_count_contradictions(body)
+        orphans = self_claim_orphan_entities(body)
+        if contradictions:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "action": "block",
+                    "format": "markdown",
+                    "valid": False,
+                    "self_claim": "count_contradiction",
+                    "self_claim_contradictions": contradictions,
+                    "self_claim_orphan_entities": orphans,
+                    "error": (f"product contradicts its own body: {contradictions[0]}"),
+                },
+            )
+        if orphans:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=True,
+                score=1.0,
+                flagged=True,
+                details={
+                    "action": "flag",
+                    "format": "markdown",
+                    "valid": True,
+                    "self_claim": "orphan_entity_escalation",
+                    "self_claim_orphan_entities": orphans,
+                    "note": (
+                        "narrative names entities the body never states — "
+                        "escalated for review, not blocked"
+                    ),
+                },
+            )
+        return QualityResult(
+            gate_name="D2-FormatIntegrity",
+            passed=True,
+            score=1.0,
+            details={
+                "format": "markdown",
+                "valid": True,
+                "note": "Markdown trivially valid; self-claim counts consistent",
+            },
+        )
 
     # ------------------------------------------------------------------
     # Internals

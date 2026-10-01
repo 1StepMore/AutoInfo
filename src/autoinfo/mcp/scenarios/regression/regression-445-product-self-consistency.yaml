@@ -1,0 +1,327 @@
+# Regression #445: product self-consistency + synthesis citation grounding.
+#
+# The AC5 review of 227 delivered products found two defect classes that
+# reached end users:
+#
+#   1. a product whose own summary/header contradicts its body — an enterprise
+#      briefing claiming "2 selected items" over the single Key Findings bullet
+#      actually rendered; and
+#   2. a synthesis attaching a claim to an unrelated source — an
+#      English-learning product attributing Duolingo/enterprise statements to
+#      "A guide to 6th grade math topics".
+#
+# #445 fixes both deterministically and gates them at delivery:
+#
+#   autoinfo.section_parser.self_count_contradictions  — stated count vs the
+#       items the same product renders.  Zero false positives by construction
+#       (both sides come from the rendered document), so D2 BLOCKS it.
+#   autoinfo.section_parser.self_claim_orphan_entities — narrative names an
+#       entity the body never states.  Measured ~27% false-positive rate on the
+#       222 real product files under outputs/, so it ESCALATES (flag + evidence
+#       in the gate details / DeliveryOutput.warnings) and never blocks.
+#   autoinfo.output._ground_synthesis_citations        — drops a synthesis
+#       sentence whose (Source: URL) does not support it; honest hedges and
+#       uncited prose pass untouched (#179/#191).
+#
+# The template half: a section with no content and no entries must not leave
+# an orphan `### heading` behind (column/report/tutorial), and magazine-digest
+# must never render an empty publication label as `- ****`.
+#
+# Deterministic (requires_env: []): exercises the real functions directly —
+# no LLM, no network.  Only the D2 gate's own delivery verdict is asserted;
+# no product is regenerated and nothing under outputs/ is edited.
+
+name: regression-445-product-self-consistency
+description: "Regression #445: self-count contradictions block delivery, orphan entities escalate, synthesis citations are grounded"
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A4
+user_level: B2.5
+regression: true
+regression_issue: "#445"
+requires_env: []
+steps:
+  - name: "self-count contradiction blocks D2 delivery"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.quality import D2FormatIntegrity
+      from autoinfo.self_claims import self_count_contradictions
+
+      # The measured defect shape: the Scope line claims 3 of 60 key findings
+      # while the body renders ONE key-findings bullet (the #445 finding).
+      BAD = """# b2b — Enterprise Briefing
+
+      **Domain**: b2b
+
+      ---
+
+      ## Executive Summary
+
+      This briefing covers the period in detail.
+
+      > **Scope**: selected 3 of 60 key findings · 60 source references listed.
+
+      ## Key Findings
+
+      - The only finding that actually rendered (Source: https://x.com/1).
+
+      ## References
+
+      1. **Ref one** — https://x.com/1
+      2. **Ref two** — https://x.com/2
+      3. **Ref three** — https://x.com/3
+      """
+
+      defects = self_count_contradictions(BAD)
+      assert defects, "the contradicting self-count was not detected"
+      assert any("key findings" in d for d in defects), defects
+
+      result = D2FormatIntegrity().check(
+          {"product_type": "PROCESSED", "format": "markdown", "body": BAD,
+           "entries": []}
+      )
+      assert not result.passed, "D2 must block a product that contradicts itself"
+      assert result.details["action"] == "block", result.details
+      assert result.details["self_claim"] == "count_contradiction", result.details
+      print("SELF_COUNT_BLOCKED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SELF_COUNT_BLOCKED_OK"]
+
+  - name: "consistent product passes and honest hedge is never a defect"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.quality import D2FormatIntegrity
+      from autoinfo.self_claims import (
+          self_claim_orphan_entities, self_count_contradictions,
+      )
+
+      GOOD = """# b2b — Enterprise Briefing
+
+      **Domain**: b2b
+
+      ---
+
+      ## Executive Summary
+
+      This briefing covers the period in detail. Revenue by region for the
+      Zylotron accelerator is not disclosed in the available sources.
+
+      > **Scope**: selected 2 of 3 key findings · 3 source references listed.
+
+      ## Key Findings
+
+      - Finding one rendered in full (Source: https://x.com/1).
+      - Finding two rendered in full (Source: https://x.com/2).
+
+      ## References
+
+      1. **Ref one** — https://x.com/1
+      2. **Ref two** — https://x.com/2
+      3. **Ref three** — https://x.com/3
+      """
+
+      assert self_count_contradictions(GOOD) == [], "consistent counts must pass"
+      assert self_claim_orphan_entities(GOOD) == [], (
+          "an honest hedge about an unmentioned entity must never be flagged"
+      )
+      result = D2FormatIntegrity().check(
+          {"product_type": "PROCESSED", "format": "markdown", "body": GOOD,
+           "entries": []}
+      )
+      assert result.passed, result.details
+      assert not result.flagged, result.details
+      print("SELF_COUNT_CONSISTENT_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SELF_COUNT_CONSISTENT_OK"]
+
+  - name: "orphan narrative entity escalates without blocking delivery"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.quality import D2FormatIntegrity
+
+      # A narrative entity the body never states escalates with its evidence;
+      # it must NOT block, because the rule fires on ~27% of real products
+      # (calibrated over outputs/) and blocking would reject honest output.
+      ORPHAN = """# b2b — Enterprise Briefing
+
+      **Domain**: b2b
+
+      ## Executive Summary
+
+      OpenAI has introduced the Zylotron accelerator, a device no supplied
+      entry describes, and it undercuts competing suppliers this period.
+
+      ## Key Findings
+
+      - Finding one rendered in full (Source: https://x.com/1).
+      - Finding two rendered in full (Source: https://x.com/2).
+
+      ## References
+
+      1. **Ref one** — https://x.com/1
+      2. **Ref two** — https://x.com/2
+      """
+
+      result = D2FormatIntegrity().check(
+          {"product_type": "PROCESSED", "format": "markdown", "body": ORPHAN,
+           "entries": []}
+      )
+      assert result.passed, "orphan entities must not block delivery"
+      assert result.flagged, "orphan entities must be escalated"
+      assert result.details["action"] == "flag", result.details
+      assert result.details["self_claim"] == "orphan_entity_escalation", result.details
+      assert any(
+          "Zylotron" in e
+          for e in result.details["self_claim_orphan_entities"]
+      ), result.details
+
+      # A flag that never surfaces is not an escalation: it must reach the
+      # delivery warnings (and from there the packaged gate report).
+      from autoinfo.output import _apply_delivery_gates
+      delivery = _apply_delivery_gates(
+          ORPHAN, "markdown", [], {"product_type": "PROCESSED"}, "PROCESSED",
+          delivery_gate_configs={"D1": {"enabled": False}, "D3": {"enabled": False}},
+      )
+      assert not delivery.delivery_blocked, delivery.warnings
+      assert any("Zylotron" in w for w in delivery.warnings), delivery.warnings
+      print("ORPHAN_ENTITY_ESCALATED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ORPHAN_ENTITY_ESCALATED_OK"]
+
+  - name: "misattributed synthesis citation is dropped, grounded one kept"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _ground_synthesis_citations
+
+      ENTRIES = [
+          {"title": "A guide to 6th grade math topics",
+           "summary": "Fractions, decimals and ratios for sixth graders.",
+           "source_url": "https://example.com/math"},
+          {"title": "Duolingo scales its AI tutoring rollout",
+           "summary": "Duolingo said it will roll out AI tutoring to enterprise customers.",
+           "source_url": "https://example.com/duo"},
+      ]
+
+      MISATTRIBUTED = (
+          "Duolingo\u0027s scalability and enterprise implementation were confirmed "
+          "by independent reviewers of grade-school ratios and fractions "
+          "(Source: https://example.com/math)."
+      )
+      GROUNDED = (
+          "Duolingo will roll out AI tutoring to enterprise customers this year "
+          "(Source: https://example.com/duo)."
+      )
+      HEDGED = (
+          "Duolingo revenue by region is not disclosed in the available sources "
+          "(Source: https://example.com/duo)."
+      )
+
+      assert _ground_synthesis_citations(MISATTRIBUTED, ENTRIES) == "", (
+          "a claim attached to an unrelated source must be dropped"
+      )
+      assert _ground_synthesis_citations(GROUNDED, ENTRIES) == GROUNDED, (
+          "a correctly attributed sentence must be kept verbatim"
+      )
+      assert _ground_synthesis_citations(HEDGED, ENTRIES) == HEDGED, (
+          "an honest hedge must never be dropped (#179/#191)"
+      )
+      print("CITATION_GROUNDING_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["CITATION_GROUNDING_OK"]
+
+  - name: "templates leave no orphan heading and no empty publication label"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import ProductTemplate
+
+      pt = ProductTemplate(domain="b2b")
+      sections = [
+          {"title": "Real Section", "content": "Real prose about the week.",
+           "entries": [{"title": "A story", "summary": "s",
+                        "source_url": "https://x.com/1"}]},
+          {"title": "Orphan Section", "content": "", "entries": []},
+      ]
+      base = {
+          "title": "t", "domain": "b2b", "generated_at": "2026-10-02",
+          "collection_id": "", "executive_summary": "Sum.",
+          "sections": sections,
+          "references": [{"title": "A story", "source_url": "https://x.com/1"}],
+          "implications": [], "action_required": [], "recommendations": [],
+          "appendices": [], "key_findings": [{"text": "kf"}],
+      }
+      for product in ("column", "report"):
+          rendered = pt.render(product, "md", base)
+          assert "### Real Section" in rendered, product
+          assert "Orphan Section" not in rendered, (product, rendered)
+
+      tutorial = pt.render("tutorial", "md", {
+          "title": "t", "domain": "b2b", "generated_at": "2026-10-02",
+          "collection_id": "", "target_audience": "devs",
+          "duration": "10 minutes", "prerequisites": "None",
+          "summary": "This tutorial covers things.", "objectives": ["- learn"],
+          "content": [
+              {"heading": "Real", "body": "Body text.", "key_takeaway": "kt"},
+              {"heading": "Orphan", "body": "", "key_takeaway": ""},
+          ],
+          "vocabulary": ["- vocab"], "grammar": ["- g"],
+          "further_reading": ["- f"], "exercises": ["- e"],
+      })
+      assert "### Real" in tutorial and "### Orphan" not in tutorial, tutorial
+
+      magazine = pt.render("magazine-digest", "md", {
+          "title": "t", "domain": "b2b", "generated_at": "2026-10-02",
+          "period_label": "Weekly", "date_from": "2026-09-25",
+          "date_to": "2026-10-02", "llm_synthesis": {},
+          "entries": [
+              {"title": "Story one", "summary": "s",
+               "source_url": "https://x.com/1", "source_label": "TechCrunch",
+               "source_platform": "techcrunch"},
+              {"title": "Story two", "summary": "s", "source_url": "",
+               "source_label": "", "source_platform": ""},
+          ],
+      })
+      assert "- ****" not in magazine, magazine
+      assert "- **General**" in magazine, magazine
+      assert not any(line.strip() == "-" for line in magazine.splitlines()), magazine
+      print("NO_ORPHAN_SECTIONS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["NO_ORPHAN_SECTIONS_OK"]
+
+  - name: "both synthesis prompts carry the entity-grounding constraint"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.output import _build_digest_llm_prompt
+      from autoinfo.quality_constraints import SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT
+
+      for family in ("digest", "column", "premium-briefing"):
+          prompt = _build_digest_llm_prompt(
+              [{"title": "A", "summary": "s"}], product_family=family
+          )
+          assert SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT in prompt, family
+      print("ENTITY_CONSTRAINT_IN_PROMPTS_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTITY_CONSTRAINT_IN_PROMPTS_OK"]

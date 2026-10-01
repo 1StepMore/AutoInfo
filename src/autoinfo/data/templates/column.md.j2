@@ -11,7 +11,11 @@
 
 {{ executive_summary }}
 
-{% if sections %}
+{% set ns_dive = namespace(has=false) %}
+{% for section in sections %}
+{% if section.marker is defined or section.content or section.entries %}{% set ns_dive.has = true %}{% endif %}
+{% endfor %}
+{% if ns_dive.has %}
 ---
 
 ## Deep Dive
@@ -21,7 +25,7 @@
 
 {% endif %}
 {% for section in sections %}
-{% if section.marker is defined %}{% else %}
+{% if section.marker is defined %}{% elif section.content or section.entries %}
 ### {{ section.title }}
 
 {{ section.content }}
@@ -64,7 +68,7 @@ Top developments this week (full source list in References):
 
 {% set ns_impl = namespace(has=false) %}
 {% for sec in sections %}
-{% if sec.marker is defined %}{% else %}
+{% if sec.marker is defined %}{% elif sec.content or sec.entries %}
 {% set _impl = implications[loop.index0] if (implications and implications[loop.index0] is defined and implications[loop.index0]) else "" %}
 {% if _impl %}{% set ns_impl.has = true %}{% endif %}
 {% endif %}
@@ -75,7 +79,7 @@ Top developments this week (full source list in References):
 ## Implications & Outlook
 
 {% for sec in sections %}
-{% if sec.marker is defined %}{% else %}
+{% if sec.marker is defined %}{% elif sec.content or sec.entries %}
 {% set _impl = implications[loop.index0] if (implications and implications[loop.index0] is defined and implications[loop.index0]) else "" %}
 {% if _impl %}
 - **{{ sec.title }}** — {{ _impl }}
@@ -96,7 +100,7 @@ Top developments this week (full source list in References):
 {% endfor %}
 {% else %}
 {% for sec in sections %}
-{% if sec.marker is defined %}{% else %}
+{% if sec.marker is defined %}{% elif sec.content or sec.entries %}
 {{ loop.index }}. Review the {{ sec.title }} section for the underlying developments.
 {% endif %}
 {% endfor %}

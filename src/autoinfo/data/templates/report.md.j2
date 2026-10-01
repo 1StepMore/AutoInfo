@@ -29,13 +29,18 @@
 {% endif %}
 ---
 
+{% set ns_sec = namespace(has=false) %}
+{% for section in sections %}
+{% if section.marker is defined or section.content or section.entries %}{% set ns_sec.has = true %}{% endif %}
+{% endfor %}
+{% if ns_sec.has %}
 ## Sections
 
 {% for section in sections %}
 {% if section.marker is defined %}
 {{ section.marker }}
 
-{% else %}
+{% elif section.content or section.entries %}
 ### {{ section.title }}
 
 {{ section.content }}
@@ -50,6 +55,7 @@
 {% endif %}
 
 {% endfor %}
+{% endif %}
 
 {% if references %}
 ---

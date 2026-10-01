@@ -40,8 +40,14 @@ from mcp.types import TextContent, Tool
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
-from autoinfo.config import SOURCE_KEY_ENV_VARS, VALID_SOURCE_TYPES, ConfigNotFoundError
+from autoinfo.config import (
+    DEFAULT_TTL_DAYS,
+    SOURCE_KEY_ENV_VARS,
+    VALID_SOURCE_TYPES,
+    ConfigNotFoundError,
+)
 from autoinfo.kb import DirectorOnlyError, PromotionRejected, is_director
+from autoinfo.keywords import keyword_suggestion_system_prompt
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
@@ -2448,13 +2454,7 @@ def _handle_suggest_keywords(
             actionable=True,
         )
 
-    system_prompt = (
-        "You are a keyword extraction assistant. Given a text, suggest "
-        f"up to {limit} relevant keywords or short phrases (2-5 words) "
-        "that capture the core topics. "
-        "Respond with valid JSON only: an array of strings. "
-        'Example: ["machine learning", "neural networks", "deep learning"]'
-    )
+    system_prompt = keyword_suggestion_system_prompt(limit)
 
     user_prompt = f"Extract up to {limit} keywords from this text:\n\n{text}"
 
@@ -2835,7 +2835,7 @@ def _handle_get_collection_diff(since_collection_id: str) -> dict[str, Any]:
     return _canonicalize(store.get_collection_diff(since_collection_id=since_collection_id))
 
 
-def _handle_get_domain_decay(domain: str, ttl_days: int = 90) -> dict[str, Any]:
+def _handle_get_domain_decay(domain: str, ttl_days: int = DEFAULT_TTL_DAYS) -> dict[str, Any]:
     """Compute decay / staleness metrics for a domain."""
     from autoinfo.kb import KBStore
 
@@ -6458,7 +6458,7 @@ def _handle_find_similar_items(
 def _handle_calculate_freshness_score(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Handle calculate_freshness_score — fetch entry, compute freshness."""
     entry_id = arguments["entry_id"]
-    ttl_days = arguments.get("ttl_days", 90)
+    ttl_days = arguments.get("ttl_days", DEFAULT_TTL_DAYS)
     from autoinfo.kb import KBStore, calculate_freshness_score
 
     store = KBStore()
@@ -9308,9 +9308,10 @@ def _full_tool_list() -> list[Tool]:
                         "ttl_days": {
                             "type": "integer",
                             "description": (
-                                "Days before an entry is considered fully stale (default: 90)"
+                                "Days before an entry is considered fully stale "
+                                f"(default: {DEFAULT_TTL_DAYS})"
                             ),
-                            "default": 90,
+                            "default": DEFAULT_TTL_DAYS,
                         },
                     },
                     "required": ["domain"],
@@ -11599,8 +11600,8 @@ def _full_tool_list() -> list[Tool]:
                         },
                         "ttl_days": {
                             "type": "integer",
-                            "description": "Time-to-live in days (default: 90)",
-                            "default": 90,
+                            "description": f"Time-to-live in days (default: {DEFAULT_TTL_DAYS})",
+                            "default": DEFAULT_TTL_DAYS,
                         },
                     },
                     "required": ["entry_id"],

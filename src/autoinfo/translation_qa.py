@@ -31,6 +31,15 @@ DEFAULT_WEIGHTS = {
     "readability": 10,
 }
 
+# Single source for the translator system prompt (issue #426).  Both the
+# forward pass and the back-translate pass use it; the back-translate site
+# deliberately passes the languages in the opposite order.
+_TRANSLATOR_SYSTEM_TEMPLATE = (
+    "You are a professional translator. Translate the given text "
+    "from {source} to {target}. Return only the translated "
+    "text, no explanations or commentary."
+)
+
 # ---------------------------------------------------------------------------
 # Composite score (preserved from earlier task)
 # ---------------------------------------------------------------------------
@@ -177,10 +186,9 @@ def back_translate(
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        f"You are a professional translator. Translate the given text "
-                        f"from {target_lang} to {source_lang}. Return only the translated "
-                        f"text, no explanations or commentary."
+                    "content": _TRANSLATOR_SYSTEM_TEMPLATE.format(
+                        source=target_lang,
+                        target=source_lang,
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -654,10 +662,9 @@ def refine_translation(
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        f"You are a professional translator. Translate the given text "
-                        f"from {source_lang} to {target_lang}. Return only the translated "
-                        f"text, no explanations or commentary."
+                    "content": _TRANSLATOR_SYSTEM_TEMPLATE.format(
+                        source=source_lang,
+                        target=target_lang,
                     ),
                 },
                 {"role": "user", "content": prompt},

@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 import yaml
 
-from autoinfo.config import resolve_domain_freshness
+from autoinfo.config import DomainConfig, resolve_domain_freshness
 from autoinfo.output import _filter_stale_entries
 
 _AGE_60_DAYS = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
@@ -86,3 +86,18 @@ class TestStaleFilterUsesSingleSource:
         assert resolve_domain_freshness("medical-research")[0] == 180
         entry = _entry("medical-research")
         assert len(_filter_stale_entries([entry], "medical-research")) == 1
+
+
+class TestTtlSentinelResolvesDefaults:
+    def test_domain_config_unset_gets_domain_default(self) -> None:
+        assert DomainConfig(name="medical-research").ttl_days == 180
+
+    def test_domain_config_explicit_90_is_honored(self) -> None:
+        assert DomainConfig(name="medical-research", ttl_days=90).ttl_days == 90
+
+    def test_loaded_config_explicit_90_is_honored(self, hermetic_project: Path) -> None:
+        _write_config(
+            hermetic_project,
+            {"name": "medical-research", "active": True, "ttl_days": 90},
+        )
+        assert resolve_domain_freshness("medical-research") == (90, 0.5)

@@ -34,6 +34,21 @@ logger = logging.getLogger(__name__)
 _UNSET = object()
 
 
+def keyword_suggestion_system_prompt(limit: int) -> str:
+    """Single source for the keyword-suggestion system prompt (issue #426).
+
+    The CLI and the MCP server each built this prompt inline; the two copies
+    were byte-identical by luck and could drift silently.
+    """
+    return (
+        "You are a keyword extraction assistant. Given a text, suggest "
+        f"up to {limit} relevant keywords or short phrases (2-5 words) "
+        "that capture the core topics. "
+        "Respond with valid JSON only: an array of strings. "
+        'Example: ["machine learning", "neural networks", "deep learning"]'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
@@ -173,7 +188,9 @@ class KeywordsFile:
 
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            yaml.dump({"keywords": {}}, default_flow_style=False, sort_keys=False, allow_unicode=True),
+            yaml.dump(
+                {"keywords": {}}, default_flow_style=False, sort_keys=False, allow_unicode=True
+            ),
             encoding="utf-8",
         )
         logger.info("Created keywords file: %s", path)

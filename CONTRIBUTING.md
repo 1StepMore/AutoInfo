@@ -344,6 +344,12 @@ This appends a `Signed-off-by: Your Name <you@example.com>` trailer. If you
 forgot it, sign your last commit with `git commit --amend -s`. See
 [`GOVERNANCE.md`](GOVERNANCE.md) for details.
 
+After a squash merge, the commit on `main` may show an author that differs from
+your `Signed-off-by` trailer: GitHub rewrites the author to the merger account
+but keeps your trailer verbatim. That is expected, not a compliance failure; see
+[the DCO section of `GOVERNANCE.md`](GOVERNANCE.md#developer-certificate-of-origin-dco).
+Keep signing your own commits with `git commit -s`.
+
 ## References
 
 - [`AGENTS.md`](AGENTS.md): internal agent rules and architecture constraints

@@ -363,3 +363,35 @@ def test_main_escalate_returns_one(tmp_path: Path) -> None:
                 ]
             )
     assert rc == 1
+
+
+def test_ac5_prompt_uses_shared_verdict_schema() -> None:
+    """The AC5 judge must speak battery's verdict schema, not a private copy (#426).
+
+    ac5 used to inline its own copy of the `## Verdict` block and had drifted:
+    it dropped the trailing "Do not add prose before or after it." sentence, so
+    the two judges disagreed about what a well-formed reply looks like. The
+    constant is now shared, and this test fails if ac5 ever re-inlines it.
+    """
+    import battery  # noqa: PLC0415
+
+    prompt = ac5._ac5_prompt(
+        {
+            "family": "magazine-digest",
+            "file": "m.md",
+            "path": str(_CLEAN_DIR / "magazine-digest.md"),
+        }
+    )
+
+    assert battery._VERDICT_SCHEMA_BLOCK in prompt, "ac5 must embed the shared schema block"
+    assert "Do not add prose" in prompt, "ac5 lost the shared block's trailing sentence"
+
+
+def test_verdict_schema_defined_once_across_judges() -> None:
+    """Only battery may define the schema; ac5 must import, not restate it."""
+
+    ac5_src = (_REPO_ROOT / "scripts" / "agent_review" / "ac5_director_review.py").read_text(
+        encoding="utf-8"
+    )
+    assert "OUTPUT SCHEMA" not in ac5_src, "ac5 re-inlined the schema instead of importing it"
+    assert ac5_src.count("_VERDICT_SCHEMA_BLOCK") == 2, "expected one import + one use"

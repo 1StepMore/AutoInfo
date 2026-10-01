@@ -199,6 +199,50 @@ maintainers need a clear chain of who contributed what and under what
 authority. A DCO is lighter than a Contributor License Agreement and is the
 standard practice for MIT projects.
 
+### Squash merges and the author/sign-off mismatch
+
+`git log` on `main` shows commits whose `Signed-off-by` email differs from the
+commit author email. Every one of them is an artifact of the squash merge
+required by branch protection (see above), not a contributor who skipped the
+sign-off:
+
+- **On the PR branch, author equals sign-off.** Verified on PR #431: the branch
+  commits carry author `renanzai <renanzai@EVA-01.localdomain>` and a
+  `Signed-off-by` trailer with that identical email, so the DCO app passes them.
+- **The squash merge creates the divergence.** GitHub rewrites the merged
+  commit's author to the merger account (for example
+  `140780063+1StepMore@users.noreply.github.com`) while the message body keeps
+  the branch's `Signed-off-by` trailer verbatim. The two then differ on `main`.
+- **The DCO check does not flag it.** The app's default mode is presence plus
+  sign-off-email-matches-author, but it excludes bots and merges and it only
+  ever evaluates the commits on the PR branch, never the post-merge squash
+  commit. The DCO check has been green on every recent PR.
+
+Measured on the last 200 commits at `1518bef7`: **123 carry no sign-off at
+all** (pre-DCO history, merges, and bot commits), **77 carry one that matches
+the author**, and **28 differ**, two of which are `dependabot[bot]`. Replaying
+the original audit at its own stated baseline `7385c5ad` yields 75 and **26**.
+The reported "17" therefore did not reproduce at either baseline.
+
+Policy:
+
+- **Trailer presence is the enforced requirement.** Both `GOVERNANCE.md` and
+  `CONTRIBUTING.md` require that commits *carry* a DCO sign-off; neither states
+  that the sign-off identity must equal the author, and the repo has no
+  `.github/dco.yml`, so the app's default mode applies.
+- **An author/sign-off mismatch on a squash commit is an accepted artifact.** It
+  is cosmetically inconsistent, not procedurally non-compliant.
+- **History must not be rewritten to reconcile it.** Amending or rebasing
+  published commits to "correct" the emails would destroy provenance: the
+  mismatch is an accurate record of how the commit was created.
+- **A mismatch on a *branch* commit is a real problem.** That is what the DCO
+  check evaluates, and it will fail. Sign your commits with the same identity
+  you author with (`git commit -s`, with `user.name` / `user.email` set to the
+  identity you intend to certify).
+
+See [`docs/adr/0009-dco-squash-merge-signoff.md`](docs/adr/0009-dco-squash-merge-signoff.md)
+for the full decision record.
+
 ## CODEOWNERS
 
 `.github/CODEOWNERS` maps paths to owning maintainers. It auto-requests review

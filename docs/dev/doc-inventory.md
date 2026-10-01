@@ -13,15 +13,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 108 |
-| Total lines | 35837 |
-| Active files | 80 |
+| Total files | 110 |
+| Total lines | 36024 |
+| Active files | 82 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
 | Category — known-limitations | 2 files / 336 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
-| Category — adr | 9 files / 458 lines |
+| Category — adr | 11 files / 645 lines |
 | Category — specs | 12 files / 9723 lines |
 | Category — validation-reports | 15 files / 3351 lines |
 | Category — docs/dev | 30 files / 10867 lines |
@@ -38,7 +38,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0005-unified-success-error-envelope.md` | 83 | adr | active | adr |
 | `adr/0006-dev-process-workflow-charter.md` | 72 | adr | active | adr |
 | `adr/0007-release-please-version-truth.md` | 39 | adr | active | adr |
-| `adr/README.md` | 53 | adr | active | adr-index |
+| `adr/0008-dependency-version-policy.md` | 82 | adr | active | adr |
+| `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
+| `adr/README.md` | 55 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `archive/ac4-gap-key-acquisition.md` | 81 | archive | archived | — |
 | `archive/acceptance-2026-08-08.md` | 166 | archive | archived | — |

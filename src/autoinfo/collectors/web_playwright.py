@@ -23,6 +23,7 @@ from typing import Any
 
 import trafilatura
 
+from autoinfo.collectors.robots import RobotsDisallowed, check_url_allowed
 from autoinfo.collectors.web import USER_AGENT, WebHandler
 from autoinfo.models import Item
 
@@ -96,8 +97,24 @@ class PlaywrightWebHandler:
         -------
         list[Item]
             A list with a single :class:`Item` if extraction succeeds,
-            or an empty list on any error.  This method **never** raises.
+            or an empty list on any error.
+
+        Raises
+        ------
+        RobotsDisallowed
+            When the origin's robots.txt forbids *url* — raised **before**
+            any fetch (quick path or Playwright navigation), so
+            ``collect.py`` can record ``status="skipped"``.
         """
+        # Robots gate first: it must hold for BOTH the httpx quick path and
+        # the Playwright fallback.  WebHandler.fetch checks again below, but
+        # the per-origin cache in check_url_allowed means robots.txt is NOT
+        # re-fetched for the same origin (one request total).
+        allowed, detail = check_url_allowed(url)
+        if not allowed:
+            logger.info("robots.txt blocks %s: %s", url, detail)
+            raise RobotsDisallowed(url, detail)
+
         # Phase 1 — quick path via httpx + trafilatura
         items = self._web_handler.fetch(url)
         if items:

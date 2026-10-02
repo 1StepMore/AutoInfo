@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 
 from autoinfo.collectors.web import USER_AGENT, WebHandler
 from autoinfo.collectors.web_playwright import PlaywrightWebHandler
@@ -18,6 +19,22 @@ from autoinfo.collectors.web_playwright import PlaywrightWebHandler
 # ---------------------------------------------------------------------------
 # Shared constant
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _bypass_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """绕过 robots 专注被测行为：本文件测 UA 头，不测 robots 门。
+
+    放行门后 ``mock_get.assert_called_once()`` 只统计 UA 被测的那次请求。
+    """
+    monkeypatch.setattr(
+        "autoinfo.collectors.web.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+    monkeypatch.setattr(
+        "autoinfo.collectors.web_playwright.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
 
 
 class TestUserAgentConstant:

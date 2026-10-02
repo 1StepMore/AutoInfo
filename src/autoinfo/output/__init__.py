@@ -824,12 +824,15 @@ def _run_product_judge(
         return True, ""
 
 
-#: An entry only counts as usable source when it carries a real summary or a
-#: descriptive title. Length thresholds are deliberately low: the gate exists to
-#: catch entries that are structurally empty (a tier-matrix test fixture with
-#: ``summary: ''``), not to judge editorial quality.
+#: An entry counts as usable source when it carries a ``source_url`` or a real
+#: summary. Provenance, not title length: against ``autoinfo.db`` (1821 entries,
+#: 23 domains) a title-length threshold also rejected legitimately terse entries
+#: such as a 7-character headline, while this rule isolates exactly the 9 rows
+#: that have neither provenance nor content -- ``Test Entry``, ``QA Article``,
+#: ``Entry A/B``, ``x``, ``y``. Every one of those is a test artifact.
+#: The architecture already makes provenance mandatory for a 01-Raw entry, so
+#: this reuses that rule rather than inventing a second one.
 _MIN_SUBSTANTIVE_SUMMARY_CHARS = 40
-_MIN_SUBSTANTIVE_TITLE_CHARS = 12
 
 #: Source/title markers that identify a synthetic test fixture rather than
 #: collected material. Matched case-insensitively against title and source_url.
@@ -871,9 +874,7 @@ def _is_substantive_entry(entry: dict[str, Any]) -> bool:
     probe = f"{title} {url}".lower()
     if any(marker in probe for marker in _SYNTHETIC_ENTRY_MARKERS):
         return False
-    return len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS or (
-        len(title) >= _MIN_SUBSTANTIVE_TITLE_CHARS
-    )
+    return bool(url) or len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS
 
 
 def _apply_min_content_guard(

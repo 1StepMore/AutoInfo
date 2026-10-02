@@ -526,10 +526,19 @@ class TestInputAdequacyGate:
             }
         )
 
-    def test_empty_summary_with_descriptive_title_is_substantive(self) -> None:
+    def test_provenance_alone_is_enough_for_a_terse_title(self) -> None:
+        """A short title passes on provenance, not on its length."""
         assert _is_substantive_entry(
-            {"title": "Some Article Title Here", "summary": "", "source_url": "https://x.example"}
+            {"title": "Entry 1", "summary": "", "source_url": "https://example.com"}
         )
+
+    def test_terse_title_with_no_provenance_and_no_summary_is_not_substantive(self) -> None:
+        """The shape the title-length rule got wrong.
+
+        A 7-character title is not evidence of junk: the fixtures in
+        tests/delivery carry exactly this and must ship. But with no
+        ``source_url`` and no summary there is nothing to report on either."""
+        assert not _is_substantive_entry({"title": "Entry 1", "summary": "", "source_url": ""})
 
     def test_tier_matrix_fixture_is_not_substantive(self) -> None:
         assert not _is_substantive_entry(

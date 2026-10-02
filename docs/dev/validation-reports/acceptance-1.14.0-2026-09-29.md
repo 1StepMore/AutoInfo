@@ -180,6 +180,26 @@ placeholder material in their *source* data, which the residual register
 `### Placeholder Entries` section was not flagged at all. Its counts should be
 read as prompts for a human to look, not as measurements.
 
+### A third finding that dissolved on checking — stale artifacts
+
+`self_count_contradictions` fires on 16 products, all `enterprise-briefing.md`,
+each claiming "selected N of M key findings" while rendering exactly one Key
+Findings entry. Read directly, that is a genuine self-contradiction.
+
+It is not a live defect. `enterprise-briefing.md.j2` today cannot emit that
+string: it renders `> **In this briefing**: {{ key_findings|length }} key points
+· drawn from {{ references|length }} sources`, and both numbers derive from the
+same lists, so they cannot disagree. The string the products carry was emitted
+before `86c8e12f` (#385, 2026-09-26); the products were generated 2026-08-26,
+a month earlier. All 16 are stale artifacts of the previous template.
+
+Recorded because it is the third finding this cycle that survived a plausible
+reading and then dissolved: the "fabrication" class (wrong baseline -- the
+`knowledge/` file tree instead of `autoinfo.db`) and the 14 "self-contradiction"
+findings (the reviewer's own count was wrong) before this one. The gate itself
+is sound and would fire if the invariant broke again; what is wrong is running
+it against a corpus the current code cannot have produced.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

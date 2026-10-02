@@ -4166,35 +4166,6 @@ def generate_digest(
         )
         return result
 
-    # The min-content guard is a content invariant, not a delivery-gate
-    # feature, so it must run on this path too. It used to sit only inside the
-    # `delivery_gate_configs is not None` branch above, which meant the common
-    # call — generate_digest(domain=...) with no gate configs — skipped it
-    # entirely: a domain whose whole knowledge base is one synthetic fixture
-    # shipped a product full of invented entities. #446.
-    ungated = _apply_min_content_guard(
-        DeliveryOutput(output=rendered, delivery_format=format),
-        entries,
-        product_type,
-    )
-    if ungated.delivery_blocked:
-        reason = ungated.warnings[0] if ungated.warnings else "insufficient source material"
-        blocked_message = (
-            f"# {period_label} Digest — {domain}\n\n"
-            f"**Product not generated: no substantive source material.**\n\n"
-            f"_Reason_: {reason}\n\n"
-            f"_The domain's knowledge base holds no entry a product could honestly "
-            f"report on, so generating one would mean inventing its content. "
-            f"Collect real material first, then regenerate._\n"
-        )
-        if user_id:
-            _try_notify_content_ready(
-                user_id=user_id,
-                product_type="digest",
-                title=f"{period_label} {digest_h1_word} — {domain}",
-            )
-        return blocked_message
-
     if user_id:
         _try_notify_content_ready(
             user_id=user_id,

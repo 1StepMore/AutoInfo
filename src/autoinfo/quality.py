@@ -2602,7 +2602,8 @@ class D2FormatIntegrity:
                         f"Delivery blocked: PROCESSED product carries {count} "
                         f"item{'s' if count > 1 else ''} from "
                         f"{', '.join(repr(c) for c in classifications)} source(s). "
-                        f"Pass allow_processed_from_restricted=True only after an explicit decision."
+                        f"Pass allow_processed_from_restricted=True "
+                        f"only after an explicit decision."
                     ),
                     "blocked_entries": restricted_entries[:10],
                     "override_available": "allow_processed_from_restricted=True",

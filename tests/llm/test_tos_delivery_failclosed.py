@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from autoinfo.quality import D2FormatIntegrity
 
 

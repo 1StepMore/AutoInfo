@@ -1,0 +1,105 @@
+{
+  "files": [
+    {
+      "file": "02-PROCESSED/magazine-digest.md",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/magazine-digest.md",
+      "size": 256,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "02-PROCESSED/pipeline-2026-08-13.log",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/pipeline-2026-08-13.log",
+      "size": 120,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "02-PROCESSED/report-20260813.err",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/report-20260813.err",
+      "size": 64,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "02-PROCESSED/report-video-20260813-000000.mp4",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/report-video-20260813-000000.mp4",
+      "size": 1100,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "02-PROCESSED/autoinfo-deliverable-13domains-20260810.zip",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/autoinfo-deliverable-13domains-20260810.zip",
+      "size": 1100,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "02-PROCESSED/gate-reports-index.json",
+      "kind": "PROCESSED",
+      "source": "/repo/02-PROCESSED/gate-reports-index.json",
+      "size": 80,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    },
+    {
+      "file": "01-Raw/raw-summary.json",
+      "kind": "RAW",
+      "source": "/repo/01-Raw/raw-summary.json",
+      "size": 32,
+      "gates": {
+        "D1": {
+          "gate": "D1-ProductCompleteness",
+          "passed": true,
+          "score": 1.0
+        }
+      },
+      "quality": "PASS"
+    }
+  ],
+  "rejected": [],
+  "ux": null,
+  "qa_gate_reports": []
+}

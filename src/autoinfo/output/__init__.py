@@ -850,11 +850,19 @@ def _is_substantive_entry(entry: dict[str, Any]) -> bool:
 
     Issue #446: a domain whose entire knowledge base is one synthetic
     tier-matrix fixture (``summary: ''``, ``source_url`` on a reserved test
-    host) still passes a ``if not entries`` check, so synthesis was asked to
-    write an Executive Summary with nothing to draw on and invented content —
-    measured across the real corpus, 9 domains shipped 72 products that way,
-    including a fabricated "OpenAI Jalapeño" chip that appears in 19 files and
-    in no knowledge-base entry.
+    host) still passes a ``if not entries`` check, so synthesis would be asked
+    to write an Executive Summary with nothing to draw on. Counting entries
+    cannot see that; checking whether they carry material can.
+
+    Against the authoritative store (``autoinfo.db`` — 1821 entries, 23 domains)
+    this blocks 1 domain: ``default``, whose only two entries are the literal
+    rows ``x`` and ``y`` with empty summaries and no URL.
+
+    An earlier claim that it blocked 9 domains and that a fabricated
+    "OpenAI Jalapeño" chip motivated it is withdrawn — that chip is a real
+    collected entry (techcrunch, 2026-08-25). The 9-domain figure came from
+    reading the ``knowledge/`` file tree, which holds one file for some domains,
+    instead of the database the pipeline actually reads.
     """
     title = str(entry.get("title") or "").strip()
     summary = str(entry.get("summary") or "").strip()

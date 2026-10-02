@@ -510,7 +510,11 @@ class TestInputAdequacyGate:
 
     A domain whose entire knowledge base is one synthetic tier-matrix fixture
     (``summary: ''`` on a reserved test host) passes a ``if not entries`` check.
-    Measured on the real corpus, 9 domains shipped 72 products that way.
+    Against the authoritative store (``autoinfo.db``) this blocks 1 of 23
+    domains -- ``default``, whose only entries are the literal rows ``x`` and
+    ``y``. An earlier "9 domains / 72 products" figure came from reading the
+    ``knowledge/`` file tree instead of the database the pipeline reads, and is
+    withdrawn.
     """
 
     def test_real_entry_is_substantive(self) -> None:

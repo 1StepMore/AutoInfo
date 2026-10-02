@@ -106,6 +106,8 @@ SOURCE_CORE_KEYS: frozenset[str] = frozenset(
         "tos_classification",
         "fetch_depth",
         "requires_key",
+        "requires_app_review",
+        "app_review_ack",
     }
 )
 
@@ -247,6 +249,13 @@ class SourceConfig:
     tos_classification: str = "open"
     fetch_depth: str = "abstract"
     requires_key: bool = False
+    # 平台是否要求「应用/接口审核通过」才可正当采集（如 B 站反爬 + 需应用审核）。
+    # 以前只在 bilibili handler 上有个 staticmethod、yaml 里也写了，但**没有任何消费者**；
+    # 且 yaml 那个键会掉进 settings 无人读 —— 等于死声明。现提升为一等字段 + 有强制点。
+    requires_app_review: bool = False
+    # 显式确认：已就该源完成应用/接口审核（或已确认可正当使用）。
+    # 只有它为 True（或环境变量 AUTOINFO_APP_REVIEW_ACK=1）时，该源才允许采集。
+    app_review_ack: bool = False
     settings: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -258,11 +267,15 @@ class SourceConfig:
 
         ``requires_key`` is also coerced to a bool so string YAML values such as
         ``"true"`` / ``"false"`` never leak through as truthy strings.
+        ``requires_app_review`` / ``app_review_ack`` get the same coercion —
+        a YAML ``"false"`` must not read as truthy and silently open the gate.
         """
         mapped = TIER_TOS_MAP.get(self.quality_tier, "open")
         if self.tos_classification == "open" and mapped != "open":
             self.tos_classification = mapped
         self.requires_key = _as_bool(self.requires_key)
+        self.requires_app_review = _as_bool(self.requires_app_review)
+        self.app_review_ack = _as_bool(self.app_review_ack)
 
 
 @dataclass
@@ -780,6 +793,8 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                     tos_classification=tos,
                     fetch_depth=s.get("fetch_depth", "abstract"),
                     requires_key=s.get("requires_key", False),
+                    requires_app_review=s.get("requires_app_review", False),
+                    app_review_ack=s.get("app_review_ack", False),
                     settings=raw_settings,
                 )
             )
@@ -1402,6 +1417,11 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     "tos_classification": s.tos_classification,
                     **({"fetch_depth": s.fetch_depth} if s.fetch_depth != "abstract" else {}),
                     **({"requires_key": s.requires_key} if s.requires_key else {}),
+                    # 声明「需平台应用审核」的源必须落盘 —— 否则 import/save 一转手
+                    # 就丢，采集处的强制点看不到它（原缺陷：这个声明曾整体不存在）。
+                    **({"requires_app_review": s.requires_app_review} if s.requires_app_review else {}),
+                    # 显式确认也要落盘，否则用户没法按源打开闸门。
+                    **({"app_review_ack": s.app_review_ack} if s.app_review_ack else {}),
                     **s.settings,
                 }
                 for s in domain.sources

@@ -584,6 +584,44 @@ def _collect_from_source(
             duration_s=skipped_duration,
         )
 
+    # -- App-review gate (fail-closed) --------------------------------------
+    # 委托人的硬约束「不做违法采集」的机器强制点。
+    # 源声明 requires_app_review（配置或 handler）且未获显式确认 → **跳过**，
+    # 而不是照常采集。以前这个声明零消费者（yaml 那键掉进 settings 无人读）。
+    app_review_reason = _app_review_block_reason(source_config, handler)
+    if app_review_reason:
+        plog.warning(
+            "Skipping source: app review required and not acknowledged",
+            source_type=source_config.type,
+            extra={
+                "source_name": source_config.name,
+                "reason": app_review_reason,
+                "override": "set app_review_ack: true on the source, or AUTOINFO_APP_REVIEW_ACK=1",
+            },
+        )
+        gate_duration = round(time.time() - src_start, 3)
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="skipped",
+                errors=[{"message": app_review_reason, "app_review_required": True}],
+                duration_s=gate_duration,
+            )
+        return CollectionResult(
+            collection_id=collection_id,
+            domain=domain,
+            source=source_config.name,
+            status="skipped",
+            items_found=0,
+            items_new=0,
+            errors=[{"message": app_review_reason, "app_review_required": True}],
+            duration_s=gate_duration,
+        )
+
     # -- Fetch items -------------------------------------------------------
     try:
         items = _fetch_items(handler, source_config, topic, limit, keywords)
@@ -818,6 +856,51 @@ def _handler_settings(source_config: SourceConfig) -> dict[str, Any]:
     settings = dict(source_config.settings or {})
     settings["fetch_depth"] = source_config.fetch_depth
     return settings
+
+
+def _env_truthy(name: str) -> bool:
+    """Read a boolean-ish environment variable (``1/true/yes/on``)."""
+    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _app_review_block_reason(source_config: SourceConfig, handler: Any) -> str | None:
+    """App-review gate.  Return a block reason, or ``None`` to allow collection.
+
+    The owner's hard constraint ("no unlawful collection") needs a machine
+    enforcement point, not a self-declared flag nobody reads.  Before this,
+    ``requires_app_review`` existed only as a staticmethod on the Bilibili
+    handler plus a YAML key that fell into ``settings`` — zero consumers either
+    way.
+
+    Fail-closed: a source that declares it needs platform app/interface review
+    is **skipped** unless explicitly acknowledged, via either
+
+    * ``app_review_ack: true`` on that source in ``sources.yaml`` (per-source,
+      recorded in the config), or
+    * ``AUTOINFO_APP_REVIEW_ACK=1`` in the environment (global, explicit).
+
+    A missing/broken declaration never *opens* the gate — an exception while
+    probing the handler is treated as "declared" only if the config says so;
+    otherwise the source is allowed (it never claimed to need review).
+    """
+    declared = bool(getattr(source_config, "requires_app_review", False))
+    if not declared:
+        try:
+            declared = bool(handler.requires_app_review())
+        except Exception:  # pragma: no cover - defensive; handlers may not implement it
+            declared = False
+    if not declared:
+        return None
+
+    if bool(getattr(source_config, "app_review_ack", False)) or _env_truthy(
+        "AUTOINFO_APP_REVIEW_ACK"
+    ):
+        return None
+
+    return (
+        f"source '{source_config.name}' requires platform app/interface review "
+        f"but no acknowledgement is recorded — skipped (fail-closed)"
+    )
 
 
 def _build_handler(source_config: SourceConfig) -> Any:

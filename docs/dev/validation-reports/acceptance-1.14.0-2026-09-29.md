@@ -234,6 +234,34 @@ Before #440 every step in this scenario timed out at 900s with the reasoning
 budget exhausted. Two of three now pass. That is the measurable effect of the
 kwarg fix, and it is the only scenario-family evidence gathered so far.
 
+### Scenario batch, partial results (2026-10-03)
+
+Seven real-LLM `output-*` scenarios launched in sequence with
+`AUTOINFO_LLM_MAX_CONCURRENCY=1`. Results so far:
+
+| scenario | result |
+|---|---|
+| `output-column` | **4 of 6 steps failed** (3025s) |
+| `output-discovery` | passed 3/3 (4s) |
+| `output-premium-products` (earlier run) | 2 of 3 steps passed |
+
+**Positive evidence for #446/#447:** the synthesis grounding added there fired
+7 times in these real runs, each time logging the unsupported terms it dropped
+(`Synthesis grounding (#445): dropped a cited sentence whose source does not
+support it (unsupported terms: ...)`). That is the mechanism working in the
+production path, not only under test.
+
+**A harness defect worth fixing:** the failing steps report
+`error: None`. A step that fails without recording why makes every downstream
+diagnosis guesswork — it is why the magazine-digest timing gap took two refuted
+hypotheses to characterise. A step timeout should report the timeout and the
+last observable progress, not `None`.
+
+Remaining five scenarios (`output-simplify-recommend`, `output-digest-report`,
+`output-ebook`, `output-tutorial-presentation`, `output-video`) were still
+running when this section was written; `output-column` alone consumed 50
+minutes, so the batch is slow by construction at concurrency 1.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

@@ -155,6 +155,35 @@ section was not flagged at all.
 Its **free-text findings are specific and independently verified** — every
 count in the table above was checked against the raw file text.
 
+### Known gap — uncited fabrication is NOT blocked
+
+The synthesis filter drops a sentence **whose citation does not support it**. A
+fabricated sentence with **no citation at all** passes it untouched — verified
+directly:
+
+```
+in : OpenAI has introduced a new chip named Jalapeño that outperforms Nvidia's Blackwell processors.
+out: (unchanged)
+```
+
+This matters because the observed fabrications sat in table rows, where title
+and summary are deterministic from the entry and carry no citation.
+
+The entity-level check *does* catch it (`["Jalapeño", "Nvidia's Blackwell", ...]`)
+but is wired only to the post-render D2 path, which **escalates rather than
+blocks**. Promoting it to a hard drop was measured and rejected: against the
+Executive Summary of 48 real products, comparing each to the KB it was built
+from, it fires on **45 of 48 (93%)**. A synthesis legitimately names themes and
+clusters that no individual entry title contains ("the strongest cluster",
+"AI Hardware Advancements"), so a hard drop would destroy 93% of valid
+summaries.
+
+**Consequence: #446 stops cited misattribution, not uncited fabrication.** A
+fabricated claim with no supporting citation can still ship, carrying a
+post-render warning. Closing this needs a hard anchor for every synthesis claim
+— requiring citations in the synthesis format so the existing citation filter
+can verify them — which is a design change, not a patch, and is not done here.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

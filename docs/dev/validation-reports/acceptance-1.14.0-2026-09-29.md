@@ -200,6 +200,31 @@ findings (the reviewer's own count was wrong) before this one. The gate itself
 is sound and would fire if the invariant broke again; what is wrong is running
 it against a corpus the current code cannot have produced.
 
+### `output-*` families — one scenario measured (2026-10-02)
+
+`output-premium-products`, run with the `python` shim on PATH (this box has no
+bare `python`, so `kind: cli` steps fail instantly without it) and
+`AUTOINFO_LLM_MAX_CONCURRENCY=1`:
+
+| step | result |
+|---|---|
+| premium-briefing digest (medical-research) | passed, 252s |
+| enterprise-briefing report (medical-research) | passed, 180s |
+| magazine-digest (general-news) | **failed at the 900s step cap**, no artifact written |
+
+The third step's own command, run standalone in a subprocess exactly as the
+scenario runs it, completed in **184s** and wrote 55 367 chars. So the step is
+correct and the per-step budget is adequate for an isolated call; what is not
+explained is the 5x difference when it runs third in sequence. The leading
+hypothesis is gateway throttling under sustained back-to-back load, which this
+evidence neither confirms nor excludes — `llm.py` retries 429/5xx up to 3
+attempts with jittered backoff, so a throttled call can silently consume its
+whole budget.
+
+Before #440 every step in this scenario timed out at 900s with the reasoning
+budget exhausted. Two of three now pass. That is the measurable effect of the
+kwarg fix, and it is the only scenario-family evidence gathered so far.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

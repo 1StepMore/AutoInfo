@@ -69,12 +69,100 @@ coverage-level proof for B-01.
 | AC3 Dual orientation (human) | PASS | — | 31 CLI command groups; every PR in this cycle was squash-merged by hand | — |
 | AC4 Coverage commitment | PASS | — | `required_sources` = 78 across 13 domains; `output-video` `matrix_domains` = 13 | B-01 and B-02 closed — see below |
 | AC5 Quality (automated gates) | PASS | — | G0-G7 + D1-D3; G7 (deterministic entity-fact) added this cycle, soft/flag | 7 hard/soft gates; G0/G4 hard |
-| AC5 Quality (director review) | PENDING | — | — | **Requires a human reviewer.** Not self-certified by this report. |
+| AC5 Quality (director review) | **NOT SIGNED — defects fixed, not re-verified** | #440 / #446 | 227-product machine draft produced. **RISK 227 / ESCALATE 0 / PASS 0.** Two defect classes found and fixed; products **not** regenerated, so the fixes are unverified against fresh output. Details below. |
 | AC6 Commercial viability | PARTIAL | — (B-04 out of scope) | Cost dashboard live; Stripe/V2 billing deferred by design | B-04 is V2-deferred per acceptance-framework, not a V1 blocker |
 | AC7 Process & governance | PASS | — | Conventional Commits, DCO enforced on every commit, `release-scope` gate active | 3 gates in the release path were found and fixed this cycle (#412, #413) |
 | AC8 Documentation health | PASS | — | `doc_inventory.py --check` exit 0; all 7 drift-prone facts match; 0 stray `test_bug_*` | `founder-expectations.md` §14 corrected (#414) — 11 of its rows were disproven by the code |
 | AC9 Test & validation health | PASS | — | 5766 tests collected, 0 failures on the non-network subset | 88 regression scenarios guard 81 distinct issues |
 | **Overall verdict** | **PENDING DIRECTOR SIGN-OFF** | **0 open V1 blockers** | Targeted LLM run 2026-09-30: 3/5 scenarios, 9/12 steps, 0 auth failures | B-01/B-02/B-03 closed; B-04 V2-deferred; B-05 P3. Core LLM path cleared; `output-*` families (28 domain-expansions) still unexecuted — see Director sign-off |
+
+## AC5 director review — evidence (2026-10-02)
+
+A machine draft over the real product corpus was produced with
+`scripts/agent_review/ac5_director_review.py --delivery-dir outputs --semantic`
+and reviewed form-by-form. **This is a DRAFT: the module's ceiling is
+`RISK`/`ESCALATE` and it can never emit `PASS`**, so it cannot self-certify
+AC5 and a human decision is still required.
+
+| | |
+|---|---|
+| Scope | 227 products, 22 domains, 8 product families, judged on **full** document content |
+| Result | **RISK 227 / ESCALATE 0 / PASS 0** |
+| Run cost | ~35 min at concurrency 1, **0 timeouts**, 0 auth failures |
+
+### Root cause of the run's own failures
+
+The first attempts produced 5 `ESCALATE` rows and a 14-hour projection. Both
+were artifacts of the review tool and of a core LLM defect, not product defects:
+
+- **`additional_body` → `extra_body` (#440).** `llm.py` sent the
+  thinking-disable body under an OpenAI SDK name LiteLLM does not recognise, so
+  it was dropped silently and reasoning was never disabled. Measured: 45 of 50
+  completion tokens on a trivial prompt, `max_tokens` exhausted by thinking
+  alone, `content` empty with `finish_reason=length`. A verdict call cost
+  **224.4s and returned nothing**; after the fix, **11.0s and 482 chars**. This
+  one kwarg also explains 56 `litellm.Timeout` in a single 2h14m validation
+  wave and scenarios timing out at their 900s step budget. It disabled nothing
+  on any non-DeepSeek gateway, for every judgment gate (G4, G5, `llm_judge`,
+  translation QA, scenario judge).
+- **Reviewer read window.** The snippet limit (8 000 chars) sat below the real
+  product size (max 132 757). The reviewer judged 6-44% of each document and
+  reported its own window as a product defect. **All 5 ESCALATE rows were
+  false** — those files were complete. The limit is now above the largest real
+  product and a file past it ESCALATEs as "cannot judge".
+
+### Defect classes found, and their disposition
+
+| Class | Count | Status |
+|---|---|---|
+| Fabricated / misattributed content | 65 | Fixed (#446) — synthesis citation grounding, synthesis entity grounding |
+| Executive Summary contradicts the deterministic body | 14 | Fixed (#446) — count contradictions hard-block at D2; summary claims are now checked against supplied entries |
+| Empty fields, malformed or duplicated references | 17 | Fixed (#446) — empty sections no longer render a heading plus a bare table header, which was the count-mismatch mechanism |
+| Named item absent from body | — | **Escalate, not block.** Fires on ~27% of real products, almost all legitimate summary prose. A rule that wrong-accuses a quarter of shipped output cannot gate delivery. |
+| Presentation / wording | 90 | Not a sign-off concern |
+| Unfilled template section | 1 | Left in place; the reviewer's own label for this class was unreliable |
+
+### How the fabrication arose
+
+`Jalapeño` — a chip OpenAI never announced — appears in **19 product files and
+in zero knowledge-base entries**, across two unrelated domains with different
+configured sources. One bad entry cannot produce that; the model fabricated it
+independently per generation run.
+
+The enabling condition: **9 domains shipped 72 products from no substantive
+source at all.** Each has exactly one KB entry, a synthetic fixture:
+
+```
+title: KB Tier Matrix b2b Raw
+source_url: https://kb-tier-matrix.autoinfo.dev/b2b/raw
+summary: ''
+```
+
+The existing min-content guard counted entries, so one empty fixture passed it
+and synthesis was asked to write an Executive Summary with nothing to draw on.
+`_is_substantive_entry` now requires material, and blocks all 9 domains while
+shipping the 5 that have real entries.
+
+### Calibration caveat — read the findings, not the labels
+
+The reviewer's **verdict labels are unreliable**: of 24 products it labelled
+"placeholder", **0** contained an unfilled template section (it was flagging
+products that *honestly disclosed* placeholder material in their source data,
+which `docs/known-limitations/demo-quality-residuals.md` #179/#191 requires be
+allowed). One product that *does* carry an unfilled `### Placeholder Entries`
+section was not flagged at all.
+
+Its **free-text findings are specific and independently verified** — every
+count in the table above was checked against the raw file text.
+
+### What is NOT established
+
+- The fixes are **unverified against fresh output**. The 227 products were
+  built by the unfixed code path and have not been regenerated, so this run
+  measures what shipped, not what the fixed pipeline produces.
+- The `output-*` scenario families still have not been run across all domains
+  (B-01 closed the artifact gap; the scenarios were not re-executed).
+- This draft does not satisfy AC5 on its own. A human reviewer signs it or does not.
 
 ## Blocker disposition
 

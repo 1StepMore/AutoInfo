@@ -213,13 +213,22 @@ bare `python`, so `kind: cli` steps fail instantly without it) and
 | magazine-digest (general-news) | **failed at the 900s step cap**, no artifact written |
 
 The third step's own command, run standalone in a subprocess exactly as the
-scenario runs it, completed in **184s** and wrote 55 367 chars. So the step is
-correct and the per-step budget is adequate for an isolated call; what is not
-explained is the 5x difference when it runs third in sequence. The leading
-hypothesis is gateway throttling under sustained back-to-back load, which this
-evidence neither confirms nor excludes — `llm.py` retries 429/5xx up to 3
-attempts with jittered backoff, so a throttled call can silently consume its
-whole budget.
+scenario runs it, completed in **184s** and wrote 55 367 chars. The step is
+correct and the per-step budget is adequate for an isolated call, so the 5x
+difference when it runs third in sequence is unexplained.
+
+Two explanations were tested and **both refuted**, recorded so the next person
+does not re-run them:
+
+| hypothesis | test | result |
+|---|---|---|
+| gateway throttling under sustained load | three generations back-to-back on one domain | **refuted** — 269s, 176s, 179s; the third call was *faster* than the first, so there is no cumulative slowdown |
+| the scenario runs steps in parallel, and `AUTOINFO_LLM_MAX_CONCURRENCY=1` is a per-process semaphore that parallel subprocesses bypass | `validation.py:2081` and `:2123` | **refuted** — both are `for step in steps:`, i.e. sequential |
+
+What remains untested is whether the harness's per-step timeout accounting
+differs from wall-clock (the step reported `None` for an error and exactly
+900.014s, which is suspiciously exact), or whether the `kind: cli` subprocess
+inherits a different environment from the one I reproduced by hand.
 
 Before #440 every step in this scenario timed out at 900s with the reasoning
 budget exhausted. Two of three now pass. That is the measurable effect of the

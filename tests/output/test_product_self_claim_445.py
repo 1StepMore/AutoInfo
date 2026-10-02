@@ -31,8 +31,10 @@ from typing import Any
 
 from autoinfo.output import (
     ProductTemplate,
+    _apply_min_content_guard,
     _build_digest_llm_prompt,
     _ground_synthesis_citations,
+    _is_substantive_entry,
     _normalize_digest_product_context,
 )
 from autoinfo.quality import D2FormatIntegrity
@@ -501,3 +503,85 @@ class TestSynthesisPromptConstraint:
         prompt = _build_digest_llm_prompt([{"title": "A", "summary": "s"}])
 
         assert SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT in prompt
+
+
+class TestInputAdequacyGate:
+    """#446: entries that exist but carry nothing must not reach synthesis.
+
+    A domain whose entire knowledge base is one synthetic tier-matrix fixture
+    (``summary: ''`` on a reserved test host) passes a ``if not entries`` check.
+    Measured on the real corpus, 9 domains shipped 72 products that way.
+    """
+
+    def test_real_entry_is_substantive(self) -> None:
+        assert _is_substantive_entry(
+            {
+                "title": "A Systematic Assessment of In Vitro Fertilization",
+                "summary": "x" * 115,
+                "source_url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed",
+            }
+        )
+
+    def test_empty_summary_with_descriptive_title_is_substantive(self) -> None:
+        assert _is_substantive_entry(
+            {"title": "Some Article Title Here", "summary": "", "source_url": "https://x.example"}
+        )
+
+    def test_tier_matrix_fixture_is_not_substantive(self) -> None:
+        assert not _is_substantive_entry(
+            {
+                "title": "KB Tier Matrix b2b Raw",
+                "summary": "",
+                "source_url": "https://kb-tier-matrix.autoinfo.dev/b2b/raw",
+            }
+        )
+
+    def test_spaced_fixture_title_is_matched_not_just_the_hyphenated_url(self) -> None:
+        assert not _is_substantive_entry(
+            {"title": "KB Tier Matrix gaming Raw", "summary": "", "source_url": ""}
+        )
+
+    def test_synthetic_host_alone_disqualifies_a_fleshed_out_entry(self) -> None:
+        assert not _is_substantive_entry(
+            {
+                "title": "A Plausible Looking Headline",
+                "summary": "y" * 200,
+                "source_url": "https://kb-tier-matrix.autoinfo.dev/b2b/raw",
+            }
+        )
+
+    def test_min_content_guard_blocks_zero_substantive_entries(self) -> None:
+        from autoinfo.output import DeliveryOutput
+
+        result = DeliveryOutput(output="")
+        out = _apply_min_content_guard(
+            result,
+            [{"title": "KB Tier Matrix b2b Raw", "summary": "", "source_url": "https://x.dev"}],
+            "PROCESSED",
+        )
+        assert out.delivery_blocked is True
+        assert any("substantive source material" in w for w in out.warnings)
+
+    def test_min_content_guard_still_ships_real_material(self) -> None:
+        from autoinfo.output import DeliveryOutput
+
+        result = DeliveryOutput(output="")
+        out = _apply_min_content_guard(
+            result,
+            [
+                {
+                    "title": "Real Study",
+                    "summary": "z" * 120,
+                    "source_url": "https://eutils.ncbi.nlm.nih.gov",
+                }
+            ],
+            "PROCESSED",
+        )
+        assert out.delivery_blocked is False
+
+    def test_raw_products_are_exempt(self) -> None:
+        from autoinfo.output import DeliveryOutput
+
+        result = DeliveryOutput(output="")
+        out = _apply_min_content_guard(result, [], "RAW")
+        assert out.delivery_blocked is False

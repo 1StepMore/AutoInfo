@@ -824,20 +824,84 @@ def _run_product_judge(
         return True, ""
 
 
+#: An entry only counts as usable source when it carries a real summary or a
+#: descriptive title. Length thresholds are deliberately low: the gate exists to
+#: catch entries that are structurally empty (a tier-matrix test fixture with
+#: ``summary: ''``), not to judge editorial quality.
+_MIN_SUBSTANTIVE_SUMMARY_CHARS = 40
+_MIN_SUBSTANTIVE_TITLE_CHARS = 12
+
+#: Source/title markers that identify a synthetic test fixture rather than
+#: collected material. Matched case-insensitively against title and source_url.
+#: The tier-matrix fixtures spell their name two ways -- ``KB Tier Matrix``
+#: (spaced) in the title and ``kb-tier-matrix.autoinfo.dev`` (hyphenated) in the
+#: URL -- so both forms must be listed or one of them slips through.
+_SYNTHETIC_ENTRY_MARKERS = (
+    "kb tier matrix",
+    "kb-tier-matrix",
+    "autoinfo.dev",
+    "test entry",
+    "placeholder entry",
+)
+
+
+def _is_substantive_entry(entry: dict[str, Any]) -> bool:
+    """Return True when *entry* carries material a product could honestly report.
+
+    Issue #446: a domain whose entire knowledge base is one synthetic
+    tier-matrix fixture (``summary: ''``, ``source_url`` on a reserved test
+    host) still passes a ``if not entries`` check, so synthesis was asked to
+    write an Executive Summary with nothing to draw on and invented content —
+    measured across the real corpus, 9 domains shipped 72 products that way,
+    including a fabricated "OpenAI Jalapeño" chip that appears in 19 files and
+    in no knowledge-base entry.
+    """
+    title = str(entry.get("title") or "").strip()
+    summary = str(entry.get("summary") or "").strip()
+    url = str(entry.get("source_url") or "").strip()
+
+    probe = f"{title} {url}".lower()
+    if any(marker in probe for marker in _SYNTHETIC_ENTRY_MARKERS):
+        return False
+    return len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS or (
+        len(title) >= _MIN_SUBSTANTIVE_TITLE_CHARS
+    )
+
+
 def _apply_min_content_guard(
     result: DeliveryOutput,
     entries: list[dict[str, Any]],
     product_type: str,
 ) -> DeliveryOutput:
-    """Force the blocked flag when a PROCESSED product has zero usable entries.
+    """Force the blocked flag when a PROCESSED product has no usable source.
 
     Layer 1 min-content guard (issue #298): a product with zero usable entries
     after filtering must never be silently shipped as an empty shell.
+
+    Issue #446 extends it: zero *substantive* entries is the same failure with
+    a worse disguise. Counting entries alone let a domain whose only knowledge
+    base row is a synthetic test fixture ship eight products full of invented
+    facts.
     """
-    if not entries and product_type != "RAW":
+    if product_type == "RAW":
+        return result
+
+    def _block(reason: str) -> DeliveryOutput:
         result.delivery_blocked = True
         if not any("min-content guard" in w for w in result.warnings):
-            result.warnings.append("min-content guard: 0 usable entries after filtering")
+            result.warnings.append(f"min-content guard: {reason}")
+        return result
+
+    if not entries:
+        return _block("0 usable entries after filtering")
+
+    substantive = sum(1 for entry in entries if _is_substantive_entry(entry))
+    if substantive == 0:
+        return _block(
+            f"0 of {len(entries)} entr(ies) carry substantive source material "
+            "(empty summary or synthetic test fixture); synthesis would have to "
+            "invent content — collect real material before generating"
+        )
     return result
 
 

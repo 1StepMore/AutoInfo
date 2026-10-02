@@ -76,6 +76,8 @@ sources:
   fetch_depth: abstract
   tos_classification: open
   settings:
+    params:
+      fields: description
     page_param: start
     page_size_param: limit
     page_size: 20

@@ -238,12 +238,19 @@ topics:
 | Field | Purpose |
 |-------|---------|
 | `requires_key` | When `access: api_key`, set `true` |
+| `requires_app_review` | Set `true` for sources needing explicit app-review confirmation (e.g. Bilibili) |
+| `app_review_ack` | Owner confirmation for the above; a declared source without ack is skipped at collect time (recorded as skipped) |
 | `api_key_optional` | For sources with tiered access (e.g., PubMed) |
 | `settings.query_param` | API query parameter name |
 | `settings.json_path` | JSONPath to extract items from API response |
 | `field_mapping` | Maps source response fields to KB fields |
 | `topics` | Source-level topic association |
 | `fallback_rss` | RSS fallback URL for API sources |
+
+> **App-review escape hatch**: a source with `requires_app_review: true` is
+> skipped unless explicitly confirmed — either per-source (`app_review_ack: true`)
+> or globally via `AUTOINFO_APP_REVIEW_ACK=1`. Declared-but-unconfirmed sources
+> are skipped at collect time and recorded as skipped, never collected silently.
 
 ---
 

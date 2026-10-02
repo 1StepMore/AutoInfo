@@ -1419,7 +1419,11 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     **({"requires_key": s.requires_key} if s.requires_key else {}),
                     # 声明「需平台应用审核」的源必须落盘 —— 否则 import/save 一转手
                     # 就丢，采集处的强制点看不到它（原缺陷：这个声明曾整体不存在）。
-                    **({"requires_app_review": s.requires_app_review} if s.requires_app_review else {}),
+                    **(
+                        {"requires_app_review": s.requires_app_review}
+                        if s.requires_app_review
+                        else {}
+                    ),
                     # 显式确认也要落盘，否则用户没法按源打开闸门。
                     **({"app_review_ack": s.app_review_ack} if s.app_review_ack else {}),
                     **s.settings,

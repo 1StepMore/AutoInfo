@@ -20,7 +20,6 @@ from autoinfo.collect import _app_review_block_reason
 from autoinfo.collectors.base import BaseHandler
 from autoinfo.config import SourceConfig
 
-
 # ---------------------------------------------------------------------------
 # 1) 声明被解析成一等字段
 # ---------------------------------------------------------------------------
@@ -141,8 +140,9 @@ def test_bilibili_declares_true_both_ways() -> None:
 def test_real_sources_yaml_parses_the_declaration() -> None:
     """端到端：真实的 sources.yaml 里那句 `requires_app_review: true`
     必须落到一等字段上（以前掉进 settings，无人读）。"""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     p = (
         Path(__file__).resolve().parents[2]

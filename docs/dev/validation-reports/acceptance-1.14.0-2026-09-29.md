@@ -69,7 +69,7 @@ coverage-level proof for B-01.
 | AC3 Dual orientation (human) | PASS | — | 31 CLI command groups; every PR in this cycle was squash-merged by hand | — |
 | AC4 Coverage commitment | PASS | — | `required_sources` = 78 across 13 domains; `output-video` `matrix_domains` = 13 | B-01 and B-02 closed — see below |
 | AC5 Quality (automated gates) | PASS | — | G0-G7 + D1-D3; G7 (deterministic entity-fact) added this cycle, soft/flag | 7 hard/soft gates; G0/G4 hard |
-| AC5 Quality (director review) | **NOT SIGNED — defects fixed, not re-verified** | #440 / #446 | 227-product machine draft produced. **RISK 227 / ESCALATE 0 / PASS 0.** Two defect classes found and fixed; products **not** regenerated, so the fixes are unverified against fresh output. Details below. |
+| AC5 Quality (director review) | **NOT SIGNED — no product-quality finding is established** | #440 / #446 | 227-product machine draft ran to completion (RISK 227 / ESCALATE 0 / PASS 0), but its defect classes were **retracted on 2026-10-02** after the comparison baseline was found to be wrong. What is verified this cycle is the `additional_body` defect (#440) and three reviewer-tool defects; no product defect class survives checking. See the retraction section. |
 | AC6 Commercial viability | PARTIAL | — (B-04 out of scope) | Cost dashboard live; Stripe/V2 billing deferred by design | B-04 is V2-deferred per acceptance-framework, not a V1 blocker |
 | AC7 Process & governance | PASS | — | Conventional Commits, DCO enforced on every commit, `release-scope` gate active | 3 gates in the release path were found and fixed this cycle (#412, #413) |
 | AC8 Documentation health | PASS | — | `doc_inventory.py --check` exit 0; all 7 drift-prone facts match; 0 stray `test_bug_*` | `founder-expectations.md` §14 corrected (#414) — 11 of its rows were disproven by the code |
@@ -111,78 +111,74 @@ were artifacts of the review tool and of a core LLM defect, not product defects:
   false** — those files were complete. The limit is now above the largest real
   product and a file past it ESCALATEs as "cannot judge".
 
-### Defect classes found, and their disposition
+### Defect classes — RETRACTED AND CORRECTED (2026-10-02)
 
-| Class | Count | Status |
-|---|---|---|
-| Fabricated / misattributed content | 65 | Fixed (#446) — synthesis citation grounding, synthesis entity grounding |
-| Executive Summary contradicts the deterministic body | 14 | Fixed (#446) — count contradictions hard-block at D2; summary claims are now checked against supplied entries |
-| Empty fields, malformed or duplicated references | 17 | Fixed (#446) — empty sections no longer render a heading plus a bare table header, which was the count-mismatch mechanism |
-| Named item absent from body | — | **Escalate, not block.** Fires on ~27% of real products, almost all legitimate summary prose. A rule that wrong-accuses a quarter of shipped output cannot gate delivery. |
-| Presentation / wording | 90 | Not a sign-off concern |
-| Unfilled template section | 1 | Left in place; the reviewer's own label for this class was unreliable |
+An earlier version of this section reported 65 products with "fabricated or
+misattributed content" and 14 with a self-contradicting Executive Summary, and
+attributed them to a model that invented entities. **That attribution was
+wrong and is withdrawn.** Two of the reported classes do not survive checking
+against the source data:
 
-### How the fabrication arose
+| Originally reported | Verdict on re-check |
+|---|---|
+| 65 products with fabricated content | **Not fabrication.** `"Jalapeño"` is a real collected entry: `source_platform: techcrunch` (`techcrunch.com/2026/08/25/openais-jalapeno-chip-...`, `collected_at 2026-08-25`) plus a `hackernews` copy. The model's summaries are grounded in real source material. |
+| 14 products whose Executive Summary contradicts the body | **One spot-check did not reproduce.** `premium-briefing.md` states "four selected items" and carries exactly four numbered takeaways; the review reported five. The counter was the reviewer's, not the document's. |
+| 17 products with empty fields / malformed references | Not re-checked. Unverified. |
 
-`Jalapeño` — a chip OpenAI never announced — appears in **19 product files and
-in zero knowledge-base entries**, across two unrelated domains with different
-configured sources. One bad entry cannot produce that; the model fabricated it
-independently per generation run.
+**Root cause of the wrong attribution:** the review was compared against
+`knowledge/`, a file tree that does not hold the working knowledge base. The
+authoritative store is `autoinfo.db` (SQLite; `kb.py` resolves
+`db_path = base_path.parent / "autoinfo.db"`, and `output` reads it through
+`store.list_entries`). It holds 1821 entries across 23 domains, of which `b2b`
+has 149. `knowledge/b2b` contains a single file. Searching the file tree
+instead of the database made a well-populated domain look empty, which is what
+produced both the false "fabrication" claim and the false "9 domains shipped
+72 products from no substantive source" claim.
 
-The enabling condition: **9 domains shipped 72 products from no substantive
-source at all.** Each has exactly one KB entry, a synthetic fixture:
+Re-running the input-adequacy guard against the real database blocks **1 of 23
+domains** — `default`, whose only two entries are the literal rows `x` and `y`
+with empty summaries and no URL. That block is correct; the 9-domain claim was
+not.
 
-```
-title: KB Tier Matrix b2b Raw
-source_url: https://kb-tier-matrix.autoinfo.dev/b2b/raw
-summary: ''
-```
+### What this section should have said
 
-The existing min-content guard counted entries, so one empty fixture passed it
-and synthesis was asked to write an Executive Summary with nothing to draw on.
-`_is_substantive_entry` now requires material, and blocks all 9 domains while
-shipping the 5 that have real entries.
+The only defect classes verified in this cycle are the reviewer-tool defects
+recorded above (binary artifacts aborting a run, a non-recursive scan that
+turned a real product tree into an empty "all clean" worklist, and a snippet
+window below the real product size that produced 5 false ESCALATE rows), plus
+the `additional_body` defect in #440. The product-quality classes are **not
+established** and need a review run whose comparison baseline is the database.
 
-### Calibration caveat — read the findings, not the labels
+### The entity-level grounding check: measured, and deliberately not a hard drop
 
-The reviewer's **verdict labels are unreliable**: of 24 products it labelled
-"placeholder", **0** contained an unfilled template section (it was flagging
-products that *honestly disclosed* placeholder material in their source data,
-which `docs/known-limitations/demo-quality-residuals.md` #179/#191 requires be
-allowed). One product that *does* carry an unfilled `### Placeholder Entries`
-section was not flagged at all.
+`_ground_synthesis_citations` drops a synthesis sentence **whose citation does
+not support it**. A sentence with no citation is untouched by it, by design --
+there is no anchor to verify against.
 
-Its **free-text findings are specific and independently verified** — every
-count in the table above was checked against the raw file text.
+`ungrounded_entities` can flag an ungrounded Title-Case entity, and it is wired
+only to the post-render D2 path, which **escalates rather than blocks**.
+Promoting it to a synthesis-time drop was measured rather than assumed:
 
-### Known gap — uncited fabrication is NOT blocked
+| baseline | fire rate on real Executive Summaries |
+|---|---|
+| `knowledge/` file tree (wrong baseline) | 93% |
+| **`autoinfo.db`** (authoritative) | **32%** (33 of 103 products) |
 
-The synthesis filter drops a sentence **whose citation does not support it**. A
-fabricated sentence with **no citation at all** passes it untouched — verified
-directly:
+The first measurement was taken against a near-empty corpus and is withdrawn.
+Against the real database the rate is 32%, still far too high to drop output
+over: a synthesis legitimately names themes and clusters that no individual
+entry title contains ("the strongest cluster", "AI Infrastructure
+Consolidation"). The escalate-only decision stands, on a corrected basis.
 
-```
-in : OpenAI has introduced a new chip named Jalapeño that outperforms Nvidia's Blackwell processors.
-out: (unchanged)
-```
+### The reviewer's own labels are unreliable
 
-This matters because the observed fabrications sat in table rows, where title
-and summary are deterministic from the entry and carry no citation.
-
-The entity-level check *does* catch it (`["Jalapeño", "Nvidia's Blackwell", ...]`)
-but is wired only to the post-render D2 path, which **escalates rather than
-blocks**. Promoting it to a hard drop was measured and rejected: against the
-Executive Summary of 48 real products, comparing each to the KB it was built
-from, it fires on **45 of 48 (93%)**. A synthesis legitimately names themes and
-clusters that no individual entry title contains ("the strongest cluster",
-"AI Hardware Advancements"), so a hard drop would destroy 93% of valid
-summaries.
-
-**Consequence: #446 stops cited misattribution, not uncited fabrication.** A
-fabricated claim with no supporting citation can still ship, carrying a
-post-render warning. Closing this needs a hard anchor for every synthesis claim
-— requiring citations in the synthesis format so the existing citation filter
-can verify them — which is a design change, not a patch, and is not done here.
+Separately from the classification error above, the reviewer's labels do not
+survive checking. Of 24 products it labelled "placeholder", **0** contained an
+unfilled template section -- it was flagging products that honestly disclosed
+placeholder material in their *source* data, which the residual register
+(#179/#191) requires be allowed. One product that does carry an unfilled
+`### Placeholder Entries` section was not flagged at all. Its counts should be
+read as prompts for a human to look, not as measurements.
 
 ### What is NOT established
 

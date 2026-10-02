@@ -26,7 +26,7 @@ Python 3.14.4, pytest 8.4.2, pytest-timeout 2.4.0.
 pytest tests/mcp tests/validation tests/cli tests/output tests/llm
 ```
 
-**Baseline**: **2611 tests -> 6 failed / 2581 passed / 24 skipped / 0 errors**
+**Baseline**: **2611 tests -> 3 failed / 2584 passed / 24 skipped / 0 errors**
 (701.29s on the reference WSL box, 2026-09-17; re-measured after the mypy strict
 debt paydown and after the regression locks added for the same day's bug fixes —
 the composition of the 6 is unchanged, and the +5 collected/passed come from the
@@ -44,9 +44,6 @@ stream (CLI tests under capture), which made `setStream` raise
 `tests/llm/test_llm_timeout.py` ×2 healed with that fix.
 
 ```
-tests/llm/test_fallback_config.py::test_fallback_chain_parsed_from_real_config
-tests/llm/test_fallback_config.py::test_primary_unchanged
-tests/llm/test_fallback_config.py::test_fallback_model_resolves_with_primary_provider
 tests/output/test_magazine_digest.py::TestMagazineRender::test_generate_digest_renders_magazine_variant
 tests/output/test_magazine_digest.py::TestMagazineRender::test_magazine_render_free_user_no_gate
 tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generate_digest_magazine_contains_editorial_sections
@@ -54,7 +51,6 @@ tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generat
 
 | Class | Count | Files | Why |
 |-------|-------|-------|-----|
-| Local-config dependent | 3 | `tests/llm/test_fallback_config.py` | Assert against the working copy's `.autoinfo/config.yaml` (provider/model/fallback chain), which is a per-machine runtime artifact — the tests are not hermetic. |
 | Local-dataset dependent | 3 | `tests/output/test_magazine_digest.py` | Depend on local KB/dataset content rather than on a fixture. |
 
 **Load-sensitive flake (observed 2026-09-17, not budgeted).** Two failures

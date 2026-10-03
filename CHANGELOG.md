@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.1](https://github.com/1StepMore/AutoInfo/compare/v1.16.0...v1.16.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **domains:** coursera 源请求 description 字段，修复采集正文全空 ([#458](https://github.com/1StepMore/AutoInfo/issues/458)) ([#459](https://github.com/1StepMore/AutoInfo/issues/459)) ([8fc3f3c](https://github.com/1StepMore/AutoInfo/commit/8fc3f3c2eec73bb2b896910cfca22f47cdbfcb1c))
+
 ## [1.16.0](https://github.com/1StepMore/AutoInfo/compare/v1.15.1...v1.16.0) (2026-10-01)
 
 

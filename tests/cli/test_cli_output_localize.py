@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
+from tests._ansi import strip_ansi
+
 
 def _runner() -> CliRunner:
     """Return a CliRunner instance."""
@@ -65,7 +67,7 @@ def test_localize_requires_target_lang(cli_runner: Any) -> None:
         app, ["output", "localize", "--domain", "medical-research"]
     )
     assert result.exit_code != 0
-    assert "--target-lang" in result.output
+    assert "--target-lang" in strip_ansi(result.output)
 
 
 def test_localize_value_error_surfaces(

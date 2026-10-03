@@ -21,6 +21,7 @@ from autoinfo.cli import _output
 from autoinfo.cli import app as main_app
 from autoinfo.cli.collect import app as collect_app
 from autoinfo.process import ProcessResult
+from tests._ansi import strip_ansi
 
 runner = CliRunner()
 
@@ -88,13 +89,13 @@ class TestCollectFlagValidation:
         result = cli_runner.invoke(collect_app, ["--all", "--domain", "medical-research"])
 
         assert result.exit_code == 1, result.output
-        assert "Cannot use --all with --domain" in result.output
+        assert "Cannot use --all with --domain" in strip_ansi(result.output)
 
     def test_neither_all_nor_domain_is_rejected(self, cli_runner: CliRunner) -> None:
         result = cli_runner.invoke(collect_app, [])
 
         assert result.exit_code == 1, result.output
-        assert "Either --domain or --all must be provided." in result.output
+        assert "Either --domain or --all must be provided." in strip_ansi(result.output)
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ class TestCollectAllDomains:
         result = cli_runner.invoke(collect_app, ["--all"])
 
         assert result.exit_code == 1, result.output
-        assert "No configuration found" in result.output
+        assert "No configuration found" in strip_ansi(result.output)
 
     def test_all_without_active_domains_exits_nonzero(self, cli_runner, tmp_path) -> None:
         _write_config(tmp_path, [_domain_entry("sleepy", active=False)])
@@ -115,7 +116,7 @@ class TestCollectAllDomains:
         result = cli_runner.invoke(collect_app, ["--all"])
 
         assert result.exit_code == 1, result.output
-        assert "No active domains found" in result.output
+        assert "No active domains found" in strip_ansi(result.output)
 
     @patch("autoinfo.collect.run_collection")
     def test_all_collects_each_active_domain(
@@ -129,10 +130,10 @@ class TestCollectAllDomains:
         assert result.exit_code == 0, result.output
         domains_called = [call.kwargs["domain"] for call in mock_run.call_args_list]
         assert domains_called == ["alpha", "beta"]
-        assert "── Collecting for domain 'alpha' ──" in result.output
-        assert "── Collecting for domain 'beta' ──" in result.output
+        assert "── Collecting for domain 'alpha' ──" in strip_ansi(result.output)
+        assert "── Collecting for domain 'beta' ──" in strip_ansi(result.output)
         # Each per-domain result is rendered in human form.
-        assert "Collection col-alpha for domain 'alpha'" in result.output
+        assert "Collection col-alpha for domain 'alpha'" in strip_ansi(result.output)
 
     @patch("autoinfo.collect.run_collection")
     def test_all_json_output_aggregates_domains(
@@ -147,7 +148,7 @@ class TestCollectAllDomains:
         # Per-command --json keeps the historical shape: the domain banners are
         # printed first (pre-existing behavior; only global --json suppresses
         # them), so the aggregate document starts at the first brace.
-        assert "── Collecting for domain 'alpha' ──" in result.stdout
+        assert "── Collecting for domain 'alpha' ──" in strip_ansi(result.stdout)
         stdout = result.stdout
         payload = json.loads(stdout[stdout.index("{") :])
         assert payload["total_domains"] == 2
@@ -183,8 +184,8 @@ class TestCollectAllDomains:
         result = cli_runner.invoke(collect_app, ["--all", "--auto-process"])
 
         assert result.exit_code == 0, result.output
-        assert "── Running auto-process for 'alpha' ──" in result.output
-        assert "No new items for 'beta' — skipping auto-process." in result.output
+        assert "── Running auto-process for 'alpha' ──" in strip_ansi(result.output)
+        assert "No new items for 'beta' — skipping auto-process." in strip_ansi(result.output)
         mock_process.assert_called_once_with(domain="alpha", topic=None)
 
     @patch("autoinfo.collect.run_collection")
@@ -260,7 +261,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research", "--auto-process"])
 
         assert result.exit_code == 0, result.output
-        assert "── Running auto-process ──" in result.output
+        assert "── Running auto-process ──" in strip_ansi(result.output)
         assert "Processing: 5 items → 4 passed G1-G3 → 4 KB entries created (0.5s)" in (
             result.output
         )
@@ -276,7 +277,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research", "--auto-process"])
 
         assert result.exit_code == 0, result.output
-        assert "Auto-process failed: no llm key" in result.output
+        assert "Auto-process failed: no llm key" in strip_ansi(result.output)
 
     @patch("autoinfo.process.run_processing")
     @patch("autoinfo.collect.run_collection")
@@ -288,7 +289,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research", "--auto-process"])
 
         assert result.exit_code == 0, result.output
-        assert "No new items — skipping auto-process." in result.output
+        assert "No new items — skipping auto-process." in strip_ansi(result.output)
         mock_process.assert_not_called()
 
     @patch("autoinfo.process.run_processing")
@@ -306,7 +307,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research", "--auto-process"])
 
         assert result.exit_code == 0, result.output
-        assert "1 item(s) failed" in result.output
+        assert "1 item(s) failed" in strip_ansi(result.output)
 
     @patch("autoinfo.process.run_processing")
     @patch("autoinfo.collect.run_collection")
@@ -339,7 +340,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research", "--dry-run"])
 
         assert result.exit_code == 0, result.output
-        assert "ℹ Dry-run — no items were stored." in result.output
+        assert "ℹ Dry-run — no items were stored." in strip_ansi(result.output)
         assert mock_run.call_args.kwargs["dry_run"] is True
 
     @patch("autoinfo.collect.run_collection")
@@ -365,7 +366,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research"])
 
         assert result.exit_code == 1, result.output
-        assert "Error: collections/ dir missing" in result.output
+        assert "Error: collections/ dir missing" in strip_ansi(result.output)
 
     @patch("autoinfo.collect.run_collection")
     def test_run_collection_value_error_exits_nonzero(
@@ -376,7 +377,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research"])
 
         assert result.exit_code == 1, result.output
-        assert "Error: bad limit" in result.output
+        assert "Error: bad limit" in strip_ansi(result.output)
 
     def test_missing_collect_module_exits_nonzero(self, cli_runner, monkeypatch) -> None:
         monkeypatch.setitem(sys.modules, "autoinfo.collect", None)
@@ -384,7 +385,7 @@ class TestCollectSingleDomain:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research"])
 
         assert result.exit_code == 1, result.output
-        assert "collect module not available" in result.output
+        assert "collect module not available" in strip_ansi(result.output)
 
     @patch("autoinfo.collect.run_collection")
     def test_global_json_suppresses_progress_printer(self, mock_run: MagicMock, cli_runner) -> None:
@@ -424,10 +425,12 @@ class TestCollectHumanOutput:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research"])
 
         assert result.exit_code == 0, result.output
-        assert "✗ pubmed: 5 new / 12 found (2 filtered) (1.2s)" in result.output
-        assert "↳ PubMed down" in result.output
-        assert "resumed: skipped 2 completed source(s): arxiv, crossref" in result.output
-        assert "Total: 5 new items from 12 found in 1.2s" in result.output
+        assert "✗ pubmed: 5 new / 12 found (2 filtered) (1.2s)" in strip_ansi(result.output)
+        assert "↳ PubMed down" in strip_ansi(result.output)
+        assert "resumed: skipped 2 completed source(s): arxiv, crossref" in strip_ansi(
+            result.output
+        )
+        assert "Total: 5 new items from 12 found in 1.2s" in strip_ansi(result.output)
 
     @patch("autoinfo.collect.run_collection")
     def test_progress_printer_reports_each_source_live(
@@ -466,5 +469,5 @@ class TestCollectHumanOutput:
         result = cli_runner.invoke(collect_app, ["--domain", "medical-research"])
 
         assert result.exit_code == 0, result.output
-        assert "✓ pubmed: 3 new / 10 found (2 filtered) (1.5s)" in result.output
-        assert "? rss: 0 new / 1 found (0.0s)" in result.output
+        assert "✓ pubmed: 3 new / 10 found (2 filtered) (1.5s)" in strip_ansi(result.output)
+        assert "? rss: 0 new / 1 found (0.0s)" in strip_ansi(result.output)

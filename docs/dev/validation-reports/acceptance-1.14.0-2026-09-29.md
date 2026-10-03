@@ -243,7 +243,18 @@ Seven real-LLM `output-*` scenarios launched in sequence with
 |---|---|
 | `output-column` | **4 of 6 steps failed** (3025s) |
 | `output-discovery` | passed 3/3 (4s) |
+| `output-simplify-recommend` | passed 4/4 (1299s) |
 | `output-premium-products` (earlier run) | 2 of 3 steps passed |
+
+`output-simplify-recommend` passing 4/4 next to `output-column` failing 4/6 is
+the useful contrast: the extra_body fix is not the limiting factor, and
+`output-column`'s failures are specific to that scenario rather than systemic.
+
+The batch did not finish. It was still working through
+`output-digest-report`, `output-ebook`, `output-tutorial-presentation` and
+`output-video` when its log was lost to a `/tmp` cleanup, so those four have no
+result at all — not a failure, an absence. Re-run them before relying on this
+table.
 
 **Positive evidence for #446/#447:** the synthesis grounding added there fired
 7 times in these real runs, each time logging the unsupported terms it dropped

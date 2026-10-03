@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.2](https://github.com/1StepMore/AutoInfo/compare/v1.16.1...v1.16.2) (2026-10-03)
+
+
+### Tests
+
+* **cli:** help 文本断言对 ANSI 免疫，修 main 夜间全量 26 条假红 ([#461](https://github.com/1StepMore/AutoInfo/issues/461)) ([3904c94](https://github.com/1StepMore/AutoInfo/commit/3904c94b6ccc0d7805700d7edbd90edec9745b38))
+
 ## [1.16.1](https://github.com/1StepMore/AutoInfo/compare/v1.16.0...v1.16.1) (2026-10-03)
 
 

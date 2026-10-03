@@ -496,11 +496,42 @@ Sign-off requires:
    (`llm-gated` 3/3, `kb-extraction` 3/3, `enduser-journey` 2/2; 0 auth
    failures). The two failing scenarios failed for non-LLM reasons
    (`processing` on a gitignored path; `cli-llm` step 1 on 2 × `Timeout`).
-2. **(b) `output-*` families — still open.** 28 domain-expansions across
-   `output-video` / `output-digest-report` / `output-tutorial-presentation` /
-   `output-column` / `output-ebook` / `output-simplify-recommend` were not
-   executed. Either run them against a gateway that sustains the fan-out, or
-   record an explicit director acceptance of coverage-level proof for B-01.
+2. **(b) `output-*` families — partially closed, and the remainder is now
+   blocked on data rather than on budget.** This item previously read "28
+   domain-expansions were not executed". That is no longer true. Measured this
+   cycle, all with caller budgets raised only to measure:
+
+   | scenario | verdict | wall | worst step | declared budget |
+   |---|---|---|---|---|
+   | `output-discovery` | passed 3/3 | 4s | ~1s | 300 |
+   | `output-simplify-recommend` | passed 4/4 | 1299s | ~325s | 900 |
+   | `output-agent-interaction` | passed 2/2 (mocked) | 2.4s | 0.6s | 60 |
+   | `output-column` | failed 4/6 | 3025s | 1118s | 1800 |
+   | `output-premium-products` | failed 2/3 | ~430s | 269s | 900 |
+   | `output-digest-report` | failed on stale data | 1445s | 272.7s | 600 |
+   | `output-tutorial-presentation` | failed on stale data | 571s | 104.7s | 300 |
+
+   All nine declare their own budget, so no verdict here turns on the caller's
+   `timeout` argument any more -- that was the reproducibility defect, and it
+   is fixed.
+
+   What is still missing is stated plainly rather than as a count:
+
+   - `output-video` produces no evidence on this box. `bun`, `ffmpeg` and
+     `ffprobe` are present; `hyperframes` is an npm package fetched at call time
+     and is not available. Its env-gate also reports `failed` where the
+     contract requires `unconfigured`.
+   - `output-ebook` declares 900 but was not re-measured this cycle.
+   - `output-agent-interaction`'s green is harness evidence. It is mocked, so
+     the real gateway path it stands for is still unproven.
+   - Two scenarios are red on **stale fixture data** (`ai-commercial`,
+     `financial-news`), not on product behaviour. Recollecting those domains is
+     what closes them.
+
+   None of these is a product defect, and none is claimed to be. They are the
+   distance between "the QC pipeline is sound" and "the output families are
+   proven".
+
 3. **(c) A named director signature**, plus the AC5 quality judgment above.
 
 | Field | Value |

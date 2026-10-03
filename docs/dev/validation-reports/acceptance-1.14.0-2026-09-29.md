@@ -285,6 +285,35 @@ Remaining five scenarios (`output-simplify-recommend`, `output-digest-report`,
 running when this section was written; `output-column` alone consumed 50
 minutes, so the batch is slow by construction at concurrency 1.
 
+### Scenario timeouts are caller-supplied, so verdicts are not reproducible
+
+While diagnosing `output-column` above, the budget mechanism turned out to be
+worth recording on its own:
+
+| scenario | declared `timeout:` |
+|---|---|
+| `output-ebook`, `output-premium-products` | 900 |
+| `output-video` | 1200 |
+| the other **six** `output-*` scenarios | **none — inherits the caller's default (180s)** |
+
+`run_scenario`'s `timeout` parameter defaults to `180.0`
+(`validation.py:2135`) and a step inherits it unless the scenario declares its
+own. So the verdict for those six depends on **what the caller passed**, not on
+the scenario.
+
+This is not hypothetical. In this cycle's batch I passed `timeout=1200.0`, and
+`output-simplify-recommend` passed 4/4 in 1299s — an average of ~325s per step,
+comfortably over the 180s a default caller would allow. The same steps under the
+default budget would fail. `output-column` is the same shape with worse numbers:
+a single `generate_report` costs 1118s on this gateway, so it cannot pass on
+180s at all, and only squeaked past the 1200s I supplied.
+
+The mechanism to fix this already exists and three scenarios use it. The other
+six should declare a budget derived from their measured cost, so a verdict means
+the same thing in CI, locally, and in a batch. Until then, **a green
+`output-*` scenario is evidence about the caller's timeout as much as the
+product.**
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

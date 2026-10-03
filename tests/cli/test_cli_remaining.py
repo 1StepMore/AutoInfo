@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from autoinfo.cli import app
+from tests._ansi import strip_ansi
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -73,14 +74,14 @@ class TestSourcesHealth:
         """``autoinfo sources --help`` lists the health subcommand."""
         result = cli_runner.invoke(app, ["sources", "--help"])
         assert result.exit_code == 0
-        assert "health" in result.stdout
+        assert "health" in strip_ansi(result.stdout)
 
     def test_health_help_shows_options(self, cli_runner: Any) -> None:
         """``autoinfo sources health --help`` shows --source-id and --json."""
         result = cli_runner.invoke(app, ["sources", "health", "--help"])
         assert result.exit_code == 0
-        assert "--source-id" in result.stdout
-        assert "--json" in result.stdout
+        assert "--source-id" in strip_ansi(result.stdout)
+        assert "--json" in strip_ansi(result.stdout)
 
     def test_health_requires_source_id(self, cli_runner: Any) -> None:
         """Without --source-id, the command should fail."""
@@ -115,8 +116,8 @@ class TestSourcesHealth:
                 ],
             )
         assert result.exit_code == 0
-        assert "healthy" in result.stdout
-        assert "medical-research:pubmed" in result.stdout
+        assert "healthy" in strip_ansi(result.stdout)
+        assert "medical-research:pubmed" in strip_ansi(result.stdout)
         mock_fn.assert_called_once_with(source_id="medical-research:pubmed")
 
     def test_health_json_output(
@@ -163,7 +164,7 @@ class TestSourcesHealth:
                 ["sources", "health", "--source-id", "medical-research:pubmed"],
             )
         assert result.exit_code == 1
-        assert "Connection failed" in result.stdout
+        assert "Connection failed" in strip_ansi(result.stdout)
 
 
 # ---------------------------------------------------------------------------
@@ -178,14 +179,14 @@ class TestKbListTiers:
         """``autoinfo kb --help`` lists the list-tiers subcommand."""
         result = cli_runner.invoke(app, ["kb", "--help"])
         assert result.exit_code == 0
-        assert "list-tiers" in result.stdout
+        assert "list-tiers" in strip_ansi(result.stdout)
 
     def test_list_tiers_help_shows_options(self, cli_runner: Any) -> None:
         """``autoinfo kb list-tiers --help`` shows --domain and --json."""
         result = cli_runner.invoke(app, ["kb", "list-tiers", "--help"])
         assert result.exit_code == 0
-        assert "--domain" in result.stdout
-        assert "--json" in result.stdout
+        assert "--domain" in strip_ansi(result.stdout)
+        assert "--json" in strip_ansi(result.stdout)
 
     def test_list_tiers_requires_domain(self, cli_runner: Any) -> None:
         """Without --domain, the command should fail."""
@@ -210,9 +211,9 @@ class TestKbListTiers:
             )
 
         assert result.exit_code == 0
-        assert "01-Raw" in result.stdout
-        assert "02-Draft" in result.stdout
-        assert "03-Wiki" in result.stdout
+        assert "01-Raw" in strip_ansi(result.stdout)
+        assert "02-Draft" in strip_ansi(result.stdout)
+        assert "03-Wiki" in strip_ansi(result.stdout)
 
     def test_list_tiers_json_output(
         self, cli_runner: Any, tmp_project: Path
@@ -252,14 +253,14 @@ class TestOutputListTemplates:
         """``autoinfo output --help`` lists the list-templates subcommand."""
         result = cli_runner.invoke(app, ["output", "--help"])
         assert result.exit_code == 0
-        assert "list-templates" in result.stdout
+        assert "list-templates" in strip_ansi(result.stdout)
 
     def test_list_templates_help_shows_options(self, cli_runner: Any) -> None:
         """``autoinfo output list-templates --help`` shows --domain and --json."""
         result = cli_runner.invoke(app, ["output", "list-templates", "--help"])
         assert result.exit_code == 0
-        assert "--domain" in result.stdout
-        assert "--json" in result.stdout
+        assert "--domain" in strip_ansi(result.stdout)
+        assert "--json" in strip_ansi(result.stdout)
 
     def test_list_templates_returns_known_types(self, cli_runner: Any) -> None:
         """list-templates returns the standard template types."""
@@ -269,10 +270,10 @@ class TestOutputListTemplates:
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-        assert "digest" in result.stdout
-        assert "report" in result.stdout
-        assert "tutorial" in result.stdout
-        assert "presentation" in result.stdout
+        assert "digest" in strip_ansi(result.stdout)
+        assert "report" in strip_ansi(result.stdout)
+        assert "tutorial" in strip_ansi(result.stdout)
+        assert "presentation" in strip_ansi(result.stdout)
 
     def test_list_templates_with_domain(self, cli_runner: Any) -> None:
         """When a domain is specified, it's shown in the output."""
@@ -282,7 +283,7 @@ class TestOutputListTemplates:
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-        assert "digest" in result.stdout
+        assert "digest" in strip_ansi(result.stdout)
 
     def test_list_templates_json_output(self, cli_runner: Any) -> None:
         """With --json, output is valid JSON."""

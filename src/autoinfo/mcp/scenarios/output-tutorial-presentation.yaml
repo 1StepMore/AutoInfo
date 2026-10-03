@@ -26,6 +26,7 @@ collect_artifacts:
   - "outputs/**/*.json"
   - "outputs/**/*.html"
   - "outputs/**/*.mp3"
+timeout: 300
 steps:
   - name: "generate_tutorial markdown format"
     tool: generate_tutorial

@@ -361,6 +361,42 @@ not the product broken. It is recorded as a data blocker, so the scenario
 cannot go green until `ai-commercial` is recollected; raising the budget does
 not and should not make this verdict green.
 
+### Both real scenarios failed for the same reason, and it is not the product
+
+The remaining two measurements, same run, same generous caller budget:
+
+| scenario | verdict | wall | worst step | declared |
+|---|---|---|---|---|
+| `output-digest-report` | failed | 1445s | 272.7s | 600 |
+| `output-tutorial-presentation` | failed | 571s | 104.7s | 300 |
+| `output-agent-interaction` | **passed** | 2.4s | 0.6s | 60 |
+
+All nine `output-*` scenarios now carry their own budget, so no verdict in this
+family depends on the caller's `timeout` argument any more.
+
+Two of the three failed, and **both on stale fixture data**, through the same
+gate:
+
+- `ai-commercial` -- 7 entries, all past the freshness threshold
+- `financial-news` -- all 4 candidate entries past the threshold
+
+Both produce a `ValidationError` from the staleness gate and nothing else. This
+is the gate working, not the product breaking, and it is a pattern rather than
+two coincidences: these scenarios assert against *collected* data, and
+collected data ages. A red verdict here means the fixture needs recollecting.
+It does not mean a defect, and no defect is claimed from these two.
+
+`output-agent-interaction` passed, and it is the one that is mocked rather than
+a real gateway call -- so its green is evidence that the harness works, not that
+the agent interaction works end to end. The real-matrix coverage this family
+was supposed to provide is still missing.
+
+`output-tutorial-presentation`'s worst step is 104.7s, which fits inside the
+180s default. It is declared at 300s anyway, on the cross-run variance measured
+elsewhere this cycle (`magazine-digest`: 184s standalone, over 900s in a
+sequence) -- a budget that only holds for the run that happened to measure it
+is not a budget.
+
 ### Runner durability, after losing one run to it
 
 The first attempt at this measurement died 4 minutes in and the loss was

@@ -25,6 +25,7 @@ from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.process import ProcessResult, load_cached_items, run_processing
 from autoinfo.quality import QualityResult
+from tests._ansi import strip_ansi
 
 # ===================================================================
 # Fixtures
@@ -599,10 +600,10 @@ class TestProcessCli:
 
         result = cli_runner.invoke(app, ["process", "--help"])
         assert result.exit_code == 0
-        assert "--domain" in result.stdout
-        assert "--model" in result.stdout
-        assert "--batch-size" in result.stdout
-        assert "--json" in result.stdout
+        assert "--domain" in strip_ansi(result.stdout)
+        assert "--model" in strip_ansi(result.stdout)
+        assert "--batch-size" in strip_ansi(result.stdout)
+        assert "--json" in strip_ansi(result.stdout)
 
     def test_process_missing_domain(self, cli_runner) -> None:
         """Missing ``--domain`` shows error."""
@@ -611,7 +612,9 @@ class TestProcessCli:
         result = cli_runner.invoke(app, ["process"])
         assert result.exit_code != 0
         # Typer outputs option errors to stderr
-        assert "Missing option" in result.stdout or "Missing option" in result.stderr
+        assert "Missing option" in strip_ansi(result.stdout) or (
+            "Missing option" in strip_ansi(result.stderr)
+        )
 
     def test_process_with_mocked_run(
         self, cli_runner, sample_items: list[Item]
@@ -638,10 +641,10 @@ class TestProcessCli:
             result = cli_runner.invoke(app, ["process", "--domain", "test-domain"])
 
         assert result.exit_code == 0
-        assert "Processing domain: test-domain" in result.stdout
-        assert "Summary: 3 items" in result.stdout
-        assert "2 passed G1-G3" in result.stdout
-        assert "2 KB entries created" in result.stdout
+        assert "Processing domain: test-domain" in strip_ansi(result.stdout)
+        assert "Summary: 3 items" in strip_ansi(result.stdout)
+        assert "2 passed G1-G3" in strip_ansi(result.stdout)
+        assert "2 KB entries created" in strip_ansi(result.stdout)
         # No batch message because is_complete=True
         assert "Batch progress" not in result.stdout
 
@@ -681,7 +684,7 @@ class TestProcessCli:
 
         result = cli_runner.invoke(app, ["process", "--help"])
         assert result.exit_code == 0
-        assert "--check-translation" in result.stdout
+        assert "--check-translation" in strip_ansi(result.stdout)
 
     def test_process_check_translation_passed_to_run(
         self, cli_runner
@@ -729,7 +732,7 @@ class TestProcessCli:
 
         assert result.exit_code == 1
         # Error count is written to stderr with err=True
-        assert "1 item(s) failed processing" in result.stderr
+        assert "1 item(s) failed processing" in strip_ansi(result.stderr)
 
 
 # ===================================================================
@@ -785,8 +788,10 @@ class TestAutoProcessFlag:
             ])
 
         assert result.exit_code == 0
-        assert "── Running auto-process ──" in result.stdout
-        assert "Processing: 2 items → 2 passed G1-G3 → 2 KB entries created" in result.stdout
+        assert "── Running auto-process ──" in strip_ansi(result.stdout)
+        assert "Processing: 2 items → 2 passed G1-G3 → 2 KB entries created" in (
+            strip_ansi(result.stdout)
+        )
 
     def test_auto_process_no_new_items(self, cli_runner) -> None:
         """``--auto-process`` is skipped when no new items were collected."""
@@ -811,7 +816,7 @@ class TestAutoProcessFlag:
             ])
 
         assert result.exit_code == 0
-        assert "No new items — skipping auto-process." in result.stdout
+        assert "No new items — skipping auto-process." in strip_ansi(result.stdout)
 
     def test_auto_process_dry_run_skips(self, cli_runner) -> None:
         """``--auto-process`` with ``--dry-run`` does not run processing."""
@@ -838,4 +843,4 @@ class TestAutoProcessFlag:
 
         assert result.exit_code == 0
         assert "Running auto-process" not in result.stdout
-        assert "Dry-run" in result.stdout
+        assert "Dry-run" in strip_ansi(result.stdout)

@@ -274,14 +274,40 @@ class TestWebHandlerErrors:
         assert result is None
 
     def test_extract_logs_on_exception(
-        self, handler: WebHandler, caplog: pytest.LogCaptureFixture
+        self, handler: WebHandler, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If trafilatura raises, _extract logs the error and returns None."""
         import logging
+
+        import trafilatura
+
+        def _raise(*args: object, **kwargs: object) -> object:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(trafilatura, "bare_extraction", _raise)
         caplog.set_level(logging.ERROR)
 
-        result = handler._extract("not valid html", "http://x.com")
+        result = handler._extract("<html><body>hi</body></html>", "http://x.com")
         assert result is None
+        assert "Trafilatura extraction failed" in caplog.text
+
+    def test_extract_returns_none_on_empty_extraction(
+        self, handler: WebHandler, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If trafilatura returns None (no content), _extract returns None with a warning."""
+        import logging
+
+        import trafilatura
+
+        def _empty(*args: object, **kwargs: object) -> None:
+            return None
+
+        monkeypatch.setattr(trafilatura, "bare_extraction", _empty)
+        caplog.set_level(logging.WARNING)
+
+        result = handler._extract("<html><body>hi</body></html>", "http://x.com")
+        assert result is None
+        assert "No extractable content found" in caplog.text
 
 
 # ---------------------------------------------------------------------------

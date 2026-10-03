@@ -25,6 +25,7 @@ collect_artifacts:
   - "outputs/**/*.json"
   - "outputs/**/*.html"
   - "outputs/**/*.mp3"
+timeout: 1800
 steps:
   - name: "generate_report column type markdown"
     tool: generate_report

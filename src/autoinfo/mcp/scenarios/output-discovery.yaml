@@ -9,6 +9,7 @@ requires_env: []
 collect_artifacts:
   - "outputs/**/*"
   - "exports/**/*.json"
+timeout: 300
 steps:
   - name: "list_output_templates returns templates"
     tool: list_output_templates

@@ -1,6 +1,6 @@
 # Failure Triage — 2026-08-05 (Task M0T1)
 
-## Authoritative known-red budget (2026-09-17)
+## Authoritative known-red budget (2026-09-17, re-baselined 2026-10-03)
 
 > **Single source of truth.** CI and every other document reference this
 > section; they must not restate a failure number. When the test set changes,
@@ -17,6 +17,12 @@ test on disk, and that the baseline's failure count equals the list length.
 If a run shows a failure that is not in this list, it is NEW — do not "absorb"
 it by deleting a healed entry.
 
+The config-dependent module in that drift narrative is no longer budgeted at
+all: `tests/llm/test_fallback_config.py` was made hermetic in #448
+(2026-10-03) — it now parses a config it writes into `tmp_path` instead of the
+gitignored `.autoinfo/config.yaml`, so it neither skips on a fresh CI checkout
+nor fails on a machine whose deployment points at another gateway.
+
 **Compliant environment** (the triple the baseline was measured under):
 Python 3.14.4, pytest 8.4.2, pytest-timeout 2.4.0.
 
@@ -29,12 +35,14 @@ pytest tests/mcp tests/validation tests/cli tests/output tests/llm
 **Baseline**: **2611 tests -> 3 failed / 2584 passed / 24 skipped / 0 errors**
 (701.29s on the reference WSL box, 2026-09-17; re-measured after the mypy strict
 debt paydown and after the regression locks added for the same day's bug fixes —
-the composition of the 6 is unchanged, and the +5 collected/passed come from the
-new locks that live inside this selection).
+the composition was unchanged at 6 then, and the +5 collected/passed come from the
+new locks that live inside this selection; the count was re-baselined 2026-10-03 when
+#448 made `test_fallback_config.py` hermetic, converting 3 failures into 3 passes —
+same selection, same collection, 3 fewer failures).
 
-### Budgeted failures — exact node ids (6)
+### Budgeted failures — exact node ids (3)
 
-Both remaining classes are deterministic and environment/data dependent, not
+The one remaining class is deterministic and data dependent, not
 order-dependent. The 2026-09-17 round removed the order-dependent class
 entirely: the root cause was `LLMExtractor._get_litellm()` calling
 `StreamHandler.setStream(sys.stderr)` on a handler still bound to a CLOSED

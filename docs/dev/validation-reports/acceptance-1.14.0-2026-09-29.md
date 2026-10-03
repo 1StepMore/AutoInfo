@@ -314,6 +314,26 @@ the same thing in CI, locally, and in a batch. Until then, **a green
 `output-*` scenario is evidence about the caller's timeout as much as the
 product.**
 
+### A pre-existing CI failure on this branch, not caused by it
+
+`tests/collectors/test_web_handler.py::TestWebHandlerErrors::test_extract_logs_on_exception`
+fails in CI and passes locally (3/3 runs, 2.3s each). The branch changes **zero**
+collector files.
+
+The test is dependency-sensitive and asserts less than its name claims. It is
+named "If trafilatura raises, _extract logs the error and returns None" but its
+only assertion is `assert result is None` -- it never checks that anything was
+logged. Whether that holds depends on whether the installed trafilatura can
+extract anything from the string `"not valid html"`. CI resolves dependencies
+fresh; this checkout does not, so the two disagree on that behaviour.
+
+It is **not** in the known-red budget (`tests/TRIAGE.md`, 3 entries), so it
+blocks the branch. Fixing it means either pinning the input to something
+trafilatura definitively cannot extract, or asserting the documented behaviour
+(an error was logged) instead of the incidental one. Either way it is the
+project's call, not a side effect of this work, and it is recorded here so it
+is not mistaken for a regression from #440/#446/#448.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

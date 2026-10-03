@@ -491,6 +491,30 @@ a human:
 
 Sign-off requires:
 
+0. **(z) DCO on the 27 branch commits — procedure verified, not executed.**
+   The bot reports "27 commits incorrectly signed off... the author(s) failed
+   to identify themselves". Two things were checked before handing this over,
+   because the obvious assumption was wrong twice:
+
+   - The 27 commits are authored by `renanzai@EVA-01.localdomain`, a LAN
+     hostname, which looks unverifiable. It is not: **22 already-merged commits
+     carry that exact identity as both author and signatory**, so DCO accepts
+     it. No identity change is needed, and changing it would be the riskier
+     move.
+   - `origin/main` has not moved (`git rev-list HEAD..origin/main` = 0), so
+     the rebase is a no-op replay with no conflict risk.
+
+   Once the director authorises it:
+
+       git rebase --signoff origin/main
+       git push --force-with-lease
+
+   Not run here. A sign-off is a legal attribution of authorship; it is the
+   director's to make, not the agent's. The bot's own preconditions also hold:
+   sole author, no empty commits, branch is 7 days old with no other work on it.
+
+Sign-off requires:
+
 1. **(a) Core LLM path — satisfied 2026-09-30.** The targeted run cleared the
    evidence gap for the extraction / KB / end-user delivery paths
    (`llm-gated` 3/3, `kb-extraction` 3/3, `enduser-journey` 2/2; 0 auth

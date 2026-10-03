@@ -334,6 +334,50 @@ trafilatura definitively cannot extract, or asserting the documented behaviour
 project's call, not a side effect of this work, and it is recorded here so it
 is not mistaken for a regression from #440/#446/#448.
 
+### Measured budgets, and a staleness blocker that is not a product defect
+
+With the caller budget raised to 2400s purely to *measure* cost,
+`output-digest-report` ran 12 steps in 1445s. Four of them exceed the 180s a
+default caller allows, so under a default caller this scenario would have
+produced four false failures:
+
+| step | measured |
+|---|---|
+| `generate_cross_domain_report trend json` | 269.8 / 272.7 / 259.1 / 267.6s |
+| `generate_digest json format` | 124.9 / 110.5 / 69.1 / 11.4s |
+| `generate_report industry type json` | 50.4 / 0.5 / 0.5 / 0.5s |
+
+Within one run the repeated step is tight (259-273s, ~5% spread). Across runs
+it is not: `magazine-digest` measured 184s standalone and over 900s inside a
+sequence. The declared budget is therefore 600s -- 2.2x the worst observed
+step -- sized against the cross-run variance rather than the within-run one.
+
+**The scenario still fails, and not because of a budget.** One step returns
+`ValidationError: All candidate entries for domain 'ai-commercial' are stale
+(excluded 7 entries older than the freshness threshold)`. That is the
+staleness gate at `output/__init__.py:3872` doing exactly what it is written to
+do -- *"Refusing to generate an empty-shell product."* The fixture data is old,
+not the product broken. It is recorded as a data blocker, so the scenario
+cannot go green until `ai-commercial` is recollected; raising the budget does
+not and should not make this verdict green.
+
+### Runner durability, after losing one run to it
+
+The first attempt at this measurement died 4 minutes in and the loss was
+invisible for an hour. Two separate faults compounded:
+
+1. `nohup` alone does not survive the agent shell's 300s command timeout --
+   the tool kills the whole process group. The relaunch uses `setsid`.
+2. Liveness was checked with `pgrep -f 'scenario-rerun/run.py'`, which matches
+   the *checking command's own* command line. Every reading was a false
+   positive, and the reported elapsed time grew while the process was already
+   dead. The runner now writes `run.pid`; liveness is `kill -0 $(cat run.pid)`.
+
+The lesson generalises past this harness: a "still running" claim is only
+worth what its check can distinguish from the checker. Both faults produced a
+confident, wrong, repeated assertion -- exactly the failure mode this report
+exists to catch in product findings.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

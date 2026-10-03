@@ -48,6 +48,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, TemplateNotFound
 from autoinfo.config import Config
 from autoinfo.config import get_config_path as get_config_path
 from autoinfo.config import load_config as load_config
+from autoinfo.grounding import HONEST_HEDGE_RE, grounding_corpus, split_sentences
 from autoinfo.kb import KBStore as KBStore
 from autoinfo.kb import PromotionRejected
 from autoinfo.llm import call_with_fallback
@@ -63,6 +64,7 @@ from autoinfo.quality_constraints import (
     EDITORIAL_OPENING_HEDGE_CONSTRAINT,
     FEATURE_STORY_GROUNDING_CONSTRAINT,
     NO_FABRICATION_CONSTRAINT,
+    SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT,
     SYNTHESIS_SIGNAL_TRACEABILITY_CONSTRAINT,
     URL_VERBATIM_CONSTRAINT,
 )
@@ -822,20 +824,93 @@ def _run_product_judge(
         return True, ""
 
 
+#: An entry counts as usable source when it carries a ``source_url`` or a real
+#: summary. Provenance, not title length: against ``autoinfo.db`` (1821 entries,
+#: 23 domains) a title-length threshold also rejected legitimately terse entries
+#: such as a 7-character headline, while this rule isolates exactly the 9 rows
+#: that have neither provenance nor content -- ``Test Entry``, ``QA Article``,
+#: ``Entry A/B``, ``x``, ``y``. Every one of those is a test artifact.
+#: The architecture already makes provenance mandatory for a 01-Raw entry, so
+#: this reuses that rule rather than inventing a second one.
+_MIN_SUBSTANTIVE_SUMMARY_CHARS = 40
+
+#: Source/title markers that identify a synthetic test fixture rather than
+#: collected material. Matched case-insensitively against title and source_url.
+#: The tier-matrix fixtures spell their name two ways -- ``KB Tier Matrix``
+#: (spaced) in the title and ``kb-tier-matrix.autoinfo.dev`` (hyphenated) in the
+#: URL -- so both forms must be listed or one of them slips through.
+_SYNTHETIC_ENTRY_MARKERS = (
+    "kb tier matrix",
+    "kb-tier-matrix",
+    "autoinfo.dev",
+    "test entry",
+    "placeholder entry",
+)
+
+
+def _is_substantive_entry(entry: dict[str, Any]) -> bool:
+    """Return True when *entry* carries material a product could honestly report.
+
+    Issue #446: a domain whose entire knowledge base is one synthetic
+    tier-matrix fixture (``summary: ''``, ``source_url`` on a reserved test
+    host) still passes a ``if not entries`` check, so synthesis would be asked
+    to write an Executive Summary with nothing to draw on. Counting entries
+    cannot see that; checking whether they carry material can.
+
+    Against the authoritative store (``autoinfo.db`` — 1821 entries, 23 domains)
+    this blocks 1 domain: ``default``, whose only two entries are the literal
+    rows ``x`` and ``y`` with empty summaries and no URL.
+
+    An earlier claim that it blocked 9 domains and that a fabricated
+    "OpenAI Jalapeño" chip motivated it is withdrawn — that chip is a real
+    collected entry (techcrunch, 2026-08-25). The 9-domain figure came from
+    reading the ``knowledge/`` file tree, which holds one file for some domains,
+    instead of the database the pipeline actually reads.
+    """
+    title = str(entry.get("title") or "").strip()
+    summary = str(entry.get("summary") or "").strip()
+    url = str(entry.get("source_url") or "").strip()
+
+    probe = f"{title} {url}".lower()
+    if any(marker in probe for marker in _SYNTHETIC_ENTRY_MARKERS):
+        return False
+    return bool(url) or len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS
+
+
 def _apply_min_content_guard(
     result: DeliveryOutput,
     entries: list[dict[str, Any]],
     product_type: str,
 ) -> DeliveryOutput:
-    """Force the blocked flag when a PROCESSED product has zero usable entries.
+    """Force the blocked flag when a PROCESSED product has no usable source.
 
     Layer 1 min-content guard (issue #298): a product with zero usable entries
     after filtering must never be silently shipped as an empty shell.
+
+    Issue #446 extends it: zero *substantive* entries is the same failure with
+    a worse disguise. Counting entries alone let a domain whose only knowledge
+    base row is a synthetic test fixture ship eight products full of invented
+    facts.
     """
-    if not entries and product_type != "RAW":
+    if product_type == "RAW":
+        return result
+
+    def _block(reason: str) -> DeliveryOutput:
         result.delivery_blocked = True
         if not any("min-content guard" in w for w in result.warnings):
-            result.warnings.append("min-content guard: 0 usable entries after filtering")
+            result.warnings.append(f"min-content guard: {reason}")
+        return result
+
+    if not entries:
+        return _block("0 usable entries after filtering")
+
+    substantive = sum(1 for entry in entries if _is_substantive_entry(entry))
+    if substantive == 0:
+        return _block(
+            f"0 of {len(entries)} entr(ies) carry substantive source material "
+            "(empty summary or synthetic test fixture); synthesis would have to "
+            "invent content — collect real material before generating"
+        )
     return result
 
 
@@ -1006,6 +1081,22 @@ def _apply_delivery_gates(
                 else:
                     logger.warning("D2 flagged: %s", d2_error)
                     warnings.append(f"D2 flagged: {d2_error}")
+            elif action == "flag" and d2_result.details.get("self_claim"):
+                # #445 escalation: an entity the body never states cannot block
+                # (measured ~27% false-positive rate), but it must reach the
+                # delivery log and the packaged gate report — a silent flag is
+                # not an escalation.
+                raw_escalation = d2_result.details.get("self_claim_orphan_entities")
+                escalation = (
+                    [str(entity) for entity in raw_escalation]
+                    if isinstance(raw_escalation, list)
+                    else []
+                )
+                logger.warning("D2 self-claim escalation: %s", "; ".join(escalation[:3]))
+                warnings.append(
+                    f"D2 escalation: {len(escalation)} ungrounded narrative entity "
+                    f"name(s), first: {escalation[0] if escalation else 'n/a'}"
+                )
 
     # --- D3: Freshness (flag) -------------------------------------------
     d3_result = gate_results.get("D3-Freshness")
@@ -2180,6 +2271,12 @@ def _build_digest_llm_prompt(
     # and excessive AI spending").  Canonical string in quality_constraints.
     lines.append("")
     lines.append(SYNTHESIS_SIGNAL_TRACEABILITY_CONSTRAINT)
+    # Issue #445: name the failure mode the AC5 review found — the synthesis
+    # introducing an entity no supplied entry mentions, or attaching a claim
+    # to an unrelated source.  Canonical string in quality_constraints; the
+    # deterministic backstop is _ground_synthesis_citations.
+    lines.append("")
+    lines.append(SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT)
     # Issue #207: every (Source: URL) must be taken VERBATIM from the KB
     # Entries list above — never re-slug or invent a URL (mirror of the
     # presentation prompt's #93 wording).  Canonical string in quality_constraints.
@@ -2866,6 +2963,109 @@ def _fill_premium_takeaway_fields(
     )
 
 
+# --- #445 synthesis citation grounding --------------------------------------
+#
+# The AC5 review found products that attach a claim to an unrelated source:
+# an English-learning product attributing statements about Duolingo and
+# enterprise rollouts to "A guide to 6th grade math topics".  The synthesis
+# prompt now says so (``SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT``), and this is
+# the deterministic backstop: a synthesis sentence that cites a supplied
+# entry's URL while describing something that entry never mentions is removed
+# before it can reach a template.
+#
+# Precision model — deliberately narrow, because a wrong drop silently edits
+# an honest summary:
+#
+# * Only sentences carrying a resolvable ``(Source: <url>)`` citation are
+#   considered; with no citation there is nothing to verify against.
+# * The cited URL must match a supplied entry, otherwise the sentence passes
+#   (an unresolvable citation is #207's URL problem, already gated elsewhere).
+# * A sentence is dropped only when a large majority of its distinctive
+#   content words are absent from that entry's own title/summary/content/tags
+#   AND at least four such words are missing.  Word overlap, not entity
+#   matching, is the test: it cannot mis-fire on a legitimate paraphrase.
+# * Honest hedges pass, per the #179/#191 invariant.
+
+_MISSING_SHARE_THRESHOLD = 0.6
+_MIN_MISSING_DISTINCTIVE_WORDS = 4
+_DISTINCTIVE_WORD_MIN_LEN = 5
+_CITED_URL_RE = re.compile(r"\(Sources?:\s*([^)]+)\)", re.IGNORECASE)
+_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)\]]+")
+
+
+def _distinctive_words(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z][a-z0-9'\-]+", text.lower())
+        if len(word) >= _DISTINCTIVE_WORD_MIN_LEN
+    }
+
+
+def _entry_text_by_url(entries: list[dict[str, Any]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("source_url") or "").strip()
+        if url:
+            result.setdefault(url, grounding_corpus([entry]))
+    return result
+
+
+def _ground_synthesis_citations(
+    text: str,
+    entries: list[dict[str, Any]],
+) -> str:
+    """Drop synthesis sentences whose citation does not support them (#445).
+
+    Returns *text* unchanged when it is not cited prose, when no cited URL
+    resolves to a supplied entry, or when the cited entry's own text overlaps
+    the sentence enough to be a plausible paraphrase.
+    """
+    if "(source" not in text.lower():
+        return text
+    by_url = _entry_text_by_url(entries)
+    if not by_url:
+        return text
+    kept: list[str] = []
+    for sentence in split_sentences(text):
+        if HONEST_HEDGE_RE.search(sentence):
+            kept.append(sentence)
+            continue
+        citation = _CITED_URL_RE.search(sentence)
+        cited = (
+            [u for u in _URL_IN_TEXT_RE.findall(citation.group(1)) if u in by_url]
+            if citation
+            else []
+        )
+        if not cited:
+            kept.append(sentence)
+            continue
+        words = _distinctive_words(_URL_IN_TEXT_RE.sub(" ", _CITED_URL_RE.sub(" ", sentence)))
+        if len(words) < _MIN_MISSING_DISTINCTIVE_WORDS:
+            kept.append(sentence)
+            continue
+        corpus = set(_distinctive_words(" ".join(by_url[u] for u in cited)))
+        missing = words - corpus
+        if (
+            len(missing) >= _MIN_MISSING_DISTINCTIVE_WORDS
+            and len(missing) / len(words) >= _MISSING_SHARE_THRESHOLD
+        ):
+            _log_grounding_drop(sentence, sorted(missing)[:5])
+            continue
+        kept.append(sentence)
+    return " ".join(kept).strip()
+
+
+def _log_grounding_drop(sentence: str, missing: list[str]) -> None:
+    logger.warning(
+        "Synthesis grounding (#445): dropped a cited sentence whose source does "
+        "not support it (unsupported terms: %s): ...%s...",
+        ", ".join(missing),
+        sentence[:120],
+    )
+
+
 def _normalize_digest_product_context(
     context: dict[str, Any],
     domain: str,
@@ -3127,7 +3327,53 @@ def _normalize_digest_product_context(
                 f"summary for {audience}."
             )
 
+    # --- #445: ground the LLM narrative against the supplied entries -------
+    # Runs LAST so every deterministic fill above (implications, sections,
+    # key_findings) is already in place and is itself a legitimate fallback
+    # for anything grounding removes.
+    _ground_flat_synthesis(flat, entries_list, product_family)
+
     return flat
+
+
+def _ground_flat_synthesis(
+    flat: dict[str, Any],
+    entries: list[dict[str, Any]],
+    product_family: str,
+) -> None:
+    """Strip unsupported citations from the flat context's narrative (#445).
+
+    Mutates *flat* in place.  ``executive_summary`` falls back to the
+    deterministic entry-derived summary ONLY when grounding emptied a summary
+    the LLM actually produced; an absent synthesis still yields ``""`` (the
+    generation layer, not this one, owns that fallback, and D1 owns the
+    "present but empty" verdict).
+    """
+    if not entries:
+        return
+    had_summary = bool(str(flat.get("executive_summary") or "").strip())
+    for key in ("executive_summary", "editorial_intro", "feature_story"):
+        value = flat.get(key)
+        if isinstance(value, str) and value.strip():
+            flat[key] = _ground_synthesis_citations(value, entries)
+    if had_summary and not str(flat.get("executive_summary") or "").strip():
+        flat["executive_summary"] = _deterministic_synthesis_fallback(entries)["executive_summary"]
+    findings = flat.get("key_findings")
+    if isinstance(findings, list):
+        for finding in findings:
+            if isinstance(finding, dict) and isinstance(finding.get("text"), str):
+                finding["text"] = _ground_synthesis_citations(finding["text"], entries)
+    sections = flat.get("sections")
+    if isinstance(sections, list):
+        for section in sections:
+            if isinstance(section, dict) and isinstance(section.get("content"), str):
+                section["content"] = _ground_synthesis_citations(section["content"], entries)
+    if product_family != "premium-briefing":
+        implications = flat.get("implications")
+        if isinstance(implications, list):
+            for index, value in enumerate(implications):
+                if isinstance(value, str) and value.strip():
+                    implications[index] = _ground_synthesis_citations(value, entries)
 
 
 # ---------------------------------------------------------------------------
@@ -3933,7 +4179,7 @@ def generate_digest(
         _try_notify_content_ready(
             user_id=user_id,
             product_type="digest",
-            title=f"{period_label} {digest_h1_word} \u2014 {digest_title_domain_display}",
+            title=f"{period_label} {digest_h1_word} — {domain}",
         )
     _fire_agent_notification("new_digest", rendered, product_id=f"{digest_title_domain}-{period}")
     return rendered
@@ -6219,6 +6465,9 @@ def _build_report_synthesis_prompt(
     # spending" into the novel "low market breadth".  Canonical string lives
     # in quality_constraints (rides digest + report paths identically).
     prompt += f"\n\n{SYNTHESIS_SIGNAL_TRACEABILITY_CONSTRAINT}"
+    # Issue #445: every named entity must exist in a supplied entry, and a
+    # (Source: URL) must point at the entry the sentence is actually about.
+    prompt += f"\n\n{SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT}"
     # Issue #207: every (Source: URL) must be taken VERBATIM from the KB
     # Entries list — never re-slug or invent a URL (mirror of the presentation
     # prompt's #93 wording).  Canonical string lives in quality_constraints.
@@ -6722,7 +6971,9 @@ def _report_data_to_dict(report_data: ReportData, source_tier_badge: bool = True
         "generated_at": report_data.generated_at,
         "domain": report_data.domain,
         "collection_id": report_data.collection_id,
-        "executive_summary": report_data.executive_summary,
+        # #445: the report synthesis cites its sources inline, so the same
+        # citation-grounding backstop the digest path applies runs here.
+        "executive_summary": _ground_synthesis_citations(report_data.executive_summary, entries),
         "key_findings": report_data.key_findings,
         "recommendations": report_data.recommendations,
         "implications": report_data.implications,

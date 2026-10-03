@@ -26,6 +26,7 @@ pyramid_layer: component
 pipeline_stage: A4
 user_level: B2.4
 requires_env: []
+timeout: 60
 steps:
   - name: "premium-briefing agent render persists product analysis; faceted filter returns the action_required subset"
     kind: cli

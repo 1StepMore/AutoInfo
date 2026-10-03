@@ -1,156 +1,233 @@
-"""Config-parsing tests for the LLM fallback chain (hermetic, issue #448).
+"""Config-parsing tests for the LLM fallback chain (#448).
 
-These assertions used to run against the repository's real ``.autoinfo/config.yaml``
--- the gitignored per-machine deployment artifact -- and to pin *its* values
-(one specific primary model, one specific fallback model, one specific
-gateway). That made the module untestable in both directions: on a CI fresh
-checkout the config does not exist, so a module-level ``pytestmark skipif``
-skipped all three tests (nothing was measured), and on any machine whose
-deployment pointed at a different gateway all three failed for reasons that had
-nothing to do with the code under test. The three permanent failures sat in the
-known-red budget (``tests/TRIAGE.md``) for that reason alone.
+These assertions are about the *code*, not about whichever gateway a given
+machine happens to be pointed at. The previous version read the repository's
+gitignored ``.autoinfo/config.yaml`` and compared it to hardcoded expected
+model names, which gave two outcomes and neither was useful: skipped when the
+config was absent (no coverage at all), or red on any deployment whose model
+differed from the author's (a false alarm about code that was never touched).
 
-Now the config under test is **written by the test** into ``tmp_path``, so the
-parse contract is measured deterministically everywhere. The values are
-deliberately synthetic (``.invalid`` hosts, RFC 2606 reserved, plus model names
-that exist nowhere): if the loader ever read anything other than the file
-handed to it, these assertions could not hold.
+The invariants actually enforced by the source are the inheritance rules:
+``llm.provider``/``llm.model``/``llm.base_url`` are deployment choices, while
+"an empty fallback provider inherits the primary" and "an empty fallback key
+inherits the primary key **only** toward the same gateway" are code
+guarantees. Those are asserted here against a config each test writes itself,
+via the production resolver :func:`autoinfo.config.llm_fallback_health` -- not
+reimplemented in the test.
 
-Why there is no longer a "real deployment" layer here: the only assertions left
-for it would be invariants ("every fallback entry carries a non-empty
-``model``/``base_url``"), and that is not an invariant of the config format --
-a same-provider fallback legitimately omits ``base_url`` and inherits its
-provider's default. Such a test would be vacuous where it passes and
-machine-dependent where it fails, which is the exact failure mode #448 removes.
-The real deployment's end-to-end chain is covered where it belongs: the opt-in
-integration variant in ``tests/llm/test_fallback_injection.py``, which is gated
-on the API key and the real config being present.
-
-Structural assertions are kept, not sanded down: exactly one fallback entry, its
-model/base_url parsed verbatim, and a fallback that leaves the primary untouched
-while inheriting the primary's provider for model resolution.
+The deployment-config pin is preserved as a separate opt-in check that skips
+unless ``AUTOINFO_DEPLOYMENT_PIN=1``, so it can never turn a build red.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from autoinfo.config import Config, load_config
+from autoinfo.config import llm_fallback_health, load_config
 
-# Test-owned config values — synthetic, NOT a deployment pin. See module docstring.
-PRIMARY_PROVIDER = "openai"
-PRIMARY_MODEL = "hermetic-primary-model"
-PRIMARY_BASE_URL = "https://primary.hermetic.invalid/v1"
-FALLBACK_MODEL = "hermetic-fallback-model"
-FALLBACK_BASE_URL = "https://fallback.hermetic.invalid/v1"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEPLOYMENT_CONFIG = REPO_ROOT / ".autoinfo" / "config.yaml"
 
 
-def _config_dict(
-    *,
-    fallback_model: str = FALLBACK_MODEL,
-    fallback_base_url: str = FALLBACK_BASE_URL,
-) -> dict[str, Any]:
-    """A minimal config dict: primary llm section + exactly one fallback entry.
+def _keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve the ${...} references these configs use.
 
-    The fallback entry declares ``model`` + ``base_url`` only — its empty
-    provider is what makes the primary-provider inheritance observable.
+    Without this the primary key resolves empty and every case collapses to
+    ``no_primary_key``, which would test nothing.
     """
-    return {
-        "project": {"name": "hermetic-fallback-config"},
-        "llm": {
-            "provider": PRIMARY_PROVIDER,
-            "model": PRIMARY_MODEL,
-            "base_url": PRIMARY_BASE_URL,
-            "fallback": [
-                {"model": fallback_model, "base_url": fallback_base_url},
-            ],
-        },
-        "domains": [],
-    }
+    monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "primary-secret")
+    monkeypatch.setenv("OTHER_VENDOR_KEY", "other-vendor-secret")
 
 
-def _write_config(tmp_path: Path, name: str = "config.yaml", **overrides: str) -> Path:
-    """Write a config yaml into *tmp_path* and return its path."""
-    path = tmp_path / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(_config_dict(**overrides), sort_keys=False),
-        encoding="utf-8",
-    )
+def _write_config(tmp_path: Path, llm: dict[str, object]) -> Path:
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"llm": llm}), encoding="utf-8")
     return path
 
 
-@pytest.fixture
-def config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Path of a test-owned config, plus a cwd that cannot reach the real one.
-
-    ``monkeypatch.chdir`` is belt-and-braces: ``load_config`` is handed the
-    absolute path, and chdir'ing into the tmp dir additionally makes any
-    cwd-relative resolution of ``.autoinfo/config.yaml`` impossible.
-    """
-    monkeypatch.chdir(tmp_path)
-    return _write_config(tmp_path)
+def _entry(health: dict[str, Any], index: int = 0) -> dict[str, Any]:
+    entries = health["entries"]
+    assert isinstance(entries, list)
+    entry = entries[index]
+    assert isinstance(entry, dict)
+    return entry
 
 
-@pytest.fixture
-def cfg(config_path: Path) -> Config:
-    """The parsed test-owned config."""
-    return load_config(config_path)
-
-
-def test_primary_llm_section_parsed_verbatim(config_path: Path, cfg: Config) -> None:
-    """provider/model/base_url come back exactly as the file spells them."""
-    assert cfg.llm.provider == PRIMARY_PROVIDER, config_path
-    assert cfg.llm.model == PRIMARY_MODEL, config_path
-    assert cfg.llm.base_url == PRIMARY_BASE_URL, config_path
-    # A bare model name is qualified with the provider on resolve; the parsed
-    # `model` field itself stays verbatim (no in-place prefixing).
-    assert cfg.llm.resolve_model() == f"{PRIMARY_PROVIDER}/{PRIMARY_MODEL}", config_path
-
-
-def test_single_fallback_entry_parsed_verbatim(
-    config_path: Path, cfg: Config, tmp_path: Path
+def test_same_gateway_fallback_inherits_the_primary_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The chain holds exactly one entry, with its model/base_url verbatim."""
-    assert len(cfg.llm.fallback) == 1, f"{config_path}: {cfg.llm.fallback}"
-
-    fb0 = cfg.llm.fallback[0]
-    assert fb0.model == FALLBACK_MODEL, config_path
-    assert fb0.base_url == FALLBACK_BASE_URL, config_path
-    # The entry declared no provider of its own — the loader must not invent one.
-    assert fb0.provider == "", config_path
-
-    # The parse result is bound to the file handed to ``load_config`` and to no
-    # ambient state (the #448 regression lock): a second config in the same tmp
-    # dir, with different values, must parse to *those* values.
-    second = _write_config(
+    _keys(monkeypatch)
+    """An empty key inherits **only** when the fallback targets the primary's base_url."""
+    path = _write_config(
         tmp_path,
-        name="second-config.yaml",
-        fallback_model="hermetic-second-fallback-model",
-        fallback_base_url="https://second.hermetic.invalid/v1",
+        {
+            "provider": "openai",
+            "model": "primary-model",
+            "api_key": "${AUTOINFO_LLM_API_KEY}",
+            "base_url": "https://gateway.example/v1",
+            "fallback": [{"model": "fallback-model", "base_url": "https://gateway.example/v1"}],
+        },
     )
-    second_cfg = load_config(second)
-    assert len(second_cfg.llm.fallback) == 1, second
-    assert second_cfg.llm.fallback[0].model == "hermetic-second-fallback-model", second
-    assert second_cfg.llm.fallback[0].base_url == "https://second.hermetic.invalid/v1", second
+
+    health = llm_fallback_health(load_config(path))
+
+    assert health["configured"] is True
+    assert health["count"] == 1
+    fb = _entry(health)
+    assert fb["inherits_provider"] is True, "empty provider must inherit the primary"
+    assert fb["inherits_key"] is True
+    assert fb["key_status"] == "inherited_same_gateway"
 
 
-def test_fallback_leaves_primary_untouched(config_path: Path, cfg: Config) -> None:
-    """Parsing the chain mutates nothing on the primary, and the entry's empty
-    provider resolves against the primary's (the call-path rule in
-    ``LLMConfig.resolve_model``'s ``default_provider``)."""
-    assert cfg.llm.provider == PRIMARY_PROVIDER, config_path
-    assert cfg.llm.model == PRIMARY_MODEL, config_path
-    assert cfg.llm.base_url == PRIMARY_BASE_URL, config_path
-    assert cfg.llm.resolve_model() == f"{PRIMARY_PROVIDER}/{PRIMARY_MODEL}", config_path
+def test_cross_endpoint_fallback_never_inherits_the_primary_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keys(monkeypatch)
+    """One vendor's key must not reach another vendor's gateway (#410)."""
+    path = _write_config(
+        tmp_path,
+        {
+            "provider": "openai",
+            "model": "primary-model",
+            "api_key": "${AUTOINFO_LLM_API_KEY}",
+            "base_url": "https://gateway-a.example/v1",
+            "fallback": [{"model": "fallback-model", "base_url": "https://gateway-b.example/v1"}],
+        },
+    )
 
-    fb0 = cfg.llm.fallback[0]
-    assert fb0.resolve_model(default_provider=cfg.llm.provider) == (
-        f"{PRIMARY_PROVIDER}/{FALLBACK_MODEL}"
-    ), config_path
-    effective = f"{fb0.provider or cfg.llm.provider}/{fb0.model or cfg.llm.model}"
-    assert effective == f"{PRIMARY_PROVIDER}/{FALLBACK_MODEL}", config_path
+    fb = _entry(llm_fallback_health(load_config(path)))
+
+    assert fb["inherits_provider"] is True
+    assert fb["inherits_key"] is False, "a cross-endpoint fallback must not inherit the key"
+    assert fb["key_status"] == "cross_endpoint_no_key"
+
+
+def test_explicit_entry_key_is_never_replaced_by_the_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keys(monkeypatch)
+    """An entry that names its own key keeps it, however it is expressed.
+
+    ``load_config`` expands ``${ENV}`` references at load time, so through the
+    production path the entry arrives as a literal and the resolver reports
+    ``explicit``. The ``explicit_env`` status is only reachable by calling
+    ``resolve_fallback_api_key`` with an unexpanded string, so asserting it here
+    would pin a state the loader cannot produce. The invariant worth pinning is
+    that the primary key is not substituted either way.
+    """
+    path = _write_config(
+        tmp_path,
+        {
+            "provider": "openai",
+            "model": "primary-model",
+            "api_key": "${AUTOINFO_LLM_API_KEY}",
+            "base_url": "https://gateway.example/v1",
+            "fallback": [
+                {
+                    "model": "fallback-model",
+                    "base_url": "https://gateway.example/v1",
+                    "api_key": "${OTHER_VENDOR_KEY}",
+                }
+            ],
+        },
+    )
+
+    cfg = load_config(path)
+    fb = _entry(llm_fallback_health(cfg))
+
+    assert cfg.llm.fallback[0].api_key == "other-vendor-secret", (
+        "the loader must expand the entry's own reference, not the primary's"
+    )
+    assert fb["inherits_key"] is False
+    assert fb["key_status"] == "explicit"
+
+
+def test_no_primary_key_reports_that_rather_than_inheriting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+    """With no primary key configured there is nothing to inherit, and it must say so."""
+    path = _write_config(
+        tmp_path,
+        {
+            "provider": "openai",
+            "model": "primary-model",
+            "api_key": "",
+            "base_url": "https://gateway.example/v1",
+            "fallback": [{"model": "fallback-model", "base_url": "https://gateway.example/v1"}],
+        },
+    )
+
+    fb = _entry(llm_fallback_health(load_config(path)))
+
+    assert fb["inherits_key"] is False
+    assert fb["key_status"] == "no_primary_key"
+
+
+def test_fallback_entries_are_parsed_verbatim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keys(monkeypatch)
+    """Model and base_url come through the loader unchanged."""
+    path = _write_config(
+        tmp_path,
+        {
+            "provider": "openai",
+            "model": "primary-model",
+            "api_key": "${AUTOINFO_LLM_API_KEY}",
+            "base_url": "https://gateway.example/v1",
+            "fallback": [
+                {"model": "first-fallback", "base_url": "https://b.example/v1"},
+                {"model": "second-fallback", "base_url": "https://gateway.example/v1"},
+            ],
+        },
+    )
+
+    health = llm_fallback_health(load_config(path))
+
+    assert health["count"] == 2
+    assert [e["model"] for e in health["entries"]] == ["first-fallback", "second-fallback"]
+    assert _entry(health, 0)["inherits_key"] is False
+    assert _entry(health, 1)["inherits_key"] is True
+
+
+def test_absent_fallback_reports_not_configured(tmp_path: Path) -> None:
+    """An empty ``llm.fallback`` is reported honestly rather than inferred."""
+    path = _write_config(
+        tmp_path,
+        {"provider": "openai", "model": "primary-model", "fallback": []},
+    )
+
+    health = llm_fallback_health(load_config(path))
+
+    assert health["configured"] is False
+    assert health["count"] == 0
+
+
+@pytest.mark.skipif(
+    os.environ.get("AUTOINFO_DEPLOYMENT_PIN") != "1",
+    reason="deployment pin — opt in with AUTOINFO_DEPLOYMENT_PIN=1",
+)
+def test_real_deployment_config_parses_and_has_a_usable_fallback() -> None:
+    """Opt-in check of the machine's actual config.
+
+    Deliberately never asserts a specific model name: this reports what is
+    configured so a human can eyeball it, instead of failing the build when
+    they point AutoInfo at a different gateway.
+    """
+    if not DEPLOYMENT_CONFIG.is_file():
+        pytest.skip(".autoinfo/config.yaml absent (gitignored)")
+
+    cfg = load_config(DEPLOYMENT_CONFIG)
+    health = llm_fallback_health(cfg)
+
+    assert health["primary"]["provider"] == cfg.llm.provider
+    for index, entry in enumerate(health["entries"]):
+        assert entry["model"], f"fallback[{index}] has no model"
+        if entry["inherits_key"]:
+            assert entry["key_status"] == "inherited_same_gateway"

@@ -24,6 +24,7 @@ import random
 import re
 import threading
 import time
+from copy import deepcopy
 from typing import Any, Optional
 
 from autoinfo.config import (
@@ -176,6 +177,101 @@ def _backoff_delay(attempt: int) -> float:
     raw = min(BACKOFF_BASE_SECONDS * (BACKOFF_FACTOR**attempt), BACKOFF_CAP_SECONDS)
     jitter = raw * BACKOFF_JITTER
     return max(0.0, raw - jitter + random.uniform(0.0, 2.0 * jitter))
+
+
+# ---------------------------------------------------------------------------
+# Thinking-disable parameter shape (per gateway)
+# ---------------------------------------------------------------------------
+#
+# "Disable thinking" is NOT a standardized OpenAI request parameter: every
+# gateway spells it differently, and an unrecognized body parameter is either a
+# hard 400 (``BadRequestError: "thinking" is not supported``) or a *silent
+# no-op*.  Sending the wrong shape therefore either breaks every LLM call or
+# quietly burns the shared ``max_tokens`` budget on hidden reasoning.
+#
+# Two conventions are in the wild:
+#
+#   ``anthropic``     ``{"thinking": {"type": "disabled"}}`` — DeepSeek R1/V4
+#                     endpoints and most OpenAI-compatible relays.  This is
+#                     the historical AutoInfo shape and stays the default.
+#   ``chat_template`` ``{"chat_template_kwargs": {"enable_thinking": False}}``
+#                     — vLLM / SGLang / AMD Radeon gateways.  These *accept*
+#                     a bare ``{"enable_thinking": False}`` but IGNORE it;
+#                     only the ``chat_template_kwargs`` wrapper takes effect.
+#
+# The shape is resolved in exactly ONE place (:func:`thinking_disable_body`),
+# reached from :func:`_completion_request` — no call site writes the literal.
+#
+# Why the *gateway* is the discriminator rather than ``llm.provider``:
+# ``provider: openai`` means "any OpenAI-compatible endpoint" and is used by
+# BOTH conventions — e.g. ``https://opencode.ai/zen/go/v1`` serves DeepSeek and
+# requires the ``anthropic`` shape, while the AMD Radeon host rejects it.
+# Resolution is therefore base_url host → provider → documented default, and an
+# unmapped gateway keeps today's byte-identical request so no existing
+# deployment regresses.  A retry-based probe was considered and rejected: it
+# would silently mask a real misconfiguration instead of failing loudly.
+
+THINKING_SHAPE_ANTHROPIC = "anthropic"
+THINKING_SHAPE_CHAT_TEMPLATE = "chat_template"
+
+# The only place the disable parameter is spelled out, per shape id.
+THINKING_DISABLE_BODIES: dict[str, dict[str, Any]] = {
+    THINKING_SHAPE_ANTHROPIC: {"thinking": {"type": "disabled"}},
+    THINKING_SHAPE_CHAT_TEMPLATE: {"chat_template_kwargs": {"enable_thinking": False}},
+}
+
+# Documented default: the pre-existing behavior every unmapped gateway keeps.
+DEFAULT_THINKING_SHAPE = THINKING_SHAPE_ANTHROPIC
+
+# Gateways that reject ``thinking`` outright, keyed by base_url host
+# (lower-cased, scheme/credentials/port/path stripped).  Measured against the
+# AMD Radeon gateway (developer.amd.com.cn/radeon/api/v1, Qwen3.8-27B,
+# provider ``openai``): ``thinking`` → 400 ``"thinking" is not supported``;
+# ``chat_template_kwargs`` → reasoning_tokens 0 and ~8x lower latency.
+THINKING_SHAPE_BY_GATEWAY_HOST: dict[str, str] = {
+    "developer.amd.com.cn": THINKING_SHAPE_CHAT_TEMPLATE,
+}
+
+# Provider-scoped declarations for gateways configured under their own name
+# rather than under ``provider: openai``.  Consulted only after the host map,
+# which is the stronger signal (the same provider string fronts both
+# conventions).
+THINKING_SHAPE_BY_PROVIDER: dict[str, str] = {
+    "amd": THINKING_SHAPE_CHAT_TEMPLATE,
+    "sglang": THINKING_SHAPE_CHAT_TEMPLATE,
+    "vllm": THINKING_SHAPE_CHAT_TEMPLATE,
+}
+
+
+def _gateway_host(base_url: str) -> str:
+    """Return the lower-cased host of *base_url*.
+
+    Scheme, credentials, port and path are stripped, so
+    ``https://user@Developer.AMD.com.cn:443/radeon/api/v1`` yields
+    ``developer.amd.com.cn``.  Returns ``""`` when *base_url* carries no host.
+    """
+    after_scheme = base_url.strip().partition("://")[2]
+    host_and_port = after_scheme.partition("/")[0]
+    host = host_and_port.rpartition("@")[2]
+    return host.partition(":")[0].lower()
+
+
+def thinking_disable_body(provider: str, base_url: str) -> dict[str, Any]:
+    """Return the ``extra_body`` that disables thinking on this gateway.
+
+    Resolution order — ``base_url`` host, then *provider*, then
+    :data:`DEFAULT_THINKING_SHAPE` (the historical Anthropic-style shape).  An
+    unmapped gateway therefore keeps today's byte-identical request.
+
+    The body is deep-copied so no caller can mutate the shared registry and
+    leak a changed shape into a later request.
+    """
+    shape = (
+        THINKING_SHAPE_BY_GATEWAY_HOST.get(_gateway_host(base_url))
+        or THINKING_SHAPE_BY_PROVIDER.get(provider.strip().lower())
+        or DEFAULT_THINKING_SHAPE
+    )
+    return deepcopy(THINKING_DISABLE_BODIES[shape])
 
 
 # ---------------------------------------------------------------------------
@@ -607,12 +703,14 @@ def _completion_request(
     reject the parameter, so callers rely on the prompt plus
     :func:`parse_json_response` instead (issue #178).
 
-    ``disable_thinking`` (default True for reasoning models) sends
-    ``thinking={"type": "disabled"}`` so the model's chain-of-thought does
-    not consume the shared ``max_tokens`` budget — on DeepSeek-style
-    reasoning endpoints the reasoning pass runs *before* the content pass,
-    so a small budget (e.g. 2000) can be exhausted by thinking alone,
-    truncating the JSON output mid-object (finish_reason=length).
+    ``disable_thinking`` (default True for reasoning models) sends the
+    gateway-correct disable body resolved by :func:`thinking_disable_body`, so
+    the model's chain-of-thought does not consume the shared ``max_tokens``
+    budget — on DeepSeek-style reasoning endpoints the reasoning pass runs
+    *before* the content pass, so a small budget (e.g. 2000) can be exhausted
+    by thinking alone, truncating the JSON output mid-object
+    (finish_reason=length).  Judgment gates pass ``disable_thinking=False`` and
+    therefore send no disable body at all.
     """
     kwargs: dict[str, Any] = {
         "model": entry["model"],
@@ -624,11 +722,16 @@ def _completion_request(
         "timeout": timeout,
     }
     if reasoning_model and disable_thinking:
-        # Supported by DeepSeek R1/V4 endpoints; rejected by non-reasoning
-        # providers, so gate on the reasoning flag only. LiteLLM forwards
-        # extra body params via additional_body (thinking is not an OpenAI
-        # SDK kwarg).
-        kwargs["additional_body"] = {"thinking": {"type": "disabled"}}
+        # Gated on the reasoning flag only: non-reasoning providers reject the
+        # parameter outright.  The shape is per-gateway, never spelled out here.
+        #
+        # The kwarg MUST be ``extra_body``: that is LiteLLM's passthrough for
+        # provider-specific body params.  ``additional_body`` is an OpenAI SDK
+        # name that LiteLLM does not recognise -- it is silently dropped, so a
+        # disable body sent under that name never reaches the gateway and the
+        # model keeps reasoning (measured: reasoning_tokens stayed at 45 and the
+        # shared max_tokens budget was exhausted, finish_reason=length).
+        kwargs["extra_body"] = thinking_disable_body(entry["provider"], entry["base_url"])
     if json_mode and not reasoning_model:
         kwargs["response_format"] = {"type": "json_object"}
     return kwargs
@@ -670,6 +773,13 @@ def call_with_fallback(
     wins.  When ``json_mode`` is ``True`` and the effective flag is
     ``True``, ``response_format`` is suppressed and callers rely on the
     prompt plus :func:`parse_json_response` (issue #178).
+
+    For a reasoning model, chain-of-thought is disabled per call by default via
+    the gateway-correct body from :func:`thinking_disable_body` (DeepSeek-style
+    ``thinking={"type": "disabled"}`` by default; vLLM/SGLang-style
+    ``chat_template_kwargs={"enable_thinking": False}`` for mapped gateways).
+    ``disable_thinking=False`` sends no disable body at all — the judgment
+    gates' deliberate re-enable.
 
     *max_tokens* defaults to ``config.llm.max_tokens`` when set, else the
     historical 2000.  A task-level ``llm.tasks[<task>].max_tokens``

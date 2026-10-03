@@ -11,6 +11,7 @@
 | 叙事↔来源漂移 | 源信号被改名/抽象成新词("low VIX/inflation/AI spending" → "market breadth") | H1 gate(已知形态)+ L1 battery + 外部 review | P1(若混入) | 有约束+检测;新形态靠 battery/review |
 | 推断措辞无 hedge | editorial 句断言市场方向/动机("the smart money is betting") | L1 battery(#191 只约束 feature_story,未盖 editorial 开场)+ 审查程序 | P2/P3 | **已登记(R6/R7 连续双样本再现);审查程序已入 skill demo-package-deliverable-review(2026-09-03);prompt 层约束已补(#210: EDITORIAL_OPENING_HEDGE_CONSTRAINT 覆盖 Editor's Note / Executive Summary / column Deep Dive 开场)** |
 | 实体事实误差 | 与来源不符的数字/事实(非汇率类) | G7 确定性 gate(数字+实体可溯源,默认 soft/flag);L1 battery 部分;外部 review | P1(若混入) | 已有确定性层;默认仅标记不阻断,可按域升为 block |
+| 产物自述与正文不符 | Executive Summary 称 "2 selected items",正文只渲染 1 条;narrative 命名正文从未出现的实体 | D2 self-count(**hard block**,#445,0 误报 / 222 个真实产物)+ D2 orphan-entity(flag/escalate,#445,实测 ~27% 误报率故不阻断)+ L1 battery | P1 | 计数类已确定性防死;实体类只升级不阻断,**新形态靠 battery/review** |
 | 主题归类/结构组织 | funding 表漏放头条条目(VAST)→ Additional Topics | 无(L0/L1 均不判组织) | P3 | 非缺陷,润色建议 |
 | 金额换算轻微漂移 | 新中文金额形态(数百万/几千万/千万级)未注入,LLM 自算 | G6 抓量级错(隐含汇率越界);抓不住轻微漂移 | P2 | 已覆盖数字+中文数字形态;新形态靠 G6 部分兜底 |
 
@@ -24,6 +25,9 @@
 | USD 汇率(数字+中文数字) | `_annotate_rmb_usd` + `_RMB_TEXTUAL_RE` + G6 | 防 + 抓 |
 | 404 URL 伪造 | prompt 逐字约束 + `_sanitize_report_urls` | 防(结构上不进产物) |
 | 假条目/引用完整性/长文 grounding | C1 / C5 / C6 | 抓 |
+| 自述计数与渲染不符 | `self_claims.self_count_contradictions` + D2 block(#445) | 抓 |
+| 合成引用错配/命名未被来源提及的实体 | `SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT` + `_ground_synthesis_citations`(#445) | 防 + 抓 |
+| 空段渲染孤儿标题 / magazine 空 label | column/report/tutorial 空段跳过 + magazine-digest label 兜底(#445) | 防 |
 
 ## C. 工具层残余(影响检测能力,非内容缺陷)
 

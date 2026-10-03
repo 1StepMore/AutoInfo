@@ -92,3 +92,22 @@ EDITORIAL_OPENING_HEDGE_CONSTRAINT: str = (
     "market/motive judgment as fact \u2014 if the direction is not stated in "
     "the entries, say so or omit it."
 )
+
+# Issue #445: the no-fabrication constraints above forbid inventing details but
+# never name the failure mode the AC5 review actually found \u2014 the synthesis
+# INTRODUCING AN ENTITY the entries never mention (a review found a chip that
+# no source described, asserted in two mutually inconsistent ways across one
+# product).  This constraint states the rule in the model's own vocabulary:
+# every organisation, product, person and place it names must already be
+# present in a supplied entry, and a sentence that cannot be sourced that way
+# must be deleted rather than reworded.  The deterministic backstop is
+# ``autoinfo.grounding`` (``_ground_synthesis_citations``); a prompt-only fix
+# left the defect reachable, so both ride together.
+SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT: str = (
+    "Every organisation, product, person, place or named work you mention "
+    "must already appear in one of the supplied entries \u2014 in its Title, "
+    "Summary, Tags or Content. If you cannot point to the entry that names "
+    "it, DELETE the sentence; do not reword it into a hedged version. If a "
+    "sentence cites (Source: URL), that entry's own text must be what the "
+    "sentence is about \u2014 never attach a claim to an unrelated source."
+)

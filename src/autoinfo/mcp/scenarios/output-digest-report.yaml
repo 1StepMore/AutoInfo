@@ -27,6 +27,7 @@ collect_artifacts:
   - "outputs/**/*.json"
   - "outputs/**/*.html"
   - "outputs/**/*.mp3"
+timeout: 600
 steps:
   - name: "generate_digest json format"
     tool: generate_digest

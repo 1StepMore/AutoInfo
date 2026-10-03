@@ -26,6 +26,7 @@ from autoinfo.process import (
     run_processing,
 )
 from autoinfo.quality import QualityResult
+from tests._ansi import strip_ansi
 
 # ===================================================================
 # Fixtures
@@ -449,7 +450,7 @@ class TestBatchCli:
 
         result = cli_runner.invoke(app, ["process", "--help"])
         assert result.exit_code == 0
-        assert "--batch-size" in result.stdout
+        assert "--batch-size" in strip_ansi(result.stdout)
 
     def test_batch_size_passed_to_run_processing(self, cli_runner) -> None:
         """--batch-size 2 is passed to run_processing()."""
@@ -513,9 +514,9 @@ class TestBatchCli:
             )
 
         assert result.exit_code == 0
-        assert "incomplete" in result.stdout
-        assert "2 processed" in result.stdout
-        assert "3 remaining" in result.stdout
+        assert "incomplete" in strip_ansi(result.stdout)
+        assert "2 processed" in strip_ansi(result.stdout)
+        assert "3 remaining" in strip_ansi(result.stdout)
 
     def test_batch_progress_hidden_when_complete(self, cli_runner) -> None:
         """Complete batch hides the progress message."""

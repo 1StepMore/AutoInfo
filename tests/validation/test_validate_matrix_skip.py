@@ -54,6 +54,7 @@ from typer.testing import CliRunner
 
 from autoinfo import validation_matrix as vm
 from autoinfo.cli.validate import app
+from tests._ansi import strip_ansi
 
 runner = CliRunner()
 
@@ -615,6 +616,6 @@ class TestValidateCliSkipFlags:
         result = runner.invoke(app, ["matrix", "--help"])
         assert result.exit_code == 0, result.output
         for flag in ("--no-skip", "--skip-threshold", "--skip-premium"):
-            assert flag in result.output, (
+            assert flag in strip_ansi(result.output), (
                 f"#348: `validate matrix --help` must advertise {flag}"
             )

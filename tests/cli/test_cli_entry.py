@@ -17,6 +17,7 @@ import pytest
 
 import autoinfo.cli.__main__ as cli_main
 from autoinfo.cli import app as cli_app
+from tests._ansi import strip_ansi
 
 
 def test_main_module_imports_cleanly() -> None:
@@ -45,7 +46,7 @@ def test_python_m_autoinfo_cli_help_exit_zero() -> None:
         timeout=120,
     )
     assert result.returncode == 0, result.stderr
-    assert "Usage" in result.stdout
+    assert "Usage" in strip_ansi(result.stdout)
 
 
 def _normalize_help(text: str) -> list[str]:
@@ -54,9 +55,12 @@ def _normalize_help(text: str) -> list[str]:
     ``python -m autoinfo.cli`` is longer than ``autoinfo``, so rich pads
     every line of the panel to the wider invocation's width. Normalize the
     invocation name and strip trailing padding so both outputs compare equal.
+    ANSI styling is removed first: rich's escape sequences wrap the panel
+    padding, which would otherwise make ``rstrip()`` no-ops and the two
+    renderings compare unequal when the environment forces color output.
     """
     normalized: list[str] = []
-    for line in text.splitlines():
+    for line in strip_ansi(text).splitlines():
         line = line.replace("python -m autoinfo.cli", "autoinfo")
         normalized.append(line.rstrip())
     return normalized
@@ -95,4 +99,4 @@ def test_python_m_autoinfo_cli_lists_subcommands() -> None:
     )
     assert result.returncode == 0
     for cmd in ("collect", "process", "doctor", "kb", "output"):
-        assert cmd in result.stdout
+        assert cmd in strip_ansi(result.stdout)

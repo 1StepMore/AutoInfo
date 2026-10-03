@@ -19,6 +19,7 @@ import pytest
 
 from autoinfo.cli import app
 from autoinfo.mcp.validation import list_scenarios
+from tests._ansi import strip_ansi
 
 
 @pytest.fixture
@@ -46,8 +47,16 @@ def _expected_counts() -> tuple[int, int, set[str]]:
 
 
 def _extract_labeled_count(output: str, label: str) -> int:
-    m = re.search(rf"{label}:\s*(\d+)", output)
-    assert m, f"'{label}: N' not found in output:\n{output}"
+    """Pull ``label: N`` out of CLI output.
+
+    rich styles the label and/or the number (``\\x1b[1mfunctional\\x1b[0m:
+    \\x1b[33m86\\x1b[0m``), which splits the ``label:`` adjacency the regex
+    needs — match on the de-styled text instead.  The digits themselves are
+    never relaxed: the same regex still has to find a real count.
+    """
+    text = strip_ansi(output)
+    m = re.search(rf"{label}:\s*(\d+)", text)
+    assert m, f"'{label}: N' not found in output:\n{text}"
     return int(m.group(1))
 
 
@@ -58,7 +67,7 @@ class TestValidationListCommand:
         _, _, names = _expected_counts()
         result = cli_runner.invoke(app, ["validation", "list"])
         assert result.exit_code == 0, result.output
-        listed = [n for n in names if n in result.output]
+        listed = [n for n in names if n in strip_ansi(result.output)]
         # Every discovered scenario name appears in the listing.
         assert set(listed) == names, (
             f"missing scenario rows: {sorted(names - set(listed))}"
@@ -70,14 +79,14 @@ class TestValidationListCommand:
         result = cli_runner.invoke(app, ["validation", "list"])
         assert result.exit_code == 0
         for field in ("category=", "regression=", "env="):
-            assert field in result.output, field
+            assert field in strip_ansi(result.output), field
 
     def test_list_reports_total_matching_runtime(self, cli_runner: Any) -> None:
         result = list_scenarios()
         expected = result["count"]
         got = cli_runner.invoke(app, ["validation", "list"])
         assert got.exit_code == 0
-        m = re.search(r"Validation scenarios \((\d+)\)", got.output)
+        m = re.search(r"Validation scenarios \((\d+)\)", strip_ansi(got.output))
         assert m, got.output
         assert int(m.group(1)) == expected
 
@@ -111,7 +120,7 @@ class TestValidationListSummary:
         got = cli_runner.invoke(app, ["validation", "list", "--summary"])
         assert got.exit_code == 0
         for cat in categories:
-            assert cat in got.output, cat
+            assert cat in strip_ansi(got.output), cat
 
 
 class TestValidationGroupIdentity:
@@ -120,8 +129,8 @@ class TestValidationGroupIdentity:
     def test_validation_in_top_level_help(self, cli_runner: Any) -> None:
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "validation" in result.output
-        assert "validate" in result.output
+        assert "validation" in strip_ansi(result.output)
+        assert "validate" in strip_ansi(result.output)
 
     def test_no_scenario_dir_fails_cleanly(
         self, tmp_path: Path, cli_runner: Any, monkeypatch: pytest.MonkeyPatch
@@ -141,5 +150,5 @@ class TestValidationGroupIdentity:
         assert empty.is_dir()
         result = cli_runner.invoke(app, ["validation", "list"])
         assert result.exit_code == 1
-        assert "No validation scenarios found" in result.output
+        assert "No validation scenarios found" in strip_ansi(result.output)
         assert "Traceback" not in result.output

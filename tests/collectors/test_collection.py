@@ -23,6 +23,7 @@ import yaml
 from autoinfo.collect import _cache_items
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import Item, KBEntry
+from tests._ansi import strip_ansi
 
 # ======================================================================
 # DedupChecker tests
@@ -1000,8 +1001,8 @@ class TestCollectCli:
             )
 
         assert result.exit_code == 1
-        assert "Error" in result.output
-        assert "No configuration found" in result.output
+        assert "Error" in strip_ansi(result.output)
+        assert "No configuration found" in strip_ansi(result.output)
 
     def test_cli_all_and_domain_conflict(self, cli_runner):
         """``--all`` and ``--domain`` together produce an error."""
@@ -1013,7 +1014,7 @@ class TestCollectCli:
         )
 
         assert result.exit_code == 1
-        assert "Cannot use --all with --domain" in result.output
+        assert "Cannot use --all with --domain" in strip_ansi(result.output)
 
     @patch.object(Path, "cwd")
     @patch("autoinfo.collect.run_collection")

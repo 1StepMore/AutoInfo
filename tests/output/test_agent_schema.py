@@ -28,6 +28,8 @@ from unittest.mock import MagicMock, patch
 import jsonschema
 import pytest
 
+from tests._ansi import strip_ansi
+
 # ---------------------------------------------------------------------------
 # Schema loading (read from disk — real published schemas)
 # ---------------------------------------------------------------------------
@@ -1044,7 +1046,7 @@ class TestCLIFormatParity:
         runner = CliRunner()
         result = runner.invoke(app, ["export", "--help"])
         # The help text should mention 'agent' as a format option
-        assert "agent" in result.output.lower()
+        assert "agent" in strip_ansi(result.output).lower()
 
     def test_tutorial_cli_accepts_agent_format(self) -> None:
         """tutorial CLI should list 'agent' in help text."""
@@ -1054,7 +1056,7 @@ class TestCLIFormatParity:
 
         runner = CliRunner()
         result = runner.invoke(app, ["tutorial", "--help"])
-        assert "agent" in result.output.lower()
+        assert "agent" in strip_ansi(result.output).lower()
 
     def test_presentation_cli_accepts_agent_format(self) -> None:
         """presentation CLI should list 'agent' in help text."""
@@ -1064,4 +1066,4 @@ class TestCLIFormatParity:
 
         runner = CliRunner()
         result = runner.invoke(app, ["presentation", "--help"])
-        assert "agent" in result.output.lower()
+        assert "agent" in strip_ansi(result.output).lower()

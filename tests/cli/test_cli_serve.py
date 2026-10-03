@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 
 from autoinfo.cli import app as main_app
 from autoinfo.cli.serve import serve
+from tests._ansi import strip_ansi
 
 runner = CliRunner()
 
@@ -62,4 +63,4 @@ class TestServeScriptEntry:
             runpy.run_path(str(_SERVE_MODULE), run_name="__main__")
 
         assert excinfo.value.code == 0
-        assert "Run the AutoInfo MCP server" in capsys.readouterr().out
+        assert "Run the AutoInfo MCP server" in strip_ansi(capsys.readouterr().out)

@@ -262,11 +262,23 @@ table.
 support it (unsupported terms: ...)`). That is the mechanism working in the
 production path, not only under test.
 
-**A harness defect worth fixing:** the failing steps report
-`error: None`. A step that fails without recording why makes every downstream
-diagnosis guesswork — it is why the magazine-digest timing gap took two refuted
-hypotheses to characterise. A step timeout should report the timeout and the
-last observable progress, not `None`.
+**A correction to an earlier entry in this file.** It previously said the
+harness reports failing steps as `error: None` and called that a harness defect
+costing diagnosis time. That was wrong, and the defect was in my own reporting
+script, not in the harness. `validation.py:1714` builds the timeout result as
+`{"status": "failed", "detail": "timed out after {effective_timeout}s"}` -- there
+is no `error` key at all -- and my runner read `s.get("error")`, so it printed
+`None` for every failure regardless of cause. The harness has been reporting the
+reason correctly all along. Withdrawn; no harness change is warranted.
+
+**`output-column` diagnosed.** Not a defect and not a data problem: all three
+matrix domains have ample real content (`legal-compliance` 44 entries,
+`general-news` 112, `gaming` 194, all substantive). Driving the same step
+directly -- `generate_report(domain="gaming", report_type="column",
+period="weekly")` -- **succeeds in 1118s**. The scenario declares no `timeout:`,
+so each step runs on the harness default against a call that costs ~19 minutes
+here, and the slower ones are cut off. This is a budget problem on this gateway,
+the same class as the magazine-digest gap above, not a product or scenario bug.
 
 Remaining five scenarios (`output-simplify-recommend`, `output-digest-report`,
 `output-ebook`, `output-tutorial-presentation`, `output-video`) were still

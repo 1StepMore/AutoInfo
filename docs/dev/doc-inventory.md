@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 111 |
-| Total lines | 36364 |
+| Total lines | 36376 |
 | Active files | 83 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 11 files / 645 lines |
 | Category — specs | 12 files / 9723 lines |
-| Category — validation-reports | 15 files / 3557 lines |
+| Category — validation-reports | 15 files / 3569 lines |
 | Category — docs/dev | 31 files / 10997 lines |
 | Category — docs/root | 5 files / 983 lines |
 
@@ -112,7 +112,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
-| `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 334 | validation-reports | active | — |
+| `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 346 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-3.md` | 51 | validation-reports | active | — |

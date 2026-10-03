@@ -378,6 +378,41 @@ worth what its check can distinguish from the checker. Both faults produced a
 confident, wrong, repeated assertion -- exactly the failure mode this report
 exists to catch in product findings.
 
+### `output-video` cannot be evidence here, and its env-gate is a broken promise
+
+The scenario cannot produce real video evidence on this box, and the reason is
+narrower than "a dependency is missing". Checked individually:
+
+| tool | state |
+|---|---|
+| `bun` | present (`/home/renanzai/.bun/bin/bun`) |
+| `ffmpeg` | present |
+| `ffprobe` | present |
+| `hyperframes` | absent -- but never a PATH lookup: it is an npm package pulled at runtime by `bun x hyperframes` (`video.py:528`) |
+
+So the toolchain is complete except for the one piece that is fetched over the
+network at call time. There is no video evidence to be had, and none is claimed.
+
+The part worth fixing is the gate. The scenario's own header promises that when
+the toolchain is missing *"the step reports unconfigured (never silently
+skipped)"*, and `validation-scenario-contract.md` 0.3 requires it. The code
+does not do this. `_require_tool` (`video.py:536`) raises
+`FileNotFoundError("HyperFrames rendering requires: bun ...")`, and
+`_classify_step_exception` (`validation.py:736-770`) maps only four environment
+gaps -- Reddit OAuth, OpenAI TTS, httpx connect/read timeouts, and a literal
+"network is unreachable". `FileNotFoundError` is an `OSError`, but this message
+is not "network is unreachable", so the classifier falls through to
+`return None` and the step is recorded **`failed`**.
+
+`failed` is the wrong verdict for a missing prerequisite and it is not
+cosmetic: a red `failed` reads as a product defect, which is exactly the
+false signal this cycle spent its budget retracting. The honest state is
+`unconfigured`, which the contract says is never a pass.
+
+Not fixed here. `_classify_step_exception` is shared by every scenario, so
+broadening it changes verdicts well outside video and needs its own regression
+scenario; that is a separate, deliberate change rather than a drive-by.
+
 ### What is NOT established
 
 - The fixes are **unverified against fresh output**. The 227 products were

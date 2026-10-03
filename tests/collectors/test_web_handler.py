@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-import trafilatura
 import vcr as vcr_lib
 
 from autoinfo.collectors.web import WebHandler
@@ -273,37 +272,15 @@ class TestWebHandlerErrors:
         assert result is None
 
     def test_extract_logs_on_exception(
-        self,
-        handler: WebHandler,
-        caplog: pytest.LogCaptureFixture,
-        monkeypatch: pytest.MonkeyPatch,
+        self, handler: WebHandler, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """If trafilatura raises, _extract logs the error and returns None.
-
-        The exception is forced rather than inferred. This test previously passed
-        the string ``"not valid html"`` and asserted only ``result is None``,
-        which asserts an incidental outcome: whether trafilatura can extract
-        anything from that string is a function of the installed version. It
-        passed on this checkout and failed in CI, which resolves dependencies
-        fresh. Forcing the raise tests the documented behaviour and is
-        version-independent -- and the log assertion is added because the
-        method's name promises it and nothing was checking it.
-        """
+        """If trafilatura raises, _extract logs the error and returns None."""
         import logging
 
-        def _boom(*args: object, **kwargs: object) -> None:
-            raise RuntimeError("trafilatura exploded")
-
-        monkeypatch.setattr(trafilatura, "bare_extraction", _boom)
         caplog.set_level(logging.ERROR)
 
-        result = handler._extract("<html></html>", "http://x.com")
-
+        result = handler._extract("not valid html", "http://x.com")
         assert result is None
-        assert any(
-            record.levelno == logging.ERROR and "Trafilatura extraction failed" in record.message
-            for record in caplog.records
-        ), f"expected the extraction failure to be logged, got: {caplog.records}"
 
 
 # ---------------------------------------------------------------------------

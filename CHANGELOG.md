@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.3](https://github.com/1StepMore/AutoInfo/compare/v1.16.2...v1.16.3) (2026-10-03)
+
+
+### Tests
+
+* **llm:** fallback 配置用例改为 hermetic（不再钉本机部署配置）；同步已知红预算 ([#448](https://github.com/1StepMore/AutoInfo/issues/448)) ([#462](https://github.com/1StepMore/AutoInfo/issues/462)) ([fd71ebe](https://github.com/1StepMore/AutoInfo/commit/fd71ebe25b2a90c1d8e1b57050ae240cd51c0b7c))
+
+
+### Miscellaneous Chores
+
+* **nightly:** 2026-10-02 夜间循环活区更新 ([#445](https://github.com/1StepMore/AutoInfo/issues/445)) ([5fbbe09](https://github.com/1StepMore/AutoInfo/commit/5fbbe09d5290e03a23edd4a306ebacd52946ae11))
+
 ## [1.16.2](https://github.com/1StepMore/AutoInfo/compare/v1.16.1...v1.16.2) (2026-10-03)
 
 

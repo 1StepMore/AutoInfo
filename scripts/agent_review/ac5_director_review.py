@@ -33,17 +33,79 @@ Vendor/model agnosticism: the channel is the repo's config-driven
 ``autoinfo.llm.call_with_fallback`` (provider/model/api_key/base_url + fallback
 chain).  No vendor or model name appears in this file.
 
+THE WORKLIST FILTER — only reviewable TEXT products reach the judge
+------------------------------------------------------------------
+A delivery manifest's ``kind == "PROCESSED"`` is **much** coarser than "a
+product form a human director can read".  Measured on a real 3383-entry
+delivery package: 474 PROCESSED entries, of which only 298 are ``.md`` — the
+other 176 are 128 ``.err``, 33 ``.log``, 13 ``.mp4``, 1 ``.zip``, 1 ``.json``
+(``validation_delivery.py`` copies pipeline logs and failed-step logs into
+``02-PROCESSED/`` beside the products).  Feeding those to the judge aborts the
+whole run on the first ``UnicodeDecodeError`` from a ``.mp4``/``.zip``.
+
+The filter is therefore an **allowlist of reviewable text suffixes**
+(:data:`_REVIEWABLE_TEXT_SUFFIXES`), not a blocklist of known binaries:
+
+* fail-closed — a format nobody anticipated (``.epub``, ``.mobi``, ``.mp3``,
+  ``.pdf``, ``.sqlite``, a future ``.avif``) is excluded by default instead of
+  crashing the run; a blocklist would have to enumerate every one of them;
+* ``.log``/``.err`` are excluded because they are *pipeline execution
+  transcripts*, not product forms: they carry no synthesized claim, no
+  presentation, and no source provenance to judge, and 161 of them would
+  dilute an AC5 *sampling* review of products.  They are not "unreviewable" —
+  they are out of scope, and :func:`run_ac5_review` reports every excluded
+  artifact with its reason so the omission is visible, never silent;
+* ``.json``/``.pdf`` are excluded for the same out-of-scope reason (machine
+  metadata / a non-text rendering) — this reviewer judges *text*, it does not
+  OCR, transcribe, or parse containers.
+
+Two independent fail-loud guards follow from this:
+
+* a worklist file that passes the suffix filter but cannot be decoded as
+  UTF-8 (or cannot be read at all) is surfaced as an **ESCALATE** row via
+  :func:`review_product` — never a model call on garbage bytes, never a silent
+  drop, never a pass (:func:`_read_product_snippet`);
+* an **empty or fully-excluded** worklist is a *blocked* run, not a clean run:
+  :func:`run_ac5_review` marks it and :func:`main` exits ``2`` (see below).  A
+  0-item worklist used to print ``SUMMARY: risk=0 escalate=0 passed=0`` — a
+  false "all clean" on the acceptance path, which is worse than a crash.
+
+THE FALLBACK SCAN IS RECURSIVE
+------------------------------
+When no readable manifest exists, the scan is ``rglob``-based, not
+``glob("*.md")``: the real product tree is ``outputs/<domain>/*.md`` (222
+products across 13 domain subdirs, 0 at the top level), so a non-recursive
+scan returned 0 items and the run reported "all clean" without reading a
+single product.  The scan shares the one suffix rule and is sorted and
+de-duplicated by resolved path, so the same tree always yields the same
+deterministic worklist.
+
+INCREMENTAL OUTPUT
+------------------
+Verdicts are emitted as they are judged (header with the worklist size, one
+line per form, then SUMMARY) through the ``emit`` sink, so an operator running
+``python3 -u`` can tell a progressing run from a hung one.  The previous
+all-at-once printing left a 278-byte log for the whole 66-minute run, which
+made "hung" indistinguishable from "working".
+
+Exit codes: ``0`` draft produced with no ESCALATE · ``1`` at least one
+ESCALATE · ``2`` the run could not produce a reviewable worklist (bad input
+directory, or an empty/all-excluded worklist) — **not** a clean run.
+
 Runtime state only: the draft is written under ``validation-runs/ac5-draft/``
 (gitignored), never under ``docs/``.
 
 Usage (from repo root):
 
-    python3 scripts/agent_review/ac5_director_review.py \\
+    python3 -u scripts/agent_review/ac5_director_review.py \\
         --delivery-dir validation-deliveries/<date>
       # deterministic preview: no model call, every row RISK
-    python3 scripts/agent_review/ac5_director_review.py \\
-        --delivery-dir validation-deliveries/<date> --semantic --json
+    python3 -u scripts/agent_review/ac5_director_review.py \\
+        --delivery-dir validation-deliveries/<date> --semantic
       # full draft: model verdicts coerced to the RISK ceiling
+    python3 -u scripts/agent_review/ac5_director_review.py \\
+        --delivery-dir validation-deliveries/<date> --semantic --json
+      # progress lines go to stderr, the JSON report stays alone on stdout
 """
 
 from __future__ import annotations
@@ -52,6 +114,8 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -60,6 +124,7 @@ from typing import Any, Sequence
 # scripts/agent_review/ is not a package, so the directory is on sys.path when
 # this module is imported (tests/scripts and the CLI entry add it).
 from battery import (
+    _TRUNCATION_MARKER,
     _VERDICT_SCHEMA_BLOCK,
     _channel_json_capable,
     _family_of_file,
@@ -99,17 +164,38 @@ _AC5_CONCERNS: tuple[tuple[str, str], ...] = (
 # Worklist
 # ---------------------------------------------------------------------------
 
+#: Suffixes this reviewer can judge as a product form: UTF-8 text a human reads
+#: as the deliverable itself.  Allowlist, not blocklist — see the module
+#: docstring ("THE WORKLIST FILTER") for the measured 474/298 split and why
+#: ``.log``/``.err``/``.mp4``/``.zip``/``.json`` are out of scope rather than
+#: merely unreadable.
+_REVIEWABLE_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".markdown", ".html", ".htm", ".txt"})
 
-def build_ac5_worklist(delivery_dir: Path) -> list[dict[str, str]]:
-    """Return one worklist item per PROCESSED product form.
+#: Exit code class shared with a bad ``--delivery-dir``: the run produced no
+#: reviewable worklist at all, so it is NOT a clean review.
+_EXIT_NO_WORKLIST = 2
+
+#: Exit code for "a draft was produced but something needs a human".
+_EXIT_ESCALATED = 1
+
+
+def is_reviewable_product(path: Path) -> bool:
+    """Return True when *path* is a text product form this reviewer can judge."""
+    return path.suffix.lower() in _REVIEWABLE_TEXT_SUFFIXES
+
+
+def _ac5_candidates(delivery_dir: Path) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Partition a delivery into ``(reviewable worklist, excluded artifacts)``.
 
     Primary source is the delivery ``manifest.json`` (``kind ==
     "PROCESSED"``), whose file entries are written by
     ``scripts/validation_delivery.py``.  When no readable manifest is present
-    the directory's ``*.md`` products are scanned instead.
+    the tree is scanned recursively instead.
 
-    Each item is ``{family, file, path}``: the blind-spot/product family, the
-    display file name, and the resolvable path the reviewer reads.
+    Each reviewable item is ``{family, file, path}``: the blind-spot/product
+    family, the display file name, and the resolvable path the reviewer reads.
+    Each excluded entry is ``{file, suffix, reason}`` so every dropped artifact
+    is attributable in the report — an exclusion is never a silent pass.
     """
     base = Path(delivery_dir)
     manifest_path = base / "manifest.json"
@@ -122,29 +208,60 @@ def build_ac5_worklist(delivery_dir: Path) -> list[dict[str, str]]:
         if isinstance(data, dict):
             files = data.get("files")
             entries = files if isinstance(files, list) else []
-            return [
-                _item_from_manifest(base, entry)
-                for entry in entries
-                if isinstance(entry, dict) and entry.get("kind") == "PROCESSED"
-            ]
+            worklist: list[dict[str, str]] = []
+            excluded: list[dict[str, str]] = []
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("kind") != "PROCESSED":
+                    continue
+                path = base / str(entry.get("file", ""))
+                if is_reviewable_product(path):
+                    worklist.append(_item(path))
+                else:
+                    excluded.append(_excluded(path, "not a reviewable text product"))
+            return worklist, excluded
     return _items_from_scan(base)
 
 
-def _item_from_manifest(base: Path, entry: dict[str, Any]) -> dict[str, str]:
-    rel = str(entry.get("file", ""))
-    path = base / rel
+def build_ac5_worklist(delivery_dir: Path) -> list[dict[str, str]]:
+    """Return one worklist item per reviewable PROCESSED product form.
+
+    Non-text PROCESSED artifacts (video, zip, logs, metadata) are filtered out
+    by :func:`is_reviewable_product`; use :func:`_ac5_candidates` when the
+    excluded set is needed too.
+    """
+    worklist, _excluded = _ac5_candidates(Path(delivery_dir))
+    return worklist
+
+
+def _item(path: Path) -> dict[str, str]:
     return {
         "family": _family_of_file(path),
-        "file": Path(rel).name,
+        "file": path.name,
         "path": str(path),
     }
 
 
-def _items_from_scan(base: Path) -> list[dict[str, str]]:
-    return [
-        {"family": _family_of_file(md), "file": md.name, "path": str(md)}
-        for md in sorted(base.glob("*.md"))
-    ]
+def _excluded(path: Path, reason: str) -> dict[str, str]:
+    return {"file": path.name, "suffix": path.suffix.lower(), "reason": reason}
+
+
+def _items_from_scan(base: Path) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Recursively scan *base* for reviewable product forms.
+
+    Recursive (``rglob``) because the real product tree is
+    ``outputs/<domain>/*.md`` — 222 products across 13 domain subdirs and 0 at
+    the top level, so a non-recursive ``glob("*.md")`` found nothing and
+    reported a false "all clean".
+
+    Sorted and de-duplicated by resolved path, so the same tree always yields
+    the same worklist regardless of filesystem iteration order.
+    """
+    resolved: dict[Path, Path] = {}
+    for candidate in base.rglob("*"):
+        if candidate.is_file() and is_reviewable_product(candidate):
+            resolved.setdefault(candidate.resolve(), candidate)
+    worklist = [_item(resolved[key]) for key in sorted(resolved, key=str)]
+    return worklist, []
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +298,67 @@ def coerce_to_draft(raw: str) -> str:
 # Per-item review
 # ---------------------------------------------------------------------------
 
+#: Sentinel battery's snippet reader returns for an unreadable file (it catches
+#: ``OSError`` itself).  Judging a placeholder string would be a review of
+#: nothing, so ac5 treats it as an unreadable skip.
+_UNREADABLE_SENTINEL = "<unreadable file:"
 
-def _ac5_prompt(item: dict[str, str]) -> str:
+
+@dataclass(frozen=True, slots=True)
+class ProductSnippet:
+    """Text of a product form, or the recorded reason it is unreviewable."""
+
+    text: str
+    reason: str = ""
+    truncated: bool = False
+
+
+def _read_product_snippet(path: str) -> ProductSnippet:
+    """Read a product's text for judging, converting a read failure into a skip.
+
+    The trust boundary: product bytes cross into a prompt here.  Three specific
+    conditions are handled instead of propagating:
+
+    * ``UnicodeDecodeError`` — a file that passed the suffix filter but is not
+      UTF-8 text.  On the real 474-entry delivery this was fatal: the first
+      ``.mp4`` or ``.zip`` aborted the entire review run;
+    * battery's ``<unreadable file: ...>`` sentinel — a manifest entry whose
+      file is missing or unreadable, which is an equally unreviewable product;
+    * a file longer than battery's snippet limit — flagged via ``truncated`` so
+      the caller ESCALATEs rather than judging a fraction of the document.
+
+    That third case is not hypothetical.  Against ``outputs/`` at battery's
+    former 8 000-char limit, all 5 ESCALATE rows were false: the files were
+    18 962-70 617 chars and complete, but the reviewer saw only the first
+    8 012 and the model correctly reported that *what it could see* stopped
+    mid-section.  The finding was about the reviewer's own window, not the
+    product.  So an over-limit file is reported as an unreadable window, never
+    as a product defect.
+
+    Both failure results become a recorded :class:`ProductSnippet`, so the
+    caller can ESCALATE the row.  No other exception is caught: an unexpected
+    error is a defect and must stay loud.
+    """
+    try:
+        text = _read_file_snippet(path)
+    except UnicodeDecodeError as exc:
+        return ProductSnippet(text="", reason=f"not UTF-8 decodable: {exc}")
+    if text.startswith(_UNREADABLE_SENTINEL):
+        return ProductSnippet(text="", reason=text.strip())
+    if text.endswith(_TRUNCATION_MARKER):
+        size = len(text) - len(_TRUNCATION_MARKER)
+        return ProductSnippet(
+            text="",
+            reason=(
+                f"file exceeds the reviewer's read window ({size} chars read, "
+                "cap is larger): the reviewer cannot judge this product"
+            ),
+            truncated=True,
+        )
+    return ProductSnippet(text=text)
+
+
+def _ac5_prompt(item: dict[str, str], snippet: str) -> str:
     """Build the AC5 quality-review prompt for one product form.
 
     The product's real content is embedded (bounded snippet) so the stateless
@@ -190,7 +366,6 @@ def _ac5_prompt(item: dict[str, str]) -> str:
     battery's markdown verdict parser exactly.
     """
     concerns = "\n".join(f"- {name}: {desc}" for name, desc in _AC5_CONCERNS)
-    snippet = _read_file_snippet(item["path"])
     return (
         "You are performing a director-sampling quality review of one "
         "PROCESSED product form (AC5, acceptance-framework.md §5.2).\n"
@@ -213,6 +388,17 @@ def _ac5_prompt(item: dict[str, str]) -> str:
     )
 
 
+def _escalated_row(family: str, file: str, llm_verdict: str, note: str) -> dict[str, Any]:
+    return {
+        "family": family,
+        "file": file,
+        "draft_verdict": coerce_to_draft(llm_verdict),
+        "llm_verdict": llm_verdict,
+        "evidence": "",
+        "note": note,
+    }
+
+
 def review_product(item: dict[str, str], *, semantic: bool) -> dict[str, Any]:
     """Draft-review one product form; return ``{family, file, draft_verdict,
     llm_verdict, evidence, note}``.
@@ -224,6 +410,10 @@ def review_product(item: dict[str, str], *, semantic: bool) -> dict[str, Any]:
 
     Evidence is mandatory: a recognised verdict whose evidence is empty is
     inadmissible and escalates — fail loud, never a silent risk-free pass.
+
+    A product whose bytes cannot be read (binary despite its suffix, missing,
+    or undecodable) is ESCALATEd without a model call: a skip is a visible row
+    carrying its reason, never a dropped item and never a pass.
     """
     family = item.get("family", "")
     file = item.get("file", "")
@@ -241,8 +431,17 @@ def review_product(item: dict[str, str], *, semantic: bool) -> dict[str, Any]:
             ),
         }
 
+    snippet = _read_product_snippet(item.get("path", ""))
+    if snippet.reason:
+        return _escalated_row(
+            family,
+            file,
+            "ESCALATE",
+            f"product content unreadable — not reviewed: {snippet.reason}",
+        )
+
     want_json = _channel_json_capable()
-    result = _judge_with_llm(_ac5_prompt(item), want_json=want_json)
+    result = _judge_with_llm(_ac5_prompt(item, snippet.text), want_json=want_json)
     evidence = str(result.get("evidence", "")).strip()
     if evidence:
         llm_verdict = str(result.get("verdict", ""))
@@ -267,16 +466,69 @@ def review_product(item: dict[str, str], *, semantic: bool) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def run_ac5_review(delivery_dir: Path, *, semantic: bool = False) -> dict[str, Any]:
-    """Run the AC5 draft review; return ``{worklist, verdicts, summary,
-    honesty}``.
+def _display_path(path: str, base: Path) -> str:
+    """Render *path* relative to *base* so a streamed line identifies the form."""
+    try:
+        return str(Path(path).relative_to(base))
+    except ValueError:
+        return path
+
+
+def _suffix_breakdown(excluded: list[dict[str, str]]) -> str:
+    counts: dict[str, int] = {}
+    for entry in excluded:
+        suffix = entry["suffix"] or "(none)"
+        counts[suffix] = counts.get(suffix, 0) + 1
+    return ", ".join(f"{suffix}={n}" for suffix, n in sorted(counts.items()))
+
+
+def run_ac5_review(
+    delivery_dir: Path,
+    *,
+    semantic: bool = False,
+    emit: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Run the AC5 draft review; return ``{worklist, excluded, verdicts,
+    summary, honesty}``.
 
     ``summary.passed`` is always 0: no draft verdict can ever be PASS.
-    """
-    worklist = build_ac5_worklist(Path(delivery_dir))
-    verdicts = [review_product(item, semantic=semantic) for item in worklist]
 
+    ``emit`` receives the human-readable progress narration in run order — the
+    header (carrying the worklist size), one line per form as it is judged,
+    then SUMMARY — so a caller watching a pipe sees the run grow.  ``None``
+    (the default) narrates nothing, keeping this function usable as a library
+    call.  The narration is deliberately owned here rather than in ``main``:
+    only this function knows the worklist, the per-form order, and the totals.
+
+    ``summary.blocked`` is set when no reviewable product form was found at
+    all.  That is the shape of the bug this report used to hide: a 0-item
+    worklist printed ``risk=0 escalate=0 passed=0`` and exited 0, i.e. "all
+    clean" after reviewing nothing.  A blocked run is not a clean run.
+    """
+    base = Path(delivery_dir)
+    worklist, excluded = _ac5_candidates(base)
     total = len(worklist)
+    blocked = "" if total else "no reviewable product form found"
+
+    def say(line: str) -> None:
+        if emit is not None:
+            emit(line)
+
+    say(f"AC5 director-review DRAFT — {base}")
+    say(f"Worklist: {total} product form(s)")
+    if excluded:
+        say(
+            f"EXCLUDED: {len(excluded)} non-reviewable artifact(s) "
+            f"[{_suffix_breakdown(excluded)}] — never counted as reviewed"
+        )
+
+    verdicts: list[dict[str, Any]] = []
+    for index, item in enumerate(worklist, start=1):
+        verdict = review_product(item, semantic=semantic)
+        verdicts.append(verdict)
+        label = _display_path(item["path"], base)
+        say(f"  [{verdict['draft_verdict']}] {index}/{total} {label}: {str(verdict['note'])[:100]}")
+
     risk = sum(1 for v in verdicts if v["draft_verdict"] == "RISK")
     escalate = sum(1 for v in verdicts if v["draft_verdict"] == "ESCALATE")
     passed = sum(1 for v in verdicts if v["draft_verdict"] == "PASS")
@@ -286,15 +538,24 @@ def run_ac5_review(delivery_dir: Path, *, semantic: bool = False) -> dict[str, A
     else:
         channel = "config.llm json_mode" if _channel_json_capable() else "config.llm markdown"
 
+    summary = {
+        "total": total,
+        "risk": risk,
+        "escalate": escalate,
+        "passed": passed,
+        "excluded": len(excluded),
+        "blocked": blocked,
+    }
+    say(
+        f"SUMMARY: risk={risk} escalate={escalate} passed={passed}"
+        + (f" BLOCKED={blocked}" if blocked else "")
+    )
+
     return {
         "worklist": worklist,
+        "excluded": excluded,
         "verdicts": verdicts,
-        "summary": {
-            "total": total,
-            "risk": risk,
-            "escalate": escalate,
-            "passed": passed,
-        },
+        "summary": summary,
         "honesty": {
             "channel": channel,
             "reviewed": [v["file"] for v in verdicts] if semantic else [],
@@ -353,23 +614,31 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not args.delivery_dir.is_dir():
         print(f"ERROR: {args.delivery_dir} is not a directory", file=sys.stderr)
-        return 2
+        return _EXIT_NO_WORKLIST
 
-    report = run_ac5_review(args.delivery_dir, semantic=args.semantic)
+    def _emit(line: str) -> None:
+        # --json keeps stdout machine-parseable, so progress goes to stderr;
+        # either way flush so `python3 -u` shows the run growing live.
+        print(line, file=sys.stderr if args.json else sys.stdout, flush=True)
+
+    report = run_ac5_review(args.delivery_dir, semantic=args.semantic, emit=_emit)
     runs_dir = args.out if args.out is not None else _REPO_ROOT / "validation-runs"
     _persist(report, args.version, runs_dir)
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
-    else:
-        print(f"AC5 director-review DRAFT — {args.delivery_dir}")
-        print(f"Worklist: {report['summary']['total']} product form(s)")
-        for v in report["verdicts"]:
-            print(f"  [{v['draft_verdict']}] {v['file']}: {v['note'][:100]}")
-        s = report["summary"]
-        print(f"SUMMARY: risk={s['risk']} escalate={s['escalate']} passed={s['passed']}")
 
-    return 1 if report["summary"]["escalate"] else 0
+    s = report["summary"]
+    if s["blocked"]:
+        print(
+            f"ERROR: BLOCKED — {s['blocked']} under {args.delivery_dir} "
+            f"(manifest PROCESSED entries excluded as non-reviewable: "
+            f"{s['excluded']}). NOTHING was reviewed; this is NOT a clean run.",
+            file=sys.stderr,
+        )
+        return _EXIT_NO_WORKLIST
+
+    return _EXIT_ESCALATED if s["escalate"] else 0
 
 
 if __name__ == "__main__":

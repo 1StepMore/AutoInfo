@@ -14,16 +14,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 111 |
-| Total lines | 36173 |
+| Total lines | 36614 |
 | Active files | 83 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
-| Category — known-limitations | 2 files / 336 lines |
+| Category — known-limitations | 2 files / 340 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 11 files / 645 lines |
 | Category — specs | 12 files / 9723 lines |
-| Category — validation-reports | 15 files / 3351 lines |
+| Category — validation-reports | 15 files / 3788 lines |
 | Category — docs/dev | 31 files / 11016 lines |
 | Category — docs/root | 5 files / 983 lines |
 
@@ -112,7 +112,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
-| `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 128 | validation-reports | active | — |
+| `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-3.md` | 51 | validation-reports | active | — |
@@ -132,7 +132,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `glossary.md` | 61 | docs/root | active | glossary |
 | `handoff-2026-09-17.md` | 151 | docs/root | active | — |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
-| `known-limitations/demo-quality-residuals.md` | 48 | known-limitations | active | — |
+| `known-limitations/demo-quality-residuals.md` | 52 | known-limitations | active | — |
 | `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
 | `project-health-assessment-2026-09-17.md` | 441 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |

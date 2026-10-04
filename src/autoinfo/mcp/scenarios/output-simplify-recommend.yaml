@@ -23,6 +23,7 @@ requires_env: ["AUTOINFO_LLM_API_KEY"]
 matrix_domains:
   - b2b
   - retail
+timeout: 900
 steps:
   - name: "simplify_content B1 level english"
     tool: simplify_content

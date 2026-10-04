@@ -27,6 +27,7 @@ def _product(product_type: str, tiers: list[int], tos: list[str] | None = None):
 
 # ───────────────────────── 负样本：必须被拦 ─────────────────────────
 
+
 def test_processed_restricted_blocked_by_default():
     """PROCESSED + tier3(restricted) → 默认拦截。"""
     gate = D2FormatIntegrity()
@@ -63,6 +64,7 @@ def test_explicit_tos_classification_also_blocks():
 
 
 # ───────────────────────── 正样本：不得误杀 / override 可放行 ─────────────────────────
+
 
 def test_processed_open_sources_pass():
     """公开来源的 PROCESSED 产物不得被误杀。"""

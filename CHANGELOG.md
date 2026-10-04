@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.1](https://github.com/1StepMore/AutoInfo/compare/v1.17.0...v1.17.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **quality:** D2 交付门对受限来源 PROCESSED 产物改为失败关闭 ([#451](https://github.com/1StepMore/AutoInfo/issues/451)) ([#454](https://github.com/1StepMore/AutoInfo/issues/454)) ([c5418f8](https://github.com/1StepMore/AutoInfo/commit/c5418f8ca1c50670805148a05bb45f183441856d))
+
 ## [1.17.0](https://github.com/1StepMore/AutoInfo/compare/v1.16.6...v1.17.0) (2026-10-04)
 
 

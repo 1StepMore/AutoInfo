@@ -2469,8 +2469,16 @@ class D2FormatIntegrity:
     _TIER_TOS_MAP: dict[int, str] = {1: "open", 2: "licensed", 3: "restricted", 4: "sensitive"}
     _RESTRICTED_TOS: frozenset[str] = frozenset({"restricted", "sensitive"})
 
-    def __init__(self, action_on_failure: str = "fallback") -> None:
+    def __init__(
+        self,
+        action_on_failure: str = "fallback",
+        allow_processed_from_restricted: bool = False,
+    ) -> None:
         self.action_on_failure = action_on_failure
+        # 默认 False = 失败关闭（fail-closed）：受限/敏感来源的内容，即使已被加工成
+        # PROCESSED 产物，也一律拦截。要放行必须显式传 True（一次有记录的决策），
+        # 以此把「不做违法采集」这条硬约束落成代码强制点，而不是靠自觉。
+        self.allow_processed_from_restricted = allow_processed_from_restricted
 
     # ------------------------------------------------------------------
     # Public API
@@ -2488,7 +2496,9 @@ class D2FormatIntegrity:
         source:
 
         - **RAW** products are **blocked**.
-        - **PROCESSED** products pass but carry a compliance notice.
+        - **PROCESSED** products are **also blocked by default** (fail-closed).
+          Pass ``allow_processed_from_restricted=True`` to override — that is a
+          deliberate, auditable decision, not a default.
 
         Parameters
         ----------
@@ -2572,7 +2582,35 @@ class D2FormatIntegrity:
                 },
             )
 
-        # PROCESSED — allow but add compliance notice
+        # PROCESSED —— 默认**拦截**（fail-closed）
+        # 返工原因（2026-10-02 独立交叉审查）：原实现把「受限/敏感来源 + PROCESSED」
+        # 判为 passed=True、只附一句 compliance notice。提示不拦人：
+        # 受限源内容只要经大模型「洗」成 digest/report 就能通过交付门，
+        # 与「不做违法采集」这条硬约束直接冲突。
+        if not self.allow_processed_from_restricted:
+            return QualityResult(
+                gate_name="D2-FormatIntegrity",
+                passed=False,
+                score=0.0,
+                flagged=True,
+                details={
+                    "tos_blocked": True,
+                    "action": "block",
+                    "blocked_count": count,
+                    "classifications": classifications,
+                    "error": (
+                        f"Delivery blocked: PROCESSED product carries {count} "
+                        f"item{'s' if count > 1 else ''} from "
+                        f"{', '.join(repr(c) for c in classifications)} source(s). "
+                        f"Pass allow_processed_from_restricted=True "
+                        f"only after an explicit decision."
+                    ),
+                    "blocked_entries": restricted_entries[:10],
+                    "override_available": "allow_processed_from_restricted=True",
+                },
+            )
+
+        # 显式放行（allow_processed_from_restricted=True）——仍附合规提示
         return QualityResult(
             gate_name="D2-FormatIntegrity",
             passed=True,
@@ -2580,6 +2618,7 @@ class D2FormatIntegrity:
             details={
                 "tos_blocked": False,
                 "tos_compliance_notice": True,
+                "override_applied": "allow_processed_from_restricted=True",
                 "compliance_message": (
                     f"Contains {count} item{'s apply' if count == 1 else 's'} "
                     f"from restricted/sensitive sources — for internal use only"
@@ -3070,6 +3109,12 @@ def run_delivery_gates(
             "D2-FormatIntegrity",
             D2FormatIntegrity(
                 action_on_failure=_resolve_dg_action(configs.get("D2", {}), "fallback"),
+                # 默认 False（失败关闭）。要放行「受限/敏感来源 + PROCESSED」，
+                # 必须在 D2 配置里显式写 allow_processed_from_restricted: true
+                # —— 这是一次有记录的决策，不是默认放行。
+                allow_processed_from_restricted=bool(
+                    (configs.get("D2", {}) or {}).get("allow_processed_from_restricted", False)
+                ),
             ),
         ),
         (

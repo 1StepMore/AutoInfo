@@ -152,9 +152,7 @@ def test_real_sources_yaml_parses_the_declaration() -> None:
         pytest.skip(f"sources.yaml not found at {p}")
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
     # 域模板用的是顶层 ``sources:``；用户项目配置里才是 ``domains[].sources``。
-    srcs = raw.get("sources") or [
-        s for d in raw.get("domains", []) for s in d.get("sources", [])
-    ]
+    srcs = raw.get("sources") or [s for d in raw.get("domains", []) for s in d.get("sources", [])]
     bili = [s for s in srcs if s.get("type") == "bilibili"]
     assert bili, "expected a bilibili source in sources.yaml"
     assert bili[0].get("requires_app_review") is True

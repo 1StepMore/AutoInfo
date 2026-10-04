@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.0](https://github.com/1StepMore/AutoInfo/compare/v1.16.6...v1.17.0) (2026-10-04)
+
+
+### Features
+
+* **collect:** requires_app_review 升级为一等字段 + 采集分发处强制闸（fail-closed）([#450](https://github.com/1StepMore/AutoInfo/issues/450)) ([#453](https://github.com/1StepMore/AutoInfo/issues/453)) ([2c8a258](https://github.com/1StepMore/AutoInfo/commit/2c8a258335a9c592a81a856e80c96758011c3c2d))
+
 ## [1.16.6](https://github.com/1StepMore/AutoInfo/compare/v1.16.5...v1.16.6) (2026-10-04)
 
 

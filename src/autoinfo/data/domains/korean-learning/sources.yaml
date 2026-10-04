@@ -8,21 +8,21 @@ exclude_keywords:
 - 중국어
 - crypto hype
 sources:
-- name: hankyoreh
+- name: donga
   type: rss
-  url: https://www.hani.co.kr/rss/
+  url: https://rss.donga.com/total.xml
   quality_tier: 1
   frequency: daily
   access: free
   rate_limit: 60
   enabled: true
-- name: talktomeinkorean
+- name: khan
   type: rss
-  url: https://talktomeinkorean.com/feed/
+  url: https://www.khan.co.kr/rss/rssdata/total_news.xml
   quality_tier: 1
   frequency: daily
   access: free
-  rate_limit: 30
+  rate_limit: 60
   enabled: true
 topics:
 - name: News & Politics

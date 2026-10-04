@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.4](https://github.com/1StepMore/AutoInfo/compare/v1.16.3...v1.16.4) (2026-10-04)
+
+
+### Bug Fixes
+
+* **domains:** korean-learning 换用带正文的采集源，修复全量语料被丢弃 ([#442](https://github.com/1StepMore/AutoInfo/issues/442)) ([#443](https://github.com/1StepMore/AutoInfo/issues/443)) ([ba1623d](https://github.com/1StepMore/AutoInfo/commit/ba1623dc7eba09b08f96c2e896988d5bb2668c78))
+
 ## [1.16.3](https://github.com/1StepMore/AutoInfo/compare/v1.16.2...v1.16.3) (2026-10-03)
 
 

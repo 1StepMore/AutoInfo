@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.3](https://github.com/1StepMore/AutoInfo/compare/v1.17.2...v1.17.3) (2026-10-04)
+
+
+### Bug Fixes
+
+* **docs:** name the interpreter when the doc gate fails for environment reasons ([#424](https://github.com/1StepMore/AutoInfo/issues/424)) ([#473](https://github.com/1StepMore/AutoInfo/issues/473)) ([8fa7652](https://github.com/1StepMore/AutoInfo/commit/8fa7652163f70c9baca1f8e2d7c5957602b44bb9))
+
 ## [1.17.2](https://github.com/1StepMore/AutoInfo/compare/v1.17.1...v1.17.2) (2026-10-04)
 
 

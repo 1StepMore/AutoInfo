@@ -2,6 +2,41 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.1](https://github.com/1StepMore/AutoInfo/compare/v1.17.0...v1.17.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **quality:** D2 交付门对受限来源 PROCESSED 产物改为失败关闭 ([#451](https://github.com/1StepMore/AutoInfo/issues/451)) ([#454](https://github.com/1StepMore/AutoInfo/issues/454)) ([c5418f8](https://github.com/1StepMore/AutoInfo/commit/c5418f8ca1c50670805148a05bb45f183441856d))
+
+## [1.17.0](https://github.com/1StepMore/AutoInfo/compare/v1.16.6...v1.17.0) (2026-10-04)
+
+
+### Features
+
+* **collect:** requires_app_review 升级为一等字段 + 采集分发处强制闸（fail-closed）([#450](https://github.com/1StepMore/AutoInfo/issues/450)) ([#453](https://github.com/1StepMore/AutoInfo/issues/453)) ([2c8a258](https://github.com/1StepMore/AutoInfo/commit/2c8a258335a9c592a81a856e80c96758011c3c2d))
+
+## [1.16.6](https://github.com/1StepMore/AutoInfo/compare/v1.16.5...v1.16.6) (2026-10-04)
+
+
+### Bug Fixes
+
+* **collectors:** robots 门补 UA 组选择与按域缓存，接入 web/web_playwright/pdf，Disallow 记为 skipped ([#452](https://github.com/1StepMore/AutoInfo/issues/452)) ([#456](https://github.com/1StepMore/AutoInfo/issues/456)) ([6c73d3e](https://github.com/1StepMore/AutoInfo/commit/6c73d3ef72cd7ddebb088b6b4e9f9033e59f15c6))
+
+## [1.16.5](https://github.com/1StepMore/AutoInfo/compare/v1.16.4...v1.16.5) (2026-10-04)
+
+
+### Miscellaneous Chores
+
+* **nightly:** 差距矩阵区分 skipped 与已跑，策略跳过不再伪装成覆盖 ([#455](https://github.com/1StepMore/AutoInfo/issues/455)) ([#457](https://github.com/1StepMore/AutoInfo/issues/457)) ([f42170a](https://github.com/1StepMore/AutoInfo/commit/f42170aa674b83fc1befb9fcafe6f7ea035cd278))
+
+## [1.16.4](https://github.com/1StepMore/AutoInfo/compare/v1.16.3...v1.16.4) (2026-10-04)
+
+
+### Bug Fixes
+
+* **domains:** korean-learning 换用带正文的采集源，修复全量语料被丢弃 ([#442](https://github.com/1StepMore/AutoInfo/issues/442)) ([#443](https://github.com/1StepMore/AutoInfo/issues/443)) ([ba1623d](https://github.com/1StepMore/AutoInfo/commit/ba1623dc7eba09b08f96c2e896988d5bb2668c78))
+
 ## [1.16.3](https://github.com/1StepMore/AutoInfo/compare/v1.16.2...v1.16.3) (2026-10-03)
 
 

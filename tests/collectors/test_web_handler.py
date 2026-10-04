@@ -31,6 +31,19 @@ def handler() -> WebHandler:
     return WebHandler()
 
 
+@pytest.fixture(autouse=True)
+def _bypass_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """绕过 robots 专注被测行为：本文件测抓取/重试/抽取语义，不测 robots 门。
+
+    放行门使 ``httpx.get`` 的计数断言只统计**页面请求**（robots 请求不再混入）。
+    门本身的行为在 ``test_robots_gate.py`` 及下方 ``TestRobotsGatePaths`` 锁定。
+    """
+    monkeypatch.setattr(
+        "autoinfo.collectors.web.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+
+
 @pytest.fixture
 def handler_with_links() -> WebHandler:
     """Return a handler with ``include_links=True``."""
@@ -214,7 +227,10 @@ class TestWebHandlerErrors:
             assert items == [], f"Expected empty list for URL: {url!r}"
 
     def test_retry_on_timeout(self, handler: WebHandler) -> None:
-        """After 3 TimeoutExceptions, handler returns empty list (no crash)."""
+        """允许路径：robots 放行时，3 次 TimeoutException 后返回空列表（不崩）。
+
+        robots 门已被上述 fixture 绕过，因此 ``call_count`` 只数页面请求。
+        """
         call_count = 0
 
         def _fake_get(*args: object, **kwargs: object) -> httpx.Response:
@@ -230,7 +246,7 @@ class TestWebHandlerErrors:
         assert call_count == 3
 
     def test_retry_on_network_error(self, handler: WebHandler) -> None:
-        """Network errors retried 3 times, then return empty list."""
+        """允许路径：网络错误重试 3 次，然后返回空列表（robots 已绕过，不计数）。"""
         call_count = 0
 
         def _fake_get(*args: object, **kwargs: object) -> httpx.Response:
@@ -306,6 +322,64 @@ class TestWebHandlerErrors:
         result = handler._extract("<html><body>hi</body></html>", "http://x.com")
         assert result is None
         assert "No extractable content found" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# robots 门 —— 允许 / 拒绝两条语义路径（#452）
+# ---------------------------------------------------------------------------
+
+
+class TestRobotsGatePaths:
+    """同一个入口（``fetch``）在门放行 / 拦截时的两条语义断言。"""
+
+    def test_allowed_path_reaches_page_fetch(
+        self, handler: WebHandler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """允许路径：门放行 → 目标页面请求照常发出（且只发一次）。"""
+        monkeypatch.setattr(
+            "autoinfo.collectors.web.check_url_allowed",
+            lambda url, **kwargs: (True, "test"),
+        )
+        page_calls = 0
+
+        def page_get(*args: object, **kwargs: object) -> httpx.Response:
+            nonlocal page_calls
+            page_calls += 1
+            return httpx.Response(
+                200,
+                text="<html><body><p>body</p></body></html>",
+                headers={"content-type": "text/html"},
+            )
+
+        monkeypatch.setattr("httpx.get", page_get)
+        handler.fetch("https://example.com/article")
+        assert page_calls == 1
+
+    def test_disallowed_path_raises_before_page_fetch(
+        self, handler: WebHandler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """拒绝路径：门拦截 → 抛 ``RobotsDisallowed``，页面请求 0 次。"""
+        from autoinfo.collectors.robots import RobotsDisallowed
+
+        monkeypatch.setattr(
+            "autoinfo.collectors.web.check_url_allowed",
+            lambda url, **kwargs: (False, "disallowed by test robots"),
+        )
+        page_calls = 0
+
+        def page_get(*args: object, **kwargs: object) -> httpx.Response:
+            nonlocal page_calls
+            page_calls += 1
+            return httpx.Response(
+                200,
+                text="<html><body><p>should never be fetched</p></body></html>",
+                headers={"content-type": "text/html"},
+            )
+
+        monkeypatch.setattr("httpx.get", page_get)
+        with pytest.raises(RobotsDisallowed):
+            handler.fetch("https://example.com/private/x")
+        assert page_calls == 0
 
 
 # ---------------------------------------------------------------------------

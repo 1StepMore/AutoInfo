@@ -72,6 +72,10 @@ class BilibiliHandler(BaseHandler):
 
     source_type: str = "bilibili"
 
+    # 声明式标记：平台反爬 + 需应用/接口审核才可正当采集。
+    # 由 collect._collect_from_source 消费（未获显式确认则跳过该源）。
+    REQUIRES_APP_REVIEW: bool = True
+
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         """Initialise handler.
 
@@ -279,7 +283,12 @@ class BilibiliHandler(BaseHandler):
 
     @staticmethod
     def requires_app_review() -> bool:
-        """Return ``True`` — Bilibili has anti-scraping measures."""
+        """Return ``True`` — Bilibili has anti-scraping measures.
+
+        Kept as a static method for backward compatibility (callable on the
+        class); :attr:`REQUIRES_APP_REVIEW` is the declarative source of truth
+        that the collection dispatch point consumes.
+        """
         return True
 
     # ------------------------------------------------------------------

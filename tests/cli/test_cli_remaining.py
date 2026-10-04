@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -36,29 +36,34 @@ def tmp_project(tmp_path: Path) -> Path:
     config_dir = tmp_path / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
-    config_path.write_text(yaml.dump({
-        "project": {"name": "Test Project", "created_at": "2026-07-01"},
-        "llm": {
-            "provider": "openrouter",
-            "model": "deepseek/deepseek-chat",
-            "api_key": "test-key",
-        },
-        "domains": [
+    config_path.write_text(
+        yaml.dump(
             {
-                "name": "medical-research",
-                "active": True,
-                "sources": [
+                "project": {"name": "Test Project", "created_at": "2026-07-01"},
+                "llm": {
+                    "provider": "openrouter",
+                    "model": "deepseek/deepseek-chat",
+                    "api_key": "test-key",
+                },
+                "domains": [
                     {
-                        "name": "pubmed",
-                        "type": "api",
-                        "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
-                        "quality_tier": 1,
+                        "name": "medical-research",
+                        "active": True,
+                        "sources": [
+                            {
+                                "name": "pubmed",
+                                "type": "api",
+                                "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                                "quality_tier": 1,
+                            }
+                        ],
+                        "topics": [{"name": "IVF breakthroughs", "keywords": ["IVF", "embryo"]}],
                     }
                 ],
-                "topics": [{"name": "IVF breakthroughs", "keywords": ["IVF", "embryo"]}],
             }
-        ],
-    }), encoding="utf-8")
+        ),
+        encoding="utf-8",
+    )
     return tmp_path
 
 
@@ -92,7 +97,6 @@ class TestSourcesHealth:
         self, cli_runner: Any, tmp_project: Path
     ) -> None:
         """With valid args, it calls get_source_health and prints status."""
-        from autoinfo.status import get_source_health
 
         mock_result = {
             "source_id": "medical-research:pubmed",
@@ -104,7 +108,10 @@ class TestSourcesHealth:
 
         with (
             patch("autoinfo.cli.sources.get_source_health", return_value=mock_result) as mock_fn,
-            patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"),
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
         ):
             result = cli_runner.invoke(
                 app,
@@ -120,9 +127,7 @@ class TestSourcesHealth:
         assert "medical-research:pubmed" in strip_ansi(result.stdout)
         mock_fn.assert_called_once_with(source_id="medical-research:pubmed")
 
-    def test_health_json_output(
-        self, cli_runner: Any, tmp_project: Path
-    ) -> None:
+    def test_health_json_output(self, cli_runner: Any, tmp_project: Path) -> None:
         """With --json flag, output is valid JSON."""
         mock_result = {
             "source_id": "medical-research:pubmed",
@@ -132,7 +137,10 @@ class TestSourcesHealth:
 
         with (
             patch("autoinfo.cli.sources.get_source_health", return_value=mock_result),
-            patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"),
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
         ):
             result = cli_runner.invoke(
                 app,
@@ -148,16 +156,17 @@ class TestSourcesHealth:
         parsed = json.loads(result.stdout)
         assert parsed["status"] == "healthy"
 
-    def test_health_handles_error(
-        self, cli_runner: Any, tmp_project: Path
-    ) -> None:
+    def test_health_handles_error(self, cli_runner: Any, tmp_project: Path) -> None:
         """When get_source_health raises, the CLI shows an error and exits 1."""
         with (
             patch(
                 "autoinfo.cli.sources.get_source_health",
                 side_effect=RuntimeError("Connection failed"),
             ),
-            patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"),
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
         ):
             result = cli_runner.invoke(
                 app,
@@ -193,15 +202,16 @@ class TestKbListTiers:
         result = cli_runner.invoke(app, ["kb", "list-tiers"])
         assert result.exit_code != 0
 
-    def test_list_tiers_returns_tier_info(
-        self, cli_runner: Any, tmp_project: Path
-    ) -> None:
+    def test_list_tiers_returns_tier_info(self, cli_runner: Any, tmp_project: Path) -> None:
         """With a valid domain, list-tiers prints the three standard tiers."""
         with (
-            patch("autoinfo.kb.KBStore") as MockStore,
-            patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"),
+            patch("autoinfo.kb.KBStore") as mock_store,
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
         ):
-            instance = MockStore.return_value
+            instance = mock_store.return_value
             instance.count_entries_by_tier.return_value = 0
 
             result = cli_runner.invoke(
@@ -215,15 +225,16 @@ class TestKbListTiers:
         assert "02-Draft" in strip_ansi(result.stdout)
         assert "03-Wiki" in strip_ansi(result.stdout)
 
-    def test_list_tiers_json_output(
-        self, cli_runner: Any, tmp_project: Path
-    ) -> None:
+    def test_list_tiers_json_output(self, cli_runner: Any, tmp_project: Path) -> None:
         """With --json, output is valid JSON with tier info."""
         with (
-            patch("autoinfo.kb.KBStore") as MockStore,
-            patch("autoinfo.config.get_config_path", return_value=tmp_project / ".autoinfo" / "config.yaml"),
+            patch("autoinfo.kb.KBStore") as mock_store,
+            patch(
+                "autoinfo.config.get_config_path",
+                return_value=tmp_project / ".autoinfo" / "config.yaml",
+            ),
         ):
-            instance = MockStore.return_value
+            instance = mock_store.return_value
             instance.count_entries_by_tier.return_value = 0
 
             result = cli_runner.invoke(

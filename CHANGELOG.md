@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.5](https://github.com/1StepMore/AutoInfo/compare/v1.16.4...v1.16.5) (2026-10-04)
+
+
+### Miscellaneous Chores
+
+* **nightly:** 差距矩阵区分 skipped 与已跑，策略跳过不再伪装成覆盖 ([#455](https://github.com/1StepMore/AutoInfo/issues/455)) ([#457](https://github.com/1StepMore/AutoInfo/issues/457)) ([f42170a](https://github.com/1StepMore/AutoInfo/commit/f42170aa674b83fc1befb9fcafe6f7ea035cd278))
+
 ## [1.16.4](https://github.com/1StepMore/AutoInfo/compare/v1.16.3...v1.16.4) (2026-10-04)
 
 

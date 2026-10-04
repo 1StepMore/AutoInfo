@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.6](https://github.com/1StepMore/AutoInfo/compare/v1.16.5...v1.16.6) (2026-10-04)
+
+
+### Bug Fixes
+
+* **collectors:** robots 门补 UA 组选择与按域缓存，接入 web/web_playwright/pdf，Disallow 记为 skipped ([#452](https://github.com/1StepMore/AutoInfo/issues/452)) ([#456](https://github.com/1StepMore/AutoInfo/issues/456)) ([6c73d3e](https://github.com/1StepMore/AutoInfo/commit/6c73d3ef72cd7ddebb088b6b4e9f9033e59f15c6))
+
 ## [1.16.5](https://github.com/1StepMore/AutoInfo/compare/v1.16.4...v1.16.5) (2026-10-04)
 
 

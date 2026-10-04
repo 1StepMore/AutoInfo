@@ -40,6 +40,7 @@ from autoinfo.user_store import (
     get_profile,
     list_subscriptions,
 )
+from tests._ansi import strip_ansi
 
 
 @pytest.fixture
@@ -262,4 +263,4 @@ class TestMvpGroupIdentity:
     def test_mvp_in_top_level_help(self, runner: CliRunner) -> None:
         result = runner.invoke(main_app, ["--help"])
         assert result.exit_code == 0
-        assert "mvp" in result.output
+        assert "mvp" in strip_ansi(result.output)

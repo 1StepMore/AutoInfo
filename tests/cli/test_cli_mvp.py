@@ -40,6 +40,7 @@ from autoinfo.user_store import (
     get_profile,
     list_subscriptions,
 )
+from tests._ansi import strip_ansi
 
 
 @pytest.fixture
@@ -101,11 +102,7 @@ def _init(runner: CliRunner, **overrides: str) -> Any:
 
 def _product_files(user_dir: Path) -> list[Path]:
     """The generated product files (not gate reports / metadata)."""
-    return [
-        p
-        for p in user_dir.glob("*.md")
-        if not p.name.startswith("gate-report-")
-    ]
+    return [p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")]
 
 
 class TestMvpInitHappyPath:
@@ -134,9 +131,7 @@ class TestMvpInitHappyPath:
         assert sub.tier == "premium"
         assert sub.status == "active"
 
-    def test_check_access_premium_allowed_without_stripe(
-        self, runner: CliRunner
-    ) -> None:
+    def test_check_access_premium_allowed_without_stripe(self, runner: CliRunner) -> None:
         result = _init(runner)
         assert result.exit_code == 0, result.output
 
@@ -153,9 +148,7 @@ class TestMvpInitHappyPath:
         names = [d.get("name") for d in cfg.get("domains", [])]
         assert "medical-research" in names, names
 
-    def test_init_writes_delivery_dir_with_product_and_gate_report(
-        self, runner: CliRunner
-    ) -> None:
+    def test_init_writes_delivery_dir_with_product_and_gate_report(self, runner: CliRunner) -> None:
         result = _init(runner)
         assert result.exit_code == 0, result.output
 
@@ -262,4 +255,4 @@ class TestMvpGroupIdentity:
     def test_mvp_in_top_level_help(self, runner: CliRunner) -> None:
         result = runner.invoke(main_app, ["--help"])
         assert result.exit_code == 0
-        assert "mvp" in result.output
+        assert "mvp" in strip_ansi(result.output)

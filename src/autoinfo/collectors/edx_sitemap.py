@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 
 from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.robots import robots_allows as _robots_allows
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -318,47 +319,7 @@ def _find_course_node(data: Any) -> dict[str, Any] | None:
     return None
 
 
-def _parse_robots_rules(robots_text: str, user_agent: str) -> list[tuple[str, str]]:
-    """Parse robots.txt into ``(type, path)`` rules for *user_agent*.
-
-    Only the group whose ``User-agent`` line matches *user_agent* (case
-    insensitive, ``*`` wildcard) contributes rules; the last matching
-    group wins, per RFC 9309 §2.2.1.
-    """
-    rules: list[tuple[str, str]] = []
-    group_active = False
-    for raw_line in robots_text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or ":" not in line:
-            continue
-        field, _, value = line.partition(":")
-        field = field.strip().lower()
-        value = value.strip()
-        if field == "user-agent":
-            group_active = value.lower() == user_agent.lower()
-        elif group_active and field in ("allow", "disallow"):
-            rules.append((field, value))
-    return rules
-
-
-def robots_allows(robots_text: str, url_path: str, user_agent: str = "*") -> bool:
-    """Decide whether *url_path* may be crawled under *robots_text*.
-
-    Longest-matching rule wins; an ``Allow`` and ``Disallow`` of equal
-    length prefer ``Allow`` (RFC 9309 §2.2.2).  Empty ``Disallow`` means
-    "allow all".  No matching rule → allowed.
-    """
-    rules = _parse_robots_rules(robots_text, user_agent)
-    best: tuple[int, str] | None = None
-    for rule_type, rule_path in rules:
-        if rule_type == "disallow" and rule_path == "":
-            continue  # empty Disallow is a no-op
-        if not url_path.startswith(rule_path):
-            continue
-        if best is None or len(rule_path) > best[0]:
-            best = (len(rule_path), rule_type)
-        elif len(rule_path) == best[0] and rule_type == "allow":
-            best = (len(rule_path), rule_type)
-    if best is None:
-        return True
-    return best[1] == "allow"
+# robots.txt 逻辑已抽到共享模块 autoinfo.collectors.robots（2026-10-02）：
+# 以前它是本文件的模块私有函数，于是**只有定义它的采集器**能遵守 robots.txt，
+# 其他抓页采集器等于没有这道闸。现在统一从共享模块来，edx 只是使用者之一。
+robots_allows = _robots_allows  # 保留旧名，兼容既有引用

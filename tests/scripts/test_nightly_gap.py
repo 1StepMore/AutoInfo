@@ -38,12 +38,15 @@ import nightly_gap as ng  # noqa: E402  (sys.path insert above)
 def _write_runs(collections: Path, domain: str, source: str, runs: list[dict[str, Any]]) -> None:
     d = collections / domain / source
     d.mkdir(parents=True, exist_ok=True)
-    (d / "_runs.json").write_text(
-        json.dumps(runs, ensure_ascii=False, indent=2), encoding="utf-8")
+    (d / "_runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _run(status: str, items: int = 0, ts: str = "2026-08-10T00:00:00+00:00",
-         errors: list[dict] | None = None) -> dict[str, Any]:
+def _run(
+    status: str,
+    items: int = 0,
+    ts: str = "2026-08-10T00:00:00+00:00",
+    errors: list[dict] | None = None,
+) -> dict[str, Any]:
     return {
         "collection_id": f"c-{ts}",
         "timestamp": ts,
@@ -65,8 +68,12 @@ ROBOTS_MSG = "robots.txt disallows /popular (HTTP 200 body: Disallow: /popular)"
 
 def _health(name: str, total_runs: int, status: str = "healthy") -> dict[str, Any]:
     """`autoinfo --json status` 里 source_health 的一个条目形状。"""
-    return {"name": name, "status": status, "last_run": "2026-08-10T00:00:00+00:00",
-            "total_runs": total_runs}
+    return {
+        "name": name,
+        "status": status,
+        "last_run": "2026-08-10T00:00:00+00:00",
+        "total_runs": total_runs,
+    }
 
 
 def _domains_dir(tmp_path: Path, *domains: str) -> Path:
@@ -85,18 +92,27 @@ def _outputs_dir(tmp_path: Path, *domains: str) -> Path:
     return d
 
 
-def _run_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: dict[str, dict],
-              domains: list[str]) -> tuple[int, dict, str]:
+def _run_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: dict[str, dict], domains: list[str]
+) -> tuple[int, dict, str]:
     """跑 main() 一次（status 用夹具替身），返回 (退出码, gap.json, gap.md)。"""
     monkeypatch.setattr(ng, "status_by_domain", lambda python, collections=None: status)
     jp, mp = tmp_path / "gap.json", tmp_path / "gap.md"
-    rc = ng.main([
-        "--domains-dir", str(_domains_dir(tmp_path, *domains)),
-        "--outputs", str(_outputs_dir(tmp_path, *domains)),
-        "--collections", str(tmp_path / "collections"),
-        "--skip-assertions",
-        "--json-out", str(jp), "--md-out", str(mp),
-    ])
+    rc = ng.main(
+        [
+            "--domains-dir",
+            str(_domains_dir(tmp_path, *domains)),
+            "--outputs",
+            str(_outputs_dir(tmp_path, *domains)),
+            "--collections",
+            str(tmp_path / "collections"),
+            "--skip-assertions",
+            "--json-out",
+            str(jp),
+            "--md-out",
+            str(mp),
+        ]
+    )
     return rc, json.loads(jp.read_text(encoding="utf-8")), mp.read_text(encoding="utf-8")
 
 
@@ -121,9 +137,11 @@ def test_success_without_items_is_ran_empty() -> None:
 
 def test_skipped_only_is_skipped_not_ran() -> None:
     """核心 bug：只有一条 skipped 记录的源，旧口径（total_runs>0）算「已跑」。"""
-    st = ng.source_run_state([
-        _run("skipped", errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}]),
-    ])
+    st = ng.source_run_state(
+        [
+            _run("skipped", errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}]),
+        ]
+    )
     assert st["state"] == ng.STATE_SKIPPED
     assert st["skipped"] is True
     assert st["skip_reason"] == ng.SKIP_REASON_APP_REVIEW
@@ -161,11 +179,16 @@ def test_boundary_success_then_skip_is_skipped() -> None:
     待解开的阻断；「任一成功」口径会让曾经能采、现在被闸挡住的源继续显示为已覆盖，
     正是 #455 报的伪装。
     """
-    st = ng.source_run_state([
-        _run("success", items=5, ts="2026-08-01T00:00:00+00:00"),
-        _run("skipped", ts="2026-08-10T00:00:00+00:00",
-             errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}]),
-    ])
+    st = ng.source_run_state(
+        [
+            _run("success", items=5, ts="2026-08-01T00:00:00+00:00"),
+            _run(
+                "skipped",
+                ts="2026-08-10T00:00:00+00:00",
+                errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}],
+            ),
+        ]
+    )
     assert st["state"] == ng.STATE_SKIPPED
     assert st["skipped"] is True
     assert st["skip_reason"] == ng.SKIP_REASON_APP_REVIEW
@@ -177,11 +200,16 @@ def test_boundary_success_then_skip_is_skipped() -> None:
 
 def test_boundary_skip_then_success_is_ran_again() -> None:
     """反向：最近一次跑成功了 → 覆盖恢复（历史跳过不株伤当下口径）。"""
-    st = ng.source_run_state([
-        _run("skipped", ts="2026-08-01T00:00:00+00:00",
-             errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}]),
-        _run("success", items=4, ts="2026-08-10T00:00:00+00:00"),
-    ])
+    st = ng.source_run_state(
+        [
+            _run(
+                "skipped",
+                ts="2026-08-01T00:00:00+00:00",
+                errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}],
+            ),
+            _run("success", items=4, ts="2026-08-10T00:00:00+00:00"),
+        ]
+    )
     assert st["state"] == ng.STATE_PRODUCED
     assert st["skipped"] is False
     assert st["runs_skipped"] == 1  # 历史跳过仍可见
@@ -209,17 +237,24 @@ def test_skip_reason_from_message_sniff_when_no_marker() -> None:
 
 
 def test_skip_reason_falls_back_to_other() -> None:
-    assert ng.classify_skip_reason([_run("skipped", errors=[{"message": "???"}])])[0] == \
-        ng.SKIP_REASON_OTHER
+    assert (
+        ng.classify_skip_reason([_run("skipped", errors=[{"message": "???"}])])[0]
+        == ng.SKIP_REASON_OTHER
+    )
     assert ng.classify_skip_reason([_run("skipped")])[0] == ng.SKIP_REASON_OTHER
 
 
 def test_explicit_marker_beats_message_sniff() -> None:
     """显式标记优先于文本嗅探；两个显式标记同时存在时 app_review 优先（可操作的闸）。"""
-    runs = [_run("skipped", errors=[
-        {"message": "robots disallowed", "robots_disallowed": True},
-        {"message": APP_REVIEW_MSG, "app_review_required": True},
-    ])]
+    runs = [
+        _run(
+            "skipped",
+            errors=[
+                {"message": "robots disallowed", "robots_disallowed": True},
+                {"message": APP_REVIEW_MSG, "app_review_required": True},
+            ],
+        )
+    ]
     assert ng.classify_skip_reason(runs)[0] == ng.SKIP_REASON_APP_REVIEW
 
 
@@ -237,9 +272,12 @@ def test_skip_reason_ignores_non_skipped_runs() -> None:
 def test_skipped_source_not_counted_as_ran(tmp_path: Path) -> None:
     col = tmp_path / "collections"
     _write_runs(col, "online-video", "pubmed-like", [_run("success", items=9)])
-    _write_runs(col, "online-video", "bili-popular",
-                [_run("skipped", errors=[{"message": APP_REVIEW_MSG,
-                                           "app_review_required": True}])])
+    _write_runs(
+        col,
+        "online-video",
+        "bili-popular",
+        [_run("skipped", errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}])],
+    )
     _write_runs(col, "online-video", "untouched", [])
     health = [_health("pubmed-like", 3), _health("bili-popular", 1), _health("untouched", 0)]
 
@@ -250,17 +288,27 @@ def test_skipped_source_not_counted_as_ran(tmp_path: Path) -> None:
     assert agg["sources_ran"] == 1
     assert agg["sources_skipped"] == 1
     assert agg["sources_productive"] == 1
-    assert agg["skipped_sources"] == [{
-        "source": "bili-popular", "reason": ng.SKIP_REASON_APP_REVIEW, "detail": APP_REVIEW_MSG,
-        "runs_total": 1, "runs_skipped": 1, "runs_productive": 0,
-    }]
+    assert agg["skipped_sources"] == [
+        {
+            "source": "bili-popular",
+            "reason": ng.SKIP_REASON_APP_REVIEW,
+            "detail": APP_REVIEW_MSG,
+            "runs_total": 1,
+            "runs_skipped": 1,
+            "runs_productive": 0,
+        }
+    ]
 
 
 def test_skipped_source_is_neither_healthy_nor_unhealthy(tmp_path: Path) -> None:
     col = tmp_path / "collections"
     _write_runs(col, "d", "ok", [_run("success", items=2)])
-    _write_runs(col, "d", "gated", [_run("skipped", errors=[{"message": ROBOTS_MSG,
-                                                             "robots_disallowed": True}])])
+    _write_runs(
+        col,
+        "d",
+        "gated",
+        [_run("skipped", errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}])],
+    )
     _write_runs(col, "d", "broken", [_run("error", errors=[{"message": "boom"}])])
     health = [
         _health("ok", 2, "healthy"),
@@ -271,12 +319,13 @@ def test_skipped_source_is_neither_healthy_nor_unhealthy(tmp_path: Path) -> None
 
     agg = ng.summarize_sources(health, col, "d")
 
-    assert agg["sources_healthy"] == 1        # ok（gated 被踢出 healthy）
+    assert agg["sources_healthy"] == 1  # ok（gated 被踢出 healthy）
     assert agg["sources_skipped"] == 1
-    assert agg["sources_unhealthy"] == 1     # 只有 broken；gated 两边都不算
+    assert agg["sources_unhealthy"] == 1  # 只有 broken；gated 两边都不算
     # 恒等式：三类互斥且合起来 = 总数
-    assert (agg["sources_healthy"] + agg["sources_unhealthy"]
-            + agg["sources_skipped"]) == agg["sources_total"]
+    assert (agg["sources_healthy"] + agg["sources_unhealthy"] + agg["sources_skipped"]) == agg[
+        "sources_total"
+    ]
 
 
 def test_ran_breakdown_matches_ran_total(tmp_path: Path) -> None:
@@ -292,8 +341,9 @@ def test_ran_breakdown_matches_ran_total(tmp_path: Path) -> None:
 
     assert agg["sources_ran"] == 3
     assert (agg["sources_productive"], agg["sources_ran_empty"], agg["sources_failed"]) == (1, 1, 1)
-    assert agg["sources_ran"] == (agg["sources_productive"] + agg["sources_ran_empty"]
-                                  + agg["sources_failed"])
+    assert agg["sources_ran"] == (
+        agg["sources_productive"] + agg["sources_ran_empty"] + agg["sources_failed"]
+    )
 
 
 def test_missing_collections_dir_is_all_never_ran(tmp_path: Path) -> None:
@@ -320,12 +370,20 @@ def test_corrupt_runs_json_does_not_crash(tmp_path: Path) -> None:
 def test_gap_md_marks_skipped_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     col = tmp_path / "collections"
     _write_runs(col, "online-video", "pubmed-like", [_run("success", items=9)])
-    _write_runs(col, "online-video", "bili-popular",
-                [_run("skipped", errors=[{"message": APP_REVIEW_MSG,
-                                           "app_review_required": True}])])
-    status = {"online-video": {
-        "entries": 30, **ng.summarize_sources(
-            [_health("pubmed-like", 3), _health("bili-popular", 1)], col, "online-video")}}
+    _write_runs(
+        col,
+        "online-video",
+        "bili-popular",
+        [_run("skipped", errors=[{"message": APP_REVIEW_MSG, "app_review_required": True}])],
+    )
+    status = {
+        "online-video": {
+            "entries": 30,
+            **ng.summarize_sources(
+                [_health("pubmed-like", 3), _health("bili-popular", 1)], col, "online-video"
+            ),
+        }
+    }
 
     rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["online-video"])
 
@@ -336,7 +394,9 @@ def test_gap_md_marks_skipped_count(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert unit["skipped_sources"][0]["source"] == "bili-popular"
     assert unit["skipped_sources"][0]["reason"] == ng.SKIP_REASON_APP_REVIEW
     assert payload["skip_summary"] == {
-        "sources_skipped": 1, "by_reason": {ng.SKIP_REASON_APP_REVIEW: 1}}
+        "sources_skipped": 1,
+        "by_reason": {ng.SKIP_REASON_APP_REVIEW: 1},
+    }
     assert "## 策略跳过的源（不计覆盖，也不计源损坏，#455）" in md
     assert "`app_review_required`" in md
 
@@ -346,10 +406,18 @@ def test_domain_with_only_skipped_sources_reports_skip_reason(
 ) -> None:
     """全部源被闸挡住 → ① 不达标，且措辞说清是被跳过，不是「从未跑过」。"""
     col = tmp_path / "collections"
-    _write_runs(col, "online-video", "bili",
-                [_run("skipped", errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}])])
-    status = {"online-video": {
-        "entries": 0, **ng.summarize_sources([_health("bili", 1)], col, "online-video")}}
+    _write_runs(
+        col,
+        "online-video",
+        "bili",
+        [_run("skipped", errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}])],
+    )
+    status = {
+        "online-video": {
+            "entries": 0,
+            **ng.summarize_sources([_health("bili", 1)], col, "online-video"),
+        }
+    }
 
     rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["online-video"])
 
@@ -362,8 +430,9 @@ def test_domain_with_only_skipped_sources_reports_skip_reason(
     assert "robots_disallowed" in md
 
 
-def test_no_skip_domain_output_is_verbatim_identical(tmp_path: Path,
-                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_skip_domain_output_is_verbatim_identical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """防回归：无 skipped 的域，md 行、missing、数字全部与改动前一致。
 
     注意「逐字一致」的边界：gap.json 的 unit 新增了 #455 要求的字段
@@ -387,7 +456,7 @@ def test_no_skip_domain_output_is_verbatim_identical(tmp_path: Path,
     assert unit["sources_healthy"] == legacy_healthy
     assert unit["sources_total"] == len(health)
     assert unit["entries"] == 12
-    assert unit["missing"] == []           # 与改动前同一份 missing 列表
+    assert unit["missing"] == []  # 与改动前同一份 missing 列表
     assert unit["passing"] is True
     assert unit["output_files"] == 1
     assert unit["assertion_failures"] == 0
@@ -401,8 +470,9 @@ def test_no_skip_domain_output_is_verbatim_identical(tmp_path: Path,
     assert rc == 0
 
 
-def test_no_skip_domain_low_entries_message_unchanged(tmp_path: Path,
-                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_skip_domain_low_entries_message_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """低条数域的 missing 文案也不因 #455 变化（无 skip → 原话术）。"""
     col = tmp_path / "collections"
     _write_runs(col, "d", "a", [_run("success", items=5)])
@@ -414,8 +484,9 @@ def test_no_skip_domain_low_entries_message_unchanged(tmp_path: Path,
     assert "| d | 7 | 1/1 | 1 | 0 | 真语料（7 条 < 阈值 10） |" in md
 
 
-def test_mixed_domain_counts_only_real_coverage(tmp_path: Path,
-                                               monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mixed_domain_counts_only_real_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """11 源 / 3 跳过 → md 显式写「8/11（含 3 策略跳过）」，json 同步字段。"""
     col = tmp_path / "collections"
     names = []
@@ -423,8 +494,12 @@ def test_mixed_domain_counts_only_real_coverage(tmp_path: Path,
         name = f"s{i}"
         names.append(name)
         if i < 3:
-            _write_runs(col, "big", name, [_run("skipped", errors=[
-                {"message": ROBOTS_MSG, "robots_disallowed": True}])])
+            _write_runs(
+                col,
+                "big",
+                name,
+                [_run("skipped", errors=[{"message": ROBOTS_MSG, "robots_disallowed": True}])],
+            )
         else:
             _write_runs(col, "big", name, [_run("success", items=3)])
     health = [_health(n, 1) for n in names]

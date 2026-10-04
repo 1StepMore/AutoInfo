@@ -17,9 +17,7 @@ def _runner() -> CliRunner:
     return CliRunner()
 
 
-def test_localize_command_writes_language_file(
-    cli_runner: Any, tmp_path: Any
-) -> None:
+def test_localize_command_writes_language_file(cli_runner: Any, tmp_path: Any) -> None:
     """``output localize`` writes the lang-suffixed product + manifest."""
     from autoinfo.cli import app
 
@@ -37,11 +35,16 @@ def test_localize_command_writes_language_file(
         result = cli_runner.invoke(
             app,
             [
-                "output", "localize",
-                "--domain", "medical-research",
-                "--product", "digest",
-                "--period", "weekly",
-                "--target-lang", "zh",
+                "output",
+                "localize",
+                "--domain",
+                "medical-research",
+                "--product",
+                "digest",
+                "--period",
+                "weekly",
+                "--target-lang",
+                "zh",
             ],
         )
     assert result.exit_code == 0, result.output
@@ -63,16 +66,12 @@ def test_localize_requires_target_lang(cli_runner: Any) -> None:
     """Missing ``--target-lang`` is a usage error, not a crash."""
     from autoinfo.cli import app
 
-    result = cli_runner.invoke(
-        app, ["output", "localize", "--domain", "medical-research"]
-    )
+    result = cli_runner.invoke(app, ["output", "localize", "--domain", "medical-research"])
     assert result.exit_code != 0
     assert "--target-lang" in strip_ansi(result.output)
 
 
-def test_localize_value_error_surfaces(
-    cli_runner: Any, tmp_path: Any
-) -> None:
+def test_localize_value_error_surfaces(cli_runner: Any, tmp_path: Any) -> None:
     """A ValueError from the pipeline prints ``Error:`` and exits 1."""
     from autoinfo.cli import app
 
@@ -83,10 +82,14 @@ def test_localize_value_error_surfaces(
         result = cli_runner.invoke(
             app,
             [
-                "output", "localize",
-                "--domain", "medical-research",
-                "--product", "presentation",
-                "--target-lang", "zh",
+                "output",
+                "localize",
+                "--domain",
+                "medical-research",
+                "--product",
+                "presentation",
+                "--target-lang",
+                "zh",
             ],
         )
     assert result.exit_code == 1

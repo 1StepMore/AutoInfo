@@ -314,9 +314,7 @@ class TestCronCommand:
         result = cli_runner.invoke(app, ["cron", "list-schedules", "--help"])
         assert result.exit_code == 0
 
-    def test_cron_add_schedule_help_shows_options(
-        self, cli_runner: Any, app: Any
-    ) -> None:
+    def test_cron_add_schedule_help_shows_options(self, cli_runner: Any, app: Any) -> None:
         """``autoinfo cron add-schedule --help`` shows --name, --expression, --domain."""
         result = cli_runner.invoke(app, ["cron", "add-schedule", "--help"])
         assert result.exit_code == 0
@@ -324,9 +322,7 @@ class TestCronCommand:
         assert "--expression" in strip_ansi(result.stdout)
         assert "--domain" in strip_ansi(result.stdout)
 
-    def test_cron_remove_schedule_help_shows_options(
-        self, cli_runner: Any, app: Any
-    ) -> None:
+    def test_cron_remove_schedule_help_shows_options(self, cli_runner: Any, app: Any) -> None:
         """``autoinfo cron remove-schedule --help`` shows --name."""
         result = cli_runner.invoke(app, ["cron", "remove-schedule", "--help"])
         assert result.exit_code == 0

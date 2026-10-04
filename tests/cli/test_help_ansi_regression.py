@@ -117,9 +117,7 @@ class TestHelpAssertionsSurviveAnsi:
 
         # --domain is given, so typer fails on the missing --target-lang and
         # prints the option name inside its error panel.
-        result = CliRunner().invoke(
-            app, ["output", "localize", "--domain", "medical-research"]
-        )
+        result = CliRunner().invoke(app, ["output", "localize", "--domain", "medical-research"])
         assert result.exit_code != 0
         assert "--target-lang" in strip_ansi(result.output)
         coloured = splice_rich_style(result.output, "--target-lang")

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.2](https://github.com/1StepMore/AutoInfo/compare/v1.17.1...v1.17.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **output:** gate fabricated and self-contradicting product content ([#447](https://github.com/1StepMore/AutoInfo/issues/447)) ([5ff98db](https://github.com/1StepMore/AutoInfo/commit/5ff98dbe7ecb4cc4ef384cc4be8c69c9804c60c3))
+
 ## [1.17.1](https://github.com/1StepMore/AutoInfo/compare/v1.17.0...v1.17.1) (2026-10-04)
 
 

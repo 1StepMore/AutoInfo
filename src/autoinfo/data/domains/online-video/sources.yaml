@@ -71,6 +71,7 @@ sources:
   tos_classification: open
   rate_limit: 10
   fetch_depth: abstract
+# owner 已确认：B 站官方公开接口 x/web-interface/popular、无鉴权、tos_classification: open，保留 rate_limit: 5
 - name: bilibili-popular
   type: bilibili
   url: https://api.bilibili.com/x/web-interface/popular
@@ -78,6 +79,7 @@ sources:
   enabled: true
   tos_classification: open
   rate_limit: 5
+  app_review_ack: true
   fetch_depth: abstract
   settings:
     query: ''

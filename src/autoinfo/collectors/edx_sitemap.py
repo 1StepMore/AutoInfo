@@ -323,4 +323,3 @@ def _find_course_node(data: Any) -> dict[str, Any] | None:
 # 以前它是本文件的模块私有函数，于是**只有定义它的采集器**能遵守 robots.txt，
 # 其他抓页采集器等于没有这道闸。现在统一从共享模块来，edx 只是使用者之一。
 robots_allows = _robots_allows  # 保留旧名，兼容既有引用
-

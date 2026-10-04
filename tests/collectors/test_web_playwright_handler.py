@@ -103,15 +103,11 @@ class TestQuickPath:
         mock_fetch.assert_called_once_with("https://example.com/article")
         mock_fallback.assert_not_called()
 
-    def test_quick_path_empty_triggers_fallback(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_quick_path_empty_triggers_fallback(self, handler: PlaywrightWebHandler) -> None:
         """When the quick path returns empty, Playwright fallback runs."""
         mock_fallback_item = MagicMock(spec=Item)
 
-        with patch.object(
-            handler._web_handler, "fetch", return_value=[]
-        ) as mock_fetch:
+        with patch.object(handler._web_handler, "fetch", return_value=[]) as mock_fetch:
             with patch.object(
                 handler, "_fetch_via_playwright", return_value=[mock_fallback_item]
             ) as mock_fallback:
@@ -121,9 +117,7 @@ class TestQuickPath:
         mock_fetch.assert_called_once_with("https://example.com/spa")
         mock_fallback.assert_called_once_with("https://example.com/spa")
 
-    def test_quick_path_and_fallback_both_empty(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_quick_path_and_fallback_both_empty(self, handler: PlaywrightWebHandler) -> None:
         """When both paths yield nothing, an empty list is returned."""
         with patch.object(handler._web_handler, "fetch", return_value=[]):
             with patch.object(handler, "_fetch_via_playwright", return_value=[]):
@@ -216,12 +210,8 @@ class TestPlaywrightFallback:
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
 
                 items = handler.fetch("https://example.com/spa")
 
@@ -232,40 +222,28 @@ class TestPlaywrightFallback:
             "https://example.com/spa", wait_until="networkidle", timeout=60000
         )
 
-    def test_fallback_sets_renderer_metadata(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_fallback_sets_renderer_metadata(self, handler: PlaywrightWebHandler) -> None:
         """Items extracted via Playwright should have ``renderer: playwright``."""
         page = _make_mock_page()
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
 
                 items = handler.fetch("https://example.com/spa")
 
         assert len(items) == 1
         assert items[0].raw_data.get("renderer") == "playwright"
 
-    def test_fallback_closes_browser(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_fallback_closes_browser(self, handler: PlaywrightWebHandler) -> None:
         """The browser instance should be closed after extraction."""
         page = _make_mock_page()
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
 
                 handler.fetch("https://example.com/spa")
 
@@ -275,21 +253,15 @@ class TestPlaywrightFallback:
     # Empty / no-content scenarios
     # ------------------------------------------------------------------
 
-    def test_fallback_empty_when_no_content(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_fallback_empty_when_no_content(self, handler: PlaywrightWebHandler) -> None:
         """When trafilatura finds nothing in the rendered page, returns empty."""
         # trafilatura.bare_extraction returns None when no content found
         page = _make_mock_page("<html><body></body></html>")
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
 
                 items = handler.fetch("https://example.com/empty-spa")
 
@@ -306,12 +278,8 @@ class TestPlaywrightFallback:
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
 
                 items = handler.fetch("https://example.com/slow-spa")
 
@@ -320,11 +288,9 @@ class TestPlaywrightFallback:
     def test_browser_launch_failure(self, handler: PlaywrightWebHandler) -> None:
         """When browser launch fails, handler returns empty list."""
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.side_effect = (
-                    Exception("Browser binary not found")
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.side_effect = Exception(
+                    "Browser binary not found"
                 )
 
                 items = handler.fetch("https://example.com/spa")
@@ -337,12 +303,8 @@ class TestPlaywrightFallback:
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
                 with patch(
                     "autoinfo.collectors.web_playwright.trafilatura.bare_extraction",
                     side_effect=Exception("Extraction crashed"),
@@ -357,15 +319,9 @@ class TestPlaywrightFallback:
         browser = _make_mock_browser(page)
 
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._sync_playwright"
-            ) as mock_pw:
-                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
-                    browser
-                )
-                with patch.object(
-                    handler, "_render_page", return_value=None
-                ) as mock_render:
+            with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
+                mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = browser
+                with patch.object(handler, "_render_page", return_value=None) as mock_render:
                     items = handler.fetch("https://example.com/spa")
 
         assert items == []
@@ -380,14 +336,10 @@ class TestPlaywrightFallback:
 class TestPlaywrightNotInstalled:
     """Behaviour when playwright is absent from the environment."""
 
-    def test_fallback_returns_empty_when_not_installed(
-        self, handler: PlaywrightWebHandler
-    ) -> None:
+    def test_fallback_returns_empty_when_not_installed(self, handler: PlaywrightWebHandler) -> None:
         """When ``_PLAYWRIGHT_AVAILABLE`` is False, fallback returns empty."""
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", False
-            ):
+            with patch("autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", False):
                 items = handler.fetch("https://example.com/spa")
 
         assert items == []
@@ -397,12 +349,8 @@ class TestPlaywrightNotInstalled:
     ) -> None:
         """When ``_PLAYWRIGHT_AVAILABLE`` is False, playwright is never imported."""
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", False
-            ):
-                with patch(
-                    "autoinfo.collectors.web_playwright._sync_playwright"
-                ) as mock_sync:
+            with patch("autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", False):
+                with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_sync:
                     handler.fetch("https://example.com/spa")
 
         mock_sync.assert_not_called()

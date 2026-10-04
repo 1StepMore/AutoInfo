@@ -112,12 +112,8 @@ class TestPlaywrightUserAgent:
         """``browser.new_context`` must be called with the shared UA."""
         handler = PlaywrightWebHandler()
         with patch.object(handler._web_handler, "fetch", return_value=[]):
-            with patch(
-                "autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", True
-            ):
-                with patch(
-                    "autoinfo.collectors.web_playwright._sync_playwright"
-                ) as mock_pw:
+            with patch("autoinfo.collectors.web_playwright._PLAYWRIGHT_AVAILABLE", True):
+                with patch("autoinfo.collectors.web_playwright._sync_playwright") as mock_pw:
                     browser = MagicMock()
                     mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
                         browser

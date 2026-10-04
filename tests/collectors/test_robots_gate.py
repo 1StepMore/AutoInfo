@@ -264,9 +264,7 @@ def test_cache_serves_second_check_without_new_request() -> None:
     def counting(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(
-            200, text="User-agent: *\nDisallow: /private/\n", request=request
-        )
+        return httpx.Response(200, text="User-agent: *\nDisallow: /private/\n", request=request)
 
     transport = httpx.MockTransport(counting)
     ok1, _ = check_url_allowed("https://cache.example.com/public", transport=transport)
@@ -275,8 +273,8 @@ def test_cache_serves_second_check_without_new_request() -> None:
 
     assert ok1 is True
     assert ok2 is False  # 缓存的 robots.txt 仍按新 path 判定
-    assert ok3 is True   # 不同 origin → 一次新请求
-    assert calls == 2    # cache.example.com 只抓了 1 次
+    assert ok3 is True  # 不同 origin → 一次新请求
+    assert calls == 2  # cache.example.com 只抓了 1 次
 
     _clear_robots_cache()
     ok4, _ = check_url_allowed("https://cache.example.com/public", transport=transport)
@@ -295,9 +293,7 @@ def test_cache_bypass_opt_out() -> None:
 
     transport = httpx.MockTransport(counting)
     ok1, _ = check_url_allowed("https://bypass.example.com/a", transport=transport)
-    ok2, _ = check_url_allowed(
-        "https://bypass.example.com/a", transport=transport, use_cache=False
-    )
+    ok2, _ = check_url_allowed("https://bypass.example.com/a", transport=transport, use_cache=False)
     assert ok1 is False
     assert ok2 is False
     assert calls == 2

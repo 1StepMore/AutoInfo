@@ -220,9 +220,7 @@ class PlaywrightWebHandler:
             return None
 
         if result is None or not result.text:
-            logger.warning(
-                "No extractable content found at %s (Playwright fallback)", url
-            )
+            logger.warning("No extractable content found at %s (Playwright fallback)", url)
             return None
 
         title = result.title or ""

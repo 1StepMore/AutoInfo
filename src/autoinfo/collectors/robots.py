@@ -155,9 +155,7 @@ def parse_robots_rules(
     return rules_out
 
 
-def robots_allows(
-    robots_text: str, url_path: str, user_agent: str = DEFAULT_USER_AGENT
-) -> bool:
+def robots_allows(robots_text: str, url_path: str, user_agent: str = DEFAULT_USER_AGENT) -> bool:
     """Decide whether *url_path* may be crawled under *robots_text*.
 
     The rules of every group selected for *user_agent* are unioned first

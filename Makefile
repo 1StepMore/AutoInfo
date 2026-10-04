@@ -1,5 +1,10 @@
 .PHONY: install dev-install test lint clean stripe-mock backup validate doc-check
 
+# Interpreter binding (issue #424): gates resolve to the project venv instead of
+# whatever bare python3 is first on PATH, where a missing autoinfo surfaces as a
+# bogus documentation-drift red rather than an environment error.
+PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
+
 install:
 	pip install -e .
 
@@ -48,14 +53,14 @@ backup:
 # --semantic (calls the configured LLM; see scripts/agent_review/battery.py).
 # Usage: make validate DIR=outputs/<domain>   (default DIR=outputs)
 validate:
-	python3 scripts/quality_gate.py $(DIR) || exit 1
+	$(PY) scripts/quality_gate.py $(DIR) || exit 1
 	@echo "L0 gate passed for $(DIR) — optional L1 semantic battery:"
-	@echo "  python3 scripts/agent_review/battery.py $(DIR)              # worklist preview"
-	@echo "  python3 scripts/agent_review/battery.py $(DIR) --semantic   # + LLM verdicts"
+	@echo "  $(PY) scripts/agent_review/battery.py $(DIR)              # worklist preview"
+	@echo "  $(PY) scripts/agent_review/battery.py $(DIR) --semantic   # + LLM verdicts"
 
 # Documentation drift gate (issue #240): the generated end-user coverage view
 # and the doc inventory must both match their generators. Non-zero if either
 # drifts, so CI/humans catch hand-edits before they compound.
 doc-check:
-	python3 scripts/doc_inventory.py --check || exit 1
-	python3 scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md || exit 1
+	$(PY) scripts/doc_inventory.py --check || exit 1
+	$(PY) scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md || exit 1

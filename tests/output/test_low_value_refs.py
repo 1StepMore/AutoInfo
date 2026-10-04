@@ -17,6 +17,7 @@ domains.  The fix re-ranks/drops low-value entries inside
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -28,12 +29,14 @@ from autoinfo.output import (
     generate_digest,
 )
 
-PROMO_TITLE = (
-    "Tonight marks your last chance to save up to $300 on a "
-    "TechCrunch Disrupt pass"
-)
+PROMO_TITLE = "Tonight marks your last chance to save up to $300 on a TechCrunch Disrupt pass"
 EV_TITLE = "EV maker rolls out three-speed drivetrain for highway efficiency"
 SKI_TITLE = "A 26-year-old ski mountaineer has died after a fall on Gran Paradiso"
+
+# Must stay under the freshness threshold (tech-ai-developer: ttl=90d,
+# threshold=0.5 => 45 days) or generate_digest raises StaleSourceError before
+# the logic under test runs. A literal date here expired on 2026-10-03.
+_RECENTLY_COLLECTED_AT = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 
 def _entry(
@@ -56,7 +59,7 @@ def _entry(
         "language": "en",
         "tags": "[]",
         "tier": "01-Raw",
-        "collected_at": "2026-08-19T10:00:00Z",
+        "collected_at": _RECENTLY_COLLECTED_AT,
     }
 
 
@@ -89,23 +92,26 @@ def _titles(entries: list[dict[str, Any]]) -> list[str]:
 
 def _flat_digest(entries: list[dict[str, Any]], domain: str) -> dict[str, Any]:
     """Render the flat product-template context for the digest path."""
-    return _normalize_digest_product_context({
-        "title": f"Weekly Digest \u2014 {domain}",
-        "domain": domain,
-        "period": "weekly",
-        "period_label": "Weekly",
-        "date_from": "2026-08-03",
-        "date_to": "2026-08-10",
-        "generated_at": "2026-08-10T00:00:00+00:00",
-        "entries": entries,
-        "llm_synthesis": {
-            "executive_summary": "Synthesis.",
-            "key_findings": [],
-            "recommendations": [],
+    return _normalize_digest_product_context(
+        {
+            "title": f"Weekly Digest \u2014 {domain}",
+            "domain": domain,
+            "period": "weekly",
+            "period_label": "Weekly",
+            "date_from": (datetime.now(timezone.utc) - timedelta(days=2)).date().isoformat(),
+            "date_to": "2026-08-10",
+            "generated_at": "2026-08-10T00:00:00+00:00",
+            "entries": entries,
+            "llm_synthesis": {
+                "executive_summary": "Synthesis.",
+                "key_findings": [],
+                "recommendations": [],
+            },
+            "target_audience": "",
+            "source_tier_badge": False,
         },
-        "target_audience": "",
-        "source_tier_badge": False,
-    }, domain)
+        domain,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,27 +121,38 @@ def _flat_digest(entries: list[dict[str, Any]], domain: str) -> dict[str, Any]:
 
 class TestLowValueSignalPenalty:
     def test_promo_signal_on_disrupt_pass(self) -> None:
-        assert _low_value_signal_penalty(
-            _entry("p1", PROMO_TITLE, "Save up to $300.", 99)
-        ) >= 1
+        assert _low_value_signal_penalty(_entry("p1", PROMO_TITLE, "Save up to $300.", 99)) >= 1
 
     def test_obituary_signal_on_ski_mountaineer(self) -> None:
-        assert _low_value_signal_penalty(
-            _entry("s1", SKI_TITLE, "Rescue teams recovered the body.", 80,
-                   domain="italian-learning")
-        ) >= 1
+        assert (
+            _low_value_signal_penalty(
+                _entry(
+                    "s1",
+                    SKI_TITLE,
+                    "Rescue teams recovered the body.",
+                    80,
+                    domain="italian-learning",
+                )
+            )
+            >= 1
+        )
 
     def test_celebrity_signal_on_dolly_parton(self) -> None:
-        assert _low_value_signal_penalty(
-            _entry("c1", "Dolly Parton has died at age 80, family confirms",
-                   "Country legend passes.", 90)
-        ) >= 1
+        assert (
+            _low_value_signal_penalty(
+                _entry(
+                    "c1",
+                    "Dolly Parton has died at age 80, family confirms",
+                    "Country legend passes.",
+                    90,
+                )
+            )
+            >= 1
+        )
 
     def test_low_value_is_deterministic(self) -> None:
         entry = _entry("p2", PROMO_TITLE, "Save up to $300.", 99)
-        assert _low_value_signal_penalty(entry) == _low_value_signal_penalty(
-            {**entry}
-        )
+        assert _low_value_signal_penalty(entry) == _low_value_signal_penalty({**entry})
 
     def test_do_not_overfilter_legit_sentences(self) -> None:
         """\"promote\" / \"discount\" as verbs inside legit business sentences
@@ -179,16 +196,20 @@ class TestSortedRefEntriesRelegation:
         entries.append(_entry("promo", PROMO_TITLE, "Save up to $300.", 99))
         titles = _titles(_sorted_ref_entries(entries, domain="b2b"))
         assert EV_TITLE in titles
-        assert EV_TITLE in titles[: _REF_LOW_VALUE_MIN_REAL_ENTRIES]
+        assert EV_TITLE in titles[:_REF_LOW_VALUE_MIN_REAL_ENTRIES]
 
     def test_language_learning_keeps_cultural_item_at_tail(self) -> None:
         """italian-learning: obituary-framed cultural story is NOT dropped;
         it stays in the list at the tail (teaching material survives)."""
         # Many clean language items + a high-relevance cultural story.
         entries = _clean_entries(30, domain="italian-learning")
-        ski = _entry("ski", SKI_TITLE,
-                     "Rescue teams recovered the body after a fall.", 99,
-                     domain="italian-learning")
+        ski = _entry(
+            "ski",
+            SKI_TITLE,
+            "Rescue teams recovered the body after a fall.",
+            99,
+            domain="italian-learning",
+        )
         entries.append(ski)
         titles = _titles(_sorted_ref_entries(entries, domain="italian-learning"))
         assert SKI_TITLE in titles
@@ -200,10 +221,10 @@ class TestSortedRefEntriesRelegation:
         """Even in a language-learning domain, flagged items rank below all
         clean items (reduced penalty = tail, not deleted)."""
         entries = [
-            _entry("a", "Daily grammar drill: present tense", "Clean.", 10,
-                   domain="english-learning"),
-            _entry("b", "Verb conjugation practice", "Clean.", 9,
-                   domain="english-learning"),
+            _entry(
+                "a", "Daily grammar drill: present tense", "Clean.", 10, domain="english-learning"
+            ),
+            _entry("b", "Verb conjugation practice", "Clean.", 9, domain="english-learning"),
             _entry("c", f"{PROMO_TITLE}", "Ad copy.", 99, domain="english-learning"),
         ]
         titles = _titles(_sorted_ref_entries(entries, domain="english-learning"))
@@ -235,9 +256,11 @@ class TestDigestPathLowValueRelegation:
 
     def test_language_digest_keeps_cultural_item_at_tail(self) -> None:
         entries = _clean_entries(10, domain="italian-learning")
-        entries.append(_entry("ski", SKI_TITLE,
-                              "Rescue teams recovered the body.", 99,
-                              domain="italian-learning"))
+        entries.append(
+            _entry(
+                "ski", SKI_TITLE, "Rescue teams recovered the body.", 99, domain="italian-learning"
+            )
+        )
         flat = _flat_digest(entries, "italian-learning")
         ref_titles = [r["title"] for r in flat["references"]]
         assert SKI_TITLE in ref_titles
@@ -310,9 +333,7 @@ class TestSynthesisPromptLowValueFilter:
         ``exclude_keywords`` (``has died``/``passed away``/``obituary``)
         removes the obituary BEFORE the low-value logic runs, which would
         make this test pass for the wrong reason."""
-        entries = _clean_entries(
-            _REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="tech-ai-developer"
-        )
+        entries = _clean_entries(_REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="tech-ai-developer")
         entries.append(_obit_entry("tech-ai-developer"))
         prompt, result = self._capture(entries, "tech-ai-developer")
         assert OBIT_TITLE not in prompt
@@ -332,9 +353,7 @@ class TestSynthesisPromptLowValueFilter:
     def test_lang_learning_synthesis_demotes_obituary_to_tail(self) -> None:
         """Language-learning keeps teaching material: the obituary stays in the
         synthesis candidates but demoted below every clean entry."""
-        entries = _clean_entries(
-            _REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="english-learning"
-        )
+        entries = _clean_entries(_REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="english-learning")
         entries.append(_obit_entry("english-learning"))
         prompt, result = self._capture(entries, "english-learning")
         assert OBIT_TITLE in prompt

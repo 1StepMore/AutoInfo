@@ -33,6 +33,7 @@ from autoinfo.checkpoint import (
     make_signature,
 )
 from autoinfo.collectors.base import SourceFailure
+from autoinfo.collectors.robots import RobotsDisallowed
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
@@ -658,6 +659,44 @@ def _collect_from_source(
             errors=[error_dict],
             source_failed=True,
             duration_s=error_duration,
+        )
+    except RobotsDisallowed as exc:
+        # robots.txt forbids the source URL — a policy outcome, not an
+        # error: record it as "skipped" (mirrors the skipped path above).
+        plog.warning(
+            "Skipping source",
+            source_type=source_config.type,
+            extra={
+                "source_name": source_config.name,
+                "error": str(exc),
+                "robots_disallowed": True,
+            },
+        )
+        robots_duration = round(time.time() - src_start, 3)
+        robots_dict = {
+            "message": str(exc),
+            "robots_disallowed": True,
+        }
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="skipped",
+                errors=[robots_dict],
+                duration_s=robots_duration,
+            )
+        return CollectionResult(
+            collection_id=collection_id,
+            domain=domain,
+            source=source_config.name,
+            status="skipped",
+            items_found=0,
+            items_new=0,
+            errors=[robots_dict],
+            duration_s=robots_duration,
         )
     except Exception as exc:
         plog.error(

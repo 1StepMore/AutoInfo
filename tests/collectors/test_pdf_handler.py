@@ -79,6 +79,19 @@ def handler() -> PDFHandler:
     return PDFHandler()
 
 
+@pytest.fixture(autouse=True)
+def _bypass_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """绕过 robots 专注被测行为：本文件测下载/分块/元数据，不测 robots 门。
+
+    放行门后 ``httpx.get`` 的 mock 只被下载路径消费，语义与加门之前一致。
+    门本身（含 Disallow 抛 ``RobotsDisallowed``）在 ``test_robots_gate.py`` 锁定。
+    """
+    monkeypatch.setattr(
+        "autoinfo.collectors.pdf.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Text extraction from file
 # ---------------------------------------------------------------------------
@@ -89,9 +102,7 @@ class TestExtractFromFile:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_extract_returns_items(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_extract_returns_items(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Extracting a valid PDF should return Item instances."""
         pdf_path = tmp_path / "test.pdf"
         pdf_path.write_text("")  # Create file so exists() passes
@@ -105,9 +116,7 @@ class TestExtractFromFile:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_small_pdf_single_item(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_small_pdf_single_item(self, handler: PDFHandler, tmp_path: Path) -> None:
         """PDF with ≤10 pages produces a single Item."""
         pdf_path = tmp_path / "small.pdf"
         pdf_path.write_text("")
@@ -120,9 +129,7 @@ class TestExtractFromFile:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_large_pdf_multiple_chunks(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_large_pdf_multiple_chunks(self, handler: PDFHandler, tmp_path: Path) -> None:
         """PDF with >10 pages produces multiple items (10 pages per chunk)."""
         pdf_path = tmp_path / "large.pdf"
         pdf_path.write_text("")
@@ -141,9 +148,7 @@ class TestExtractFromFile:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_content_from_all_pages(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_content_from_all_pages(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Item content should join text from all pages."""
         pdf_path = tmp_path / "content.pdf"
         pdf_path.write_text("")
@@ -160,9 +165,7 @@ class TestExtractFromFile:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_source_name_propagates(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_source_name_propagates(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Item.source_name should reflect the handler's source_name."""
         pdf_path = tmp_path / "custom.pdf"
         pdf_path.write_text("")
@@ -182,20 +185,25 @@ class TestExtractFromFile:
         with pytest.raises(FileNotFoundError):
             handler.extract("/nonexistent/path/to.pdf")
 
-    def test_import_error_when_fitz_missing(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_import_error_when_fitz_missing(self, handler: PDFHandler, tmp_path: Path) -> None:
         """When PyMuPDF is not installed, extract() raises ImportError."""
         pdf_path = tmp_path / "nofitz.pdf"
         pdf_path.write_text("")
 
-        with patch(
-            "autoinfo.collectors.pdf.fitz",
-            None,
-        ), patch.object(PDFHandler, "_check_deps", side_effect=ImportError(
-            "PyMuPDF is required for PDF extraction. "
-            "Install it with: pip install autoinfo[pdf]"
-        )):
+        with (
+            patch(
+                "autoinfo.collectors.pdf.fitz",
+                None,
+            ),
+            patch.object(
+                PDFHandler,
+                "_check_deps",
+                side_effect=ImportError(
+                    "PyMuPDF is required for PDF extraction. "
+                    "Install it with: pip install autoinfo[pdf]"
+                ),
+            ),
+        ):
             with pytest.raises(ImportError, match="PyMuPDF is required"):
                 handler.extract(pdf_path)
 
@@ -210,9 +218,7 @@ class TestMetadataParsing:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_title_from_metadata(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_title_from_metadata(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Item.title comes from PDF metadata title."""
         pdf_path = tmp_path / "report.pdf"
         pdf_path.write_text("")
@@ -232,9 +238,7 @@ class TestMetadataParsing:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_title_fallback_to_filename(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_title_fallback_to_filename(self, handler: PDFHandler, tmp_path: Path) -> None:
         """When PDF has no title metadata, use the filename (without suffix)."""
         pdf_path = tmp_path / "quarterly_report.pdf"
         pdf_path.write_text("")
@@ -248,9 +252,7 @@ class TestMetadataParsing:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_author_and_subject_in_raw_data(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_author_and_subject_in_raw_data(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Author, subject, and keywords should be in Item.raw_data."""
         pdf_path = tmp_path / "paper.pdf"
         pdf_path.write_text("")
@@ -272,9 +274,7 @@ class TestMetadataParsing:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_raw_data_has_page_info(
-        self, handler: PDFHandler, tmp_path: Path
-    ) -> None:
+    def test_raw_data_has_page_info(self, handler: PDFHandler, tmp_path: Path) -> None:
         """Item.raw_data should include page count and chunk boundaries."""
         pdf_path = tmp_path / "multi.pdf"
         pdf_path.write_text("")
@@ -306,9 +306,7 @@ class TestUrlDownloadAndParse:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_url_download_and_extract(
-        self, handler: PDFHandler
-    ) -> None:
+    def test_url_download_and_extract(self, handler: PDFHandler) -> None:
         """PDF URL is downloaded, saved to temp file, then extracted."""
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.content = b"%PDF-1.4 mock pdf content"
@@ -338,9 +336,7 @@ class TestUrlDownloadAndParse:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_fetch_method(
-        self, handler: PDFHandler
-    ) -> None:
+    def test_fetch_method(self, handler: PDFHandler) -> None:
         """``fetch()`` delegates to extract and returns items."""
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.content = b"%PDF-1.4 mock"
@@ -358,9 +354,7 @@ class TestUrlDownloadAndParse:
         assert len(items) == 1
         assert items[0].title == "Fetched"
 
-    def test_fetch_returns_empty_on_error(
-        self, handler: PDFHandler
-    ) -> None:
+    def test_fetch_returns_empty_on_error(self, handler: PDFHandler) -> None:
         """When downloading fails, fetch() returns [] instead of raising."""
         with patch(
             "httpx.get",
@@ -372,9 +366,7 @@ class TestUrlDownloadAndParse:
 
     @pytest.mark.optional
     @requires_fitz
-    def test_download_size_limit(
-        self, handler: PDFHandler
-    ) -> None:
+    def test_download_size_limit(self, handler: PDFHandler) -> None:
         """PDF exceeding 50MB raises RuntimeError."""
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.content = b"x" * (51 * 1024 * 1024)  # 51 MB

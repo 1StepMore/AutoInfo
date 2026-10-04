@@ -1,0 +1,76 @@
+# Regression #424: the doc_inventory gate reported an interpreter mismatch as
+# documentation drift.
+#
+# Both live checks in scripts/doc_inventory.py shell out to `sys.executable`
+# (`live_tool_names()` imports the MCP server, `pytest_collected_count()` runs
+# `pytest --collect-only`). Under a bare PATH — venv not activated, autoinfo not
+# installed — both failed for *environment* reasons while their raw output read
+# like drift:
+#
+#   Live MCP tools (_full_tool_list): unavailable -> ModuleNotFoundError: No module named 'httpx'
+#   Pytest collected: unavailable -> unparsable pytest output (exit 1)
+#   check FAILED (2 issue(s)):
+#     - could not read live tool list from src/autoinfo/mcp/server.py: ...
+#     - could not read pytest collected count: unparsable pytest output (exit 1)
+#
+# Nothing named the real cause, so an agent "fixed" the docs instead of the
+# interpreter. The fix adds an `environment_failure()` preflight that runs BEFORE
+# any drift reporting and names both the running interpreter and the remedy.
+#
+# `-S` (skip site-packages) reproduces the broken environment faithfully and
+# cheaply: `autoinfo` genuinely becomes unimportable, in a real subprocess, with
+# no venv to create and no network. No LLM, no project config.
+name: regression-424-doc-gate-interpreter-mismatch
+description: "Regression #424: the doc_inventory gate names the interpreter mismatch and the remedy instead of reporting documentation drift"
+category: failure
+pyramid_layer: e2e
+pipeline_stage: A5
+user_level: B2.3
+regression: true
+regression_issue: "#424"
+requires_env: []
+steps:
+  - name: "broken interpreter yields an actionable env error, not the misleading drift lines"
+    kind: cli
+    command: |-
+      python3 -c '
+      import subprocess, sys
+      proc = subprocess.run(
+          [sys.executable, "-S", "scripts/doc_inventory.py", "--check"],
+          capture_output=True, text=True,
+      )
+      out = proc.stdout + proc.stderr
+      assert proc.returncode == 1, f"expected exit 1, got {proc.returncode}: {out[:400]}"
+      assert "environment" in out, out
+      assert "NOT documentation drift" in out, out
+      assert "Fix:" in out, out
+      assert sys.executable in out, "message must name the running interpreter"
+      for misleading in ("could not read live tool list", "unparsable pytest output"):
+          assert misleading not in out, f"still emitting the misleading drift line: {misleading}"
+      print("DOC_GATE_ENV_MISMATCH_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOC_GATE_ENV_MISMATCH_OK"]
+
+  - name: "healthy interpreter is not false-flagged by the preflight"
+    kind: cli
+    command: |-
+      python3 -c '
+      import subprocess, sys
+      proc = subprocess.run(
+          [sys.executable, "-c",
+           "import sys; sys.path.insert(0, \"scripts\"); import doc_inventory as d; print(d.environment_failure())"],
+          capture_output=True, text=True,
+      )
+      assert proc.returncode == 0, proc.stderr[:400]
+      assert proc.stdout.strip().endswith("None"), (
+          f"a sound interpreter must not be flagged: {proc.stdout.strip()[:200]}"
+      )
+      print("DOC_GATE_HEALTHY_ENV_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["DOC_GATE_HEALTHY_ENV_OK"]

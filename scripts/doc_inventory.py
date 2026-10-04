@@ -44,6 +44,7 @@ live tool list and the pytest collection (the ~30s pytest collect dominates).
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import subprocess
 import sys
@@ -236,6 +237,45 @@ def _run(args: list[str], timeout: int) -> tuple[int, str, str] | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def _venv_interpreter() -> Path | None:
+    cand = ROOT / ".venv" / "bin" / "python"
+    return cand if cand.is_file() else None
+
+
+_ENV_REQUIREMENTS = ("autoinfo", "pytest")
+
+
+def environment_failure() -> str | None:
+    """Return an actionable environment failure, or ``None`` when the env is sound.
+
+    Both live checks shell out to ``sys.executable``: ``live_tool_names()`` imports
+    the MCP server and ``pytest_collected_count()`` runs ``pytest --collect-only``.
+    When the invoking interpreter cannot import the project, those two fail for
+    *environment* reasons while their raw output reads like documentation drift —
+    "could not read live tool list ...: No module named 'httpx'", "unparsable
+    pytest output (exit 1)". An agent then "fixes" the docs instead of the
+    interpreter, and the red is a false red (issue #424).
+
+    So judge the environment first and name the fix. Uses ``find_spec`` rather than
+    a real import to stay cheap and side-effect free (this script is stdlib-only).
+    """
+    missing = [name for name in _ENV_REQUIREMENTS if importlib.util.find_spec(name) is None]
+    if not missing:
+        return None
+    venv = _venv_interpreter()
+    remedy = (
+        f"re-run this gate with {venv}"
+        if venv is not None
+        else "create the project venv: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
+    )
+    return (
+        f"interpreter {sys.executable} cannot import {', '.join(missing)} — this is an "
+        f"environment mismatch, NOT documentation drift. The live checks shell out to "
+        f"sys.executable, so they fail here and their raw output looks like a drift "
+        f"failure. Fix: {remedy}."
+    )
 
 
 def live_tool_names() -> tuple[list[str] | None, str | None]:
@@ -562,6 +602,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         print("doc_inventory --check")
+        env_failure = environment_failure()
+        if env_failure is not None:
+            print()
+            print("check FAILED (environment — 0 documentation issues checked):")
+            print(f"  - {env_failure}")
+            return 1
         failures = run_check()
         print()
         if failures:

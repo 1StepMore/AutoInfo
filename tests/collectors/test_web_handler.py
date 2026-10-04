@@ -196,9 +196,7 @@ class TestWebHandlerErrors:
 
     def test_non_html_url_returns_empty_list(self, handler: WebHandler) -> None:
         """A URL returning non-HTML content should be skipped."""
-        resp = httpx.Response(
-            200, text="{}", headers={"content-type": "application/json"}
-        )
+        resp = httpx.Response(200, text="{}", headers={"content-type": "application/json"})
         with patch("httpx.get", return_value=resp):
             items = handler.fetch("https://httpbin.org/robots.txt")
         assert items == []

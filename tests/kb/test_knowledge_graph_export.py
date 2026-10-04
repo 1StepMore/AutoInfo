@@ -22,7 +22,6 @@ import pytest
 from autoinfo.kb import KBStore
 from tests._ansi import strip_ansi
 
-
 # ===================================================================
 # Fixtures
 # ===================================================================
@@ -35,7 +34,8 @@ def store_with_data(tmp_path: Path) -> KBStore:
 
     # Medical domain entities
     store.store_entities(
-        "entry-med-1", "medical-research",
+        "entry-med-1",
+        "medical-research",
         [
             {"name": "CRISPR", "type": "technology"},
             {"name": "Gene Therapy", "type": "concept"},
@@ -44,7 +44,8 @@ def store_with_data(tmp_path: Path) -> KBStore:
     )
     # AI domain entities (should not leak into medical exports)
     store.store_entities(
-        "entry-ai-1", "ai-commercial",
+        "entry-ai-1",
+        "ai-commercial",
         [
             {"name": "Transformer", "type": "architecture"},
             {"name": "GPT-4", "type": "model"},
@@ -78,18 +79,14 @@ class TestExportKnowledgeGraph:
         assert "Gene Therapy" in names
         assert "AAV Vector" in names
 
-    def test_export_domain_filter_excludes_other_domains(
-        self, store_with_data: KBStore
-    ) -> None:
+    def test_export_domain_filter_excludes_other_domains(self, store_with_data: KBStore) -> None:
         """Entities from other domains are excluded."""
         result = store_with_data.export_knowledge_graph(domain="medical-research")
         names = {e["name"] for e in result["entities"]}
         assert "Transformer" not in names
         assert "GPT-4" not in names
 
-    def test_export_empty_domain_returns_all(
-        self, store_with_data: KBStore
-    ) -> None:
+    def test_export_empty_domain_returns_all(self, store_with_data: KBStore) -> None:
         """Empty domain string exports all domains."""
         result = store_with_data.export_knowledge_graph(domain="")
         assert result["domain"] == "*"
@@ -121,12 +118,14 @@ class TestExportKnowledgeGraph:
 @pytest.fixture
 def cli_runner() -> Any:
     from typer.testing import CliRunner
+
     return CliRunner()
 
 
 @pytest.fixture
 def app() -> Any:
     from autoinfo.cli import app
+
     return app
 
 
@@ -159,9 +158,7 @@ class TestCliKnowledgeGraphExport:
         assert "--format" in strip_ansi(result.stdout)
         assert "--output" in strip_ansi(result.stdout)
 
-    def test_export_json_creates_file(
-        self, cli_runner: Any, app: Any, tmp_path: Path
-    ) -> None:
+    def test_export_json_creates_file(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """Export as JSON writes a valid JSON file with correct structure."""
         # Create a KBStore with data in tmp_path and chdir there
         original_cwd = Path.cwd()
@@ -169,7 +166,8 @@ class TestCliKnowledgeGraphExport:
         try:
             store = KBStore(base_path=tmp_path / "knowledge")
             store.store_entities(
-                "entry-1", "test-domain",
+                "entry-1",
+                "test-domain",
                 [{"name": "EntityA", "type": "concept"}, {"name": "EntityB", "type": "concept"}],
             )
 
@@ -177,10 +175,15 @@ class TestCliKnowledgeGraphExport:
             result = cli_runner.invoke(
                 app,
                 [
-                    "knowledge", "graph", "export",
-                    "--domain", "test-domain",
-                    "--format", "json",
-                    "--output", str(out_file),
+                    "knowledge",
+                    "graph",
+                    "export",
+                    "--domain",
+                    "test-domain",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(out_file),
                 ],
             )
             assert result.exit_code == 0, f"CLI failed: {result.stdout} {result.stderr}"
@@ -206,11 +209,13 @@ class TestCliKnowledgeGraphExport:
         try:
             store = KBStore(base_path=tmp_path / "knowledge")
             store.store_entities(
-                "e1", "domain-a",
+                "e1",
+                "domain-a",
                 [{"name": "DomainA-Entity", "type": "concept"}],
             )
             store.store_entities(
-                "e2", "domain-b",
+                "e2",
+                "domain-b",
                 [{"name": "DomainB-Entity", "type": "concept"}],
             )
 
@@ -218,10 +223,15 @@ class TestCliKnowledgeGraphExport:
             result = cli_runner.invoke(
                 app,
                 [
-                    "knowledge", "graph", "export",
-                    "--domain", "domain-a",
-                    "--format", "json",
-                    "--output", str(out_file),
+                    "knowledge",
+                    "graph",
+                    "export",
+                    "--domain",
+                    "domain-a",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(out_file),
                 ],
             )
             assert result.exit_code == 0, f"CLI failed: {result.stdout}"
@@ -243,7 +253,8 @@ class TestCliKnowledgeGraphExport:
         try:
             store = KBStore(base_path=tmp_path / "knowledge")
             store.store_entities(
-                "e1", "test-domain",
+                "e1",
+                "test-domain",
                 [{"name": "NodeA", "type": "concept"}, {"name": "NodeB", "type": "concept"}],
             )
 
@@ -251,10 +262,15 @@ class TestCliKnowledgeGraphExport:
             result = cli_runner.invoke(
                 app,
                 [
-                    "knowledge", "graph", "export",
-                    "--domain", "test-domain",
-                    "--format", "graphml",
-                    "--output", str(out_file),
+                    "knowledge",
+                    "graph",
+                    "export",
+                    "--domain",
+                    "test-domain",
+                    "--format",
+                    "graphml",
+                    "--output",
+                    str(out_file),
                 ],
             )
             assert result.exit_code == 0
@@ -268,16 +284,15 @@ class TestCliKnowledgeGraphExport:
         finally:
             os.chdir(str(original_cwd))
 
-    def test_export_csv_creates_two_files(
-        self, cli_runner: Any, app: Any, tmp_path: Path
-    ) -> None:
+    def test_export_csv_creates_two_files(self, cli_runner: Any, app: Any, tmp_path: Path) -> None:
         """Export as CSV produces entities.csv and relations.csv."""
         original_cwd = Path.cwd()
         os.chdir(str(tmp_path))
         try:
             store = KBStore(base_path=tmp_path / "knowledge")
             store.store_entities(
-                "e1", "test-domain",
+                "e1",
+                "test-domain",
                 [{"name": "NodeA", "type": "concept"}, {"name": "NodeB", "type": "concept"}],
             )
 
@@ -285,10 +300,15 @@ class TestCliKnowledgeGraphExport:
             result = cli_runner.invoke(
                 app,
                 [
-                    "knowledge", "graph", "export",
-                    "--domain", "test-domain",
-                    "--format", "csv",
-                    "--output", str(out_stem),
+                    "knowledge",
+                    "graph",
+                    "export",
+                    "--domain",
+                    "test-domain",
+                    "--format",
+                    "csv",
+                    "--output",
+                    str(out_stem),
                 ],
             )
             assert result.exit_code == 0
@@ -304,16 +324,18 @@ class TestCliKnowledgeGraphExport:
         finally:
             os.chdir(str(original_cwd))
 
-    def test_export_invalid_format_shows_error(
-        self, cli_runner: Any, app: Any
-    ) -> None:
+    def test_export_invalid_format_shows_error(self, cli_runner: Any, app: Any) -> None:
         """Unsupported format produces an error message."""
         result = cli_runner.invoke(
             app,
             [
-                "knowledge", "graph", "export",
-                "--domain", "test",
-                "--format", "pdf",
+                "knowledge",
+                "graph",
+                "export",
+                "--domain",
+                "test",
+                "--format",
+                "pdf",
             ],
         )
         assert result.exit_code == 1

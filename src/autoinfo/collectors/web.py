@@ -16,6 +16,7 @@ import httpx
 import trafilatura
 
 from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.robots import RobotsDisallowed, check_url_allowed
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -85,8 +86,20 @@ class WebHandler(BaseHandler):
         list[Item]
             A list with a single :class:`Item` if extraction succeeds,
             or an empty list on any error (network failure, non-HTML
-            content, extraction failure).  This method **never** raises.
+            content, extraction failure).
+
+        Raises
+        ------
+        RobotsDisallowed
+            When the origin's robots.txt forbids *url* — raised **before**
+            the page is requested (never converted to ``[]``), so
+            ``collect.py`` can record ``status="skipped"``.
         """
+        allowed, detail = check_url_allowed(url)
+        if not allowed:
+            logger.info("robots.txt blocks %s: %s", url, detail)
+            raise RobotsDisallowed(url, detail)
+
         html = self._fetch_html(url)
         if html is None:
             return []

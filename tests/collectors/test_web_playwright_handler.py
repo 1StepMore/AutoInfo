@@ -45,6 +45,23 @@ def sample_html() -> str:
     return path.read_text(encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _bypass_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """绕过 robots 专注被测行为：本文件测两段式抓取/回退语义，不测 robots 门。
+
+    web_playwright 自己的门与其内部 web handler 的门都放行，
+    ``assert_called_once_*`` 只反映被抓取/回退的调用。
+    """
+    monkeypatch.setattr(
+        "autoinfo.collectors.web_playwright.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+    monkeypatch.setattr(
+        "autoinfo.collectors.web.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Module-level imports & flags
 # ---------------------------------------------------------------------------
@@ -112,6 +129,51 @@ class TestQuickPath:
             with patch.object(handler, "_fetch_via_playwright", return_value=[]):
                 items = handler.fetch("https://example.com/empty")
         assert items == []
+
+
+# ---------------------------------------------------------------------------
+# robots 门 —— 允许 / 拒绝两条语义路径（#452）
+# ---------------------------------------------------------------------------
+
+
+class TestRobotsGatePaths:
+    """门放行 / 拦截时 ``PlaywrightWebHandler.fetch`` 的两条语义断言。"""
+
+    def test_allowed_path_runs_quick_path(
+        self, handler: PlaywrightWebHandler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """允许路径：门放行 → quick path 照常执行一次。"""
+        monkeypatch.setattr(
+            "autoinfo.collectors.web_playwright.check_url_allowed",
+            lambda url, **kwargs: (True, "test"),
+        )
+        with patch.object(
+            handler._web_handler, "fetch", return_value=[MagicMock(spec=Item)]
+        ) as mock_fetch:
+            with patch.object(handler, "_fetch_via_playwright") as mock_fallback:
+                items = handler.fetch("https://example.com/article")
+
+        assert len(items) == 1
+        mock_fetch.assert_called_once_with("https://example.com/article")
+        mock_fallback.assert_not_called()
+
+    def test_disallowed_path_raises_before_any_fetch(
+        self, handler: PlaywrightWebHandler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """拒绝路径：门拦截 → 抛 ``RobotsDisallowed``，quick path 与回退都 0 次。"""
+        from autoinfo.collectors.robots import RobotsDisallowed
+
+        monkeypatch.setattr(
+            "autoinfo.collectors.web_playwright.check_url_allowed",
+            lambda url, **kwargs: (False, "disallowed by test robots"),
+        )
+        with patch.object(handler._web_handler, "fetch") as mock_fetch:
+            with patch.object(handler, "_fetch_via_playwright") as mock_fallback:
+                with pytest.raises(RobotsDisallowed):
+                    handler.fetch("https://example.com/spa")
+
+        mock_fetch.assert_not_called()
+        mock_fallback.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

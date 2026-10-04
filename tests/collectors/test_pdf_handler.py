@@ -79,6 +79,19 @@ def handler() -> PDFHandler:
     return PDFHandler()
 
 
+@pytest.fixture(autouse=True)
+def _bypass_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """绕过 robots 专注被测行为：本文件测下载/分块/元数据，不测 robots 门。
+
+    放行门后 ``httpx.get`` 的 mock 只被下载路径消费，语义与加门之前一致。
+    门本身（含 Disallow 抛 ``RobotsDisallowed``）在 ``test_robots_gate.py`` 锁定。
+    """
+    monkeypatch.setattr(
+        "autoinfo.collectors.pdf.check_url_allowed",
+        lambda url, **kwargs: (True, "test"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Text extraction from file
 # ---------------------------------------------------------------------------

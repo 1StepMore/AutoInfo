@@ -166,16 +166,20 @@ def source_run_state(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """
     if not runs:
         return {
-            "state": STATE_NEVER_RAN, "skipped": False, "skip_reason": "", "skip_detail": "",
-            "runs_total": 0, "runs_skipped": 0, "runs_productive": 0, "runs_empty": 0,
+            "state": STATE_NEVER_RAN,
+            "skipped": False,
+            "skip_reason": "",
+            "skip_detail": "",
+            "runs_total": 0,
+            "runs_skipped": 0,
+            "runs_productive": 0,
+            "runs_empty": 0,
         }
 
     statuses = [_run_status(r) for r in runs]
     skip_runs = sum(1 for s in statuses if s == "skipped")
-    productive = sum(
-        1 for r, s in zip(runs, statuses) if s == "success" and _run_has_items(r))
-    empty = sum(
-        1 for r, s in zip(runs, statuses) if s == "success" and not _run_has_items(r))
+    productive = sum(1 for r, s in zip(runs, statuses) if s == "success" and _run_has_items(r))
+    empty = sum(1 for r, s in zip(runs, statuses) if s == "success" and not _run_has_items(r))
 
     # skipped 优先于其它状态：最近一次是跳过，这一轮它就没产出。
     if statuses[-1] == "skipped":
@@ -217,7 +221,8 @@ def summarize_sources(
     ran_before = sum(1 for s in health if int(s.get("total_runs") or 0) > 0)
     skipped_names = sorted(n for n, st in states.items() if st["skipped"])
     healthy = sum(
-        1 for s in health
+        1
+        for s in health
         if str(s.get("status")) == "healthy" and not states[str(s.get("name") or "")]["skipped"]
     )
     total = len(health)
@@ -245,9 +250,7 @@ def summarize_sources(
     }
 
 
-def status_by_domain(
-    python: str, collections: Path | None = None
-) -> dict[str, dict[str, Any]]:
+def status_by_domain(python: str, collections: Path | None = None) -> dict[str, dict[str, Any]]:
     """`autoinfo --json status` → {domain: {entries, sources_ran, sources_total, ...}}"""
     col = Path(collections) if collections is not None else DEFAULT_COLLECTIONS
     rc, out, err = _run(_autoinfo_cmd(python) + ["--json", "status"], timeout=300)
@@ -257,8 +260,7 @@ def status_by_domain(
     try:
         payload = json.loads(out)
     except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"autoinfo status 的 stdout 不是合法 JSON（{e}）: {out[:200]!r}")
+        raise RuntimeError(f"autoinfo status 的 stdout 不是合法 JSON（{e}）: {out[:200]!r}")
     data = payload.get("data") or {}
     res: dict[str, dict[str, Any]] = {}
     for d in data.get("domains") or []:
@@ -289,10 +291,17 @@ def assertions_by_domain(python: str, outputs: Path) -> tuple[dict[str, int], st
     """跑断言扫描器，按产物路径归属到域。返回 ({domain: P0/P1 失败数}, 人读摘要)。"""
     with tempfile.TemporaryDirectory() as td:
         jp = Path(td) / "assertions.json"
-        rc, out, err = _run([
-            python, "scripts/real_product_assertions.py",
-            "--roots", str(outputs), "--json-out", str(jp),
-        ], timeout=1800)
+        rc, out, err = _run(
+            [
+                python,
+                "scripts/real_product_assertions.py",
+                "--roots",
+                str(outputs),
+                "--json-out",
+                str(jp),
+            ],
+            timeout=1800,
+        )
         if not jp.exists():
             return {}, f"断言扫描器未产出 JSON（rc={rc}）: {(err or out).strip()[:300]}"
         payload = json.loads(jp.read_text(encoding="utf-8"))
@@ -310,8 +319,10 @@ def assertions_by_domain(python: str, outputs: Path) -> tuple[dict[str, int], st
         per[dom] = per.get(dom, 0) + 1
     t = payload.get("totals") or {}
     n_assert = len(payload.get("assertions") or [])
-    summary = (f"断言集 {n_assert} 项；扫描 {payload.get('files_scanned')} 个文件；"
-               f"失败合计 {t.get('failures', sum(per.values()))}")
+    summary = (
+        f"断言集 {n_assert} 项；扫描 {payload.get('files_scanned')} 个文件；"
+        f"失败合计 {t.get('failures', sum(per.values()))}"
+    )
     return per, summary
 
 
@@ -319,14 +330,21 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="nightly_gap.py")
     ap.add_argument("--domains-dir", default=str(DEFAULT_DOMAINS_DIR))
     ap.add_argument("--outputs", default=str(DEFAULT_OUTPUTS))
-    ap.add_argument("--collections", default=str(DEFAULT_COLLECTIONS),
-                    help="采集运行记录根目录（读 <domain>/<source>/_runs.json 判 skipped，#455）")
-    ap.add_argument("--python", default=sys.executable,
-                    help="用哪个解释器跑仓库脚本（须是项目 venv）")
+    ap.add_argument(
+        "--collections",
+        default=str(DEFAULT_COLLECTIONS),
+        help="采集运行记录根目录（读 <domain>/<source>/_runs.json 判 skipped，#455）",
+    )
+    ap.add_argument(
+        "--python", default=sys.executable, help="用哪个解释器跑仓库脚本（须是项目 venv）"
+    )
     ap.add_argument("--skip-assertions", action="store_true")
     ap.add_argument(
-        "--min-entries", type=int, default=10,
-        help="每个域的最少语料条数（默认 10：低于此数撑不起一期 digest 的选题）")
+        "--min-entries",
+        type=int,
+        default=10,
+        help="每个域的最少语料条数（默认 10：低于此数撑不起一期 digest 的选题）",
+    )
     ap.add_argument("--json-out", default="")
     ap.add_argument("--md-out", default="")
     args = ap.parse_args(argv)
@@ -374,23 +392,25 @@ def main(argv: list[str] | None = None) -> int:
             missing.append("真产物")
         if files and n_assert > 0:
             missing.append(f"可溯源/无占位（断言失败 {n_assert}）")
-        rows.append(dict(
-            domain=dom,
-            entries=entries,
-            sources_total=s.get("sources_total", 0),
-            sources_ran=ran,
-            sources_healthy=s.get("sources_healthy", 0),
-            sources_productive=s.get("sources_productive", 0),
-            sources_ran_empty=s.get("sources_ran_empty", 0),
-            sources_failed=s.get("sources_failed", 0),
-            sources_skipped=skipped,
-            sources_unhealthy=s.get("sources_unhealthy", 0),
-            skipped_sources=s.get("skipped_sources", []),
-            output_files=len(files),
-            assertion_failures=n_assert,
-            missing=missing,
-            passing=not missing,
-        ))
+        rows.append(
+            dict(
+                domain=dom,
+                entries=entries,
+                sources_total=s.get("sources_total", 0),
+                sources_ran=ran,
+                sources_healthy=s.get("sources_healthy", 0),
+                sources_productive=s.get("sources_productive", 0),
+                sources_ran_empty=s.get("sources_ran_empty", 0),
+                sources_failed=s.get("sources_failed", 0),
+                sources_skipped=skipped,
+                sources_unhealthy=s.get("sources_unhealthy", 0),
+                skipped_sources=s.get("skipped_sources", []),
+                output_files=len(files),
+                assertion_failures=n_assert,
+                missing=missing,
+                passing=not missing,
+            )
+        )
 
     passing = [r for r in rows if r["passing"]]
     gap = [r for r in rows if not r["passing"]]
@@ -422,32 +442,45 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_out:
         Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json_out).write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
-    verdict = ("- 判定：**差距归零（完成）**" if not gap
-               else f"- 判定：**{len(gap)} / {len(rows)} 个域仍有差距**")
-    md = ["# AutoInfo 差距矩阵", "", verdict,
-          f"- 断言：{assert_summary}", "",
-          "| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |",
-          "|:---|---:|:---|--:|--:|:---|"]
+    verdict = (
+        "- 判定：**差距归零（完成）**"
+        if not gap
+        else f"- 判定：**{len(gap)} / {len(rows)} 个域仍有差距**"
+    )
+    md = [
+        "# AutoInfo 差距矩阵",
+        "",
+        verdict,
+        f"- 断言：{assert_summary}",
+        "",
+        "| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |",
+        "|:---|---:|:---|--:|--:|:---|",
+    ]
     for r in rows:
         # 跳过数只在该域真的被跳过时出现（无 skip 的域逐字保持原样）
         cov = f"{r['sources_ran']}/{r['sources_total']}"
         if r["sources_skipped"]:
             cov += f"（含 {r['sources_skipped']} 策略跳过）"
-        md.append(f"| {r['domain']} | {r['entries']} | {cov} | "
-                  f"{r['output_files']} | {r['assertion_failures']} | "
-                  f"{'、'.join(r['missing']) if r['missing'] else '✅ 达标'} |")
+        md.append(
+            f"| {r['domain']} | {r['entries']} | {cov} | "
+            f"{r['output_files']} | {r['assertion_failures']} | "
+            f"{'、'.join(r['missing']) if r['missing'] else '✅ 达标'} |"
+        )
     if total_skipped:
         md += ["", "## 策略跳过的源（不计覆盖，也不计源损坏，#455）", ""]
         for r in rows:
             for entry in r["skipped_sources"]:
                 detail = entry.get("detail") or ""
-                tail = (f" —— {detail}" if detail else "")
-                md.append(f"- {r['domain']} / {entry['source']} — "
-                          f"`{entry['reason']}`（跳过 {entry['runs_skipped']}/"
-                          f"{entry['runs_total']} 次；历史产出 "
-                          f"{entry['runs_productive']} 次）{tail}")
+                tail = f" —— {detail}" if detail else ""
+                md.append(
+                    f"- {r['domain']} / {entry['source']} — "
+                    f"`{entry['reason']}`（跳过 {entry['runs_skipped']}/"
+                    f"{entry['runs_total']} 次；历史产出 "
+                    f"{entry['runs_productive']} 次）{tail}"
+                )
     md_text = "\n".join(md) + "\n"
     if args.md_out:
         Path(args.md_out).parent.mkdir(parents=True, exist_ok=True)

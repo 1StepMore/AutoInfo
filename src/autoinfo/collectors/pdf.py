@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.robots import RobotsDisallowed, check_url_allowed
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -82,9 +83,18 @@ class PDFHandler(BaseHandler):
         list[Item]
             Extracted items (chunked if the PDF exceeds 10 pages).
             Returns an empty list on fetch errors.
+
+        Raises
+        ------
+        RobotsDisallowed
+            When the origin's robots.txt forbids *url* — propagated, never
+            converted to ``[]``, so ``collect.py`` can record
+            ``status="skipped"``.
         """
         try:
             return self.extract(url)
+        except RobotsDisallowed:
+            raise  # robots denial is a policy outcome, not a fetch error
         except Exception as exc:
             logger.error("Failed to fetch PDF from %s: %s", url, exc)
             return []
@@ -112,6 +122,10 @@ class PDFHandler(BaseHandler):
 
         Raises
         ------
+        RobotsDisallowed
+            If the origin's robots.txt forbids *source* (URL sources only) —
+            raised before the download, so no page/PDF request is made and
+            ``collect.py`` can record ``status="skipped"``.
         ImportError
             If PyMuPDF is not installed.
         FileNotFoundError
@@ -123,9 +137,16 @@ class PDFHandler(BaseHandler):
         httpx.TimeoutException
             If the PDF download times out.
         """
-        self._check_deps()
-
         source_str = str(source)
+
+        # -- robots.txt gate — before any request to the target URL ---------
+        if source_str.startswith(("http://", "https://")):
+            allowed, detail = check_url_allowed(source_str)
+            if not allowed:
+                logger.info("robots.txt blocks %s: %s", source_str, detail)
+                raise RobotsDisallowed(source_str, detail)
+
+        self._check_deps()
 
         # -- Resolve source to a local file path ----------------------------
         if source_str.startswith(("http://", "https://")):

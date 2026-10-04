@@ -20,6 +20,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from autoinfo.kb import KBStore
+from tests._ansi import strip_ansi
 
 
 # ===================================================================
@@ -136,27 +137,27 @@ class TestCliKnowledgeGraphExport:
         """``autoinfo --help`` lists the knowledge subcommand."""
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "knowledge" in result.stdout
+        assert "knowledge" in strip_ansi(result.stdout)
 
     def test_graph_shows_in_knowledge_help(self, cli_runner: Any, app: Any) -> None:
         """``autoinfo knowledge --help`` lists the graph subcommand."""
         result = cli_runner.invoke(app, ["knowledge", "--help"])
         assert result.exit_code == 0
-        assert "graph" in result.stdout
+        assert "graph" in strip_ansi(result.stdout)
 
     def test_export_shows_in_graph_help(self, cli_runner: Any, app: Any) -> None:
         """``autoinfo knowledge graph --help`` lists the export command."""
         result = cli_runner.invoke(app, ["knowledge", "graph", "--help"])
         assert result.exit_code == 0
-        assert "export" in result.stdout
+        assert "export" in strip_ansi(result.stdout)
 
     def test_export_help_shows_options(self, cli_runner: Any, app: Any) -> None:
         """``autoinfo knowledge graph export --help`` shows --domain, --format, --output."""
         result = cli_runner.invoke(app, ["knowledge", "graph", "export", "--help"])
         assert result.exit_code == 0
-        assert "--domain" in result.stdout
-        assert "--format" in result.stdout
-        assert "--output" in result.stdout
+        assert "--domain" in strip_ansi(result.stdout)
+        assert "--format" in strip_ansi(result.stdout)
+        assert "--output" in strip_ansi(result.stdout)
 
     def test_export_json_creates_file(
         self, cli_runner: Any, app: Any, tmp_path: Path
@@ -316,4 +317,4 @@ class TestCliKnowledgeGraphExport:
             ],
         )
         assert result.exit_code == 1
-        assert "Unsupported format" in result.output
+        assert "Unsupported format" in strip_ansi(result.output)

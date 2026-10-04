@@ -20,6 +20,7 @@ import yaml
 from autoinfo.cli import app
 from autoinfo.config import LLMConfig, load_config
 from autoinfo.mcp import server as mcp_server
+from tests._ansi import strip_ansi
 
 # ---------------------------------------------------------------------------
 # v0.1-format config: does NOT have ``tasks`` or ``fallback`` keys
@@ -275,7 +276,7 @@ class TestAllV01TestsPass:
         )
 
         # Verify all tests were collected (sanity check)
-        assert "passed" in result.stdout, (
+        assert "passed" in strip_ansi(result.stdout), (
             "No 'passed' in pytest output — test collection may be empty"
         )
 
@@ -320,7 +321,7 @@ class TestCliStubsRegister:
         """Global ``--json`` flag appears in top-level help."""
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "--json" in result.stdout, "Global --json flag not listed in --help"
+        assert "--json" in strip_ansi(result.stdout), "Global --json flag not listed in --help"
 
 
 # ===================================================================

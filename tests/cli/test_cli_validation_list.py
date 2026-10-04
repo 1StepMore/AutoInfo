@@ -69,13 +69,9 @@ class TestValidationListCommand:
         assert result.exit_code == 0, result.output
         listed = [n for n in names if n in strip_ansi(result.output)]
         # Every discovered scenario name appears in the listing.
-        assert set(listed) == names, (
-            f"missing scenario rows: {sorted(names - set(listed))}"
-        )
+        assert set(listed) == names, f"missing scenario rows: {sorted(names - set(listed))}"
 
-    def test_list_shows_category_and_regression_columns(
-        self, cli_runner: Any
-    ) -> None:
+    def test_list_shows_category_and_regression_columns(self, cli_runner: Any) -> None:
         result = cli_runner.invoke(app, ["validation", "list"])
         assert result.exit_code == 0
         for field in ("category=", "regression=", "env="):
@@ -104,9 +100,7 @@ class TestValidationListSummary:
         assert got_regression == regression
         assert got_functional + got_regression == functional + regression
 
-    def test_summary_functional_plus_regression_equals_total(
-        self, cli_runner: Any
-    ) -> None:
+    def test_summary_functional_plus_regression_equals_total(self, cli_runner: Any) -> None:
         total = list_scenarios()["count"]
         result = cli_runner.invoke(app, ["validation", "list", "--summary"])
         assert result.exit_code == 0
@@ -143,9 +137,7 @@ class TestValidationGroupIdentity:
         empty = tmp_path / "empty-scenarios"
         empty.mkdir()
         monkeypatch.setattr(
-            vmod, "list_scenarios", lambda scenarios_dir=None: {
-                "scenarios": [], "count": 0
-            }
+            vmod, "list_scenarios", lambda scenarios_dir=None: {"scenarios": [], "count": 0}
         )
         assert empty.is_dir()
         result = cli_runner.invoke(app, ["validation", "list"])

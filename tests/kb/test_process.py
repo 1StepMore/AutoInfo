@@ -25,6 +25,7 @@ from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.process import ProcessResult, load_cached_items, run_processing
 from autoinfo.quality import QualityResult
+from tests._ansi import strip_ansi
 
 # ===================================================================
 # Fixtures
@@ -100,15 +101,21 @@ def _make_quality_results_all_pass() -> dict[str, QualityResult]:
     """Return quality gate results where all three gates pass."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=True, score=1.0,
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
             details={"is_duplicate": False, "matched_by": None},
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=85.0,
             details={"hidden": False},
         ),
     }
@@ -118,19 +125,26 @@ def _make_quality_results_duplicate() -> dict[str, QualityResult]:
     """Return quality results where G2 detects a duplicate."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=False, score=0.0,
+            gate_name="G2-Dedup",
+            passed=False,
+            score=0.0,
             flagged=True,
             details={
-                "is_duplicate": True, "matched_by": "url",
+                "is_duplicate": True,
+                "matched_by": "url",
                 "existing_id": "existing-entry",
             },
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=85.0,
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=85.0,
             details={"hidden": False},
         ),
     }
@@ -160,44 +174,50 @@ class TestItemFromDict:
 
     def test_from_dict_missing_source_url(self) -> None:
         """Missing ``source_url`` fills with empty string."""
-        item = Item.from_dict({
-            "id": "x",
-            "source_name": "pubmed",
-            "source_type": "api",
-            "title": "Test",
-            "content": "Body",
-        })
+        item = Item.from_dict(
+            {
+                "id": "x",
+                "source_name": "pubmed",
+                "source_type": "api",
+                "title": "Test",
+                "content": "Body",
+            }
+        )
         assert item.source_url == ""
         assert item.id == "x"
         assert item.title == "Test"
 
     def test_from_dict_extra_keys(self) -> None:
         """Extra keys in the dict are silently ignored."""
-        item = Item.from_dict({
-            "id": "x",
-            "source_name": "pubmed",
-            "source_type": "api",
-            "source_url": "https://example.com",
-            "title": "Test",
-            "content": "Body",
-            "bogus_field": "should be ignored",
-            "_unused": 42,
-        })
+        item = Item.from_dict(
+            {
+                "id": "x",
+                "source_name": "pubmed",
+                "source_type": "api",
+                "source_url": "https://example.com",
+                "title": "Test",
+                "content": "Body",
+                "bogus_field": "should be ignored",
+                "_unused": 42,
+            }
+        )
         assert item.id == "x"
         assert item.title == "Test"
         assert not hasattr(item, "bogus_field")
 
     def test_from_dict_wrong_types(self) -> None:
         """Non-string values for str fields are accepted as-is (no crash)."""
-        item = Item.from_dict({
-            "id": "x",
-            "source_name": "pubmed",
-            "source_type": "api",
-            "source_url": "https://example.com",
-            "title": "Test",
-            "content": "Body",
-            "quality_tier": "3",  # str instead of int
-        })
+        item = Item.from_dict(
+            {
+                "id": "x",
+                "source_name": "pubmed",
+                "source_type": "api",
+                "source_url": "https://example.com",
+                "title": "Test",
+                "content": "Body",
+                "quality_tier": "3",  # str instead of int
+            }
+        )
         assert item.id == "x"
         # quality_tier will be the raw value passed through
         assert item.quality_tier == "3"
@@ -231,15 +251,17 @@ class TestLoadCachedItems:
         )
         cache_file.parent.mkdir(parents=True)
         cache_file.write_text(
-            json.dumps({
-                "id": "item-001",
-                "source_name": "pubmed",
-                "source_type": "api",
-                "source_url": "https://example.com/1",
-                "title": "Test",
-                "content": "content",
-                "collected_at": "2026-07-15T10:00:00Z",
-            }),
+            json.dumps(
+                {
+                    "id": "item-001",
+                    "source_name": "pubmed",
+                    "source_type": "api",
+                    "source_url": "https://example.com/1",
+                    "title": "Test",
+                    "content": "content",
+                    "collected_at": "2026-07-15T10:00:00Z",
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -251,9 +273,7 @@ class TestLoadCachedItems:
 
     def test_skips_malformed_files(self, tmp_path: Path, caplog) -> None:
         """Malformed JSON files are skipped with a warning."""
-        cache_file = (
-            tmp_path / "collections" / "test-domain" / "pubmed" / "2026-07-15" / "bad.json"
-        )
+        cache_file = tmp_path / "collections" / "test-domain" / "pubmed" / "2026-07-15" / "bad.json"
         cache_file.parent.mkdir(parents=True)
         cache_file.write_text("this is not json", encoding="utf-8")
 
@@ -285,15 +305,17 @@ class TestLoadCachedItems:
         valid_dir.mkdir(parents=True)
         valid_file = valid_dir / "item-001.json"
         valid_file.write_text(
-            json.dumps({
-                "id": "item-001",
-                "source_name": "pubmed",
-                "source_type": "api",
-                "source_url": "https://example.com/1",
-                "title": "Test",
-                "content": "content",
-                "collected_at": "2026-07-15T10:00:00Z",
-            }),
+            json.dumps(
+                {
+                    "id": "item-001",
+                    "source_name": "pubmed",
+                    "source_type": "api",
+                    "source_url": "https://example.com/1",
+                    "title": "Test",
+                    "content": "content",
+                    "collected_at": "2026-07-15T10:00:00Z",
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -314,15 +336,31 @@ class TestLoadCachedItems:
         src2.mkdir(parents=True)
 
         (src1 / "a.json").write_text(
-            json.dumps({"id": "a", "source_name": "pubmed", "source_type": "api",
-                        "source_url": "", "title": "A", "content": "a",
-                        "collected_at": "now"}),
+            json.dumps(
+                {
+                    "id": "a",
+                    "source_name": "pubmed",
+                    "source_type": "api",
+                    "source_url": "",
+                    "title": "A",
+                    "content": "a",
+                    "collected_at": "now",
+                }
+            ),
             encoding="utf-8",
         )
         (src2 / "b.json").write_text(
-            json.dumps({"id": "b", "source_name": "rss", "source_type": "rss",
-                        "source_url": "", "title": "B", "content": "b",
-                        "collected_at": "now"}),
+            json.dumps(
+                {
+                    "id": "b",
+                    "source_name": "rss",
+                    "source_type": "rss",
+                    "source_url": "",
+                    "title": "B",
+                    "content": "b",
+                    "collected_at": "now",
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -394,6 +432,7 @@ class TestRunProcessing:
         mock_extraction: ExtractionResult,
     ) -> None:
         """When one item fails, the pipeline continues with the next."""
+
         # Item-002 fails extraction (deterministic under parallel processing)
         def fail_item_two(item: Item, schema=None) -> ExtractionResult:
             if item.id == "item-002":
@@ -555,8 +594,7 @@ class TestLanguageDetection:
         systematically misclassifies Hangul as ``en`` — backup-repo #35)."""
         from autoinfo.process import detect_language
 
-        text = ("삼육대 이용우 교수팀, VR 물리치료 교육 효과 과학적 입증"
-              " 연구 발표")
+        text = "삼육대 이용우 교수팀, VR 물리치료 교육 효과 과학적 입증 연구 발표"
         with patch("langdetect.detect_langs") as mock_dl:
             result = detect_language(text)
         mock_dl.assert_not_called()
@@ -566,8 +604,9 @@ class TestLanguageDetection:
         """Cyrillic text is detected as ``ru`` without langdetect."""
         from autoinfo.process import detect_language
 
-        text = ("Чистая прибыль банков США во втором квартале увеличилась"
-              " на двадцать восемь процентов")
+        text = (
+            "Чистая прибыль банков США во втором квартале увеличилась на двадцать восемь процентов"
+        )
         with patch("langdetect.detect_langs") as mock_dl:
             result = detect_language(text)
         mock_dl.assert_not_called()
@@ -577,8 +616,7 @@ class TestLanguageDetection:
         """Devanagari text is detected as ``hi`` without langdetect."""
         from autoinfo.process import detect_language
 
-        text = ("भारत ने किराना हिल्स पर किया था हमला पूर्व सीडीएस"
-              " ने बताया विवरण")
+        text = "भारत ने किराना हिल्स पर किया था हमला पूर्व सीडीएस ने बताया विवरण"
         with patch("langdetect.detect_langs") as mock_dl:
             result = detect_language(text)
         mock_dl.assert_not_called()
@@ -599,10 +637,10 @@ class TestProcessCli:
 
         result = cli_runner.invoke(app, ["process", "--help"])
         assert result.exit_code == 0
-        assert "--domain" in result.stdout
-        assert "--model" in result.stdout
-        assert "--batch-size" in result.stdout
-        assert "--json" in result.stdout
+        assert "--domain" in strip_ansi(result.stdout)
+        assert "--model" in strip_ansi(result.stdout)
+        assert "--batch-size" in strip_ansi(result.stdout)
+        assert "--json" in strip_ansi(result.stdout)
 
     def test_process_missing_domain(self, cli_runner) -> None:
         """Missing ``--domain`` shows error."""
@@ -611,37 +649,51 @@ class TestProcessCli:
         result = cli_runner.invoke(app, ["process"])
         assert result.exit_code != 0
         # Typer outputs option errors to stderr
-        assert "Missing option" in result.stdout or "Missing option" in result.stderr
+        assert "Missing option" in strip_ansi(result.stdout) or (
+            "Missing option" in strip_ansi(result.stderr)
+        )
 
-    def test_process_with_mocked_run(
-        self, cli_runner, sample_items: list[Item]
-    ) -> None:
+    def test_process_with_mocked_run(self, cli_runner, sample_items: list[Item]) -> None:
         """``autoinfo process --domain X`` calls ``run_processing``."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=3,
-            processed_count=3,
-            remaining_count=0,
-            is_complete=True,
-            passed_gates=2,
-            kb_entries_created=2,
-            duration_s=5.0,
-            per_item_logs=[
-                {"item_id": "a", "title": "A", "status": "ok", "g3_score": 85.0, "duration_s": 0.5},
-                {"item_id": "b", "title": "B", "status": "ok", "g3_score": 72.0, "duration_s": 0.6},
-            ],
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=3,
+                processed_count=3,
+                remaining_count=0,
+                is_complete=True,
+                passed_gates=2,
+                kb_entries_created=2,
+                duration_s=5.0,
+                per_item_logs=[
+                    {
+                        "item_id": "a",
+                        "title": "A",
+                        "status": "ok",
+                        "g3_score": 85.0,
+                        "duration_s": 0.5,
+                    },
+                    {
+                        "item_id": "b",
+                        "title": "B",
+                        "status": "ok",
+                        "g3_score": 72.0,
+                        "duration_s": 0.6,
+                    },
+                ],
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
             result = cli_runner.invoke(app, ["process", "--domain", "test-domain"])
 
         assert result.exit_code == 0
-        assert "Processing domain: test-domain" in result.stdout
-        assert "Summary: 3 items" in result.stdout
-        assert "2 passed G1-G3" in result.stdout
-        assert "2 KB entries created" in result.stdout
+        assert "Processing domain: test-domain" in strip_ansi(result.stdout)
+        assert "Summary: 3 items" in strip_ansi(result.stdout)
+        assert "2 passed G1-G3" in strip_ansi(result.stdout)
+        assert "2 KB entries created" in strip_ansi(result.stdout)
         # No batch message because is_complete=True
         assert "Batch progress" not in result.stdout
 
@@ -649,22 +701,38 @@ class TestProcessCli:
         """``--json`` flag produces parseable JSON."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=1,
-            processed_count=1,
-            remaining_count=0,
-            is_complete=True,
-            passed_gates=1,
-            kb_entries_created=1,
-            duration_s=2.0,
-            per_item_logs=[{"item_id": "a", "title": "A", "status": "ok", "g3_score": 90.0, "duration_s": 0.3}],
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=1,
+                processed_count=1,
+                remaining_count=0,
+                is_complete=True,
+                passed_gates=1,
+                kb_entries_created=1,
+                duration_s=2.0,
+                per_item_logs=[
+                    {
+                        "item_id": "a",
+                        "title": "A",
+                        "status": "ok",
+                        "g3_score": 90.0,
+                        "duration_s": 0.3,
+                    }
+                ],
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
-            result = cli_runner.invoke(app, [
-                "process", "--domain", "test-domain", "--json",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "process",
+                    "--domain",
+                    "test-domain",
+                    "--json",
+                ],
+            )
 
         assert result.exit_code == 0
         data = json.loads(result.stdout)
@@ -681,23 +749,32 @@ class TestProcessCli:
 
         result = cli_runner.invoke(app, ["process", "--help"])
         assert result.exit_code == 0
-        assert "--check-translation" in result.stdout
+        assert "--check-translation" in strip_ansi(result.stdout)
 
-    def test_process_check_translation_passed_to_run(
-        self, cli_runner
-    ) -> None:
+    def test_process_check_translation_passed_to_run(self, cli_runner) -> None:
         """``--check-translation`` flag is forwarded to ``run_processing``."""
         from autoinfo.cli import app
 
         with patch("autoinfo.cli.process.run_processing") as mock_proc:
             mock_proc.return_value = ProcessResult(
-                domain="test-domain", total_items=0,
-                processed_count=0, remaining_count=0, is_complete=True,
-                passed_gates=0, kb_entries_created=0, duration_s=0.0,
+                domain="test-domain",
+                total_items=0,
+                processed_count=0,
+                remaining_count=0,
+                is_complete=True,
+                passed_gates=0,
+                kb_entries_created=0,
+                duration_s=0.0,
             )
-            result = cli_runner.invoke(app, [
-                "process", "--domain", "test-domain", "--check-translation",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "process",
+                    "--domain",
+                    "test-domain",
+                    "--check-translation",
+                ],
+            )
 
         assert result.exit_code == 0
         mock_proc.assert_called_once()
@@ -708,28 +785,42 @@ class TestProcessCli:
         """Exit code 1 when processing has errors."""
         from autoinfo.cli import app
 
-        mock_proc = MagicMock(return_value=ProcessResult(
-            domain="test-domain",
-            total_items=2,
-            processed_count=2,
-            remaining_count=0,
-            is_complete=True,
-            passed_gates=1,
-            kb_entries_created=1,
-            errors=[{"item_id": "b", "error": "LLM failure"}],
-            duration_s=3.0,
-            per_item_logs=[
-                {"item_id": "a", "title": "A", "status": "ok", "g3_score": 85.0, "duration_s": 0.5},
-                {"item_id": "b", "title": "B", "status": "error", "error": "LLM failure", "duration_s": 1.2},
-            ],
-        ))
+        mock_proc = MagicMock(
+            return_value=ProcessResult(
+                domain="test-domain",
+                total_items=2,
+                processed_count=2,
+                remaining_count=0,
+                is_complete=True,
+                passed_gates=1,
+                kb_entries_created=1,
+                errors=[{"item_id": "b", "error": "LLM failure"}],
+                duration_s=3.0,
+                per_item_logs=[
+                    {
+                        "item_id": "a",
+                        "title": "A",
+                        "status": "ok",
+                        "g3_score": 85.0,
+                        "duration_s": 0.5,
+                    },
+                    {
+                        "item_id": "b",
+                        "title": "B",
+                        "status": "error",
+                        "error": "LLM failure",
+                        "duration_s": 1.2,
+                    },
+                ],
+            )
+        )
 
         with patch("autoinfo.cli.process.run_processing", mock_proc):
             result = cli_runner.invoke(app, ["process", "--domain", "test-domain"])
 
         assert result.exit_code == 1
         # Error count is written to stderr with err=True
-        assert "1 item(s) failed processing" in result.stderr
+        assert "1 item(s) failed processing" in strip_ansi(result.stderr)
 
 
 # ===================================================================
@@ -755,9 +846,14 @@ class TestAutoProcessFlag:
                     "total_new": 2,
                     "duration_s": 1.5,
                     "per_source": [
-                        {"source": "pubmed", "status": "success",
-                         "items_found": 3, "items_new": 2, "duration_s": 1.2,
-                         "errors": []},
+                        {
+                            "source": "pubmed",
+                            "status": "success",
+                            "items_found": 3,
+                            "items_new": 2,
+                            "duration_s": 1.2,
+                            "errors": [],
+                        },
                     ],
                     "dry_run": False,
                 },
@@ -776,17 +872,25 @@ class TestAutoProcessFlag:
                 ),
             ),
         ):
-            result = cli_runner.invoke(app, [
-                "collect",
-                "--domain", "medical-research",
-                "--topic", "IVF",
-                "--limit", "3",
-                "--auto-process",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "collect",
+                    "--domain",
+                    "medical-research",
+                    "--topic",
+                    "IVF",
+                    "--limit",
+                    "3",
+                    "--auto-process",
+                ],
+            )
 
         assert result.exit_code == 0
-        assert "── Running auto-process ──" in result.stdout
-        assert "Processing: 2 items → 2 passed G1-G3 → 2 KB entries created" in result.stdout
+        assert "── Running auto-process ──" in strip_ansi(result.stdout)
+        assert "Processing: 2 items → 2 passed G1-G3 → 2 KB entries created" in (
+            strip_ansi(result.stdout)
+        )
 
     def test_auto_process_no_new_items(self, cli_runner) -> None:
         """``--auto-process`` is skipped when no new items were collected."""
@@ -804,14 +908,18 @@ class TestAutoProcessFlag:
                 "dry_run": False,
             },
         ):
-            result = cli_runner.invoke(app, [
-                "collect",
-                "--domain", "medical-research",
-                "--auto-process",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "collect",
+                    "--domain",
+                    "medical-research",
+                    "--auto-process",
+                ],
+            )
 
         assert result.exit_code == 0
-        assert "No new items — skipping auto-process." in result.stdout
+        assert "No new items — skipping auto-process." in strip_ansi(result.stdout)
 
     def test_auto_process_dry_run_skips(self, cli_runner) -> None:
         """``--auto-process`` with ``--dry-run`` does not run processing."""
@@ -829,13 +937,17 @@ class TestAutoProcessFlag:
                 "dry_run": True,
             },
         ):
-            result = cli_runner.invoke(app, [
-                "collect",
-                "--domain", "medical-research",
-                "--dry-run",
-                "--auto-process",
-            ])
+            result = cli_runner.invoke(
+                app,
+                [
+                    "collect",
+                    "--domain",
+                    "medical-research",
+                    "--dry-run",
+                    "--auto-process",
+                ],
+            )
 
         assert result.exit_code == 0
         assert "Running auto-process" not in result.stdout
-        assert "Dry-run" in result.stdout
+        assert "Dry-run" in strip_ansi(result.stdout)

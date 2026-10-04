@@ -2,6 +2,32 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.16.3](https://github.com/1StepMore/AutoInfo/compare/v1.16.2...v1.16.3) (2026-10-03)
+
+
+### Tests
+
+* **llm:** fallback 配置用例改为 hermetic（不再钉本机部署配置）；同步已知红预算 ([#448](https://github.com/1StepMore/AutoInfo/issues/448)) ([#462](https://github.com/1StepMore/AutoInfo/issues/462)) ([fd71ebe](https://github.com/1StepMore/AutoInfo/commit/fd71ebe25b2a90c1d8e1b57050ae240cd51c0b7c))
+
+
+### Miscellaneous Chores
+
+* **nightly:** 2026-10-02 夜间循环活区更新 ([#445](https://github.com/1StepMore/AutoInfo/issues/445)) ([5fbbe09](https://github.com/1StepMore/AutoInfo/commit/5fbbe09d5290e03a23edd4a306ebacd52946ae11))
+
+## [1.16.2](https://github.com/1StepMore/AutoInfo/compare/v1.16.1...v1.16.2) (2026-10-03)
+
+
+### Tests
+
+* **cli:** help 文本断言对 ANSI 免疫，修 main 夜间全量 26 条假红 ([#461](https://github.com/1StepMore/AutoInfo/issues/461)) ([3904c94](https://github.com/1StepMore/AutoInfo/commit/3904c94b6ccc0d7805700d7edbd90edec9745b38))
+
+## [1.16.1](https://github.com/1StepMore/AutoInfo/compare/v1.16.0...v1.16.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **domains:** coursera 源请求 description 字段，修复采集正文全空 ([#458](https://github.com/1StepMore/AutoInfo/issues/458)) ([#459](https://github.com/1StepMore/AutoInfo/issues/459)) ([8fc3f3c](https://github.com/1StepMore/AutoInfo/commit/8fc3f3c2eec73bb2b896910cfca22f47cdbfcb1c))
+
 ## [1.16.0](https://github.com/1StepMore/AutoInfo/compare/v1.15.1...v1.16.0) (2026-10-01)
 
 

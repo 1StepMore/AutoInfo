@@ -74,27 +74,27 @@ cd <repo>
 
 ---
 
-## 【活区】当前差距矩阵（基线 2026-09-30）
+## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 
-`21 / 21 个域仍有差距`。断言：19 项 / 扫描 59 文件 / 失败 27（P0 2 + P1 25）。
+`4 / 21 个域仍有差距`。断言：19 项 / 扫描 56 文件 / 失败 1（P0 1 + P1 0，见摩擦账本 #444）。
 
 | 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |
 |:---|---:|:---|--:|--:|:---|
-| medical-research | 96 | 4/7 | 24 | 2 | 可溯源/无占位 |
-| ai-commercial | 50 | 0/4 | 13 | 0 | 真语料 |
-| english-learning | 44 | 0/2 | 4 | 0 | 真语料 |
-| financial-intelligence | 208 | 0/11 | 11 | 0 | 真语料 |
-| general-news | 1 | 0/24 | 14 | 8 | 真语料 + 可溯源/无占位 |
-| gaming | 1 | 0/10 | 4 | 8 | 真语料 + 可溯源/无占位 |
-| legal-compliance | 1 | 0/7 | 4 | 0 | 真语料 |
-| online-education | 1 | 0/10 | 9 | 0 | 真语料 |
-| online-video | 1 | 0/11 | 2 | 0 | 真语料 |
-| tech-ai-developer | 1 | 0/17 | 4 | 0 | 真语料 |
-| financial-news · language-learning | 1 | 0/10 · 0/3 | 2 · 2 | 0 | 真语料 |
-| b2b · retail | 1 | 0/8 · 0/6 | 0 | 0 | 真语料 + 真产物 |
-| french · hindi · italian · korean · portuguese · russian · spanish-learning | 0 | 0/各 | 0 | 0 | 真语料 + 真产物 |
+| ✅ 17 个域达标 | ≥10 | ≥1 | ≥1 | 0 | ai-commercial · b2b · english-learning · financial-intelligence · financial-news · french-learning · gaming · general-news · italian-learning · korean-learning · language-learning · medical-research · online-video · portuguese-learning · retail · spanish-learning · tech-ai-developer |
+| hindi-learning | 12 | 1/1 | 1 | 1 | 可溯源/无占位（断言假阳 #444，非产物缺陷） |
+| legal-compliance | 21 | 3/7 | 0 | 0 | 真产物（源陈旧，生成器按 #385 拒绝落空壳） |
+| online-education | 1 | 5/10 | 9 | 0 | 真语料（1 条 < 阈值 10，处理产出 0） |
+| russian-learning | 7 | 3/3 | 1 | 0 | 真语料（7 条 < 阈值 10） |
 
-**读法**：真语料是**全局瓶颈**（20/21 域没有任何源跑过）；产物层只有 13 个域有文件，其中 gaming/general-news 的产物是空壳（断言 8 条失败）；medical-research 是唯一有真实采集链的域，但产物仍有 2 条 P0/P1 断言失败。
+**本轮（2026-10-02 02:00–04:00）做了什么**：
+1. `autoinfo collect --all --limit 20` → 21 域共采 1414 条（1386 新增），20/21 域的 `total_runs` 由 0 变正（此前唯一跑过源的只有 medical-research）。
+2. 17 个域 `autoinfo process --batch-size 20` → 绝大多数域落 10–40 条 KB entries。
+3. 10 个域补出真产物（`output[s] digest --persist`）。
+4. 倒查 27 条断言失败 = **2026-09-25 的修复前残留产物**（`#385` 于 09-26 落地后才不再落空壳），已把 14 个残留文件隔离到
+   `/home/renanzai/nightly_logs/quarantine_20261002/`，并用当下代码重生成 medical-research 的 enterprise-briefing 作对照 → 断言失败 27 → 1。
+5. korean-learning 全量语料被丢弃的根因是**源只给标题**（`hankyoreh` description 全 0，`talktomeinkorean` 解析失败），已提 #442 + PR #443（换 donga/khan，实测换后 39/40 条带正文）。
+
+**读法**：① 真语料**不再是瓶颈**（采集已跑通）；当下的瓶颈是 ② **产物**（legal-compliance 因源陈旧、生成器拒落空壳）与个别域的语料量/源质量（online-education、russian-learning）。
 
 ---
 
@@ -103,12 +103,17 @@ cd <repo>
 > 取活策略（L1 §4）：**先纵后横** —— 先把**一个域**的四条件全链路打穿（采集 → 处理 → 产物 → 断言全过），再把这套办法复制到其余域。
 > agent 每晚完成后自己更新此队列，并把已完成项移入「已完成」小节。
 
-1. **把 `medical-research` 打穿**：它已有真实采集链（4/7 源跑过、96 条），只差 2 条产物断言失败 → 修到 `nightly_gap.py` 对该域返回 ✅。这是**验证整条路径可行的最短路径**。
-2. 复制到 `ai-commercial` / `english-learning` / `financial-intelligence`（已有 44–208 条语料与产物，只差"源真跑过"）→ 跑采集补齐 ①。
-3. 处理空壳产物：`gaming` / `general-news` 的 8 条断言失败（`_column_deep_dive` / `_report_sections`：缺 Deep Dive 段、无 Sections 元数据 = 空壳）。
-4. 零语料域（french / hindi / italian / korean / portuguese / russian / spanish-learning）：跑采集 → 生成产物 → 断言。
+1. ~~把 `medical-research` 打穿~~ ✅ 已完成（本轮达标）。
+2. ~~复制到 `ai-commercial` / `english-learning` / `financial-intelligence`~~ ✅ 已完成（跑采集补齐 ①）。
+3. ~~处理空壳产物~~ ✅ 已完成（27 条失败=修复前残留产物，隔离 + 用当下代码重生成对照）。**gate-ize**：`outputs/` 只剩当下代码产出的产物。
+4. ~~零语料域跑采集 → 生成产物 → 断言~~ ✅ 17/21 达标。
+5. **legal-compliance 补真产物**：源陈旧（`court-gov`/`thepaper-legal` 是 `type: web` + rss.html，采不到新鲜条目），生成器按 #385 正确拒绝落空壳 → 需换可用的合规资讯源（或给现有源加 fulltext 抓取）。
+6. **online-education / russian-learning 补语料量到 ≥10**：查为什么成批条目落不进 KB（online-education 处理 20 条产出 0；russian 只落 7）。
+7. **hindi-learning 的解封依赖断言修复**：#444（假阳）不修则该域永远是假红；**判定不由 agent 放宽**。
 
 ### 已完成（agent 追加）
+
+- 2026-10-02：17/21 域达标（见上表）；korean-learning 换源 #442/PR #443。
 
 ---
 
@@ -119,6 +124,12 @@ cd <repo>
 
 | 日期 | 发现 | 是否挡住 DoD | 处置 |
 |:---|:---|:---|:---|
+| 2026-10-02 | `_no_year_hallucination` 对非英文（Hindi）正文假阳：命名年份/前瞻启发式只认英文 → 合法 `2027` 被 P0 拦下 | **是**（挡 hindi-learning） | 已提 #444（含逐处复算证据）；**不自行放宽冻结区断言** |
+| 2026-10-02 | legal-compliance 生成产物被拒：候选条目全 stale，生成器按 #385 拒绝落空壳 | **是**（挡 legal-compliance） | 已进下一步队列第 5 项（换可用源） |
+| 2026-10-02 | 死链源 `wechat2rss`（feed_id 仍是占位 `<replace-me>` → 404）、`wanfang`（AppKey 为空 → 40x） | 否 | 记账（等 owner 定换源） |
+| 2026-10-02 | 缺密钥源 Finnhub/AP/Guardian/SEC EDGAR/Reddit 仍 `enabled: true`，每次采集必失败刷日志 | 否 | 记账（owner 定是否配 key，见 L1 §2.1） |
+| 2026-10-02 | seed（`src/autoinfo/data/domains/*/sources.yaml`）≠ 物化副本（`.autoinfo/config.yaml`）：改 seed 不影响已存在项目的采集；`domain import` 对已存在域是 no-op，需 `sources remove/add` | 否 | 记账（已写进本轮操作记录；建议 runbook 固化） |
+| 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
 
 ---
 
@@ -128,3 +139,4 @@ cd <repo>
 
 | 日期 | 目标条款 | 理由 + 证据 | 裁定 |
 |:---|:---|:---|:---|
+| 2026-10-02 | DoD ③④「产物断言集无 P0/P1 失败」 | `_no_year_hallucination` 对非英文正文假阳（#444：Hindi 产物里源语料确实含 `2027`，仍被判 \"future year 2027\" P0）。建议断言改为**源对齐**（年份在源语料出现即放行）或按产物语言分派启发式。**未自行放宽，等地主裁定** | 待裁定 |

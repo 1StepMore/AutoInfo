@@ -153,6 +153,22 @@ def add(
             "Whether this source requires an API key/credential (default: derived from source type)"
         ),
     ),
+    requires_app_review: bool | None = typer.Option(
+        None,
+        "--requires-app-review/--no-requires-app-review",
+        help=(
+            "Whether this source requires explicit app-review confirmation "
+            "before collection (default: False)"
+        ),
+    ),
+    app_review_ack: bool | None = typer.Option(
+        None,
+        "--app-review-ack/--no-app-review-ack",
+        help=(
+            "Explicit owner confirmation for app review (default: False; "
+            "a declared source without ack is skipped at collect time)"
+        ),
+    ),
     imap_server: str | None = typer.Option(
         None, "--imap-server", help="Email type only: IMAP server hostname (e.g. imap.gmail.com)"
     ),
@@ -245,6 +261,10 @@ def add(
 
     if requires_key is None:
         requires_key = type in SOURCE_KEY_ENV_VARS
+    if requires_app_review is None:
+        requires_app_review = False
+    if app_review_ack is None:
+        app_review_ack = False
 
     # --- Add source ---
     quality_tier = 1 if type in ("api", "rss") else 2
@@ -257,6 +277,8 @@ def add(
         quality_tier=quality_tier,
         tos_classification=tos_classification,
         requires_key=requires_key,
+        requires_app_review=requires_app_review,
+        app_review_ack=app_review_ack,
         settings=merged_settings,
     )
     domain_cfg.sources.append(new_source)

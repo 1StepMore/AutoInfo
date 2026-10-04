@@ -311,6 +311,9 @@ def import_cmd(
                 quality_tier=tier,
                 tos_classification=tos,
                 fetch_depth=s.get("fetch_depth", "abstract"),
+                requires_key=s.get("requires_key", False),
+                requires_app_review=s.get("requires_app_review", False),
+                app_review_ack=s.get("app_review_ack", False),
                 settings={k: v for k, v in s.items() if k not in source_core_keys},
             )
         )

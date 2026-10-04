@@ -42,6 +42,23 @@ class BaseHandler(ABC):
 
     source_name: str = "base"
 
+    #: 该源是否要求「平台应用/接口审核通过」才可正当采集。
+    #: 子类声明式覆盖（如 Bilibili 反爬 + 需应用审核 → True）。
+    #: 采集分发处（``collect._collect_from_source``）会消费它：声明为 True
+    #: 且未获显式确认（``SourceConfig.app_review_ack`` 或环境变量
+    #: ``AUTOINFO_APP_REVIEW_ACK=1``）时，该源**被跳过**而不是照常采。
+    #: 对应委托人的硬约束「不做违法采集」。
+    REQUIRES_APP_REVIEW: bool = False
+
+    def requires_app_review(self) -> bool:
+        """Whether this handler's platform requires app/interface review.
+
+        Instance method so the dispatch point can call it on any handler
+        uniformly.  Subclasses may override either the class attribute
+        (:attr:`REQUIRES_APP_REVIEW`) or this method.
+        """
+        return bool(self.REQUIRES_APP_REVIEW)
+
     @abstractmethod
     def fetch(self, *args: Any, **kwargs: Any) -> list[Item] | list[dict[str, Any]]:
         """Fetch items from the source.

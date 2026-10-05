@@ -60,6 +60,7 @@ from autoinfo.output.free_tier import (  # noqa: E402  (import at module top)
 from autoinfo.output.free_tier import (
     check_free_tier_generation as check_free_tier_generation,
 )
+from autoinfo.prompts import get_prompt, render_prompt
 from autoinfo.quality_constraints import (
     EDITORIAL_OPENING_HEDGE_CONSTRAINT,
     FEATURE_STORY_GROUNDING_CONSTRAINT,
@@ -744,16 +745,7 @@ def _llm_key_available(llm_config: Config | None) -> bool:
 
 
 def _build_product_judge_prompt(body: str, output_format: str) -> str:
-    return (
-        "You are a product quality reviewer. Review the following rendered "
-        f"{output_format} product body and decide whether it contains "
-        "non-trivial content covering the required sections (executive "
-        "summary, key findings, recommendations).\n\n"
-        'Return ONLY a JSON object: {"ok": true|false, "reason": "..."}.\n'
-        "Set ok=false when the body is empty, garbled, or missing required "
-        "sections.\n\n"
-        f"--- BODY START ---\n{body}\n--- BODY END ---"
-    )
+    return render_prompt("product_judge", output_format=output_format, body=body)
 
 
 def _escalate_product_judge_prompt(prompt: str, reason: str) -> str:
@@ -1966,11 +1958,7 @@ def list_output_templates(domain: str = "") -> dict[str, Any]:
 # LLM synthesis for digests
 # ---------------------------------------------------------------------------
 
-_DIGEST_SYSTEM_PROMPT = (
-    "You are a research digest assistant. Given a list of knowledge base "
-    "entries from the past period, synthesize them into a concise digest. "
-    "Respond with valid JSON only, no markdown formatting."
-)
+_DIGEST_SYSTEM_PROMPT = get_prompt("digest_system")
 
 _DIGEST_FIELD_DESCRIPTIONS = [
     # Issue #210: the Executive Summary opener is an editorial-OPENING
@@ -6732,12 +6720,7 @@ def _call_llm_for_report_synthesis(prompt: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are a report synthesis assistant. Given knowledge "
-                        "base entries and themes, write a concise executive "
-                        "summary, key findings, and recommendations. Respond "
-                        "with plain Markdown only — no JSON, no code fences."
-                    ),
+                    "content": get_prompt("report_synthesis_system"),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -7269,16 +7252,7 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
 # LLM-based translation (F10)
 # ---------------------------------------------------------------------------
 
-_TRANSLATION_SYSTEM_PROMPT = (
-    "You are a professional medical translator. Translate the following "
-    "knowledge base entry into the target language. "
-    "CRITICAL: Preserve all medical terminology, drug names, procedures, "
-    "and technical terms in their original form — do NOT translate terms "
-    "like IVF, RCT, embryo, blastocyst, gonadotropin, etc. "
-    "Keep numbers, statistics, and citations exactly as-is. "
-    "Respond with valid JSON only: "
-    '{"translated_title": "...", "translated_body": "..."}'
-)
+_TRANSLATION_SYSTEM_PROMPT = get_prompt("translation_system")
 
 
 def _build_translation_prompt(
@@ -8241,9 +8215,7 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a tutorial designer. Given knowledge base "
-                    "entries, structure them into a coherent learning path. "
-                    "Respond with valid JSON only, no markdown formatting.",
+                    "content": get_prompt("tutorial_system"),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -9267,9 +9239,7 @@ def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a presentation designer. Given knowledge base "
-                    "entries, generate structured slide content. "
-                    "Respond with valid JSON only, no markdown formatting.",
+                    "content": get_prompt("presentation_system"),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -10324,15 +10294,7 @@ def simplify_text(
     original_level: str = original_result.get("cefr_level", "unknown")
 
     # --- LLM simplification ---------------------------------------------------
-    system_prompt = (
-        "You are a text simplification assistant. Your task is to rewrite "
-        "the given text so that it is suitable for readers at a specific "
-        "CEFR level. Follow these rules:\n"
-        "- Use vocabulary and sentence structures appropriate for the target CEFR level.\n"
-        "- Preserve the core meaning, key facts, and important details.\n"
-        "- Do NOT add new information or opinions.\n"
-        "- Return ONLY the simplified text — no explanations, no prefixes, no markdown wrapping."
-    )
+    system_prompt = get_prompt("text_simplification_system")
 
     user_prompt = (
         f"Language: {lang_name}\n"

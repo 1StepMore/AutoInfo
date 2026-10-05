@@ -21,6 +21,7 @@ import logging
 from typing import Any
 
 from autoinfo.llm import call_with_fallback
+from autoinfo.prompts import get_prompt, render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,7 @@ DEFAULT_WEIGHTS = {
 # Single source for the translator system prompt (issue #426).  Both the
 # forward pass and the back-translate pass use it; the back-translate site
 # deliberately passes the languages in the opposite order.
-_TRANSLATOR_SYSTEM_TEMPLATE = (
-    "You are a professional translator. Translate the given text "
-    "from {source} to {target}. Return only the translated "
-    "text, no explanations or commentary."
-)
+_TRANSLATOR_SYSTEM_TEMPLATE = get_prompt("translator_system")
 
 # ---------------------------------------------------------------------------
 # Composite score (preserved from earlier task)
@@ -186,7 +183,8 @@ def back_translate(
             messages=[
                 {
                     "role": "system",
-                    "content": _TRANSLATOR_SYSTEM_TEMPLATE.format(
+                    "content": render_prompt(
+                        "translator_system",
                         source=target_lang,
                         target=source_lang,
                     ),
@@ -262,21 +260,7 @@ def llm_judge_translation(
     if timeout is None:
         timeout = _resolve_timeout()
 
-    system_prompt = (
-        "You are a translation quality evaluator. Compare the ORIGINAL source text "
-        "with the BACK-TRANSLATED text (i.e. text that was translated to another "
-        "language and then translated back). "
-        "Assess how faithfully the back-translated text preserves the meaning, "
-        "tone, and factual content of the original.\n\n"
-        "Return JSON with:\n"
-        '- "faithfulness_score": integer 0-100 (100 = perfect preservation)\n'
-        '- "issues": list of objects, each with:\n'
-        '    - "severity": "minor" | "major" | "critical"\n'
-        '    - "description": what changed or was lost\n'
-        '    - "position": where in the text the issue occurs (e.g. "paragraph 2", '
-        '"sentence 1", "last line")\n\n'
-        "If no significant issues are found, return an empty issues list."
-    )
+    system_prompt = get_prompt("translation_quality_evaluator_system")
 
     user_prompt = (
         f"ORIGINAL ({source_lang}):\n{original_source[:4000]}\n\n"
@@ -662,7 +646,8 @@ def refine_translation(
             messages=[
                 {
                     "role": "system",
-                    "content": _TRANSLATOR_SYSTEM_TEMPLATE.format(
+                    "content": render_prompt(
+                        "translator_system",
                         source=source_lang,
                         target=target_lang,
                     ),

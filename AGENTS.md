@@ -108,7 +108,8 @@ AutoInfo/
 │       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap)
 │       ├── llm.py                   # LLM extraction engine
 │       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video) — __init__.py + export.py (KB export family: export_kb + all format exporters) + entries.py (shared deterministic entry filters) + ebook.py (B23: EPUB/MOBI/audiobook) + video.py (HyperFrames HTML+GSAP→MP4, 36+8 themes) + video_assets/ (themes + templates) + seo.py + free_tier.py (free-tier product limits)
-│       ├── data/                     # Domain configs (domains/*/sources.yaml) + 8 output product templates (incl. premium-briefing.md.j2, enterprise-briefing.md.j2)
+│       ├── data/                     # Domain configs (domains/*/sources.yaml) + 8 output product templates (incl. premium-briefing.md.j2, enterprise-briefing.md.j2) + prompts/ (16 LLM prompt files, loaded via prompts.py)
+│       ├── prompts.py                # Prompt registry + loader (issue #426): PROMPTS_DIR / list_prompts / get_prompt / render_prompt / PROMPT_VERSIONS / PROMPT_PLACEHOLDERS. `$name` placeholders — NOT `{name}` (several prompts carry literal JSON braces). Prompt text is byte-pinned in tests/test_prompts.py.
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
 │       ├── quality.py               # Quality gates G0-G7, D1-D3 delivery gates
 │       ├── delivery.py              # Delivery channel abstraction (13 channels)
@@ -340,7 +341,7 @@ Key counts the agent must know without opening README:
 
 | Demo domains | **21 demo domains** |
 | LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~6055 tests tests** |
+| Test suite | **~6136 tests tests** |
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):

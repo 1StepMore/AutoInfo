@@ -8,10 +8,11 @@ Three prompt bodies used to live inline at more than one call site:
   source/target languages swapped at the back-translate site;
 - the markdown verdict-block contract in ``agent_review/battery.py``.
 
-Each is now defined once.  These tests lock BOTH halves of that claim: the
-definition is unique (a scan, so a future inline copy fails), and the
-rendered text is unchanged (a pin, so a refactor cannot quietly rewrite a
-prompt the model sees).
+Each is now defined once — the first two now live in
+``data/prompts/*.md`` and are loaded through :mod:`autoinfo.prompts`.  These
+tests lock BOTH halves of that claim: the definition is unique (a scan, so a
+future inline copy fails), and the rendered text is unchanged (a pin, so a
+refactor cannot quietly rewrite a prompt the model sees).
 
 Stdlib only, no network, no LLM.
 """
@@ -31,7 +32,7 @@ sys.path.insert(0, str(_AGENT_REVIEW))
 import battery  # noqa: E402
 
 from autoinfo.keywords import keyword_suggestion_system_prompt  # noqa: E402
-from autoinfo.translation_qa import _TRANSLATOR_SYSTEM_TEMPLATE  # noqa: E402
+from autoinfo.prompts import render_prompt  # noqa: E402
 
 # Rendered before the #426 extraction, with limit=5.
 _KEYWORD_PROMPT_PINNED = (
@@ -61,7 +62,7 @@ def test_keyword_prompt_defined_once() -> None:
     needle = '"You are a keyword extraction assistant'
     hits = [p for p in _python_sources() if needle in p.read_text(encoding="utf-8")]
 
-    assert hits == [_SRC / "keywords.py"], f"keyword prompt literal duplicated in {hits}"
+    assert hits == [], f"keyword prompt literal back inline in {hits}"
 
     for consumer in ("cli/keywords.py", "mcp/server.py"):
         source = (_SRC / consumer).read_text(encoding="utf-8")
@@ -80,11 +81,12 @@ def test_keyword_prompt_text_pinned() -> None:
 
 
 def test_translator_template_defined_once() -> None:
-    source = (_SRC / "translation_qa.py").read_text(encoding="utf-8")
+    needle = '"You are a professional translator'
+    hits = [p for p in _python_sources() if needle in p.read_text(encoding="utf-8")]
 
-    assert source.count('"You are a professional translator') == 1
+    assert hits == [], f"translator prompt literal back inline in {hits}"
 
-    assert _TRANSLATOR_SYSTEM_TEMPLATE.format(source="EN", target="ZH") == _TRANSLATOR_PROMPT_PINNED
+    assert render_prompt("translator_system", source="EN", target="ZH") == _TRANSLATOR_PROMPT_PINNED
 
 
 def test_back_translate_prompt_inverts_languages() -> None:
@@ -96,7 +98,7 @@ def test_back_translate_prompt_inverts_languages() -> None:
     single-source check above.
     """
     source = (_SRC / "translation_qa.py").read_text(encoding="utf-8")
-    call_sites = source.split("_TRANSLATOR_SYSTEM_TEMPLATE.format(")[1:]
+    call_sites = source.split('render_prompt(\n                        "translator_system",')[1:]
 
     assert len(call_sites) == 2, "expected the forward and back-translate call sites"
     swapped = [site for site in call_sites if "source=target_lang" in site]

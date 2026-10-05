@@ -129,7 +129,7 @@ where = ["src"]
 version = {attr = "autoinfo._version.__version__"}
 
 [tool.setuptools.package-data]
-autoinfo = ["py.typed", "data/*.yaml", "data/domains/*/sources.yaml", "data/templates/*.j2"]
+autoinfo = ["py.typed", "data/*.yaml", "data/domains/*/sources.yaml", "data/templates/*.j2", "data/prompts/*.md"]
 
 [tool.ruff]
 target-version = "py311"

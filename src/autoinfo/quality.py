@@ -34,6 +34,7 @@ import yaml
 from autoinfo.config import QualityGateConfig
 from autoinfo.llm import call_with_fallback, parse_json_response
 from autoinfo.models import ExtractionResult, Item, KBEntry
+from autoinfo.prompts import get_prompt
 from autoinfo.self_claims import self_claim_orphan_entities, self_count_contradictions
 
 logger = logging.getLogger(__name__)
@@ -807,12 +808,7 @@ class G3RelevanceScoring:
     keywords (``dict[str, list[str]]``).
     """
 
-    SYSTEM_PROMPT = (
-        "You are a relevance scoring assistant. "
-        "Rate the relevance of the given content to the specified keywords "
-        "on a 0-100 scale. 0 = completely irrelevant, 100 = highly relevant. "
-        "Return ONLY a single integer number, nothing else."
-    )
+    SYSTEM_PROMPT = get_prompt("relevance_scoring_system")
 
     # Approximate character limit for 8K tokens (~4 chars per English token).
     _MAX_CONTENT_CHARS = 32000
@@ -1265,11 +1261,7 @@ class G4FactualConsistency:
         Root path for the collections directory (default ``"collections"``).
     """
 
-    SYSTEM_PROMPT = (
-        "You are a quality assurance checker. Compare the source text "
-        "with its summary. Determine if the summary contradicts the source. "
-        'Answer ONLY with JSON: {"contradiction": bool, "explanation": str}'
-    )
+    SYSTEM_PROMPT = get_prompt("g4_factual_system")
 
     def __init__(
         self,
@@ -1589,13 +1581,7 @@ class G5TranslationAccuracy:
         LiteLLM model string (e.g. ``"openrouter/deepseek/deepseek-chat"``).
     """
 
-    SYSTEM_PROMPT = (
-        "You are a quality assurance checker specialized in translation accuracy. "
-        "Compare the source text with its translation. Determine if the translation "
-        "faithfully represents the source content, preserving meaning, tone, and "
-        "factual claims. "
-        'Answer ONLY with JSON: {"faithful": bool, "explanation": str, "issues": [str]}'
-    )
+    SYSTEM_PROMPT = get_prompt("g5_translation_system")
 
     def __init__(
         self,

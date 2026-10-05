@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.4](https://github.com/1StepMore/AutoInfo/compare/v1.17.3...v1.17.4) (2026-10-05)
+
+
+### Bug Fixes
+
+* **grounding:** record [#449](https://github.com/1StepMore/AutoInfo/issues/449) as escalate-only and cut entity-candidate noise ([#475](https://github.com/1StepMore/AutoInfo/issues/475)) ([d14171f](https://github.com/1StepMore/AutoInfo/commit/d14171fa1eb87644a5573745a81146ec593158c5))
+
 ## [1.17.3](https://github.com/1StepMore/AutoInfo/compare/v1.17.2...v1.17.3) (2026-10-04)
 
 

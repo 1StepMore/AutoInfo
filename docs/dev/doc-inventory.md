@@ -14,11 +14,11 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 111 |
-| Total lines | 36614 |
+| Total lines | 36615 |
 | Active files | 83 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
-| Category — known-limitations | 2 files / 340 lines |
+| Category — known-limitations | 2 files / 341 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 11 files / 645 lines |
@@ -132,7 +132,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `glossary.md` | 61 | docs/root | active | glossary |
 | `handoff-2026-09-17.md` | 151 | docs/root | active | — |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
-| `known-limitations/demo-quality-residuals.md` | 52 | known-limitations | active | — |
+| `known-limitations/demo-quality-residuals.md` | 53 | known-limitations | active | — |
 | `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
 | `project-health-assessment-2026-09-17.md` | 441 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |

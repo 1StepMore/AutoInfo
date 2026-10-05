@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.5](https://github.com/1StepMore/AutoInfo/compare/v1.17.4...v1.17.5) (2026-10-05)
+
+
+### Bug Fixes
+
+* **validation:** make the year assertion's title-run match any script ([#444](https://github.com/1StepMore/AutoInfo/issues/444)) ([#477](https://github.com/1StepMore/AutoInfo/issues/477)) ([7dbe7ea](https://github.com/1StepMore/AutoInfo/commit/7dbe7ea5923bcde1f6c84b9a5287e85ce1c8e561))
+
 ## [1.17.4](https://github.com/1StepMore/AutoInfo/compare/v1.17.3...v1.17.4) (2026-10-05)
 
 

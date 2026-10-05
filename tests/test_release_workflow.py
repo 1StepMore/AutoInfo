@@ -13,6 +13,12 @@ Two independent mechanisms are guarded here.
    It approves the blocked runs, enables native auto-merge, and then
    dispatches `Release` explicitly so the git tag is actually cut.
 
+3. #494: that dispatch used to hang off a bounded poll for the merge, which
+   lost the race against this repo's own CI turnaround and left a silent
+   half-release (manifest bumped, no tag, exit 0). The tag cut is therefore
+   reconciled against the manifest on a timer, and an expired poll now fails
+   loudly instead of passing.
+
 The security property that makes this safe: the auto-merge workflow holds
 `actions: write` + `contents: write` while reacting to pull-request events,
 so it must NEVER execute PR-supplied code. These tests pin that: no
@@ -175,3 +181,73 @@ def test_auto_merge_dispatches_release_so_the_tag_is_cut() -> None:
     text = AUTO_MERGE.read_text()
     assert "gh workflow run release-please.yml" in text
     assert "MERGED" in text
+
+
+# ---------------------------------------------------------------------------
+# release-pr-auto-merge.yml -- tag reconciliation (#494)
+# ---------------------------------------------------------------------------
+
+
+def _reconcile_job() -> dict[str, Any]:
+    data = _load(AUTO_MERGE)
+    return cast(dict[str, Any], data["jobs"]["reconcile-release-tag"])
+
+
+def test_reconcile_job_exists_and_is_reachable() -> None:
+    """Without a non-`workflow_run` trigger the safety net can never fire.
+
+    #494's tag was lost because every signal the fast path can watch arrives
+    before the merge does. The reconciler only helps if something triggers it
+    on a timer or on demand, so both triggers are pinned individually.
+    """
+    triggers = _load(AUTO_MERGE)["on"]
+    assert "schedule" in triggers, "no timed trigger, so a lost tag is never retried"
+    assert "workflow_dispatch" in triggers, "no manual retry path for a lost tag"
+
+
+def test_reconcile_job_does_not_race_the_fast_path() -> None:
+    """Two dispatchers on one merge would double-dispatch `Release`.
+
+    The `workflow_run` path already tries to cut the tag immediately, so the
+    reconciler must stay off it or the same merge gets two dispatches.
+    """
+    job_if = str(_reconcile_job()["if"])
+    assert "schedule" in job_if
+    assert "workflow_dispatch" in job_if
+    assert "workflow_run" not in job_if
+
+
+def test_reconcile_reads_the_manifest_from_the_default_branch() -> None:
+    """The reconciler holds write scopes, so it must not read PR-supplied content.
+
+    It reads `.release-please-manifest.json` over the contents API pinned to
+    `ref=main`. Reading the manifest from the PR head instead would let a
+    contributor choose the version this privileged job publishes.
+    """
+    body = str(_reconcile_job()["steps"][0]["run"])
+    assert ".release-please-manifest.json?ref=main" in body
+
+
+def test_reconcile_dispatches_release_when_the_pinned_version_is_unpublished() -> None:
+    """The healing action itself: an unpublished pinned version triggers a dispatch.
+
+    Idempotence comes from the guard just above it (already-published exits 0),
+    so this pair is what makes the timer safe to run unconditionally.
+    """
+    body = str(_reconcile_job()["steps"][0]["run"])
+    assert "gh release view" in body, "no existing-release check, so it would always dispatch"
+    assert "gh workflow run release-please.yml" in body
+
+
+def test_expired_poll_fails_loudly_instead_of_passing() -> None:
+    """The silent half-release: `::warning::` + `exit 0` shipped as #494.
+
+    An expired poll used to warn and exit 0, so a release could merge with the
+    manifest and `_version.py` bumped but no tag and no GitHub release — the
+    version number then never appears in any changelog, and nothing reports it.
+    The failure must be loud, because that silence is the actual defect.
+    """
+    body = str(_auto_merge_job()["steps"][-1]["run"])
+    assert "::error::" in body, "an expired poll must raise an error annotation"
+    assert "exit 1" in body, "an expired poll must fail the job, not exit 0"
+    assert "::warning::PR" not in body, "the #494 silent-pass branch is back"

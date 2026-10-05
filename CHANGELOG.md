@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.6](https://github.com/1StepMore/AutoInfo/compare/v1.17.5...v1.17.6) (2026-10-05)
+
+
+### Refactoring
+
+* **prompts:** centralise LLM prompts under data/prompts with a loader ([#426](https://github.com/1StepMore/AutoInfo/issues/426)) ([#481](https://github.com/1StepMore/AutoInfo/issues/481)) ([9274478](https://github.com/1StepMore/AutoInfo/commit/927447800f467ec48c7bedc0d901687ea78d01cc))
+
 ## [1.17.5](https://github.com/1StepMore/AutoInfo/compare/v1.17.4...v1.17.5) (2026-10-05)
 
 

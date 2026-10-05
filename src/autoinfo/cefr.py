@@ -18,6 +18,7 @@ import re
 from typing import Any
 
 from autoinfo.llm import call_with_fallback
+from autoinfo.prompts import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +81,7 @@ def classify_text(
         timeout = _resolve_timeout(model_config)
 
     # --- Build prompts -------------------------------------------------------
-    system_prompt = (
-        "You are a CEFR classification assistant. "
-        "Classify the given text into a CEFR level (A1, A2, B1, B2, C1, or C2)."
-    )
+    system_prompt = get_prompt("cefr_system")
 
     user_prompt = (
         "Examples:\n"

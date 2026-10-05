@@ -27,6 +27,7 @@ from typing import Any, Awaitable, Callable, cast
 import yaml
 
 from autoinfo.llm import call_with_fallback
+from autoinfo.prompts import render_prompt
 
 SCENARIOS_DIR: Path = Path(__file__).resolve().parent / "scenarios"
 
@@ -852,13 +853,10 @@ def _llm_judge(assertion: str, tool_output: Any) -> dict[str, Any]:
         If the judge response cannot be parsed.
     """
     llm_cfg = _resolve_llm_config()
-    prompt = (
-        "You are a validation judge for the AutoInfo platform. Determine "
-        "whether the assertion holds for the given tool output.\n\n"
-        f"ASSERTION:\n{assertion}\n\n"
-        f"TOOL OUTPUT (JSON):\n{json.dumps(tool_output, ensure_ascii=False)[:8000]}\n\n"
-        'Reply with JSON exactly: {"verdict": "PASS" or "FAIL", '
-        '"reason": "one-sentence justification"}'
+    prompt = render_prompt(
+        "validation_judge",
+        assertion=assertion,
+        tool_output_json=json.dumps(tool_output, ensure_ascii=False)[:8000],
     )
     start = time.monotonic()
     response = call_with_fallback(

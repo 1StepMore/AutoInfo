@@ -64,12 +64,15 @@ tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generat
 **Load-sensitive flake (observed 2026-09-17, not budgeted).** Two failures
 appeared in one run and healed on re-run of the identical selection, so they
 are not identity-locked — they are a separate, newly observed non-hermetic
-class. Both reproduce only under machine load, and both are worth a follow-up:
+class. Both reproduce only under machine load, and both are worth a follow-up.
+A third, unrelated member of the broader non-hermetic class was added later and
+is already closed; it is marked as such rather than dropped:
 
 | Observation | Symptom | Trigger |
 |---|---|---|
 | EPUB export boundary (`TestOptionalFormats`) | Export wrote no artifact; passes in isolation, in-file, and in a 4-directory combination | Appeared in the 16-minute full-selection run while ~10 unrelated background jobs were saturating the box; healed on re-run |
 | Concurrent outbox writes (`tests/mcp/test_agent_callback.py`) | `1 of 16 events dropped (database is locked without busy_timeout)` — `sqlite3.OperationalError` raised at `PRAGMA journal_mode=WAL` inside `autoinfo.agent_callback._connect` | 16 threads writing concurrently while ~10 background jobs saturated the box. **The `busy_timeout` mitigation is already present and has been since 2026-08-28 (`502a63c5`, issue #387) — it is set before the WAL transition** — yet the failure still surfaced on the WAL statement, i.e. the busy handler did not cover that PRAGMA under this contention. Root cause unproven; needs a dedicated 16-thread repro before anyone claims a fix |
+| Statement-order assertion vs a foreign connection (`tests/mcp/test_agent_callback_journal_mode.py`) | `AssertionError: busy_timeout must be set before touching journal_mode` (the assertion's indices inverted) | **Registered and fixed 2026-10-05 (#484).** A test-harness defect, not a product one. The `recording_connect` fixture patched `sqlite3.connect` — the global module object — so it was process-wide, and the statements were recorded into a **class attribute**, i.e. one buffer shared by every connection in the process. Tracked daemon drain workers (`agent_callback._schedule_drain`) and straggler writer threads from the sibling module opened their own connections through the same patched factory and interleaved into that buffer. What tips an index comparison is a foreign connection whose *first* statement is a journal-mode one: `agent_callback._connect` sets `busy_timeout` first and so cannot invert it on its own, but `kb.SQLiteIndex._connect` (`kb.py:483`), `delivery_log`, `user_store`, `audit` and `cost` all issue `PRAGMA journal_mode=WAL` first. Fixed by making the buffer per connection instance and scoping every assertion to the connection the test opened. Evidence: same sha `72b6fca4` failed 1/6004 then passed 6005/0 on re-run (`37288304536`); a forced-interleaving harness reproduced it deterministically RED (`assert 1 < 0`) and GREEN after the fix. Note it landed in a **required** status check, so it blocked unrelated PRs — which is why it is recorded rather than absorbed (it was never in the budget above) |
 
 The second one is a real product-side data-loss path rather than a test defect
 (a dropped outbox row means a lost end-user notification), which is why it is

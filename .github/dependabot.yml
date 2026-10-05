@@ -13,13 +13,13 @@ updates:
     labels:
       - "dependencies"
     ignore:
-      - dependency-name: "mcp"
-        update-types: ["version-update:semver-major"]
-      # pytest 9.1.1 removed EncodedFile.getvalue and crashes caplog tests
-      # (#211). The previous major-bump PR (#243) widened the pyproject bound
-      # and turned CI red, so block the bump rather than repeat it.
-      - dependency-name: "pytest"
-        update-types: ["version-update:semver-major"]
+      # `update-types: ["version-update:semver-major"]` does NOT block these two:
+      # it does not match a pip *constraint* widening, so mcp<2-><3 (#490) and
+      # pytest<9-><10 (#489) both opened through it. Leave `update-types` off.
+      # An `ignore` with no `update-types` also suppresses *security* updates for
+      # the dependency; Dependabot alerts still fire, so handle those by hand.
+      - dependency-name: "mcp"          # mcp 3.x drops Server.list_tools -> server.py:7980 (#245)
+      - dependency-name: "pytest"       # pytest 9.x drops EncodedFile.getvalue -> caplog tests (#211)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

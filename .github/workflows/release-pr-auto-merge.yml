@@ -64,10 +64,26 @@
 # is `main`, so the PR is discovered through `gh pr list`. If the auto-merge is
 # attributed to `GITHUB_TOKEN`, the resulting push to main does NOT create a
 # `Release` workflow run, so the git tag / GitHub release would never be cut.
-# After the PR reports MERGED this workflow therefore dispatches
-# `release-please.yml` explicitly via `workflow_dispatch`, which ALWAYS creates
-# a run (even for a token-caused merge) because it uses the default-branch copy
-# of the workflow files.
+#
+# WHY THE TAG CUT IS RECONCILED, NOT WAITED FOR (#494)
+# The tag cut used to be a bounded poll inside the `workflow_run` job: enable
+# auto-merge, then poll the PR for 30 min and dispatch `Release` on MERGED. That
+# is a race this repo routinely loses. The poll starts when `Release` completes
+# on main — before the release PR is green — and strict required-status policy
+# means the PR usually needs another push, restarting the CI clock. Measured on
+# 1.17.8: poll window 17:24:34-17:55:25, push at 17:44, merge at 18:10:58. The
+# poll timed out 15m36s early; the tag was never cut; the manifest and
+# `_version.py` had already moved to 1.17.8. Silent half-release, exit 0.
+#
+# No event can replace the poll: release-please's PR events never fire (see
+# above) and a token-attributed merge fires no `push` either, so neither
+# `pull_request` nor `push` is available. Hence the `reconcile-release-tag` job
+# below, which compares the manifest version on the default branch against the
+# published `v<version>` releases and dispatches `Release` when one is missing.
+# That asks the API a question instead of waiting for a signal, so it is immune
+# to the suppression above and idempotent once the tag exists. It reads the
+# manifest at `ref=main` over the contents API — default-branch content, never
+# PR-supplied — so it adds no checkout and preserves the security model below.
 
 name: Release PR auto-merge
 on:
@@ -76,6 +92,9 @@ on:
     workflows: ["Release"]
     types: [completed]
     branches: [main]
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
 
 permissions:
   actions: write # approve workflow runs blocked on bot approval (#275) + dispatch Release
@@ -198,20 +217,58 @@ jobs:
           # event ALWAYS creates a run, even for a token-caused merge, because
           # the default-branch copy of the workflow files is used.
           merged=false
-          for _ in $(seq 1 90); do
+          ATTEMPTS=90
+          INTERVAL=20
+          for _ in $(seq 1 "$ATTEMPTS"); do
             state="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
             echo "PR #${PR_NUMBER} state=${state}"
             if [ "$state" = "MERGED" ]; then
               merged=true
               break
             fi
-            sleep 20
+            sleep "$INTERVAL"
           done
 
           if [ "$merged" != true ]; then
-            echo "::warning::PR #${PR_NUMBER} did not report MERGED within the bounded wait; not dispatching Release."
-            exit 0
+            # Fail loudly (#494). This used to warn and exit 0, so an expired
+            # poll produced a silent half-release: manifest and _version.py
+            # already bumped, no tag, no GitHub release, exit code 0. The
+            # reconcile-release-tag job heals it within one timer tick, so a red
+            # run here is informative rather than harmful.
+            echo "::error::PR #${PR_NUMBER} was not MERGED after $((ATTEMPTS * INTERVAL / 60)) min; the release tag was NOT cut. reconcile-release-tag will cut it, but a release PR still open past the poll bound needs a human."
+            exit 1
           fi
 
           gh workflow run release-please.yml
           echo "::notice::dispatched Release to cut the tag after #${PR_NUMBER} merged."
+
+  reconcile-release-tag:
+    # Excluded from the workflow_run path on purpose: that path already tries to cut
+    # the tag, and two dispatchers would race each other.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Reconcile manifest version against published releases
+        run: |
+          set -euo pipefail
+          desired="$(
+            gh api "repos/${GITHUB_REPOSITORY}/contents/.release-please-manifest.json?ref=main" \
+              --jq '.content' | tr -d '\n' | base64 -d | jq -r '.["."]'
+          )"
+          if [ -z "$desired" ] || [ "$desired" = "null" ]; then
+            echo "::error::could not read the pinned version from the manifest on main."
+            exit 1
+          fi
+          echo "manifest version on main: $desired"
+
+          if gh release view "v${desired}" --json tagName --jq .tagName >/dev/null 2>&1; then
+            echo "v${desired} is already published; nothing to reconcile."
+            exit 0
+          fi
+
+          echo "::warning::v${desired} is pinned on main but not published. The release commit merged without its tag (token-attributed merge fires no push event). Dispatching Release to cut it."
+          gh workflow run release-please.yml
+          echo "::notice::dispatched Release to cut the missing v${desired}."

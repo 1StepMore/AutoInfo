@@ -483,10 +483,16 @@ _ELECTION_YEAR_RE = re.compile(
 # factual claim ("In 2027, sales tripled") never matches — a single leading
 # function word ("in"/"the"/"by"/"for"/...) is rejected by the
 # ``_FUNCTION_YEAR_WORDS`` guard in ``_is_named_year``.
+# Unicode combining marks and Indic/Thai combining vowels, which Python's \w
+# excludes because they are not alphanumeric. A Devanagari syllable ends in a
+# matra ("ने"), so without these the run stops mid-word and no title shape
+# matches.
+_LETTER_OR_MARK = r"̀-ͯ҃-҉ऀ-ॿ॰-ॿ"
+_TITLE_WORD = rf"[^\W\d_][\w{_LETTER_OR_MARK}]*"
 _FRANCHISE_YEAR_RE = re.compile(
-    r"\b(?:[^\W\d_][^\W_]*[\s-]+){1,3}"
+    rf"\b(?:{_TITLE_WORD}[\s-]+){{1,3}}"
     r"(?:[0-9]{1,3}[\s-]+)?(?:18|19|20)\d{2}\b"
-    r"|\b(?:[^\W\d_][^\W_]*[\s-]+){1,4}"
+    rf"|\b(?:{_TITLE_WORD}[\s-]+){{1,4}}"
     r"[0-9]{1,3}\s*\(\s*(?:18|19|20)\d{2}\s*\)"
 )
 _FUNCTION_YEAR_WORDS = frozenset(

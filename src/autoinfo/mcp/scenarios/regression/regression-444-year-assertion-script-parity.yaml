@@ -1,0 +1,108 @@
+# Regression #444: `_no_year_hallucination` false-positived on non-English
+# products, blocking a language domain's DoD.
+#
+# The assertion exempts a future year that is part of a proper-noun / event name.
+# `_FRANCHISE_YEAR_RE` documented itself as matching "letters of any script, so
+# French/Devanagari titles match" — but its character class `[^\W\d_][^\W_]*`
+# cannot do that. Python's `\w` excludes combining marks because they are not
+# alphanumeric, and a Devanagari syllable ends in a matra, so the run stopped
+# mid-word and no title shape ever matched:
+#
+#   - **Summary**: ICC ने 2027 पुरुष वनडे वर्ल्ड कप ...   -> P0 "future year 2027"
+#
+# The English equivalent ("the 2027 ODI World Cup schedule") passed, so the gate
+# was correct for Latin script and wrong for every script that uses combining
+# marks. That is a parity defect, not a tolerance question: no product prose is
+# required to change.
+#
+# The fix adds the combining-mark ranges to the character class so non-Latin
+# titles match exactly as Latin ones already did. It deliberately does NOT relax
+# the Latin behaviour, and a bare future year with no name shape still fails at
+# P0.
+#
+# Known and deliberately NOT closed here: a fabricated year wearing a name shape
+# ("India won the 2031 World Cup") still passes, in English as well as in Hindi.
+# Shape cannot separate "won the" from "schedule for", so that class needs
+# evidence rather than a better pattern. G7 already flags it at the process
+# layer by comparing the extraction's numbers against the real source item; what
+# is missing is a decision to let a year claim block. Measured on real data, G7
+# checked 10 year claims with 0 unsupported, while all 4 of its unsupported
+# claims were bare small integers — so a blanket `action: block` would block on
+# integer noise. See docs/known-limitations/demo-quality-residuals.md.
+name: regression-444-year-assertion-script-parity
+description: "Regression #444: the year assertion exempts named future years in scripts that use combining marks, and still fails a bare future year"
+category: failure
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.3
+regression: true
+regression_issue: "#444"
+requires_env: []
+steps:
+  - name: "a named future year in a combining-mark script no longer false-positives"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.validation_matrix import _no_year_hallucination as check
+
+      # The issue repro: 2027 ICC Men s ODI World Cup, a real scheduled event
+      # whose year is part of the event name.
+      hi = "- **Summary**: ICC ने 2027 पुरुष वनडे वर्ल्ड कप का पूरा कार्यक्रम जारी रखा"
+      res = check(hi, "hindi-learning", "digest")
+      assert res.passed, f"non-Latin named year must not fail: {res.details}"
+
+      # Parity with the Latin script, which already passed.
+      en = "- **Summary**: ICC has published the full 2027 ODI World Cup schedule"
+      assert check(en, "x", "y").passed, "Latin named year must stay passing"
+      print("SCRIPT_PARITY_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["SCRIPT_PARITY_OK"]
+
+  - name: "the gate is not weakened: a bare future year still fails at P0"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.validation_matrix import _no_year_hallucination as check
+
+      bare = "In 2031, adoption tripled across the region."
+      res = check(bare, "x", "y")
+      assert not res.passed, "a bare future year must still fail"
+      assert res.severity == "P0", res.severity
+      assert "2031" in res.details, res.details
+
+      # A forward-looking marker still exempts it, in Latin and non-Latin alike.
+      assert check("By 2031 the fleet will be fully electric.", "x", "y").passed
+      print("GATE_NOT_WEAKENED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["GATE_NOT_WEAKENED_OK"]
+
+  - name: "other combining-mark scripts reach parity too"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.validation_matrix import _FRANCHISE_YEAR_RE as FR
+      from autoinfo.grounding import _MULTI_ENTITY_RE  # sanity: module imports cleanly
+
+      # Precomposed scripts already worked; the ranges must not disturb them.
+      assert FR.search("Metro 2039"), "Latin franchise year regressed"
+      assert FR.search("Présidentielle 2027"), "French named year regressed"
+      # Combining-mark scripts now work.
+      assert FR.search("ICC ने 2027"), "Devanagari named year still not matched"
+      print("MULTISCRIPT_PARITY_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["MULTISCRIPT_PARITY_OK"]

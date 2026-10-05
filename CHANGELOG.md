@@ -2,6 +2,20 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.7](https://github.com/1StepMore/AutoInfo/compare/v1.17.6...v1.17.7) (2026-10-05)
+
+
+### Documentation
+
+* register the year-granularity laundering residual ([#444](https://github.com/1StepMore/AutoInfo/issues/444)) ([#483](https://github.com/1StepMore/AutoInfo/issues/483)) ([c95d8f0](https://github.com/1StepMore/AutoInfo/commit/c95d8f0eba17f23393cf4b2bbc15649f5619f17e))
+
+## [1.17.6](https://github.com/1StepMore/AutoInfo/compare/v1.17.5...v1.17.6) (2026-10-05)
+
+
+### Refactoring
+
+* **prompts:** centralise LLM prompts under data/prompts with a loader ([#426](https://github.com/1StepMore/AutoInfo/issues/426)) ([#481](https://github.com/1StepMore/AutoInfo/issues/481)) ([9274478](https://github.com/1StepMore/AutoInfo/commit/927447800f467ec48c7bedc0d901687ea78d01cc))
+
 ## [1.17.5](https://github.com/1StepMore/AutoInfo/compare/v1.17.4...v1.17.5) (2026-10-05)
 
 

@@ -285,6 +285,20 @@ _GENERIC_ENTITY_STOP = frozenset(
         "yes",
         "no",
         "not",
+        "base",
+        "data",
+        "quality",
+        "development",
+        "clinical",
+        "use",
+        "used",
+        "remove",
+        "removed",
+        "presence",
+        "populate",
+        "artificial",
+        "gene",
+        "knowledge",
     }
 )
 
@@ -332,12 +346,24 @@ def _strip_non_prose(text: str) -> str:
     return text
 
 
+#: A trailing run of pure markdown structure — list bullet, blockquote, or
+#: bold/italic delimiters — reaching back to a line start. Title-Case after such
+#: a run is sentence-initial, so it is capitalisation rather than an entity.
+_MD_LEAD_NOISE_RE = re.compile(r"(?:\A|\n)[ \t>]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?[*_`]*[ \t]*\Z")
+
+
+def _is_sentence_initial(sentence: str, pos: int) -> bool:
+    preceding = sentence[:pos].strip()
+    return not preceding or bool(
+        _SENTENCE_END_RE.search(preceding) or _MD_LEAD_NOISE_RE.search(preceding)
+    )
+
+
 def _single_token_claims(sentence: str) -> list[str]:
     """Single Title-Case tokens that are NOT sentence-initial."""
     claims: list[str] = []
     for match in _TITLE_TOKEN_RE.finditer(sentence):
-        preceding = sentence[: match.start()].strip()
-        if not preceding or _SENTENCE_END_RE.search(preceding):
+        if _is_sentence_initial(sentence, match.start()):
             continue
         if match.group(0).lower() in _GENERIC_ENTITY_STOP:
             continue
@@ -355,8 +381,11 @@ def _entity_claims(text: str) -> list[str]:
     stripped = _strip_non_prose(text)
     seen: dict[str, None] = {}
     for match in _MULTI_ENTITY_RE.finditer(stripped):
-        if len(match.group(0).split()) >= 2:
-            seen.setdefault(match.group(0), None)
+        words = match.group(0).split()
+        while words and words[0].lower() in _GENERIC_ENTITY_STOP:
+            words.pop(0)
+        if len(words) >= 2:
+            seen.setdefault(" ".join(words), None)
     for token in _single_token_claims(stripped):
         seen.setdefault(token, None)
     return [candidate for candidate in seen if _content_tokens(candidate)]

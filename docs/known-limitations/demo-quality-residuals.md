@@ -12,6 +12,7 @@
 | 推断措辞无 hedge | editorial 句断言市场方向/动机("the smart money is betting") | L1 battery(#191 只约束 feature_story,未盖 editorial 开场)+ 审查程序 | P2/P3 | **已登记(R6/R7 连续双样本再现);审查程序已入 skill demo-package-deliverable-review(2026-09-03);prompt 层约束已补(#210: EDITORIAL_OPENING_HEDGE_CONSTRAINT 覆盖 Editor's Note / Executive Summary / column Deep Dive 开场)** |
 | 实体事实误差 | 与来源不符的数字/事实(非汇率类) | G7 确定性 gate(数字+实体可溯源,默认 soft/flag);L1 battery 部分;外部 review | P1(若混入) | 已有确定性层;默认仅标记不阻断,可按域升为 block |
 | 产物自述与正文不符 | Executive Summary 称 "2 selected items",正文只渲染 1 条;narrative 命名正文从未出现的实体 | D2 self-count(**hard block**,#445,0 误报 / 222 个真实产物)+ D2 orphan-entity(flag/escalate,#445,实测 ~27% 误报率故不阻断)+ L1 battery | P1 | 计数类已确定性防死;实体类只升级不阻断,**新形态靠 battery/review** |
+| 实体候选抽取噪声 | `_entity_claims` 把冠词吞进实体("An AI-based");把普通动词/句首普通名词当实体("Use"/"Remove"/"Presence"/"Base"/"Data"/"Development");列表项上下文里句首判定失效 | 无(抽取层自身无 gate;只表现为 orphan-entity 信号变噪) | P2 | **已登记并已修(2026-10-04,#449 测量副产物)**:三处根因分别修复(多 token run 剥冠词、停用词表补常见词、markdown 列表/引用/加粗前缀纳入句首判定);medical-research 的 orphan 触发率 26.6% → 20.1%,其余域不变(其候选非英文,英文停用词覆盖不到)。因 orphan-entity 已是 escalate-only,全程无阻断影响。连字符形容词("AI-based")为刻意保留:加规则会误伤 Wi-Fi / Spider-Man 类真实实体 |
 | 主题归类/结构组织 | funding 表漏放头条条目(VAST)→ Additional Topics | 无(L0/L1 均不判组织) | P3 | 非缺陷,润色建议 |
 | 金额换算轻微漂移 | 新中文金额形态(数百万/几千万/千万级)未注入,LLM 自算 | G6 抓量级错(隐含汇率越界);抓不住轻微漂移 | P2 | 已覆盖数字+中文数字形态;新形态靠 G6 部分兜底 |
 

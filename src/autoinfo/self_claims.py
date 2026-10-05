@@ -26,6 +26,44 @@ over the 222 real product files under ``outputs/``:
    ``01-QA-GATES/gate-report-*.json``.  The hard-blocking answer to the
    fabrication class is upstream — the synthesis prompt constraint plus the
    deterministic synthesis grounding in :mod:`autoinfo.output`.
+
+   **Escalate-only is the settled decision, not a pending one (#449).** The
+   issue specified a measurement protocol and a decision rule: promote the
+   entity check to a blocking drop only if the fire rate at *per-sentence x
+   per-product-selection* scope comes in under 5%; otherwise record the check
+   as escalate-only permanently and stop revisiting it. That protocol was run
+   against the real ``outputs/`` corpus, comparing each synthesis sentence
+   against only the entries its own product was built from (its References
+   section plus its deterministic, entry-rendered body):
+
+   ===================  =========  ===============
+   domain               sentences  fire rate
+   ===================  =========  ===============
+   medical-research           369  74 (20.1%)
+   general-news                25   9 (36.0%)
+   ai-demo                     24  10 (41.7%)
+   gaming                      34   5 (14.7%)
+   language-learning           10   2 (20.0%)
+   ===================  =========  ===============
+
+   Every domain lands between 14.7% and 41.7% — far above the 5% bar, and the
+   tighter scope does *not* help (it is within noise of the whole-domain-KB
+   baseline the earlier 93% figure came from). The surviving candidates are
+   dominated by legitimate synthesis vocabulary: multi-word theme and cluster
+   labels ("Embryology Research", "CRISPR Clinical Development") that no single
+   entry title contains. So **do not wire a drop** — a blocking rule here would
+   reject a seventh to a half of valid summaries. Re-open this only with a NEW
+   measurement that clears 5% at this scope, not with a re-derivation of the
+   argument above.
+
+   These figures are post-fix for the candidate-extraction noise registered in
+   ``docs/known-limitations/demo-quality-residuals.md`` (article leakage into a
+   run, ordinary verbs and sentence-initial common nouns read as entities, and
+   markdown list/blockquote prefixes defeating the sentence-initial test).
+   medical-research fell from 26.6% to 20.1% once that noise was removed; the
+   other domains were unaffected because their candidates are not English, so
+   an English stop list cannot reach them. The verdict is the same either way,
+   which is the point: it does not rest on the tokenizer.
 """
 
 from __future__ import annotations

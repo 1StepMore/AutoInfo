@@ -1,0 +1,120 @@
+# Regression #449: a synthesis sentence with no citation can introduce facts.
+#
+# #446 stops a synthesis sentence whose *citation* does not support it. A
+# fabricated sentence with NO citation passed untouched, because the entity
+# check that would catch it (`self_claims.self_claim_orphan_entities`) is wired
+# only to the post-render D2 path, which escalates rather than blocks.
+#
+# The issue prescribed a measurement before any code change: promote the entity
+# check to a blocking drop only if the fire rate at per-sentence x
+# per-product-selection scope comes in under 5%; otherwise record escalate-only
+# permanently. That protocol was run against the real outputs/ corpus and the
+# rate landed between 14.7% and 41.7% across five domains — dominated by
+# legitimate theme/cluster labels ("Embryology Research", "CRISPR Clinical
+# Development"). The recorded verdict is therefore escalate-only, no drop.
+#
+# The same measurement exposed three defects in `grounding._entity_claims` that
+# inflated the signal: a leading article was swallowed into a multi-token run
+# ("An AI-based"), ordinary verbs and sentence-initial common nouns were read as
+# entities, and a markdown list/blockquote/bold prefix defeated the
+# sentence-initial test so "Use"/"Remove" became entity candidates. Those are
+# fixed here and must stay fixed; the residual is registered in
+# docs/known-limitations/demo-quality-residuals.md.
+#
+# This scenario asserts the extraction precision and the escalate-only
+# contract — it does NOT assert a fire rate, which would pin a measurement to a
+# corpus snapshot that legitimately changes as products are regenerated.
+name: regression-449-entity-candidate-precision
+description: "Regression #449: entity candidates exclude articles, generic words and markdown-prefixed sentence starts, while genuine theme labels survive"
+category: failure
+pyramid_layer: component
+pipeline_stage: A5
+user_level: B2.3
+regression: true
+regression_issue: "#449"
+requires_env: []
+steps:
+  - name: "extraction excludes the three artifact classes"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.grounding import _entity_claims
+
+      cases = {
+          "article in run": ("An AI-based approach was used.", ["AI-based"]),
+          "generic run": ("Knowledge Base Data Quality needs attention.", []),
+          "md list verb": ("- Use the pipeline to regenerate outputs.", []),
+          "md bold verb": ("- **Use** the pipeline.", []),
+          "blockquote verb": ("> Remove the stale cache.", []),
+      }
+      for label, (text, allowed) in cases.items():
+          got = _entity_claims(text)
+          extra = [c for c in got if c not in allowed]
+          assert not extra, f"{label}: unexpected candidates {extra} (allowed {allowed})"
+      print("ARTIFACT_CLASSES_EXCLUDED_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ARTIFACT_CLASSES_EXCLUDED_OK"]
+
+  - name: "genuine multi-word theme labels still survive extraction"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.grounding import _entity_claims
+      from autoinfo.self_claims import self_claim_orphan_entities
+
+      for text, keep in [
+          ("Embryology Research drives the cluster.", "Embryology Research"),
+          ("CRISPR Clinical Development accelerated.", "CRISPR Clinical Development"),
+      ]:
+          got = _entity_claims(text)
+          assert keep in got, f"lost genuine label {keep!r}: got {got}"
+
+      body = (
+          "## Executive Summary\n\n"
+          "Embryology Research drives the cluster this quarter.\n\n"
+          "## Key Findings\n\n"
+          "- IVF success rates improved.\n"
+          "- CRISPR protocols were refined.\n"
+      )
+      assert self_claim_orphan_entities(body) == [], "clean product must not escalate"
+      print("GENUINE_LABELS_SURVIVE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["GENUINE_LABELS_SURVIVE_OK"]
+
+  - name: "the check keeps its signal: a real orphan still reports, as an advisory string"
+    kind: cli
+    command: |-
+      python3 -c '
+      import sys
+      sys.path.insert(0, "src")
+      from autoinfo.self_claims import self_claim_orphan_entities
+
+      body = (
+          "## Executive Summary\n\n"
+          "Jalapeno Research drove the cluster, according to Smoky Mountain Data.\n\n"
+          "## Key Findings\n\n"
+          "- IVF success rates improved.\n"
+      )
+      findings = self_claim_orphan_entities(body)
+      assert isinstance(findings, list) and all(isinstance(f, str) for f in findings), findings
+      # Escalate-only means: report the orphan as a human-readable string the
+      # caller can flag, and keep enough signal that the check is not inert.
+      # A blocking gate would key off an exception or a sentinel, not a list.
+      assert findings, "a genuinely orphaned entity must still produce a finding"
+      assert any("Jalapeno" in f for f in findings), findings
+      print("ESCALATE_ONLY_KEPS_SIGNAL_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ESCALATE_ONLY_KEPS_SIGNAL_OK"]

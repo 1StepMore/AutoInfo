@@ -37,6 +37,7 @@ from autoinfo.config import (
     resolve_primary_api_key,
 )
 from autoinfo.models import ExtractionResult, Item
+from autoinfo.prompts import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_PROVIDER = "openrouter"
 DEFAULT_MODEL = "deepseek/deepseek-chat"
 
-SYSTEM_PROMPT = (
-    "You are AutoInfo, an information extraction assistant. "
-    "Extract structured information from the following article. "
-    "Respond with valid JSON only, no markdown formatting."
-)
+# Issue #426: the prompt text lives in data/prompts/extraction_system.md.
+SYSTEM_PROMPT = get_prompt("extraction_system")
 
 FIELD_DESCRIPTIONS: dict[str, str] = {
     "tl_dr": '"tl_dr": "2-3 sentence summary of the article"',

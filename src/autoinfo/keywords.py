@@ -28,6 +28,8 @@ from typing import Any
 
 import yaml
 
+from autoinfo.prompts import render_prompt
+
 logger = logging.getLogger(__name__)
 
 # Sentinel to distinguish "not provided" from AUTO_ADDED in add_keyword
@@ -40,13 +42,7 @@ def keyword_suggestion_system_prompt(limit: int) -> str:
     The CLI and the MCP server each built this prompt inline; the two copies
     were byte-identical by luck and could drift silently.
     """
-    return (
-        "You are a keyword extraction assistant. Given a text, suggest "
-        f"up to {limit} relevant keywords or short phrases (2-5 words) "
-        "that capture the core topics. "
-        "Respond with valid JSON only: an array of strings. "
-        'Example: ["machine learning", "neural networks", "deep learning"]'
-    )
+    return render_prompt("keyword_suggestion_system", limit=limit)
 
 
 # ---------------------------------------------------------------------------

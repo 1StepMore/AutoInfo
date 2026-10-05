@@ -2,6 +2,20 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.8](https://github.com/1StepMore/AutoInfo/compare/v1.17.7...v1.17.8) (2026-10-05)
+
+
+### Tests
+
+* **mcp:** isolate the journal-mode statement recorder per connection ([#484](https://github.com/1StepMore/AutoInfo/issues/484)) ([#486](https://github.com/1StepMore/AutoInfo/issues/486)) ([1a4db3b](https://github.com/1StepMore/AutoInfo/commit/1a4db3b2af7bfb38105ffe60518382bd5a22e210))
+
+
+### Miscellaneous Chores
+
+* **ci:** re-register Dependabot version updates; document that the BackUp mirrors must not carry this file ([#480](https://github.com/1StepMore/AutoInfo/issues/480)) ([58d6a80](https://github.com/1StepMore/AutoInfo/commit/58d6a80602f79b421e655971f16d0269eab57830))
+* **deps-dev:** bump ruff from 0.16.8 to 0.16.10 ([#492](https://github.com/1StepMore/AutoInfo/issues/492)) ([853ee4a](https://github.com/1StepMore/AutoInfo/commit/853ee4a3d6cc7255cc7fbde48850c4e59001a536))
+* **deps:** update stripe requirement from &lt;16.0,&gt;=9.0 to &gt;=9.0,&lt;17.0 ([#491](https://github.com/1StepMore/AutoInfo/issues/491)) ([7d94326](https://github.com/1StepMore/AutoInfo/commit/7d943267284c73ead40f796a3734692009742a5b))
+
 ## [1.17.7](https://github.com/1StepMore/AutoInfo/compare/v1.17.6...v1.17.7) (2026-10-05)
 
 

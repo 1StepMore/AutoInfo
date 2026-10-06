@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.9](https://github.com/1StepMore/AutoInfo/compare/v1.17.8...v1.17.9) (2026-10-05)
+
+
+### Bug Fixes
+
+* **release:** reconcile the release tag instead of racing CI for it ([#494](https://github.com/1StepMore/AutoInfo/issues/494)) ([#495](https://github.com/1StepMore/AutoInfo/issues/495)) ([7fb18a7](https://github.com/1StepMore/AutoInfo/commit/7fb18a79845790f871bb32c1e68c52663142cba5))
+
 ## [1.17.8](https://github.com/1StepMore/AutoInfo/compare/v1.17.7...v1.17.8) (2026-10-05)
 
 

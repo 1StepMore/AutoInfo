@@ -171,23 +171,37 @@ def _store(entries: list[dict[str, Any]]) -> MagicMock:
 
 
 def _freeze_datetime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin every clock read the render path makes, including the one that
+    decides which entries are stale (#498).
+
+    The patches below on ``output_mod.datetime`` / ``kb_mod.datetime`` never took
+    effect for freshness: ``kb.calculate_freshness_score`` does
+    ``from datetime import datetime`` *inside* the function, so each call rebinds
+    from ``sys.modules['datetime']`` and ignores the module attribute. The only
+    patch that reaches it is on the stdlib module itself. ``datetime.datetime`` is
+    a C type and rejects attribute assignment, so it is replaced by a real
+    subclass that overrides ``now()`` and inherits everything else.
+    """
+    import datetime as datetime_mod
+
     import autoinfo.output as output_mod
 
-    class _FrozenDatetime:
+    class _FrozenDatetime(datetime_mod.datetime):
         @classmethod
-        def now(cls, tz=None):  # noqa: ANN001, ANN201
-            return FROZEN_NOW
+        def now(cls, tz: datetime_mod.tzinfo | None = None) -> "_FrozenDatetime":
+            frozen = FROZEN_NOW if tz is not None else FROZEN_NOW.replace(tzinfo=None)
+            return _FrozenDatetime.fromisoformat(frozen.isoformat())
 
-        @classmethod
-        def fromisoformat(cls, s: str) -> datetime:  # noqa: ANN201
-            return datetime.fromisoformat(s)
-
+    monkeypatch.setattr(datetime_mod, "datetime", _FrozenDatetime)
     monkeypatch.setattr(output_mod, "datetime", _FrozenDatetime)
     import autoinfo.kb as kb_mod
 
     monkeypatch.setattr(kb_mod, "datetime", _FrozenDatetime)
-    monkeypatch.setattr(kb_mod.datetime, "now", classmethod(lambda cls, tz=None: FROZEN_NOW))  # type: ignore[attr-defined]  # noqa: E501
-    monkeypatch.setattr(output_mod, "date", type("_FrozenDate", (), {"today": classmethod(lambda cls: FROZEN_TODAY)}))  # type: ignore[attr-defined]  # noqa: E501
+    monkeypatch.setattr(
+        output_mod,
+        "date",
+        type("_FrozenDate", (), {"today": classmethod(lambda cls: FROZEN_TODAY)}),
+    )  # noqa: E501
 
 
 def _active_source_configs() -> list[SourceConfig]:
@@ -239,9 +253,7 @@ class TestIsSourceActiveInConfig:
                 url="https://www.infoq.cn/feed",
             )
         ]
-        monkeypatch.setattr(
-            "autoinfo.output._get_domain_source_configs", lambda domain: configs
-        )
+        monkeypatch.setattr("autoinfo.output._get_domain_source_configs", lambda domain: configs)
         assert _is_source_active_in_config(_entry(9, drifted=True), "tech-ai-developer") is True
 
     def test_generic_platform_not_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -256,9 +268,7 @@ class TestIsSourceActiveInConfig:
     def test_fail_open_empty_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """FAIL-OPEN: unreadable/missing config returns ``[]`` → helper keeps
         EVERYTHING (never drops all entries)."""
-        monkeypatch.setattr(
-            "autoinfo.output._get_domain_source_configs", lambda domain: []
-        )
+        monkeypatch.setattr("autoinfo.output._get_domain_source_configs", lambda domain: [])
         assert _is_source_active_in_config(_entry(9, drifted=True), "tech-ai-developer") is True
         assert _is_source_active_in_config(_entry(1), "tech-ai-developer") is True
 
@@ -295,8 +305,7 @@ class TestDigestDriftFilter:
         assert "AI funding round 5" in result
         # Drift exclusion is logged with the source name + count.
         assert any(
-            "Excluded 1 drifted entry" in msg and "infoq-cn" in msg
-            for msg in caplog.messages
+            "Excluded 1 drifted entry" in msg and "infoq-cn" in msg for msg in caplog.messages
         ), "drift exclusion must be logged with source name + count"
 
     def test_digest_all_active_byte_identical_to_golden(
@@ -319,9 +328,7 @@ class TestDigestDriftFilter:
         assert isinstance(result, str)
         assert result == golden
 
-    def test_digest_generic_platform_entry_kept(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_digest_generic_platform_entry_kept(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A pre-#323 entry with generic ``source_platform='rss'`` whose host
         matches a configured source is NOT dropped."""
         _freeze_datetime(monkeypatch)
@@ -338,9 +345,7 @@ class TestDigestDriftFilter:
         assert isinstance(result, str)
         assert "AI funding generic platform entry" in result
 
-    def test_digest_fail_open_unreadable_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_digest_fail_open_unreadable_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """FAIL-OPEN: an unreadable config (→ ``[]`` from
         ``_get_domain_source_configs``) excludes NOTHING — even a drifted
         entry survives."""
@@ -349,9 +354,7 @@ class TestDigestDriftFilter:
         with (
             patch("autoinfo.output.KBStore", return_value=_store(entries)),
             patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
-            patch(
-                "autoinfo.output._get_domain_source_configs", lambda domain: []
-            ),
+            patch("autoinfo.output._get_domain_source_configs", lambda domain: []),
         ):
             result = generate_digest(domain="tech-ai-developer", period="weekly")
         assert isinstance(result, str)
@@ -399,9 +402,7 @@ class TestPresentationDriftFilter:
         assert isinstance(result, str)
         return result, captured["prompt"]
 
-    def test_presentation_excludes_drifted_entries(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_presentation_excludes_drifted_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A drifted source is excluded from the presentation's topic-entries
         input, so it never reaches the LLM prompt nor the KB-derived slides."""
         entries = [_entry(i) for i in range(1, 5)] + [_entry(9, drifted=True)]
@@ -429,8 +430,6 @@ class TestPresentationDriftFilter:
         """FAIL-OPEN: unreadable config excludes nothing — the drifted entry
         is still available as topic-entries input."""
         entries = [_entry(i) for i in range(1, 4)] + [_entry(9, drifted=True)]
-        _, prompt = self._render_with_capture(
-            monkeypatch, entries, lambda domain: []
-        )
+        _, prompt = self._render_with_capture(monkeypatch, entries, lambda domain: [])
         assert "Drifted funding round 9" in prompt
         assert _DRIFTED_URL in prompt

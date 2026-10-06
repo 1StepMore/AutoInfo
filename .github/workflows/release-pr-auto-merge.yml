@@ -182,7 +182,12 @@ jobs:
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
 
       - name: Approve workflow runs blocked on bot approval (#275)
+        # Non-fatal by design (#494 follow-up): a failure here must not skip the
+        # auto-merge enable or the tag cut below. The outcome is recorded and
+        # asserted by the final step so the run still ends red and names the PR.
         if: steps.gate.outputs.eligible == 'true'
+        continue-on-error: true
+        id: approve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
@@ -194,17 +199,21 @@ jobs:
             --jq '.workflow_runs[] | select(.conclusion == "action_required") | .id')"
           if [ -z "$blocked" ]; then
             echo "No runs awaiting approval."
+            echo "unapproved=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          unapproved=""
           for run_id in $blocked; do
             name="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.name')"
             echo "Approving run ${run_id} (${name})"
             if gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" >/dev/null 2>&1; then
               echo "::notice::approved ${name}"
             else
-              echo "::warning::could not approve run ${run_id} (${name}); it may need a human."
+              echo "::warning::GITHUB_TOKEN could not approve run ${run_id} (${name})."
+              unapproved="${unapproved}${name}, "
             fi
           done
+          echo "unapproved=${unapproved}" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge (squash — the only method main-protection allows)
         if: steps.gate.outputs.eligible == 'true'
@@ -257,6 +266,23 @@ jobs:
           gh workflow run release-please.yml
           echo "::notice::dispatched Release to cut the tag after #${PR_NUMBER} merged."
 
+      - name: Assert no release run is left waiting on a human approval
+        # `always()` so this still reports when the tag cut above timed out --
+        # that is the common shape of the failure, and the approval gap is the
+        # reason a human had to step in at all.
+        if: always() && steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
+          UNAPPROVED: ${{ steps.approve.outputs.unapproved }}
+        run: |
+          set -euo pipefail
+          if [ -n "${UNAPPROVED:-}" ]; then
+            echo "::error::Release PR #${PR_NUMBER} still has workflow runs awaiting approval: ${UNAPPROVED}. GITHUB_TOKEN cannot approve runs of other workflows, and nothing retries it after this job, so the PR will stay BLOCKED until a human approves them on the PR's Checks tab. This is the step that left 1.17.9 stuck for ~12.6h."
+            exit 1
+          fi
+          echo "No unapproved release runs."
+
   reconcile-release-tag:
     # Excluded from the workflow_run path on purpose: that path already tries to cut
     # the tag, and two dispatchers would race each other. `push` is the reliable
@@ -279,6 +305,25 @@ jobs:
             exit 1
           fi
           echo "manifest version on main: $desired"
+
+          # Nothing in this workflow can approve a bot release PR's runs, and
+          # nothing retries the attempt after the fast path fails -- so surface
+          # the stuck PR here, where it is guaranteed to be looked at.
+          stuck="$(
+            gh pr list --state open --search 'head:release-please--branches--' \
+              --json number,headRefOid --limit 20 \
+              --jq '.[] | select(.number) | .number'
+          )"
+          for pr in $stuck; do
+            sha="$(gh pr view "$pr" --json headRefOid --jq '.headRefOid')"
+            waiting="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sha}&per_page=100" \
+              --jq '[.workflow_runs[] | select(.conclusion == "action_required")] | length')"
+            if [ "$waiting" != "0" ]; then
+              echo "::error::Release PR #${pr} has ${waiting} workflow run(s) awaiting approval and will stay BLOCKED until a human approves them. GITHUB_TOKEN cannot do it and no job retries it."
+            else
+              echo "Release PR #${pr} is open with no runs awaiting approval."
+            fi
+          done
 
           if gh release view "v${desired}" --json tagName --jq .tagName >/dev/null 2>&1; then
             echo "v${desired} is already published; nothing to reconcile."

@@ -170,23 +170,37 @@ def _window_store(entries: list[dict[str, Any]]) -> MagicMock:
 
 
 def _freeze_datetime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin every clock read the render path makes, including the one that
+    decides which entries are stale (#498).
+
+    The patches below on ``output_mod.datetime`` / ``kb_mod.datetime`` never took
+    effect for freshness: ``kb.calculate_freshness_score`` does
+    ``from datetime import datetime`` *inside* the function, so each call rebinds
+    from ``sys.modules['datetime']`` and ignores the module attribute. The only
+    patch that reaches it is on the stdlib module itself. ``datetime.datetime`` is
+    a C type and rejects attribute assignment, so it is replaced by a real
+    subclass that overrides ``now()`` and inherits everything else.
+    """
+    import datetime as datetime_mod
+
     import autoinfo.output as output_mod
 
-    class _FrozenDatetime:
+    class _FrozenDatetime(datetime_mod.datetime):
         @classmethod
-        def now(cls, tz=None):  # noqa: ANN001, ANN201
-            return FROZEN_NOW
+        def now(cls, tz: datetime_mod.tzinfo | None = None) -> "_FrozenDatetime":
+            frozen = FROZEN_NOW if tz is not None else FROZEN_NOW.replace(tzinfo=None)
+            return _FrozenDatetime.fromisoformat(frozen.isoformat())
 
-        @classmethod
-        def fromisoformat(cls, s: str) -> datetime:  # noqa: ANN201
-            return datetime.fromisoformat(s)
-
+    monkeypatch.setattr(datetime_mod, "datetime", _FrozenDatetime)
     monkeypatch.setattr(output_mod, "datetime", _FrozenDatetime)
     import autoinfo.kb as kb_mod
 
     monkeypatch.setattr(kb_mod, "datetime", _FrozenDatetime)
-    monkeypatch.setattr(kb_mod.datetime, "now", classmethod(lambda cls, tz=None: FROZEN_NOW))  # type: ignore[attr-defined]  # noqa: E501
-    monkeypatch.setattr(output_mod, "date", type("_FrozenDate", (), {"today": classmethod(lambda cls: FROZEN_TODAY)}))  # type: ignore[attr-defined]  # noqa: E501
+    monkeypatch.setattr(
+        output_mod,
+        "date",
+        type("_FrozenDate", (), {"today": classmethod(lambda cls: FROZEN_TODAY)}),
+    )  # noqa: E501
 
 
 def _active_source_configs() -> list[SourceConfig]:
@@ -219,7 +233,11 @@ class TestSelectStorySet:
         entries = [_entry(i) for i in range(1, 6)]
         store = _store(entries)
         set_entries, (date_from, date_to), was_empty = _select_story_set(
-            store, "tech-ai-developer", period="weekly", product="digest", query_limit=200,
+            store,
+            "tech-ai-developer",
+            period="weekly",
+            product="digest",
+            query_limit=200,
         )
         assert store.list_entries.call_args.kwargs["date_from"] == date_from
         assert store.list_entries.call_args.kwargs["limit"] == 200
@@ -237,7 +255,11 @@ class TestSelectStorySet:
         digest's never-an-empty-shell relaxation)."""
         store = _store([])
         set_entries, _, was_empty = _select_story_set(
-            store, "tech-ai-developer", period="weekly", product="digest", query_limit=200,
+            store,
+            "tech-ai-developer",
+            period="weekly",
+            product="digest",
+            query_limit=200,
         )
         assert was_empty is True
         assert set_entries == []
@@ -331,7 +353,9 @@ class TestDigestPresentationCoherence:
         ):
             generate_digest(domain="tech-ai-developer", period="weekly")
             generate_presentation(
-                domain="tech-ai-developer", topic="AI", allow_empty=True,
+                domain="tech-ai-developer",
+                topic="AI",
+                allow_empty=True,
             )
 
         def _hosts_from_prompt(prompt: str) -> set[str]:
@@ -358,11 +382,13 @@ class TestDigestPresentationCoherence:
         _freeze_datetime(monkeypatch)
         in_week = [_entry(i) for i in range(1, 6)]
         old_entry = dict(_entry(1))
-        old_entry.update({
-            "entry_id": "tech-e-old",
-            "title": "AI funding round old: stale inference costs",
-            "collected_at": "2026-07-01T10:00:00Z",
-        })
+        old_entry.update(
+            {
+                "entry_id": "tech-e-old",
+                "title": "AI funding round old: stale inference costs",
+                "collected_at": "2026-07-01T10:00:00Z",
+            }
+        )
         entries = in_week + [old_entry]
         captured: dict[str, str] = {}
 
@@ -379,7 +405,9 @@ class TestDigestPresentationCoherence:
             ),
         ):
             generate_presentation(
-                domain="tech-ai-developer", topic="AI", allow_empty=True,
+                domain="tech-ai-developer",
+                topic="AI",
+                allow_empty=True,
             )
         assert "stale inference costs" not in captured["prompt"]
         assert "AI funding round 1" in captured["prompt"]
@@ -402,14 +430,15 @@ class TestPresentationTopicFallback:
         # the drift filter; the shared set has 5 entries, all topic-bearing.
         entries = [_entry(i) for i in range(1, 6)]
         shared_set, _dr, _we = _select_story_set(
-            _store(entries), "tech-ai-developer", period="weekly",
-            product="presentation", query_limit=5000,
+            _store(entries),
+            "tech-ai-developer",
+            period="weekly",
+            product="presentation",
+            query_limit=5000,
         )
         assert len(shared_set) == 5
         # All carry the topic term "AI" in title/summary → filter is a no-op.
-        assert all(
-            "ai" in (e["title"] + " " + e["summary"]).lower() for e in shared_set
-        )
+        assert all("ai" in (e["title"] + " " + e["summary"]).lower() for e in shared_set)
 
     def test_topic_fallback_preserves_entries_first_50_and_not_drifted_heavy(
         self, monkeypatch: pytest.MonkeyPatch
@@ -471,11 +500,12 @@ class TestPresentationTopicFallback:
             ),
         ):
             generate_presentation(
-                domain="tech-ai-developer", topic="AI", allow_empty=True,
+                domain="tech-ai-developer",
+                topic="AI",
+                allow_empty=True,
             )
         entry_count = sum(
-            1 for line in captured["prompt"].splitlines()
-            if line.startswith("- AI funding round")
+            1 for line in captured["prompt"].splitlines() if line.startswith("- AI funding round")
         )
         assert entry_count == 10
         assert "AI funding round 15" not in captured["prompt"]
@@ -496,11 +526,13 @@ class TestReportSharedSet:
         _freeze_datetime(monkeypatch)
         in_week = [_entry(i) for i in range(1, 6)]
         old_entry = dict(_entry(1))
-        old_entry.update({
-            "entry_id": "tech-e-report-old",
-            "title": "AI funding round old: stale inference costs",
-            "collected_at": "2026-07-01T10:00:00Z",
-        })
+        old_entry.update(
+            {
+                "entry_id": "tech-e-report-old",
+                "title": "AI funding round old: stale inference costs",
+                "collected_at": "2026-07-01T10:00:00Z",
+            }
+        )
         entries = in_week + [old_entry]
         captured: dict[str, int] = {}
 
@@ -527,7 +559,9 @@ class TestReportSharedSet:
                 },
             ),
             patch.object(
-                LLMExtractor, "extract", return_value=MagicMock(),
+                LLMExtractor,
+                "extract",
+                return_value=MagicMock(),
             ),
         ):
             generate_report(domain="tech-ai-developer", format="markdown")

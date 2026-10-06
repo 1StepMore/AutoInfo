@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.10](https://github.com/1StepMore/AutoInfo/compare/v1.17.9...v1.17.10) (2026-10-06)
+
+
+### Tests
+
+* **output:** freeze the clock that decides entry staleness ([#498](https://github.com/1StepMore/AutoInfo/issues/498)) ([#499](https://github.com/1StepMore/AutoInfo/issues/499)) ([82fd00e](https://github.com/1StepMore/AutoInfo/commit/82fd00ea4d3c78ed0c48d2fb734994300e61aaae))
+
 ## [1.17.9](https://github.com/1StepMore/AutoInfo/compare/v1.17.8...v1.17.9) (2026-10-05)
 
 

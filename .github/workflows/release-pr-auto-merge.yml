@@ -77,13 +77,26 @@
 #
 # No event can replace the poll: release-please's PR events never fire (see
 # above) and a token-attributed merge fires no `push` either, so neither
-# `pull_request` nor `push` is available. Hence the `reconcile-release-tag` job
-# below, which compares the manifest version on the default branch against the
-# published `v<version>` releases and dispatches `Release` when one is missing.
-# That asks the API a question instead of waiting for a signal, so it is immune
-# to the suppression above and idempotent once the tag exists. It reads the
-# manifest at `ref=main` over the contents API — default-branch content, never
-# PR-supplied — so it adds no checkout and preserves the security model below.
+# `pull_request` nor `push` can be used on the fast path. Hence the
+# `reconcile-release-tag` job below, which compares the manifest version on the
+# default branch against the published `v<version>` releases and dispatches
+# `Release` when one is missing. That asks the API a question instead of waiting
+# for a signal, so it is immune to the suppression above and idempotent once the
+# tag exists. It reads the manifest at `ref=main` over the contents API —
+# default-branch content, never PR-supplied — so it adds no checkout and
+# preserves the security model below.
+#
+# The job is triggered three ways because no single one is sufficient. The gap is
+# that a token-attributed release merge fires NO event at all, so the merge
+# moment itself is invisible and any later signal is only a proxy for it:
+#   - `push` to main: reliable for every human- or agent-authored push, which is
+#     the common case, but silent for the token merge that needs the heal.
+#   - `schedule`: covers the token-merge case, but cron is best-effort and was
+#     measured dropping ~3 consecutive ticks — v1.17.9 sat untagged for ~33 min
+#     until a manual dispatch, so the timer alone cannot be the safety net.
+#   - `workflow_dispatch`: the deliberate manual backstop.
+# The residual hole is narrow: if a token-attributed release merge is the
+# repository's last event and cron happens to be skipping, a human dispatches.
 
 name: Release PR auto-merge
 on:
@@ -94,6 +107,8 @@ on:
     branches: [main]
   schedule:
     - cron: "17,47 * * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -244,8 +259,9 @@ jobs:
 
   reconcile-release-tag:
     # Excluded from the workflow_run path on purpose: that path already tries to cut
-    # the tag, and two dispatchers would race each other.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # the tag, and two dispatchers would race each other. `push` is the reliable
+    # complement to `schedule` — see the header note on cron reliability.
+    if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       GH_REPO: ${{ github.repository }}

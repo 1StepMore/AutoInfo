@@ -197,12 +197,40 @@ def test_reconcile_job_exists_and_is_reachable() -> None:
     """Without a non-`workflow_run` trigger the safety net can never fire.
 
     #494's tag was lost because every signal the fast path can watch arrives
-    before the merge does. The reconciler only helps if something triggers it
-    on a timer or on demand, so both triggers are pinned individually.
+    before the merge does. The reconciler only helps if something triggers it, so
+    each trigger is pinned individually.
     """
     triggers = _load(AUTO_MERGE)["on"]
-    assert "schedule" in triggers, "no timed trigger, so a lost tag is never retried"
     assert "workflow_dispatch" in triggers, "no manual retry path for a lost tag"
+    assert "schedule" in triggers, "covers the token-merge case, which fires no push"
+
+
+def test_reconcile_also_runs_on_push_because_cron_is_unreliable() -> None:
+    """`schedule` alone was measured dropping ~3 consecutive ticks.
+
+    v1.17.9's release PR merged as a token-attributed merge, which fires no push
+    event, so the untagged state survived until a manual dispatch ~33 min later.
+    `push` to main fires reliably for human- and agent-authored pushes, which
+    makes it the complement the timer cannot be. If this regresses to `schedule`
+    only, the safety net silently depends on best-effort cron.
+    """
+    triggers = _load(AUTO_MERGE)["on"]
+    assert "push" in triggers, "no reliable complement to best-effort cron"
+    assert triggers["push"]["branches"] == ["main"], "push must be main-only"
+    assert "push" in str(_reconcile_job()["if"]), "the push trigger must reach the reconciler"
+
+
+def test_fast_path_never_runs_on_push() -> None:
+    """A `push` event must not drag the fast path in with it.
+
+    The fast path approves runs and enables auto-merge on a release PR. Its guard
+    tests `workflow_run.conclusion`, which is null on `push`, so the job is
+    skipped — that guard is now load-bearing for a second event type and must not
+    be relaxed into a bare `success()` check.
+    """
+    job_if = str(_auto_merge_job()["if"])
+    assert "workflow_run.conclusion == 'success'" in job_if
+    assert "always" not in job_if
 
 
 def test_reconcile_job_does_not_race_the_fast_path() -> None:

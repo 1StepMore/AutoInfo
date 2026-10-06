@@ -197,12 +197,40 @@ def test_reconcile_job_exists_and_is_reachable() -> None:
     """Without a non-`workflow_run` trigger the safety net can never fire.
 
     #494's tag was lost because every signal the fast path can watch arrives
-    before the merge does. The reconciler only helps if something triggers it
-    on a timer or on demand, so both triggers are pinned individually.
+    before the merge does. The reconciler only helps if something triggers it, so
+    each trigger is pinned individually.
     """
     triggers = _load(AUTO_MERGE)["on"]
-    assert "schedule" in triggers, "no timed trigger, so a lost tag is never retried"
     assert "workflow_dispatch" in triggers, "no manual retry path for a lost tag"
+    assert "schedule" in triggers, "covers the token-merge case, which fires no push"
+
+
+def test_reconcile_also_runs_on_push_because_cron_is_unreliable() -> None:
+    """`schedule` alone was measured dropping ~3 consecutive ticks.
+
+    v1.17.9's release PR merged as a token-attributed merge, which fires no push
+    event, so the untagged state survived until a manual dispatch ~33 min later.
+    `push` to main fires reliably for human- and agent-authored pushes, which
+    makes it the complement the timer cannot be. If this regresses to `schedule`
+    only, the safety net silently depends on best-effort cron.
+    """
+    triggers = _load(AUTO_MERGE)["on"]
+    assert "push" in triggers, "no reliable complement to best-effort cron"
+    assert triggers["push"]["branches"] == ["main"], "push must be main-only"
+    assert "push" in str(_reconcile_job()["if"]), "the push trigger must reach the reconciler"
+
+
+def test_fast_path_never_runs_on_push() -> None:
+    """A `push` event must not drag the fast path in with it.
+
+    The fast path approves runs and enables auto-merge on a release PR. Its guard
+    tests `workflow_run.conclusion`, which is null on `push`, so the job is
+    skipped — that guard is now load-bearing for a second event type and must not
+    be relaxed into a bare `success()` check.
+    """
+    job_if = str(_auto_merge_job()["if"])
+    assert "workflow_run.conclusion == 'success'" in job_if
+    assert "always" not in job_if
 
 
 def test_reconcile_job_does_not_race_the_fast_path() -> None:
@@ -237,6 +265,61 @@ def test_reconcile_dispatches_release_when_the_pinned_version_is_unpublished() -
     body = str(_reconcile_job()["steps"][0]["run"])
     assert "gh release view" in body, "no existing-release check, so it would always dispatch"
     assert "gh workflow run release-please.yml" in body
+
+
+def _step(job: dict[str, Any], name_fragment: str) -> dict[str, Any]:
+    steps = cast(list[dict[str, Any]], job["steps"])
+    for step in steps:
+        if name_fragment in str(step["name"]):
+            return step
+    raise AssertionError(f"no step matching {name_fragment!r} in {[s['name'] for s in steps]}")
+
+
+# ---------------------------------------------------------------------------
+# release-pr-auto-merge.yml -- bot-approval visibility (#494 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_approval_failure_cannot_skip_the_tag_cut() -> None:
+    """`GITHUB_TOKEN` cannot always approve a bot PR's runs.
+
+    Observed 2026-10-06: the approval silently failed for release PR #496 and its
+    4 runs sat in `action_required` for ~12.6h, blocking the merge. A plain
+    `exit 1` here would be worse than the status quo -- it would skip the
+    auto-merge enable and the tag cut below. So the step is non-fatal and the
+    outcome is asserted separately.
+    """
+    approve = _step(_auto_merge_job(), "Approve workflow runs")
+    # `yaml.BaseLoader` (used by `_load`) yields every scalar as a string.
+    assert approve["continue-on-error"] in (True, "true")
+
+
+def test_unapproved_runs_fail_the_job_and_name_the_pr() -> None:
+    """The failure must be loud and actionable, not a warning nobody reads.
+
+    #494's lesson applied to approval: `::warning::` + exit 0 turned a blocked
+    release into a green run. The assertion is `always()` so it still reports when
+    the tag cut timed out, which is the usual shape of this failure.
+    """
+    step = _step(_auto_merge_job(), "Assert no release run is left waiting")
+    assert "always()" in str(step["if"])
+    body = str(step["run"])
+    assert "::error::" in body
+    assert "${PR_NUMBER}" in body, "the error must name the PR a human has to unblock"
+    assert "exit 1" in body
+
+
+def test_reconcile_surfaces_a_release_pr_stuck_awaiting_approval() -> None:
+    """Nothing retries approval after the fast path fails, so the timer must.
+
+    Without this, a release PR blocked in `action_required` is invisible: the
+    reconciler only cared about the tag, and the fast path that would have
+    noticed had already failed.
+    """
+    body = str(_reconcile_job()["steps"][0]["run"])
+    assert "action_required" in body, "the reconciler must look for unapproved runs"
+    assert "release-please--branches--" in body, "it must only consider release PRs"
+    assert "::error::" in body
 
 
 def test_expired_poll_fails_loudly_instead_of_passing() -> None:

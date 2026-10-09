@@ -76,6 +76,36 @@ cd <repo>
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 
+### 2026-10-10 夜间复跑（在最新 main `1ff7bd41` 上）
+
+`nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**。断言：19 项 / 扫描 57 文件 / 失败 0。
+
+| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |
+|:---|---:|:---|--:|--:|:---|
+| ai-commercial | 50 | 4/4 | 13 | 0 | ✅ 达标 |
+| b2b | 21 | 7/8 | 1 | 0 | ✅ 达标 |
+| english-learning | 44 | 2/2 | 4 | 0 | ✅ 达标 |
+| financial-intelligence | 208 | 5/11 | 11 | 0 | ✅ 达标 |
+| financial-news | 21 | 5/10 | 2 | 0 | ✅ 达标 |
+| french-learning | 19 | 2/2 | 1 | 0 | ✅ 达标 |
+| gaming | 41 | 8/10 | 1 | 0 | ✅ 达标 |
+| general-news | 21 | 12/24 | 10 | 0 | ✅ 达标 |
+| hindi-learning | 12 | 1/1 | 1 | 0 | ✅ 达标 |
+| italian-learning | 20 | 3/3 | 1 | 0 | ✅ 达标 |
+| korean-learning | 15 | 2/2 | 1 | 0 | ✅ 达标 |
+| language-learning | 21 | 3/3 | 1 | 0 | ✅ 达标 |
+| legal-compliance | 31 | 3/7 | 1 | 0 | ✅ 达标 |
+| medical-research | 96 | 4/7 | 24 | 0 | ✅ 达标 |
+| online-education | 21 | 5/10 | 9 | 0 | ✅ 达标 |
+| online-video | 21 | 8/11 | 2 | 0 | ✅ 达标 |
+| portuguese-learning | 20 | 1/1 | 1 | 0 | ✅ 达标 |
+| retail | 19 | 5/6 | 1 | 0 | ✅ 达标 |
+| russian-learning | 11 | 3/3 | 1 | 0 | ✅ 达标 |
+| spanish-learning | 20 | 1/1 | 1 | 0 | ✅ 达标 |
+| tech-ai-developer | 11 | 12/17 | 4 | 0 | ✅ 达标 |
+
+**读法**：2026-10-02 记录的 4 个缺口（hindi-learning / legal-compliance / online-education / russian-learning）**均已闭合** —— legal-compliance 产物文件 0 → 1，online-education 语料 1 → 21，russian-learning 7 → 11，hindi-learning 断言失败 1 → 0。`已跑源/总源` 里的差额（如 general-news 12/24、financial-intelligence 5/11）是**配置了但未跑**的源；DoD ① 只要求每域 `total_runs > 0` 且 `total_entries ≥ 10`，故不构成域级差距，**记账、不计入本轮差距**。机器判据只覆盖「机器可判的差距归零」，**最终裁决仍由 owner 保留**（见【冻结区】）。
+
 `4 / 21 个域仍有差距`。断言：19 项 / 扫描 56 文件 / 失败 1（P0 1 + P1 0，见摩擦账本 #444）。
 
 | 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |
@@ -114,6 +144,7 @@ cd <repo>
 ### 已完成（agent 追加）
 
 - 2026-10-02：17/21 域达标（见上表）；korean-learning 换源 #442/PR #443。
+- 2026-10-10：**21/21 域达标（差距归零）**，10-02 遗留的 4 个缺口全部闭合；`nightly_gap.py` exit 0。
 
 ---
 

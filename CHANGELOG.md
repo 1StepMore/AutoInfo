@@ -2,6 +2,24 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.11](https://github.com/1StepMore/AutoInfo/compare/v1.17.10...v1.17.11) (2026-10-11)
+
+
+### Documentation
+
+* correct CLI group count, scenario split, and remove duplicated blocks ([#507](https://github.com/1StepMore/AutoInfo/issues/507)) ([a40f197](https://github.com/1StepMore/AutoInfo/commit/a40f197d9ca54aafa7515b5df4dc70f938fc8666))
+* **counts:** align test-suite count with pytest collection ([#505](https://github.com/1StepMore/AutoInfo/issues/505)) ([7ad2a69](https://github.com/1StepMore/AutoInfo/commit/7ad2a69055b6d22f6a4c3830a750a6392726b096))
+
+
+### Tests
+
+* **fixtures:** make freshness-sensitive KB entries date-relative ([#506](https://github.com/1StepMore/AutoInfo/issues/506)) ([f7cc541](https://github.com/1StepMore/AutoInfo/commit/f7cc541eb549951aa52259958872a09d4de9b51e))
+
+
+### Miscellaneous Chores
+
+* **nightly:** 2026-10-10 夜间循环活区更新（差距归零） ([#503](https://github.com/1StepMore/AutoInfo/issues/503)) ([307139b](https://github.com/1StepMore/AutoInfo/commit/307139b82aabf06d6b0f52045f8799cc67438932))
+
 ## [1.17.10](https://github.com/1StepMore/AutoInfo/compare/v1.17.9...v1.17.10) (2026-10-06)
 
 

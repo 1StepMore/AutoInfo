@@ -288,7 +288,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ ~5726 tests across 100+ test files (includes new collector tests) |
+| Tests | ✅ ~6146 tests across 100+ test files (includes new collector tests) |
 | MCP tools | ✅ 149 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 31 command groups |
@@ -434,7 +434,7 @@ Stripe billing integration and the PROCESSED product template system (8 Jinja2 p
 | Product delivery | ✅ RAW (API feeds, webhook streams, bulk export); ✅ PROCESSED (scheduled digests, thematic reports, alert streams) |
 | Delivery channels | 13 channels ✅ (SMTP, Webhook, REST API, File Export, Discord, Telegram, WeChat Work, WeChat OA, DingTalk, FeiShu, RSS, Social Publish, Push). Email as mandatory fallback. |
 | Subscription/billing | ✅ Fully implemented — Stripe webhook endpoint (signature verification), stripe-mock dev setup, freemium gating, usage-based billing. Full Stripe lifecycle from checkout to webhook event dispatch. |
-| Tests | ~5726 (includes new collector tests) |
+| Tests | ~6146 (includes new collector tests) |
 | Demo domains | 21 with curated sources |
 | **🔴 v1.6+ residual gaps** | **1 low-effort fix** (relation-type write-path validation — see above) |
 | **🟢 Consumer-facing output gaps** | **0 items** (all six delivered — see above) |

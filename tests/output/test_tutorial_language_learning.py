@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -24,6 +25,12 @@ from autoinfo.output import (
     _render_tutorial_template,
     generate_tutorial,
 )
+
+
+def _fresh_collected_at() -> str:
+    """Relative to now: a fixed literal ages past the freshness threshold and
+    turns these entry fixtures into a StaleSourceError time bomb."""
+    return (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 
 def _plain_prompt(lang_learning: bool = False, target_language: str = "") -> str:
@@ -313,7 +320,7 @@ class TestTutorialExcludesForeignLanguage:
                 "source_type": "rss",
                 "source_platform": "rss",
                 "language": "en",
-                "collected_at": "2026-08-25T00:00:00+00:00",
+                "collected_at": _fresh_collected_at(),
                 "summary": "The Spanish conjunction 'y'.",
                 "tags": "[]",
                 "quality_tier": 1,
@@ -328,7 +335,7 @@ class TestTutorialExcludesForeignLanguage:
                 "source_type": "rss",
                 "source_platform": "rss",
                 "language": "en",
-                "collected_at": "2026-08-25T00:00:00+00:00",
+                "collected_at": _fresh_collected_at(),
                 "summary": "Tragedy in a hospital nursery.",
                 "tags": "[]",
                 "quality_tier": 1,

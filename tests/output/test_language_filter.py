@@ -8,6 +8,7 @@ whose detected ``language`` doesn't match — no zh/en interleave.
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -28,6 +29,13 @@ def _as_text(result: str | DeliveryOutput) -> str:
     if isinstance(result, DeliveryOutput):
         return result.output
     return str(result)
+
+
+# Relative to now, never fixed literals: the domain freshness threshold moves
+# with the calendar, so a hardcoded date quietly turns these fixtures into
+# StaleSourceError time bombs. Dates that must read as OLD stay literal.
+_FRESH_DATE = (date.today() - timedelta(days=1)).isoformat()
+_FRESH_ISO = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 # ---------------------------------------------------------------------------
 # _normalize_lang / _filter_entries_by_language
@@ -71,7 +79,13 @@ class TestFilterEntriesByLanguage:
         assert [e["title"] for e in kept] == ["item-zh", "item-zh-hans"]
 
     def test_drops_unknown_language_when_filter_active(self) -> None:
-        entries = [self._entry("", ), {"language": None, "title": "none"}, self._entry("en")]
+        entries = [
+            self._entry(
+                "",
+            ),
+            {"language": None, "title": "none"},
+            self._entry("en"),
+        ]
         kept = _filter_entries_by_language(entries, "en")
         assert [e["title"] for e in kept] == ["item-en"]
 
@@ -111,7 +125,7 @@ _ZHRISH_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "zh",
-        "collected_at": "2026-08-17",
+        "collected_at": _FRESH_DATE,
         "summary": "中文摘要内容",
         "tags": "[]",
         "quality_tier": 1,
@@ -126,7 +140,7 @@ _ZHRISH_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "en",
-        "collected_at": "2026-08-17",
+        "collected_at": _FRESH_DATE,
         "summary": "English summary content",
         "tags": "[]",
         "quality_tier": 1,
@@ -147,7 +161,7 @@ _ZH_ONLY_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "zh",
-        "collected_at": "2026-08-17",
+        "collected_at": _FRESH_DATE,
         "summary": "中文摘要内容",
         "tags": "[]",
         "quality_tier": 1,
@@ -162,7 +176,7 @@ _ZH_ONLY_ENTRIES = [
         "source_type": "web",
         "source_platform": "web",
         "language": "vi",
-        "collected_at": "2026-08-17",
+        "collected_at": _FRESH_DATE,
         "summary": "Tóm tắt tiếng Việt",
         "tags": "[]",
         "quality_tier": 1,
@@ -184,10 +198,14 @@ class TestDigestLanguageFilter:
             "recommendations": [],
         }
         mock_kb_store.return_value = _digest_mock_store(_ZHRISH_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="medical-research", period="weekly", format="markdown",
-            language="zh",
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="medical-research",
+                period="weekly",
+                format="markdown",
+                language="zh",
+            )
+        )
         # The zh entry is retained; the en summary/content is not rendered.
         assert "中文 IVF 突破" in body
         assert "English IVF breakthrough" not in body
@@ -204,9 +222,9 @@ class TestDigestLanguageFilter:
             "recommendations": [],
         }
         mock_kb_store.return_value = _digest_mock_store(_ZHRISH_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="language-learning", period="weekly", format="markdown"
-        ))
+        body = _as_text(
+            generate_digest(domain="language-learning", period="weekly", format="markdown")
+        )
         assert "中文 IVF 突破" in body
         assert "English IVF breakthrough" in body
 
@@ -252,7 +270,7 @@ class TestDigestLanguageWindowFallback:
             "key_findings": [],
             "recommendations": [],
         }
-        en_in_window = self._entry("en-1", "en", "English world news", "2026-08-25T00:00:00+00:00")
+        en_in_window = self._entry("en-1", "en", "English world news", _FRESH_ISO)
         zh_out_of_window = self._entry("zh-1", "zh", "中文综合新闻", "2025-06-05T00:00:00+00:00")
 
         store = MagicMock()
@@ -265,10 +283,15 @@ class TestDigestLanguageWindowFallback:
         store.list_entries.side_effect = _list_entries
         mock_kb_store.return_value = store
 
-        body = _as_text(generate_digest(
-            domain="general-news", period="weekly", format="markdown",
-            language="zh", include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="general-news",
+                period="weekly",
+                format="markdown",
+                language="zh",
+                include_stale=True,
+            )
+        )
         assert "中文综合新闻" in body, "out-of-window zh entry must render via the relaxed window"
         assert "English world news" not in body, "language filter must stay active"
 
@@ -284,7 +307,7 @@ class TestDigestLanguageWindowFallback:
             "key_findings": [],
             "recommendations": [],
         }
-        en_entry = self._entry("en-2", "en", "English other", "2026-08-25T00:00:00+00:00")
+        en_entry = self._entry("en-2", "en", "English other", _FRESH_ISO)
         zh_entry = self._entry("zh-2", "zh", "中文另一条", "2025-06-05T00:00:00+00:00")
 
         store = MagicMock()
@@ -297,10 +320,15 @@ class TestDigestLanguageWindowFallback:
         store.list_entries.side_effect = _list_entries
         mock_kb_store.return_value = store
 
-        body = _as_text(generate_digest(
-            domain="general-news", period="weekly", format="markdown",
-            language="zh", include_stale=True,
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="general-news",
+                period="weekly",
+                format="markdown",
+                language="zh",
+                include_stale=True,
+            )
+        )
         assert "中文另一条" in body
         assert "English other" not in body
 
@@ -315,10 +343,14 @@ class TestReportLanguageFilter:
         mock_kb.return_value = _digest_mock_store(_ZHRISH_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
-        body = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown",
-            language="zh",
-        ))
+        body = _as_text(
+            generate_report(
+                domain="medical-research",
+                period="weekly",
+                format="markdown",
+                language="zh",
+            )
+        )
         assert "中文 IVF 突破" in body
         assert "English IVF breakthrough" not in body
 
@@ -345,23 +377,17 @@ class TestResolveEffectiveLanguageSeed:
     def test_config_present_key_absent_uses_seed(self, tmp_path: Path) -> None:
         # b2b's demo seed declares default_language: en — the fallback engages
         # and resolves "en" (issue #8 mechanism alive for en-seeded domains).
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: b2b\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: b2b\n    active: true\n")
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
             assert _resolve_effective_language("", "b2b") == "en"
 
     # --- (a2) ai-commercial seed is bilingual (issue #190/#193) --------------
-    def test_config_present_key_absent_ai_commercial_seed_bilingual(
-        self, tmp_path: Path
-    ) -> None:
+    def test_config_present_key_absent_ai_commercial_seed_bilingual(self, tmp_path: Path) -> None:
         # Issue #190: ai-commercial is a bilingual domain — its demo seed
         # default_language is "" (no forced language) so the 36kr Chinese
         # high-score news is NOT dropped.  The seed fallback must resolve ""
         # (not the pre-#190 "en").
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: ai-commercial\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: ai-commercial\n    active: true\n")
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
             assert _resolve_effective_language("", "ai-commercial") == ""
 
@@ -369,7 +395,7 @@ class TestResolveEffectiveLanguageSeed:
     def test_explicit_empty_language_wins_over_seed(self, tmp_path: Path) -> None:
         cfg_path = _write_tmp_config(
             tmp_path,
-            "  - name: ai-commercial\n    default_language: \"\"\n    active: true\n",
+            '  - name: ai-commercial\n    default_language: ""\n    active: true\n',
         )
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
             assert _resolve_effective_language("", "ai-commercial") == ""
@@ -385,14 +411,9 @@ class TestResolveEffectiveLanguageSeed:
 
     # --- (d) cross-domain returns "" before any config/seed read -------------
     def test_cross_domain_never_seeds(self, tmp_path: Path) -> None:
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: ai-commercial\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: ai-commercial\n    active: true\n")
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
-            assert (
-                _resolve_effective_language("", "ai-commercial", cross_domain=True)
-                == ""
-            )
+            assert _resolve_effective_language("", "ai-commercial", cross_domain=True) == ""
 
     # --- (e) no config file at all -> "" (no seeding on a missing config) ----
     def test_no_config_file_returns_empty(self) -> None:
@@ -401,9 +422,7 @@ class TestResolveEffectiveLanguageSeed:
 
     # --- (f) unknown domain, config present, key absent -> no seed -----------
     def test_unknown_domain_no_seed(self, tmp_path: Path) -> None:
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: ai-commercial\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: ai-commercial\n    active: true\n")
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
             assert _resolve_effective_language("", "unknown-domain") == ""
 
@@ -486,16 +505,17 @@ class TestEnSeedEmptyAfterFilter:
     @patch("autoinfo.output._group_by_theme")
     @patch("autoinfo.output._generate_executive_summary")
     def test_full_path_zero_kept_with_gates_blocks(
-        self, mock_synthesis: MagicMock, mock_group: MagicMock, mock_kb: MagicMock,
+        self,
+        mock_synthesis: MagicMock,
+        mock_group: MagicMock,
+        mock_kb: MagicMock,
         tmp_path: Path,
     ) -> None:
         # zh/vi-only KB (zero en) + a config file that EXISTS and declares
         # b2b WITHOUT a default_language key: the seed "en" filter drops every
         # entry, so the empty-entries branch runs.  With gates passed,
         # _apply_min_content_guard forces delivery_blocked=True.
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: b2b\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: b2b\n    active: true\n")
         mock_kb.return_value = _digest_mock_store(_ZH_ONLY_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
@@ -515,7 +535,10 @@ class TestEnSeedEmptyAfterFilter:
     @patch("autoinfo.output._group_by_theme")
     @patch("autoinfo.output._generate_executive_summary")
     def test_full_path_zero_kept_no_gates_returns_empty_shell(
-        self, mock_synthesis: MagicMock, mock_group: MagicMock, mock_kb: MagicMock,
+        self,
+        mock_synthesis: MagicMock,
+        mock_group: MagicMock,
+        mock_kb: MagicMock,
         tmp_path: Path,
     ) -> None:
         # Same seed-en scenario, but WITHOUT delivery_gate_configs (the CLI/MCP
@@ -523,9 +546,7 @@ class TestEnSeedEmptyAfterFilter:
         # string — _apply_min_content_guard is only invoked when gates are
         # passed (the guard call sits inside the ``delivery_gate_configs is
         # not None`` conditional in generate_report).
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: b2b\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: b2b\n    active: true\n")
         mock_kb.return_value = _digest_mock_store(_ZH_ONLY_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
@@ -564,7 +585,7 @@ class TestLanguageCollapseGuardIssue53:
             "source_type": "rss",
             "source_platform": "rss",
             "language": lang,
-            "collected_at": "2026-08-25T00:00:00+00:00",
+            "collected_at": _FRESH_ISO,
             "summary": f"summary-{eid}",
             "tags": "[]",
             "quality_tier": 1,
@@ -603,16 +624,17 @@ class TestLanguageCollapseGuardIssue53:
     @patch("autoinfo.output._call_llm_for_digest")
     @patch("autoinfo.output._seed_domain_default_language", return_value="zh")
     def test_digest_stale_zh_seed_en_data_never_empty_shell(
-        self, mock_seed: MagicMock, mock_llm: MagicMock, mock_kb_store: MagicMock,
+        self,
+        mock_seed: MagicMock,
+        mock_llm: MagicMock,
+        mock_kb_store: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Config declares the domain WITHOUT ``default_language`` so the seed
         fallback resolves ``zh``; the corpus is English — the digest must ship
         the en corpus (fall back unfiltered), never an empty/near-empty shell
         (backup-repo #53 evidence: legal/general news collapsed to 1 entry)."""
-        cfg_path = _write_tmp_config(
-            tmp_path, "  - name: general-news\n    active: true\n"
-        )
+        cfg_path = _write_tmp_config(tmp_path, "  - name: general-news\n    active: true\n")
         entries = [self._en_entry(f"en-{i}") for i in range(1, 6)]
         mock_llm.return_value = {
             "executive_summary": "Synthesis.",
@@ -621,9 +643,13 @@ class TestLanguageCollapseGuardIssue53:
         }
         mock_kb_store.return_value = _digest_mock_store(entries)
         with patch("autoinfo.output.get_config_path", return_value=cfg_path):
-            body = _as_text(generate_digest(
-                domain="general-news", period="weekly", format="markdown",
-            ))
+            body = _as_text(
+                generate_digest(
+                    domain="general-news",
+                    period="weekly",
+                    format="markdown",
+                )
+            )
         assert "English news en-1" in body, (
             "en corpus must survive a stale zh seed (anti-collapse fallback)"
         )

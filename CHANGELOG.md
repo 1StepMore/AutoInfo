@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.12](https://github.com/1StepMore/AutoInfo/compare/v1.17.11...v1.17.12) (2026-10-11)
+
+
+### Documentation
+
+* restore the CLI group count to the repo registered_groups definition ([#508](https://github.com/1StepMore/AutoInfo/issues/508)) ([9b0f7af](https://github.com/1StepMore/AutoInfo/commit/9b0f7af3c648638efebdaa371753fb16ac7cfbc5))
+
+
+### Tests
+
+* **freshness:** freeze expiring fixture dates and guard against new ones ([#509](https://github.com/1StepMore/AutoInfo/issues/509)) ([7d6a5b4](https://github.com/1StepMore/AutoInfo/commit/7d6a5b4dea1844afa115d31daf094dfb0e81a29d))
+
 ## [1.17.11](https://github.com/1StepMore/AutoInfo/compare/v1.17.10...v1.17.11) (2026-10-11)
 
 

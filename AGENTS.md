@@ -329,7 +329,7 @@ Key counts the agent must know without opening README:
 | Fact | Value |
 |------|-------|
 | MCP tools | **149 tools across 35 categories** |
-| CLI command groups | **32 command groups** |
+| CLI command groups | **31 command groups** |
 | Delivery channels | **13 channels** |
 
 | Validation scenarios | **182 scenarios** (86 functional + 96 regression) |

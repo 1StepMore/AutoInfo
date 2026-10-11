@@ -22,6 +22,7 @@ import pytest
 
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult
+from tests._freshness import fresh_date, fresh_iso
 
 # ===================================================================
 # Fixtures
@@ -42,7 +43,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 92.0,
             "tags": '["IVF", "embryo"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-15T10:00:00Z",
+            "collected_at": fresh_iso(89),
         },
         {
             "entry_id": "entry-002",
@@ -54,7 +55,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 78.0,
             "tags": '["neuroplasticity", "development"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-16T10:00:00Z",
+            "collected_at": fresh_iso(88),
         },
         {
             "entry_id": "entry-003",
@@ -66,7 +67,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 85.0,
             "tags": '["neuroplasticity", "adolescent"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-17T10:00:00Z",
+            "collected_at": fresh_iso(87),
         },
     ]
 
@@ -81,8 +82,7 @@ def _make_grouping_result() -> ExtractionResult:
                 {
                     "theme": "IVF & Reproductive Medicine",
                     "description": (
-                        "Advancements in IVF treatment and assisted "
-                        "reproductive technologies."
+                        "Advancements in IVF treatment and assisted reproductive technologies."
                     ),
                     "entry_ids": ["entry-001"],
                 },
@@ -129,7 +129,8 @@ def _make_summary_result(summary_text: str = "") -> ExtractionResult:
         item_id="_report_llm_call",
         title="Executive Summary",
         custom_fields={
-            "executive_summary": summary_text or (
+            "executive_summary": summary_text
+            or (
                 "This report covers three entries across two key themes. "
                 "IVF treatment continues to advance with time-lapse imaging "
                 "improving outcomes. Neuroplasticity research highlights "
@@ -178,25 +179,30 @@ class TestGenerateReport:
         back to the full-domain set instead of rendering an empty shell.  The
         cross-domain path is unaffected."""
         window_only_placeholder = {
-            "entry_id": "draft-ph", "title": "AI-commercial weekly: digest",
-            "summary": "本期核心要点: 占位摘要", "tier": "02-Draft",
+            "entry_id": "draft-ph",
+            "title": "AI-commercial weekly: digest",
+            "summary": "本期核心要点: 占位摘要",
+            "tier": "02-Draft",
             "custom_fields": {"source_ids": ["raw-a"]},
         }
-        real_entries = cast(list[dict[str, Any]], [
-            {
-                "entry_id": "entry-001",
-                "title": "Improved IVF outcomes with time-lapse imaging",
-                "summary": "Time-lapse imaging improves live birth rates in IVF.",
-                "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
-                "source_type": "api",
-                "source_platform": "pubmed",
-                "relevance_score": 92.0,
-                "tags": '["IVF"]',
-                "tier": "01-Raw",
-                "language": "en",
-                "collected_at": "2026-07-15T10:00:00Z",
-            },
-        ])
+        real_entries = cast(
+            list[dict[str, Any]],
+            [
+                {
+                    "entry_id": "entry-001",
+                    "title": "Improved IVF outcomes with time-lapse imaging",
+                    "summary": "Time-lapse imaging improves live birth rates in IVF.",
+                    "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    "source_type": "api",
+                    "source_platform": "pubmed",
+                    "relevance_score": 92.0,
+                    "tags": '["IVF"]',
+                    "tier": "01-Raw",
+                    "language": "en",
+                    "collected_at": fresh_iso(89),
+                },
+            ],
+        )
 
         def _list_entries(domain, **kwargs):
             # window query has date_from; full-domain fallback has none
@@ -214,8 +220,7 @@ class TestGenerateReport:
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
             patch.object(_get_llm_extractor_class(), "extract", mock_extract),
-            patch("autoinfo.output._call_llm_for_report_synthesis",
-                  return_value=""),
+            patch("autoinfo.output._call_llm_for_report_synthesis", return_value=""),
         ):
             mock_store = MagicMock()
             mock_store.list_entries.side_effect = _list_entries
@@ -238,9 +243,7 @@ class TestGenerateReport:
             with pytest.raises(ValueError, match="Unsupported output format"):
                 _call_report("test-domain", format="pdf")
 
-    def test_happy_path_renders_complete_report(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_happy_path_renders_complete_report(self, sample_entries: list[dict[str, Any]]) -> None:
         """Full flow: entries → LLM grouping → template → rendered markdown."""
         mock_extract = MagicMock(
             side_effect=[
@@ -251,9 +254,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -310,9 +311,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -337,9 +336,7 @@ class TestGenerateReport:
         assert "Neuroplasticity in early childhood" in report
         assert "Synaptic pruning" in report
 
-    def test_llm_grouping_exception_falls_back(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_llm_grouping_exception_falls_back(self, sample_entries: list[dict[str, Any]]) -> None:
         """When LLM grouping raises, entries fall back to source-type groups."""
         mock_extract = MagicMock(
             side_effect=[
@@ -350,9 +347,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -382,9 +377,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -414,9 +407,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -446,9 +437,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -474,9 +463,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -493,9 +480,7 @@ class TestGenerateReport:
         assert "Neuroplasticity in early childhood" in report
         assert "Synaptic pruning" in report
 
-    def test_render_with_collection_id(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_render_with_collection_id(self, sample_entries: list[dict[str, Any]]) -> None:
         """``collection_id`` appears in the rendered report metadata."""
         mock_extract = MagicMock(
             side_effect=[
@@ -506,9 +491,7 @@ class TestGenerateReport:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -518,9 +501,7 @@ class TestGenerateReport:
             mock_store.list_entries.return_value = sample_entries
             mock_kb_cls.return_value = mock_store
 
-            report = _call_report(
-                "medical-research", collection_id="col-20260715-abc123"
-            )
+            report = _call_report("medical-research", collection_id="col-20260715-abc123")
 
         assert "col-20260715-abc123" in report
 
@@ -533,9 +514,7 @@ class TestGenerateReport:
 class TestReportTypes:
     """``generate_report(report_type=...)`` — specialized report types."""
 
-    def test_standard_type_is_unchanged(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_standard_type_is_unchanged(self, sample_entries: list[dict[str, Any]]) -> None:
         """``report_type="standard"`` produces same output as omitting the parameter."""
         mock_extract = MagicMock(
             side_effect=[
@@ -546,9 +525,7 @@ class TestReportTypes:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -559,9 +536,7 @@ class TestReportTypes:
             mock_kb_cls.return_value = mock_store
 
             report_default = _call_report("medical-research")
-            report_explicit = _call_report(
-                "medical-research", report_type="standard"
-            )
+            report_explicit = _call_report("medical-research", report_type="standard")
 
         # Both should have same structure
         assert "# Medical Research — Report" in report_default
@@ -571,9 +546,7 @@ class TestReportTypes:
         assert "## Sections" in report_default
         assert "## Sections" in report_explicit
 
-    def test_industry_type_produces_report(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_industry_type_produces_report(self, sample_entries: list[dict[str, Any]]) -> None:
         """``report_type="industry"`` produces a valid structured report."""
         mock_extract = MagicMock(
             side_effect=[
@@ -584,9 +557,7 @@ class TestReportTypes:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -602,9 +573,7 @@ class TestReportTypes:
         assert "## Executive Summary" in report
         assert "## Sections" in report
 
-    def test_competitive_type_produces_report(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_competitive_type_produces_report(self, sample_entries: list[dict[str, Any]]) -> None:
         """``report_type="competitive"`` produces a valid structured report."""
         mock_extract = MagicMock(
             side_effect=[
@@ -615,9 +584,7 @@ class TestReportTypes:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -633,9 +600,7 @@ class TestReportTypes:
         assert "## Executive Summary" in report
         assert "## Sections" in report
 
-    def test_trend_type_produces_report(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_trend_type_produces_report(self, sample_entries: list[dict[str, Any]]) -> None:
         """``report_type="trend"`` produces a valid structured report."""
         mock_extract = MagicMock(
             side_effect=[
@@ -646,9 +611,7 @@ class TestReportTypes:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -677,9 +640,7 @@ class TestReportTypes:
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._call_llm_for_report_synthesis",
                 return_value="",
@@ -689,9 +650,7 @@ class TestReportTypes:
             mock_store.list_entries.return_value = sample_entries
             mock_kb_cls.return_value = mock_store
 
-            report = _call_report(
-                "medical-research", report_type="daily-briefing"
-            )
+            report = _call_report("medical-research", report_type="daily-briefing")
 
         assert "Medical Research" in report
         assert "## Executive Summary" in report
@@ -718,17 +677,13 @@ class TestReportTypes:
         self, sample_entries: list[dict[str, Any]]
     ) -> None:
         """Type-specific prompt text reaches the executive summary LLM call."""
-        mock_extract = MagicMock(
-            side_effect=[_make_grouping_result()]
-        )
+        mock_extract = MagicMock(side_effect=[_make_grouping_result()])
 
         mock_summary = "Custom industry summary."
 
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
-            patch.object(
-                _get_llm_extractor_class(), "extract", mock_extract
-            ),
+            patch.object(_get_llm_extractor_class(), "extract", mock_extract),
             patch(
                 "autoinfo.output._generate_executive_summary",
                 return_value=mock_summary,
@@ -758,7 +713,8 @@ class TestReportTypes:
         with (
             patch("autoinfo.output.KBStore") as mock_kb_cls,
             patch.object(
-                _get_llm_extractor_class(), "extract",
+                _get_llm_extractor_class(),
+                "extract",
                 MagicMock(side_effect=[_make_grouping_result()]),
             ),
             patch(
@@ -801,44 +757,32 @@ class TestReportCli:
     """``autoinfo output report`` CLI command."""
 
     @patch("autoinfo.output.generate_report")
-    def test_report_help(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_help(self, mock_generate: MagicMock) -> None:
         """``--help`` shows expected parameters."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_report")
-    def test_report_missing_domain(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_missing_domain(self, mock_generate: MagicMock) -> None:
         """Missing ``--domain`` shows error."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_report")
-    def test_report_invokes_generate_report(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_invokes_generate_report(self, mock_generate: MagicMock) -> None:
         """``output report --domain X`` calls ``generate_report`` and echoes result."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_report")
-    def test_report_with_collection_id(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_with_collection_id(self, mock_generate: MagicMock) -> None:
         """``--collection-id`` is passed through to ``generate_report``."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_report")
-    def test_report_format_option_passed_through(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_format_option_passed_through(self, mock_generate: MagicMock) -> None:
         """``--format`` is passed through to ``generate_report``."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
     @patch("autoinfo.output.generate_report")
-    def test_report_handles_value_error(
-        self, mock_generate: MagicMock
-    ) -> None:
+    def test_report_handles_value_error(self, mock_generate: MagicMock) -> None:
         """ValueError from ``generate_report`` prints error and exits non-zero."""
         pytest.skip("typer broken on Python 3.14 (inspect.signature eval_str)")
 
@@ -889,24 +833,28 @@ def _parse_report_markdown(content: str) -> dict[str, Any]:
     return _parse_report_markdown(content)
 
 
-GLUED_KF_MD = """\
+GLUED_KF_MD = (
+    """\
 ## Executive Summary
 AI funding and model releases moved this week.
 
 ## Key Findings
-""" + (
-    "- AI Regulation and Safety: rogue-model oversight tightened "
-    "(Source: https://example.com/rogue)"
-    "- Venture Capital and Funding: Series A rounds accelerate "
-    "(Source: https://example.com/vc)"
-    "- Legal and Regulatory Actions: antitrust review opens "
-    "(Source: https://example.com/legal)"
-) + """
+"""
+    + (
+        "- AI Regulation and Safety: rogue-model oversight tightened "
+        "(Source: https://example.com/rogue)"
+        "- Venture Capital and Funding: Series A rounds accelerate "
+        "(Source: https://example.com/vc)"
+        "- Legal and Regulatory Actions: antitrust review opens "
+        "(Source: https://example.com/legal)"
+    )
+    + """
 
 ## Recommendations
 - Monitor regulatory shifts
 - Track funding rounds
 """
+)
 
 
 class TestGluedKeyFindings:
@@ -933,21 +881,18 @@ class TestGluedKeyFindings:
         head = "## Executive Summary\nCoverage summary.\n\n"
         glued_inputs = [
             (
-                head
-                + "## Key Findings\n"
+                head + "## Key Findings\n"
                 "- A: outcome one (Source: https://example.com/a)"
                 "- B: outcome two (Source: https://example.com/b)"
             ),
             (
-                head
-                + "## Key Findings\n"
+                head + "## Key Findings\n"
                 "- first finding with a trailing close paren) and more text "
                 "(Source: https://example.com/x)- second finding "
                 "(Source: https://example.com/y)"
             ),
             (
-                head
-                + "## Key Findings\n"
+                head + "## Key Findings\n"
                 "- 1. first (Source: https://example.com/1)- 2. second "
                 "(Source: https://example.com/2)- 3. third "
                 "(Source: https://example.com/3)"
@@ -976,10 +921,15 @@ class TestFindingSourceDedupe:
 
         env = _get_jinja_env()
         out = env.get_template("report.md.j2").render(
-            title="T", domain="medical-research",
-            generated_at="2026-09-01", executive_summary="S",
+            title="T",
+            domain="medical-research",
+            generated_at=fresh_date(41),
+            executive_summary="S",
             key_findings=[{"text": text, "source_url": source_url}],
-            recommendations=[], sections=[], references=[], source_tier_badge=False,
+            recommendations=[],
+            sections=[],
+            references=[],
+            source_tier_badge=False,
         )
         return out
 

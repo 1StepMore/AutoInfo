@@ -30,6 +30,7 @@ from autoinfo.output import (
     _keyword_topic_labels,
     _merge_theme_groups,
 )
+from tests._freshness import fresh_iso
 
 # The pinned todo-4 honesty marker — asserted byte-for-byte.
 MARKER = "> *This edition groups developments by source*"
@@ -60,7 +61,7 @@ def _entry(i: int) -> dict[str, Any]:
         "relevance_score": 90.0 - (i % 10),
         "tags": "[]",
         "tier": "01-Raw",
-        "collected_at": "2026-07-15T10:00:00Z",
+        "collected_at": fresh_iso(89),
     }
 
 
@@ -106,7 +107,7 @@ def _column_entries(n: int) -> list[dict[str, Any]]:
             "relevance_score": 90.0 - i,
             "tags": '["IVF", "embryo"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-15T10:00:00Z",
+            "collected_at": fresh_iso(89),
         }
         for i in range(1, n + 1)
     ]
@@ -158,16 +159,13 @@ def test_bare_keyword_blocked() -> None:
         ),
     ):
         groups = _keyword_group_entries(
-            [_kw_entry("e1", "Apple launches new chip"),
-             _kw_entry("e2", "Series A funding round")],
+            [_kw_entry("e1", "Apple launches new chip"), _kw_entry("e2", "Series A funding round")],
             domain="d",
         )
 
     assert groups is not None
     themes = [g["theme"] for g in groups]
-    assert not any(t == "Apple" for t in themes), (
-        f"bare keyword rendered as a header: {themes}"
-    )
+    assert not any(t == "Apple" for t in themes), f"bare keyword rendered as a header: {themes}"
     assert "Additional Topics" in themes, themes
     apple_group = next(g for g in groups if g["theme"] == "Additional Topics")
     assert {e["entry_id"] for e in apple_group["entries"]} == {"e1"}, (
@@ -199,7 +197,8 @@ def test_group_name_resolved() -> None:
     funding_group = next(g for g in groups if g["theme"] == "Funding & M&A")
     assert {e["entry_id"] for e in funding_group["entries"]} == {"e1"}
     assert {e["entry_id"] for g in groups for e in g["entries"]} == {
-        "e1", "e2",
+        "e1",
+        "e2",
     }, "every entry must survive the label resolution"
 
 
@@ -222,7 +221,8 @@ def test_synonym_resolved() -> None:
     llm_group = next(g for g in groups if g["theme"] == "Large Language Models")
     assert {e["entry_id"] for e in llm_group["entries"]} == {"e1"}
     assert {e["entry_id"] for g in groups for e in g["entries"]} == {
-        "e1", "e2",
+        "e1",
+        "e2",
     }, "every entry must survive the label resolution"
 
 
@@ -231,22 +231,20 @@ def test_llm_happy_path_untouched() -> None:
     blocklist / near-dup / merge passes must leave it alone (the guardrail:
     ``_GENERIC_THEME_LABELS`` does not contain domain words)."""
     entry = _kw_entry("e1", "Apple WWDC keynote")
-    result = _merge_theme_groups([
-        {"theme": "Apple", "description": "About Apple.", "entries": [entry]},
-    ])
+    result = _merge_theme_groups(
+        [
+            {"theme": "Apple", "description": "About Apple.", "entries": [entry]},
+        ]
+    )
 
-    assert [g["theme"] for g in result] == ["Apple"], [
-        g["theme"] for g in result
-    ]
+    assert [g["theme"] for g in result] == ["Apple"], [g["theme"] for g in result]
     assert {e["entry_id"] for g in result for e in g["entries"]} == {"e1"}
 
 
 def test_fail_open_no_config() -> None:
     """`_keyword_topic_labels` returns {} for an unreadable/missing config and
     `_keyword_group_entries` still works — bare keywords fold, never crash."""
-    with patch(
-        "autoinfo.output.get_config_path", return_value=None
-    ):
+    with patch("autoinfo.output.get_config_path", return_value=None):
         labels = _keyword_topic_labels("any-domain")
     assert labels == {}
 
@@ -254,9 +252,7 @@ def test_fail_open_no_config() -> None:
         patch("autoinfo.output._keyword_topic_labels", return_value={}),
         patch("autoinfo.output._load_keyword_topics", return_value=["apple"]),
     ):
-        groups = _keyword_group_entries(
-            [_kw_entry("e1", "Apple launches new chip")], domain="d"
-        )
+        groups = _keyword_group_entries([_kw_entry("e1", "Apple launches new chip")], domain="d")
     assert groups is None
 
 

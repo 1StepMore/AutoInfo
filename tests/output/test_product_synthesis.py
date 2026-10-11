@@ -41,6 +41,7 @@ from autoinfo.output import (
     generate_digest,
     generate_report,
 )
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Sample data
@@ -52,7 +53,7 @@ _SAMPLE_ENTRIES: list[dict[str, Any]] = [
         "title": "Improved IVF outcomes with time-lapse imaging",
         "language": "en",
         "summary": "Time-lapse imaging improves live birth rates in IVF.",
-                    "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
         "source_type": "api",
         "source_platform": "pubmed",
         "domain": "medical-research",
@@ -101,8 +102,7 @@ _SAMPLE_DIGEST_SYNTHESIS: dict[str, Any] = {
     "implications": [
         "Clinics should evaluate time-lapse imaging adoption given the live "
         "birth rate improvement.",
-        "Regulators and payers should watch for unvalidated AI embryo "
-        "selection tools.",
+        "Regulators and payers should watch for unvalidated AI embryo selection tools.",
     ],
     "risks": [
         {
@@ -266,9 +266,7 @@ class TestDigestPromptProductKeying:
 
     def test_premium_briefing_requests_three_product_fields(self) -> None:
         """premium-briefing asks for implications/risks/action_required."""
-        prompt = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="premium-briefing"
-        )
+        prompt = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="premium-briefing")
         for field in ("implications", "risks", "action_required"):
             assert f'"{field}"' in prompt
         # Index-alignment contract (spec §2.4) is explicit in the prompt.
@@ -295,18 +293,14 @@ class TestDigestPromptProductKeying:
 
     def test_magazine_digest_requests_three_product_fields(self) -> None:
         """magazine-digest asks for implications/risks/action_required."""
-        prompt = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="magazine-digest"
-        )
+        prompt = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="magazine-digest")
         for field in ("implications", "risks", "action_required"):
             assert f'"{field}"' in prompt
         assert '"key_metrics"' not in prompt
 
     def test_enterprise_briefing_requests_key_metrics_too(self) -> None:
         """enterprise-briefing additionally asks for key_metrics."""
-        prompt = _build_digest_llm_prompt(
-            _SAMPLE_ENTRIES, product_family="enterprise-briefing"
-        )
+        prompt = _build_digest_llm_prompt(_SAMPLE_ENTRIES, product_family="enterprise-briefing")
         for field in ("implications", "risks", "action_required", "key_metrics"):
             assert f'"{field}"' in prompt
 
@@ -352,9 +346,7 @@ class TestDigestProductFieldsFlow:
 
     def test_digest_premium_briefing_surfaces_aligned_fields(self) -> None:
         """Per-takeaway implication/risk/action render non-empty (index-aligned)."""
-        rendered, prompt = self._render(
-            product_template=_registry_template("premium-briefing")
-        )
+        rendered, prompt = self._render(product_template=_registry_template("premium-briefing"))
         # The prompt requested the product fields (keyed by family).
         assert '"implications"' in prompt
         assert "index-aligned" in prompt
@@ -369,9 +361,7 @@ class TestDigestProductFieldsFlow:
 
     def test_digest_enterprise_briefing_surfaces_key_metrics(self) -> None:
         """Enterprise render includes the Key Metrics table with real rows."""
-        rendered, prompt = self._render(
-            product_template=_registry_template("enterprise-briefing")
-        )
+        rendered, prompt = self._render(product_template=_registry_template("enterprise-briefing"))
         assert '"key_metrics"' in prompt
         assert "| Metric | Value | Source |" in rendered
         assert "| Live birth rate | 48.2% vs 39.5% | time-lapse RCT |" in rendered
@@ -421,9 +411,7 @@ class TestReportSynthesisProductFields:
             captured.append(prompt)
             return md
 
-        with patch(
-            "autoinfo.output._call_llm_for_report_synthesis", side_effect=_fake_synthesis
-        ):
+        with patch("autoinfo.output._call_llm_for_report_synthesis", side_effect=_fake_synthesis):
             result = _generate_executive_summary(
                 extractor,
                 _SAMPLE_ENTRIES,
@@ -455,8 +443,7 @@ class TestReportSynthesisProductFields:
         assert result["implications"] == [
             "Clinics should evaluate time-lapse imaging adoption given the "
             "live birth rate improvement.",
-            "Regulators and payers should watch for unvalidated AI embryo "
-            "selection tools.",
+            "Regulators and payers should watch for unvalidated AI embryo selection tools.",
         ]
         assert result["risks"][0] == {
             "title": "Validation lag",
@@ -493,9 +480,7 @@ class TestReportSynthesisProductFields:
 class TestReportProductFieldsFlow:
     """``generate_report(product_template=...)`` surfaces the fields."""
 
-    def _render(
-        self, *, product_template: ProductTemplate | None
-    ) -> tuple[str, str]:
+    def _render(self, *, product_template: ProductTemplate | None) -> tuple[str, str]:
         """Render a report; returns (rendered, prompt_sent_to_llm)."""
         captured: list[str] = []
         mock_extract = MagicMock(side_effect=[_make_grouping_result()])
@@ -526,9 +511,7 @@ class TestReportProductFieldsFlow:
 
     def test_report_premium_briefing_surfaces_product_fields(self) -> None:
         """pt_context carries the fields; template renders them non-empty."""
-        rendered, prompt = self._render(
-            product_template=_registry_template("premium-briefing")
-        )
+        rendered, prompt = self._render(product_template=_registry_template("premium-briefing"))
         assert "## Implications" in prompt
         assert "> **So what**: Clinics should evaluate time-lapse imaging" in rendered
         assert "**Risk / Opportunity:** Validation lag — likelihood high / impact" in rendered
@@ -537,9 +520,7 @@ class TestReportProductFieldsFlow:
 
     def test_report_enterprise_briefing_surfaces_key_metrics(self) -> None:
         """Enterprise report renders the Key Metrics + Risk Matrix tables."""
-        rendered, prompt = self._render(
-            product_template=_registry_template("enterprise-briefing")
-        )
+        rendered, prompt = self._render(product_template=_registry_template("enterprise-briefing"))
         assert "## Key Metrics" in prompt
         assert "| Live birth rate | 48.2% vs 39.5% | time-lapse RCT |" in rendered
         assert "| Validation lag | high | medium |" in rendered
@@ -576,13 +557,11 @@ class TestReportDataToDictProductFields:
                     "AI embryo selection: Promising but lacks prospective validation.",
                 ],
             ),
-            sections=[
-                ReportSection(title="IVF", content="c", items=[_SAMPLE_ENTRIES[0]])
-            ],
+            sections=[ReportSection(title="IVF", content="c", items=[_SAMPLE_ENTRIES[0]])],
             references=[
                 {
                     "title": "Improved IVF outcomes",
-        "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    "source_url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
                     "source_type": "api",
                     "source_platform": "pubmed",
                     "domain": "medical-research",
@@ -648,7 +627,7 @@ def _build_large_entry(i: int) -> dict[str, Any]:
         "relevance_score": float(100 - i),
         "tags": '["IVF"]',
         "tier": "01-Raw",
-        "collected_at": "2026-07-15T10:00:00Z",
+        "collected_at": fresh_iso(89),
     }
 
 
@@ -657,9 +636,7 @@ def _large_entries_and_grouping(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return *n* long-title/long-summary entries in a single theme group."""
     entries = [_build_large_entry(i) for i in range(n)]
-    groupings = [
-        {"theme": "Reproductive Medicine Group", "description": "d", "entries": entries}
-    ]
+    groupings = [{"theme": "Reproductive Medicine Group", "description": "d", "entries": entries}]
     return entries, groupings
 
 
@@ -710,20 +687,14 @@ class TestExecutiveSummaryPromptSizeRetry:
         def _noop_sleep(seconds: float) -> None:
             sleeps.append(seconds)
 
-        with patch(
-            "autoinfo.output._call_llm_for_report_synthesis", side_effect=_fake
-        ):
+        with patch("autoinfo.output._call_llm_for_report_synthesis", side_effect=_fake):
             result = _generate_executive_summary(
                 extractor,
                 entries,
                 groupings,
                 product_family=product_family,
-                max_synthesis_attempts=(
-                    max_attempts if max_attempts is not None else 4
-                ),
-                retry_backoff_seconds=(
-                    backoff_seconds if backoff_seconds is not None else 60.0
-                ),
+                max_synthesis_attempts=(max_attempts if max_attempts is not None else 4),
+                retry_backoff_seconds=(backoff_seconds if backoff_seconds is not None else 60.0),
                 sleep_fn=sleep_fn or _noop_sleep,
             )
         assert isinstance(result, dict)
@@ -732,13 +703,12 @@ class TestExecutiveSummaryPromptSizeRetry:
     def test_large_prompt_empty_triggers_smaller_prompt_retry(self) -> None:
         """F3 scenario: oversized first prompt -> empty -> truncated-prompt
         retry -> non-empty executive summary AND differentiated sections."""
+
         # The 40-entry prompt lands in the F3 failing zone (≥ ~11.9K chars).
         def _side(prompt: str, call_no: int) -> str:
             return "" if call_no == 1 else _SAMPLE_REPORT_SYNTHESIS_MD
 
-        result, captured, _ = self._synthesize_with(
-            _side, product_family="enterprise-briefing"
-        )
+        result, captured, _ = self._synthesize_with(_side, product_family="enterprise-briefing")
         # Reproduces the F3 prompt size that returns empty (12,429-char
         # enterprise prompt in the sweep).
         assert len(captured) == 2
@@ -766,14 +736,13 @@ class TestExecutiveSummaryPromptSizeRetry:
     def test_first_call_without_executive_summary_triggers_retry(self) -> None:
         """A non-empty first response lacking an executive summary also
         triggers the smaller-prompt retry (not just the empty case)."""
+
         def _side(prompt: str, call_no: int) -> str:
             if call_no == 1:
                 return "## Key Findings\n- something\n"
             return _SAMPLE_REPORT_SYNTHESIS_MD
 
-        result, captured, _ = self._synthesize_with(
-            _side, product_family="premium-briefing"
-        )
+        result, captured, _ = self._synthesize_with(_side, product_family="premium-briefing")
         assert len(captured) == 2
         assert len(captured[1]) < len(captured[0])
         assert result["executive_summary"]
@@ -785,6 +754,7 @@ class TestExecutiveSummaryPromptSizeRetry:
         """If every attempt returns empty, fall back after exactly
         ``max_synthesis_attempts`` calls (bounded — no unbounded retry
         loop) with the theme-list fallback."""
+
         def _side(prompt: str, call_no: int) -> str:
             return ""
 
@@ -811,6 +781,7 @@ class TestExecutiveSummaryPromptSizeRetry:
         prompt fires (max 1) asking for ONLY the product sections, and the
         parsed sections are merged so the result carries non-empty
         differentiated fields."""
+
         def _side(prompt: str, call_no: int) -> str:
             if call_no == 1:
                 return ""
@@ -818,9 +789,7 @@ class TestExecutiveSummaryPromptSizeRetry:
                 return _SAMPLE_REPORT_SYNTHESIS_BASE_MD
             return _SAMPLE_PRODUCT_SECTIONS_ONLY_MD
 
-        result, captured, _ = self._synthesize_with(
-            _side, product_family="enterprise-briefing"
-        )
+        result, captured, _ = self._synthesize_with(_side, product_family="enterprise-briefing")
         # primary (empty) + condensed retry (no sections) + dedicated prompt.
         assert len(captured) == 3
         # The dedicated prompt is small (well under the size concern) and
@@ -854,6 +823,7 @@ class TestExecutiveSummaryPromptSizeRetry:
         (bad window) then recovers; the bounded loop with backoff survives —
         attempt 4 succeeds with the FULL synthesis including sections, so no
         dedicated prompt is needed."""
+
         def _side(prompt: str, call_no: int) -> str:
             return "" if call_no <= 3 else _SAMPLE_REPORT_SYNTHESIS_MD
 
@@ -871,6 +841,7 @@ class TestExecutiveSummaryPromptSizeRetry:
     def test_max_attempts_and_backoff_are_injectable(self) -> None:
         """The loop bound and the backoff are parameters, so callers (and
         tests) can bound the loop tighter without changing behavior."""
+
         def _side(prompt: str, call_no: int) -> str:
             return ""
 
@@ -895,12 +866,11 @@ class TestExecutiveSummaryPromptSizeRetry:
         """Fast path: when the first call succeeds, exactly one call is made
         and the result is unchanged (no retries, no backoff sleep, no
         dedicated prompt)."""
+
         def _side(prompt: str, call_no: int) -> str:
             return _SAMPLE_REPORT_SYNTHESIS_MD
 
-        result, captured, sleeps = self._synthesize_with(
-            _side, product_family="premium-briefing"
-        )
+        result, captured, sleeps = self._synthesize_with(_side, product_family="premium-briefing")
         assert len(captured) == 1
         assert sleeps == []
         assert result["executive_summary"]
@@ -911,6 +881,7 @@ class TestExecutiveSummaryPromptSizeRetry:
     def test_default_report_family_unchanged_on_success(self) -> None:
         """Backward compat: the default ``report`` family makes a single
         call, requests no product sections, and behaves as before."""
+
         def _side(prompt: str, call_no: int) -> str:
             return _SAMPLE_REPORT_SYNTHESIS_BASE_MD
 

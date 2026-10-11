@@ -28,6 +28,7 @@ from autoinfo.output import (
     _sorted_ref_entries,
     generate_digest,
 )
+from tests._freshness import fresh_date, fresh_iso
 
 PROMO_TITLE = "Tonight marks your last chance to save up to $300 on a TechCrunch Disrupt pass"
 EV_TITLE = "EV maker rolls out three-speed drivetrain for highway efficiency"
@@ -99,8 +100,8 @@ def _flat_digest(entries: list[dict[str, Any]], domain: str) -> dict[str, Any]:
             "period": "weekly",
             "period_label": "Weekly",
             "date_from": (datetime.now(timezone.utc) - timedelta(days=2)).date().isoformat(),
-            "date_to": "2026-08-10",
-            "generated_at": "2026-08-10T00:00:00+00:00",
+            "date_to": fresh_date(63),
+            "generated_at": fresh_iso(63),
             "entries": entries,
             "llm_synthesis": {
                 "executive_summary": "Synthesis.",

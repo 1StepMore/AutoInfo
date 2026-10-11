@@ -33,6 +33,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from autoinfo.models import Item
+from tests._freshness import fresh_iso
 
 # ======================================================================
 # Mark registration
@@ -113,7 +114,7 @@ def sample_item() -> Item:
             "birth rate (p=0.006)."
         ),
         content_type="text",
-        collected_at="2026-07-15T10:30:00Z",
+        collected_at=fresh_iso(89),
         language="en",
         domain="medical-research",
         topic_tags=["IVF", "embryo imaging"],
@@ -1454,7 +1455,17 @@ class TestJSONReport:
         item = sample_item
         store.store_entry(item=item)
 
-        with patch("autoinfo.kb.KBStore", return_value=store):
+        synthesis = MagicMock(
+            return_value={
+                "executive_summary": "Synthesis.",
+                "key_findings": [],
+                "recommendations": [],
+            }
+        )
+        with (
+            patch("autoinfo.kb.KBStore", return_value=store),
+            patch("autoinfo.output._generate_executive_summary", synthesis),
+        ):
             result = generate_report(domain="medical-research", format="json")
 
         data = json.loads(result)

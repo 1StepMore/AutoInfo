@@ -40,6 +40,7 @@ from autoinfo.output import (
     _normalize_digest_product_context,
     generate_digest,
 )
+from tests._freshness import fresh_date, fresh_iso
 
 # ===================================================================
 # Sample data
@@ -169,9 +170,9 @@ class TestNormalizeDigestProductContext:
             "domain": "medical-research",
             "period": "weekly",
             "period_label": "Weekly",
-            "date_from": "2026-08-03",
-            "date_to": "2026-08-10",
-            "generated_at": "2026-08-10T00:00:00+00:00",
+            "date_from": fresh_date(70),
+            "date_to": fresh_date(63),
+            "generated_at": fresh_iso(63),
             "entries": _SAMPLE_ENTRIES,
             "llm_synthesis": (_SAMPLE_LLM_SYNTHESIS if llm_synthesis is None else llm_synthesis),
             "target_audience": "",
@@ -202,7 +203,7 @@ class TestNormalizeDigestProductContext:
         flat = _normalize_digest_product_context(self._context(), "medical-research")
         assert flat["title"] == "Weekly Digest \u2014 medical-research"
         assert flat["domain"] == "medical-research"
-        assert flat["generated_at"] == "2026-08-10T00:00:00+00:00"
+        assert flat["generated_at"] == fresh_iso(63)
         assert flat["period"] == "weekly"
         assert flat["entries"] == _SAMPLE_ENTRIES
 

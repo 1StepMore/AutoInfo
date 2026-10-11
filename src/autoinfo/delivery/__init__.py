@@ -298,7 +298,12 @@ class SMTPDeliveryChannel(DeliveryChannel):
             port_str = os.environ.get("AUTOINFO_SMTP_PORT", "")
             if not host or not port_str:
                 latency = (time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_SMTP_HOST or AUTOINFO_SMTP_PORT not set", "channel": "smtp"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: AUTOINFO_SMTP_HOST or AUTOINFO_SMTP_PORT not set",
+                    "channel": "smtp",
+                }
             port = int(port_str)
             sock = socket.create_connection((host, port), timeout=5.0)
             sock.close()
@@ -377,12 +382,22 @@ class WebhookDeliveryChannel(DeliveryChannel):
             url = os.environ.get("AUTOINFO_WEBHOOK_URL", "")
             if not url:
                 latency = (time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_WEBHOOK_URL not set", "channel": "webhook"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: AUTOINFO_WEBHOOK_URL not set",
+                    "channel": "webhook",
+                }
             with httpx.Client(timeout=5.0) as client:
                 resp = client.head(url)
             latency = (time.time() - start) * 1000
             healthy = resp.status_code < 500
-            return {"healthy": healthy, "latency_ms": latency, "error": None if healthy else f"HTTP {resp.status_code}", "channel": "webhook"}
+            return {
+                "healthy": healthy,
+                "latency_ms": latency,
+                "error": None if healthy else f"HTTP {resp.status_code}",
+                "channel": "webhook",
+            }
         except Exception as e:
             latency = (time.time() - start) * 1000
             return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "webhook"}
@@ -417,9 +432,7 @@ class WebhookDeliveryChannel(DeliveryChannel):
 
         if hmac_secret:
             secret_bytes = (
-                hmac_secret.encode("utf-8")
-                if isinstance(hmac_secret, str)
-                else hmac_secret
+                hmac_secret.encode("utf-8") if isinstance(hmac_secret, str) else hmac_secret
             )
             sig = _hmac.new(secret_bytes, body, _hashlib.sha256).hexdigest()
             headers["X-Signature"] = f"sha256={sig}"
@@ -494,12 +507,22 @@ class RESTAPIDeliveryChannel(DeliveryChannel):
             url = os.environ.get("AUTOINFO_REST_API_URL", "")
             if not url:
                 latency = (time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: AUTOINFO_REST_API_URL not set", "channel": "rest_api"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: AUTOINFO_REST_API_URL not set",
+                    "channel": "rest_api",
+                }
             with httpx.Client(timeout=5.0) as client:
                 resp = client.get(url)
             latency = (time.time() - start) * 1000
             healthy = resp.status_code < 500
-            return {"healthy": healthy, "latency_ms": latency, "error": None if healthy else f"HTTP {resp.status_code}", "channel": "rest_api"}
+            return {
+                "healthy": healthy,
+                "latency_ms": latency,
+                "error": None if healthy else f"HTTP {resp.status_code}",
+                "channel": "rest_api",
+            }
         except Exception as e:
             latency = (time.time() - start) * 1000
             return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "rest_api"}
@@ -628,27 +651,37 @@ class FileExportDeliveryChannel(DeliveryChannel):
             out_dir = os.environ.get("AUTOINFO_EXPORT_DIR", os.getcwd())
             if not os.access(out_dir, os.W_OK):
                 latency = (time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": f"directory not writable: {out_dir}", "channel": "file_export"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": f"directory not writable: {out_dir}",
+                    "channel": "file_export",
+                }
             latency = (time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "file_export"}
         except Exception as e:
             latency = (time.time() - start) * 1000
-            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "file_export"}
+            return {
+                "healthy": False,
+                "latency_ms": latency,
+                "error": str(e),
+                "channel": "file_export",
+            }
 
 
 # ---------------------------------------------------------------------------
 # Discord / Telegram / DingTalk / Feishu / WeChat
 # ---------------------------------------------------------------------------
 
-from autoinfo.delivery.discord import DiscordDeliveryChannel  # noqa: E402
-from autoinfo.delivery.telegram import TelegramDeliveryChannel  # noqa: E402
-from autoinfo.delivery.wechat_work import WeChatWorkDeliveryChannel  # noqa: E402
-from autoinfo.delivery.wechat_oa import WeChatOADeliveryChannel  # noqa: E402
 from autoinfo.delivery.dingtalk import DingTalkDeliveryChannel  # noqa: E402
+from autoinfo.delivery.discord import DiscordDeliveryChannel  # noqa: E402
 from autoinfo.delivery.feishu import FeiShuDeliveryChannel  # noqa: E402
+from autoinfo.delivery.push import PushDeliveryChannel  # noqa: E402
 from autoinfo.delivery.rss import RSSDeliveryChannel  # noqa: E402
 from autoinfo.delivery.social import SocialDeliveryChannel  # noqa: E402
-from autoinfo.delivery.push import PushDeliveryChannel  # noqa: E402
+from autoinfo.delivery.telegram import TelegramDeliveryChannel  # noqa: E402
+from autoinfo.delivery.wechat_oa import WeChatOADeliveryChannel  # noqa: E402
+from autoinfo.delivery.wechat_work import WeChatWorkDeliveryChannel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -695,9 +728,7 @@ def get_channel(name: str) -> DeliveryChannel:
     cls = _CHANNEL_REGISTRY.get(name)
     if cls is None:
         valid = ", ".join(sorted(_CHANNEL_REGISTRY))
-        raise ValueError(
-            f"Unknown delivery channel {name!r}. Valid channels: {valid}"
-        )
+        raise ValueError(f"Unknown delivery channel {name!r}. Valid channels: {valid}")
     return cls()
 
 
@@ -712,6 +743,6 @@ def get_available_channels() -> list[str]:
     Returns
     -------
     list[str]
-        Sorted list of registered channel names (e.g. ``["discord", "dingtalk", "feishu", "file_export", "rest_api", "rss", "smtp", "telegram", "wechat_oa", "wechat_work", "webhook"]``).
+        Sorted list of registered channel names (e.g. ``["discord", "dingtalk", "feishu", "file_export", "push", "rest_api", "rss", "smtp", "social_publish", "telegram", "wechat_oa", "wechat_work", "webhook"]`` — 13 channels).
     """
     return sorted(_CHANNEL_REGISTRY)

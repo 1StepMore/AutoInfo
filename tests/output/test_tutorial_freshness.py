@@ -10,6 +10,7 @@ respect the freshness threshold on regenerated teaching-layer products.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -47,7 +48,10 @@ def _stale_entries(n: int = 2) -> list[dict[str, Any]]:
 
 
 def _fresh_entry() -> dict[str, Any]:
-    return _entry("fresh-0", "2026-08-25T00:00:00+00:00", title="ANSA")
+    # Relative to now on purpose: a fixed literal ages past the freshness
+    # threshold and turns this guard's own positive case into a time bomb.
+    fresh = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    return _entry("fresh-0", fresh, title="ANSA")
 
 
 def _mock_store(entries: list[dict[str, Any]]) -> MagicMock:

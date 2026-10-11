@@ -10,9 +10,16 @@ structure (vocabulary/grammar) for language-learning domains.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import PRODUCT_TEMPLATES, generate_digest, generate_tutorial
+
+
+def _fresh_collected_at() -> str:
+    """Relative to now: a fixed literal ages past the freshness threshold and
+    turns every test in this file into a StaleSourceError time bomb."""
+    return (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 
 def _entry(eid: str, title: str, summary: str, url: str, lang: str = "fr") -> dict[str, object]:
@@ -24,7 +31,7 @@ def _entry(eid: str, title: str, summary: str, url: str, lang: str = "fr") -> di
         "source_url": url,
         "source_type": "rss",
         "source_platform": "france24",
-        "collected_at": "2026-08-25T00:00:00+00:00",
+        "collected_at": _fresh_collected_at(),
         "summary": summary,
         "quality_tier": 2,
         "relevance_score": 50.0,

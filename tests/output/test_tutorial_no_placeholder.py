@@ -37,6 +37,7 @@ from autoinfo.output import (
     generate_digest,
     generate_tutorial,
 )
+from tests._freshness import fresh_iso
 
 # Freshness is scored against the REAL clock (``calculate_freshness_score``),
 # so ``collected_at`` must be relative to import time, not a hardcoded calendar
@@ -105,7 +106,7 @@ class TestReportDataToDictEntries:
     def test_entries_built_from_references_with_expected_keys(self) -> None:
         report_data = ReportData(
             title="Weekly Report — general-news",
-            generated_at="2026-08-03T00:00:00+00:00",
+            generated_at=fresh_iso(70),
             domain="general-news",
             executive_summary="Overview.",
             references=[
@@ -146,7 +147,7 @@ class TestReportDataToDictEntries:
         per-title clusters, never the ``_No articles found..._`` empty-state."""
         report_data = ReportData(
             title="Weekly Magazine Digest — general-news",
-            generated_at="2026-08-03T00:00:00+00:00",
+            generated_at=fresh_iso(70),
             domain="general-news",
             executive_summary="Overview.",
             references=[

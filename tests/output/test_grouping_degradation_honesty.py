@@ -31,6 +31,7 @@ from autoinfo.output import (
     _group_by_theme,
     generate_report,
 )
+from tests._freshness import fresh_iso
 
 # The pinned marker string — asserted byte-for-byte.
 MARKER = "> *This edition groups developments by source*"
@@ -50,7 +51,7 @@ def _entry(i: int) -> dict[str, Any]:
         "relevance_score": 90.0 - (i % 10),
         "tags": "[]",
         "tier": "01-Raw",
-        "collected_at": "2026-07-15T10:00:00Z",
+        "collected_at": fresh_iso(89),
     }
 
 
@@ -130,9 +131,7 @@ def _column_synthesis_with_sections() -> dict[str, Any]:
     }
 
 
-def _render_column_digest(
-    entries: list[dict[str, Any]], synthesis: dict[str, Any]
-) -> str:
+def _render_column_digest(entries: list[dict[str, Any]], synthesis: dict[str, Any]) -> str:
     """Render a column digest through generate_digest with the column product
     template (the digest-path entry-level column seam)."""
     from autoinfo.output import generate_digest
@@ -195,9 +194,7 @@ class TestReportMarkerOnFail:
         sections_idx = report.index("## Sections")
         marker_idx = report.index(MARKER)
         first_section = report.index("### ", sections_idx)
-        assert sections_idx < marker_idx < first_section, (
-            "marker must lead the section list"
-        )
+        assert sections_idx < marker_idx < first_section, "marker must lead the section list"
 
     def test_marker_reason_log_report(self, caplog: Any) -> None:
         """The degraded report emits ``event="grouping_degraded"`` with a
@@ -207,13 +204,12 @@ class TestReportMarkerOnFail:
             _render_report_faulted(entries)
 
         events = [
-            r for r in caplog.records
-            if getattr(r, "message", "").startswith("grouping_degraded")
+            r for r in caplog.records if getattr(r, "message", "").startswith("grouping_degraded")
         ]
         assert events, "no grouping_degraded log record"
-        assert any(
-            'reason=\'llm_failure\'' in r.message for r in events
-        ), "expected llm_failure reason on the fault-inject report path"
+        assert any("reason='llm_failure'" in r.message for r in events), (
+            "expected llm_failure reason on the fault-inject report path"
+        )
 
 
 class TestDigestMarkerOnFail:
@@ -227,9 +223,7 @@ class TestDigestMarkerOnFail:
         assert MARKER in out
         deep_dive_idx = out.index("## Deep Dive")
         marker_idx = out.index(MARKER)
-        assert deep_dive_idx < marker_idx, (
-            "marker must appear inside the Deep Dive"
-        )
+        assert deep_dive_idx < marker_idx, "marker must appear inside the Deep Dive"
 
     def test_marker_reason_log_digest(self, caplog: Any) -> None:
         """The column-digest entry-level path logs ``event="grouping_degraded"``
@@ -416,7 +410,7 @@ class TestMarkerAbsentOnSuccess:
                 "relevance_score": 92.0,
                 "tags": '["IVF", "embryo"]',
                 "tier": "01-Raw",
-                "collected_at": "2026-07-15T10:00:00Z",
+                "collected_at": fresh_iso(89),
             },
             {
                 "entry_id": "entry-002",
@@ -428,7 +422,7 @@ class TestMarkerAbsentOnSuccess:
                 "relevance_score": 78.0,
                 "tags": '["neuroplasticity", "development"]',
                 "tier": "01-Raw",
-                "collected_at": "2026-07-16T10:00:00Z",
+                "collected_at": fresh_iso(88),
             },
             {
                 "entry_id": "entry-003",
@@ -440,14 +434,12 @@ class TestMarkerAbsentOnSuccess:
                 "relevance_score": 85.0,
                 "tags": '["neuroplasticity", "adolescent"]',
                 "tier": "01-Raw",
-                "collected_at": "2026-07-17T10:00:00Z",
+                "collected_at": fresh_iso(87),
             },
         ]
         from autoinfo.llm import LLMExtractor
 
-        mock_extract = MagicMock(
-            side_effect=[_make_grouping_result(), _make_summary_result()]
-        )
+        mock_extract = MagicMock(side_effect=[_make_grouping_result(), _make_summary_result()])
         from autoinfo.output import generate_report
 
         with (
@@ -464,17 +456,13 @@ class TestMarkerAbsentOnSuccess:
     def test_digest_success_no_marker(self) -> None:
         """Column digest with synthesis sections → no deterministic fallback →
         no marker."""
-        out = _render_column_digest(
-            _column_entries(10), _column_synthesis_with_sections()
-        )
+        out = _render_column_digest(_column_entries(10), _column_synthesis_with_sections())
         assert MARKER not in out
         assert "This edition groups developments by source" not in out
 
     def test_column_success_no_marker(self) -> None:
         """Column digest with synthesis sections (semantic Deep Dive) → no
         marker anywhere in the rendered column."""
-        out = _render_column_digest(
-            _column_entries(10), _column_synthesis_with_sections()
-        )
+        out = _render_column_digest(_column_entries(10), _column_synthesis_with_sections())
         assert "This edition groups developments by source" not in out
         assert MARKER not in out

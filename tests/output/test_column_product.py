@@ -27,6 +27,7 @@ from autoinfo.output import (
     PRODUCT_TEMPLATES,
     DeliveryOutput,
 )
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Fixtures
@@ -48,7 +49,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 92.0,
             "tags": '["IVF", "embryo"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-15T10:00:00Z",
+            "collected_at": fresh_iso(89),
         },
         {
             "entry_id": "entry-002",
@@ -61,7 +62,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 78.0,
             "tags": '["neuroplasticity", "development"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-16T10:00:00Z",
+            "collected_at": fresh_iso(88),
         },
     ]
 
@@ -84,8 +85,7 @@ def _make_grouping_result() -> ExtractionResult:
                 {
                     "theme": "IVF & Reproductive Medicine",
                     "description": (
-                        "Advancements in IVF treatment and assisted "
-                        "reproductive technologies."
+                        "Advancements in IVF treatment and assisted reproductive technologies."
                     ),
                     "entry_ids": ["entry-001"],
                 },
@@ -190,9 +190,7 @@ class TestColumnG15Gate:
 class TestColumnFreePath:
     """Without ``user_id`` the column report renders normally (no gating)."""
 
-    def test_no_user_id_renders_report(
-        self, sample_entries: list[dict[str, Any]]
-    ) -> None:
+    def test_no_user_id_renders_report(self, sample_entries: list[dict[str, Any]]) -> None:
         """Free path: LLM mocked, full render through the report template."""
         mock_extract = MagicMock(
             side_effect=[
@@ -288,8 +286,7 @@ class TestEntrySourceCellSyntheticProvenance:
         from autoinfo.output import _entry_source_cell
 
         cell = _entry_source_cell(
-            {"source_url": "https://techcrunch.com/story",
-             "source_platform": "techcrunch"}
+            {"source_url": "https://techcrunch.com/story", "source_platform": "techcrunch"}
         )
         assert cell == "[techcrunch](https://techcrunch.com/story)"
 
@@ -297,8 +294,10 @@ class TestEntrySourceCellSyntheticProvenance:
         from autoinfo.output import _entry_source_cell
 
         cell = _entry_source_cell(
-            {"source_url": "draft://ai-commercial/ai-commercial-research-abc",
-             "source_platform": "ai-commercial"}
+            {
+                "source_url": "draft://ai-commercial/ai-commercial-research-abc",
+                "source_platform": "ai-commercial",
+            }
         )
         assert cell == "ai-commercial"
         assert "draft://" not in cell
@@ -307,7 +306,5 @@ class TestEntrySourceCellSyntheticProvenance:
     def test_no_url_but_label_renders_label(self) -> None:
         from autoinfo.output import _entry_source_cell
 
-        cell = _entry_source_cell(
-            {"source_url": "", "source_platform": "pubmed"}
-        )
+        cell = _entry_source_cell({"source_url": "", "source_platform": "pubmed"})
         assert cell == "pubmed"

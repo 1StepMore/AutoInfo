@@ -36,6 +36,7 @@ from autoinfo.output import (
     _normalize_digest_product_context,
     generate_report,
 )
+from tests._freshness import fresh_date, fresh_iso
 
 
 def _registry_template(name: str) -> ProductTemplate:
@@ -67,50 +68,56 @@ def _make_entries(n_summary: int, n_title_only: int) -> list[dict[str, Any]]:
     collapsing the intended 60-reference render to 51."""
     entries: list[dict[str, Any]] = []
     for i in range(1, n_summary + 1):
-        entries.append({
-            "entry_id": f"sum-{i}",
-            "title": f"Summary Ref {i}",
-            "summary": f"Summary content {i}.",
-            "source_url": f"https://pubmed.ncbi.nlm.nih.gov/{10000000 + i}/",
+        entries.append(
+            {
+                "entry_id": f"sum-{i}",
+                "title": f"Summary Ref {i}",
+                "summary": f"Summary content {i}.",
+                "source_url": f"https://pubmed.ncbi.nlm.nih.gov/{10000000 + i}/",
+                "source_type": "api",
+                "source_platform": "pubmed",
+                "domain": "medical-research",
+                "relevance_score": float(29 + i),
+                "language": "en",
+                "tags": "[]",
+                "tier": "01-Raw",
+                "collected_at": fresh_iso(54),
+            }
+        )
+    entries.append(
+        {
+            "entry_id": "top",
+            "title": "Top Score Entry",
+            "summary": "The single highest-relevance summary-bearing entry.",
+            "source_url": "https://pubmed.ncbi.nlm.nih.gov/99999999/",
             "source_type": "api",
             "source_platform": "pubmed",
             "domain": "medical-research",
-            "relevance_score": float(29 + i),
+            "relevance_score": 99.0,
             "language": "en",
             "tags": "[]",
             "tier": "01-Raw",
-            "collected_at": "2026-08-19T10:00:00Z",
-        })
-    entries.append({
-        "entry_id": "top",
-        "title": "Top Score Entry",
-        "summary": "The single highest-relevance summary-bearing entry.",
-        "source_url": "https://pubmed.ncbi.nlm.nih.gov/99999999/",
-        "source_type": "api",
-        "source_platform": "pubmed",
-        "domain": "medical-research",
-        "relevance_score": 99.0,
-        "language": "en",
-        "tags": "[]",
-        "tier": "01-Raw",
-        "collected_at": "2026-08-19T10:00:00Z",
-    })
+            "collected_at": fresh_iso(54),
+        }
+    )
     for i in range(1, n_title_only + 1):
-        entries.append({
-            "entry_id": f"titleonly-{i}",
-            "title": f"TitleOnly Ref {i}",
-            "summary": "",
-            "source_url": f"https://www.producthunt.com/posts/{i}",
-            "source_type": "rss",
-            "source_platform": "producthunt",
-            "domain": "medical-research",
-            "relevance_score": float(60 + i),
-            "language": "en",
-            "tags": "[]",
-            "tier": "01-Raw",
-            "collected_at": "2026-08-19T10:00:00Z",
-            "content": f"Body content for title-only entry {i}.",
-        })
+        entries.append(
+            {
+                "entry_id": f"titleonly-{i}",
+                "title": f"TitleOnly Ref {i}",
+                "summary": "",
+                "source_url": f"https://www.producthunt.com/posts/{i}",
+                "source_type": "rss",
+                "source_platform": "producthunt",
+                "domain": "medical-research",
+                "relevance_score": float(60 + i),
+                "language": "en",
+                "tags": "[]",
+                "tier": "01-Raw",
+                "collected_at": fresh_iso(54),
+                "content": f"Body content for title-only entry {i}.",
+            }
+        )
     return entries
 
 
@@ -134,7 +141,7 @@ def _make_plain_entries(n: int) -> list[dict[str, Any]]:
             "language": "en",
             "tags": "[]",
             "tier": "01-Raw",
-            "collected_at": "2026-08-19T10:00:00Z",
+            "collected_at": fresh_iso(54),
         }
         for i in range(1, n + 1)
     ]
@@ -158,9 +165,7 @@ def _references_titles(md: str) -> list[str]:
     return titles
 
 
-def _expected_ranked_titles(
-    entries: list[dict[str, Any]], limit: int
-) -> list[str]:
+def _expected_ranked_titles(entries: list[dict[str, Any]], limit: int) -> list[str]:
     """The titles the deterministic sort must produce (mirror of the fix)."""
     ranked = sorted(
         entries,
@@ -177,9 +182,7 @@ def _synthesis(n_findings: int) -> dict[str, Any]:
     """A complete report synthesis dict (D1-required sections non-empty)."""
     return {
         "executive_summary": "Executive summary for the period.",
-        "key_findings": [
-            {"text": f"Finding number {i}"} for i in range(1, n_findings + 1)
-        ],
+        "key_findings": [{"text": f"Finding number {i}"} for i in range(1, n_findings + 1)],
         "recommendations": ["Monitor the period's developments."],
     }
 
@@ -202,13 +205,11 @@ class TestReportPathReferenceCap:
         mock_synthesis.return_value = _synthesis(3)
         mock_group.return_value = []
         mock_kb.return_value = _mock_store(entries)
-        out = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown"
-        ))
-        titles = _references_titles(out)
-        assert len(titles) == 60, (
-            f"expected 60 references, got {len(titles)}"
+        out = _as_text(
+            generate_report(domain="medical-research", period="weekly", format="markdown")
         )
+        titles = _references_titles(out)
+        assert len(titles) == 60, f"expected 60 references, got {len(titles)}"
         # The first reference carries the max relevance_score.
         assert titles[0] == "Top Score Entry"
         # Title-only (empty summary) entries de-prioritize below summary-bearing.
@@ -225,9 +226,9 @@ class TestReportPathReferenceCap:
         mock_synthesis.return_value = _synthesis(3)
         mock_group.return_value = []
         mock_kb.return_value = _mock_store(entries)
-        out = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown"
-        ))
+        out = _as_text(
+            generate_report(domain="medical-research", period="weekly", format="markdown")
+        )
         assert _references_titles(out) == _expected_ranked_titles(entries, 60)
 
 
@@ -248,17 +249,19 @@ class TestReportPathReferenceOverride:
         mock_synthesis.return_value = _synthesis(3)
         mock_group.return_value = []
         mock_kb.return_value = _mock_store(entries)
-        out = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown",
-            ref_limit=100,
-        ))
+        out = _as_text(
+            generate_report(
+                domain="medical-research",
+                period="weekly",
+                format="markdown",
+                ref_limit=100,
+            )
+        )
         titles = _references_titles(out)
         assert len(titles) == 80
         assert titles[0] == "Top Score Entry"
         # Title-only refs ARE present, but only after every summary-bearing ref.
-        title_only_idx = next(
-            i for i, t in enumerate(titles) if t.startswith("TitleOnly Ref")
-        )
+        title_only_idx = next(i for i, t in enumerate(titles) if t.startswith("TitleOnly Ref"))
         assert title_only_idx >= 61
 
 
@@ -275,9 +278,9 @@ class TestDigestPathReferenceCap:
             "domain": "medical-research",
             "period": "weekly",
             "period_label": "Weekly",
-            "date_from": "2026-08-03",
-            "date_to": "2026-08-10",
-            "generated_at": "2026-08-10T00:00:00+00:00",
+            "date_from": fresh_date(70),
+            "date_to": fresh_date(63),
+            "generated_at": fresh_iso(63),
             "entries": entries,
             "llm_synthesis": {
                 "executive_summary": "Synthesis.",
@@ -291,9 +294,7 @@ class TestDigestPathReferenceCap:
     def test_digest_product_context_capped_identically_to_report(self) -> None:
         """80-entry digest context -> exactly 60 references, same order as report."""
         entries = _make_entries(60, 19)
-        flat = _normalize_digest_product_context(
-            self._context(entries), "medical-research"
-        )
+        flat = _normalize_digest_product_context(self._context(entries), "medical-research")
         assert len(flat["references"]) == 60
         titles = [r["title"] for r in flat["references"]]
         assert titles == _expected_ranked_titles(entries, 60)
@@ -346,10 +347,14 @@ class TestEnterpriseSelectedLabel:
         mock_synthesis.return_value = _synthesis(k)
         mock_group.return_value = []
         mock_kb.return_value = _mock_store(entries)
-        out = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown",
-            product_template=_registry_template("enterprise-briefing"),
-        ))
+        out = _as_text(
+            generate_report(
+                domain="medical-research",
+                period="weekly",
+                format="markdown",
+                product_template=_registry_template("enterprise-briefing"),
+            )
+        )
         assert f"{k} key points · drawn from {m} sources" in out
         assert f"{m} key points · drawn from {k} sources" not in out  # never inverted
         assert re.search(rf"of {m} key points", out) is None
@@ -368,11 +373,15 @@ class TestEnterpriseSelectedLabel:
         mock_synthesis.return_value = _synthesis(9)
         mock_group.return_value = []
         mock_kb.return_value = _mock_store(entries)
-        out = _as_text(generate_report(
-            domain="medical-research", period="weekly", format="markdown",
-            product_template=_registry_template("enterprise-briefing"),
-            ref_limit=8,
-        ))
+        out = _as_text(
+            generate_report(
+                domain="medical-research",
+                period="weekly",
+                format="markdown",
+                product_template=_registry_template("enterprise-briefing"),
+                ref_limit=8,
+            )
+        )
         assert "8 key points · drawn from 8 sources" in out
         assert "of 8 key points" not in out
         assert "9 key points" not in out
@@ -390,21 +399,20 @@ class TestEnterpriseSelectedLabel:
             "llm_synthesis": {
                 "executive_summary": "Synthesis.",
                 "key_findings": [
-                    {"topic": f"Topic {i}", "detail": f"Detail {i}."}
-                    for i in range(1, 10)
+                    {"topic": f"Topic {i}", "detail": f"Detail {i}."} for i in range(1, 10)
                 ],
                 "recommendations": [],
             },
         }
         flat = _normalize_digest_product_context(
-            ctx, "medical-research", product_family="enterprise-briefing",
+            ctx,
+            "medical-research",
+            product_family="enterprise-briefing",
             ref_limit=8,
         )
         assert len(flat["references"]) == 8
         assert len(flat["key_findings"]) == 8
-        out = _registry_template("enterprise-briefing").render(
-            "enterprise-briefing", "md", flat
-        )
+        out = _registry_template("enterprise-briefing").render("enterprise-briefing", "md", flat)
         assert "8 key points · drawn from 8 sources" in out
         assert "of 8 key points" not in out
         assert "9 key points" not in out
@@ -444,7 +452,10 @@ class TestOutputConfigRefLimitPrecedence:
     @patch("autoinfo.output._group_by_theme")
     @patch("autoinfo.output._generate_executive_summary")
     def test_config_ref_limit_used_when_param_omitted(
-        self, mock_synthesis: MagicMock, mock_group: MagicMock, mock_kb: MagicMock,
+        self,
+        mock_synthesis: MagicMock,
+        mock_group: MagicMock,
+        mock_kb: MagicMock,
         tmp_path: Any,
     ) -> None:
         """A config file declaring ``output.ref_limit: 30`` drives the default
@@ -474,15 +485,19 @@ class TestOutputConfigRefLimitPrecedence:
         os.chdir(tmp_path)
         try:
             # config-default path: output.ref_limit=30 -> 30 references
-            out = _as_text(generate_report(
-                domain="medical-research", period="weekly", format="markdown"
-            ))
+            out = _as_text(
+                generate_report(domain="medical-research", period="weekly", format="markdown")
+            )
             assert len(_references_titles(out)) == 30
             # explicit param wins over the config value
-            out2 = _as_text(generate_report(
-                domain="medical-research", period="weekly", format="markdown",
-                ref_limit=50,
-            ))
+            out2 = _as_text(
+                generate_report(
+                    domain="medical-research",
+                    period="weekly",
+                    format="markdown",
+                    ref_limit=50,
+                )
+            )
             assert len(_references_titles(out2)) == 50
         finally:
             os.chdir(old)

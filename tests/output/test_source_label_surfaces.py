@@ -35,6 +35,7 @@ from autoinfo.output import (
     generate_digest,
     generate_report,
 )
+from tests._freshness import fresh_iso
 
 STALE_SOURCE_NAME = "techcrunch"
 STALE_SOURCE_URL = "https://techcrunch.com/2026/01/01/ai-startup"
@@ -139,130 +140,136 @@ def _assert_no_rss_residue(body: str) -> None:
 
 
 class TestSourceLabelSurfaces:
-    def test_digest_markdown_entry_table(
-        self, stale_config: Any
-    ) -> None:
+    def test_digest_markdown_entry_table(self, stale_config: Any) -> None:
         """The digest entry-table Source row renders the specific name."""
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_digest(
-                domain="ai-commercial", period="weekly", format="markdown"
-            ))
+            out = _as_text(
+                generate_digest(domain="ai-commercial", period="weekly", format="markdown")
+            )
         assert STALE_SOURCE_NAME in out
         _assert_no_rss_residue(out)
 
-    def test_magazine_digest_byline_and_clusters(
-        self, stale_config: Any
-    ) -> None:
+    def test_magazine_digest_byline_and_clusters(self, stale_config: Any) -> None:
         """The magazine byline + per-title clusters use the specific name."""
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_digest(
-                domain="ai-commercial", period="weekly", format="markdown",
-                product_template=_magazine_template(),
-            ))
+            out = _as_text(
+                generate_digest(
+                    domain="ai-commercial",
+                    period="weekly",
+                    format="markdown",
+                    product_template=_magazine_template(),
+                )
+            )
         assert STALE_SOURCE_NAME in out
         assert f"**{STALE_SOURCE_NAME}**" in out
         assert f"## {STALE_SOURCE_NAME}" in out
         _assert_no_rss_residue(out)
 
-    def test_digest_json_carries_source_label(
-        self, stale_config: Any
-    ) -> None:
+    def test_digest_json_carries_source_label(self, stale_config: Any) -> None:
         """The digest json entry carries the derived ``source_label``."""
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_digest(
-                domain="ai-commercial", period="weekly", format="json"
-            ))
+            out = _as_text(generate_digest(domain="ai-commercial", period="weekly", format="json"))
         data = json.loads(out)
         entry = data["entries"][0]
         assert entry["source_label"] == STALE_SOURCE_NAME
         assert STALE_SOURCE_NAME in out
         _assert_no_rss_residue(out)
 
-    def test_digest_agent_carries_specific_source(
-        self, stale_config: Any
-    ) -> None:
+    def test_digest_agent_carries_specific_source(self, stale_config: Any) -> None:
         """The digest agent payload's source_platform is the specific name."""
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch("autoinfo.output._call_llm_for_digest", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_digest(
-                domain="ai-commercial", period="weekly", format="agent"
-            ))
+            out = _as_text(generate_digest(domain="ai-commercial", period="weekly", format="agent"))
         data = json.loads(out)
         assert data["entries"][0]["source_platform"] == STALE_SOURCE_NAME
         assert STALE_SOURCE_NAME in out
         _assert_no_rss_residue(out)
 
-    def test_report_agent_carries_specific_source(
-        self, stale_config: Any
-    ) -> None:
+    def test_report_agent_carries_specific_source(self, stale_config: Any) -> None:
         """The report agent payload's source_platform is the specific name."""
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._group_by_theme",
-                   return_value=[{
-                       "theme": "AI Funding",
-                       "description": "Funding rounds.",
-                       "entries": [_stale_entry()],
-                   }]), \
-             patch("autoinfo.output._generate_executive_summary",
-                   return_value={"executive_summary": "Overview.",
-                                 "key_findings": [], "recommendations": []}):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch(
+                "autoinfo.output._group_by_theme",
+                return_value=[
+                    {
+                        "theme": "AI Funding",
+                        "description": "Funding rounds.",
+                        "entries": [_stale_entry()],
+                    }
+                ],
+            ),
+            patch(
+                "autoinfo.output._generate_executive_summary",
+                return_value={
+                    "executive_summary": "Overview.",
+                    "key_findings": [],
+                    "recommendations": [],
+                },
+            ),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_report(
-                domain="ai-commercial", period="weekly", format="agent"
-            ))
+            out = _as_text(generate_report(domain="ai-commercial", period="weekly", format="agent"))
         data = json.loads(out)
         assert data["entries"][0]["source_platform"] == STALE_SOURCE_NAME
         assert STALE_SOURCE_NAME in out
         _assert_no_rss_residue(out)
 
-    def test_report_json_entries_carry_derived_source_label(
-        self, stale_config: Any
-    ) -> None:
+    def test_report_json_entries_carry_derived_source_label(self, stale_config: Any) -> None:
         """#325 — the report json ``entries`` carry the derived source label
         instead of the raw ``source_platform='rss'`` for stale pre-#323
         entries.  RED today: ``_render_report_json`` emits the raw item
         ``source_platform`` (verified ``entries[0].source_platform == 'rss'``).
         """
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._group_by_theme",
-                   return_value=[{
-                       "theme": "AI Funding",
-                       "description": "Funding rounds.",
-                       "entries": [_stale_entry()],
-                   }]), \
-             patch("autoinfo.output._generate_executive_summary",
-                   return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch(
+                "autoinfo.output._group_by_theme",
+                return_value=[
+                    {
+                        "theme": "AI Funding",
+                        "description": "Funding rounds.",
+                        "entries": [_stale_entry()],
+                    }
+                ],
+            ),
+            patch("autoinfo.output._generate_executive_summary", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_report(
-                domain="ai-commercial", period="weekly", format="json"
-            ))
+            out = _as_text(generate_report(domain="ai-commercial", period="weekly", format="json"))
         data = json.loads(out)
         assert data["entries"][0]["source_platform"] == STALE_SOURCE_NAME
         assert STALE_SOURCE_NAME in out
         _assert_no_rss_residue(out)
 
-    def test_report_markdown_references_prefer_source_label(
-        self, stale_config: Any
-    ) -> None:
+    def test_report_markdown_references_prefer_source_label(self, stale_config: Any) -> None:
         """#325 — the report markdown References render the specific source
         name, and no RSS residue appears in the whole body.
 
@@ -271,21 +278,26 @@ class TestSourceLabelSurfaces:
         the NEW behavior — the flat render context carries the derived
         ``source_label`` on the references for the templates to consume.
         """
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._group_by_theme",
-                   return_value=[{
-                       "theme": "AI Funding",
-                       "description": "Funding rounds.",
-                       "entries": [_stale_entry()],
-                   }]), \
-             patch("autoinfo.output._generate_executive_summary",
-                   return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch(
+                "autoinfo.output._group_by_theme",
+                return_value=[
+                    {
+                        "theme": "AI Funding",
+                        "description": "Funding rounds.",
+                        "entries": [_stale_entry()],
+                    }
+                ],
+            ),
+            patch("autoinfo.output._generate_executive_summary", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_report(
-                domain="ai-commercial", period="weekly", format="markdown"
-            ))
+            out = _as_text(
+                generate_report(domain="ai-commercial", period="weekly", format="markdown")
+            )
         # The references line renders the derived name, never "(RSS)".
         assert "(techcrunch)" in out
         assert STALE_SOURCE_NAME in out
@@ -306,20 +318,20 @@ class TestSourceLabelSurfaces:
                         items=[_stale_entry()],
                     )
                 ],
-                references=[{
-                    "title": _stale_entry()["title"],
-                    "source_url": STALE_SOURCE_URL,
-                    "source_type": "rss",
-                    "source_platform": STALE_SOURCE_NAME,
-                    "domain": "ai-commercial",
-                }],
+                references=[
+                    {
+                        "title": _stale_entry()["title"],
+                        "source_url": STALE_SOURCE_URL,
+                        "source_type": "rss",
+                        "source_platform": STALE_SOURCE_NAME,
+                        "domain": "ai-commercial",
+                    }
+                ],
             )
         )
         assert flat["references"][0]["source_label"] == STALE_SOURCE_NAME
 
-    def test_column_premium_enterprise_markdown_no_rss_residue(
-        self, stale_config: Any
-    ) -> None:
+    def test_column_premium_enterprise_markdown_no_rss_residue(self, stale_config: Any) -> None:
         """#325 — column / premium-briefing / enterprise-briefing templates
         prefer the derived ``source_label`` over the raw ``source_platform``
         in their References.  RED today: the templates render
@@ -341,13 +353,15 @@ class TestSourceLabelSurfaces:
                     items=[entry],
                 )
             ],
-            references=[{
-                "title": entry["title"],
-                "source_url": STALE_SOURCE_URL,
-                "source_type": entry["source_type"],
-                "source_platform": entry["source_platform"],
-                "domain": "ai-commercial",
-            }],
+            references=[
+                {
+                    "title": entry["title"],
+                    "source_url": STALE_SOURCE_URL,
+                    "source_type": entry["source_type"],
+                    "source_platform": entry["source_platform"],
+                    "domain": "ai-commercial",
+                }
+            ],
         )
         flat = _report_data_to_dict(data)
         for name in ("column", "premium-briefing", "enterprise-briefing"):
@@ -355,29 +369,30 @@ class TestSourceLabelSurfaces:
             assert STALE_SOURCE_NAME in out, f"{name} lost the specific source"
             _assert_no_rss_residue(out)
 
-    def test_report_section_items_carry_source_label(
-        self, stale_config: Any
-    ) -> None:
+    def test_report_section_items_carry_source_label(self, stale_config: Any) -> None:
         """#325 — every section ``entries[i].source_platform`` in the report
         JSON output is the derived source name, not the raw ``'rss'``.  RED
         today: the section items are built verbatim from the KB entries at
         L5262-5272, so the JSON render surfaces ``source_platform='rss'``.
         """
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._group_by_theme",
-                   return_value=[{
-                       "theme": "AI Funding",
-                       "description": "Funding rounds.",
-                       "entries": [_stale_entry()],
-                   }]), \
-             patch("autoinfo.output._generate_executive_summary",
-                   return_value=_SYNTH):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch(
+                "autoinfo.output._group_by_theme",
+                return_value=[
+                    {
+                        "theme": "AI Funding",
+                        "description": "Funding rounds.",
+                        "entries": [_stale_entry()],
+                    }
+                ],
+            ),
+            patch("autoinfo.output._generate_executive_summary", return_value=_SYNTH),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = [_stale_entry()]
             kb_cls.return_value = kb
-            out = _as_text(generate_report(
-                domain="ai-commercial", period="weekly", format="json"
-            ))
+            out = _as_text(generate_report(domain="ai-commercial", period="weekly", format="json"))
         data = json.loads(out)
         assert data["entries"], "report JSON carried no entries"
         for entry in data["entries"]:
@@ -385,9 +400,7 @@ class TestSourceLabelSurfaces:
                 f"section entry rendered raw platform {entry['source_platform']!r}"
             )
 
-    def test_title_only_entry_reference_not_bare(
-        self, stale_config: Any
-    ) -> None:
+    def test_title_only_entry_reference_not_bare(self, stale_config: Any) -> None:
         """A title-only ProductHunt reference (empty summary, e.g. OpenLogi)
         must render a description fallback — never the bare title+platform
         line.  RED today: the ref builders carry no ``description`` key, so
@@ -407,7 +420,7 @@ class TestSourceLabelSurfaces:
             "domain": "b2b",
             "relevance_score": 80.0,
             "tier": "01-Raw",
-            "collected_at": "2026-08-25T10:00:00Z",
+            "collected_at": fresh_iso(48),
         }
         summary_entry = {
             "entry_id": "e-ai-copilot",
@@ -420,7 +433,7 @@ class TestSourceLabelSurfaces:
             "domain": "b2b",
             "relevance_score": 90.0,
             "tier": "01-Raw",
-            "collected_at": "2026-08-25T10:00:00Z",
+            "collected_at": fresh_iso(48),
         }
         entries = [openlogi, summary_entry]
 
@@ -436,28 +449,22 @@ class TestSourceLabelSurfaces:
             domain="b2b",
         )
         refs = {r["title"]: r for r in flat["references"]}
-        assert refs["OpenLogi"]["description"], (
-            "title-only ref must carry a non-empty description"
-        )
+        assert refs["OpenLogi"]["description"], "title-only ref must carry a non-empty description"
 
         # (b)+(c) rendered report References; the empty-entry filter is
         # patched to identity (orthogonal to this rendering contract).
-        with patch("autoinfo.output.KBStore") as kb_cls, \
-             patch("autoinfo.output._group_by_theme", return_value=[]), \
-             patch("autoinfo.output._generate_executive_summary",
-                   return_value=_SYNTH), \
-             patch("autoinfo.output._filter_product_entries",
-                   side_effect=lambda es: list(es)):
+        with (
+            patch("autoinfo.output.KBStore") as kb_cls,
+            patch("autoinfo.output._group_by_theme", return_value=[]),
+            patch("autoinfo.output._generate_executive_summary", return_value=_SYNTH),
+            patch("autoinfo.output._filter_product_entries", side_effect=lambda es: list(es)),
+        ):
             kb = MagicMock()
             kb.list_entries.return_value = entries
             kb_cls.return_value = kb
-            out = _as_text(generate_report(
-                domain="b2b", period="weekly", format="markdown"
-            ))
+            out = _as_text(generate_report(domain="b2b", period="weekly", format="markdown"))
         refs_section = out.split("## References", 1)[1]
-        openlogi_line = next(
-            line for line in refs_section.splitlines() if "OpenLogi" in line
-        )
+        openlogi_line = next(line for line in refs_section.splitlines() if "OpenLogi" in line)
         # (b) not the bare form: the fallback description renders.
         assert "producthunt item" in openlogi_line, openlogi_line
         # (c) the summary-bearing entry renders its own summary as description.
@@ -518,9 +525,13 @@ class TestSourceLabelDataLayerRecovery:
     openalex/dblp/quandl/sec_edgar.
     """
 
-    def _label(self, source_url: str, platform: str = "rss",
-               domain: str = "medical-research",
-               source_configs: list[Any] | None = None) -> str:
+    def _label(
+        self,
+        source_url: str,
+        platform: str = "rss",
+        domain: str = "medical-research",
+        source_configs: list[Any] | None = None,
+    ) -> str:
         from autoinfo.output import _derive_source_label
 
         entry = {
@@ -533,11 +544,13 @@ class TestSourceLabelDataLayerRecovery:
             "relevance_score": 90.0,
             "tags": "[]",
             "tier": "01-Raw",
-            "collected_at": "2026-08-19T10:00:00Z",
+            "collected_at": fresh_iso(54),
         }
         if source_configs is not None:
             return _derive_source_label(
-                entry, domain, source_configs=source_configs,
+                entry,
+                domain,
+                source_configs=source_configs,
             )
         return _derive_source_label(entry, domain)
 
@@ -552,19 +565,17 @@ class TestSourceLabelDataLayerRecovery:
         from autoinfo.config import SourceConfig
 
         configs = [
-            SourceConfig(name="arXiv", type="rss",
-                         url="https://rss.arxiv.org/rss/q-bio"),
+            SourceConfig(name="arXiv", type="rss", url="https://rss.arxiv.org/rss/q-bio"),
         ]
         label = self._label(
-            "https://arxiv.org/abs/2401.12345", source_configs=configs,
+            "https://arxiv.org/abs/2401.12345",
+            source_configs=configs,
         )
         assert label.lower() != "rss", f"arXiv host mismatch not recovered: {label!r}"
         assert label
 
     def test_openalex_source_recovered(self) -> None:
-        label = self._label(
-            "https://api.openalex.org/works/W123", platform="openalex"
-        )
+        label = self._label("https://api.openalex.org/works/W123", platform="openalex")
         assert label.lower() != "rss", f"openalex not recovered: {label!r}"
         assert label
 
@@ -575,7 +586,8 @@ class TestSourceLabelDataLayerRecovery:
 
     def test_quandl_source_recovered(self) -> None:
         label = self._label(
-            "https://www.quandl.com/data/EIA/PET", platform="quandl",
+            "https://www.quandl.com/data/EIA/PET",
+            platform="quandl",
             domain="financial-intelligence",
         )
         assert label.lower() != "rss", f"quandl not recovered: {label!r}"
@@ -584,7 +596,8 @@ class TestSourceLabelDataLayerRecovery:
     def test_sec_edgar_source_recovered(self) -> None:
         label = self._label(
             "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
-            platform="sec_edgar", domain="financial-intelligence",
+            platform="sec_edgar",
+            domain="financial-intelligence",
         )
         assert label.lower() != "rss", f"sec_edgar not recovered: {label!r}"
         assert label
@@ -610,17 +623,20 @@ class TestSourceLabelDataLayerRecovery:
             name="WSJ Markets",
             type="rss",
             url="https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-            settings={"article_hosts": [
-                "https://www.wsj.com",
-                "https://online.wsj.com",
-            ]},
+            settings={
+                "article_hosts": [
+                    "https://www.wsj.com",
+                    "https://online.wsj.com",
+                ]
+            },
         )
         for url in (
             "https://www.wsj.com/articles/foo-123",
             "https://online.wsj.com/market-data",
         ):
             label = self._label(
-                url, domain="financial-intelligence",
+                url,
+                domain="financial-intelligence",
                 source_configs=[sc],
             )
             assert label == "WSJ Markets", f"{url}: got {label!r}"

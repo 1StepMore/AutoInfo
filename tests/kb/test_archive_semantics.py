@@ -22,6 +22,7 @@ from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.process import run_processing
 from autoinfo.quality import QualityResult
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Shared fixtures / helpers
@@ -45,7 +46,7 @@ def _make_item(item_id: str, title: str, topic: str = "research") -> Item:
             "length required for knowledge base storage."
         ),
         content_type="text",
-        collected_at="2026-07-15T10:00:00Z",
+        collected_at=fresh_iso(89),
         language="en",
         domain=DOMAIN,
         topic_tags=[topic],
@@ -70,15 +71,21 @@ def _g3_archived() -> dict[str, QualityResult]:
     """G3 below threshold with action 'archive' (the default)."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=True, score=1.0,
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
             details={"is_duplicate": False, "matched_by": None},
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=False, score=5.0,
+            gate_name="G3-RelevanceScoring",
+            passed=False,
+            score=5.0,
             flagged=True,
             details={
                 "hidden": True,
@@ -94,15 +101,21 @@ def _g3_active() -> dict[str, QualityResult]:
     """G3 above threshold — normal active entry."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=True, score=1.0,
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
             details={"is_duplicate": False, "matched_by": None},
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=90.0,
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=90.0,
             details={"hidden": False, "action": "archive"},
         ),
     }
@@ -113,15 +126,21 @@ def _g3_passing_low_score() -> dict[str, QualityResult]:
     weak positive signal that must NOT resurrect an archived entry."""
     return {
         "G1-SourceAuthority": QualityResult(
-            gate_name="G1-SourceAuthority", passed=True, score=1.0,
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
             details={"quality_tier": 1, "source_name": "pubmed"},
         ),
         "G2-Dedup": QualityResult(
-            gate_name="G2-Dedup", passed=True, score=1.0,
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
             details={"is_duplicate": False, "matched_by": None},
         ),
         "G3-RelevanceScoring": QualityResult(
-            gate_name="G3-RelevanceScoring", passed=True, score=45.0,
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=45.0,
             details={"hidden": False, "action": "archive"},
         ),
     }
@@ -148,9 +167,7 @@ class TestArchiveOnProcessing:
     def _run(self, tmp_path: Path, item: Item, quality: dict[str, QualityResult]):
         store = KBStore(base_path=tmp_path / "knowledge", min_content_chars=50)
         mock_ext = MagicMock(
-            side_effect=lambda it, schema=None: _make_extraction(
-                it.id, it.title, 5.0
-            )
+            side_effect=lambda it, schema=None: _make_extraction(it.id, it.title, 5.0)
         )
         mock_quality = MagicMock(return_value=quality)
         fake_lang_en = type("Lang", (), {"lang": "en", "prob": 0.95})()
@@ -211,20 +228,14 @@ class TestSearchExcludesArchived:
         active_item = _make_item("item-active", "Zorpzilla active research article")
         store.store_entry(
             active_item,
-            _make_extraction(
-                "item-active", "Zorpzilla active research article", 90.0
-            ),
+            _make_extraction("item-active", "Zorpzilla active research article", 90.0),
             _g3_active(),
         )
 
-        archived_item = _make_item(
-            "item-archived", "Zorpzilla archived research article"
-        )
+        archived_item = _make_item("item-archived", "Zorpzilla archived research article")
         store.store_entry(
             archived_item,
-            _make_extraction(
-                "item-archived", "Zorpzilla archived research article", 5.0
-            ),
+            _make_extraction("item-archived", "Zorpzilla archived research article", 5.0),
             _g3_archived(),
         )
 
@@ -236,7 +247,7 @@ class TestSearchExcludesArchived:
             source_url="https://example.com/dep-001",
             source_type="api",
             source_platform="pubmed",
-            collected_at="2026-07-15T10:00:00Z",
+            collected_at=fresh_iso(89),
             tags=["research"],
             status="deprecated",
         )
@@ -263,9 +274,7 @@ class TestSearchExcludesArchived:
         """Direct retrieval by entry_id works for archived entries."""
         stored = store.list_entries(DOMAIN, limit=10)
         archived_id = next(
-            e["entry_id"]
-            for e in stored
-            if e["title"] == "Zorpzilla archived research article"
+            e["entry_id"] for e in stored if e["title"] == "Zorpzilla archived research article"
         )
         entry = store.get_entry(archived_id)
         assert entry is not None
@@ -281,9 +290,7 @@ class TestSearchExcludesArchived:
 class TestDigestExcludesArchived:
     """``generate_digest`` never surfaces archived/deprecated entries."""
 
-    def _entry_dict(
-        self, entry_id: str, title: str, status: str
-    ) -> dict[str, Any]:
+    def _entry_dict(self, entry_id: str, title: str, status: str) -> dict[str, Any]:
         return {
             "entry_id": entry_id,
             "title": title,
@@ -317,18 +324,12 @@ class TestDigestExcludesArchived:
             mock_store.list_entries.return_value = entries
             mock_store.list_kb_tier.return_value = []
             mock_kb_cls.return_value = mock_store
-            return generate_digest(
-                domain="test-domain", period="weekly", format="markdown"
-            )
+            return generate_digest(domain="test-domain", period="weekly", format="markdown")
 
     def test_archived_entry_not_in_digest(self) -> None:
         """Only the active entry is rendered into the digest."""
-        active = self._entry_dict(
-            "active-001", "Zorpzilla active digest article", "active"
-        )
-        archived = self._entry_dict(
-            "archived-001", "Zorpzilla archived digest article", "archived"
-        )
+        active = self._entry_dict("active-001", "Zorpzilla active digest article", "active")
+        archived = self._entry_dict("archived-001", "Zorpzilla archived digest article", "archived")
         deprecated = self._entry_dict(
             "deprecated-001", "Zorpzilla deprecated digest article", "deprecated"
         )
@@ -379,9 +380,7 @@ class TestReprocessPreservesDeliverableStatus:
     def _store(self, tmp_path: Path) -> KBStore:
         return KBStore(base_path=tmp_path / "knowledge", min_content_chars=50)
 
-    def test_active_stays_active_on_reingest_with_archive_gate(
-        self, tmp_path: Path
-    ) -> None:
+    def test_active_stays_active_on_reingest_with_archive_gate(self, tmp_path: Path) -> None:
         """A delivered (active) entry re-ingested with a gate that says
         archive stays active — the deliverable is not downgraded."""
         store = self._store(tmp_path)
@@ -409,7 +408,8 @@ class TestReprocessPreservesDeliverableStatus:
         assert _entry_status(store.get_entry(second.entry_id)) == "archived"
 
     def test_archived_restored_to_active_on_high_rescore(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Issue #189: a HIGH G3 re-score (>= 60) restores archived -> active.
 

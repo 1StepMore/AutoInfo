@@ -23,8 +23,18 @@ class TestGenerateSitemap:
 
     def test_sitemap_includes_entries(self):
         entries = [
-            {"url": "https://example.com/page1", "lastmod": "2026-07-30", "changefreq": "weekly", "priority": 0.8},
-            {"url": "https://example.com/page2", "lastmod": "2026-07-29", "changefreq": "monthly", "priority": 0.5},
+            {
+                "url": "https://example.com/page1",
+                "lastmod": "2026-07-30",
+                "changefreq": "weekly",
+                "priority": 0.8,
+            },
+            {
+                "url": "https://example.com/page2",
+                "lastmod": "2026-07-29",
+                "changefreq": "monthly",
+                "priority": 0.5,
+            },
         ]
         xml = generate_sitemap(entries=entries, base_url="https://example.com")
         assert "<loc>https://example.com/page1</loc>" in xml
@@ -239,9 +249,7 @@ class TestExportKbSitemap:
         ns = {"sm": "https://www.sitemaps.org/schemas/sitemap/0.9"}
         urls = root.findall("sm:url", ns)
         lastmods = [
-            u.find("sm:lastmod", ns).text
-            for u in urls
-            if u.find("sm:lastmod", ns) is not None
+            u.find("sm:lastmod", ns).text for u in urls if u.find("sm:lastmod", ns) is not None
         ]
         assert "2026-07-15" in lastmods or "2026-07-16" in lastmods
 
@@ -256,9 +264,7 @@ class TestExportKbSitemap:
         """export_kb(format='sitemap') without base_url raises an actionable error."""
         with patch("autoinfo.output.get_config_path") as mock_cfg:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
-            with pytest.raises(
-                ValueError, match="requires an explicit base_url"
-            ) as exc_info:
+            with pytest.raises(ValueError, match="requires an explicit base_url") as exc_info:
                 export_kb(domain="medical-research", format="sitemap")
 
         message = str(exc_info.value)
@@ -323,14 +329,11 @@ class TestJsonLdInjection:
             "Digest HTML must contain JSON-LD script block"
         )
         assert '"@type"' in html, "JSON-LD must contain @type"
-        assert '"Medical Weekly Digest"' in html, (
-            "JSON-LD must include the title"
-        )
+        assert '"Medical Weekly Digest"' in html, "JSON-LD must include the title"
 
     def test_report_html_contains_json_ld_script_block(self) -> None:
         """Report HTML rendered via _render_report_html contains JSON-LD."""
-        from autoinfo.output import _render_report_html
-        from autoinfo.output import ReportData
+        from autoinfo.output import ReportData, _render_report_html
 
         report_data = ReportData(
             title="Medical Research Report",
@@ -347,9 +350,7 @@ class TestJsonLdInjection:
             "Report HTML must contain JSON-LD script block"
         )
         assert '"@type"' in html, "JSON-LD must contain @type"
-        assert '"Medical Research Report"' in html, (
-            "JSON-LD must include the title"
-        )
+        assert '"Medical Research Report"' in html, "JSON-LD must include the title"
 
 
 # ---------------------------------------------------------------------------
@@ -365,17 +366,11 @@ class TestMcpExportKbEnum:
         from autoinfo.mcp.server import list_tools
 
         tools = asyncio.run(list_tools())
-        export_kb_tool = next(
-            (t for t in tools if t.name == "export_kb"), None
-        )
+        export_kb_tool = next((t for t in tools if t.name == "export_kb"), None)
         assert export_kb_tool is not None, "export_kb tool must exist"
 
         schema = export_kb_tool.inputSchema
-        fmt_enum = (
-            schema.get("properties", {})
-            .get("format", {})
-            .get("enum", [])
-        )
+        fmt_enum = schema.get("properties", {}).get("format", {}).get("enum", [])
         assert "sitemap" in fmt_enum, (
             f"MCP export_kb format enum must include 'sitemap', got: {fmt_enum}"
         )

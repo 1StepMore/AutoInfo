@@ -36,6 +36,7 @@ from autoinfo.output import (
     _normalize_digest_product_context,
     generate_digest,
 )
+from tests._freshness import fresh_date, fresh_iso
 
 # ===================================================================
 # Sample data
@@ -151,9 +152,9 @@ def _column_context(
         "domain": "medical-research",
         "period": "weekly",
         "period_label": "Weekly",
-        "date_from": "2026-08-03",
-        "date_to": "2026-08-10",
-        "generated_at": "2026-08-10T00:00:00+00:00",
+        "date_from": fresh_date(70),
+        "date_to": fresh_date(63),
+        "generated_at": fresh_iso(63),
         "entries": _SAMPLE_ENTRIES if entries is None else entries,
         "llm_synthesis": synthesis,
         "target_audience": "",
@@ -395,7 +396,7 @@ class TestColumnValueDrain:
                 "relevance_score": 89.0 - i,
                 "tags": '["IVF", "embryo"]',
                 "tier": "01-Raw",
-                "collected_at": "2026-07-15T10:00:00Z",
+                "collected_at": fresh_iso(89),
             }
             for i in range(1, 51)
         ]
@@ -458,7 +459,7 @@ class TestColumnValueDrain:
                 "relevance_score": 89.0 - i,
                 "tags": '["IVF", "embryo"]',
                 "tier": "01-Raw",
-                "collected_at": "2026-07-15T10:00:00Z",
+                "collected_at": fresh_iso(89),
             }
             for i in range(1, 51)
         ]

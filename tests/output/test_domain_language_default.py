@@ -30,6 +30,7 @@ from autoinfo.output import (
     generate_digest,
     generate_report,
 )
+from tests._freshness import fresh_date
 
 # Required so fixture entries clear the product freshness guard (F51 /
 # backup #52): a hardcoded calendar date ages past the domain threshold and
@@ -49,7 +50,7 @@ def _write_config(tmp_path: Path, domains: list[dict[str, Any]]) -> None:
     config_dir = tmp_path / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     cfg = {
-        "project": {"name": "Test Project", "created_at": "2026-08-19"},
+        "project": {"name": "Test Project", "created_at": fresh_date(54)},
         "llm": {
             "provider": "openrouter",
             "model": "deepseek/deepseek-chat",
@@ -217,8 +218,11 @@ class TestDigestDomainDefault:
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_domain_default_filters_to_en(
-        self, mock_llm: MagicMock, mock_kb: MagicMock,
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_llm: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """ai-commercial default 'en' keeps English entries, drops zh."""
         _write_config(tmp_path, [_ai_commercial_domain()])
@@ -229,17 +233,18 @@ class TestDigestDomainDefault:
             "recommendations": [],
         }
         mock_kb.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="ai-commercial", period="weekly", format="markdown"
-        ))
+        body = _as_text(generate_digest(domain="ai-commercial", period="weekly", format="markdown"))
         assert "English AI funding round" in body
         assert "中文 AI 融资动态" not in body
 
     @patch("autoinfo.output.KBStore")
     @patch("autoinfo.output._call_llm_for_digest")
     def test_explicit_language_overrides_domain_default(
-        self, mock_llm: MagicMock, mock_kb: MagicMock,
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_llm: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Explicit language='zh' overrides the domain default 'en'."""
         _write_config(tmp_path, [_ai_commercial_domain()])
@@ -250,10 +255,14 @@ class TestDigestDomainDefault:
             "recommendations": [],
         }
         mock_kb.return_value = _digest_mock_store(_MIXED_ENTRIES)
-        body = _as_text(generate_digest(
-            domain="ai-commercial", period="weekly", format="markdown",
-            language="zh",
-        ))
+        body = _as_text(
+            generate_digest(
+                domain="ai-commercial",
+                period="weekly",
+                format="markdown",
+                language="zh",
+            )
+        )
         assert "中文 AI 融资动态" in body
         assert "English AI funding round" not in body
 
@@ -261,8 +270,12 @@ class TestDigestDomainDefault:
     @patch("autoinfo.output._get_domain_source_configs", side_effect=_fail_open_sources)
     @patch("autoinfo.output._call_llm_for_digest")
     def test_no_default_keeps_legacy_behavior(
-        self, mock_llm: MagicMock, mock_src, mock_kb: MagicMock,
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_llm: MagicMock,
+        mock_src,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A domain with no default keeps both languages (legacy).
 
@@ -277,13 +290,11 @@ class TestDigestDomainDefault:
             "key_findings": [],
             "recommendations": [],
         }
-        entries = [
-            {**e, "domain": "language-learning"} for e in _MIXED_ENTRIES
-        ]
+        entries = [{**e, "domain": "language-learning"} for e in _MIXED_ENTRIES]
         mock_kb.return_value = _digest_mock_store(entries)
-        body = _as_text(generate_digest(
-            domain="language-learning", period="weekly", format="markdown"
-        ))
+        body = _as_text(
+            generate_digest(domain="language-learning", period="weekly", format="markdown")
+        )
         assert "English AI funding round" in body
         assert "中文 AI 融资动态" in body
 
@@ -293,8 +304,12 @@ class TestReportDomainDefault:
     @patch("autoinfo.output._group_by_theme")
     @patch("autoinfo.output._generate_executive_summary")
     def test_report_domain_default_filters_to_en(
-        self, mock_synthesis: MagicMock, mock_group: MagicMock,
-        mock_kb: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_synthesis: MagicMock,
+        mock_group: MagicMock,
+        mock_kb: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """generate_report also applies the domain default language."""
         _write_config(tmp_path, [_ai_commercial_domain()])
@@ -302,8 +317,6 @@ class TestReportDomainDefault:
         mock_kb.return_value = _digest_mock_store(_MIXED_ENTRIES)
         mock_group.return_value = []
         mock_synthesis.return_value = "Overview."
-        body = _as_text(generate_report(
-            domain="ai-commercial", period="weekly", format="markdown"
-        ))
+        body = _as_text(generate_report(domain="ai-commercial", period="weekly", format="markdown"))
         assert "English AI funding round" in body
         assert "中文 AI 融资动态" not in body

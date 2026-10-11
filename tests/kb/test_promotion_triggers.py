@@ -40,6 +40,7 @@ from autoinfo.output import _promote_eligible_drafts, generate_digest, generate_
 from autoinfo.process import ProcessResult
 from autoinfo.promotion import RejectionReason
 from autoinfo.quality import QualityResult
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Fixtures / builders
@@ -77,7 +78,7 @@ def make_scored_raw(
             "method to improve embryo selection in IVF cycles."
         ),
         content_type="text",
-        collected_at="2026-07-15T10:30:00Z",
+        collected_at=fresh_iso(89),
         language="en",
         domain="medical-research",
         topic_tags=["IVF"],
@@ -198,9 +199,7 @@ class TestPromoteEligibleHelper:
         meta = store.index.get_entry(draft.entry_id)
         assert meta is not None and meta["tier"] == "03-Wiki"
 
-    def test_rejection_is_non_fatal(
-        self, store: KBStore, patch_g4: Callable[[bool], None]
-    ) -> None:
+    def test_rejection_is_non_fatal(self, store: KBStore, patch_g4: Callable[[bool], None]) -> None:
         patch_g4(True)
         raw = make_scored_raw(store, with_quality_results=False)
         draft = make_draft(store, raw, title="Helper rejected draft")
@@ -393,7 +392,7 @@ def sample_items() -> list[Item]:
             title="First test article about IVF",
             content="This is the content of the first test article about IVF treatment outcomes.",
             content_type="text",
-            collected_at="2026-07-15T10:00:00Z",
+            collected_at=fresh_iso(89),
             language="en",
             domain="medical-research",
             topic_tags=["IVF"],
@@ -409,7 +408,7 @@ def sample_items() -> list[Item]:
             title="Second test article about neuroplasticity",
             content="This is the content of the second test article about synaptic plasticity.",
             content_type="text",
-            collected_at="2026-07-15T11:00:00Z",
+            collected_at=fresh_iso(89),
             language="en",
             domain="medical-research",
             topic_tags=["neuroplasticity"],
@@ -493,9 +492,7 @@ class TestProcessAutoPromote:
         mock_store = self._mock_store(entry, draft)
         mock_store.promote_kb_draft.return_value = {"status": "promoted"}
 
-        result = self._run(
-            mock_store, sample_items, mock_extraction, auto_promote=True
-        )
+        result = self._run(mock_store, sample_items, mock_extraction, auto_promote=True)
 
         assert result.errors == []
         assert mock_store.create_kb_draft.call_count == 2
@@ -515,9 +512,7 @@ class TestProcessAutoPromote:
             [RejectionReason.SOURCE_SCORE_BELOW_THRESHOLD]
         )
 
-        result = self._run(
-            mock_store, sample_items, mock_extraction, auto_promote=True
-        )
+        result = self._run(mock_store, sample_items, mock_extraction, auto_promote=True)
 
         assert result.errors == []
         assert all(log["status"] == "ok" for log in result.per_item_logs)
@@ -541,8 +536,11 @@ class TestPromotePendingSweep:
         raw_ok = make_scored_raw(store, item_id="raw-ok", title="Raw ok paper")
         draft_ok = make_draft(store, raw_ok, title="Sweep eligible draft")
         raw_low = make_scored_raw(
-            store, item_id="raw-low", title="Raw low paper",
-            g1_score=5.0, g3_score=5.0,
+            store,
+            item_id="raw-low",
+            title="Raw low paper",
+            g1_score=5.0,
+            g3_score=5.0,
         )
         draft_low = make_draft(store, raw_low, title="Sweep low-score draft")
 
@@ -579,9 +577,7 @@ class TestPromotePendingSweep:
         meta = store.index.get_entry(draft.entry_id)
         assert meta is not None and meta["tier"] == "02-Draft"
 
-    def test_sweep_is_idempotent(
-        self, store: KBStore, patch_g4: Callable[[bool], None]
-    ) -> None:
+    def test_sweep_is_idempotent(self, store: KBStore, patch_g4: Callable[[bool], None]) -> None:
         patch_g4(True)
         raw = make_scored_raw(store)
         make_draft(store, raw, title="Sweep idempotent draft")
@@ -593,9 +589,7 @@ class TestPromotePendingSweep:
         assert second["promoted"] == []
         assert second["total"] == 0  # nothing left in 02-Draft
 
-    def test_sweep_records_caller(
-        self, store: KBStore, patch_g4: Callable[[bool], None]
-    ) -> None:
+    def test_sweep_records_caller(self, store: KBStore, patch_g4: Callable[[bool], None]) -> None:
         patch_g4(True)
         raw = make_scored_raw(store)
         draft = make_draft(store, raw, title="Sweep caller draft")
@@ -635,9 +629,7 @@ class TestPromotePendingSweep:
             summary = store.promote_pending_drafts(domain="medical-research")
 
         assert [p["entry_id"] for p in summary["promoted"]] == [draft_ok.entry_id]
-        assert summary["failed"] == [
-            {"entry_id": draft_bad.entry_id, "error": "disk on fire"}
-        ]
+        assert summary["failed"] == [{"entry_id": draft_bad.entry_id, "error": "disk on fire"}]
         _assert_tier(store, draft_ok.entry_id, "03-Wiki")
         _assert_tier(store, draft_bad.entry_id, "02-Draft")
 

@@ -25,6 +25,7 @@ from autoinfo.output import (
     _render_tutorial_template,
     generate_tutorial,
 )
+from tests._freshness import fresh_date
 
 
 def _fresh_collected_at() -> str:
@@ -183,7 +184,7 @@ class TestTemplateVocabularyGrammar:
             "exercises": [],
             "summary": "s",
             "further_reading": [],
-            "generated_at": "2026-08-28",
+            "generated_at": fresh_date(45),
             "vocabulary": ["банк — bank (noun)", "экономика — economy"],
             "grammar": ["Genitive case for negation"],
             "collection_id": "",
@@ -206,7 +207,7 @@ class TestTemplateVocabularyGrammar:
             "exercises": [],
             "summary": "s",
             "further_reading": [],
-            "generated_at": "2026-08-28",
+            "generated_at": fresh_date(45),
             "vocabulary": [],
             "grammar": [],
             "collection_id": "",

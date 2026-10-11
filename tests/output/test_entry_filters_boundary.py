@@ -70,6 +70,7 @@ from autoinfo.output import (
     generate_digest,
     generate_report,
 )
+from tests._freshness import fresh_iso
 
 # ---------------------------------------------------------------------------
 # Determinism constants
@@ -570,7 +571,7 @@ class TestConvergeNearDuplicates:
         lang: str = "en",
         dedup_status: str = "duplicate",
         relevance: float = 50.0,
-        collected_at: str = "2026-08-25T12:00:00",
+        collected_at: str = fresh_iso(48),
     ) -> dict[str, Any]:
         return {
             "entry_id": eid,
@@ -651,7 +652,7 @@ class TestFilterDigestEntries:
             "source_url": url or f"https://example.com/{eid}",
             "source_type": "rss",
             "source_platform": "pubmed",
-            "collected_at": "2026-08-25T12:00:00",
+            "collected_at": fresh_iso(48),
             "relevance_score": relevance,
             "tags": "[]",
             "quality_tier": 1,

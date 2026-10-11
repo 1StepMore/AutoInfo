@@ -28,6 +28,7 @@ from autoinfo.output import (
     _parse_json_response,
     generate_digest,
 )
+from tests._freshness import fresh_date
 
 # ---------------------------------------------------------------------------
 # Sample entry data
@@ -890,7 +891,7 @@ class TestSynthesisTraceabilityAndRmbUsd:
             "source_url": "https://example.com/vast",
             "source_type": "api",
             "source_platform": "web",
-            "collected_at": "2026-09-01",
+            "collected_at": fresh_date(41),
             "summary": "该公司获得30亿元新一轮投资，用于扩大算力规模。",
             "tags": '["融资", "AI"]',
             "relevance_score": 90.0,

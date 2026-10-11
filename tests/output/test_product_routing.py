@@ -34,6 +34,7 @@ from autoinfo.output import (
     _resolve_report_product_type,
     generate_report,
 )
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Fixtures & helpers
@@ -55,7 +56,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 92.0,
             "tags": '["IVF", "embryo"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-15T10:00:00Z",
+            "collected_at": fresh_iso(89),
         },
         {
             "entry_id": "entry-002",
@@ -68,7 +69,7 @@ def sample_entries() -> list[dict[str, Any]]:
             "relevance_score": 78.0,
             "tags": '["neuroplasticity", "development"]',
             "tier": "01-Raw",
-            "collected_at": "2026-07-16T10:00:00Z",
+            "collected_at": fresh_iso(88),
         },
     ]
 
@@ -91,16 +92,13 @@ def _make_grouping_result() -> ExtractionResult:
                 {
                     "theme": "IVF & Reproductive Medicine",
                     "description": (
-                        "Advancements in IVF treatment and assisted "
-                        "reproductive technologies."
+                        "Advancements in IVF treatment and assisted reproductive technologies."
                     ),
                     "entry_ids": ["entry-001"],
                 },
                 {
                     "theme": "Neuroplasticity & Brain Development",
-                    "description": (
-                        "Brain plasticity across different developmental stages."
-                    ),
+                    "description": ("Brain plasticity across different developmental stages."),
                     "entry_ids": ["entry-002"],
                 },
             ],
@@ -142,9 +140,7 @@ class TestResolveReportProductType:
     def test_premium_briefing_resolves_when_template_on_disk(self) -> None:
         """The premium-briefing registry row maps to its own family (file exists)."""
         assert (
-            _resolve_report_product_type(
-                _registry_template("premium-briefing"), "md", "standard"
-            )
+            _resolve_report_product_type(_registry_template("premium-briefing"), "md", "standard")
             == "premium-briefing"
         )
 
@@ -185,15 +181,13 @@ class TestResolveReportProductType:
     def test_column_registry_row_resolves_via_on_disk_check(self) -> None:
         """The column registry row resolves to ``column`` (column.md.j2 exists)."""
         assert (
-            _resolve_report_product_type(_registry_template("column"), "md", "column")
-            == "column"
+            _resolve_report_product_type(_registry_template("column"), "md", "column") == "column"
         )
 
     def test_report_row_resolves_to_report(self) -> None:
         """The report registry row resolves to ``report`` (report.md.j2 exists)."""
         assert (
-            _resolve_report_product_type(_registry_template("report"), "md", "standard")
-            == "report"
+            _resolve_report_product_type(_registry_template("report"), "md", "standard") == "report"
         )
 
 
@@ -215,9 +209,7 @@ class TestResolveDigestProductType:
 
     def test_digest_row_resolves_to_digest(self) -> None:
         """The base digest registry row keeps the default digest family."""
-        assert (
-            _resolve_digest_product_type(_registry_template("digest"), "md") == "digest"
-        )
+        assert _resolve_digest_product_type(_registry_template("digest"), "md") == "digest"
 
     def test_falls_back_to_digest_when_template_file_absent(self, tmp_path: Path) -> None:
         """A registry row whose template file is missing falls back — no error.
@@ -227,9 +219,7 @@ class TestResolveDigestProductType:
         """
         with patch("autoinfo.output._TEMPLATES_DIR", tmp_path):
             assert (
-                _resolve_digest_product_type(
-                    _registry_template("magazine-digest"), "md"
-                )
+                _resolve_digest_product_type(_registry_template("magazine-digest"), "md")
                 == "digest"
             )
 

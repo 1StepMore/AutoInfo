@@ -19,6 +19,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from autoinfo.output import _group_by_theme
+from tests._freshness import fresh_iso
 
 # Vary source_type so the deterministic fallback can split into ≥2 source
 # groups (otherwise ``_deterministic_grouping`` may return None when fewer than
@@ -37,7 +38,7 @@ def _entry(i: int) -> dict[str, Any]:
         "relevance_score": 90 - (i % 10),
         "tags": "[]",
         "tier": "01-Raw",
-        "collected_at": "2026-07-15T10:00:00Z",
+        "collected_at": fresh_iso(89),
     }
 
 

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from autoinfo.output import DeliveryOutput, StaleSourceError, generate_digest
+from tests._freshness import fresh_iso
 
 
 def _entry(eid: str, collected_at: str, title: str = "item") -> dict[str, Any]:
@@ -92,7 +93,7 @@ class TestStaleSourceGuard:
             "key_findings": [],
             "recommendations": [],
         }
-        fresh = _entry("fresh-0", "2026-08-25T00:00:00+00:00", title="Fresh")
+        fresh = _entry("fresh-0", fresh_iso(48), title="Fresh")
         entries = _stale_entries() + [fresh]
         mock_kb.return_value = _mock_store(entries)
         result = generate_digest(

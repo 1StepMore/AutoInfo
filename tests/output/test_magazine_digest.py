@@ -26,6 +26,7 @@ from autoinfo.output import (
     generate_digest,
     list_output_templates,
 )
+from tests._freshness import fresh_date, fresh_iso
 
 # ===================================================================
 # Sample data
@@ -379,9 +380,9 @@ class TestMagazineEditorialFeature:
             "domain": "general-news",
             "period": "weekly",
             "period_label": "Weekly",
-            "date_from": "2026-07-27",
-            "date_to": "2026-08-02",
-            "generated_at": "2026-08-03T00:00:00+00:00",
+            "date_from": fresh_date(77),
+            "date_to": fresh_date(71),
+            "generated_at": fresh_iso(70),
             "entries": _SAMPLE_ENTRIES,
             "llm_synthesis": _SAMPLE_LLM_SYNTHESIS_EDITORIAL,
             "target_audience": "",

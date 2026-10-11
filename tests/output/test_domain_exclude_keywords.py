@@ -29,6 +29,7 @@ from autoinfo.output import (
     generate_report,
     generate_tutorial,
 )
+from tests._freshness import fresh_date
 
 # The full 11-term ai-commercial noise set from the #319 validation assertion
 # (_AI_COMMERCIAL_NOISE).  The seed sources.yaml currently declares only
@@ -157,7 +158,7 @@ def _entry(
         "source_platform": "techcrunch",
         "relevance_score": 85.0,
         "tags": tags,
-        "collected_at": "2026-08-17",
+        "collected_at": fresh_date(56),
     }
 
 
@@ -774,7 +775,7 @@ def _sec_filing_entry(
         "source_platform": "sec_edgar",
         "relevance_score": 85.0,
         "tags": "[]",
-        "collected_at": "2026-08-17",
+        "collected_at": fresh_date(56),
     }
 
 

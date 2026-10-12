@@ -32,6 +32,7 @@ import argparse
 import importlib
 import importlib.metadata as metadata
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -43,6 +44,8 @@ PYPROJECT = ROOT / "pyproject.toml"
 MANIFEST = ROOT / ".release-please-manifest.json"
 RELEASE_CONFIG = ROOT / "release-please-config.json"
 CHANGELOG = ROOT / "CHANGELOG.md"
+README = ROOT / "README.md"
+_CLI_GROUP_COUNT_RE = re.compile(r"(\d+)\s+command groups?")
 
 
 class Check:
@@ -254,17 +257,53 @@ def _release_checks(source_version: str | None) -> list[Check]:
     return checks
 
 
+def _declared_cli_group_count() -> int | None:
+    for path in (README, ROOT / "AGENTS.md"):
+        if not path.is_file():
+            continue
+        found = _CLI_GROUP_COUNT_RE.search(path.read_text(encoding="utf-8"))
+        if found:
+            return int(found.group(1))
+    return None
+
+
+def _cli_group_count_matches_docs(registered: int) -> Check:
+    """Assert the documented CLI group count equals what the app registers.
+
+    ``doc_inventory.py --check`` compares README against AGENTS against the
+    skill file, while this script reports the code's own count -- so a number
+    that is consistently wrong across every doc satisfies both gates and lands
+    on ``main`` without a single red build.  This closes that seam.
+
+    ``registered_groups`` is Typer's ``add_typer`` set: ``init`` is attached
+    with ``app.command()``, so it is a command and not a group.
+    """
+    check = Check("documented CLI group count matches autoinfo.cli")
+    declared = _declared_cli_group_count()
+    if declared is None:
+        return check.fail("README/AGENTS.md declares no CLI command-group count")
+    if declared != registered:
+        return check.fail(
+            f"docs declare {declared} command groups but autoinfo.cli "
+            f"registers {registered} (Typer registered_groups = add_typer calls)"
+        )
+    return check.pass_(f"{declared} declared == {registered} registered")
+
+
 def _cli_checks() -> list[Check]:
     check = Check("autoinfo.cli imports and registers command groups")
     try:
         cli = importlib.import_module("autoinfo.cli")
         app = getattr(cli, "app")
         groups = getattr(app, "registered_groups", [])
-        if groups:
-            return [check.pass_(f"{len(groups)} registered groups")]
-        return [check.fail("no registered command groups")]
+        if not groups:
+            return [check.fail("no registered command groups")]
     except Exception as exc:  # pragma: no cover - environment failure path
         return [check.fail(f"{type(exc).__name__}: {exc}")]
+    return [
+        check.pass_(f"{len(groups)} registered groups"),
+        _cli_group_count_matches_docs(len(groups)),
+    ]
 
 
 def _run_editable_install() -> Check:

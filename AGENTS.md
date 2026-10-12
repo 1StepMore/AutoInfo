@@ -336,7 +336,7 @@ Key counts the agent must know without opening README:
 
 | Demo domains | **21 demo domains** |
 | LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~6150 tests** |
+| Test suite | **~6152 tests** |
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):

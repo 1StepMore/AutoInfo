@@ -8,6 +8,7 @@ pyproject structurally sound.
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 from pathlib import Path
 from typing import Any
@@ -59,3 +60,35 @@ def test_run_checks_flags_a_missing_pyproject(
     checks, data = build_check._pyproject_checks()
     assert data is None
     assert any(not c.ok for c in checks)
+
+
+def test_cli_group_count_is_reconciled_against_the_code(build_check: Any) -> None:
+    """Docs and code must agree on the CLI group count.
+
+    `doc_inventory.py --check` only compares the docs to each other, so a
+    consistently wrong number passes it; this assertion is the docs-to-code
+    half that was missing when `32` sat on `main` with a green build.
+    """
+    names = " | ".join(c.name for c in build_check.run_checks())
+    assert "documented CLI group count" in names
+
+    cli = importlib.import_module("autoinfo.cli")
+    registered = len(getattr(cli.app, "registered_groups", []))
+
+    matching = build_check._cli_group_count_matches_docs(registered)
+    assert matching.ok, f"docs/code disagree on {registered}: {matching.detail}"
+
+    drifted = build_check._cli_group_count_matches_docs(registered + 1)
+    assert not drifted.ok
+    assert "registered" in drifted.detail
+
+
+def test_declared_cli_group_count_ignores_a_missing_readme(
+    build_check: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(build_check, "README", tmp_path / "absent.md")
+    monkeypatch.setattr(build_check, "ROOT", tmp_path)
+    assert build_check._declared_cli_group_count() is None
+    check = build_check._cli_group_count_matches_docs(31)
+    assert not check.ok
+    assert "declares no CLI" in check.detail

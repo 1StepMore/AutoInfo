@@ -67,8 +67,7 @@ def _trial_info(profile: Any) -> dict[str, Any]:
             return {
                 "days_remaining": result.get("days_remaining", 0),
                 "status": result.get("status", "no_trial"),
-                "trial_started_at": result.get("trial_started_at", "")
-                or profile.trial_started_at,
+                "trial_started_at": result.get("trial_started_at", "") or profile.trial_started_at,
                 "trial_ends_at": profile.trial_ends_at,
                 "trial_days": result.get("trial_days", profile.trial_days),
             }
@@ -84,9 +83,7 @@ def _trial_info(profile: Any) -> dict[str, Any]:
     }
 
 
-def _delivery_history(
-    user_id: str, limit: int, offset: int
-) -> tuple[list[dict[str, Any]], int]:
+def _delivery_history(user_id: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
     """Return ``(page_entries, total)`` for a user's delivery log.
 
     Aggregates across all of the user's subscriptions, sorts newest-first,
@@ -175,9 +172,7 @@ async def portal_dashboard(
 
     profile = get_profile(user_id)
     if profile is None:
-        return _render_error(
-            request, user_id, f"User '{user_id}' not found.", status_code=404
-        )
+        return _render_error(request, user_id, f"User '{user_id}' not found.", status_code=404)
 
     subscriptions = list_subscriptions(user_id=user_id)
     active_subs = [s for s in subscriptions if s.status == "active"]
@@ -210,9 +205,7 @@ async def portal_preferences(
 
     profile = get_profile(user_id)
     if profile is None:
-        return _render_error(
-            request, user_id, f"User '{user_id}' not found.", status_code=404
-        )
+        return _render_error(request, user_id, f"User '{user_id}' not found.", status_code=404)
 
     # Canonical typed preferences live in profile.preferences
     # (content_preference, target_audience, format, max_items, QuietHours,
@@ -233,9 +226,7 @@ async def portal_preferences(
 async def portal_history(
     user_id: str,
     request: Request,
-    limit: int = Query(
-        _DEFAULT_PAGE_SIZE, ge=1, le=200, description="Page size"
-    ),
+    limit: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=200, description="Page size"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> HTMLResponse:
     """Paginated delivery log table."""
@@ -243,9 +234,7 @@ async def portal_history(
 
     profile = get_profile(user_id)
     if profile is None:
-        return _render_error(
-            request, user_id, f"User '{user_id}' not found.", status_code=404
-        )
+        return _render_error(request, user_id, f"User '{user_id}' not found.", status_code=404)
 
     entries, total = _delivery_history(user_id, limit=limit, offset=offset)
 
@@ -286,9 +275,7 @@ async def portal_products(
 
     profile = get_profile(user_id)
     if profile is None:
-        return _render_error(
-            request, user_id, f"User '{user_id}' not found.", status_code=404
-        )
+        return _render_error(request, user_id, f"User '{user_id}' not found.", status_code=404)
 
     products = _list_all_products()
 

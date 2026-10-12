@@ -10,11 +10,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.huggingface import HuggingFaceHandler
 from autoinfo.models import Item
-
 
 # ---------------------------------------------------------------------------
 # Sample HuggingFace Hub API response data
@@ -437,9 +435,16 @@ class TestHuggingFaceFieldMapping:
         items = handler.fetch(query="mnist", limit=10)
 
         expected_fields = {
-            "id", "title", "description", "author",
-            "tags", "downloads", "likes", "last_modified",
-            "source_url", "provider",
+            "id",
+            "title",
+            "description",
+            "author",
+            "tags",
+            "downloads",
+            "likes",
+            "last_modified",
+            "source_url",
+            "provider",
         }
         for item in items:
             for field in expected_fields:
@@ -589,6 +594,7 @@ class TestKaggleProvider:
         without errors."""
         # Ensure env vars are not set
         import os
+
         with patch.dict(os.environ, {}, clear=True):
             handler = HuggingFaceHandler({"provider": "kaggle"})
             items = handler.fetch(query="test", limit=10)
@@ -617,6 +623,7 @@ class TestHuggingFaceRateLimit:
         mock_get.return_value = mock_response
 
         import time
+
         handler = HuggingFaceHandler({})
 
         t0 = time.time()

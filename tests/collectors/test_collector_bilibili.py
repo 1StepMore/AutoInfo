@@ -17,12 +17,10 @@ Test categories:
 
 from __future__ import annotations
 
-import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.bilibili import BilibiliHandler
 from autoinfo.models import Item
@@ -471,10 +469,12 @@ class TestBilibiliFetchEmpty:
     @patch("autoinfo.collectors.bilibili.httpx.get")
     def test_fetch_handles_missing_result_key(self, mock_get: MagicMock) -> None:
         """Response without a 'result' key should return empty list."""
-        mock_get.return_value = _mock_response({
-            "code": 0,
-            "data": {"seid": "abc", "numResults": 0},
-        })
+        mock_get.return_value = _mock_response(
+            {
+                "code": 0,
+                "data": {"seid": "abc", "numResults": 0},
+            }
+        )
 
         handler = BilibiliHandler({"query": "test"})
         items = handler.fetch(limit=10)
@@ -625,8 +625,15 @@ class TestBilibiliFieldMapping:
         items = handler.fetch(limit=10)
 
         expected_fields = {
-            "id", "bvid", "title", "content", "author",
-            "published_date", "source_url", "view_count", "image_url",
+            "id",
+            "bvid",
+            "title",
+            "content",
+            "author",
+            "published_date",
+            "source_url",
+            "view_count",
+            "image_url",
         }
         for item in items:
             for field in expected_fields:
@@ -647,7 +654,9 @@ class TestBilibiliFieldMappingV2:
         # Primary fails, fallback succeeds
         error_resp = MagicMock(spec=httpx.Response)
         error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server error", request=MagicMock(), response=MagicMock(status_code=500),
+            "Server error",
+            request=MagicMock(),
+            response=MagicMock(status_code=500),
         )
         success_resp = _mock_response(SAMPLE_SEARCH_V2_RESPONSE)
         mock_get.side_effect = [error_resp, success_resp]
@@ -662,7 +671,9 @@ class TestBilibiliFieldMappingV2:
         """All expected fields should be present in search/v2 results."""
         error_resp = MagicMock(spec=httpx.Response)
         error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server error", request=MagicMock(), response=MagicMock(status_code=500),
+            "Server error",
+            request=MagicMock(),
+            response=MagicMock(status_code=500),
         )
         success_resp = _mock_response(SAMPLE_SEARCH_V2_RESPONSE)
         mock_get.side_effect = [error_resp, success_resp]

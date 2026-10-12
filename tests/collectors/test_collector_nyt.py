@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.nyt import NYTHandler
 
@@ -337,7 +336,10 @@ class TestNYTFieldMapping:
         handler = NYTHandler({"api_key": "test-key"})
         items = handler.fetch(limit=10)
 
-        assert items[0]["content"] == "A breakthrough in quantum computing promises to revolutionize the field."
+        assert (
+            items[0]["content"]
+            == "A breakthrough in quantum computing promises to revolutionize the field."
+        )
 
     @patch("autoinfo.collectors.nyt.httpx.get")
     def test_field_mapping_none_abstract_becomes_empty(self, mock_get: MagicMock) -> None:
@@ -389,7 +391,10 @@ class TestNYTFieldMapping:
         handler = NYTHandler({"api_key": "test-key"})
         items = handler.fetch(limit=10)
 
-        assert items[0]["source_url"] == "https://www.nytimes.com/2026/07/01/technology/quantum-breakthrough.html"
+        assert (
+            items[0]["source_url"]
+            == "https://www.nytimes.com/2026/07/01/technology/quantum-breakthrough.html"
+        )
 
     @patch("autoinfo.collectors.nyt.httpx.get")
     def test_field_mapping_byline(self, mock_get: MagicMock) -> None:
@@ -430,9 +435,16 @@ class TestNYTFieldMapping:
         items = handler.fetch(limit=10)
 
         expected_fields = {
-            "id", "title", "content", "section", "subsection",
-            "published_date", "source_url", "byline",
-            "word_count", "document_type",
+            "id",
+            "title",
+            "content",
+            "section",
+            "subsection",
+            "published_date",
+            "source_url",
+            "byline",
+            "word_count",
+            "document_type",
         }
         for item in items:
             for field in expected_fields:
@@ -553,6 +565,7 @@ class TestNYTRateLimit:
         mock_get.return_value = _mock_response(SAMPLE_NYT_EMPTY)
 
         import time
+
         handler = NYTHandler({"api_key": "test-key"})
 
         t0 = time.time()
@@ -591,11 +604,13 @@ class TestNYTDateFilters:
         """begin_date config should appear in URL query params."""
         mock_get.return_value = _mock_response(SAMPLE_NYT_EMPTY)
 
-        handler = NYTHandler({
-            "api_key": "test-key",
-            "query": "elections",
-            "begin_date": "20260101",
-        })
+        handler = NYTHandler(
+            {
+                "api_key": "test-key",
+                "query": "elections",
+                "begin_date": "20260101",
+            }
+        )
         handler.fetch(limit=10)
 
         call_url = mock_get.call_args[0][0]
@@ -606,11 +621,13 @@ class TestNYTDateFilters:
         """end_date config should appear in URL query params."""
         mock_get.return_value = _mock_response(SAMPLE_NYT_EMPTY)
 
-        handler = NYTHandler({
-            "api_key": "test-key",
-            "query": "elections",
-            "end_date": "20260730",
-        })
+        handler = NYTHandler(
+            {
+                "api_key": "test-key",
+                "query": "elections",
+                "end_date": "20260730",
+            }
+        )
         handler.fetch(limit=10)
 
         call_url = mock_get.call_args[0][0]
@@ -621,11 +638,13 @@ class TestNYTDateFilters:
         """sort config should appear in URL query params."""
         mock_get.return_value = _mock_response(SAMPLE_NYT_EMPTY)
 
-        handler = NYTHandler({
-            "api_key": "test-key",
-            "query": "technology",
-            "sort": "relevance",
-        })
+        handler = NYTHandler(
+            {
+                "api_key": "test-key",
+                "query": "technology",
+                "sort": "relevance",
+            }
+        )
         handler.fetch(limit=10)
 
         call_url = mock_get.call_args[0][0]
@@ -680,7 +699,10 @@ class TestNYTToItem:
         assert item.content == "A breakthrough in quantum computing."
         assert item.content_type == "text"
         assert item.collected_at == "2026-07-01T12:00:00+0000"
-        assert item.source_url == "https://www.nytimes.com/2026/07/01/technology/quantum-breakthrough.html"
+        assert (
+            item.source_url
+            == "https://www.nytimes.com/2026/07/01/technology/quantum-breakthrough.html"
+        )
         assert "section" in item.raw_data
         assert item.raw_data["section"] == "Technology"
         assert item.raw_data["subsection"] == "Quantum Computing"
@@ -690,7 +712,6 @@ class TestNYTToItem:
 
     def test_to_item_empty_id_uses_uuid(self) -> None:
         """When id is empty, a UUID should be generated as the item id."""
-        from autoinfo.models import Item
 
         handler = NYTHandler({"api_key": "test-key"})
         article = {

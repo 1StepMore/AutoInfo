@@ -21,8 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
-
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,8 +30,7 @@ import yaml
 from autoinfo.kb import KBStore
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item
-from autoinfo.process import ProcessResult, run_processing
-
+from autoinfo.process import run_processing
 
 # ===================================================================
 # Constants
@@ -61,9 +59,7 @@ SAMPLE_CONFIG = {
                     "quality_tier": 1,
                 }
             ],
-            "topics": [
-                {"name": TOPIC, "keywords": ["IVF", "embryo", "implantation"]}
-            ],
+            "topics": [{"name": TOPIC, "keywords": ["IVF", "embryo", "implantation"]}],
         }
     ],
 }
@@ -132,8 +128,7 @@ MOCK_EXTRACTION = ExtractionResult(
     key_points=[
         "Multicenter RCT with 1,200 IVF patients",
         "Live birth rate: 48.2% (time-lapse) vs 39.5% (control), p=0.006",
-        "Time-lapse imaging is a non-invasive method that improves "
-        "embryo selection in IVF cycles",
+        "Time-lapse imaging is a non-invasive method that improves embryo selection in IVF cycles",
     ],
     entities=[
         {"name": "Time-lapse embryo imaging", "type": "technology", "relevance": 0.95},
@@ -209,9 +204,7 @@ def _parse_frontmatter(file_path: Path) -> dict[str, Any]:
 def _mock_litellm_completion(*args: object, **kwargs: object) -> MagicMock:
     """Return a mock ``litellm.completion`` response."""
     raw_messages: object = kwargs.get("messages", args[1] if len(args) > 1 else [])
-    messages: list[dict[str, Any]] = (
-        raw_messages if isinstance(raw_messages, list) else []
-    )
+    messages: list[dict[str, Any]] = raw_messages if isinstance(raw_messages, list) else []
 
     # Extract the item title from the user message
     user_msg: str = ""
@@ -229,12 +222,14 @@ def _mock_litellm_completion(*args: object, **kwargs: object) -> MagicMock:
 
     response = MagicMock()
     response.choices = [MagicMock()]
-    response.choices[0].message.content = json.dumps({
-        "tl_dr": result.tl_dr,
-        "key_points": result.key_points,
-        "entities": result.entities,
-        "relevance_score": result.relevance_score,
-    })
+    response.choices[0].message.content = json.dumps(
+        {
+            "tl_dr": result.tl_dr,
+            "key_points": result.key_points,
+            "entities": result.entities,
+            "relevance_score": result.relevance_score,
+        }
+    )
     # TRIAGE #65-68 (regression): cost-meter MagicMock binding
     # (`process.py:690` → `cost.py:159`) — real int token counters so
     # `CostMeter().log_llm_tokens` binds ints, not MagicMocks.
@@ -256,15 +251,14 @@ class TestTrueTest:
     # T1: init creates config
     # ------------------------------------------------------------------
 
-    def test_t1_init_creates_config(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_t1_init_creates_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """``autoinfo init --demo medical-research`` creates ``.autoinfo/config.yaml``
         and the required sub-directories."""
         # M0T10: restore cwd via monkeypatch (order-independent)
         monkeypatch.chdir(tmp_path)
 
         from typer.testing import CliRunner
+
         from autoinfo.cli import app
 
         runner = CliRunner()
@@ -294,14 +288,13 @@ class TestTrueTest:
     # T2: LLM key placeholder
     # ------------------------------------------------------------------
 
-    def test_t2_config_has_llm_key(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_t2_config_has_llm_key(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config YAML has ``${AUTOINFO_LLM_API_KEY}`` as the API key value."""
         # M0T10: restore cwd via monkeypatch (order-independent)
         monkeypatch.chdir(tmp_path)
 
         from typer.testing import CliRunner
+
         from autoinfo.cli import app
 
         runner = CliRunner()
@@ -351,9 +344,7 @@ class TestTrueTest:
         )
 
         # Verify cached JSON files in collections/
-        collection_files = list(
-            (tmp_path / "collections" / DOMAIN).rglob("*.json")
-        )
+        collection_files = list((tmp_path / "collections" / DOMAIN).rglob("*.json"))
         assert len(collection_files) >= 2, (
             f"Expected ≥2 cached JSON files, got {len(collection_files)}"
         )
@@ -362,9 +353,7 @@ class TestTrueTest:
         mock_llm = MagicMock()
         mock_llm.completion.side_effect = _mock_litellm_completion
 
-        with patch.object(
-            LLMExtractor, "_get_litellm", return_value=mock_llm
-        ):
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_llm):
             proc_result = run_processing(domain=DOMAIN)
 
         assert proc_result.total_items == 2
@@ -373,12 +362,10 @@ class TestTrueTest:
         # -- Step 3: Verify 01-Raw Markdown files --
         kb_dir = tmp_path / "knowledge" / DOMAIN / "01-Raw"
         md_files = sorted(kb_dir.rglob("*.md"))
-        assert len(md_files) == 2, (
-            f"Expected 2 Markdown KB files, got {len(md_files)}"
-        )
+        assert len(md_files) == 2, f"Expected 2 Markdown KB files, got {len(md_files)}"
 
         # -- Step 4: Verify frontmatter on every file --
-        REQUIRED_FRONTMATTER = [
+        required_frontmatter = [
             "title",
             "domain",
             "tier",
@@ -398,10 +385,8 @@ class TestTrueTest:
         for md_file in md_files:
             fm = _parse_frontmatter(md_file)
 
-            for field in REQUIRED_FRONTMATTER:
-                assert field in fm, (
-                    f"Missing frontmatter field '{field}' in {md_file.name}"
-                )
+            for field in required_frontmatter:
+                assert field in fm, f"Missing frontmatter field '{field}' in {md_file.name}"
 
             # Verify values are sensible
             assert fm["domain"] == DOMAIN
@@ -443,12 +428,8 @@ class TestTrueTest:
         for log in proc_result.per_item_logs:
             assert "g3_score" in log, f"Missing g3_score in log for {log['item_id']}"
             assert isinstance(log["g3_score"], (int, float))
-            assert 0 <= log["g3_score"] <= 100, (
-                f"g3_score {log['g3_score']} out of range"
-            )
-            assert "relevance_score" in log, (
-                f"Missing relevance_score in log for {log['item_id']}"
-            )
+            assert 0 <= log["g3_score"] <= 100, f"g3_score {log['g3_score']} out of range"
+            assert "relevance_score" in log, f"Missing relevance_score in log for {log['item_id']}"
 
         # -- KB entries have relevance_score --
         store = KBStore()
@@ -463,9 +444,7 @@ class TestTrueTest:
         for md_file in sorted(kb_dir.rglob("*.md")):
             fm = _parse_frontmatter(md_file)
             relevance: float = float(fm.get("relevance_score", 0) or 0)
-            assert relevance > 0, (
-                f"relevance_score should be > 0 in {md_file.name}"
-            )
+            assert relevance > 0, f"relevance_score should be > 0 in {md_file.name}"
 
     # ------------------------------------------------------------------
     # T5: summaries list has TL;DR
@@ -498,13 +477,9 @@ class TestTrueTest:
 
         for entry in entries:
             # Each entry must have a title
-            assert entry.get("title"), (
-                f"Entry {entry.get('entry_id', '?')} has no title"
-            )
+            assert entry.get("title"), f"Entry {entry.get('entry_id', '?')} has no title"
             # summary field corresponds to TL;DR
-            assert entry.get("summary"), (
-                f"Entry {entry.get('entry_id', '?')} has no summary/TL;DR"
-            )
+            assert entry.get("summary"), f"Entry {entry.get('entry_id', '?')} has no summary/TL;DR"
             # Each entry has a relevance_score
             assert "relevance_score" in entry
             # Collected at should be present
@@ -516,9 +491,7 @@ class TestTrueTest:
     # E2E: Complete pipeline
     # ------------------------------------------------------------------
 
-    def test_end_to_end(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_end_to_end(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Complete pipeline: init → collect → process → summaries.
 
         Verifies that the output of each stage is consistent with the
@@ -529,6 +502,7 @@ class TestTrueTest:
 
         # -- Stage 1: init ---------------------------------------------------
         from typer.testing import CliRunner
+
         from autoinfo.cli import app
 
         runner = CliRunner()
@@ -590,9 +564,7 @@ class TestTrueTest:
 
         for entry in entries:
             assert entry.get("summary"), "Missing summary/TL;DR"
-            assert entry.get("relevance_score", 0) > 0, (
-                "relevance_score should be > 0"
-            )
+            assert entry.get("relevance_score", 0) > 0, "relevance_score should be > 0"
             assert entry.get("dedup_status") == "unique"
             assert entry.get("source_platform") == "pubmed"
 
@@ -607,16 +579,12 @@ class TestTrueTest:
         body = full_entry["content"]
         has_key_points = "Key Points" in body
         has_summary = "Summary" in body
-        assert has_key_points or has_summary, (
-            "Entry body should contain extracted content"
-        )
+        assert has_key_points or has_summary, "Entry body should contain extracted content"
         # The original article content must be present
         assert "Original Content" in body
         # The cached items should still be on disk
         cached_count = len(list((tmp_path / "collections" / DOMAIN).rglob("*.json")))
-        assert cached_count >= 2, (
-            f"Expected ≥2 cached JSON files, found {cached_count}"
-        )
+        assert cached_count >= 2, f"Expected ≥2 cached JSON files, found {cached_count}"
 
     # ------------------------------------------------------------------
     # Edge cases

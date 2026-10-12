@@ -227,10 +227,7 @@ def query_delivery_log(
     if clauses:
         where = "WHERE " + " AND ".join(clauses)
 
-    sql = (
-        f"SELECT * FROM delivery_log {where}"
-        " ORDER BY last_attempt DESC LIMIT ? OFFSET ?"
-    )
+    sql = f"SELECT * FROM delivery_log {where} ORDER BY last_attempt DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
     conn = _connect(db_path)
@@ -308,14 +305,16 @@ def get_delivery_stats(
 
         # Per-channel breakdown
         by_channel_raw = conn.execute(
-            f"SELECT channel, COUNT(*) as cnt FROM delivery_log {where} GROUP BY channel ORDER BY cnt DESC",
+            f"SELECT channel, COUNT(*) as cnt FROM delivery_log {where} "
+            "GROUP BY channel ORDER BY cnt DESC",
             params,
         ).fetchall()
         by_channel = {r["channel"]: r["cnt"] for r in by_channel_raw}
 
         # Per-SLA-tier breakdown
         by_sla_raw = conn.execute(
-            f"SELECT sla_tier, COUNT(*) as cnt FROM delivery_log {where} GROUP BY sla_tier ORDER BY cnt DESC",
+            f"SELECT sla_tier, COUNT(*) as cnt FROM delivery_log {where} "
+            "GROUP BY sla_tier ORDER BY cnt DESC",
             params,
         ).fetchall()
         by_sla_tier = {r["sla_tier"]: r["cnt"] for r in by_sla_raw}
@@ -339,7 +338,9 @@ def get_delivery_stats(
 def list_active_deliveries(
     db_path: Path | None = None,
 ) -> list[DeliveryLog]:
-    """Return deliveries with active/pending status (``"retrying"``, ``"pending"``, ``"in_progress"``).
+    """Return deliveries with active/pending status.
+
+    Statuses counted: ``"retrying"``, ``"pending"``, ``"in_progress"``.
 
     Parameters
     ----------

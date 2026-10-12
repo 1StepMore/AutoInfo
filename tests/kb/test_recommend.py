@@ -1,7 +1,7 @@
 """Tests for recommendation engine."""
 
-import pytest
 from unittest.mock import MagicMock
+
 from autoinfo.recommend import ContentBasedEngine, ScoredItem
 
 
@@ -26,7 +26,10 @@ class TestScoredItem:
 
     def test_metadata_stores_extra_fields(self):
         item = ScoredItem(
-            entry_id="e3", title="T3", score=90.0, reason="R",
+            entry_id="e3",
+            title="T3",
+            score=90.0,
+            reason="R",
             metadata={"tags": ["ai"], "author": "Test Author"},
         )
         assert item.metadata["tags"] == ["ai"]
@@ -123,7 +126,7 @@ class TestContentBasedEngine:
         assert score == 0.5
 
     def test_freshness_score_recent_date(self):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
 
         engine = ContentBasedEngine()
         yesterday = datetime.now(timezone.utc) - timedelta(days=1)

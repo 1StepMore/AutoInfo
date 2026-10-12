@@ -11,19 +11,15 @@ Each collector is tested independently.  Report at the end shows
 per-collector PASS/FAIL/SKIP and overall counts.
 """
 
-import json
 import os
 import sys
-import uuid
 import traceback
-from typing import Any
 
 import httpx
 
 # Ensure we can import from src
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from autoinfo.models import Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,6 +56,7 @@ def assert_in(item, container, msg=""):
 # 1. AP API (ap_api) — needs api_key
 # ---------------------------------------------------------------------------
 
+
 def test_ap_api():
     print("\n--- 1. AP API (ap_api) ---")
 
@@ -75,11 +72,12 @@ def test_ap_api():
     # 1c. Mock happy-path collection
 
 
-
 # AP API standalone test functions ---------------------------------------
+
 
 def _ap_instantiation():
     from autoinfo.collectors.ap_api import APAPIHandler
+
     h = APAPIHandler(api_key="test-key")
     assert h.api_key == "test-key"
     h2 = APAPIHandler()
@@ -88,6 +86,7 @@ def _ap_instantiation():
 
 def _ap_requires_key():
     from autoinfo.collectors.ap_api import APAPIHandler
+
     assert APAPIHandler.requires_key() is True
 
 
@@ -116,6 +115,7 @@ def _ap_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.ap_api as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -139,8 +139,10 @@ test("ap_api: mock collection", _ap_mock)
 # 2. Apple Podcasts (apple_podcasts) — no key needed
 # ---------------------------------------------------------------------------
 
+
 def _test_apple_instantiation():
     from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
+
     h = ApplePodcastsHandler()
     assert h is not None
     h2 = ApplePodcastsHandler({"term": "AI"})
@@ -175,6 +177,7 @@ def _test_apple_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.apple_podcasts as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -197,8 +200,10 @@ test("apple_podcasts: mock collection", _test_apple_mock)
 # 3. Bilibili (bilibili) — no key needed
 # ---------------------------------------------------------------------------
 
+
 def _test_bilibili_instantiation():
     from autoinfo.collectors.bilibili import BilibiliHandler
+
     h = BilibiliHandler()
     assert h is not None
     h2 = BilibiliHandler({"query": "大模型"})
@@ -234,6 +239,7 @@ def _test_bilibili_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.bilibili as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -256,8 +262,10 @@ test("bilibili: mock collection", _test_bilibili_mock)
 # 4. DBLP (dblp) — no key needed
 # ---------------------------------------------------------------------------
 
+
 def _test_dblp_instantiation():
     from autoinfo.collectors.dblp import DBLPHandler
+
     h = DBLPHandler()
     assert h is not None
     assert h.source_name == "dblp"
@@ -303,6 +311,7 @@ def _test_dblp_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.dblp as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -325,8 +334,10 @@ test("dblp: mock collection", _test_dblp_mock)
 # 5. NYT (nyt) — needs api_key
 # ---------------------------------------------------------------------------
 
+
 def _test_nyt_instantiation():
     from autoinfo.collectors.nyt import NYTHandler
+
     h = NYTHandler()
     assert h is not None
     h2 = NYTHandler({"api_key": "test-key", "query": "AI"})
@@ -360,6 +371,7 @@ def _test_nyt_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.nyt as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -381,8 +393,10 @@ test("nyt: mock collection", _test_nyt_mock)
 # 6. OpenAlex (openalex) — no key needed
 # ---------------------------------------------------------------------------
 
+
 def _test_openalex_instantiation():
     from autoinfo.collectors.openalex import OpenAlexHandler
+
     h = OpenAlexHandler()
     assert h is not None
     h2 = OpenAlexHandler({"query": "CRISPR"})
@@ -419,6 +433,7 @@ def _test_openalex_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.openalex as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -441,28 +456,39 @@ test("openalex: mock collection", _test_openalex_mock)
 # 7. Reddit (reddit) — no key needed for public access (OAuth2)
 # ---------------------------------------------------------------------------
 
+
 def _test_reddit_instantiation():
     from autoinfo.collectors.reddit import RedditHandler
-    h = RedditHandler({
-        "client_id": "test", "client_secret": "test",
-        "user_agent": "AutoInfo/1.0", "subreddits": ["MachineLearning"],
-    })
+
+    h = RedditHandler(
+        {
+            "client_id": "test",
+            "client_secret": "test",
+            "user_agent": "AutoInfo/1.0",
+            "subreddits": ["MachineLearning"],
+        }
+    )
     assert h is not None
     assert h.subreddits == ["MachineLearning"]
 
 
 def _test_reddit_mock():
     from autoinfo.collectors.reddit import RedditHandler
+
     token_called = []
 
     def mock_handler(request):
         if "/api/v1/access_token" in str(request.url):
             token_called.append(True)
-            return httpx.Response(200, json={
-                "access_token": "fake-reddit-token-xxxx",
-                "token_type": "bearer",
-                "expires_in": 3600,
-            }, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fake-reddit-token-xxxx",
+                    "token_type": "bearer",
+                    "expires_in": 3600,
+                },
+                request=request,
+            )
         data = {
             "data": {
                 "children": [
@@ -487,15 +513,20 @@ def _test_reddit_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.reddit as mod
+
         orig_post = mod.httpx.post
         orig_get = mod.httpx.get
         mod.httpx.post = client.post
         mod.httpx.get = client.get
         try:
-            h = RedditHandler({
-                "client_id": "fake-client", "client_secret": "fake-secret",
-                "user_agent": "AutoInfo/1.0", "subreddits": ["MachineLearning"],
-            })
+            h = RedditHandler(
+                {
+                    "client_id": "fake-client",
+                    "client_secret": "fake-secret",
+                    "user_agent": "AutoInfo/1.0",
+                    "subreddits": ["MachineLearning"],
+                }
+            )
             posts = h.fetch(query="reinforcement learning", limit=5)
             items = [h.to_item(p) for p in posts]
             assert_eq(len(items), 1)
@@ -515,18 +546,24 @@ test("reddit: mock collection", _test_reddit_mock)
 # 8. Reuters MCP (reuters_mcp) — needs api_key
 # ---------------------------------------------------------------------------
 
+
 def _test_reuters_instantiation():
     from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
     from autoinfo.config import SourceConfig
-    cfg = SourceConfig(name="reuters-test", type="reuters_mcp",
-                       url="https://api.reuters.com/content/v1/search",
-                       settings={"api_key": "test-key"})
+
+    cfg = SourceConfig(
+        name="reuters-test",
+        type="reuters_mcp",
+        url="https://api.reuters.com/content/v1/search",
+        settings={"api_key": "test-key"},
+    )
     h = ReutersMCPHandler(cfg)
     assert h is not None
 
 
 def _test_reuters_requires_key():
     from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
+
     assert ReutersMCPHandler.requires_key() is True
 
 
@@ -557,12 +594,16 @@ def _test_reuters_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.reuters_mcp as mod
+
         orig_post = mod.httpx.post
         mod.httpx.post = client.post
         try:
-            cfg = SourceConfig(name="reuters-test", type="reuters_mcp",
-                               url="https://api.reuters.com/content/v1/search",
-                               settings={"api_key": "fake-reuters-key"})
+            cfg = SourceConfig(
+                name="reuters-test",
+                type="reuters_mcp",
+                url="https://api.reuters.com/content/v1/search",
+                settings={"api_key": "fake-reuters-key"},
+            )
             h = ReutersMCPHandler(cfg)
             articles = h.fetch(limit=10)
             items = [h.to_item(a) for a in articles]
@@ -582,8 +623,10 @@ test("reuters_mcp: mock collection", _test_reuters_mock)
 # 9. Semantic Scholar (semantic_scholar) — needs api_key
 # ---------------------------------------------------------------------------
 
+
 def _test_semantic_scholar_instantiation():
     from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+
     h = SemanticScholarHandler()
     assert h is not None
     h2 = SemanticScholarHandler(api_key="test-key")
@@ -619,6 +662,7 @@ def _test_semantic_scholar_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.semantic_scholar as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -640,8 +684,10 @@ test("semantic_scholar: mock collection", _test_semantic_scholar_mock)
 # 10. Spotify (spotify) — needs client credentials
 # ---------------------------------------------------------------------------
 
+
 def _test_spotify_instantiation():
     from autoinfo.collectors.spotify import SpotifyHandler
+
     h = SpotifyHandler({"client_id": "test", "client_secret": "test"})
     assert h is not None
     assert h.client_id == "test"
@@ -649,16 +695,21 @@ def _test_spotify_instantiation():
 
 def _test_spotify_mock():
     from autoinfo.collectors.spotify import SpotifyHandler
+
     token_called = []
 
     def mock_handler(request):
         if "accounts.spotify.com" in str(request.url):
             token_called.append(True)
-            return httpx.Response(200, json={
-                "access_token": "fake-spotify-token",
-                "token_type": "Bearer",
-                "expires_in": 3600,
-            }, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fake-spotify-token",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                },
+                request=request,
+            )
         data = {
             "items": [
                 {
@@ -687,15 +738,19 @@ def _test_spotify_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.spotify as mod
+
         orig_post = mod.httpx.post
         orig_get = mod.httpx.get
         mod.httpx.post = client.post
         mod.httpx.get = client.get
         try:
-            h = SpotifyHandler({
-                "client_id": "fake-sp-client", "client_secret": "fake-sp-secret",
-                "show_id": "show_42",
-            })
+            h = SpotifyHandler(
+                {
+                    "client_id": "fake-sp-client",
+                    "client_secret": "fake-sp-secret",
+                    "show_id": "show_42",
+                }
+            )
             episodes = h.fetch(limit=10, show_id="show_42")
             items = [h.to_item(e) for e in episodes]
             assert_eq(len(items), 1)
@@ -715,8 +770,10 @@ test("spotify: mock collection", _test_spotify_mock)
 # 11. USPTO (uspto) — no key needed
 # ---------------------------------------------------------------------------
 
+
 def _test_uspto_instantiation():
     from autoinfo.collectors.uspto import USPTOHandler
+
     h = USPTOHandler()
     assert h is not None
 
@@ -733,7 +790,9 @@ def _test_uspto_mock():
                     "patent_abstract": "A novel method for targeted gene therapy using CRISPR-Cas9...",
                     "patent_date": "2024-05-10",
                     "app_date": "2023-01-15",
-                    "inventors": [{"inventor_first_name": "Alice", "inventor_last_name": "Johnson"}],
+                    "inventors": [
+                        {"inventor_first_name": "Alice", "inventor_last_name": "Johnson"}
+                    ],
                     "assignee_organization": "GenTech Inc.",
                     "patent_num_cited_by_us_patents": 5,
                     "patent_num_combined_citations": 12,
@@ -745,6 +804,7 @@ def _test_uspto_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.uspto as mod
+
         orig_post = mod.httpx.post
         mod.httpx.post = client.post
         try:
@@ -766,8 +826,10 @@ test("uspto: mock collection", _test_uspto_mock)
 # 12. YouTube (youtube) — needs api_key
 # ---------------------------------------------------------------------------
 
+
 def _test_youtube_instantiation():
     from autoinfo.collectors.youtube import YouTubeHandler
+
     h = YouTubeHandler()
     assert h is not None
     h2 = YouTubeHandler({"api_key": "test-key", "query": "AI"})
@@ -776,6 +838,7 @@ def _test_youtube_instantiation():
 
 def _test_youtube_requires_key():
     from autoinfo.collectors.youtube import YouTubeHandler
+
     assert YouTubeHandler.requires_key() is True
 
 
@@ -793,7 +856,9 @@ def _test_youtube_mock():
                         "channelTitle": "AI Explained",
                         "channelId": "UC_example",
                         "publishedAt": "2024-05-20T15:00:00Z",
-                        "thumbnails": {"default": {"url": "https://img.youtube.com/vi/dQw4/default.jpg"}},
+                        "thumbnails": {
+                            "default": {"url": "https://img.youtube.com/vi/dQw4/default.jpg"}
+                        },
                     },
                 }
             ]
@@ -803,6 +868,7 @@ def _test_youtube_mock():
     transport = httpx.MockTransport(mock_handler)
     with httpx.Client(transport=transport) as client:
         import autoinfo.collectors.youtube as mod
+
         orig = mod.httpx.get
         mod.httpx.get = client.get
         try:
@@ -841,18 +907,31 @@ total_pass = sum(1 for r in results if r["result"] == PASS)
 total_fail = sum(1 for r in results if r["result"] == FAIL)
 total_skip = sum(1 for r in results if r["result"] == SKIP)
 
-print(f"\n{'Collector':<25} {'Instantiate':<12} {'requires_key':<14} {'Mock Collect':<14} {'Status':<10}")
+print(
+    f"\n{'Collector':<25} {'Instantiate':<12} {'requires_key':<14} {'Mock Collect':<14} {'Status':<10}"
+)
 print("-" * 75)
 
 for collector_name in [
-    "ap_api", "apple_podcasts", "bilibili", "dblp", "nyt",
-    "openalex", "reddit", "reuters_mcp", "semantic_scholar",
-    "spotify", "uspto", "youtube",
+    "ap_api",
+    "apple_podcasts",
+    "bilibili",
+    "dblp",
+    "nyt",
+    "openalex",
+    "reddit",
+    "reuters_mcp",
+    "semantic_scholar",
+    "spotify",
+    "uspto",
+    "youtube",
 ]:
     col_results = collectors.get(collector_name, [])
     inst = next((r for r in col_results if "instantiation" in r["name"]), None)
     rkey = next((r for r in col_results if "requires_key" in r["name"]), None)
-    mock = next((r for r in col_results if "mock collection" in r["name"] or "mock" in r["name"]), None)
+    mock = next(
+        (r for r in col_results if "mock collection" in r["name"] or "mock" in r["name"]), None
+    )
 
     inst_r = inst["result"] if inst else "—"
     rkey_r = rkey["result"] if rkey else "—"
@@ -869,7 +948,9 @@ for collector_name in [
             print(f"  └─ Error: {f.get('error', '?')}")
 
 print("-" * 75)
-print(f"\nTotal: {len(results)} tests | ✅ PASS: {total_pass} | ❌ FAIL: {total_fail} | ⏭️ SKIP: {total_skip}")
+print(
+    f"\nTotal: {len(results)} tests | ✅ PASS: {total_pass} | ❌ FAIL: {total_fail} | ⏭️ SKIP: {total_skip}"
+)
 
 if total_fail > 0:
     print("\n❌ OVERALL: SOME COLLECTORS FAILED")

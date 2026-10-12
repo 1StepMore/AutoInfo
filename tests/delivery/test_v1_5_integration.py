@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from autoinfo.config import QualityGateConfig
@@ -25,7 +26,6 @@ from autoinfo.quality import (
     run_quality_gates,
 )
 
-
 # ===================================================================
 # 1. Config → Quality Gate behavior
 # ===================================================================
@@ -38,12 +38,16 @@ class TestConfigToQualityGate:
         """G3 threshold from gate_config determines pass/fail for low-relevance item."""
         item = Item(
             id="test-g3-threshold-int",
-            source_name="test", source_type="api",
+            source_name="test",
+            source_type="api",
             source_url="https://example.com",
             title="Completely unrelated topic",
             content="This article is about cooking recipes and has no medical keywords.",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
             source_platform="pubmed",
         )
         keywords = ["IVF", "embryo", "fertility"]
@@ -75,19 +79,22 @@ class TestConfigToQualityGate:
         """G1 with action=skip causes tier 3+ items to be skipped."""
         item = Item(
             id="test-g1-skip-int",
-            source_name="untrusted", source_type="api",
+            source_name="untrusted",
+            source_type="api",
             source_url="https://example.com",
-            title="Low quality source", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=5,
+            title="Low quality source",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=5,
         )
 
         results = run_quality_gates(
             item,
             gate_config={
-                "G1-SourceAuthority": QualityGateConfig(
-                    name="G1", category="soft", action="skip"
-                ),
+                "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="skip"),
             },
         )
         g1 = results["G1-SourceAuthority"]
@@ -99,9 +106,7 @@ class TestConfigToQualityGate:
         g0 = G0SchemaIntegrity()
         result = g0.check(
             {"source_url": "", "source_type": "", "source_platform": ""},
-            gate_config=QualityGateConfig(
-                name="G0", category="hard", retries=5, action="block"
-            ),
+            gate_config=QualityGateConfig(name="G0", category="hard", retries=5, action="block"),
         )
         assert result.passed is False
         assert result.details["retry_count"] == 5
@@ -116,13 +121,9 @@ class TestConfigToQualityGate:
 class TestMCPToGateConfig:
     """Gate config changes via MCP handlers affect subsequent gate runs."""
 
-    def test_mcp_set_g0_retry_reflected_in_gate_run(
-        self, tmp_path: Path
-    ) -> None:
+    def test_mcp_set_g0_retry_reflected_in_gate_run(self, tmp_path: Path) -> None:
         """Setting G0 retries via MCP-style config affects subsequent G0 run."""
-        config = QualityGateConfig(
-            name="G0", category="hard", retries=4, action="block"
-        )
+        config = QualityGateConfig(name="G0", category="hard", retries=4, action="block")
         g0 = G0SchemaIntegrity()
         result = g0.check(
             {"source_url": "", "source_type": "api", "source_platform": ""},
@@ -239,9 +240,7 @@ class TestDeliveryPipeline:
             },
         )
         for gate_name, gr in result.gate_results.items():
-            assert gr.details.get("skipped") is True, (
-                f"{gate_name} should be skipped for RAW"
-            )
+            assert gr.details.get("skipped") is True, f"{gate_name} should be skipped for RAW"
         assert result.delivery_blocked is False
 
     def test_smtp_channel_wires_into_delivery_result(self) -> None:
@@ -297,9 +296,7 @@ class TestQualityGatePipelineIntegration:
         g0 = G0SchemaIntegrity()
         result = g0.check(
             {"source_url": "", "source_type": "", "source_platform": ""},
-            gate_config=QualityGateConfig(
-                name="G0", category="hard", retries=2, action="block"
-            ),
+            gate_config=QualityGateConfig(name="G0", category="hard", retries=2, action="block"),
         )
         assert result.passed is False
         assert result.details["retry_count"] == 2
@@ -307,16 +304,20 @@ class TestQualityGatePipelineIntegration:
 
     def test_g4_retry_chain_with_gate_config(self) -> None:
         """G4 retry chain with gate_config correctly escalates models."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         item = Item(
             id="test-g4-int-chain",
-            source_name="test", source_type="api",
+            source_name="test",
+            source_type="api",
             source_url="https://example.com/article",
             title="Test article",
             content="IVF outcomes improve with time-lapse imaging (48.2% vs 39.5%).",
-            content_type="text", collected_at="2026-07-20T10:00:00Z",
-            language="en", domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="2026-07-20T10:00:00Z",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         from autoinfo.models import ExtractionResult
 
@@ -339,9 +340,7 @@ class TestQualityGatePipelineIntegration:
         # Make LLM calls succeed on second retry
         def _mock_sequential(return_jsons):
             mock_llm = MagicMock()
-            mock_llm.completion.side_effect = [
-                _make_g4_response(rj) for rj in return_jsons
-            ]
+            mock_llm.completion.side_effect = [_make_g4_response(rj) for rj in return_jsons]
             return mock_llm
 
         def _make_g4_response(return_json):
@@ -350,10 +349,12 @@ class TestQualityGatePipelineIntegration:
             mock_response.choices[0].message.content = json.dumps(return_json)
             return mock_response
 
-        mock_llm = _mock_sequential([
-            {"contradiction": True, "explanation": "First check failed."},
-            {"contradiction": False, "explanation": "Second check passed."},
-        ])
+        mock_llm = _mock_sequential(
+            [
+                {"contradiction": True, "explanation": "First check failed."},
+                {"contradiction": False, "explanation": "Second check passed."},
+            ]
+        )
 
         with patch(
             "autoinfo.quality.call_with_fallback",
@@ -378,22 +379,14 @@ class TestQualityGatePipelineIntegration:
 class TestGateConfigResolution:
     """Domain-level quality_gates override global defaults in pipeline."""
 
-    def test_domain_gate_overrides_global_in_run_quality_gates(
-        self, sample_item: Item
-    ) -> None:
+    def test_domain_gate_overrides_global_in_run_quality_gates(self, sample_item: Item) -> None:
         """Domain gate config overrides global in merged gate_config dict."""
         global_gates = {
-            "G1-SourceAuthority": QualityGateConfig(
-                name="G1", category="soft", action="flag"
-            ),
-            "G2-Dedup": QualityGateConfig(
-                name="G2", category="soft", action="flag"
-            ),
+            "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="flag"),
+            "G2-Dedup": QualityGateConfig(name="G2", category="soft", action="flag"),
         }
         domain_gates = {
-            "G1-SourceAuthority": QualityGateConfig(
-                name="G1", category="soft", action="skip"
-            ),
+            "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="skip"),
         }
 
         merged = dict(global_gates)
@@ -402,9 +395,7 @@ class TestGateConfigResolution:
         assert merged["G1-SourceAuthority"].action == "skip"
         assert merged["G2-Dedup"].action == "flag"
 
-    def test_delivery_gate_global_defaults_used_when_not_in_domain(
-        self, sample_item: Item
-    ) -> None:
+    def test_delivery_gate_global_defaults_used_when_not_in_domain(self, sample_item: Item) -> None:
         """Delivery gate falls back to default when not set in domain config."""
         now = datetime.now(timezone.utc)
         product = {
@@ -443,9 +434,7 @@ class TestGateConfigResolution:
 class TestAlertRuleDispatchPipeline:
     """Alert rules configured via add_alert_rule trigger notifications."""
 
-    def test_alert_rule_created_check_matches_and_dispatches(
-        self, tmp_path: Path
-    ) -> None:
+    def test_alert_rule_created_check_matches_and_dispatches(self, tmp_path: Path) -> None:
         """End-to-end: add rule, create matching item, verify check_alerts triggers."""
         from autoinfo.alerts import add_alert_rule, check_alerts
 
@@ -512,7 +501,7 @@ class TestAlertRuleDispatchPipeline:
 
     def test_alert_webhook_dispatch_with_urls(self, tmp_path: Path) -> None:
         """Alert with webhook channel dispatches when URLs are configured."""
-        from autoinfo.alerts import add_alert_rule, _dispatch_notification
+        from autoinfo.alerts import _dispatch_notification
         from autoinfo.models import AlertRule
 
         config_dir = tmp_path / ".autoinfo"
@@ -617,12 +606,16 @@ class TestMixedGateConfigs:
         """Quality gate configs and context work together."""
         item = Item(
             id="test-mixed-1",
-            source_name="pubmed", source_type="api",
+            source_name="pubmed",
+            source_type="api",
             source_url="https://example.com/article",
             title="IVF breakthrough study",
             content="New IVF treatment shows promising results for embryo development.",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
             source_platform="pubmed",
         )
 
@@ -636,9 +629,7 @@ class TestMixedGateConfigs:
                 "G0-SchemaIntegrity": QualityGateConfig(
                     name="G0", category="hard", retries=1, action="block"
                 ),
-                "G1-SourceAuthority": QualityGateConfig(
-                    name="G1", category="soft", action="flag"
-                ),
+                "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="flag"),
                 "G3-RelevanceScoring": QualityGateConfig(
                     name="G3", category="soft", threshold=50.0, action="archive"
                 ),
@@ -672,6 +663,4 @@ class TestMixedGateConfigs:
         results = run_delivery_gates(product, delivery_gate_configs=configs)
         for gate_name, result in results.items():
             assert result.passed is True, f"{gate_name} should pass when disabled"
-            assert result.details.get("skipped") is True, (
-                f"{gate_name} should be skipped"
-            )
+            assert result.details.get("skipped") is True, f"{gate_name} should be skipped"

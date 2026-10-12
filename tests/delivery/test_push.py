@@ -14,8 +14,7 @@ import httpx
 import pytest
 
 from autoinfo.delivery.push import PushDeliveryChannel, _resolve_token
-from autoinfo.models import DeliveryResult, Product, ProductType
-
+from autoinfo.models import Product, ProductType
 
 # ============================================================================
 # Helpers
@@ -261,6 +260,7 @@ class TestRegistryIntegration:
 
     def test_channel_in_registry(self) -> None:
         from autoinfo.delivery import _CHANNEL_REGISTRY, get_channel
+
         assert "push" in _CHANNEL_REGISTRY
         channel = get_channel("push")
         assert isinstance(channel, PushDeliveryChannel)
@@ -268,17 +268,20 @@ class TestRegistryIntegration:
 
     def test_list_channels_includes_push(self) -> None:
         from autoinfo.delivery import list_channels
+
         channels = list_channels()
         assert "push" in channels
 
     def test_get_available_channels_includes_push(self) -> None:
         from autoinfo.delivery import get_available_channels
+
         channels = get_available_channels()
         assert "push" in channels
 
     def test_health_check_graceful_no_endpoint(self) -> None:
         """health_check() returns healthy=False without raising when no endpoint."""
         from autoinfo.delivery import get_channel
+
         channel = get_channel("push")
         with patch.dict(os.environ, {}, clear=True):
             result = channel.health_check()

@@ -18,7 +18,9 @@ from pathlib import Path
 
 import pytest
 
-BLOCKED_SOURCES_PATH = Path(__file__).resolve().parents[2] / "docs" / "known-limitations" / "blocked-sources.md"
+BLOCKED_SOURCES_PATH = (
+    Path(__file__).resolve().parents[2] / "docs" / "known-limitations" / "blocked-sources.md"
+)
 
 
 @pytest.fixture(scope="module")
@@ -46,7 +48,9 @@ def test_a7_financial_institutional_covered(term: str, blocked_sources_content: 
 
 def test_a7_wind_chinese_name_covered(blocked_sources_content: str) -> None:
     """A7: Wind's Chinese name 万得 should also appear for discoverability."""
-    assert "万得" in blocked_sources_content, "Wind's Chinese name '万得' not found in blocked-sources.md."
+    assert "万得" in blocked_sources_content, (
+        "Wind's Chinese name '万得' not found in blocked-sources.md."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +142,7 @@ def test_a20_has_detailed_sections(blocked_sources_content: str) -> None:
 # Combined grep assertion (matches the task's exit-0 check)
 # ---------------------------------------------------------------------------
 
+
 def test_combined_grep_assertion(blocked_sources_content: str) -> None:
     """The combined grep 'WSJ|FT|知乎|Twitter' must match (equivalent to exit 0)."""
     pattern = re.compile(r"WSJ|FT|知乎|Twitter")
@@ -153,13 +158,23 @@ def test_combined_grep_assertion(blocked_sources_content: str) -> None:
 # Terms expected in the Summary table (uses full names / abbreviations as written in the table)
 SUMMARY_TABLE_TERMS = [
     # A7
-    "Bloomberg", "Refinitiv", "Wind",
+    "Bloomberg",
+    "Refinitiv",
+    "Wind",
     # A18 (summary uses full names for WSJ/FT)
-    "Wall Street Journal", "Financial Times", "财新", "新华社",
+    "Wall Street Journal",
+    "Financial Times",
+    "财新",
+    "新华社",
     # A19
-    "知乎", "得到", "微信公众号",
+    "知乎",
+    "得到",
+    "微信公众号",
     # A20
-    "Twitter", "微博", "抖音", "小红书",
+    "Twitter",
+    "微博",
+    "抖音",
+    "小红书",
     # A7 Chinese alias
     "万得",
 ]
@@ -167,7 +182,11 @@ SUMMARY_TABLE_TERMS = [
 
 def test_summary_table_lists_all_sources(blocked_sources_content: str) -> None:
     """The Summary table section should reference every blocked source."""
-    summary_section = blocked_sources_content.split("## Summary")[1] if "## Summary" in blocked_sources_content else ""
+    summary_section = (
+        blocked_sources_content.split("## Summary")[1]
+        if "## Summary" in blocked_sources_content
+        else ""
+    )
     assert summary_section, "No '## Summary' section found in blocked-sources.md."
 
     missing = [t for t in SUMMARY_TABLE_TERMS if t not in summary_section]

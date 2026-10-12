@@ -182,9 +182,7 @@ class WeChatOADeliveryChannel(DeliveryChannel):
                 self._send_template(token, oid, template_id, template_data, payload)
                 success_count += 1
             except Exception as exc:
-                logger.warning(
-                    "WeChat OA send to %s failed: %s", oid, exc
-                )
+                logger.warning("WeChat OA send to %s failed: %s", oid, exc)
                 failed_ids.append(oid)
 
         all_succeeded = len(failed_ids) == 0
@@ -194,11 +192,7 @@ class WeChatOADeliveryChannel(DeliveryChannel):
             status="success" if all_succeeded else "partial",
             timestamp=_now_utc(),
             recipient_count=success_count,
-            error=(
-                None
-                if all_succeeded
-                else f"{len(failed_ids)} open_id(s) failed"
-            ),
+            error=(None if all_succeeded else f"{len(failed_ids)} open_id(s) failed"),
         )
 
     def validate_config(self, config: dict[str, Any]) -> bool:
@@ -214,18 +208,29 @@ class WeChatOADeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             app_id = _os.environ.get("WECHAT_OA_APPID", "")
             app_secret = _os.environ.get("WECHAT_OA_APPSECRET", "")
             if not app_id or not app_secret:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: WECHAT_OA_APPID or WECHAT_OA_APPSECRET not set", "channel": "wechat_oa"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: WECHAT_OA_APPID or WECHAT_OA_APPSECRET not set",
+                    "channel": "wechat_oa",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "wechat_oa"}
         except Exception as e:
             latency = (_time.time() - start) * 1000
-            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "wechat_oa"}
+            return {
+                "healthy": False,
+                "latency_ms": latency,
+                "error": str(e),
+                "channel": "wechat_oa",
+            }
 
     # ------------------------------------------------------------------
     # Token management
@@ -257,8 +262,7 @@ class WeChatOADeliveryChannel(DeliveryChannel):
         if errcode != 0:
             errmsg = data.get("errmsg", "unknown error")
             raise WeChatOAError(
-                f"Failed to obtain access_token "
-                f"(errcode={errcode}, errmsg={errmsg})"
+                f"Failed to obtain access_token (errcode={errcode}, errmsg={errmsg})"
             )
 
         token: str = data["access_token"]
@@ -268,8 +272,7 @@ class WeChatOADeliveryChannel(DeliveryChannel):
         self._token_expires_at = now + expires_in - _TOKEN_EXPIRY_BUFFER
 
         logger.debug(
-            "WeChat OA access_token refreshed, "
-            "expires in %d s (cached until %d s)",
+            "WeChat OA access_token refreshed, expires in %d s (cached until %d s)",
             expires_in,
             expires_in - _TOKEN_EXPIRY_BUFFER,
         )
@@ -335,8 +338,7 @@ class WeChatOADeliveryChannel(DeliveryChannel):
                     # Other API error — terminal (e.g. invalid template_id,
                     # open_id not subscribed, etc.)
                     raise WeChatOAError(
-                        f"Template send failed "
-                        f"(errcode={errcode}, errmsg={data.get('errmsg', '')})"
+                        f"Template send failed (errcode={errcode}, errmsg={data.get('errmsg', '')})"
                     )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_exc = exc

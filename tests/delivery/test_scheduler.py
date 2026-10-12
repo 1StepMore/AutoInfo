@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from autoinfo.delivery.scheduler import (
-    SCHEDULES_PATH,
     VALID_CHANNELS,
     VALID_FORMATS,
     VALID_OUTPUT_TYPES,
@@ -18,7 +17,6 @@ from autoinfo.delivery.scheduler import (
     get_delivery_schedule_summary,
     run_delivery_schedules,
 )
-
 
 # ============================================================================
 # Helpers
@@ -245,7 +243,9 @@ class TestCronMatching:
         with _with_temp_path(tmp_path):
             scheduler = _make_scheduler()
             s = DeliverySchedule(
-                cron_expression="0 8 * * 1", domain="test", enabled=False,
+                cron_expression="0 8 * * 1",
+                domain="test",
+                enabled=False,
             )
             scheduler.add_schedule(s)
             due = scheduler.get_due_schedules()
@@ -552,10 +552,14 @@ class TestEdgeCases:
         with _with_temp_path(tmp_path):
             scheduler = _make_scheduler()
             s1 = DeliverySchedule(
-                id="fixed-id", cron_expression="0 8 * * 1", domain="a",
+                id="fixed-id",
+                cron_expression="0 8 * * 1",
+                domain="a",
             )
             s2 = DeliverySchedule(
-                id="fixed-id", cron_expression="0 9 * * 2", domain="b",
+                id="fixed-id",
+                cron_expression="0 9 * * 2",
+                domain="b",
             )
             scheduler.add_schedule(s1)
             scheduler.add_schedule(s2)

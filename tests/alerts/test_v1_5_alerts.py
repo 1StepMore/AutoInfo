@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 from autoinfo.alerts import (
@@ -22,7 +21,6 @@ from autoinfo.alerts import (
     save_alerts,
 )
 from autoinfo.models import AlertRule, Item
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,7 +49,8 @@ def _make_item(
 
 
 def _assert_yaml_contains(
-    alerts_path: Path, expected_rule_ids: set[str],
+    alerts_path: Path,
+    expected_rule_ids: set[str],
 ) -> None:
     """Assert that the YAML file at *alerts_path* contains the given rule IDs."""
     assert alerts_path.is_file(), f"Expected {alerts_path} to exist"
@@ -201,9 +200,7 @@ class TestCheckAlertsMatching:
 
     _patcher: Any | None = None
 
-    def _setup(
-        self, tmp_path: Path, rules: list[dict[str, Any]]
-    ) -> Item:
+    def _setup(self, tmp_path: Path, rules: list[dict[str, Any]]) -> Item:
         """Create a clean alerts.yaml with given rules and return a test item."""
         alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
         alerts_path.parent.mkdir(parents=True, exist_ok=True)
@@ -532,6 +529,7 @@ class TestInternalHelpers:
     def test_relevance_score_non_dict_raw_data(self) -> None:
         """_get_relevance_score returns 1.0 when raw_data is not a dict."""
         from autoinfo.alerts import _get_relevance_score
+
         item = _make_item()
         item.raw_data = "not a dict"  # type: ignore[assignment]
         assert _get_relevance_score(item) == 1.0
@@ -539,6 +537,7 @@ class TestInternalHelpers:
     def test_relevance_score_none_score(self) -> None:
         """_get_relevance_score returns 1.0 when relevance_score is None."""
         from autoinfo.alerts import _get_relevance_score
+
         item = _make_item()
         item.raw_data = {"relevance_score": None}
         assert _get_relevance_score(item) == 1.0
@@ -546,6 +545,7 @@ class TestInternalHelpers:
     def test_relevance_score_invalid_type(self) -> None:
         """_get_relevance_score returns 1.0 when score cannot be converted to float."""
         from autoinfo.alerts import _get_relevance_score
+
         item = _make_item()
         item.raw_data = {"relevance_score": "not-a-number"}
         assert _get_relevance_score(item) == 1.0
@@ -562,7 +562,7 @@ class TestInternalHelpers:
 
     def test_corrupted_yaml_returns_empty(self, tmp_path: Path) -> None:
         """Corrupted alerts YAML is handled gracefully, returning empty dict."""
-        from autoinfo.alerts import load_alerts, _alerts_path
+        from autoinfo.alerts import load_alerts
 
         alerts_path = tmp_path / ".autoinfo" / "alerts.yaml"
         alerts_path.parent.mkdir(parents=True, exist_ok=True)

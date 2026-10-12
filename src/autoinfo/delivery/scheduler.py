@@ -29,8 +29,19 @@ SCHEDULES_PATH = Path(".autoinfo/delivery_schedules.yaml")
 VALID_OUTPUT_TYPES = {"digest", "report"}
 VALID_FORMATS = {"markdown", "html", "json", "agent", "audio", "pdf"}
 VALID_CHANNELS = {
-    "email", "webhook", "rest", "smtp", "telegram", "discord",
-    "dingtalk", "feishu", "wechat_work", "wechat_oa", "rss", "file_export", "push",
+    "email",
+    "webhook",
+    "rest",
+    "smtp",
+    "telegram",
+    "discord",
+    "dingtalk",
+    "feishu",
+    "wechat_work",
+    "wechat_oa",
+    "rss",
+    "file_export",
+    "push",
 }
 
 
@@ -299,7 +310,8 @@ class DeliveryScheduler:
             except (ValueError, KeyError):
                 logger.warning(
                     "Invalid cron expression '%s' for schedule %s",
-                    sched.cron_expression, sched.id,
+                    sched.cron_expression,
+                    sched.id,
                 )
         return due
 
@@ -383,7 +395,8 @@ def run_delivery_schedules(
         except Exception as exc:
             logger.exception(
                 "Output generation failed for schedule %s (domain=%s)",
-                sched.id, sched.domain,
+                sched.id,
+                sched.domain,
             )
             scheduler.mark_run(sched.id, error=str(exc))
             entry["ran"] = False
@@ -409,7 +422,8 @@ def run_delivery_schedules(
         except Exception as exc:
             logger.exception(
                 "Delivery failed for schedule %s via %s",
-                sched.id, sched.channel,
+                sched.id,
+                sched.channel,
             )
             scheduler.mark_run(sched.id, error=str(exc))
             entry["ran"] = False
@@ -538,8 +552,8 @@ def _deliver_output(
         return
 
     # Other channels: use the delivery channel abstraction
-    from autoinfo.delivery import get_channel
     from autoinfo.delivery import deliver_with_retry as _deliver_with_retry
+    from autoinfo.delivery import get_channel
 
     product = Product(
         id=f"sched-{output_type}-{domain}",

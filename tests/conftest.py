@@ -466,11 +466,19 @@ def mock_litellm_response() -> MagicMock:
     """
     m = MagicMock()
     m.completion.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=json.dumps({
-            "tl_dr": "Mocked TL;DR for testing",
-            "key_points": ["Point one", "Point two"],
-            "entities": [],
-            "relevance_score": 85,
-        })))],
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "tl_dr": "Mocked TL;DR for testing",
+                            "key_points": ["Point one", "Point two"],
+                            "entities": [],
+                            "relevance_score": 85,
+                        }
+                    )
+                )
+            )
+        ],
     )
     return m

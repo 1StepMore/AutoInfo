@@ -30,7 +30,7 @@ class TestBug39RepeatedTag:
 
     @patch("autoinfo.kb.KBStore")
     def test_repeated_tag_options_parsed_as_list(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """Two --tag values should arrive as a list, not crash."""
         mock_store = MagicMock()
@@ -40,7 +40,7 @@ class TestBug39RepeatedTag:
             "tags": ["foo", "bar"],
             "importance": 3,
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -48,29 +48,29 @@ class TestBug39RepeatedTag:
             result = cli_runner.invoke(
                 app,
                 [
-                    "summaries", "flag",
+                    "summaries",
+                    "flag",
                     "test-entry",
-                    "--tag", "foo",
-                    "--tag", "bar",
+                    "--tag",
+                    "foo",
+                    "--tag",
+                    "bar",
                 ],
             )
 
         # If the bug is present, result.exit_code is 2 (Typer TypeError)
         # or stdout contains a TypeError traceback.
         assert result.exit_code == 0, (
-            f"Expected exit code 0, got {result.exit_code}. "
-            f"Stderr: {result.stderr!r}"
+            f"Expected exit code 0, got {result.exit_code}. Stderr: {result.stderr!r}"
         )
-        assert "Traceback" not in result.output, (
-            f"Unexpected traceback in output: {result.output}"
-        )
+        assert "Traceback" not in result.output, f"Unexpected traceback in output: {result.output}"
         assert "Flagged" in result.stdout
         assert "foo" in result.stdout
         assert "bar" in result.stdout
 
     @patch("autoinfo.kb.KBStore")
     def test_repeated_tag_json_output(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """Repeated --tag works with --json flag."""
         mock_store = MagicMock()
@@ -80,7 +80,7 @@ class TestBug39RepeatedTag:
             "tags": ["foo", "bar"],
             "importance": 3,
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -88,24 +88,26 @@ class TestBug39RepeatedTag:
             result = cli_runner.invoke(
                 app,
                 [
-                    "summaries", "flag",
+                    "summaries",
+                    "flag",
                     "test-entry",
-                    "--tag", "foo",
-                    "--tag", "bar",
+                    "--tag",
+                    "foo",
+                    "--tag",
+                    "bar",
                     "--json",
                 ],
             )
 
         assert result.exit_code == 0, (
-            f"Expected exit code 0, got {result.exit_code}. "
-            f"Stderr: {result.stderr!r}"
+            f"Expected exit code 0, got {result.exit_code}. Stderr: {result.stderr!r}"
         )
         data = json.loads(result.stdout)
         assert data["tags"] == ["foo", "bar"]
 
     @patch("autoinfo.kb.KBStore")
     def test_single_tag_still_works(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         """Single --tag (no repeat) should still work after fix."""
         mock_store = MagicMock()
@@ -115,7 +117,7 @@ class TestBug39RepeatedTag:
             "tags": ["solo"],
             "importance": 3,
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 

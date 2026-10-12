@@ -30,7 +30,9 @@ def _make_response(data: list[dict], total: int = 0) -> httpx.Response:
     return httpx.Response(
         200,
         json={"total": total or len(data), "offset": 0, "data": data},
-        request=httpx.Request("GET", "https://api.semanticscholar.org/graph/v1/paper/search?query=test&limit=10"),
+        request=httpx.Request(
+            "GET", "https://api.semanticscholar.org/graph/v1/paper/search?query=test&limit=10"
+        ),
     )
 
 
@@ -92,6 +94,7 @@ class TestSemanticScholarImport:
     def test_handler_is_importable(self) -> None:
         """Verify ``SemanticScholarHandler`` can be imported from the collector module."""
         from autoinfo.collectors.semantic_scholar import SemanticScholarHandler as H
+
         assert H is not None
 
     def test_handler_creates_instance(self) -> None:
@@ -103,6 +106,7 @@ class TestSemanticScholarImport:
     def test_handler_is_registered_in_package(self) -> None:
         """Verify the handler is exported from the collectors package."""
         from autoinfo.collectors import SemanticScholarHandler
+
         assert SemanticScholarHandler is not None
 
 

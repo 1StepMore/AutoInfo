@@ -41,6 +41,9 @@
 | **测试 fixture 日期字面量过期(时间炸弹)** | **已登记并已修(2026-10-12,#506/#509)**:测试 fixture 把 `collected_at` 写死成绝对日期,而 domain freshness 阈值随日历推移——2026-08-17/08-25 的 fixture 在 2026-10-09 还是绿的,10-11 集体越过阈值,`generate_digest`/`generate_tutorial` 抛 `StaleSourceError`,**13 个失败看起来与触发它的改动毫无关系**。这不是 13 个 bug,是 1 个 bug 穿了 13 件外套;审计后发现暴露面是 **60 处字面量 / 24 个文件**,只是各自 domain TTL 长才暂时没爆 | 根治:新增 `tests/_freshness.py`(`_NOW` 冻结于 import,保证同 offset 两次调用字节相同)+ `tests/validation/test_freshness_guards.py`(未来 30 天～过去 90 天窗口内出现日期字面量即 fail,含 3 个自检用例防守卫空转)。**新守卫有约 3 个月提前量,到期后新字面量会被自动拦下**;日期若本意"陈旧"则保持字面量——它只会越来越旧,永不过期 |
 | **文档数字与代码之间无对账(闭环缺口)** | **已登记并已修(2026-10-12,#508 + 本次补断言)**:CLI 命令组数曾被写成 32,而 Typer `registered_groups`(`add_typer` 集合)实际是 31——`init` 用 `app.command()` 挂载,不算 group。**它在 main 上无限期待着,一次红都没产生**,因为 `doc_inventory.py --check` 只比 README↔AGENTS↔SKILL(一致性校验),而 `build_release_check.py` 只**报出**代码值、从不与文档比对。两个门禁各管一半,中间那道缝没人看 | 已补 `build_release_check` 的 `documented CLI group count matches autoinfo.cli` 断言(文档声明值 == `len(app.registered_groups)`),并用 2 个测试锁住(含伪造数字必须变红的负向用例)。**教训可推广:一致性校验 ≠ 真实性校验,凡是"文档里的数字"都需要一条对代码的断言**;README 枚举还长期漏了 `validate` 而多列 `init`,同样是靠这条断言才暴露 |
 
+| **tests/ 下混入非测试脚本** | `tests/run_q2b_collector_tests.py` 是独立脚本(结尾 `sys.exit(0)`),不是 pytest 测试。默认 `python_files = test_*.py` 不收集它,所以流水线无恙;但任何人显式把路径喂给 pytest (`pytest tests/run_q2b_collector_tests.py`)都会让整个会话以 INTERNALERROR 终止——**一个文件能干掉整次测试运行,且报错完全指向别处**。全仓无任何引用(脚本、workflow、文档均无) |
+| 归位到 `scripts/`,或在 conftest 显式 `collect_ignore`;当前靠收集规则默认值隐式兜住,属于**依赖默认行为而非显式声明**的残余。2026-10-12 清 247 个 lint 错误时实测触发 |
+
 ## D. 系统变化触发的新表面(这是"新问题"的真实来源,不是"问题无穷")
 
 | 变化 | 后果 | 对策 |

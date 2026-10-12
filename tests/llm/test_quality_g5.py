@@ -27,7 +27,6 @@ from autoinfo.quality import (
     QualityResult,
 )
 
-
 # ===================================================================
 # Helpers
 # ===================================================================
@@ -221,7 +220,9 @@ class TestG5TranslationAccuracyCheck:
                 "issues": [],
             }
         )
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 
@@ -241,7 +242,9 @@ class TestG5TranslationAccuracyCheck:
                 "issues": ["Changed 'improves' to 'reduces'", "Added negative claim about safety"],
             }
         )
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, unfaithful_extraction)
 
@@ -256,21 +259,28 @@ class TestG5TranslationAccuracyCheck:
     ) -> None:
         """LLM returns invalid JSON → flagged as uncertain (faithful=None)."""
         mock_llm = _mock_litellm_raw("this is not json")
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 
         assert result.passed is False
         assert result.flagged is True
         assert result.details["faithful"] is None
-        assert "malformed" in result.details["explanation"].lower() or "parse" in result.details["explanation"].lower()
+        assert (
+            "malformed" in result.details["explanation"].lower()
+            or "parse" in result.details["explanation"].lower()
+        )
 
     def test_handles_incomplete_json(
         self, sample_item: Item, faithful_extraction: ExtractionResult
     ) -> None:
         """LLM returns JSON missing 'faithful' key → treated as unfaithful."""
         mock_llm = _mock_litellm({"explanation": "No faithful field", "issues": []})
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 
@@ -295,7 +305,10 @@ class TestG5TranslationAccuracyCheck:
         self, sample_item: Item, faithful_extraction: ExtractionResult
     ) -> None:
         """When litellm is not installed, return flagged result with explanation."""
-        with patch("autoinfo.quality.call_with_fallback", side_effect=RuntimeError("litellm is not available")):
+        with patch(
+            "autoinfo.quality.call_with_fallback",
+            side_effect=RuntimeError("litellm is not available"),
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 
@@ -310,7 +323,9 @@ class TestG5TranslationAccuracyCheck:
         """LLM raises an exception → returned as flagged uncertain."""
         mock_llm = MagicMock()
         mock_llm.completion.side_effect = RuntimeError("API timeout")
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value):
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ):
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 
@@ -330,7 +345,9 @@ class TestG5TranslationAccuracyCheck:
                 "issues": [],
             }
         )
-        with patch("autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value) as mock_cwf:
+        with patch(
+            "autoinfo.quality.call_with_fallback", return_value=mock_llm.completion.return_value
+        ) as mock_cwf:
             g5 = G5TranslationAccuracy(model="test/test")
             result = g5.check(sample_item, faithful_extraction)
 

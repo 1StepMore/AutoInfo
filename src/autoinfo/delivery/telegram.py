@@ -106,10 +106,7 @@ class TelegramDeliveryChannel(DeliveryChannel):
         """
         config = product.config or {}
 
-        bot_token: str | None = (
-            config.get("bot_token")
-            or payload.get("bot_token")
-        )
+        bot_token: str | None = config.get("bot_token") or payload.get("bot_token")
 
         if not bot_token:
             return DeliveryResult(
@@ -125,10 +122,7 @@ class TelegramDeliveryChannel(DeliveryChannel):
         chat_ids: list[str] = list(recipients) if recipients else []
 
         if not chat_ids:
-            cid = (
-                config.get("chat_id")
-                or payload.get("chat_id")
-            )
+            cid = config.get("chat_id") or payload.get("chat_id")
             if cid is not None:
                 chat_ids.append(str(cid))
 
@@ -167,11 +161,7 @@ class TelegramDeliveryChannel(DeliveryChannel):
             status="success" if all_succeeded else "partial",
             timestamp=_now_utc(),
             recipient_count=success_count,
-            error=(
-                None
-                if all_succeeded
-                else f"{len(failed)} Telegram chat(s) failed"
-            ),
+            error=(None if all_succeeded else f"{len(failed)} Telegram chat(s) failed"),
         )
 
     def validate_config(self, config: dict[str, Any]) -> bool:
@@ -186,12 +176,18 @@ class TelegramDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             token = _os.environ.get("TELEGRAM_BOT_TOKEN", "")
             if not token:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: TELEGRAM_BOT_TOKEN not set", "channel": "telegram"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: TELEGRAM_BOT_TOKEN not set",
+                    "channel": "telegram",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "telegram"}
         except Exception as e:

@@ -12,7 +12,6 @@ import pytest
 
 from autoinfo.recommend import ContentBasedEngine, ScoredItem
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -72,14 +71,18 @@ class TestDualSearchPipeline:
         engine = ContentBasedEngine()
         mock_kb = MagicMock()
         mock_kb.search_knowledge_base.side_effect = [
-            _make_search_result([
-                _make_entry("e1", "FTS5 Article"),
-                _make_entry("e2", "FTS5 Only"),
-            ]),
-            _make_search_result([
-                _make_entry("e1", "Vector Article"),  # overlap
-                _make_entry("e3", "Vector Only"),
-            ]),
+            _make_search_result(
+                [
+                    _make_entry("e1", "FTS5 Article"),
+                    _make_entry("e2", "FTS5 Only"),
+                ]
+            ),
+            _make_search_result(
+                [
+                    _make_entry("e1", "Vector Article"),  # overlap
+                    _make_entry("e3", "Vector Only"),
+                ]
+            ),
         ]
         engine._get_kb = MagicMock(return_value=mock_kb)
 
@@ -171,16 +174,20 @@ class TestDualSearchPipeline:
         results = engine.recommend(user_id="u1", query="test", limit=10)
         scores = {r.entry_id: r.score for r in results}
 
-        assert scores["dual"] > scores["fts5"], f"dual ({scores['dual']}) should beat fts5 ({scores['fts5']})"
-        assert scores["dual"] > scores["vec"], f"dual ({scores['dual']}) should beat vec ({scores['vec']})"
+        assert scores["dual"] > scores["fts5"], (
+            f"dual ({scores['dual']}) should beat fts5 ({scores['fts5']})"
+        )
+        assert scores["dual"] > scores["vec"], (
+            f"dual ({scores['dual']}) should beat vec ({scores['vec']})"
+        )
 
     def test_scores_always_normalized_to_100(self):
         """All scores should be in [0, 100] range, capped at 100."""
         engine = ContentBasedEngine()
         mock_kb = MagicMock()
-        entry = _make_entry("e1", "Score Check",
-                            collected_at="2026-07-31T00:00:00+00:00",
-                            domain="medical-research")
+        entry = _make_entry(
+            "e1", "Score Check", collected_at="2026-07-31T00:00:00+00:00", domain="medical-research"
+        )
         mock_kb.search_knowledge_base.side_effect = [
             _make_search_result([entry]),
             _make_search_result([entry]),
@@ -214,7 +221,9 @@ class TestDomainScoring:
 
         results = engine.recommend(user_id="u1", query="test", domain="medical-research", limit=10)
         scores = {r.entry_id: r.score for r in results}
-        assert scores["e1"] > scores["e2"], f"Domain match ({scores['e1']}) should beat non-match ({scores['e2']})"
+        assert scores["e1"] > scores["e2"], (
+            f"Domain match ({scores['e1']}) should beat non-match ({scores['e2']})"
+        )
 
     def test_no_domain_filter_equal_scores(self):
         """Without a domain filter, domain bonus applies to none.
@@ -251,10 +260,12 @@ class TestEdgeCases:
         """Empty query falls back to _recommend_recent."""
         engine = ContentBasedEngine()
         mock_kb = MagicMock()
-        mock_kb.search_knowledge_base.return_value = _make_search_result([
-            _make_entry("r1", "Recent Paper"),
-            _make_entry("r2", "Old Paper"),
-        ])
+        mock_kb.search_knowledge_base.return_value = _make_search_result(
+            [
+                _make_entry("r1", "Recent Paper"),
+                _make_entry("r2", "Old Paper"),
+            ]
+        )
         engine._get_kb = MagicMock(return_value=mock_kb)
 
         results = engine.recommend(user_id="u1", query="", limit=5)
@@ -266,9 +277,11 @@ class TestEdgeCases:
         """Whitespace-only query falls back to recent items."""
         engine = ContentBasedEngine()
         mock_kb = MagicMock()
-        mock_kb.search_knowledge_base.return_value = _make_search_result([
-            _make_entry("r1", "Recent"),
-        ])
+        mock_kb.search_knowledge_base.return_value = _make_search_result(
+            [
+                _make_entry("r1", "Recent"),
+            ]
+        )
         engine._get_kb = MagicMock(return_value=mock_kb)
 
         results = engine.recommend(user_id="u1", query="   ", limit=5)
@@ -278,9 +291,11 @@ class TestEdgeCases:
         """Short query (<3 chars) falls back to recent items."""
         engine = ContentBasedEngine()
         mock_kb = MagicMock()
-        mock_kb.search_knowledge_base.return_value = _make_search_result([
-            _make_entry("r1", "Recent"),
-        ])
+        mock_kb.search_knowledge_base.return_value = _make_search_result(
+            [
+                _make_entry("r1", "Recent"),
+            ]
+        )
         engine._get_kb = MagicMock(return_value=mock_kb)
 
         results = engine.recommend(user_id="u1", query="ab", limit=5)

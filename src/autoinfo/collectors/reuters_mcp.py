@@ -124,9 +124,7 @@ class ReutersMCPHandler(BaseHandler):
                 (endpoint_url, api_key, query, field_mapping, etc.).
         """
         self.source_config = source_config
-        self._settings: dict[str, Any] = (
-            source_config.settings if source_config is not None else {}
-        )
+        self._settings: dict[str, Any] = source_config.settings if source_config is not None else {}
 
         # Resolve API key: settings dict first, then environment variable.
         self.api_key: str = self._settings.get("api_key") or os.environ.get(
@@ -134,9 +132,7 @@ class ReutersMCPHandler(BaseHandler):
         )
 
         # Resolve endpoint URL.
-        self.endpoint_url: str = self._settings.get(
-            "endpoint_url", DEFAULT_ENDPOINT
-        )
+        self.endpoint_url: str = self._settings.get("endpoint_url", DEFAULT_ENDPOINT)
 
         # Build field mapping: defaults merged with per-source overrides.
         self.field_mapping: dict[str, str] = dict(DEFAULT_FIELD_MAPPING)
@@ -171,7 +167,10 @@ class ReutersMCPHandler(BaseHandler):
     # ------------------------------------------------------------------
 
     def _request(
-        self, url: str, headers: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> httpx.Response:
         """Issue an HTTP request with rate limiting and exponential-backoff retry.
 
@@ -256,10 +255,7 @@ class ReutersMCPHandler(BaseHandler):
             return []
 
         if not self.endpoint_url:
-            logger.info(
-                "Reuters MCP endpoint not configured. "
-                "Set endpoint_url in source settings."
-            )
+            logger.info("Reuters MCP endpoint not configured. Set endpoint_url in source settings.")
             return []
 
         # Clamp limit to a reasonable max.
@@ -274,9 +270,7 @@ class ReutersMCPHandler(BaseHandler):
         headers = self._build_headers()
 
         try:
-            response = self._request(
-                self.endpoint_url, headers=headers, json_body=payload
-            )
+            response = self._request(self.endpoint_url, headers=headers, json_body=payload)
         except httpx.HTTPStatusError as exc:
             status: int = exc.response.status_code if exc.response else 0
             if status == 401:

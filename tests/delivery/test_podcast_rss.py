@@ -10,7 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import base64
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
@@ -103,44 +102,68 @@ class TestBuildPodcastRSS:
 
     def test_preserves_xml_declaration(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="no",
-            category="Tech", subcategory="", episodes=_minimal_episodes(),
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
             base_url="http://localhost:8741",
         )
         xml_str = xml_bytes.decode("utf-8")
-        assert xml_str.startswith('<?xml')
+        assert xml_str.startswith("<?xml")
 
     def test_itunes_namespace_declared(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="no",
-            category="Tech", subcategory="", episodes=_minimal_episodes(),
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
             base_url="http://localhost:8741",
         )
-        root = ET.fromstring(xml_bytes)
-        declared_uri = root.get(f"{{{ITUNES_NS}}}") if False else None
-        attr_key = f"xmlns:itunes"
-        # ET normalizes namespace prefixes; check root attrib for xmlns:itunes
         raw = xml_bytes.decode("utf-8")
-        assert 'xmlns:itunes' in raw
+        assert "xmlns:itunes" in raw
         assert ITUNES_NS in raw
 
     def test_itunes_author_present(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="Test Author", image_url="",
-            explicit="no", category="Tech", subcategory="",
-            episodes=_minimal_episodes(), base_url="http://localhost:8741",
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="Test Author",
+            image_url="",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
+            base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
         assert "<itunes:author>Test Author</itunes:author>" in raw
 
     def test_itunes_explicit_present(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="clean",
-            category="Tech", subcategory="", episodes=_minimal_episodes(),
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="clean",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
             base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
@@ -148,22 +171,35 @@ class TestBuildPodcastRSS:
 
     def test_itunes_image_when_provided(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A",
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
             image_url="https://example.com/cover.jpg",
-            explicit="no", category="Tech", subcategory="",
-            episodes=_minimal_episodes(), base_url="http://localhost:8741",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
+            base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
-        assert '<itunes:image' in raw
+        assert "<itunes:image" in raw
         assert 'href="https://example.com/cover.jpg"' in raw
 
     def test_itunes_category_and_subcategory(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="no",
-            category="Technology", subcategory="Podcasts",
-            episodes=_minimal_episodes(), base_url="http://localhost:8741",
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="no",
+            category="Technology",
+            subcategory="Podcasts",
+            episodes=_minimal_episodes(),
+            base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
         assert '<itunes:category text="Technology">' in raw
@@ -171,9 +207,16 @@ class TestBuildPodcastRSS:
 
     def test_itunes_per_episode_metadata(self) -> None:
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="no",
-            category="Tech", subcategory="", episodes=_minimal_episodes(),
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=_minimal_episodes(),
             base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
@@ -185,9 +228,16 @@ class TestBuildPodcastRSS:
     def test_no_enclosure_when_no_audio_url(self) -> None:
         episodes = [{"title": "No Audio", "description": "No audio file"}]
         xml_bytes = _build_podcast_rss(
-            title="T", description="D", link="http://x.com",
-            language="en", author="A", image_url="", explicit="no",
-            category="Tech", subcategory="", episodes=episodes,
+            title="T",
+            description="D",
+            link="http://x.com",
+            language="en",
+            author="A",
+            image_url="",
+            explicit="no",
+            category="Tech",
+            subcategory="",
+            episodes=episodes,
             base_url="http://localhost:8741",
         )
         raw = xml_bytes.decode("utf-8")
@@ -202,23 +252,33 @@ class TestBuildPodcastRSS:
 class TestPodcastRSSDeliveryChannel:
     def test_validate_config_valid(self) -> None:
         channel = PodcastRSSDeliveryChannel()
-        assert channel.validate_config({
-            "feed_url": "/tmp/podcast.xml",
-            "title": "My Podcast",
-            "description": "A test podcast",
-            "author": "Test Author",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "feed_url": "/tmp/podcast.xml",
+                    "title": "My Podcast",
+                    "description": "A test podcast",
+                    "author": "Test Author",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_invalid(self) -> None:
         channel = PodcastRSSDeliveryChannel()
         assert channel.validate_config({}) is False
         assert channel.validate_config({"feed_url": "/tmp/podcast.xml"}) is False
-        assert channel.validate_config({
-            "feed_url": "/tmp/podcast.xml",
-            "title": "My Podcast",
-            "description": "A test podcast",
-            # missing author
-        }) is False
+        assert (
+            channel.validate_config(
+                {
+                    "feed_url": "/tmp/podcast.xml",
+                    "title": "My Podcast",
+                    "description": "A test podcast",
+                    # missing author
+                }
+            )
+            is False
+        )
 
     def test_send_generates_podcast_rss(self, tmp_path: Path) -> None:
         feed_file = tmp_path / "podcast" / "feed.xml"
@@ -243,11 +303,11 @@ class TestPodcastRSSDeliveryChannel:
         assert feed_file.exists()
 
         raw = feed_file.read_text(encoding="utf-8")
-        assert '<?xml' in raw
-        assert '<rss' in raw
-        assert 'xmlns:itunes' in raw
-        assert '<enclosure' in raw
-        assert '<itunes:author>Test Author</itunes:author>' in raw
+        assert "<?xml" in raw
+        assert "<rss" in raw
+        assert "xmlns:itunes" in raw
+        assert "<enclosure" in raw
+        assert "<itunes:author>Test Author</itunes:author>" in raw
 
     def test_send_no_episodes_but_valid_xml(self, tmp_path: Path) -> None:
         feed_file = tmp_path / "empty-podcast.xml"
@@ -269,8 +329,8 @@ class TestPodcastRSSDeliveryChannel:
         assert result.status == "success"
         assert feed_file.exists()
         raw = feed_file.read_text(encoding="utf-8")
-        assert '<channel' in raw
-        assert '<enclosure' not in raw
+        assert "<channel" in raw
+        assert "<enclosure" not in raw
 
     def test_health_check(self) -> None:
         channel = PodcastRSSDeliveryChannel()
@@ -408,5 +468,5 @@ class TestPlainRSSNoEnclosureRegression:
 
         path = result["path"]
         raw = Path(path).read_text(encoding="utf-8")
-        assert '<enclosure' not in raw, "Plain RSS _export_rss must NOT have enclosure"
-        assert 'itunes:' not in raw, "Plain RSS _export_rss must NOT have itunes namespace"
+        assert "<enclosure" not in raw, "Plain RSS _export_rss must NOT have enclosure"
+        assert "itunes:" not in raw, "Plain RSS _export_rss must NOT have itunes namespace"

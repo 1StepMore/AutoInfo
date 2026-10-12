@@ -175,6 +175,7 @@ class TestUSPTOImport:
     def test_handler_is_importable(self) -> None:
         """Verify ``USPTOHandler`` can be imported from the collector module."""
         from autoinfo.collectors.uspto import USPTOHandler as H
+
         assert H is not None
 
     def test_handler_creates_instance(self) -> None:
@@ -186,6 +187,7 @@ class TestUSPTOImport:
     def test_handler_is_registered_in_package(self) -> None:
         """Verify the handler is exported from the collectors package."""
         from autoinfo.collectors import USPTOHandler
+
         assert USPTOHandler is not None
 
 
@@ -429,10 +431,13 @@ class TestUSPTOFetchRSS:
         handler = USPTOHandler()
         rss_resp = _make_rss_response()
 
-        with patch("httpx.post", side_effect=httpx.TimeoutException(
-            "timeout",
-            request=httpx.Request("POST", "http://test"),
-        )):
+        with patch(
+            "httpx.post",
+            side_effect=httpx.TimeoutException(
+                "timeout",
+                request=httpx.Request("POST", "http://test"),
+            ),
+        ):
             with patch("httpx.get", return_value=rss_resp):
                 patents = handler.fetch("gene editing", limit=10)
 

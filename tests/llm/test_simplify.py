@@ -9,8 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoinfo.output import simplify_text, _VALID_SIMPLIFY_TARGETS
-
+from autoinfo.output import _VALID_SIMPLIFY_TARGETS, simplify_text
 
 # ===================================================================
 # Fixtures
@@ -73,14 +72,15 @@ def test_simplify_success(
     mock_litellm_simplify: MagicMock,
 ) -> None:
     """simplify_text returns verified=True when LLM produces valid simplification."""
-    with patch(
-        "litellm.completion", mock_litellm_simplify.completion
-    ), patch(
-        "autoinfo.cefr.classify_text",
-        side_effect=[
-            {"cefr_level": "B2", "confidence": 0.85},
-            {"cefr_level": "A2", "confidence": 0.88},
-        ],
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
+            "autoinfo.cefr.classify_text",
+            side_effect=[
+                {"cefr_level": "B2", "confidence": 0.85},
+                {"cefr_level": "A2", "confidence": 0.88},
+            ],
+        ),
     ):
         result = simplify_text(sample_text, "A2", "en")
 
@@ -96,14 +96,15 @@ def test_simplify_verified_when_same_level(
     mock_litellm_simplify: MagicMock,
 ) -> None:
     """verified=True even when simplified stays at same target level."""
-    with patch(
-        "litellm.completion", mock_litellm_simplify.completion
-    ), patch(
-        "autoinfo.cefr.classify_text",
-        side_effect=[
-            {"cefr_level": "B2", "confidence": 0.85},
-            {"cefr_level": "B2", "confidence": 0.85},
-        ],
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
+            "autoinfo.cefr.classify_text",
+            side_effect=[
+                {"cefr_level": "B2", "confidence": 0.85},
+                {"cefr_level": "B2", "confidence": 0.85},
+            ],
+        ),
     ):
         result = simplify_text(sample_text, "B2", "en")
 
@@ -116,14 +117,15 @@ def test_simplify_not_verified_when_higher(
     mock_litellm_simplify: MagicMock,
 ) -> None:
     """verified=False when simplified level is higher than target."""
-    with patch(
-        "litellm.completion", mock_litellm_simplify.completion
-    ), patch(
-        "autoinfo.cefr.classify_text",
-        side_effect=[
-            {"cefr_level": "B1", "confidence": 0.85},  # original
-            {"cefr_level": "C1", "confidence": 0.85},  # simplified is HIGHER than target A2
-        ],
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
+            "autoinfo.cefr.classify_text",
+            side_effect=[
+                {"cefr_level": "B1", "confidence": 0.85},  # original
+                {"cefr_level": "C1", "confidence": 0.85},  # simplified is HIGHER than target A2
+            ],
+        ),
     ):
         result = simplify_text(sample_text, "A2", "en")
 
@@ -136,7 +138,7 @@ def test_simplify_not_verified_when_higher(
 # ===================================================================
 
 
-def test_simplify_invalid_level_A0(sample_text: str) -> None:
+def test_simplify_invalid_level_A0(sample_text: str) -> None:  # noqa: N802
     """Call with invalid target_level returns error and unverified."""
     result = simplify_text(sample_text, "A0", "en")
     assert result["verified"] is False
@@ -144,7 +146,7 @@ def test_simplify_invalid_level_A0(sample_text: str) -> None:
     assert "Invalid target_level" in result["error"]
 
 
-def test_simplify_invalid_level_C2(sample_text: str) -> None:
+def test_simplify_invalid_level_C2(sample_text: str) -> None:  # noqa: N802
     """C2 is not a valid target_level (only A1-C1)."""
     result = simplify_text(sample_text, "C2", "en")
     assert result["verified"] is False
@@ -176,8 +178,13 @@ def test_simplify_whitespace_content() -> None:
 
 def test_simplify_valid_levels(sample_text: str, mock_litellm_simplify: MagicMock) -> None:
     """All valid target levels pass validation without Invalid target_level error."""
-    with patch("litellm.completion", mock_litellm_simplify.completion), \
-         patch("autoinfo.cefr.classify_text", side_effect=[{"cefr_level": "B2", "confidence": 0.9}] * 10):
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
+            "autoinfo.cefr.classify_text",
+            side_effect=[{"cefr_level": "B2", "confidence": 0.9}] * 10,
+        ),
+    ):
         for level in _VALID_SIMPLIFY_TARGETS:
             result = simplify_text(sample_text, level, "en")
             error = result.get("error", "")
@@ -193,9 +200,10 @@ def test_simplify_llm_exception(
     sample_text: str,
 ) -> None:
     """LLM exception returns original text with verified=False."""
-    with patch("autoinfo.cefr.classify_text", return_value={"cefr_level": "C1", "confidence": 0.9}), \
-         patch("litellm.completion", side_effect=RuntimeError("API unavailable")):
-
+    with (
+        patch("autoinfo.cefr.classify_text", return_value={"cefr_level": "C1", "confidence": 0.9}),
+        patch("litellm.completion", side_effect=RuntimeError("API unavailable")),
+    ):
         result = simplify_text(sample_text, "A2", "en")
 
     assert result["simplified"] == sample_text  # original returned
@@ -210,12 +218,12 @@ def test_simplify_llm_empty_response(
 ) -> None:
     """LLM returns empty string → fallback to original."""
     mock_lm = MagicMock()
-    mock_lm.completion.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=""))]
-    )
+    mock_lm.completion.return_value = MagicMock(choices=[MagicMock(message=MagicMock(content=""))])
 
-    with patch("litellm.completion", mock_lm.completion), \
-         patch("autoinfo.cefr.classify_text", return_value={"cefr_level": "B1", "confidence": 0.8}):
+    with (
+        patch("litellm.completion", mock_lm.completion),
+        patch("autoinfo.cefr.classify_text", return_value={"cefr_level": "B1", "confidence": 0.8}),
+    ):
         result = simplify_text(sample_text, "A2", "en")
 
     assert result["simplified"] == sample_text
@@ -223,21 +231,21 @@ def test_simplify_llm_empty_response(
     assert "empty response" in result["error"]
 
 
-
-
 def test_simplify_language_zh(
     sample_text: str,
     mock_litellm_simplify: MagicMock,
 ) -> None:
     """Chinese language parameter is accepted."""
-    with patch("litellm.completion", mock_litellm_simplify.completion), \
-         patch(
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
             "autoinfo.cefr.classify_text",
             side_effect=[
                 {"cefr_level": "B2", "confidence": 0.8},
                 {"cefr_level": "A1", "confidence": 0.9},
             ],
-         ):
+        ),
+    ):
         result = simplify_text(sample_text, "A1", "zh")
 
     assert result["verified"] is True
@@ -250,14 +258,16 @@ def test_simplify_language_ja(
     mock_litellm_simplify: MagicMock,
 ) -> None:
     """Japanese language parameter is accepted."""
-    with patch("litellm.completion", mock_litellm_simplify.completion), \
-         patch(
+    with (
+        patch("litellm.completion", mock_litellm_simplify.completion),
+        patch(
             "autoinfo.cefr.classify_text",
             side_effect=[
                 {"cefr_level": "B1", "confidence": 0.7},
                 {"cefr_level": "A2", "confidence": 0.85},
             ],
-         ):
+        ),
+    ):
         result = simplify_text(sample_text, "A2", "ja")
 
     assert result["verified"] is True

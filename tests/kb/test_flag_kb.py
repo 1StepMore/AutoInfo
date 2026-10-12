@@ -24,7 +24,6 @@ import yaml
 from autoinfo.kb import KBStore
 from autoinfo.models import ExtractionResult, Item
 
-
 # ======================================================================
 # Sample data
 # ======================================================================
@@ -151,7 +150,9 @@ class TestFlagForKnowledgeBase:
         result = store.flag_for_knowledge_base(entry_id)
         assert result["importance"] == 3
 
-    def test_flag_without_tags_preserves_existing(self, sample_kb_entry: tuple[KBStore, str]) -> None:
+    def test_flag_without_tags_preserves_existing(
+        self, sample_kb_entry: tuple[KBStore, str]
+    ) -> None:
         store, entry_id = sample_kb_entry
         store.flag_for_knowledge_base(entry_id, tags=["existing-tag"])
         result = store.flag_for_knowledge_base(entry_id, importance=4)
@@ -160,7 +161,7 @@ class TestFlagForKnowledgeBase:
 
 
 @patch("autoinfo.kb.KBStore")
-def test_flag_nonexistent_does_not_crash(MockKBStore: MagicMock) -> None:
+def test_flag_nonexistent_does_not_crash(mock_kb_store: MagicMock) -> None:
     """Invalid entry_id returns error dict, not an exception."""
     mock_store = MagicMock()
     mock_store.flag_for_knowledge_base.return_value = {
@@ -168,7 +169,7 @@ def test_flag_nonexistent_does_not_crash(MockKBStore: MagicMock) -> None:
         "entry_id": "nonexistent",
         "error": "Entry not found",
     }
-    MockKBStore.return_value = mock_store
+    mock_kb_store.return_value = mock_store
 
     result = mock_store.flag_for_knowledge_base("nonexistent")
     assert result["flagged"] is False
@@ -243,14 +244,14 @@ class TestGetSummary:
 
 
 @patch("autoinfo.kb.KBStore")
-def test_get_summary_nonexistent_does_not_crash(MockKBStore: MagicMock) -> None:
+def test_get_summary_nonexistent_does_not_crash(mock_kb_store: MagicMock) -> None:
     """Invalid entry_id returns error dict, not an exception."""
     mock_store = MagicMock()
     mock_store.get_summary.return_value = {
         "error": "Entry not found",
         "entry_id": "ghost",
     }
-    MockKBStore.return_value = mock_store
+    mock_kb_store.return_value = mock_store
 
     result = mock_store.get_summary("ghost")
     assert "error" in result
@@ -266,7 +267,7 @@ class TestCliFlag:
 
     @patch("autoinfo.kb.KBStore")
     def test_flag_command_adds_tags(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.flag_for_knowledge_base.return_value = {
@@ -275,7 +276,7 @@ class TestCliFlag:
             "tags": ["important", "ivf"],
             "importance": 4,
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -283,11 +284,15 @@ class TestCliFlag:
             result = cli_runner.invoke(
                 app,
                 [
-                    "summaries", "flag",
+                    "summaries",
+                    "flag",
                     "test-entry-001",
-                    "--tag", "important",
-                    "--tag", "ivf",
-                    "--importance", "4",
+                    "--tag",
+                    "important",
+                    "--tag",
+                    "ivf",
+                    "--importance",
+                    "4",
                 ],
             )
 
@@ -299,7 +304,7 @@ class TestCliFlag:
 
     @patch("autoinfo.kb.KBStore")
     def test_flag_json_output(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.flag_for_knowledge_base.return_value = {
@@ -308,7 +313,7 @@ class TestCliFlag:
             "tags": ["urgent"],
             "importance": 5,
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -325,7 +330,7 @@ class TestCliFlag:
 
     @patch("autoinfo.kb.KBStore")
     def test_flag_nonexistent_shows_error(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.flag_for_knowledge_base.return_value = {
@@ -333,7 +338,7 @@ class TestCliFlag:
             "entry_id": "ghost",
             "error": "Entry not found",
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -346,9 +351,7 @@ class TestCliFlag:
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
-    def test_flag_no_config_shows_friendly_error(
-        self, cli_runner: Any
-    ) -> None:
+    def test_flag_no_config_shows_friendly_error(self, cli_runner: Any) -> None:
         from autoinfo.cli import app
 
         with patch("autoinfo.cli.summaries.get_config_path", return_value=None):
@@ -372,7 +375,7 @@ class TestCliShow:
 
     @patch("autoinfo.kb.KBStore")
     def test_show_command_shows_full_entry(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.get_summary.return_value = {
@@ -392,7 +395,7 @@ class TestCliShow:
             "importance": 3,
             "file_path": "knowledge/test.md",
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -411,7 +414,7 @@ class TestCliShow:
 
     @patch("autoinfo.kb.KBStore")
     def test_show_json_output(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.get_summary.return_value = {
@@ -426,7 +429,7 @@ class TestCliShow:
             "importance": 3,
             "file_path": "",
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 
@@ -443,14 +446,14 @@ class TestCliShow:
 
     @patch("autoinfo.kb.KBStore")
     def test_show_nonexistent_shows_error(
-        self, MockKBStore: MagicMock, cli_runner: Any, tmp_config_dir: Path
+        self, mock_kb_store: MagicMock, cli_runner: Any, tmp_config_dir: Path
     ) -> None:
         mock_store = MagicMock()
         mock_store.get_summary.return_value = {
             "error": "Entry not found",
             "entry_id": "ghost",
         }
-        MockKBStore.return_value = mock_store
+        mock_kb_store.return_value = mock_store
 
         from autoinfo.cli import app
 

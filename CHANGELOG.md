@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.15](https://github.com/1StepMore/AutoInfo/compare/v1.17.14...v1.17.15) (2026-10-12)
+
+
+### Miscellaneous Chores
+
+* **tests:** move the stray collector script out of tests/ ([#515](https://github.com/1StepMore/AutoInfo/issues/515)) ([f9a6aeb](https://github.com/1StepMore/AutoInfo/commit/f9a6aeb8d463c6ecc50c6b52c6d98c7f5613b08f))
+
 ## [1.17.14](https://github.com/1StepMore/AutoInfo/compare/v1.17.13...v1.17.14) (2026-10-12)
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.13](https://github.com/1StepMore/AutoInfo/compare/v1.17.12...v1.17.13) (2026-10-12)
+
+
+### Bug Fixes
+
+* **build:** reconcile the documented CLI group count against the code ([#511](https://github.com/1StepMore/AutoInfo/issues/511)) ([a48527a](https://github.com/1StepMore/AutoInfo/commit/a48527aff5741fefe8b900af9981927bdfa1239d))
+
 ## [1.17.12](https://github.com/1StepMore/AutoInfo/compare/v1.17.11...v1.17.12) (2026-10-11)
 
 

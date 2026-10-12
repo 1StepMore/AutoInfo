@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.14](https://github.com/1StepMore/AutoInfo/compare/v1.17.13...v1.17.14) (2026-10-12)
+
+
+### Bug Fixes
+
+* **lint:** clear the 247-error lint debt that blocked edits to 60 files ([#512](https://github.com/1StepMore/AutoInfo/issues/512)) ([a6eb2e6](https://github.com/1StepMore/AutoInfo/commit/a6eb2e6d57294d1eae61f1cb31c1170b0a69de27))
+
 ## [1.17.13](https://github.com/1StepMore/AutoInfo/compare/v1.17.12...v1.17.13) (2026-10-12)
 
 

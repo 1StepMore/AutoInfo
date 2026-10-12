@@ -40,16 +40,10 @@ new locks that live inside this selection; the count was re-baselined 2026-10-03
 #448 made `test_fallback_config.py` hermetic, converting 3 failures into 3 passes —
 same selection, same collection, 3 fewer failures).
 
-### Budgeted failures — exact node ids (3)
+### Budgeted failures — empty (2026-10-12)
 
-The one remaining class is deterministic and data dependent, not
-order-dependent. The 2026-09-17 round removed the order-dependent class
-entirely: the root cause was `LLMExtractor._get_litellm()` calling
-`StreamHandler.setStream(sys.stderr)` on a handler still bound to a CLOSED
-stream (CLI tests under capture), which made `setStream` raise
-`ValueError: I/O operation on closed file` and aborted every LLM call before
-`litellm.completion` — `tests/llm/test_simplify.py` ×7 and
-`tests/llm/test_llm_timeout.py` ×2 healed with that fix.
+The budget is **empty**. The three node ids below were re-run on 2026-10-12
+and all three pass:
 
 ```
 tests/output/test_magazine_digest.py::TestMagazineRender::test_generate_digest_renders_magazine_variant
@@ -57,9 +51,32 @@ tests/output/test_magazine_digest.py::TestMagazineRender::test_magazine_render_f
 tests/output/test_magazine_digest.py::TestMagazineEditorialFeature::test_generate_digest_magazine_contains_editorial_sections
 ```
 
+That run had **133 real entries in `knowledge/`** present, so this is not a
+clean-checkout artefact.
+
+**The recorded cause was wrong.** They were filed under "local-dataset
+dependent", but all three patch `autoinfo.output.KBStore` and their
+`_mock_list_entries` helper returns a fixed `_SAMPLE_ENTRIES` while ignoring
+every argument — they never read local data.
+
+**The original failure mode was never pinned down.** The leading hypothesis is
+the same date-literal expiry class fixed in #509 (this file was in that
+sweep, 3 literals), but that is a hypothesis, not a confirmed root cause.
+Recorded as such rather than restated as fact.
+
+Because the budget is empty there is nothing here to enforce: no workflow or
+script reads this file. If a new local-data dependency appears, the useful
+guard is a nightly-only check, not a PR gate — the PR side already carries 9
+required status checks.
+
+**Why this section still exists:** the identity-lock discipline below is the
+part worth keeping. A count-only budget silently rots — a new failure gets
+cancelled out by an old one healing while the total stays put, which is
+exactly how the 2026-09-13 baseline drifted.
+
 | Class | Count | Files | Why |
 |-------|-------|-------|-----|
-| Local-dataset dependent | 3 | `tests/output/test_magazine_digest.py` | Depend on local KB/dataset content rather than on a fixture. |
+| _(none)_ | 0 | — | Budget emptied 2026-10-12; see the section above for why the three former entries were removed. |
 
 **Load-sensitive flake (observed 2026-09-17, not budgeted).** Two failures
 appeared in one run and healed on re-run of the identical selection, so they

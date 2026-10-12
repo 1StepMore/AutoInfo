@@ -218,6 +218,29 @@ available sources" is CORRECT behavior (#179/#191) — never flag it.
 | **Do not modify `.autoinfo/config.yaml` directly** | Use MCP tools (`add_source`, `add_topic`). |
 | **Do not run `autoinfo doctor`** | Use `diagnose_system()` MCP tool instead — returns structured health data. |
 
+## Merging a PR (MUST)
+
+Two agents write to this repository. The rules below are not style preferences — each one exists because its absence produced a specific failure.
+
+| Rule | Why |
+|------|-----|
+| **Rebase onto the latest `origin/main` before merging** | `main-protection` sets `strict_required_status_checks_policy: true`, so a stale branch cannot merge at all. With two writers this is not ceremony: a stale-base merge can be textually clean and still semantically wrong, because the CI that validated it never saw the other agent's change. |
+| **Merge with `--squash` only** | The ruleset allows no other merge method. |
+| **Expect no human approval gate** | `required_approving_review_count` is 0. GitHub also forbids approving your own PR, and agents push under the repo owner account — so a review requirement could not be satisfied by an agent anyway. The approval lives in the director's instruction, not in GitHub. |
+
+**Expect the rebase to cost a full CI cycle.** The release PR auto-merges within
+minutes of any push to `main` (`Release PR auto-merge` triggers on `push`), so
+every release invalidates every open PR and forces the rebase above. Budget
+~20 min. Do not weaken `strict_required_status_checks_policy` to avoid it: with
+two writers a stale-base merge can be textually clean, semantically wrong, and
+still green in CI — the rebase is what makes CI test the real merge result.
+
+The auto-merge itself is load-bearing, not incidental — it exists because
+without it the tag went uncuts (1.17.8 shipped a silent half-release, 1.17.9 sat
+untagged for 33 min). The churn is the price of correct releases. The available
+mitigation is on our side: **fewer, larger PRs**, which means fewer merges and
+therefore fewer rebase cycles.
+
 ## Tool Discovery Guidance
 
 **149 MCP tools across 35 categories** — full catalog in `README.md` (MCP Tools table)

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.16](https://github.com/1StepMore/AutoInfo/compare/v1.17.15...v1.17.16) (2026-10-12)
+
+
+### Miscellaneous Chores
+
+* **docs:** record the merge rules for two writers; empty the red budget ([#517](https://github.com/1StepMore/AutoInfo/issues/517)) ([e651bee](https://github.com/1StepMore/AutoInfo/commit/e651beee06157246c891429c6a3c97fb8596c9d4))
+
 ## [1.17.15](https://github.com/1StepMore/AutoInfo/compare/v1.17.14...v1.17.15) (2026-10-12)
 
 

@@ -20,7 +20,6 @@ from autoinfo.collectors.reuters_mcp import (
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
-
 # -- Helpers ---------------------------------------------------------------
 
 
@@ -128,8 +127,17 @@ class TestReutersMCPImport:
         assert ReutersMCPHandler.requires_key() is True
 
     def test_default_field_mapping_has_expected_keys(self) -> None:
-        expected_keys = {"id", "title", "content", "author", "published_date",
-                         "section", "language", "source", "source_url"}
+        expected_keys = {
+            "id",
+            "title",
+            "content",
+            "author",
+            "published_date",
+            "section",
+            "language",
+            "source",
+            "source_url",
+        }
         assert set(DEFAULT_FIELD_MAPPING.keys()) == expected_keys
 
 

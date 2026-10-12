@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
 from autoinfo.models import Item
 
@@ -50,11 +48,13 @@ class TestYahooFinanceHandlerExists:
     def test_handler_is_importable(self) -> None:
         """YahooFinanceHandler should be accessible from its module."""
         from autoinfo.collectors.yahoo_finance import YahooFinanceHandler as H
+
         assert H is not None
 
     def test_inherits_from_base_handler(self) -> None:
         """YahooFinanceHandler should inherit from BaseHandler."""
         from autoinfo.collectors.base import BaseHandler
+
         assert issubclass(YahooFinanceHandler, BaseHandler)
 
     def test_creates_with_default_name(self) -> None:
@@ -258,11 +258,13 @@ class TestYahooFinanceContentFallback:
         """When summary is absent, content should come from description."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-                "description": "Description fallback content",
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                    "description": "Description fallback content",
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -274,11 +276,13 @@ class TestYahooFinanceContentFallback:
         """When summary and description are absent, fall back to content[0].value."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-                "content": [{"value": "Content list value"}],
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                    "content": [{"value": "Content list value"}],
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -290,10 +294,12 @@ class TestYahooFinanceContentFallback:
         """When all content fields are absent, content should be empty string."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -314,11 +320,13 @@ class TestYahooFinanceDateParsing:
         """A valid RFC 2822 date should be parsed to ISO-8601."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-                "published": "Mon, 15 Jan 2026 14:30:00 GMT",
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                    "published": "Mon, 15 Jan 2026 14:30:00 GMT",
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -330,11 +338,13 @@ class TestYahooFinanceDateParsing:
         """When published is absent, fall back to updated."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-                "updated": "Tue, 20 Jan 2026 08:00:00 GMT",
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                    "updated": "Tue, 20 Jan 2026 08:00:00 GMT",
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -346,10 +356,12 @@ class TestYahooFinanceDateParsing:
         """When no date is present, collected_at should be empty string."""
         mock_parse.return_value = MagicMock(
             bozo=False,
-            entries=[{
-                "title": "Test",
-                "link": "https://test.com",
-            }],
+            entries=[
+                {
+                    "title": "Test",
+                    "link": "https://test.com",
+                }
+            ],
         )
 
         handler = YahooFinanceHandler()
@@ -438,16 +450,24 @@ class TestYahooFinanceItemId:
         """Same feed URL + link should produce the same ID."""
         from autoinfo.collectors.yahoo_finance import _make_item_id
 
-        id1 = _make_item_id("https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1")
-        id2 = _make_item_id("https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1")
+        id1 = _make_item_id(
+            "https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1"
+        )
+        id2 = _make_item_id(
+            "https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1"
+        )
         assert id1 == id2
 
     def test_different_links_produce_different_ids(self) -> None:
         """Different links should produce different IDs."""
         from autoinfo.collectors.yahoo_finance import _make_item_id
 
-        id1 = _make_item_id("https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1")
-        id2 = _make_item_id("https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/2")
+        id1 = _make_item_id(
+            "https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/1"
+        )
+        id2 = _make_item_id(
+            "https://finance.yahoo.com/news/rssindex", "https://finance.yahoo.com/news/2"
+        )
         assert id1 != id2
 
     @patch("autoinfo.collectors.yahoo_finance.feedparser.parse")

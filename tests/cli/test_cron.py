@@ -18,7 +18,6 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from autoinfo.cli.cron import app as cron_app
 from autoinfo.cli.cron import (
     Schedule,
     _is_due,
@@ -27,11 +26,10 @@ from autoinfo.cli.cron import (
     run_due_schedules,
     save_schedules,
 )
+from autoinfo.cli.cron import app as cron_app
 
 
-def _make_tzaware(
-    year: int, month: int, day: int, hour: int = 0, minute: int = 0
-) -> datetime:
+def _make_tzaware(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
     return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 
@@ -45,16 +43,18 @@ def _with_schedules_path(tmp_path: Path):
 
 def _save_test_schedule(tmp_path: Path, **overrides) -> None:
     with _with_schedules_path(tmp_path):
-        save_schedules({
-            "nightly": Schedule(
-                name=overrides.get("name", "nightly"),
-                expression=overrides.get("expression", "0 2 * * *"),
-                domain=overrides.get("domain", "medical-research"),
-                enabled=overrides.get("enabled", True),
-                last_run=overrides.get("last_run"),
-                created_at=overrides.get("created_at", "2026-07-19T00:00:00+00:00"),
-            ),
-        })
+        save_schedules(
+            {
+                "nightly": Schedule(
+                    name=overrides.get("name", "nightly"),
+                    expression=overrides.get("expression", "0 2 * * *"),
+                    domain=overrides.get("domain", "medical-research"),
+                    enabled=overrides.get("enabled", True),
+                    last_run=overrides.get("last_run"),
+                    created_at=overrides.get("created_at", "2026-07-19T00:00:00+00:00"),
+                ),
+            }
+        )
 
 
 # ======================================================================
@@ -107,6 +107,7 @@ class TestIsDue:
     def test_invalid_expression_raises(self) -> None:
         last_run = _make_tzaware(2026, 7, 20, 10, 0).isoformat()
         from croniter import CroniterBadCronError
+
         with pytest.raises(CroniterBadCronError):
             _is_due("not-a-cron", last_run)
 
@@ -162,41 +163,61 @@ class TestCliAddSchedule:
         with _with_schedules_path(tmp_path):
             result = cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "daily",
-                 "--expression", "0 6 * * *",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "daily",
+                    "--expression",
+                    "0 6 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
             )
         assert result.exit_code == 0
         assert "Schedule 'daily' added" in result.stdout
 
-    def test_duplicate_name_fails(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_duplicate_name_fails(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
             cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "daily",
-                 "--expression", "0 6 * * *",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "daily",
+                    "--expression",
+                    "0 6 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
             )
             result = cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "daily",
-                 "--expression", "0 8 * * *",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "daily",
+                    "--expression",
+                    "0 8 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
             )
         assert result.exit_code != 0
         assert "already exists" in result.output
 
-    def test_invalid_expression_fails(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_invalid_expression_fails(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
             result = cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "bad",
-                 "--expression", "not-a-cron",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "bad",
+                    "--expression",
+                    "not-a-cron",
+                    "--domain",
+                    "medical-research",
+                ],
             )
         assert result.exit_code != 0
         assert "not a valid cron expression" in result.output
@@ -207,23 +228,31 @@ class TestCliAddSchedule:
         """Issue #101: a pre-existing schedule in the file causes add_schedule to reject."""
         with _with_schedules_path(tmp_path):
             # Simulate a stale leftover artifact like the one that caused #101
-            save_schedules({
-                "test": Schedule(
-                    name="test",
-                    expression="0 8 * * 1",
-                    domain="medical-research",
-                    enabled=True,
-                    last_run=None,
-                    created_at="2026-07-29T04:37:51+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "test": Schedule(
+                        name="test",
+                        expression="0 8 * * 1",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-29T04:37:51+00:00",
+                    ),
+                }
+            )
             assert "test" in load_schedules()
             # Adding "test" again must fail — the false duplicate from stale artifact
             result = cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "test",
-                 "--expression", "0 10 * * *",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "test",
+                    "--expression",
+                    "0 10 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
             )
         assert result.exit_code != 0
         assert "already exists" in result.output
@@ -238,9 +267,15 @@ class TestCliAddSchedule:
             # "test" must succeed even though a stale artifact once used that name
             result = cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "test",
-                 "--expression", "0 8 * * 1",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "test",
+                    "--expression",
+                    "0 8 * * 1",
+                    "--domain",
+                    "medical-research",
+                ],
             )
         assert result.exit_code == 0
         assert "Schedule 'test' added" in result.stdout
@@ -258,20 +293,20 @@ class TestCliListSchedules:
         assert result.exit_code == 0
         assert "No schedules configured" in result.stdout
 
-    def test_list_with_schedules(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_list_with_schedules(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
-            save_schedules({
-                "nightly": Schedule(
-                    name="nightly",
-                    expression="0 2 * * *",
-                    domain="medical-research",
-                    enabled=True,
-                    last_run="2026-07-20T02:00:00+00:00",
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "nightly": Schedule(
+                        name="nightly",
+                        expression="0 2 * * *",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run="2026-07-20T02:00:00+00:00",
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                }
+            )
             result = cli_runner.invoke(cron_app, ["list-schedules"])
         assert result.exit_code == 0
         assert "nightly" in result.stdout
@@ -280,16 +315,18 @@ class TestCliListSchedules:
 
     def test_list_json(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
-            save_schedules({
-                "weekly": Schedule(
-                    name="weekly",
-                    expression="0 8 * * 1",
-                    domain="medical-research",
-                    enabled=True,
-                    last_run=None,
-                    created_at="2026-07-20T00:00:00+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "weekly": Schedule(
+                        name="weekly",
+                        expression="0 8 * * 1",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-20T00:00:00+00:00",
+                    ),
+                }
+            )
             result = cli_runner.invoke(cron_app, ["list-schedules", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
@@ -304,29 +341,27 @@ class TestCliListSchedules:
 
 
 class TestCliRemoveSchedule:
-    def test_removes_schedule(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_removes_schedule(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
             cli_runner.invoke(
                 cron_app,
-                ["add-schedule", "--name", "toremove",
-                 "--expression", "0 2 * * *",
-                 "--domain", "medical-research"],
+                [
+                    "add-schedule",
+                    "--name",
+                    "toremove",
+                    "--expression",
+                    "0 2 * * *",
+                    "--domain",
+                    "medical-research",
+                ],
             )
-            result = cli_runner.invoke(
-                cron_app, ["remove-schedule", "--name", "toremove"]
-            )
+            result = cli_runner.invoke(cron_app, ["remove-schedule", "--name", "toremove"])
         assert result.exit_code == 0
         assert "removed" in result.stdout
 
-    def test_remove_nonexistent_fails(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_remove_nonexistent_fails(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
-            result = cli_runner.invoke(
-                cron_app, ["remove-schedule", "--name", "nonexistent"]
-            )
+            result = cli_runner.invoke(cron_app, ["remove-schedule", "--name", "nonexistent"])
         assert result.exit_code != 0
         assert "not found" in result.output
 
@@ -343,9 +378,7 @@ class TestCliRun:
         assert result.exit_code == 0
         assert "No schedules are due" in result.stdout
 
-    def test_dry_run_reports_due(
-        self, tmp_path: Path, cli_runner: CliRunner
-    ) -> None:
+    def test_dry_run_reports_due(self, tmp_path: Path, cli_runner: CliRunner) -> None:
         with _with_schedules_path(tmp_path):
             _save_test_schedule(tmp_path)
             result = cli_runner.invoke(cron_app, ["run", "--dry-run"])
@@ -412,20 +445,26 @@ class TestCliRun:
             "duration_s": 0.5,
         }
         with _with_schedules_path(tmp_path):
-            save_schedules({
-                "a": Schedule(
-                    name="a", expression="0 2 * * *",
-                    domain="medical-research",
-                    enabled=True, last_run=None,
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-                "b": Schedule(
-                    name="b", expression="0 4 * * *",
-                    domain="medical-research",
-                    enabled=True, last_run=None,
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "a": Schedule(
+                        name="a",
+                        expression="0 2 * * *",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                    "b": Schedule(
+                        name="b",
+                        expression="0 4 * * *",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                }
+            )
             result = cli_runner.invoke(cron_app, ["run", "--name", "a"])
         assert result.exit_code == 0
         mock_run_collection.assert_called_once_with(domain="medical-research")
@@ -438,9 +477,7 @@ class TestCliRun:
 
 class TestRunDueSchedules:
     @patch("autoinfo.collect.run_collection")
-    def test_returns_result_dicts(
-        self, mock_run_collection, tmp_path: Path
-    ) -> None:
+    def test_returns_result_dicts(self, mock_run_collection, tmp_path: Path) -> None:
         mock_run_collection.return_value = {
             "collection_id": "col-004",
             "domain": "medical-research",
@@ -459,9 +496,7 @@ class TestRunDueSchedules:
         assert r["ran"] is True
 
     @patch("autoinfo.collect.run_collection")
-    def test_dry_run_skips_collection(
-        self, mock_run_collection, tmp_path: Path
-    ) -> None:
+    def test_dry_run_skips_collection(self, mock_run_collection, tmp_path: Path) -> None:
         with _with_schedules_path(tmp_path):
             _save_test_schedule(tmp_path)
             results = run_due_schedules(dry_run=True)
@@ -470,28 +505,26 @@ class TestRunDueSchedules:
         mock_run_collection.assert_not_called()
 
     @patch("autoinfo.collect.run_collection")
-    def test_disabled_schedule_skipped(
-        self, mock_run_collection, tmp_path: Path
-    ) -> None:
+    def test_disabled_schedule_skipped(self, mock_run_collection, tmp_path: Path) -> None:
         with _with_schedules_path(tmp_path):
-            save_schedules({
-                "disabled-sched": Schedule(
-                    name="disabled-sched",
-                    expression="0 2 * * *",
-                    domain="medical-research",
-                    enabled=False,
-                    last_run=None,
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "disabled-sched": Schedule(
+                        name="disabled-sched",
+                        expression="0 2 * * *",
+                        domain="medical-research",
+                        enabled=False,
+                        last_run=None,
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                }
+            )
             results = run_due_schedules()
         assert len(results) == 0
         mock_run_collection.assert_not_called()
 
     @patch("autoinfo.collect.run_collection")
-    def test_schedule_filter(
-        self, mock_run_collection, tmp_path: Path
-    ) -> None:
+    def test_schedule_filter(self, mock_run_collection, tmp_path: Path) -> None:
         mock_run_collection.return_value = {
             "collection_id": "col-005",
             "domain": "ai-commercial",
@@ -501,24 +534,26 @@ class TestRunDueSchedules:
             "duration_s": 0.6,
         }
         with _with_schedules_path(tmp_path):
-            save_schedules({
-                "nightly": Schedule(
-                    name="nightly",
-                    expression="0 2 * * *",
-                    domain="medical-research",
-                    enabled=True,
-                    last_run=None,
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-                "weekly": Schedule(
-                    name="weekly",
-                    expression="0 8 * * 1",
-                    domain="ai-commercial",
-                    enabled=True,
-                    last_run=None,
-                    created_at="2026-07-19T00:00:00+00:00",
-                ),
-            })
+            save_schedules(
+                {
+                    "nightly": Schedule(
+                        name="nightly",
+                        expression="0 2 * * *",
+                        domain="medical-research",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                    "weekly": Schedule(
+                        name="weekly",
+                        expression="0 8 * * 1",
+                        domain="ai-commercial",
+                        enabled=True,
+                        last_run=None,
+                        created_at="2026-07-19T00:00:00+00:00",
+                    ),
+                }
+            )
             results = run_due_schedules(schedule_filter="weekly")
         assert len(results) == 1
         assert results[0]["name"] == "weekly"

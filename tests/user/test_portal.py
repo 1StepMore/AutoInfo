@@ -17,7 +17,6 @@ from fastapi.testclient import TestClient
 
 from autoinfo.models import DeliveryLog, Subscription, UserProfile
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -121,15 +120,14 @@ def client(tmp_path: Path) -> TestClient:
     Patches the config path so the portal's product listing (which reads
     ``.autoinfo/config.yaml``) does not pick up a real project config.
     """
-    from autoinfo.api.server import app
     import autoinfo.api.routes as routes
+    from autoinfo.api.server import app
 
     config_dir = tmp_path / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
     config_path.write_text(
-        "rest_api:\n  port: 8741\n  host: 127.0.0.1\n"
-        "llm:\n  provider: openai\n  model: gpt-4\n"
+        "rest_api:\n  port: 8741\n  host: 127.0.0.1\nllm:\n  provider: openai\n  model: gpt-4\n"
     )
 
     with patch("autoinfo.config.get_config_path", return_value=config_path):
@@ -219,9 +217,7 @@ class TestPortalDashboard:
         assert "Subscriptions" in html
         assert "medical-research-processed" in html
 
-    def test_dashboard_missing_user_returns_404_error_page(
-        self, client: TestClient
-    ):
+    def test_dashboard_missing_user_returns_404_error_page(self, client: TestClient):
         with _mock_get_profile(None):
             response = client.get("/portal/nonexistent-user")
 
@@ -242,9 +238,7 @@ class TestPortalDashboard:
         with (
             _mock_get_profile(sample_profile),
             _mock_list_subscriptions(sample_subscriptions),
-            _mock_check_trial_expiry(
-                {"days_remaining": 7, "status": "active", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 7, "status": "active", "trial_days": 14}),
             _mock_query_delivery_log(sample_delivery_logs),
         ):
             response = client.get("/portal/user-001")
@@ -264,9 +258,7 @@ class TestPortalDashboard:
         with (
             _mock_get_profile(sample_profile),
             _mock_list_subscriptions(sample_subscriptions),
-            _mock_check_trial_expiry(
-                {"days_remaining": 0, "status": "expired", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 0, "status": "expired", "trial_days": 14}),
             _mock_query_delivery_log(sample_delivery_logs),
         ):
             response = client.get("/portal/user-001")
@@ -283,9 +275,7 @@ class TestPortalDashboard:
         with (
             _mock_get_profile(sample_profile),
             _mock_list_subscriptions([]),
-            _mock_check_trial_expiry(
-                {"days_remaining": 10, "status": "active", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 10, "status": "active", "trial_days": 14}),
             _mock_query_delivery_log([]),
         ):
             response = client.get("/portal/user-001")
@@ -324,18 +314,14 @@ class TestPortalPreferences:
         # Raw JSON section
         assert "Raw JSON" in html
 
-    def test_preferences_missing_user_returns_404(
-        self, client: TestClient
-    ):
+    def test_preferences_missing_user_returns_404(self, client: TestClient):
         with _mock_get_profile(None):
             response = client.get("/portal/nonexistent/preferences")
 
         assert response.status_code == 404
         assert "not found" in response.text.lower()
 
-    def test_preferences_empty_prefs_shows_empty_state(
-        self, client: TestClient
-    ):
+    def test_preferences_empty_prefs_shows_empty_state(self, client: TestClient):
         profile = UserProfile(
             user_id="user-empty",
             name="Empty User",
@@ -453,9 +439,7 @@ class TestPortalHistory:
             _mock_list_subscriptions(sample_subscriptions),
             _mock_query_delivery_log(sample_delivery_logs),
         ):
-            response = client.get(
-                "/portal/user-001/history?limit=2&offset=0"
-            )
+            response = client.get("/portal/user-001/history?limit=2&offset=0")
 
         assert response.status_code == 200
         html = response.text
@@ -476,9 +460,7 @@ class TestPortalHistory:
             _mock_list_subscriptions(sample_subscriptions),
             _mock_query_delivery_log(sample_delivery_logs),
         ):
-            response = client.get(
-                "/portal/user-001/history?limit=2&offset=2"
-            )
+            response = client.get("/portal/user-001/history?limit=2&offset=2")
 
         assert response.status_code == 200
         html = response.text
@@ -603,9 +585,7 @@ class TestPortalBaseTemplate:
             _mock_list_subscriptions(sample_subscriptions),
             _mock_query_delivery_log(sample_delivery_logs),
             _mock_list_all_products([]),
-            _mock_check_trial_expiry(
-                {"days_remaining": 10, "status": "active", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 10, "status": "active", "trial_days": 14}),
         ):
             response = client.get(f"/portal/user-001{path}")
 
@@ -640,9 +620,7 @@ class TestPortalBaseTemplate:
             _mock_list_subscriptions(sample_subscriptions),
             _mock_query_delivery_log(sample_delivery_logs),
             _mock_list_all_products([]),
-            _mock_check_trial_expiry(
-                {"days_remaining": 10, "status": "active", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 10, "status": "active", "trial_days": 14}),
         ):
             response = client.get(f"/portal/user-001{path}")
 
@@ -676,9 +654,7 @@ class TestPortalBaseTemplate:
             _mock_list_subscriptions(sample_subscriptions),
             _mock_query_delivery_log(sample_delivery_logs),
             _mock_list_all_products([]),
-            _mock_check_trial_expiry(
-                {"days_remaining": 10, "status": "active", "trial_days": 14}
-            ),
+            _mock_check_trial_expiry({"days_remaining": 10, "status": "active", "trial_days": 14}),
         ):
             response = client.get(f"/portal/user-001{path}")
 

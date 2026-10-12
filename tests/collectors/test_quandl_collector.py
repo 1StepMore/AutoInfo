@@ -11,7 +11,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.quandl import QuandlHandler
 from autoinfo.config import SourceConfig

@@ -10,10 +10,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.openalex import OpenAlexHandler
-
 
 # ---------------------------------------------------------------------------
 # Sample OpenAlex API response data
@@ -469,8 +467,12 @@ class TestOpenAlexFieldMapping:
         items = handler.fetch(limit=10)
 
         expected_fields = {
-            "id", "title", "abstract", "authors",
-            "cited_by_count", "published_date",
+            "id",
+            "title",
+            "abstract",
+            "authors",
+            "cited_by_count",
+            "published_date",
         }
         for item in items:
             for field in expected_fields:
@@ -611,6 +613,7 @@ class TestOpenAlexRateLimit:
         mock_get.return_value = mock_response
 
         import time
+
         handler = OpenAlexHandler({})
 
         t0 = time.time()
@@ -653,12 +656,14 @@ class TestAbstractReconstruction:
     def test_empty_index_returns_empty(self) -> None:
         """Empty dict or None should return empty string."""
         from autoinfo.collectors.openalex import OpenAlexHandler
+
         assert OpenAlexHandler._reconstruct_abstract({}) == ""
         assert OpenAlexHandler._reconstruct_abstract(None) == ""
 
     def test_simple_reconstruction(self) -> None:
         """Words should be ordered by position index."""
         from autoinfo.collectors.openalex import OpenAlexHandler
+
         inverted = {
             "first": [0],
             "second": [1],
@@ -670,6 +675,7 @@ class TestAbstractReconstruction:
     def test_multi_position_words(self) -> None:
         """A word appearing at multiple positions should appear at each."""
         from autoinfo.collectors.openalex import OpenAlexHandler
+
         inverted = {
             "the": [0, 3],
             "cat": [1],
@@ -682,6 +688,7 @@ class TestAbstractReconstruction:
     def test_unordered_positions(self) -> None:
         """Input words can be in any order; output must be sorted by position."""
         from autoinfo.collectors.openalex import OpenAlexHandler
+
         inverted = {
             "zebra": [2],
             "alpha": [0],
@@ -731,7 +738,6 @@ class TestOpenAlexToItem:
 
     def test_to_item_empty_id_uses_uuid(self) -> None:
         """When id is empty, a UUID should be generated as the item id."""
-        from autoinfo.models import Item
 
         handler = OpenAlexHandler({})
         article = {

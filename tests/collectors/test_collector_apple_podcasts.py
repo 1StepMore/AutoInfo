@@ -21,7 +21,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
 from autoinfo.models import Item
@@ -484,9 +483,18 @@ class TestApplePodcastsFieldMapping:
         items = handler.fetch(term="test", limit=10)
 
         expected_fields = {
-            "id", "title", "content", "author", "feed_url",
-            "published_date", "source_url", "genre", "genres",
-            "artwork_url", "track_count", "country",
+            "id",
+            "title",
+            "content",
+            "author",
+            "feed_url",
+            "published_date",
+            "source_url",
+            "genre",
+            "genres",
+            "artwork_url",
+            "track_count",
+            "country",
         }
         for item in items:
             for field in expected_fields:
@@ -720,7 +728,10 @@ class TestApplePodcastsToItem:
         assert item.source_name == "apple_podcasts"
         assert item.source_type == "apple_podcasts"
         assert item.source_platform == "apple_podcasts"
-        assert item.source_url == "https://podcasts.apple.com/us/podcast/lex-fridman-podcast/id890468527"
+        assert (
+            item.source_url
+            == "https://podcasts.apple.com/us/podcast/lex-fridman-podcast/id890468527"
+        )
         assert item.title == "Lex Fridman Podcast"
         assert item.content == "Conversations about the nature of intelligence."
         assert item.content_type == "text"

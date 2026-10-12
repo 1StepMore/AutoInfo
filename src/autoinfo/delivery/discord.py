@@ -95,9 +95,7 @@ class DiscordDeliveryChannel(DeliveryChannel):
         """
         config = product.config or {}
         bot_token: str | None = (
-            config.get("bot_token")
-            or config.get("discord_bot_token")
-            or payload.get("bot_token")
+            config.get("bot_token") or config.get("discord_bot_token") or payload.get("bot_token")
         )
 
         if not bot_token:
@@ -156,11 +154,7 @@ class DiscordDeliveryChannel(DeliveryChannel):
             status="success" if all_succeeded else "partial",
             timestamp=_now_utc(),
             recipient_count=success_count,
-            error=(
-                None
-                if all_succeeded
-                else f"{len(failed)} Discord channel(s) failed"
-            ),
+            error=(None if all_succeeded else f"{len(failed)} Discord channel(s) failed"),
         )
 
     def validate_config(self, config: dict[str, Any]) -> bool:
@@ -175,12 +169,18 @@ class DiscordDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             token = _os.environ.get("DISCORD_BOT_TOKEN", "")
             if not token:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: DISCORD_BOT_TOKEN not set", "channel": "discord"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: DISCORD_BOT_TOKEN not set",
+                    "channel": "discord",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "discord"}
         except Exception as e:

@@ -154,13 +154,9 @@ class DingTalkDeliveryChannel(DeliveryChannel):
         app_secret = config.get("app_secret", "")
 
         if webhook_url:
-            return self._send_via_robot(
-                product, payload, webhook_url, config
-            )
+            return self._send_via_robot(product, payload, webhook_url, config)
         if app_key and app_secret:
-            return self._send_via_api(
-                product, payload, recipients, config
-            )
+            return self._send_via_api(product, payload, recipients, config)
 
         return DeliveryResult(
             product_id=product.id,
@@ -194,13 +190,19 @@ class DingTalkDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             app_key = _os.environ.get("DINGTALK_APP_KEY", "")
             app_secret = _os.environ.get("DINGTALK_APP_SECRET", "")
             if not app_key or not app_secret:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: DINGTALK_APP_KEY or DINGTALK_APP_SECRET not set", "channel": "dingtalk"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: DINGTALK_APP_KEY or DINGTALK_APP_SECRET not set",
+                    "channel": "dingtalk",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "dingtalk"}
         except Exception as e:
@@ -447,8 +449,7 @@ class DingTalkDeliveryChannel(DeliveryChannel):
         self._token_expires_at = now + expires_in - _TOKEN_EXPIRY_BUFFER
 
         logger.debug(
-            "DingTalk access_token refreshed, "
-            "expires in %d s (cached until %d s)",
+            "DingTalk access_token refreshed, expires in %d s (cached until %d s)",
             expires_in,
             expires_in - _TOKEN_EXPIRY_BUFFER,
         )
@@ -491,17 +492,13 @@ class DingTalkDeliveryChannel(DeliveryChannel):
         for attempt in range(3):
             try:
                 with httpx.Client(timeout=_DEFAULT_TIMEOUT) as client:
-                    resp = client.post(
-                        _BATCH_SEND_URL, json=body, headers=headers
-                    )
+                    resp = client.post(_BATCH_SEND_URL, json=body, headers=headers)
 
                 if resp.status_code == 401:
                     # Token expired — clear cache and raise
                     self._token = None
                     self._token_expires_at = 0.0
-                    raise DingTalkError(
-                        f"Access token expired/invalid: {resp.text[:500]}"
-                    )
+                    raise DingTalkError(f"Access token expired/invalid: {resp.text[:500]}")
 
                 if resp.status_code < 500:
                     # 2xx or 4xx — terminal
@@ -554,8 +551,7 @@ class DingTalkDeliveryChannel(DeliveryChannel):
                     if errcode != 0:
                         errmsg = data.get("errmsg", "unknown error")
                         raise DingTalkError(
-                            f"DingTalk robot API error "
-                            f"(errcode={errcode}, errmsg={errmsg})"
+                            f"DingTalk robot API error (errcode={errcode}, errmsg={errmsg})"
                         )
                     return data
             except (httpx.TimeoutException, httpx.NetworkError):

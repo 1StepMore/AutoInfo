@@ -26,7 +26,6 @@ from autoinfo.delivery.wechat_oa import WeChatOADeliveryChannel
 from autoinfo.delivery.wechat_work import WeChatWorkDeliveryChannel
 from autoinfo.models import DeliveryResult, Product, ProductType
 
-
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -157,19 +156,24 @@ class TestWeChatWorkDeliveryChannel:
 
     def test_validate_config_valid(self) -> None:
         channel = WeChatWorkDeliveryChannel()
-        assert channel.validate_config({
-            "corp_id": "corp-123",
-            "corp_secret": "secret-456",
-            "agent_id": "1000001",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "corp_id": "corp-123",
+                    "corp_secret": "secret-456",
+                    "agent_id": "1000001",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_invalid(self) -> None:
         channel = WeChatWorkDeliveryChannel()
         assert channel.validate_config({}) is False
         assert channel.validate_config({"corp_id": "x"}) is False
-        assert channel.validate_config({
-            "corp_id": "x", "corp_secret": "y"
-        }) is False  # missing agent_id
+        assert (
+            channel.validate_config({"corp_id": "x", "corp_secret": "y"}) is False
+        )  # missing agent_id
 
     def test_send_mocked(self) -> None:
         """Successful WeChat Work delivery — token acquired, message sent."""
@@ -221,19 +225,24 @@ class TestWeChatOADeliveryChannel:
 
     def test_validate_config_valid(self) -> None:
         channel = WeChatOADeliveryChannel()
-        assert channel.validate_config({
-            "app_id": "wx-app-123",
-            "app_secret": "wx-secret-456",
-            "template_id": "tmpl-789",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "app_id": "wx-app-123",
+                    "app_secret": "wx-secret-456",
+                    "template_id": "tmpl-789",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_invalid(self) -> None:
         channel = WeChatOADeliveryChannel()
         assert channel.validate_config({}) is False
         assert channel.validate_config({"app_id": "x"}) is False
-        assert channel.validate_config({
-            "app_id": "x", "app_secret": "y"
-        }) is False  # missing template_id
+        assert (
+            channel.validate_config({"app_id": "x", "app_secret": "y"}) is False
+        )  # missing template_id
 
     def test_send_mocked(self) -> None:
         """Successful WeChat OA delivery — token acquired, template sent."""
@@ -290,9 +299,14 @@ class TestDingTalkDeliveryChannel:
 
     def test_validate_config_webhook_valid(self) -> None:
         channel = DingTalkDeliveryChannel()
-        assert channel.validate_config({
-            "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=abc",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=abc",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_access_token_valid(self) -> None:
         """access_token alone builds a valid webhook URL."""
@@ -301,9 +315,7 @@ class TestDingTalkDeliveryChannel:
 
     def test_validate_config_app_key_secret_valid(self) -> None:
         channel = DingTalkDeliveryChannel()
-        assert channel.validate_config({
-            "app_key": "ding-app", "app_secret": "ding-secret"
-        }) is True
+        assert channel.validate_config({"app_key": "ding-app", "app_secret": "ding-secret"}) is True
 
     def test_validate_config_invalid(self) -> None:
         channel = DingTalkDeliveryChannel()
@@ -378,7 +390,8 @@ class TestDingTalkDeliveryChannel:
             # Patch the OAuth token fetch separately since it also creates
             # an httpx.Client
             with patch.object(
-                DingTalkDeliveryChannel, "_get_oauth_token",
+                DingTalkDeliveryChannel,
+                "_get_oauth_token",
                 return_value="api-token-abc",
             ):
                 result = channel.send(
@@ -403,32 +416,47 @@ class TestFeiShuDeliveryChannel:
 
     def test_validate_config_webhook_valid(self) -> None:
         channel = FeiShuDeliveryChannel()
-        assert channel.validate_config({
-            "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/abc-123",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/abc-123",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_webhook_http(self) -> None:
         """HTTP webhook URL is also accepted."""
         channel = FeiShuDeliveryChannel()
-        assert channel.validate_config({
-            "webhook_url": "http://my-lark.internal/hook",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "webhook_url": "http://my-lark.internal/hook",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_api_valid(self) -> None:
         channel = FeiShuDeliveryChannel()
-        assert channel.validate_config({
-            "mode": "api",
-            "app_id": "feishu-app",
-            "app_secret": "feishu-secret",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "mode": "api",
+                    "app_id": "feishu-app",
+                    "app_secret": "feishu-secret",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_invalid(self) -> None:
         channel = FeiShuDeliveryChannel()
         assert channel.validate_config({}) is False
         assert channel.validate_config({"mode": "api"}) is False
-        assert channel.validate_config({
-            "mode": "api", "app_id": "x"
-        }) is False  # missing app_secret
+        assert (
+            channel.validate_config({"mode": "api", "app_id": "x"}) is False
+        )  # missing app_secret
         assert channel.validate_config({"mode": "invalid"}) is False
 
     def test_send_webhook_mocked(self) -> None:
@@ -479,7 +507,8 @@ class TestFeiShuDeliveryChannel:
 
         with patch("autoinfo.delivery.feishu.httpx.Client", return_value=mock_client):
             with patch.object(
-                FeiShuDeliveryChannel, "_get_token",
+                FeiShuDeliveryChannel,
+                "_get_token",
                 return_value="t-token",
             ):
                 result = channel.send(
@@ -503,22 +532,27 @@ class TestRSSDeliveryChannel:
 
     def test_validate_config_valid(self) -> None:
         channel = RSSDeliveryChannel()
-        assert channel.validate_config({
-            "feed_url": "/tmp/feed.xml",
-            "title": "My Feed",
-            "description": "A test RSS feed",
-        }) is True
+        assert (
+            channel.validate_config(
+                {
+                    "feed_url": "/tmp/feed.xml",
+                    "title": "My Feed",
+                    "description": "A test RSS feed",
+                }
+            )
+            is True
+        )
 
     def test_validate_config_invalid(self) -> None:
         channel = RSSDeliveryChannel()
         assert channel.validate_config({}) is False
         assert channel.validate_config({"feed_url": "/tmp/feed.xml"}) is False
-        assert channel.validate_config({
-            "feed_url": "/tmp/feed.xml", "title": "Feed"
-        }) is False  # missing description
-        assert channel.validate_config({
-            "feed_url": "  ", "title": "T", "description": "D"
-        }) is False
+        assert (
+            channel.validate_config({"feed_url": "/tmp/feed.xml", "title": "Feed"}) is False
+        )  # missing description
+        assert (
+            channel.validate_config({"feed_url": "  ", "title": "T", "description": "D"}) is False
+        )
 
     def test_send_mocked(self, tmp_path: Path) -> None:
         """RSS feed generated and written to disk — no network needed."""
@@ -695,6 +729,7 @@ class TestFileExportDeliveryChannel:
         assert out_file.exists()
 
         import json
+
         data = json.loads(out_file.read_text(encoding="utf-8"))
         assert data == {"key": "value", "nested": {"a": 1}}
 
@@ -766,12 +801,13 @@ class TestDeliverWithRetry:
         mock_channel = MagicMock()
         mock_channel.name = "test-channel"
         mock_channel.send.side_effect = [
-            DeliveryResult(product_id="p1", channel="test", status="failed",
-                           error="transient error"),
-            DeliveryResult(product_id="p1", channel="test", status="failed",
-                           error="transient error"),
-            DeliveryResult(product_id="p1", channel="test", status="success",
-                           recipient_count=1),
+            DeliveryResult(
+                product_id="p1", channel="test", status="failed", error="transient error"
+            ),
+            DeliveryResult(
+                product_id="p1", channel="test", status="failed", error="transient error"
+            ),
+            DeliveryResult(product_id="p1", channel="test", status="success", recipient_count=1),
         ]
 
         product = _make_product()
@@ -790,8 +826,9 @@ class TestDeliverWithRetry:
 
     def test_retries_exhausted_on_failure(self) -> None:
         """Returns failed after exhausting all retries."""
-        failed = DeliveryResult(product_id="p1", channel="test", status="failed",
-                                error="persistent error")
+        failed = DeliveryResult(
+            product_id="p1", channel="test", status="failed", error="persistent error"
+        )
         mock_channel = MagicMock()
         mock_channel.name = "test-channel"
         mock_channel.send.return_value = failed
@@ -847,24 +884,33 @@ class TestDeliverWithRetry:
             with patch("time.sleep"):
                 # critical: max_retries=5, total=6
                 _ = deliver_with_retry(
-                    channel=mock_channel, product=product,
-                    payload={}, recipients=[], sla_tier="critical",
+                    channel=mock_channel,
+                    product=product,
+                    payload={},
+                    recipients=[],
+                    sla_tier="critical",
                 )
                 assert mock_channel.send.call_count == 6
                 mock_channel.send.reset_mock()
 
                 # standard: max_retries=3, total=4
                 _ = deliver_with_retry(
-                    channel=mock_channel, product=product,
-                    payload={}, recipients=[], sla_tier="standard",
+                    channel=mock_channel,
+                    product=product,
+                    payload={},
+                    recipients=[],
+                    sla_tier="standard",
                 )
                 assert mock_channel.send.call_count == 4
                 mock_channel.send.reset_mock()
 
                 # bulk: max_retries=1, total=2
                 _ = deliver_with_retry(
-                    channel=mock_channel, product=product,
-                    payload={}, recipients=[], sla_tier="bulk",
+                    channel=mock_channel,
+                    product=product,
+                    payload={},
+                    recipients=[],
+                    sla_tier="bulk",
                 )
                 assert mock_channel.send.call_count == 2
 
@@ -881,8 +927,11 @@ class TestDeliverWithRetry:
         with patch("autoinfo.delivery.append_delivery_log"):
             with patch("time.sleep"):
                 _ = deliver_with_retry(
-                    channel=mock_channel, product=product,
-                    payload={}, recipients=[], sla_tier="unknown",
+                    channel=mock_channel,
+                    product=product,
+                    payload={},
+                    recipients=[],
+                    sla_tier="unknown",
                 )
 
         # standard: 3 retries + 1 initial = 4
@@ -893,8 +942,11 @@ class TestDeliverWithRetry:
         mock_channel = MagicMock()
         mock_channel.name = "test-channel"
         mock_channel.send.return_value = DeliveryResult(
-            product_id="p1", channel="test", status="partial",
-            recipient_count=2, error="1 of 3 failed",
+            product_id="p1",
+            channel="test",
+            status="partial",
+            recipient_count=2,
+            error="1 of 3 failed",
         )
 
         product = _make_product()

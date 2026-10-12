@@ -8,6 +8,7 @@ recent runs from ``validation-runs/``.
 Usage:
     python3 scripts/validation_diff.py [--base RUN_ID] [--head RUN_ID]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,9 @@ RUNS = ROOT / "validation-runs"
 
 def _run_dirs() -> list[Path]:
     if not RUNS.is_dir():
-        raise SystemExit(f"No validation-runs directory at {RUNS}; run scenarios with save_results first.")
+        raise SystemExit(
+            f"No validation-runs directory at {RUNS}; run scenarios with save_results first."
+        )
     return sorted(
         (p for p in RUNS.iterdir() if p.is_dir() and (p / "scenarios.json").exists()),
         key=lambda p: p.name,

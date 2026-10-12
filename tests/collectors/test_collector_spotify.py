@@ -12,11 +12,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.spotify import SpotifyHandler
 from autoinfo.models import Item
-
 
 # ---------------------------------------------------------------------------
 # Sample Spotify API response data
@@ -36,14 +34,10 @@ SAMPLE_SHOW_EPISODES_RESPONSE: dict[str, Any] = {
             "description": "In this episode we explore the fundamentals of deep learning, from perceptrons to transformers.",
             "duration_ms": 3600000,
             "explicit": False,
-            "external_urls": {
-                "spotify": "https://open.spotify.com/episode/ep001"
-            },
+            "external_urls": {"spotify": "https://open.spotify.com/episode/ep001"},
             "href": "https://api.spotify.com/v1/episodes/ep001",
             "id": "ep001",
-            "images": [
-                {"height": 640, "url": "https://i.scdn.co/image/abc123", "width": 640}
-            ],
+            "images": [{"height": 640, "url": "https://i.scdn.co/image/abc123", "width": 640}],
             "is_externally_hosted": False,
             "is_playable": True,
             "language": "en",
@@ -69,9 +63,7 @@ SAMPLE_SHOW_EPISODES_RESPONSE: dict[str, Any] = {
             "description": "A discussion with leading researchers about transformer architectures and attention mechanisms.",
             "duration_ms": 2700000,
             "explicit": False,
-            "external_urls": {
-                "spotify": "https://open.spotify.com/episode/ep002"
-            },
+            "external_urls": {"spotify": "https://open.spotify.com/episode/ep002"},
             "href": "https://api.spotify.com/v1/episodes/ep002",
             "id": "ep002",
             "images": [],
@@ -109,9 +101,7 @@ SAMPLE_SEARCH_RESPONSE: dict[str, Any] = {
                 "description": "We discuss the latest breakthroughs in machine learning research.",
                 "duration_ms": 2400000,
                 "explicit": False,
-                "external_urls": {
-                    "spotify": "https://open.spotify.com/episode/search001"
-                },
+                "external_urls": {"spotify": "https://open.spotify.com/episode/search001"},
                 "href": "https://api.spotify.com/v1/episodes/search001",
                 "id": "search001",
                 "languages": ["en"],
@@ -295,28 +285,39 @@ class TestSpotifyHandlerExists:
     def test_subclass_of_base_handler(self) -> None:
         """SpotifyHandler should be a subclass of BaseHandler."""
         from autoinfo.collectors.base import BaseHandler
+
         assert issubclass(SpotifyHandler, BaseHandler)
 
     def test_api_credentials_from_env_var(self) -> None:
         """When config has no client_id/secret, fall back to env vars."""
-        with patch.dict(os.environ, {
-            "AUTOINFO_SPOTIFY_CLIENT_ID": "env-id",
-            "AUTOINFO_SPOTIFY_CLIENT_SECRET": "env-secret",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTOINFO_SPOTIFY_CLIENT_ID": "env-id",
+                "AUTOINFO_SPOTIFY_CLIENT_SECRET": "env-secret",
+            },
+            clear=False,
+        ):
             handler = SpotifyHandler({})
             assert handler.client_id == "env-id"
             assert handler.client_secret == "env-secret"
 
     def test_config_credentials_take_precedence_over_env(self) -> None:
         """Config dict credentials should take precedence over env vars."""
-        with patch.dict(os.environ, {
-            "AUTOINFO_SPOTIFY_CLIENT_ID": "env-id",
-            "AUTOINFO_SPOTIFY_CLIENT_SECRET": "env-secret",
-        }, clear=False):
-            handler = SpotifyHandler({
-                "client_id": "config-id",
-                "client_secret": "config-secret",
-            })
+        with patch.dict(
+            os.environ,
+            {
+                "AUTOINFO_SPOTIFY_CLIENT_ID": "env-id",
+                "AUTOINFO_SPOTIFY_CLIENT_SECRET": "env-secret",
+            },
+            clear=False,
+        ):
+            handler = SpotifyHandler(
+                {
+                    "client_id": "config-id",
+                    "client_secret": "config-secret",
+                }
+            )
             assert handler.client_id == "config-id"
             assert handler.client_secret == "config-secret"
 
@@ -369,7 +370,9 @@ class TestSpotifyFetchShowEpisodes:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_fetch_limit_zero_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_limit_zero_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """A limit of 0 should return an empty list."""
         mock_post.return_value = _make_token_response()
 
@@ -380,7 +383,9 @@ class TestSpotifyFetchShowEpisodes:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_fetch_uses_show_episodes_endpoint(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_uses_show_episodes_endpoint(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Without a query, fetch should hit the show episodes endpoint."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SHOW_EPISODES_RESPONSE)
@@ -388,7 +393,9 @@ class TestSpotifyFetchShowEpisodes:
         handler = SpotifyHandler(_sample_config())
         handler.fetch(limit=10)
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "shows/5CfCWKI5pZ28U0uOzXkDHe/episodes" in call_url
 
     @patch("autoinfo.collectors.spotify.httpx.post")
@@ -401,7 +408,9 @@ class TestSpotifyFetchShowEpisodes:
         handler = SpotifyHandler({"client_id": "test", "client_secret": "secret"})
         handler.fetch(limit=10, show_id="customShowID")
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "shows/customShowID/episodes" in call_url
 
 
@@ -420,10 +429,12 @@ class TestSpotifyFetchSearch:
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SEARCH_RESPONSE)
 
-        handler = SpotifyHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+            }
+        )
         episodes = handler.fetch(limit=10, query="machine learning")
 
         assert isinstance(episodes, list)
@@ -431,18 +442,24 @@ class TestSpotifyFetchSearch:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_fetch_search_uses_search_endpoint(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_search_uses_search_endpoint(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """With a query, fetch should hit the search endpoint."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SEARCH_RESPONSE)
 
-        handler = SpotifyHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+            }
+        )
         handler.fetch(limit=10, query="machine learning")
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "search" in call_url
         assert "machine+learning" in call_url
         assert "type=show%2Cepisode" in call_url
@@ -457,10 +474,12 @@ class TestSpotifyFetchSearch:
             _mock_response(SAMPLE_MULTI_PAGE_SEARCH_RESPONSE_PAGE2),
         ]
 
-        handler = SpotifyHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+            }
+        )
         episodes = handler.fetch(limit=10, query="podcast")
 
         assert len(episodes) == 2
@@ -491,10 +510,12 @@ class TestSpotifyFetchEmpty:
 
     def test_fetch_no_query_and_no_show_id_returns_empty(self) -> None:
         """Without query or show_id, fetch should return empty."""
-        handler = SpotifyHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+            }
+        )
         episodes = handler.fetch(limit=10)
         assert episodes == []
 
@@ -514,11 +535,13 @@ class TestSpotifyFetchEmpty:
 
     def test_fetch_missing_credentials_returns_empty(self) -> None:
         """Missing client_id/client_secret should fail gracefully."""
-        handler = SpotifyHandler({
-            "client_id": "",
-            "client_secret": "",
-            "show_id": "show123",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "",
+                "client_secret": "",
+                "show_id": "show123",
+            }
+        )
         episodes = handler.fetch(limit=10)
         assert episodes == []
 
@@ -667,7 +690,9 @@ class TestSpotifyFieldMapping:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_field_mapping_all_expected_fields_present(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_field_mapping_all_expected_fields_present(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Every returned item must have all expected keys."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SHOW_EPISODES_RESPONSE)
@@ -676,10 +701,20 @@ class TestSpotifyFieldMapping:
         episodes = handler.fetch(limit=10)
 
         expected_fields = {
-            "id", "title", "content", "author", "published_date",
-            "duration_ms", "language", "source_url", "audio_url",
-            "show_id", "show_name", "show_description",
-            "explicit", "episode_type",
+            "id",
+            "title",
+            "content",
+            "author",
+            "published_date",
+            "duration_ms",
+            "language",
+            "source_url",
+            "audio_url",
+            "show_id",
+            "show_name",
+            "show_description",
+            "explicit",
+            "episode_type",
         }
         for ep in episodes:
             for field in expected_fields:
@@ -687,13 +722,17 @@ class TestSpotifyFieldMapping:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_minimal_episode_handles_missing_fields(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_minimal_episode_handles_missing_fields(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """An episode with None/empty fields should not crash."""
         mock_post.return_value = _make_token_response()
-        mock_get.return_value = _mock_response({
-            "items": [SAMPLE_MINIMAL_EPISODE],
-            "total": 1,
-        })
+        mock_get.return_value = _mock_response(
+            {
+                "items": [SAMPLE_MINIMAL_EPISODE],
+                "total": 1,
+            }
+        )
 
         handler = SpotifyHandler(_sample_config())
         episodes = handler.fetch(limit=10)
@@ -751,10 +790,12 @@ class TestSpotifyAuth:
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SEARCH_RESPONSE)
 
-        handler = SpotifyHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-        })
+        handler = SpotifyHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+            }
+        )
         handler.fetch(limit=10, query="test")
 
         headers = mock_get.call_args.kwargs.get("headers", {})
@@ -789,7 +830,9 @@ class TestSpotifyErrorHandling:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_fetch_http_error_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_http_error_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """HTTP 500 errors should return empty list."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.HTTPStatusError(
@@ -805,7 +848,9 @@ class TestSpotifyErrorHandling:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_fetch_network_error_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_network_error_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Network errors should return empty list."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.NetworkError("Connection refused")
@@ -836,13 +881,12 @@ class TestSpotifyErrorHandling:
         """After 3 TimeoutExceptions the error should be handled gracefully."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.TimeoutException(
-            "Timeout", request=MagicMock(),
+            "Timeout",
+            request=MagicMock(),
         )
 
         handler = SpotifyHandler(_sample_config())
-        start = time.time()
         episodes = handler.fetch(limit=1)
-        elapsed = time.time() - start
 
         assert episodes == []
         assert mock_get.call_count == 3  # retries exhausted
@@ -873,7 +917,9 @@ class TestSpotifyRateLimit:
 
     @patch("autoinfo.collectors.spotify.httpx.post")
     @patch("autoinfo.collectors.spotify.httpx.get")
-    def test_rate_limit_enforces_min_interval(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_rate_limit_enforces_min_interval(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Back-to-back calls should be spaced by at least ~0.34 s."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _mock_response(SAMPLE_SHOW_EPISODES_RESPONSE)
@@ -1001,9 +1047,11 @@ class TestSpotifyRegistration:
     def test_handler_is_registered_in_package(self) -> None:
         """Verify the handler is exported from the collectors package."""
         from autoinfo.collectors import SpotifyHandler
+
         assert SpotifyHandler is not None
 
     def test_handler_inherits_base(self) -> None:
         """SpotifyHandler should inherit from BaseHandler."""
         from autoinfo.collectors.base import BaseHandler
+
         assert issubclass(SpotifyHandler, BaseHandler)

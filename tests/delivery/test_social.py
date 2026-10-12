@@ -7,7 +7,6 @@ via httpx.Client patch — zero network requests.
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -15,14 +14,13 @@ import pytest
 
 from autoinfo.delivery.social import (
     _PLATFORM_CHAR_LIMITS,
+    SocialDeliveryChannel,
+    SocialPlatformConfig,
     _format_post,
     _resolve_auth_token,
     _truncate_text,
-    SocialDeliveryChannel,
-    SocialPlatformConfig,
 )
-from autoinfo.models import DeliveryResult, Product, ProductType
-
+from autoinfo.models import Product, ProductType
 
 # ============================================================================
 # Helpers
@@ -335,7 +333,9 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "post-1"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             result = channel.send(
-                product, payload, ["https://mastodon.social/api/v1/statuses"],
+                product,
+                payload,
+                ["https://mastodon.social/api/v1/statuses"],
             )
 
         assert result.status == "success"
@@ -351,7 +351,8 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "ok"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             result = channel.send(
-                product, payload,
+                product,
+                payload,
                 ["https://bsky1.example.com", "https://bsky2.example.com"],
             )
 
@@ -405,7 +406,9 @@ class TestSocialDeliveryChannelSend:
 
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_client):
             result = channel.send(
-                product, payload, ["https://mastodon.social/api/v1/statuses"],
+                product,
+                payload,
+                ["https://mastodon.social/api/v1/statuses"],
             )
 
         assert result.status == "partial"
@@ -428,7 +431,9 @@ class TestSocialDeliveryChannelSend:
 
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_client):
             result = channel.send(
-                product, payload, ["https://api.linkedin.com/posts"],
+                product,
+                payload,
+                ["https://api.linkedin.com/posts"],
             )
 
         assert result.status == "partial"
@@ -455,7 +460,8 @@ class TestSocialDeliveryChannelSend:
 
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_client):
             result = channel.send(
-                product, payload,
+                product,
+                payload,
                 ["https://good.example.com", "https://bad.example.com"],
             )
 
@@ -475,7 +481,9 @@ class TestSocialDeliveryChannelSend:
 
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_client):
             result = channel.send(
-                product, payload, ["https://down.example.com"],
+                product,
+                payload,
+                ["https://down.example.com"],
             )
 
         assert result.status == "partial"
@@ -495,7 +503,9 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "ok"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             result = channel.send(
-                product, payload, ["https://mastodon.example.com/api/post"],
+                product,
+                payload,
+                ["https://mastodon.example.com/api/post"],
             )
 
         assert result.status == "success"
@@ -518,7 +528,9 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "ok"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             result = channel.send(
-                product, payload, ["https://mastodon.example.com/api/post"],
+                product,
+                payload,
+                ["https://mastodon.example.com/api/post"],
             )
 
         assert result.status == "success"
@@ -539,7 +551,9 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "ok"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             channel.send(
-                product, payload, ["https://mastodon.example.com/api/post"],
+                product,
+                payload,
+                ["https://mastodon.example.com/api/post"],
             )
 
         # Check headers were passed
@@ -556,7 +570,9 @@ class TestSocialDeliveryChannelSend:
         mock_http = _make_mock_httpx(200, {"id": "ok"})
         with patch("autoinfo.delivery.social.httpx.Client", return_value=mock_http):
             result = channel.send(
-                product, payload, ["https://mastodon.example.com/api/post"],
+                product,
+                payload,
+                ["https://mastodon.example.com/api/post"],
             )
 
         assert result.status == "success"
@@ -637,6 +653,7 @@ class TestRegistryIntegration:
 
     def test_channel_in_registry(self) -> None:
         from autoinfo.delivery import _CHANNEL_REGISTRY, get_channel
+
         assert "social_publish" in _CHANNEL_REGISTRY
         channel = get_channel("social_publish")
         assert isinstance(channel, SocialDeliveryChannel)
@@ -644,10 +661,12 @@ class TestRegistryIntegration:
 
     def test_list_channels_includes_social_publish(self) -> None:
         from autoinfo.delivery import list_channels
+
         channels = list_channels()
         assert "social_publish" in channels
 
     def test_get_available_channels_includes_social_publish(self) -> None:
         from autoinfo.delivery import get_available_channels
+
         channels = get_available_channels()
         assert "social_publish" in channels

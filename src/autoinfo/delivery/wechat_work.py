@@ -157,18 +157,29 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             corp_id = _os.environ.get("WECHAT_WORK_CORPID", "")
             corp_secret = _os.environ.get("WECHAT_WORK_CORPSECRET", "")
             if not corp_id or not corp_secret:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: WECHAT_WORK_CORPID or WECHAT_WORK_CORPSECRET not set", "channel": "wechat_work"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: WECHAT_WORK_CORPID or WECHAT_WORK_CORPSECRET not set",
+                    "channel": "wechat_work",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "wechat_work"}
         except Exception as e:
             latency = (_time.time() - start) * 1000
-            return {"healthy": False, "latency_ms": latency, "error": str(e), "channel": "wechat_work"}
+            return {
+                "healthy": False,
+                "latency_ms": latency,
+                "error": str(e),
+                "channel": "wechat_work",
+            }
 
     # ------------------------------------------------------------------
     # Token management
@@ -191,8 +202,7 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
         if errcode != 0:
             errmsg = data.get("errmsg", "unknown error")
             raise WeChatWorkError(
-                f"Failed to obtain access_token "
-                f"(errcode={errcode}, errmsg={errmsg})"
+                f"Failed to obtain access_token (errcode={errcode}, errmsg={errmsg})"
             )
 
         token: str = data["access_token"]
@@ -202,8 +212,7 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
         self._token_expires_at = now + expires_in - _TOKEN_EXPIRY_BUFFER
 
         logger.debug(
-            "WeChat Work access_token refreshed, "
-            "expires in %d s (cached until %d s)",
+            "WeChat Work access_token refreshed, expires in %d s (cached until %d s)",
             expires_in,
             expires_in - _TOKEN_EXPIRY_BUFFER,
         )
@@ -251,9 +260,7 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
                 "btntxt": payload.get("btntxt", "详情"),
             }
         elif msgtype == "news":
-            body["news"] = {
-                "articles": payload.get("articles", [{"title": "", "url": ""}])
-            }
+            body["news"] = {"articles": payload.get("articles", [{"title": "", "url": ""}])}
         elif msgtype == "file":
             body["file"] = {"media_id": payload.get("media_id", "")}
         elif msgtype == "image":
@@ -298,8 +305,7 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
 
                     # Other API error — terminal
                     raise WeChatWorkError(
-                        f"Message send failed "
-                        f"(errcode={errcode}, errmsg={data.get('errmsg', '')})"
+                        f"Message send failed (errcode={errcode}, errmsg={data.get('errmsg', '')})"
                     )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_exc = exc
@@ -308,6 +314,3 @@ class WeChatWorkDeliveryChannel(DeliveryChannel):
             _time.sleep(2**attempt)  # 1s, 2s, 4s
 
         raise RuntimeError("Unreachable") from last_exc  # pragma: no cover
-
-
-

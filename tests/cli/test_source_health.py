@@ -14,13 +14,11 @@ import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from autoinfo.collect import _log_run
 from autoinfo.status import get_source_health, rate_item
-
 
 # ======================================================================
 # Helpers
@@ -169,17 +167,20 @@ class TestGetSourceHealth:
     def test_healthy_after_successful_run(self, chdir_proj: Path) -> None:
         """A successful recent run yields status 'healthy'."""
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(),
-                "status": "success",
-                "items_found": 10,
-                "items_new": 5,
-                "errors": [],
-                "duration_ms": 1200.0,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(),
+                    "status": "success",
+                    "items_found": 10,
+                    "items_new": 5,
+                    "errors": [],
+                    "duration_ms": 1200.0,
+                },
+            ],
+        )
         result = get_source_health("test-domain:test-source")
         assert result["status"] == "healthy"
         assert result["error_count"] == 0
@@ -187,20 +188,24 @@ class TestGetSourceHealth:
 
     @pytest.mark.parametrize("consecutive_fails", [3, 4, 10])
     def test_error_after_three_consecutive_failures(
-        self, chdir_proj: Path, consecutive_fails: int,
+        self,
+        chdir_proj: Path,
+        consecutive_fails: int,
     ) -> None:
         """3+ consecutive errors yields status 'error'."""
         runs = []
         for i in range(consecutive_fails):
-            runs.append({
-                "collection_id": f"col-{i:03d}",
-                "timestamp": _ts(days_ago=i),
-                "status": "error",
-                "items_found": 0,
-                "items_new": 0,
-                "errors": [{"message": "Timeout"}],
-                "duration_ms": 5000.0,
-            })
+            runs.append(
+                {
+                    "collection_id": f"col-{i:03d}",
+                    "timestamp": _ts(days_ago=i),
+                    "status": "error",
+                    "items_found": 0,
+                    "items_new": 0,
+                    "errors": [{"message": "Timeout"}],
+                    "duration_ms": 5000.0,
+                }
+            )
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
         _make_runs(runs_path, runs)
         result = get_source_health("test-domain:test-source")
@@ -210,43 +215,49 @@ class TestGetSourceHealth:
     def test_degraded_after_one_failure(self, chdir_proj: Path) -> None:
         """A single failure with prior success yields status 'degraded'."""
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(days_ago=2),
-                "status": "success",
-                "items_found": 10,
-                "items_new": 5,
-                "errors": [],
-                "duration_ms": 800.0,
-            },
-            {
-                "collection_id": "col-002",
-                "timestamp": _ts(),
-                "status": "error",
-                "items_found": 0,
-                "items_new": 0,
-                "errors": [{"message": "Rate limited"}],
-                "duration_ms": 3000.0,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(days_ago=2),
+                    "status": "success",
+                    "items_found": 10,
+                    "items_new": 5,
+                    "errors": [],
+                    "duration_ms": 800.0,
+                },
+                {
+                    "collection_id": "col-002",
+                    "timestamp": _ts(),
+                    "status": "error",
+                    "items_found": 0,
+                    "items_new": 0,
+                    "errors": [{"message": "Rate limited"}],
+                    "duration_ms": 3000.0,
+                },
+            ],
+        )
         result = get_source_health("test-domain:test-source")
         assert result["status"] == "degraded"
 
     def test_degraded_when_slow(self, chdir_proj: Path) -> None:
         """Slow responses (>5s avg) yield 'degraded' even without errors."""
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(),
-                "status": "success",
-                "items_found": 3,
-                "items_new": 1,
-                "errors": [],
-                "duration_ms": 6000.0,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(),
+                    "status": "success",
+                    "items_found": 3,
+                    "items_new": 1,
+                    "errors": [],
+                    "duration_ms": 6000.0,
+                },
+            ],
+        )
         result = get_source_health("test-domain:test-source")
         assert result["status"] == "degraded"
 
@@ -269,15 +280,18 @@ class TestGetSourceHealth:
     def test_legacy_runs_without_status_field(self, chdir_proj: Path) -> None:
         """Legacy _runs.json entries (no 'status' field) are treated as success."""
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(),
-                # no 'status' field — legacy format
-                "items_found": 5,
-                "items_new": 3,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(),
+                    # no 'status' field — legacy format
+                    "items_found": 5,
+                    "items_new": 3,
+                },
+            ],
+        )
         result = get_source_health("test-domain:test-source")
         assert result["status"] == "healthy"
         assert result["error_count"] == 0
@@ -285,35 +299,38 @@ class TestGetSourceHealth:
     def test_resets_after_success_following_errors(self, chdir_proj: Path) -> None:
         """A success after 2 errors resets consecutive count (healthy)."""
         runs_path = chdir_proj / "collections" / "test-domain" / "test-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(days_ago=5),
-                "status": "error",
-                "items_found": 0,
-                "items_new": 0,
-                "errors": [{"message": "Timeout"}],
-                "duration_ms": 5000.0,
-            },
-            {
-                "collection_id": "col-002",
-                "timestamp": _ts(days_ago=3),
-                "status": "error",
-                "items_found": 0,
-                "items_new": 0,
-                "errors": [{"message": "Timeout"}],
-                "duration_ms": 5000.0,
-            },
-            {
-                "collection_id": "col-003",
-                "timestamp": _ts(),
-                "status": "success",
-                "items_found": 10,
-                "items_new": 5,
-                "errors": [],
-                "duration_ms": 1000.0,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(days_ago=5),
+                    "status": "error",
+                    "items_found": 0,
+                    "items_new": 0,
+                    "errors": [{"message": "Timeout"}],
+                    "duration_ms": 5000.0,
+                },
+                {
+                    "collection_id": "col-002",
+                    "timestamp": _ts(days_ago=3),
+                    "status": "error",
+                    "items_found": 0,
+                    "items_new": 0,
+                    "errors": [{"message": "Timeout"}],
+                    "duration_ms": 5000.0,
+                },
+                {
+                    "collection_id": "col-003",
+                    "timestamp": _ts(),
+                    "status": "success",
+                    "items_found": 10,
+                    "items_new": 5,
+                    "errors": [],
+                    "duration_ms": 1000.0,
+                },
+            ],
+        )
         result = get_source_health("test-domain:test-source")
         assert result["status"] == "healthy"
         assert result["error_count"] == 2
@@ -384,17 +401,20 @@ class TestMcpGetSourceHealth:
         from autoinfo.mcp.server import _handle_get_source_health
 
         runs_path = chdir_proj / "collections" / "test-domain" / "mcp-source" / "_runs.json"
-        _make_runs(runs_path, [
-            {
-                "collection_id": "col-001",
-                "timestamp": _ts(),
-                "status": "success",
-                "items_found": 5,
-                "items_new": 3,
-                "errors": [],
-                "duration_ms": 500.0,
-            },
-        ])
+        _make_runs(
+            runs_path,
+            [
+                {
+                    "collection_id": "col-001",
+                    "timestamp": _ts(),
+                    "status": "success",
+                    "items_found": 5,
+                    "items_new": 3,
+                    "errors": [],
+                    "duration_ms": 500.0,
+                },
+            ],
+        )
         result = _handle_get_source_health(source_id="test-domain:mcp-source")
         assert result["status"] == "healthy"
         assert result["source_id"] == "test-domain:mcp-source"

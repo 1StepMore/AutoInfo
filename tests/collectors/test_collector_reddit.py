@@ -11,11 +11,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.reddit import RedditHandler
 from autoinfo.models import Item
-
 
 # ---------------------------------------------------------------------------
 # Sample Reddit API response data
@@ -149,6 +147,7 @@ class TestRedditHandlerExists:
     def test_handler_is_importable(self) -> None:
         """RedditHandler should be accessible from the reddit module."""
         from autoinfo.collectors.reddit import RedditHandler as H
+
         assert H is not None
 
     def test_creates_with_default_config(self) -> None:
@@ -239,7 +238,9 @@ class TestRedditFetch:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_fetch_limit_zero_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_limit_zero_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """A limit of 0 should return an empty list."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
@@ -251,16 +252,20 @@ class TestRedditFetch:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_fetch_no_subreddits_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_no_subreddits_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Handler with no subreddits should return empty list."""
         mock_post.return_value = _make_token_response()
 
-        handler = RedditHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-            "user_agent": "Test/1.0",
-            "subreddits": [],
-        })
+        handler = RedditHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+                "user_agent": "Test/1.0",
+                "subreddits": [],
+            }
+        )
         posts = handler.fetch(query="test", limit=5)
 
         assert posts == []
@@ -289,7 +294,9 @@ class TestRedditFetchEmpty:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_fetch_handles_missing_data_key(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_handles_missing_data_key(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Response without 'data' key should return empty list."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = httpx.Response(
@@ -338,7 +345,9 @@ class TestRedditFieldMapping:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_field_mapping_content_selftext(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_field_mapping_content_selftext(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """content should come from 'selftext' field."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
@@ -426,7 +435,9 @@ class TestRedditFieldMapping:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_field_mapping_all_expected_fields_present(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_field_mapping_all_expected_fields_present(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Every returned item must have all expected keys."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
@@ -435,8 +446,15 @@ class TestRedditFieldMapping:
         posts = handler.fetch(query="deep learning", limit=5)
 
         expected_fields = {
-            "id", "title", "content", "author", "subreddit",
-            "score", "num_comments", "published_date", "source_url",
+            "id",
+            "title",
+            "content",
+            "author",
+            "subreddit",
+            "score",
+            "num_comments",
+            "published_date",
+            "source_url",
         }
         for post in posts:
             for field in expected_fields:
@@ -444,7 +462,9 @@ class TestRedditFieldMapping:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_minimal_post_handles_missing_fields(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_minimal_post_handles_missing_fields(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """A post with None/empty fields should not crash the handler."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response([SAMPLE_MINIMAL_POST])
@@ -482,10 +502,12 @@ class TestRedditAuth:
 
         # Token endpoint should have been called
         token_calls = [
-            c for c in mock_post.call_args_list
+            c
+            for c in mock_post.call_args_list
             if "access_token" in str(c.kwargs.get("url", c.args[0] if c.args else ""))
             or "/api/v1/access_token" in str(c.kwargs.get("url", c.args[0] if c.args else ""))
         ]
+        assert token_calls, "the OAuth token endpoint was never called"
         assert mock_post.called
 
     @patch("autoinfo.collectors.reddit.httpx.post")
@@ -505,7 +527,9 @@ class TestRedditAuth:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_authenticate_failure_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_authenticate_failure_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """When OAuth fails, fetch should return empty list."""
         mock_post.side_effect = httpx.HTTPStatusError(
             "Unauthorized",
@@ -520,14 +544,18 @@ class TestRedditAuth:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_authenticate_missing_credentials(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_authenticate_missing_credentials(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Missing client_id/client_secret should fail gracefully."""
-        handler = RedditHandler({
-            "client_id": "",
-            "client_secret": "",
-            "user_agent": "Test/1.0",
-            "subreddits": ["test"],
-        })
+        handler = RedditHandler(
+            {
+                "client_id": "",
+                "client_secret": "",
+                "user_agent": "Test/1.0",
+                "subreddits": ["test"],
+            }
+        )
         posts = handler.fetch(query="test", limit=5)
 
         assert posts == []
@@ -557,7 +585,9 @@ class TestRedditErrorHandling:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_fetch_http_error_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_http_error_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """HTTP errors should return empty list (graceful degradation)."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.HTTPStatusError(
@@ -573,7 +603,9 @@ class TestRedditErrorHandling:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_fetch_network_error_returns_empty(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_fetch_network_error_returns_empty(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Network errors should return empty list."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.NetworkError("Connection refused")
@@ -604,7 +636,8 @@ class TestRedditErrorHandling:
         """After 3 TimeoutExceptions the error should be handled gracefully."""
         mock_post.return_value = _make_token_response()
         mock_get.side_effect = httpx.TimeoutException(
-            "Timeout", request=MagicMock(),
+            "Timeout",
+            request=MagicMock(),
         )
 
         config = _sample_config()
@@ -644,16 +677,20 @@ class TestRedditRateLimit:
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_rate_limit_enforces_min_interval(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_rate_limit_enforces_min_interval(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """Back-to-back calls should be spaced by at least 60/rate_limit."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
 
-        handler = RedditHandler({
-            **{k: v for k, v in _sample_config().items() if k != "subreddits"},
-            "subreddits": ["MachineLearning"],
-            "rate_limit": 30,
-        })
+        handler = RedditHandler(
+            {
+                **{k: v for k, v in _sample_config().items() if k != "subreddits"},
+                "subreddits": ["MachineLearning"],
+                "rate_limit": 30,
+            }
+        )
         assert handler.rate_limit == 30
 
         handler.fetch(query="test", limit=1)  # warms _last_request_time
@@ -760,20 +797,26 @@ class TestRedditUrlConstruction:
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
 
-        handler = RedditHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-            "user_agent": "Test/1.0",
-            "subreddits": ["MachineLearning"],
-        })
+        handler = RedditHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+                "user_agent": "Test/1.0",
+                "subreddits": ["MachineLearning"],
+            }
+        )
         handler.fetch(query="deep learning", limit=5)
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "MachineLearning" in call_url
 
     @patch("autoinfo.collectors.reddit.httpx.post")
     @patch("autoinfo.collectors.reddit.httpx.get")
-    def test_search_url_includes_restrict_sr(self, mock_get: MagicMock, mock_post: MagicMock) -> None:
+    def test_search_url_includes_restrict_sr(
+        self, mock_get: MagicMock, mock_post: MagicMock
+    ) -> None:
         """The search URL should include restrict_sr=1 to scope to subreddit."""
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
@@ -781,7 +824,9 @@ class TestRedditUrlConstruction:
         handler = RedditHandler(_sample_config())
         handler.fetch(query="test", limit=5)
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "restrict_sr=1" in call_url
 
     @patch("autoinfo.collectors.reddit.httpx.post")
@@ -794,7 +839,9 @@ class TestRedditUrlConstruction:
         handler = RedditHandler(_sample_config())
         handler.fetch(query="", limit=5)
 
-        call_url = mock_get.call_args.kwargs.get("url", mock_get.call_args[0][0] if mock_get.call_args[0] else "")
+        call_url = mock_get.call_args.kwargs.get(
+            "url", mock_get.call_args[0][0] if mock_get.call_args[0] else ""
+        )
         assert "/new" in call_url
         assert "restrict_sr" not in call_url
 
@@ -814,12 +861,14 @@ class TestRedditMultiSubreddit:
         mock_post.return_value = _make_token_response()
         mock_get.return_value = _make_search_response(SAMPLE_REDDIT_POSTS)
 
-        handler = RedditHandler({
-            "client_id": "test",
-            "client_secret": "secret",
-            "user_agent": "Test/1.0",
-            "subreddits": ["MachineLearning", "artificial", "python"],
-        })
+        handler = RedditHandler(
+            {
+                "client_id": "test",
+                "client_secret": "secret",
+                "user_agent": "Test/1.0",
+                "subreddits": ["MachineLearning", "artificial", "python"],
+            }
+        )
         handler.fetch(query="test", limit=10)
 
         # Should have called GET for each subreddit
@@ -837,9 +886,11 @@ class TestRedditRegistration:
     def test_handler_is_registered_in_package(self) -> None:
         """Verify the handler is exported from the collectors package."""
         from autoinfo.collectors import RedditHandler
+
         assert RedditHandler is not None
 
     def test_handler_inherits_base(self) -> None:
         """RedditHandler should inherit from BaseHandler."""
         from autoinfo.collectors.base import BaseHandler
+
         assert issubclass(RedditHandler, BaseHandler)

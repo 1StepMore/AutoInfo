@@ -619,7 +619,6 @@ class TestGateValidation:
 class TestDefaultGates:
     def test_create_default_config_has_gates(self) -> None:
         """create_default_config() should include default gate configs."""
-        d = {}
         # We test via Config / config_to_dict round trip to verify
         # the defaults are as expected
         config = Config(
@@ -636,7 +635,9 @@ class TestDefaultGates:
                 "G0": QualityGateConfig(name="G0", category="hard", retries=1, action="block"),
                 "G1": QualityGateConfig(name="G1", category="soft", action="flag"),
                 "G2": QualityGateConfig(name="G2", category="soft", action="flag"),
-                "G3": QualityGateConfig(name="G3", category="soft", retries=2, action="archive", threshold=30.0),
+                "G3": QualityGateConfig(
+                    name="G3", category="soft", retries=2, action="archive", threshold=30.0
+                ),
                 "G4": QualityGateConfig(
                     name="G4",
                     category="hard",
@@ -663,7 +664,8 @@ class TestDefaultGates:
             llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="key"),
             domains=[
                 DomainConfig(
-                    name="d1", active=True,
+                    name="d1",
+                    active=True,
                     sources=[SourceConfig(name="s", type="api", url="https://x.com")],
                 )
             ],
@@ -683,7 +685,8 @@ class TestDefaultGates:
             llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="key"),
             domains=[
                 DomainConfig(
-                    name="d1", active=True,
+                    name="d1",
+                    active=True,
                     sources=[SourceConfig(name="s", type="api", url="https://x.com")],
                 )
             ],
@@ -709,7 +712,8 @@ class TestDefaultGates:
             llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="key"),
             domains=[
                 DomainConfig(
-                    name="d1", active=True,
+                    name="d1",
+                    active=True,
                     sources=[SourceConfig(name="s", type="api", url="https://x.com")],
                 )
             ],
@@ -729,7 +733,8 @@ class TestDefaultGates:
             llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="key"),
             domains=[
                 DomainConfig(
-                    name="d1", active=True,
+                    name="d1",
+                    active=True,
                     sources=[SourceConfig(name="s", type="api", url="https://x.com")],
                 )
             ],

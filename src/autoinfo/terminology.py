@@ -125,5 +125,7 @@ def load_terminology(domain: str) -> Terminology:
             continue
 
     raw_weights: dict[str, Any] = raw.get("score_weights", {}) or {}
-    weights: dict[str, int] = {k: int(v) for k, v in raw_weights.items() if isinstance(v, (int, str))}
+    weights: dict[str, int] = {
+        k: int(v) for k, v in raw_weights.items() if isinstance(v, (int, str))
+    }
     return Terminology(terms=terms, score_weights=weights)

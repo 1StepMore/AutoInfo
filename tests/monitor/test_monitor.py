@@ -8,8 +8,7 @@ import pytest
 import yaml
 
 from autoinfo.kb import KBStore, SQLiteIndex
-from autoinfo.models import Item, KBEntry
-from autoinfo.status import get_collection_stats, get_collection_diff
+from autoinfo.models import KBEntry
 
 
 def _seed_entries(index: SQLiteIndex, domain: str, count: int, days_ago: int = 0) -> list[str]:
@@ -71,9 +70,7 @@ class TestCollectionStats:
         kb_path.mkdir(parents=True, exist_ok=True)
         return KBStore(base_path=kb_path)
 
-    def _make_store_with_index(
-        self, tmp_path: Path, index: SQLiteIndex
-    ) -> KBStore:
+    def _make_store_with_index(self, tmp_path: Path, index: SQLiteIndex) -> KBStore:
         """Create a KBStore that uses the given index."""
         kb_path = tmp_path / "knowledge"
         kb_path.mkdir(parents=True, exist_ok=True)
@@ -81,9 +78,7 @@ class TestCollectionStats:
         store.index = index
         return store
 
-    def test_daily_stats_returns_counts(
-        self, pop_index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_daily_stats_returns_counts(self, pop_index: SQLiteIndex, tmp_path: Path) -> None:
         store = self._make_store_with_index(tmp_path, pop_index)
         stats = store.get_collection_stats(period="daily")
         assert stats["period"] == "daily"
@@ -91,16 +86,12 @@ class TestCollectionStats:
         assert "medical-research" in stats["domains"]
         assert "ai-commercial" in stats["domains"]
 
-    def test_weekly_stats(
-        self, pop_index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_weekly_stats(self, pop_index: SQLiteIndex, tmp_path: Path) -> None:
         store = self._make_store_with_index(tmp_path, pop_index)
         stats = store.get_collection_stats(period="weekly")
         assert stats["total_items"] >= 15
 
-    def test_monthly_stats(
-        self, pop_index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_monthly_stats(self, pop_index: SQLiteIndex, tmp_path: Path) -> None:
         store = self._make_store_with_index(tmp_path, pop_index)
         stats = store.get_collection_stats(period="monthly")
         assert stats["total_items"] >= 18
@@ -144,9 +135,7 @@ class TestCollectionDiff:
         store.index = index
         return store
 
-    def test_diff_returns_new_entries(
-        self, index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_diff_returns_new_entries(self, index: SQLiteIndex, tmp_path: Path) -> None:
         _seed_entries(index, "test", 3, days_ago=10)
         _seed_entries(index, "test", 2, days_ago=0)
 
@@ -154,9 +143,7 @@ class TestCollectionDiff:
         diff = store.get_collection_diff("2026-07-15")
         assert diff["count"] == 3
 
-    def test_diff_returns_domain_grouping(
-        self, index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_diff_returns_domain_grouping(self, index: SQLiteIndex, tmp_path: Path) -> None:
         _seed_entries(index, "med", 3, days_ago=0)
         _seed_entries(index, "ai", 2, days_ago=0)
 
@@ -166,9 +153,7 @@ class TestCollectionDiff:
         assert "med" in diff["domains"]
         assert "ai" in diff["domains"]
 
-    def test_diff_no_new_entries(
-        self, index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_diff_no_new_entries(self, index: SQLiteIndex, tmp_path: Path) -> None:
         _seed_entries(index, "test", 3, days_ago=10)
 
         store = self._make_store(tmp_path, index)
@@ -176,9 +161,7 @@ class TestCollectionDiff:
         assert diff["count"] == 0
         assert diff["new_entries"] == []
 
-    def test_status_wrapper_get_collection_diff(
-        self, index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_status_wrapper_get_collection_diff(self, index: SQLiteIndex, tmp_path: Path) -> None:
         _seed_entries(index, "test", 3, days_ago=0)
         store = self._make_store(tmp_path, index)
         diff = store.get_collection_diff("2026-07-01")

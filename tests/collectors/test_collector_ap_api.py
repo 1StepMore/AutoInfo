@@ -2,6 +2,7 @@
 
 Uses ``unittest.mock.patch`` to mock HTTP responses — no real API calls.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,9 +11,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from autoinfo.collectors.ap_api import APAPIHandler, DEFAULT_FIELDS
+from autoinfo.collectors.ap_api import APAPIHandler
 from autoinfo.models import Item
-
 
 # -- Helpers ---------------------------------------------------------------
 
@@ -94,6 +94,7 @@ class TestAPAPIImport:
 
     def test_handler_is_importable(self) -> None:
         from autoinfo.collectors.ap_api import APAPIHandler as H
+
         assert H is not None
 
     def test_handler_creates_instance(self) -> None:
@@ -104,6 +105,7 @@ class TestAPAPIImport:
 
     def test_handler_is_registered_in_package(self) -> None:
         from autoinfo.collectors import APAPIHandler
+
         assert APAPIHandler is not None
 
 
@@ -361,7 +363,9 @@ class TestAPAPIAuth:
         handler = APAPIHandler()
         assert handler.api_key == "env-key-123"
 
-    def test_constructor_key_takes_precedence_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_constructor_key_takes_precedence_over_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("AUTOINFO_AP_API_KEY", "env-key")
         handler = APAPIHandler(api_key="explicit-key")
         assert handler.api_key == "explicit-key"
@@ -462,6 +466,7 @@ class TestAPAPIRateLimit:
 
     def test_rate_limit_first_call_instant(self) -> None:
         import time
+
         handler = APAPIHandler(api_key="test-key")
         resp = _make_response(SAMPLE_RESPONSE)
 

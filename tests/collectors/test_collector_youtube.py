@@ -22,7 +22,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from autoinfo.collectors.youtube import YouTubeHandler
 from autoinfo.models import Item
@@ -270,8 +269,7 @@ SAMPLE_SRT_TRANSCRIPT: str = (
 )
 
 EXPECTED_TRANSCRIPT_TEXT: str = (
-    "Never gonna give you up Never gonna let you down\n"
-    "Never gonna run around and desert you"
+    "Never gonna give you up Never gonna let you down\nNever gonna run around and desert you"
 )
 
 
@@ -420,11 +418,13 @@ class TestYouTubeFetch:
         """When channel_id is set, include it in the request."""
         mock_get.return_value = _mock_response(SAMPLE_YOUTUBE_RESPONSE)
 
-        handler = YouTubeHandler({
-            "query": "tutorials",
-            "api_key": "test-key",
-            "channel_id": "UCtestChannel",
-        })
+        handler = YouTubeHandler(
+            {
+                "query": "tutorials",
+                "api_key": "test-key",
+                "channel_id": "UCtestChannel",
+            }
+        )
         handler.fetch(limit=5)
 
         call_args = mock_get.call_args
@@ -436,11 +436,13 @@ class TestYouTubeFetch:
         """When order is set, include it in the request."""
         mock_get.return_value = _mock_response(SAMPLE_YOUTUBE_RESPONSE)
 
-        handler = YouTubeHandler({
-            "query": "tutorials",
-            "api_key": "test-key",
-            "order": "date",
-        })
+        handler = YouTubeHandler(
+            {
+                "query": "tutorials",
+                "api_key": "test-key",
+                "order": "date",
+            }
+        )
         handler.fetch(limit=5)
 
         call_args = mock_get.call_args
@@ -626,8 +628,15 @@ class TestYouTubeFieldMapping:
         items = handler.fetch(limit=10)
 
         expected_fields = {
-            "id", "title", "content", "author", "published_date",
-            "source_url", "channel_id", "channel_title", "thumbnail_url",
+            "id",
+            "title",
+            "content",
+            "author",
+            "published_date",
+            "source_url",
+            "channel_id",
+            "channel_title",
+            "thumbnail_url",
         }
         for item in items:
             for field in expected_fields:
@@ -788,11 +797,13 @@ class TestYouTubeRateLimit:
         """Back-to-back calls should be spaced by at least 1/max_rps."""
         mock_get.return_value = _mock_response(SAMPLE_EMPTY_RESPONSE)
 
-        handler = YouTubeHandler({
-            "query": "test",
-            "api_key": "test-key",
-            "max_rps": 5,
-        })
+        handler = YouTubeHandler(
+            {
+                "query": "test",
+                "api_key": "test-key",
+                "max_rps": 5,
+            }
+        )
         assert handler.max_rps == 5.0
 
         handler.fetch(limit=5)  # warms _last_request_time
@@ -988,7 +999,8 @@ class TestYouTubeFetchCaptions:
 
     @patch("autoinfo.collectors.youtube.httpx.get")
     def test_fetch_captions_download_failure_returns_empty_transcript(
-        self, mock_get: MagicMock,
+        self,
+        mock_get: MagicMock,
     ) -> None:
         """A failed transcript download should keep metadata with empty transcript."""
         mock_get.side_effect = [
@@ -1021,12 +1033,14 @@ class TestYouTubeFetchFulltext:
             _mock_text_response(SAMPLE_SRT_TRANSCRIPT),
         ]
 
-        handler = YouTubeHandler({
-            "query": "first video",
-            "api_key": "test-key",
-            "fetch_depth": "fulltext",
-            "max_rps": 1000,
-        })
+        handler = YouTubeHandler(
+            {
+                "query": "first video",
+                "api_key": "test-key",
+                "fetch_depth": "fulltext",
+                "max_rps": 1000,
+            }
+        )
         items = handler.fetch(limit=10)
 
         assert len(items) == 1
@@ -1053,12 +1067,14 @@ class TestYouTubeFetchFulltext:
             _mock_response({"kind": "youtube#captionListResponse", "items": []}),
         ]
 
-        handler = YouTubeHandler({
-            "query": "first video",
-            "api_key": "test-key",
-            "fetch_depth": "fulltext",
-            "max_rps": 1000,
-        })
+        handler = YouTubeHandler(
+            {
+                "query": "first video",
+                "api_key": "test-key",
+                "fetch_depth": "fulltext",
+                "max_rps": 1000,
+            }
+        )
         items = handler.fetch(limit=10)
 
         assert len(items) == 1

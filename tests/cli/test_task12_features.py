@@ -17,7 +17,6 @@ import yaml
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.mcp.server import _handle_configure_llm
 
-
 # ==========================================================================
 # Helpers
 # ==========================================================================
@@ -159,18 +158,16 @@ class TestDomainImport:
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
-
         from typer.testing import CliRunner
+
+        from autoinfo.cli import app
 
         runner = CliRunner()
 
         # Initial: 1 domain
         assert len(_read_config(tmp_path)["domains"]) == 1
 
-        result = runner.invoke(
-            app, ["domain", "import", "--from-demo", "financial-intelligence"]
-        )
+        result = runner.invoke(app, ["domain", "import", "--from-demo", "financial-intelligence"])
         assert result.exit_code == 0
         assert "imported" in result.stdout.lower() or "financial-intelligence" in result.stdout
 
@@ -181,20 +178,17 @@ class TestDomainImport:
         assert "medical-research" in names
         assert "financial-intelligence" in names
 
-    def test_import_ai_commercial(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_import_ai_commercial(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Import ai-commercial into a project with medical-research."""
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
 
+        from autoinfo.cli import app
+
         runner = CliRunner()
-        result = runner.invoke(
-            app, ["domain", "import", "--from-demo", "ai-commercial"]
-        )
+        result = runner.invoke(app, ["domain", "import", "--from-demo", "ai-commercial"])
         assert result.exit_code == 0
 
         cfg = _read_config(tmp_path)
@@ -202,50 +196,40 @@ class TestDomainImport:
         names = [d["name"] for d in cfg["domains"]]
         assert "ai-commercial" in names
 
-    def test_import_adds_sources(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_import_adds_sources(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Imported domain includes sources from the demo YAML."""
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
 
+        from autoinfo.cli import app
+
         runner = CliRunner()
-        runner.invoke(
-            app, ["domain", "import", "--from-demo", "financial-intelligence"]
-        )
+        runner.invoke(app, ["domain", "import", "--from-demo", "financial-intelligence"])
 
         cfg = _read_config(tmp_path)
-        fi_domain = next(
-            d for d in cfg["domains"] if d["name"] == "financial-intelligence"
-        )
+        fi_domain = next(d for d in cfg["domains"] if d["name"] == "financial-intelligence")
         assert "sources" in fi_domain
         assert len(fi_domain["sources"]) >= 1
         # Verify at least Alpha Vantage is present
         source_names = [s["name"] for s in fi_domain["sources"]]
         assert "Alpha Vantage" in source_names or "FRED" in source_names
 
-    def test_import_adds_topics(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_import_adds_topics(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Imported domain includes topics from the demo YAML."""
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
 
+        from autoinfo.cli import app
+
         runner = CliRunner()
-        runner.invoke(
-            app, ["domain", "import", "--from-demo", "ai-commercial"]
-        )
+        runner.invoke(app, ["domain", "import", "--from-demo", "ai-commercial"])
 
         cfg = _read_config(tmp_path)
-        ai_domain = next(
-            d for d in cfg["domains"] if d["name"] == "ai-commercial"
-        )
+        ai_domain = next(d for d in cfg["domains"] if d["name"] == "ai-commercial")
         assert "topics" in ai_domain
         assert len(ai_domain["topics"]) >= 1
 
@@ -253,28 +237,23 @@ class TestDomainImport:
     # Idempotency
     # ------------------------------------------------------------------
 
-    def test_import_idempotent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_import_idempotent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Importing the same domain twice does not create duplicates."""
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
+
+        from autoinfo.cli import app
 
         runner = CliRunner()
 
         # First import
-        result1 = runner.invoke(
-            app, ["domain", "import", "--from-demo", "financial-intelligence"]
-        )
+        result1 = runner.invoke(app, ["domain", "import", "--from-demo", "financial-intelligence"])
         assert result1.exit_code == 0
 
         # Second import — idempotent
-        result2 = runner.invoke(
-            app, ["domain", "import", "--from-demo", "financial-intelligence"]
-        )
+        result2 = runner.invoke(app, ["domain", "import", "--from-demo", "financial-intelligence"])
         assert result2.exit_code == 0
         assert "already exists" in result2.stdout.lower()
 
@@ -289,15 +268,14 @@ class TestDomainImport:
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
+
+        from autoinfo.cli import app
 
         runner = CliRunner()
 
         # First import
-        runner.invoke(
-            app, ["domain", "import", "--from-demo", "language-learning"]
-        )
+        runner.invoke(app, ["domain", "import", "--from-demo", "language-learning"])
         cfg_after_first = _read_config(tmp_path)
         first_sources = len(
             next(d for d in cfg_after_first["domains"] if d["name"] == "language-learning")[
@@ -306,9 +284,7 @@ class TestDomainImport:
         )
 
         # Second import — should be idempotent
-        runner.invoke(
-            app, ["domain", "import", "--from-demo", "language-learning"]
-        )
+        runner.invoke(app, ["domain", "import", "--from-demo", "language-learning"])
         cfg_after_second = _read_config(tmp_path)
 
         # Domain count should still be 2
@@ -316,11 +292,9 @@ class TestDomainImport:
 
         # Source count should be unchanged
         second_sources = len(
-            next(
-                d
-                for d in cfg_after_second["domains"]
-                if d["name"] == "language-learning"
-            )["sources"]
+            next(d for d in cfg_after_second["domains"] if d["name"] == "language-learning")[
+                "sources"
+            ]
         )
         assert second_sources == first_sources
 
@@ -335,13 +309,12 @@ class TestDomainImport:
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
 
+        from autoinfo.cli import app
+
         runner = CliRunner()
-        result = runner.invoke(
-            app, ["domain", "import", "--from-demo", "nonexistent-domain"]
-        )
+        result = runner.invoke(app, ["domain", "import", "--from-demo", "nonexistent-domain"])
         assert result.exit_code == 1
         # Error message goes to stderr (err=True in typer.echo)
         output = (result.stdout + result.stderr).lower()
@@ -354,14 +327,13 @@ class TestDomainImport:
         _write_config(tmp_path, _DOMAIN_IMPORT_CONFIG)
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
+
+        from autoinfo.cli import app
 
         cfg_before = _read_config(tmp_path)
         runner = CliRunner()
-        runner.invoke(
-            app, ["domain", "import", "--from-demo", "nonexistent-domain"]
-        )
+        runner.invoke(app, ["domain", "import", "--from-demo", "nonexistent-domain"])
 
         cfg_after = _read_config(tmp_path)
         assert cfg_after == cfg_before
@@ -372,13 +344,12 @@ class TestDomainImport:
         """Running domain import without an initialized config gives an error."""
         monkeypatch.chdir(tmp_path)
 
-        from autoinfo.cli import app
         from typer.testing import CliRunner
 
+        from autoinfo.cli import app
+
         runner = CliRunner()
-        result = runner.invoke(
-            app, ["domain", "import", "--from-demo", "financial-intelligence"]
-        )
+        result = runner.invoke(app, ["domain", "import", "--from-demo", "financial-intelligence"])
         # Should fail because no config exists
         assert result.exit_code != 0
 
@@ -395,9 +366,7 @@ class TestConfigureLlm:
     # No-op
     # ------------------------------------------------------------------
 
-    def test_noop_with_no_args(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_noop_with_no_args(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Calling with no parameters returns noop status."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -420,9 +389,7 @@ class TestConfigureLlm:
     # Config update
     # ------------------------------------------------------------------
 
-    def test_update_provider(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_update_provider(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Provider is updated in config.yaml."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -437,9 +404,7 @@ class TestConfigureLlm:
         # Other fields unchanged
         assert cfg["llm"]["model"] == "deepseek/deepseek-chat"
 
-    def test_update_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_update_model(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Model is updated in config.yaml."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -453,9 +418,7 @@ class TestConfigureLlm:
         assert cfg["llm"]["model"] == "gpt-4"
         assert cfg["llm"]["provider"] == "openrouter"
 
-    def test_update_base_url(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_update_base_url(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Base URL is added to config.yaml."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -504,9 +467,7 @@ class TestConfigureLlm:
     # Field-by-field update
     # ------------------------------------------------------------------
 
-    def test_field_by_field_update(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_field_by_field_update(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Updating only provider leaves model and other fields unchanged."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -533,9 +494,7 @@ class TestConfigureLlm:
         assert cfg2["llm"]["provider"] == "anthropic"  # from first update
         assert cfg2["llm"]["model"] == "claude-3-opus"  # from second update
 
-    def test_all_fields_at_once(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_all_fields_at_once(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """All four parameters can be updated simultaneously."""
         _write_config(tmp_path, _LLM_CONFIG)
         monkeypatch.chdir(tmp_path)
@@ -563,9 +522,7 @@ class TestConfigureLlm:
     # Error cases
     # ------------------------------------------------------------------
 
-    def test_config_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_config_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Calling configure_llm without an initialized config returns error."""
         monkeypatch.chdir(tmp_path)
         # No .autoinfo/config.yaml

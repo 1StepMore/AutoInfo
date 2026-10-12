@@ -91,9 +91,7 @@ class TestEntryVersioning:
         history = store.get_entry_history(entry.entry_id)
         assert len(history) >= 1
 
-    def test_get_entry_history_returns_versions(
-        self, index: SQLiteIndex, tmp_path: Path
-    ) -> None:
+    def test_get_entry_history_returns_versions(self, index: SQLiteIndex, tmp_path: Path) -> None:
         from autoinfo.models import KBEntry
 
         entry = KBEntry(
@@ -157,7 +155,7 @@ class TestEntryVersioning:
 
         # Write v2 content
         fp.write_text("v2 content", encoding="utf-8")
-        v2 = index.save_entry_version("restore-entry", str(fp), "v2 backup")
+        index.save_entry_version("restore-entry", str(fp), "v2 backup")
 
         # Verify current content is v2
         assert fp.read_text(encoding="utf-8") == "v2 content"

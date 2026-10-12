@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 
 from autoinfo.models import Subscription
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -105,15 +104,14 @@ def sample_raw_product_detail() -> dict[str, Any]:
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     """Return a TestClient with isolated config."""
-    from autoinfo.api.server import app
     import autoinfo.api.routes as routes
+    from autoinfo.api.server import app
 
     config_dir = tmp_path / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
     config_path.write_text(
-        "rest_api:\n  port: 8741\n  host: 127.0.0.1\n"
-        "llm:\n  provider: openai\n  model: gpt-4\n"
+        "rest_api:\n  port: 8741\n  host: 127.0.0.1\nllm:\n  provider: openai\n  model: gpt-4\n"
     )
 
     with patch("autoinfo.config.get_config_path", return_value=config_path):
@@ -129,16 +127,12 @@ def client(tmp_path: Path) -> TestClient:
 
 def _mock_list_all_products(products: list[dict[str, Any]]):
     """Patch the storefront's product aggregator."""
-    return patch(
-        "autoinfo.api.storefront._list_all_products", return_value=products
-    )
+    return patch("autoinfo.api.storefront._list_all_products", return_value=products)
 
 
 def _mock_get_product(product: dict[str, Any] | None):
     """Patch the storefront's single-product lookup."""
-    return patch(
-        "autoinfo.api.storefront._get_product", return_value=product
-    )
+    return patch("autoinfo.api.storefront._get_product", return_value=product)
 
 
 def _mock_check_access(result: dict[str, Any]):
@@ -159,9 +153,7 @@ def _mock_create_subscription(sub: Subscription):
 class TestProductCatalog:
     """``GET /storefront/products`` — product catalog."""
 
-    def test_catalog_renders_html(
-        self, client: TestClient, sample_products: list[dict[str, Any]]
-    ):
+    def test_catalog_renders_html(self, client: TestClient, sample_products: list[dict[str, Any]]):
         with _mock_list_all_products(sample_products):
             response = client.get("/storefront/products")
 
@@ -181,9 +173,7 @@ class TestProductCatalog:
         # Product count badge
         assert "2 product" in html
 
-    def test_catalog_returns_json(
-        self, client: TestClient, sample_products: list[dict[str, Any]]
-    ):
+    def test_catalog_returns_json(self, client: TestClient, sample_products: list[dict[str, Any]]):
         with _mock_list_all_products(sample_products):
             response = client.get("/storefront/products?format=json")
 
@@ -269,9 +259,7 @@ class TestProductDetail:
         sample_product_detail: dict[str, Any],
     ):
         with _mock_get_product(sample_product_detail):
-            response = client.get(
-                "/storefront/products/medical-research-processed"
-            )
+            response = client.get("/storefront/products/medical-research-processed")
 
         assert response.status_code == 200
         html = response.text
@@ -289,9 +277,7 @@ class TestProductDetail:
         sample_product_detail: dict[str, Any],
     ):
         with _mock_get_product(sample_product_detail):
-            response = client.get(
-                "/storefront/products/medical-research-processed?format=json"
-            )
+            response = client.get("/storefront/products/medical-research-processed?format=json")
 
         assert response.status_code == 200
         data = response.json()
@@ -311,9 +297,7 @@ class TestProductDetail:
 
     def test_detail_missing_product_returns_404_json(self, client: TestClient):
         with _mock_get_product(None):
-            response = client.get(
-                "/storefront/products/nonexistent-product?format=json"
-            )
+            response = client.get("/storefront/products/nonexistent-product?format=json")
 
         assert response.status_code == 404
         data = response.json()
@@ -339,9 +323,7 @@ class TestProductDetail:
             _mock_get_product(sample_raw_product_detail),
             _mock_check_access(access),
         ):
-            response = client.get(
-                "/storefront/products/medical-research-raw?user_id=user-001"
-            )
+            response = client.get("/storefront/products/medical-research-raw?user_id=user-001")
 
         assert response.status_code == 200
         html = response.text
@@ -382,9 +364,7 @@ class TestProductDetail:
         sample_product_detail: dict[str, Any],
     ):
         with _mock_get_product(sample_product_detail):
-            response = client.get(
-                "/storefront/products/medical-research-processed"
-            )
+            response = client.get("/storefront/products/medical-research-processed")
 
         assert response.status_code == 200
         html = response.text
@@ -465,9 +445,7 @@ class TestCreateSubscription:
         data = response.json()
         assert data["data"]["tier"] == "free"
 
-    def test_create_subscription_missing_product_returns_404(
-        self, client: TestClient
-    ):
+    def test_create_subscription_missing_product_returns_404(self, client: TestClient):
         with _mock_get_product(None):
             response = client.post(
                 "/storefront/subscriptions",
@@ -494,9 +472,7 @@ class TestCreateSubscription:
 
         assert response.status_code == 422
 
-    def test_create_subscription_missing_product_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_create_subscription_missing_product_id_returns_422(self, client: TestClient):
         response = client.post(
             "/storefront/subscriptions",
             json={"user_id": "user-001"},

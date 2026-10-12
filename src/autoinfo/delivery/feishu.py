@@ -62,17 +62,19 @@ _MSGTYPE_AUDIO = "audio"
 _MSGTYPE_MEDIA = "media"
 _MSGTYPE_TEMPLATE = "template"
 
-_SUPPORTED_MSGTYPES = frozenset({
-    _MSGTYPE_TEXT,
-    _MSGTYPE_POST,
-    _MSGTYPE_INTERACTIVE,
-    _MSGTYPE_SHARE_CHAT,
-    _MSGTYPE_IMAGE,
-    _MSGTYPE_FILE,
-    _MSGTYPE_AUDIO,
-    _MSGTYPE_MEDIA,
-    _MSGTYPE_TEMPLATE,
-})
+_SUPPORTED_MSGTYPES = frozenset(
+    {
+        _MSGTYPE_TEXT,
+        _MSGTYPE_POST,
+        _MSGTYPE_INTERACTIVE,
+        _MSGTYPE_SHARE_CHAT,
+        _MSGTYPE_IMAGE,
+        _MSGTYPE_FILE,
+        _MSGTYPE_AUDIO,
+        _MSGTYPE_MEDIA,
+        _MSGTYPE_TEMPLATE,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +172,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
                 status="failed",
                 timestamp=_now_utc(),
                 recipient_count=0,
-                error=(
-                    f"Unknown FeiShu mode {mode!r}. "
-                    f"Expected 'webhook' or 'api'."
-                ),
+                error=(f"Unknown FeiShu mode {mode!r}. Expected 'webhook' or 'api'."),
             )
 
     def validate_config(self, config: dict[str, Any]) -> bool:
@@ -195,13 +194,19 @@ class FeiShuDeliveryChannel(DeliveryChannel):
     def health_check(self) -> dict[str, Any]:
         import os as _os
         import time as _time
+
         start = _time.time()
         try:
             app_id = _os.environ.get("FEISHU_APP_ID", "")
             app_secret = _os.environ.get("FEISHU_APP_SECRET", "")
             if not app_id or not app_secret:
                 latency = (_time.time() - start) * 1000
-                return {"healthy": False, "latency_ms": latency, "error": "missing config: FEISHU_APP_ID or FEISHU_APP_SECRET not set", "channel": "feishu"}
+                return {
+                    "healthy": False,
+                    "latency_ms": latency,
+                    "error": "missing config: FEISHU_APP_ID or FEISHU_APP_SECRET not set",
+                    "channel": "feishu",
+                }
             latency = (_time.time() - start) * 1000
             return {"healthy": True, "latency_ms": latency, "error": None, "channel": "feishu"}
         except Exception as e:
@@ -234,8 +239,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
                 timestamp=_now_utc(),
                 recipient_count=0,
                 error=(
-                    "FeiShu webhook_url is required in config or as first "
-                    "recipient (webhook key)."
+                    "FeiShu webhook_url is required in config or as first recipient (webhook key)."
                 ),
             )
 
@@ -299,9 +303,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
             )
 
         receive_id_type: str = (
-            payload.get("receive_id_type")
-            or config.get("receive_id_type")
-            or "open_id"
+            payload.get("receive_id_type") or config.get("receive_id_type") or "open_id"
         )
 
         try:
@@ -316,9 +318,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
                     self._send_api_message(token, rid, receive_id_type, body)
                     success_count += 1
                 except (FeiShuError, httpx.HTTPError, OSError) as exc:
-                    logger.warning(
-                        "FeiShu API message to %s failed: %s", rid, exc
-                    )
+                    logger.warning("FeiShu API message to %s failed: %s", rid, exc)
                     failed_ids.append(rid)
 
             all_succeeded = len(failed_ids) == 0
@@ -328,11 +328,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
                 status="success" if all_succeeded else "partial",
                 timestamp=_now_utc(),
                 recipient_count=success_count,
-                error=(
-                    None
-                    if all_succeeded
-                    else f"{len(failed_ids)} recipient(s) failed"
-                ),
+                error=(None if all_succeeded else f"{len(failed_ids)} recipient(s) failed"),
             )
 
         except (FeiShuError, httpx.HTTPError, OSError) as exc:
@@ -378,16 +374,12 @@ class FeiShuDeliveryChannel(DeliveryChannel):
                 content_obj = {
                     "zh_cn": {
                         "title": payload.get("title", ""),
-                        "content": [
-                            [{"tag": "text", "text": str(content_raw)}]
-                        ],
+                        "content": [[{"tag": "text", "text": str(content_raw)}]],
                     }
                 }
         elif msg_type == _MSGTYPE_INTERACTIVE:
             # interactive (card) expects a dict — use as-is or fall back
-            content_obj = (
-                content_raw if isinstance(content_raw, dict) else {"elements": []}
-            )
+            content_obj = content_raw if isinstance(content_raw, dict) else {"elements": []}
         else:
             # image, file, audio, media, share_chat, template
             # Each expects a specific structured dict
@@ -450,10 +442,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
         code: int = data.get("code", -1)
         if code != 0:
             msg = data.get("msg", "unknown error")
-            raise FeiShuError(
-                f"Failed to obtain tenant_access_token "
-                f"(code={code}, msg={msg})"
-            )
+            raise FeiShuError(f"Failed to obtain tenant_access_token (code={code}, msg={msg})")
 
         token: str = data["tenant_access_token"]
         expires_in: int = data.get("expire", 7200)
@@ -462,8 +451,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
         self._token_expires_at = now + expires_in - _TOKEN_EXPIRY_BUFFER
 
         logger.debug(
-            "FeiShu tenant_access_token refreshed, "
-            "expires in %d s (cached until %d s)",
+            "FeiShu tenant_access_token refreshed, expires in %d s (cached until %d s)",
             expires_in,
             expires_in - _TOKEN_EXPIRY_BUFFER,
         )
@@ -522,8 +510,7 @@ class FeiShuDeliveryChannel(DeliveryChannel):
 
                     # Other API error — terminal
                     raise FeiShuError(
-                        f"Message send failed "
-                        f"(code={code}, msg={data.get('msg', '')})"
+                        f"Message send failed (code={code}, msg={data.get('msg', '')})"
                     )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_exc = exc

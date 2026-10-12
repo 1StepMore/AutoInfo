@@ -11,11 +11,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
-from autoinfo.collectors.dblp import DBLPHandler, RATE_LIMIT
+from autoinfo.collectors.dblp import RATE_LIMIT, DBLPHandler
 from autoinfo.models import Item
-
 
 # ---------------------------------------------------------------------------
 # Sample DBLP API response data
@@ -135,6 +133,7 @@ class TestDBLPImport:
     def test_handler_is_importable(self) -> None:
         """Verify ``DBLPHandler`` can be imported from the collector module."""
         from autoinfo.collectors.dblp import DBLPHandler as H
+
         assert H is not None
 
     def test_handler_creates_instance(self) -> None:
@@ -146,6 +145,7 @@ class TestDBLPImport:
     def test_handler_is_registered_in_package(self) -> None:
         """Verify the handler is exported from the collectors package."""
         from autoinfo.collectors import DBLPHandler
+
         assert DBLPHandler is not None
 
 
@@ -251,8 +251,13 @@ class TestDBLPFieldMapping:
             pubs = handler.fetch("deep learning", limit=5)
 
         expected_fields = {
-            "id", "title", "authors", "published_date",
-            "source_type", "venue", "dblp_url",
+            "id",
+            "title",
+            "authors",
+            "published_date",
+            "source_type",
+            "venue",
+            "dblp_url",
         }
         for pub in pubs:
             for field in expected_fields:
@@ -635,15 +640,17 @@ class TestDBLPErrorHandling:
     def test_fetch_handles_missing_info_key(self) -> None:
         """Hits without 'info' key should not crash."""
         handler = DBLPHandler()
-        resp = _make_response({
-            "result": {
-                "hits": {
-                    "hit": [
-                        {"@score": "1", "@id": "urn:x", "info": None},
-                    ],
+        resp = _make_response(
+            {
+                "result": {
+                    "hits": {
+                        "hit": [
+                            {"@score": "1", "@id": "urn:x", "info": None},
+                        ],
+                    },
                 },
-            },
-        })
+            }
+        )
 
         with patch("httpx.get", return_value=resp):
             pubs = handler.fetch("test", limit=1)

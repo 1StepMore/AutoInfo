@@ -8,14 +8,11 @@ so gates always receive their configured values.
 
 from __future__ import annotations
 
-import pytest
-
 from autoinfo.config import (
     Config,
-    _normalize_gate_config_keys,
     _dict_to_config,
+    _normalize_gate_config_keys,
 )
-
 
 # ---------------------------------------------------------------------------
 # _normalize_gate_config_keys unit tests

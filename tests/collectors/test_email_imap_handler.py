@@ -13,7 +13,6 @@ import pytest
 from autoinfo.collectors.email_imap import EmailHandler
 from autoinfo.models import Item
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -144,7 +143,7 @@ def _build_raw_email(
         f"From: {from_addr}",
         f"Date: {date_str}",
         "MIME-Version: 1.0",
-        f"Content-Type: {content_type}; charset=\"utf-8\"",
+        f'Content-Type: {content_type}; charset="utf-8"',
         "Content-Transfer-Encoding: 7bit",
         "",
         body,
@@ -163,8 +162,12 @@ class TestEmailParsing:
     ) -> None:
         """A single plain-text email should produce one Item with correct fields."""
         emails = [
-            ("Hello World", "Alice <alice@example.com>",
-             "Mon, 1 Jan 2024 10:00:00 +0000", "This is the body."),
+            (
+                "Hello World",
+                "Alice <alice@example.com>",
+                "Mon, 1 Jan 2024 10:00:00 +0000",
+                "This is the body.",
+            ),
         ]
         mock_imap_class.return_value = _make_mock_imap(emails)
 
@@ -199,11 +202,13 @@ class TestEmailParsing:
         ]
         mock_imap_class.return_value = _make_mock_imap(emails)
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert len(items) == 3
         assert items[0].title == "First"
         assert items[1].title == "Second"
@@ -218,16 +223,23 @@ class TestEmailParsing:
         """Emails with text/html content should have HTML tags stripped."""
         html_body = "<html><body><p>Hello <b>world</b></p></body></html>"
         emails = [
-            ("HTML Test", "sender@ex.com",
-             "Fri, 5 Jan 2024 08:00:00 +0000", html_body, "text/html"),
+            (
+                "HTML Test",
+                "sender@ex.com",
+                "Fri, 5 Jan 2024 08:00:00 +0000",
+                html_body,
+                "text/html",
+            ),
         ]
         mock_imap_class.return_value = _make_mock_imap(emails)
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert len(items) == 1
         # HTML stripped — content should be clean text
         assert "Hello" in items[0].content
@@ -249,18 +261,19 @@ class TestEmailParsing:
         ]
         for from_header, expected in test_cases:
             emails = [
-                ("Test", from_header,
-                 "Sat, 6 Jan 2024 10:00:00 +0000", "Body text"),
+                ("Test", from_header, "Sat, 6 Jan 2024 10:00:00 +0000", "Body text"),
             ]
             mock_imap = _make_mock_imap(emails)
             mock_imap_class.reset_mock()
             mock_imap_class.return_value = mock_imap
 
-            items = handler.collect({
-                "host": "imap.example.com",
-                "username": "test@example.com",
-                "password": "secret",
-            })
+            items = handler.collect(
+                {
+                    "host": "imap.example.com",
+                    "username": "test@example.com",
+                    "password": "secret",
+                }
+            )
             assert len(items) == 1, f"Failed for from_header={from_header!r}"
             assert items[0].raw_data.get("sender_email", "") == expected, (
                 f"Expected {expected!r} for from_header={from_header!r}, "
@@ -277,16 +290,17 @@ class TestEmailParsing:
         # =?UTF-8?B?w7xsZXI=?= → "üler"
         encoded_subject = "=?UTF-8?B?w7xsZXI=?="
         emails = [
-            (encoded_subject, "user@ex.com",
-             "Sun, 7 Jan 2024 12:00:00 +0000", "Body"),
+            (encoded_subject, "user@ex.com", "Sun, 7 Jan 2024 12:00:00 +0000", "Body"),
         ]
         mock_imap_class.return_value = _make_mock_imap(emails)
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert len(items) == 1
         assert items[0].title == "üler"
 
@@ -302,18 +316,22 @@ class TestEmailParsing:
         ]
         mock_imap_class.return_value = _make_mock_imap(emails)
 
-        items_a = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items_a = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         # Reset mock and collect again — same UID → same ID
         mock_imap_class.return_value = _make_mock_imap(emails)
-        items_b = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items_b = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert len(items_a) == 1
         assert len(items_b) == 1
         assert items_a[0].id == items_b[0].id
@@ -336,11 +354,13 @@ class TestConnectionFailure:
         """A ConnectionRefusedError (or any Exception on connect) returns []."""
         mock_imap_class.side_effect = ConnectionRefusedError("Connection refused")
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert items == []
 
     @patch("imaplib.IMAP4_SSL")
@@ -356,11 +376,13 @@ class TestConnectionFailure:
         mock_conn.login.side_effect = imaplib.IMAP4.error("Authentication failed")
         mock_imap_class.return_value = mock_conn
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "wrong@example.com",
-            "password": "wrong-password",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "wrong@example.com",
+                "password": "wrong-password",
+            }
+        )
         assert items == []
 
     @patch("imaplib.IMAP4_SSL")
@@ -375,12 +397,14 @@ class TestConnectionFailure:
         mock_conn.select.return_value = ("NO", [b"Mailbox not found"])
         mock_imap_class.return_value = mock_conn
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-            "mailbox": "NONEXISTENT",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+                "mailbox": "NONEXISTENT",
+            }
+        )
         assert items == []
 
     @patch("imaplib.IMAP4_SSL")
@@ -392,11 +416,13 @@ class TestConnectionFailure:
         """A timeout (or any Exception) during connect gracefully returns []."""
         mock_imap_class.side_effect = TimeoutError("Connection timed out")
 
-        items = handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-        })
+        items = handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+            }
+        )
         assert items == []
 
 
@@ -422,12 +448,14 @@ class TestDateFilter:
         mock_conn.search.return_value = ("OK", [b""])
         mock_imap_class.return_value = mock_conn
 
-        handler.collect({
-            "host": "imap.example.com",
-            "username": "test@example.com",
-            "password": "secret",
-            "since_date": "2024-01-15",
-        })
+        handler.collect(
+            {
+                "host": "imap.example.com",
+                "username": "test@example.com",
+                "password": "secret",
+                "since_date": "2024-01-15",
+            }
+        )
 
         # Verify the search was called with UNSEEN SINCE 15-Jan-2024
         search_args = mock_conn.search.call_args

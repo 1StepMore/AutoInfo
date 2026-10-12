@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -202,16 +201,14 @@ class TestKBStoreRelations:
     def test_auto_linking_no_overlap(
         self, store: KBStore, sample_item_a: Item, sample_item_c: Item
     ) -> None:
-        entry_a = store.store_entry(sample_item_a)
+        store.store_entry(sample_item_a)
         entry_c = store.store_entry(sample_item_c)
 
         rels = store.get_item_relations(entry_c.entry_id)
         # No overlapping tags between IVF/embryo and AI/machine learning
         assert len(rels) == 0
 
-    def test_auto_linking_different_domain(
-        self, store: KBStore, sample_item_a: Item
-    ) -> None:
+    def test_auto_linking_different_domain(self, store: KBStore, sample_item_a: Item) -> None:
         item_other = Item(
             id="item-other",
             source_name="test",
@@ -223,7 +220,7 @@ class TestKBStoreRelations:
             domain="other-domain",
             topic_tags=["IVF"],
         )
-        entry_a = store.store_entry(sample_item_a)
+        store.store_entry(sample_item_a)
         entry_other = store.store_entry(item_other)
 
         rels = store.get_item_relations(entry_other.entry_id)

@@ -23,6 +23,7 @@ import pytest
 import yaml
 
 from autoinfo.config import QualityGateConfig
+from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.quality import (
     D1ProductCompleteness,
@@ -37,7 +38,6 @@ from autoinfo.quality import (
     run_delivery_gates,
     run_quality_gates,
 )
-from autoinfo.llm import LLMExtractor
 from tests.conftest import requires_optional_dep
 
 # TRIAGE #15 (env-dep): PyMuPDF missing → `import fitz` fails inside
@@ -971,10 +971,17 @@ class TestG1SourceAuthorityAction:
     def test_default_action_flag_tier_low_passes(self) -> None:
         """Default action='flag' — tier 1-2 passes unflagged (backward compat)."""
         item = Item(
-            id="test-g1-01", source_name="trusted", source_type="api",
-            source_url="https://example.com", title="", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g1-01",
+            source_name="trusted",
+            source_type="api",
+            source_url="https://example.com",
+            title="",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         gate = G1SourceAuthority()
         result = gate.check(item)
@@ -986,10 +993,17 @@ class TestG1SourceAuthorityAction:
     def test_default_action_flag_tier_high_passes_flagged(self) -> None:
         """Default action='flag' — tier 3+ passes with flag (backward compat)."""
         item = Item(
-            id="test-g1-02", source_name="low-trust", source_type="api",
-            source_url="https://example.com", title="", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=3,
+            id="test-g1-02",
+            source_name="low-trust",
+            source_type="api",
+            source_url="https://example.com",
+            title="",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=3,
         )
         gate = G1SourceAuthority()
         result = gate.check(item)
@@ -1002,10 +1016,17 @@ class TestG1SourceAuthorityAction:
     def test_action_skip_tier_high_fails(self) -> None:
         """action='skip' and tier 3+ → passed=False with action=skip."""
         item = Item(
-            id="test-g1-03", source_name="low-trust", source_type="api",
-            source_url="https://example.com", title="", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=3,
+            id="test-g1-03",
+            source_name="low-trust",
+            source_type="api",
+            source_url="https://example.com",
+            title="",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=3,
         )
         config = QualityGateConfig(name="G1", category="soft", action="skip")
         gate = G1SourceAuthority()
@@ -1018,10 +1039,17 @@ class TestG1SourceAuthorityAction:
     def test_action_skip_tier_low_passes(self) -> None:
         """action='skip' but tier 1-2 → still passes (only high tiers are skipped)."""
         item = Item(
-            id="test-g1-04", source_name="trusted", source_type="api",
-            source_url="https://example.com", title="", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g1-04",
+            source_name="trusted",
+            source_type="api",
+            source_url="https://example.com",
+            title="",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         config = QualityGateConfig(name="G1", category="soft", action="skip")
         gate = G1SourceAuthority()
@@ -1034,10 +1062,17 @@ class TestG1SourceAuthorityAction:
     def test_no_gate_config_uses_default_flag(self) -> None:
         """No gate_config → default action='flag' (backward compat)."""
         item = Item(
-            id="test-g1-05", source_name="low-trust", source_type="api",
-            source_url="https://example.com", title="", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=4,
+            id="test-g1-05",
+            source_name="low-trust",
+            source_type="api",
+            source_url="https://example.com",
+            title="",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=4,
         )
         gate = G1SourceAuthority()
         result = gate.check(item)
@@ -1058,17 +1093,29 @@ class TestG2DedupAction:
     def test_default_action_flag_duplicate(self) -> None:
         """Default action='flag' — duplicate is flagged (backward compat)."""
         item = Item(
-            id="test-g2-01", source_name="test", source_type="api",
-            source_url="https://example.com/dup", title="Dup", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g2-01",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com/dup",
+            title="Dup",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         existing = [
             KBEntry(
-                entry_id="existing-01", title="Dup", domain="test", tier="01-Raw",
+                entry_id="existing-01",
+                title="Dup",
+                domain="test",
+                tier="01-Raw",
                 source_url="https://example.com/dup",
-                source_type="api", source_platform="web",
-                collected_at="", file_path="",
+                source_type="api",
+                source_platform="web",
+                collected_at="",
+                file_path="",
             ),
         ]
         gate = G2Dedup()
@@ -1082,17 +1129,29 @@ class TestG2DedupAction:
     def test_action_skip_duplicate(self) -> None:
         """action='skip' — duplicate detected with action='skip' in details."""
         item = Item(
-            id="test-g2-02", source_name="test", source_type="api",
-            source_url="https://example.com/dup2", title="Dup2", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g2-02",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com/dup2",
+            title="Dup2",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         existing = [
             KBEntry(
-                entry_id="existing-02", title="Dup2", domain="test", tier="01-Raw",
+                entry_id="existing-02",
+                title="Dup2",
+                domain="test",
+                tier="01-Raw",
                 source_url="https://example.com/dup2",
-                source_type="api", source_platform="web",
-                collected_at="", file_path="",
+                source_type="api",
+                source_platform="web",
+                collected_at="",
+                file_path="",
             ),
         ]
         config = QualityGateConfig(name="G2", category="soft", action="skip")
@@ -1107,10 +1166,17 @@ class TestG2DedupAction:
     def test_no_gate_config_uses_default_flag(self) -> None:
         """No gate_config → default action='flag' (backward compat)."""
         item = Item(
-            id="test-g2-03", source_name="test", source_type="api",
-            source_url="https://example.com/nodup", title="Unique", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g2-03",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com/nodup",
+            title="Unique",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         gate = G2Dedup()
         result = gate.check(item, [])
@@ -1121,10 +1187,17 @@ class TestG2DedupAction:
     def test_action_skip_unique_passes(self) -> None:
         """action='skip' — unique item still passes normally."""
         item = Item(
-            id="test-g2-04", source_name="test", source_type="api",
-            source_url="https://example.com/unique", title="Unique", content="",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            id="test-g2-04",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com/unique",
+            title="Unique",
+            content="",
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         config = QualityGateConfig(name="G2", category="soft", action="skip")
         gate = G2Dedup()
@@ -1145,11 +1218,17 @@ class TestG3RelevanceScoringAction:
     def test_default_action_archive_below_threshold(self) -> None:
         """Default action='archive' — below-threshold gets hidden=True + archive=True (backward compat)."""
         item = Item(
-            id="test-g3-01", source_name="test", source_type="api",
-            source_url="https://example.com", title="No match here",
+            id="test-g3-01",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="No match here",
             content="Completely unrelated content that does not match keywords",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         gate = G3RelevanceScoring()
         result = gate.check(item, ["IVF", "embryo", "fertility"], threshold=30)
@@ -1163,11 +1242,17 @@ class TestG3RelevanceScoringAction:
     def test_action_archive_below_threshold(self) -> None:
         """action='archive' — below-threshold item has archive=True in details."""
         item = Item(
-            id="test-g3-02", source_name="test", source_type="api",
-            source_url="https://example.com", title="Unrelated",
+            id="test-g3-02",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="Unrelated",
             content="Some random text that does not contain keywords",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         config = QualityGateConfig(name="G3", category="soft", action="archive")
         gate = G3RelevanceScoring()
@@ -1182,11 +1267,17 @@ class TestG3RelevanceScoringAction:
     def test_action_flag_below_threshold(self) -> None:
         """action='flag' — below-threshold gets hidden=True but no archive flag."""
         item = Item(
-            id="test-g3-03", source_name="test", source_type="api",
-            source_url="https://example.com", title="Unrelated",
+            id="test-g3-03",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="Unrelated",
             content="Some random text that does not contain keywords",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         config = QualityGateConfig(name="G3", category="soft", action="flag")
         gate = G3RelevanceScoring()
@@ -1201,11 +1292,17 @@ class TestG3RelevanceScoringAction:
     def test_above_threshold_passes(self) -> None:
         """Above threshold item passes regardless of action config."""
         item = Item(
-            id="test-g3-04", source_name="test", source_type="api",
-            source_url="https://example.com", title="IVF breakthrough",
+            id="test-g3-04",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="IVF breakthrough",
             content="New IVF treatment shows promising results for embryo development",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         config = QualityGateConfig(name="G3", category="soft", action="archive")
         gate = G3RelevanceScoring()
@@ -1219,11 +1316,17 @@ class TestG3RelevanceScoringAction:
     def test_no_gate_config_uses_default_archive(self) -> None:
         """No gate_config → default action='archive' (backward compat)."""
         item = Item(
-            id="test-g3-05", source_name="test", source_type="api",
-            source_url="https://example.com", title="No keywords",
+            id="test-g3-05",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="No keywords",
             content="Completely unrelated content with zero keyword matches",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         gate = G3RelevanceScoring()
         result = gate.check(item, ["IVF", "embryo"], threshold=30)
@@ -1249,9 +1352,7 @@ def _g4_make_response(return_json: dict) -> MagicMock:
 
 def _g4_mock_litellm_sequential(return_jsons: list[dict]) -> MagicMock:
     mock_litellm = MagicMock()
-    mock_litellm.completion.side_effect = [
-        _g4_make_response(rj) for rj in return_jsons
-    ]
+    mock_litellm.completion.side_effect = [_g4_make_response(rj) for rj in return_jsons]
     return mock_litellm
 
 
@@ -1276,7 +1377,9 @@ def _g4_fixture_item() -> Item:
     )
 
 
-def _g4_fixture_extraction(tl_dr: str = "IVF success rates improve with time-lapse imaging.") -> ExtractionResult:
+def _g4_fixture_extraction(
+    tl_dr: str = "IVF success rates improve with time-lapse imaging.",
+) -> ExtractionResult:
     return ExtractionResult(
         item_id="test-item-g4-retry",
         title="Test article about IVF outcomes",
@@ -1311,10 +1414,14 @@ class TestG4RetryChain:
         extraction = _g4_fixture_extraction()
         gate_config = _g4_gate_config(retries=3)
 
-        mock_llm = _g4_mock_litellm_sequential([
-            {"contradiction": False, "explanation": "Summary matches source."},
-        ])
-        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
+        mock_llm = _g4_mock_litellm_sequential(
+            [
+                {"contradiction": False, "explanation": "Summary matches source."},
+            ]
+        )
+        with patch(
+            "autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect
+        ) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1330,18 +1437,22 @@ class TestG4RetryChain:
         extraction = _g4_fixture_extraction()
         gate_config = _g4_gate_config(retries=3)
 
-        mock_llm = _g4_mock_litellm_sequential([
-            {
-                "contradiction": True,
-                "explanation": "Summary says decrease but source says increase.",
-            },
-            {
-                "contradiction": True,
-                "explanation": "Summary still contradicts source on second check.",
-            },
-            {"contradiction": False, "explanation": "Summary matches source on re-evaluation."},
-        ])
-        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
+        mock_llm = _g4_mock_litellm_sequential(
+            [
+                {
+                    "contradiction": True,
+                    "explanation": "Summary says decrease but source says increase.",
+                },
+                {
+                    "contradiction": True,
+                    "explanation": "Summary still contradicts source on second check.",
+                },
+                {"contradiction": False, "explanation": "Summary matches source on re-evaluation."},
+            ]
+        )
+        with patch(
+            "autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect
+        ) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1361,12 +1472,16 @@ class TestG4RetryChain:
         extraction = _g4_fixture_extraction()
         gate_config = _g4_gate_config(retries=3)
 
-        mock_llm = _g4_mock_litellm_sequential([
-            {"contradiction": True, "explanation": "First check: contradiction found."},
-            {"contradiction": True, "explanation": "Second check: still contradictory."},
-            {"contradiction": True, "explanation": "Third check: still contradicts."},
-        ])
-        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
+        mock_llm = _g4_mock_litellm_sequential(
+            [
+                {"contradiction": True, "explanation": "First check: contradiction found."},
+                {"contradiction": True, "explanation": "Second check: still contradictory."},
+                {"contradiction": True, "explanation": "Third check: still contradicts."},
+            ]
+        )
+        with patch(
+            "autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect
+        ) as mock_cwf:
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1384,14 +1499,18 @@ class TestG4RetryChain:
         extraction = _g4_fixture_extraction()
         gate_config = _g4_gate_config(retries=3)
 
-        mock_llm = _g4_mock_litellm_sequential([
-            {"contradiction": True, "explanation": "Contradiction 1"},
-            {"contradiction": True, "explanation": "Contradiction 2"},
-            {"contradiction": True, "explanation": "Contradiction 3"},
-        ])
+        mock_llm = _g4_mock_litellm_sequential(
+            [
+                {"contradiction": True, "explanation": "Contradiction 1"},
+                {"contradiction": True, "explanation": "Contradiction 2"},
+                {"contradiction": True, "explanation": "Contradiction 3"},
+            ]
+        )
 
         collections_dir = tmp_path / "collections"
-        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
+        with patch(
+            "autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect
+        ):
             g4 = G4FactualConsistency(
                 model="test/test-model",
                 collections_path=str(collections_dir),
@@ -1427,7 +1546,9 @@ class TestG4RetryChain:
         gate_config = _g4_gate_config(retries=3)
 
         mock_llm = MagicMock()
-        with patch("autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect) as mock_cwf:
+        with patch(
+            "autoinfo.quality.call_with_fallback", side_effect=mock_llm.completion.side_effect
+        ):
             g4 = G4FactualConsistency(model="test/test-model")
             result = g4.check(item, extraction, gate_config=gate_config)
 
@@ -1448,11 +1569,12 @@ class TestGateConfigIntegration:
 
     def test_g0_retry_count_from_config(self, sample_item: Item) -> None:
         """G0 reads retry count from gate_config (retries=3 → retry_count=3)."""
-        from autoinfo.config import QualityGateConfig as QGC
+        from autoinfo.config import QualityGateConfig
+
         g0_gate = G0SchemaIntegrity()
         result = g0_gate.check(
             {"source_url": "", "source_type": "", "source_platform": ""},
-            gate_config=QGC(name="G0", category="hard", retries=3, action="block"),
+            gate_config=QualityGateConfig(name="G0", category="hard", retries=3, action="block"),
         )
         assert result.passed is False
         assert result.details["retry_count"] == 3
@@ -1489,13 +1611,20 @@ class TestGateConfigIntegration:
 
     def test_g3_threshold_from_gate_config(self, sample_item: Item) -> None:
         """G3 threshold is read from gate_config when provided (overrides context)."""
-        from autoinfo.config import QualityGateConfig as QGC
+        from autoinfo.config import QualityGateConfig
+
         item_no_match = Item(
-            id="test-g3-threshold", source_name="test", source_type="api",
-            source_url="https://example.com", title="No keywords here",
+            id="test-g3-threshold",
+            source_name="test",
+            source_type="api",
+            source_url="https://example.com",
+            title="No keywords here",
             content="Completely unrelated content that does not match",
-            content_type="text", collected_at="", language="en",
-            domain="test", quality_tier=1,
+            content_type="text",
+            collected_at="",
+            language="en",
+            domain="test",
+            quality_tier=1,
         )
         keywords = ["IVF", "embryo"]
 
@@ -1505,7 +1634,7 @@ class TestGateConfigIntegration:
         )
         assert results_high["G3-RelevanceScoring"].details["hidden"] is True
 
-        cfg = QGC(name="G3", category="soft", threshold=5.0)
+        cfg = QualityGateConfig(name="G3", category="soft", threshold=5.0)
         results_low = run_quality_gates(
             item_no_match,
             context={"topic_keywords": keywords, "threshold": 100},
@@ -1516,16 +1645,18 @@ class TestGateConfigIntegration:
 
     def test_per_domain_config_override_merge(self) -> None:
         """Domain-level quality_gates override global defaults (merge logic)."""
-        from autoinfo.config import QualityGateConfig as QGC
+        from autoinfo.config import QualityGateConfig
 
         global_gates = {
-            "G0-SchemaIntegrity": QGC(name="G0", category="hard", retries=1, action="block"),
-            "G1-SourceAuthority": QGC(name="G1", category="soft", action="flag"),
-            "G2-Dedup": QGC(name="G2", category="soft", action="flag"),
+            "G0-SchemaIntegrity": QualityGateConfig(
+                name="G0", category="hard", retries=1, action="block"
+            ),
+            "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="flag"),
+            "G2-Dedup": QualityGateConfig(name="G2", category="soft", action="flag"),
         }
         domain_gates = {
-            "G1-SourceAuthority": QGC(name="G1", category="soft", action="skip"),
-            "G3-RelevanceScoring": QGC(name="G3", category="soft", threshold=50.0),
+            "G1-SourceAuthority": QualityGateConfig(name="G1", category="soft", action="skip"),
+            "G3-RelevanceScoring": QualityGateConfig(name="G3", category="soft", threshold=50.0),
         }
 
         merged = dict(global_gates)
@@ -1656,9 +1787,7 @@ class TestG0G4InProcessingPipeline:
 
     # -- tests ---------------------------------------------------------
 
-    def test_g0_failure_skips_item_and_writes_failed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_g0_failure_skips_item_and_writes_failed(self, tmp_path: Path) -> None:
         """G0 failure → item skipped, _failed/ written, no KB entry."""
         config_path = self._make_config_yaml(tmp_path)
         bad_item = self._make_bad_item()
@@ -1704,20 +1833,20 @@ class TestG0G4InProcessingPipeline:
 
         assert len(result.per_item_logs) == 0
 
-    def test_g4_failure_blocks_item_and_writes_failed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_g4_failure_blocks_item_and_writes_failed(self, tmp_path: Path) -> None:
         """G4 retry chain exhaustion → item blocked, not stored in KB."""
         config_path = self._make_config_yaml(tmp_path)
         good_item = self._make_good_item("g4-blocked-item")
         mock_store = self._make_mock_store()
 
-        mock_extract_llm = self._make_mock_litellm({
-            "tl_dr": "Test summary that contradicts.",
-            "key_points": ["Point"],
-            "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
-            "relevance_score": 80.0,
-        })
+        mock_extract_llm = self._make_mock_litellm(
+            {
+                "tl_dr": "Test summary that contradicts.",
+                "key_points": ["Point"],
+                "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
+                "relevance_score": 80.0,
+            }
+        )
 
         block_result = QualityResult(
             gate_name="G4-SummaryFactual",
@@ -1761,9 +1890,7 @@ class TestG0G4InProcessingPipeline:
             ):
                 from autoinfo.process import run_processing
 
-                result = run_processing(
-                    domain="test-domain", check_factual=True
-                )
+                result = run_processing(domain="test-domain", check_factual=True)
         finally:
             os.chdir(original_cwd)
 
@@ -1771,20 +1898,20 @@ class TestG0G4InProcessingPipeline:
         mock_store.store_entry.assert_not_called()
         assert len(result.per_item_logs) == 0
 
-    def test_g0_and_g4_pass_item_stored_normally(
-        self, tmp_path: Path
-    ) -> None:
+    def test_g0_and_g4_pass_item_stored_normally(self, tmp_path: Path) -> None:
         """G0 + G4 pass → item stored in KB, no _failed/ for this item."""
         config_path = self._make_config_yaml(tmp_path)
         good_item = self._make_good_item("passing-item")
         mock_store = self._make_mock_store()
 
-        mock_extract_llm = self._make_mock_litellm({
-            "tl_dr": "IVF success rates improve with time-lapse imaging.",
-            "key_points": ["Time-lapse imaging improves IVF outcomes"],
-            "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
-            "relevance_score": 85.0,
-        })
+        mock_extract_llm = self._make_mock_litellm(
+            {
+                "tl_dr": "IVF success rates improve with time-lapse imaging.",
+                "key_points": ["Time-lapse imaging improves IVF outcomes"],
+                "entities": [{"name": "IVF", "type": "procedure", "relevance": 0.9}],
+                "relevance_score": 85.0,
+            }
+        )
 
         mock_g4_llm = self._make_mock_litellm(
             {"contradiction": False, "explanation": "Summary matches source."}
@@ -1797,9 +1924,7 @@ class TestG0G4InProcessingPipeline:
                 return_value=[good_item],
             ),
             patch("autoinfo.process.KBStore", return_value=mock_store),
-            patch.object(
-                LLMExtractor, "_get_litellm", return_value=mock_extract_llm
-            ),
+            patch.object(LLMExtractor, "_get_litellm", return_value=mock_extract_llm),
             patch.object(
                 G4FactualConsistency,
                 "_get_litellm",
@@ -1807,9 +1932,8 @@ class TestG0G4InProcessingPipeline:
             ),
         ):
             from autoinfo.process import run_processing
-            result = run_processing(
-                domain="test-domain", check_factual=True
-            )
+
+            result = run_processing(domain="test-domain", check_factual=True)
 
         assert result.kb_entries_created == 1
         mock_store.store_entry.assert_called_once()
@@ -1822,9 +1946,7 @@ class TestG0G4InProcessingPipeline:
         assert len(result.per_item_logs) == 1
         assert result.per_item_logs[0]["status"] == "ok"
 
-    def test_failed_dir_created_per_domain(
-        self, tmp_path: Path
-    ) -> None:
+    def test_failed_dir_created_per_domain(self, tmp_path: Path) -> None:
         """_failed/ directory is created per domain on first G0 failure."""
         config_path = self._make_config_yaml(tmp_path, domain="domain-a")
         bad_item_a = self._make_bad_item("bad-a")
@@ -1857,9 +1979,7 @@ class TestG0G4InProcessingPipeline:
             assert (failed_a / "bad-a.json").exists()
 
             # Second domain also creates its own _failed/
-            config_path_b = self._make_config_yaml(
-                tmp_path, domain="domain-b"
-            )
+            config_path_b = self._make_config_yaml(tmp_path, domain="domain-b")
             bad_item_b = self._make_bad_item("bad-b")
             mock_store_b = self._make_mock_store()
 

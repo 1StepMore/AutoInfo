@@ -22,8 +22,8 @@ import pytest
 import yaml
 from jsonschema import Draft7Validator
 
-from autoinfo.kb import KBStore, SQLiteIndex
-from autoinfo.models import Item, KBEntry
+from autoinfo.kb import KBStore
+from autoinfo.models import Item
 from autoinfo.output import export_kb
 
 # ---------------------------------------------------------------------------
@@ -459,7 +459,10 @@ class TestAgentExport:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator = Draft7Validator(schema)
         errors = sorted(
-            (f"{'/'.join(str(p) for p in e.path)}: {e.message}" for e in validator.iter_errors(result)),
+            (
+                f"{'/'.join(str(p) for p in e.path)}: {e.message}"
+                for e in validator.iter_errors(result)
+            ),
         )
         assert errors == [], "agent export failed schema validation:\n" + "\n".join(errors)
 

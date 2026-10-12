@@ -787,7 +787,9 @@ def _test_uspto_mock():
                 {
                     "patent_number": "US12000123",
                     "patent_title": "CRISPR-based Gene Therapy Method",
-                    "patent_abstract": "A novel method for targeted gene therapy using CRISPR-Cas9...",
+                    "patent_abstract": (
+                        "A novel method for targeted gene therapy using CRISPR-Cas9..."
+                    ),
                     "patent_date": "2024-05-10",
                     "app_date": "2023-01-15",
                     "inventors": [
@@ -908,7 +910,8 @@ total_fail = sum(1 for r in results if r["result"] == FAIL)
 total_skip = sum(1 for r in results if r["result"] == SKIP)
 
 print(
-    f"\n{'Collector':<25} {'Instantiate':<12} {'requires_key':<14} {'Mock Collect':<14} {'Status':<10}"
+    f"\n{'Collector':<25} {'Instantiate':<12} "
+    f"{'requires_key':<14} {'Mock Collect':<14} {'Status':<10}"
 )
 print("-" * 75)
 
@@ -949,7 +952,8 @@ for collector_name in [
 
 print("-" * 75)
 print(
-    f"\nTotal: {len(results)} tests | ✅ PASS: {total_pass} | ❌ FAIL: {total_fail} | ⏭️ SKIP: {total_skip}"
+    f"\nTotal: {len(results)} tests | ✅ PASS: {total_pass} | "
+    f"❌ FAIL: {total_fail} | ⏭️ SKIP: {total_skip}"
 )
 
 if total_fail > 0:

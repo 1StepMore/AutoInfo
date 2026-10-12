@@ -42,7 +42,7 @@
 | **文档数字与代码之间无对账(闭环缺口)** | **已登记并已修(2026-10-12,#508 + 本次补断言)**:CLI 命令组数曾被写成 32,而 Typer `registered_groups`(`add_typer` 集合)实际是 31——`init` 用 `app.command()` 挂载,不算 group。**它在 main 上无限期待着,一次红都没产生**,因为 `doc_inventory.py --check` 只比 README↔AGENTS↔SKILL(一致性校验),而 `build_release_check.py` 只**报出**代码值、从不与文档比对。两个门禁各管一半,中间那道缝没人看 | 已补 `build_release_check` 的 `documented CLI group count matches autoinfo.cli` 断言(文档声明值 == `len(app.registered_groups)`),并用 2 个测试锁住(含伪造数字必须变红的负向用例)。**教训可推广:一致性校验 ≠ 真实性校验,凡是"文档里的数字"都需要一条对代码的断言**;README 枚举还长期漏了 `validate` 而多列 `init`,同样是靠这条断言才暴露 |
 
 | **tests/ 下混入非测试脚本** | `tests/run_q2b_collector_tests.py` 是独立脚本(结尾 `sys.exit(0)`),不是 pytest 测试。默认 `python_files = test_*.py` 不收集它,所以流水线无恙;但任何人显式把路径喂给 pytest (`pytest tests/run_q2b_collector_tests.py`)都会让整个会话以 INTERNALERROR 终止——**一个文件能干掉整次测试运行,且报错完全指向别处**。全仓无任何引用(脚本、workflow、文档均无) |
-| 归位到 `scripts/`,或在 conftest 显式 `collect_ignore`;当前靠收集规则默认值隐式兜住,属于**依赖默认行为而非显式声明**的残余。2026-10-12 清 247 个 lint 错误时实测触发 |
+| **已处置(2026-10-12)**:归位到 `scripts/run_q2b_collector_tests.py`(shebang 与内容不变,仍可直接运行),全仓零引用故无影响。实测确认 `collect_ignore` **拦不住显式传路径**——pytest 对命令行显式给出的文件仍会导入,照旧 INTERNALERROR,所以真正生效的只有物理移出 |
 
 ## D. 系统变化触发的新表面(这是"新问题"的真实来源,不是"问题无穷")
 

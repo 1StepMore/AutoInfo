@@ -84,7 +84,9 @@ cd <repo>
 
 **逐域明细**：见 `nightly/gap.md`（21 域语料 11–208 条、已跑源 ≥1、产物文件 ≥1、断言失败 0）。`已跑源/总源` 的差额仍是「配置了但未跑」的源，按 DoD ① 口径不构成域级差距。
 
-**本轮新记账（见摩擦账本）**：`nightly/gap.json` 的 `sources_healthy` 21 域全为 0（而 `sources_productive` 均 > 0），healthy/unhealthy 这对字段当前不提供可用信息；不影响 DoD（DoD ① 只用 `total_runs > 0` 与 `total_entries ≥ 10`），仅记账。
+**⚠️ 「归零」是本仓冻结 DoD 口径下的归零，不等于「产出没问题」**：DoD ① 只要求 `total_runs > 0` 且 `total_entries ≥ 10`，**没有新鲜度项**；而各源 `last_run` 实测停在 2026-10-01/02 ⇒ 语料 12+ 天未刷新，L1 §2.1 ① 「条目 `collected_at` 在 TTL 内」并不成立（口径分歧，见摩擦账本）。
+
+**本轮新记账（见摩擦账本）**：`nightly/gap.json` 的 `sources_healthy` 21 域全为 0（而 `sources_productive` 均 > 0），根因见摩擦账本该行。
 
 ### 2026-10-10 夜间复跑（在最新 main `1ff7bd41` 上）
 
@@ -171,7 +173,7 @@ cd <repo>
 | 2026-10-02 | 缺密钥源 Finnhub/AP/Guardian/SEC EDGAR/Reddit 仍 `enabled: true`，每次采集必失败刷日志 | 否 | 记账（owner 定是否配 key，见 L1 §2.1） |
 | 2026-10-02 | seed（`src/autoinfo/data/domains/*/sources.yaml`）≠ 物化副本（`.autoinfo/config.yaml`）：改 seed 不影响已存在项目的采集；`domain import` 对已存在域是 no-op，需 `sources remove/add` | 否 | 记账（已写进本轮操作记录；建议 runbook 固化） |
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
-| 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数（= 总数 − healthy − skipped），而 `sources_productive` 均 > 0 → healthy/unhealthy 这对字段当前不提供可用信息（未定位根因，可能是健康状态从不写 `healthy`，也可能是两侧口径不同） | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账，未深挖；不自行改判据脚本 |
+| 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账） |
 
 ---
 

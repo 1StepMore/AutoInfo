@@ -76,6 +76,16 @@ cd <repo>
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 
+### 2026-10-15 夜间复跑（在最新 main `428bb73d` 上）
+
+`nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**。断言：19 项 / 扫描 57 文件 / 失败 0。
+
+与 2026-10-10 复跑（同为零）合起来，**机器可判的差距连续 2 轮归零，期间无新增「挡住 DoD」项**（对应 L1 §6 第 1、2 条）。**最终裁决仍由 owner 保留**（见【冻结区】）——本文件只记录机器判据的结果，不代表「计划完成」。
+
+**逐域明细**：见 `nightly/gap.md`（21 域语料 11–208 条、已跑源 ≥1、产物文件 ≥1、断言失败 0）。`已跑源/总源` 的差额仍是「配置了但未跑」的源，按 DoD ① 口径不构成域级差距。
+
+**本轮新记账（见摩擦账本）**：`nightly/gap.json` 的 `sources_healthy` 21 域全为 0（而 `sources_productive` 均 > 0），healthy/unhealthy 这对字段当前不提供可用信息；不影响 DoD（DoD ① 只用 `total_runs > 0` 与 `total_entries ≥ 10`），仅记账。
+
 ### 2026-10-10 夜间复跑（在最新 main `1ff7bd41` 上）
 
 `nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**。断言：19 项 / 扫描 57 文件 / 失败 0。
@@ -161,6 +171,7 @@ cd <repo>
 | 2026-10-02 | 缺密钥源 Finnhub/AP/Guardian/SEC EDGAR/Reddit 仍 `enabled: true`，每次采集必失败刷日志 | 否 | 记账（owner 定是否配 key，见 L1 §2.1） |
 | 2026-10-02 | seed（`src/autoinfo/data/domains/*/sources.yaml`）≠ 物化副本（`.autoinfo/config.yaml`）：改 seed 不影响已存在项目的采集；`domain import` 对已存在域是 no-op，需 `sources remove/add` | 否 | 记账（已写进本轮操作记录；建议 runbook 固化） |
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
+| 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数（= 总数 − healthy − skipped），而 `sources_productive` 均 > 0 → healthy/unhealthy 这对字段当前不提供可用信息（未定位根因，可能是健康状态从不写 `healthy`，也可能是两侧口径不同） | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账，未深挖；不自行改判据脚本 |
 
 ---
 

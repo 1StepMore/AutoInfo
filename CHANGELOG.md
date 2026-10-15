@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.18](https://github.com/1StepMore/AutoInfo/compare/v1.17.17...v1.17.18) (2026-10-15)
+
+
+### Documentation
+
+* 登记 [#519](https://github.com/1StepMore/AutoInfo/issues/519) 残余；治理文档对齐实际在用标签体系 ([#523](https://github.com/1StepMore/AutoInfo/issues/523)) ([3203559](https://github.com/1StepMore/AutoInfo/commit/3203559018a89a9b8f6713309f9df2733d32cf55))
+
 ## [1.17.17](https://github.com/1StepMore/AutoInfo/compare/v1.17.16...v1.17.17) (2026-10-15)
 
 

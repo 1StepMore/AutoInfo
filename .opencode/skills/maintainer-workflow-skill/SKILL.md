@@ -33,31 +33,35 @@ release automation (`release-please.yml`), the ADR process
 
 ## Issue triage
 
-Flow: every issue starts as `needs-triage`. One pass, then it leaves that label.
+One pass over the labels below. Kind is the only group always required.
 
 1. **Verify template compliance.** Bug reports MUST fill the 回归场景 (regression
    scenario) field naming a scenario under `src/autoinfo/mcp/scenarios/regression/`
-   or "none (will add in PR)". Missing → `needs-info`, ping the reporter. Not
-   using the template → restructure or close with a link to it.
-2. **Classify Kind.** One of `kind/bug`, `kind/feature`, `kind/enhancement`,
-   `kind/docs`, `kind/regression`. A regression report should reference the
-   issue that introduced the behavior.
-3. **Set Priority.** `priority/critical-urgent` (blocks a release or corrupts
-   the KB), `priority/important-soon`, `priority/important-longterm`,
-   `priority/backlog`.
-4. **Apply Meta labels.** `meta/duplicate`, `meta/wontfix`, `meta/needs-info`,
-   `meta/help-wanted`, `meta/good-first-issue`.
+   or "none (will add in PR)". Missing → ask the reporter, close after one
+   unanswered round. Not using the template → restructure or close with a link
+   to it.
+2. **Classify Kind.** One of `bug` (definite defect), `enhancement` (improves or
+   adds capability), `documentation` (doc defect/gap), `tests` (test-suite or CI
+   defect), `epic` (umbrella over independent sub-items). A regression should
+   reference the issue that introduced the behavior — put that in the body, not
+   a label.
+3. **Set Priority** when an SLA is needed: `priority/P1` (blocks a release, a
+   required status check, or corrupts the KB), `priority/P2` (significant, not
+   release-blocking). No priority label = backlog.
+4. **Never hand-set** `needs-real-verification`, `release:*`, or `autorelease:*`
+   — the first is a closure gate, the others are maintained by automation.
 
 SLA for the first human response:
 
 | Priority | First response |
 |----------|----------------|
-| critical-urgent | within 24 hours |
-| everything else | within 7 days |
+| `priority/P1` | within 24 hours |
+| `priority/P2` | within 3 days |
+| unlabeled | within 14 days |
 
 Close rules:
 
-- **Missing info** → `meta/needs-info`, ping, close after one unanswered round.
+- **Missing info** → ask, close after one unanswered round.
 - **Duplicate** → close, link the original issue, thank the reporter.
 - **Wontfix** → close with explicit rationale in this order: thank → explain
   the scope mismatch → suggest a concrete improvement → link relevant docs.
@@ -69,6 +73,8 @@ Close rules:
   Failures → keep the issue open and apply `needs-real-verification`; clean
   (exit 0) → attach the generated `--md-out` / `--json-out` as the close
   evidence (see `GOVERNANCE.md` §Issue closure requires real-product evidence).
+  **A closed issue must never still carry `needs-real-verification`** — either
+  attach the evidence and drop the label, or reopen.
 
 ## PR review
 
@@ -165,10 +171,10 @@ pain appears. Each symptom gets a specific, minimal cure:
 
 | Symptom | Cure |
 |---------|------|
-| Duplicate issue flood | Stricter issue templates + `meta/duplicate` labeling discipline |
+| Duplicate issue flood | Stricter issue templates + `duplicate` labeling discipline |
 | Wrong reviewers on security-sensitive files | `CODEOWNERS` entries for those paths |
 | Merges keep breaking `main` | Strict status checks + up-to-date requirement (already enforced by the ruleset) |
-| Abandoned PR pile | Conservative stale bot: mark stale at 360 days, close at 30 days, exempt `kind/bug` and `meta/good-first-issue` |
+| Abandoned PR pile | Conservative stale bot: mark stale at 360 days, close at 30 days, exempt `bug` and `good-first-issue` |
 | Recurring wontfix requests | Update the docs, do not re-litigate the issue |
 
 **Never** run an aggressive stale bot (short mark/close windows). Abandoned
@@ -179,7 +185,7 @@ not the other way around.
 
 Before declaring a maintainer action complete:
 
-1. Issue: has labels (Kind + Priority + Meta where applicable), an SLA-compliant
+1. Issue: has labels (Kind always; Priority when an SLA applies), an SLA-compliant
    first response, and a close reason if closed.
 2. PR: CI green, title conforms, issue linked, release-note filled, 回归场景 for
    bugs, docs/ADR updated where required, every comment labeled blocking/nit,

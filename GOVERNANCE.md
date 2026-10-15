@@ -51,34 +51,38 @@ ADR rules:
 
 ## Issue triage
 
-AutoInfo follows the mature-project label taxonomy. Every new issue starts
-with `needs-triage`; a maintainer applies labels and removes that status once
-the issue is understood. Labels fall into four independent groups, and an
-issue may carry one label from each:
+AutoInfo uses GitHub's default issue labels plus a small set of repo-specific
+ones. Labels fall into four independent groups, and an issue may carry one
+label from each:
 
 | Group | Labels | Meaning |
 |-------|--------|---------|
-| **Status** | `needs-triage` | New issue, not yet reviewed |
-| | `triage/accepted` | Issue is real, agreed, ready for work |
-| | `in-progress` | Someone is actively working on it |
 | **Kind** | `bug` | Definite defect, unexpected behavior |
-| | `feature` | New capability that does not exist |
-| | `enhancement` | Improvement to an existing capability |
-| | `docs` | Documentation defect or gap |
-| | `regression` | Behavior that broke after a release |
-| **Priority** | `critical-urgent` | Blocks use; data loss or security impact |
-| | `important-soon` | Significant; should land in the next release window |
-| | `important-longterm` | Valuable but not time-bound |
-| | `backlog` | Tracked, not scheduled |
-| **Meta** | `duplicate` | Already tracked in another issue |
-| | `wontfix` | Accepted decision not to address |
-| | `needs-info` | Awaiting details from the reporter |
-| | `help-wanted` | Good for outside contributors |
-| | `good-first-issue` | Welcoming for first-time contributors |
+| | `enhancement` | Improvement to an existing capability, or a new one |
+| | `documentation` | Documentation defect or gap |
+| | `tests` | Test-suite / CI defect |
+| | `epic` | Umbrella issue tracking several independent sub-items |
+| **Priority** | `priority/P1` | Blocks a release, a required status check, or the KB |
+| | `priority/P2` | Significant, but not release-blocking |
+| **Gate** | `needs-real-verification` | Closure is blocked until the fix is verified on real-product output (see below) |
+| **Release** | `release:user-visible` | Change is user-visible even though its diff looks internal-only |
+| | `release:skip` | Change is intentionally not released |
+| | `autorelease:pending` / `autorelease:tagged` | Managed by release automation; do not set by hand |
 
-A `bug` that is also a regression carries both labels. `help-wanted` and
-`good-first-issue` are set by maintainers, not by reporters. Security reports
-follow `SECURITY.md` instead of the normal triage flow.
+Kind is the only group that is reliably present. Priority is set when the
+issue needs an SLA; issues with no priority label are backlog.
+
+`good-first-issue` and `help-wanted` are set by maintainers, not by reporters.
+Security reports follow `SECURITY.md` instead of the normal triage flow.
+
+> **Why no `needs-triage` status label.** An earlier revision of this
+> document prescribed a four-group taxonomy (`needs-triage`,
+> `triage/accepted`, `in-progress`, `kind/*`, `critical-urgent`, `backlog`,
+> …). Measured against all 267 issues, **not one** of those labels was ever
+> applied — the doc described an aspirational system that the repository
+> never adopted, which made every triage a fresh judgment call. This section
+> now documents the labels that are actually in use. If the richer taxonomy is
+> ever wanted, land it as labels-first plus a backfill, not as prose.
 
 ## Response SLA
 
@@ -88,10 +92,9 @@ Beyond that baseline, first response is prioritized by the Priority label:
 
 | Priority | First human response |
 |----------|----------------------|
-| `critical-urgent` | within 24 hours |
-| `important-soon` | within 3 days |
-| `important-longterm` | within 7 days |
-| `backlog` | within 14 days |
+| `priority/P1` | within 24 hours |
+| `priority/P2` | within 3 days |
+| unlabeled (backlog) | within 14 days |
 
 A response means a maintainer has acknowledged the report and said what
 happens next, not necessarily that it is resolved. `SECURITY.md` overrides

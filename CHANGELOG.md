@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.17](https://github.com/1StepMore/AutoInfo/compare/v1.17.16...v1.17.17) (2026-10-15)
+
+
+### Tests
+
+* **mcp:** 让 http 步骤用例改用进程内 loopback 服务，去掉公网依赖 ([#519](https://github.com/1StepMore/AutoInfo/issues/519)) ([#521](https://github.com/1StepMore/AutoInfo/issues/521)) ([95efabf](https://github.com/1StepMore/AutoInfo/commit/95efabf2176aa7bf8da15dc682b79c12376266a0))
+
 ## [1.17.16](https://github.com/1StepMore/AutoInfo/compare/v1.17.15...v1.17.16) (2026-10-12)
 
 

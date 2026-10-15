@@ -8,6 +8,7 @@ and ``run_validation_scenario``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import subprocess
@@ -958,42 +959,84 @@ steps:
       success: false
 """
 
-    HTTP_SCENARIO_YAML = """\
-name: http-scenario
-description: "HTTP execution scenario"
-category: happy_path
-requires_env: []
-pyramid_layer: component
-pipeline_stage: A7
-user_level: B2.5
-steps:
-  - name: "example.com reachable"
-    kind: http
-    method: GET
-    url: "https://example.com"
-    expect:
-      success: true
-      status_code: 200
-"""
+    @staticmethod
+    def _http_scenario_yaml(url: str) -> str:
+        return (
+            "name: http-scenario\n"
+            'description: "HTTP execution scenario"\n'
+            "category: happy_path\n"
+            "requires_env: []\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            '  - name: "example.com reachable"\n'
+            "    kind: http\n"
+            "    method: GET\n"
+            f'    url: "{url}"\n'
+            "    expect:\n"
+            "      success: true\n"
+            "      status_code: 200\n"
+        )
 
-    HTTP_JSON_SCENARIO_YAML = """\
-name: http-json-scenario
-description: "HTTP JSON body assertion"
-category: happy_path
-requires_env: []
-pyramid_layer: component
-pipeline_stage: A7
-user_level: B2.5
-steps:
-  - name: "jsonplaceholder returns json"
-    kind: http
-    method: GET
-    url: "https://jsonplaceholder.typicode.com/todos/1"
-    expect:
-      success: true
-      status_code: 200
-      json_has: ["userId", "id", "title"]
-"""
+    @staticmethod
+    def _http_json_scenario_yaml(url: str) -> str:
+        return (
+            "name: http-json-scenario\n"
+            'description: "HTTP JSON body assertion"\n'
+            "category: happy_path\n"
+            "requires_env: []\n"
+            "pyramid_layer: component\n"
+            "pipeline_stage: A7\n"
+            "user_level: B2.5\n"
+            "steps:\n"
+            '  - name: "jsonplaceholder returns json"\n'
+            "    kind: http\n"
+            "    method: GET\n"
+            f'    url: "{url}"\n'
+            "    expect:\n"
+            "      success: true\n"
+            "      status_code: 200\n"
+            '      json_has: ["userId", "id", "title"]\n'
+        )
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _local_http_endpoint() -> Any:
+        """Serve the two HTTP fixtures from an in-process loopback server.
+
+        The step under test (``_run_http_step``) intentionally makes a *real*
+        HTTP call (real socket, real status code, real JSON body) — only the
+        target must be local so the suite never depends on public network
+        reachability.  Yields the base URL, e.g. ``http://127.0.0.1:<port>``.
+        """
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args: Any) -> None:  # noqa: ANN002
+                pass
+
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path == "/todos/1":
+                    body = b'{"userId": 1, "id": 1, "title": "delectus aut autem"}'
+                    content_type = "application/json"
+                else:
+                    body = b"<html><body><h1>Example Domain</h1></body></html>"
+                    content_type = "text/html"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            yield f"http://127.0.0.1:{server.server_address[1]}"
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def _write(self, tmp_path: Path, name: str, content: str) -> Path:
         sd = tmp_path / "scenarios"
@@ -1024,14 +1067,24 @@ steps:
             load_scenarios(sd)
 
     async def test_http_success(self, tmp_path: Path) -> None:
-        sd = self._write(tmp_path, "http-scenario", self.HTTP_SCENARIO_YAML)
-        result = await run_scenario("http-scenario", dispatch=None, scenarios_dir=sd)
+        with self._local_http_endpoint() as base_url:
+            sd = self._write(
+                tmp_path, "http-scenario", self._http_scenario_yaml(f"{base_url}/")
+            )
+            result = await run_scenario("http-scenario", dispatch=None, scenarios_dir=sd)
         assert result["status"] == "passed"
         assert result["summary"]["passed"] == 1
 
     async def test_http_json_assert(self, tmp_path: Path) -> None:
-        sd = self._write(tmp_path, "http-json-scenario", self.HTTP_JSON_SCENARIO_YAML)
-        result = await run_scenario("http-json-scenario", dispatch=None, scenarios_dir=sd)
+        with self._local_http_endpoint() as base_url:
+            sd = self._write(
+                tmp_path,
+                "http-json-scenario",
+                self._http_json_scenario_yaml(f"{base_url}/todos/1"),
+            )
+            result = await run_scenario(
+                "http-json-scenario", dispatch=None, scenarios_dir=sd
+            )
         assert result["status"] == "passed"
         assert result["summary"]["passed"] == 1
 

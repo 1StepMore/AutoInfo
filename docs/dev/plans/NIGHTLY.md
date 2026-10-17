@@ -86,7 +86,7 @@ cd <repo>
 
 **⚠️ 「归零」是本仓冻结 DoD 口径下的归零，不等于「产出没问题」**：DoD ① 只要求 `total_runs > 0` 且 `total_entries ≥ 10`，**没有新鲜度项**；而各源 `last_run` 实测停在 2026-10-01/02 ⇒ 语料 12+ 天未刷新，L1 §2.1 ① 「条目 `collected_at` 在 TTL 内」并不成立（口径分歧，见摩擦账本）。
 
-**本轮新记账（见摩擦账本）**：`nightly/gap.json` 的 `sources_healthy` 21 域全为 0（而 `sources_productive` 均 > 0），根因见摩擦账本该行。
+**本轮新记账（见摩擦账本）**：`nightly/gap.json` 的 `sources_healthy` 21 域全为 0（而 `sources_productive` 均 > 0），根因见摩擦账本该行。**（已过时，2026-10-18 现状：`nightly/gap.json` 21 域 `sources_healthy` 均已 > 0；#531 统一 7 天口径后不再全 0。）**
 
 ### 2026-10-10 夜间复跑（在最新 main `1ff7bd41` 上）
 
@@ -169,11 +169,11 @@ cd <repo>
 |:---|:---|:---|:---|
 | 2026-10-02 | `_no_year_hallucination` 对非英文（Hindi）正文假阳：命名年份/前瞻启发式只认英文 → 合法 `2027` 被 P0 拦下 | **是**（挡 hindi-learning） | 已提 #444（含逐处复算证据）；**不自行放宽冻结区断言** |
 | 2026-10-02 | legal-compliance 生成产物被拒：候选条目全 stale，生成器按 #385 拒绝落空壳 | **是**（挡 legal-compliance） | 已进下一步队列第 5 项（换可用源） |
-| 2026-10-02 | 死链源 `wechat2rss`（feed_id 仍是占位 `<replace-me>` → 404）、`wanfang`（AppKey 为空 → 40x） | 否 | 记账（等 owner 定换源） |
+| 2026-10-02 | 死链源 `wechat2rss`（feed_id 仍是占位 `<replace-me>` → 404）、`wanfang`（AppKey 为空 → 40x） | 否 | 记账（等 owner 定换源）。**（已过时，2026-10-18 现状：`wechat2rss` / `wanfang` 均已 `enabled: false`。）** |
 | 2026-10-02 | 缺密钥源 Finnhub/AP/Guardian/SEC EDGAR/Reddit 仍 `enabled: true`，每次采集必失败刷日志 | 否 | 记账（owner 定是否配 key，见 L1 §2.1） |
 | 2026-10-02 | seed（`src/autoinfo/data/domains/*/sources.yaml`）≠ 物化副本（`.autoinfo/config.yaml`）：改 seed 不影响已存在项目的采集；`domain import` 对已存在域是 no-op，需 `sources remove/add` | 否 | 记账（已写进本轮操作记录；建议 runbook 固化） |
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
-| 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账） |
+| 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账）**（已过时，2026-10-18 现状：`nightly/gap.json` 21 域 `sources_healthy` 均已 > 0。）** |
 | 2026-10-17 | 10-15 行「等 owner 裁」收口：①「TTL 口径」→ #528 → PR #531（统一 7 天口径，复用 `status.py` `_is_recent`；owner 指令修复并合并）；②「跑批加采集步」不在本仓（e2e-test-suite #172） | 否 | 记账（随 #531 落地） |
 
 ---

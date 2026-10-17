@@ -1,3 +1,3 @@
 """Single source of truth for the AutoInfo package version."""
 
-__version__ = "1.17.18"  # x-release-please-version
+__version__ = "1.17.19"  # x-release-please-version

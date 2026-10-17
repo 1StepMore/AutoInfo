@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.20](https://github.com/1StepMore/AutoInfo/compare/v1.17.19...v1.17.20) (2026-10-17)
+
+
+### Documentation
+
+* **known-limitations:** 登记 [#526](https://github.com/1StepMore/AutoInfo/issues/526)——JSON 产品在散文断言扫描面之外（设计选择） ([#535](https://github.com/1StepMore/AutoInfo/issues/535)) ([89234e6](https://github.com/1StepMore/AutoInfo/commit/89234e60f7a294385af9bb3e59e37c3deb307bb2))
+
+
+### Miscellaneous Chores
+
+* **nightly:** 记录 2026-10-15 AutoInfo 夜间复跑（差距归零 21/21）+ 摩擦账本 1 条 ([#520](https://github.com/1StepMore/AutoInfo/issues/520)) ([4525280](https://github.com/1StepMore/AutoInfo/commit/45252804b7157a56a548b234f1177e2dcb3cbcdd))
+
 ## [1.17.19](https://github.com/1StepMore/AutoInfo/compare/v1.17.18...v1.17.19) (2026-10-17)
 
 

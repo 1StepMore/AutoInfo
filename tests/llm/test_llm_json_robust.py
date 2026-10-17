@@ -212,6 +212,16 @@ class TestParseJsonResponse:
         with pytest.raises(json.JSONDecodeError):
             parse_json_response('{"score": wiggle some words beside')
 
+    def test_unrepairable_brace_payload_still_raises(self) -> None:
+        """A ``{...}`` payload that survives no repair still fails cleanly.
+
+        Exercises the strategy-3 candidate loop's except/continue branch:
+        the brace-match candidate is tried, fails both the direct and the
+        repaired variant, and the function falls through to its final raise.
+        """
+        with pytest.raises(json.JSONDecodeError, match="Failed to parse"):
+            parse_json_response("prose {not json at all} prose")
+
 
 # ===================================================================
 # salvage_fields
@@ -276,6 +286,78 @@ class TestSalvageFields:
         with pytest.raises(TypeError):
             salvage_fields(["not", "a", "dict"])  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize("raw", ["%", " , ", "   "])
+    def test_numeric_string_without_digits_is_invalid(self, raw: str) -> None:
+        """A numeric-looking string with no digits cannot become a float."""
+        out, invalid = salvage_fields({"a": raw}, {"a": float})
+        assert out["a"] is None
+        assert invalid == ["a"]
+
+    def test_explicit_null_value_stays_valid(self) -> None:
+        """An explicit JSON ``null`` is honest data — kept, never flagged."""
+        out, invalid = salvage_fields({"a": None, "b": 1}, {"a": float, "b": int})
+        assert out["a"] is None
+        assert out["b"] == 1
+        assert invalid == []
+
+    def test_bool_expected_accepts_bool_only(self) -> None:
+        out, invalid = salvage_fields({"a": True, "b": 1}, {"a": bool, "b": bool})
+        assert out["a"] is True
+        assert out["b"] is None
+        assert invalid == ["b"]
+
+    def test_bool_to_str_is_word_form(self) -> None:
+        out, invalid = salvage_fields({"a": True, "b": False}, {"a": str, "b": str})
+        assert out["a"] == "true"
+        assert out["b"] == "false"
+        assert invalid == []
+
+    def test_float_value_passthrough(self) -> None:
+        out, invalid = salvage_fields({"a": 2.5}, {"a": float})
+        assert out["a"] == 2.5
+        assert invalid == []
+
+    def test_numeric_string_non_integral_to_int_is_invalid(self) -> None:
+        out, invalid = salvage_fields({"a": "3.5"}, {"a": int})
+        assert out["a"] is None
+        assert invalid == ["a"]
+
+    def test_number_to_str_is_stringified(self) -> None:
+        out, invalid = salvage_fields({"a": 7, "b": 2.5}, {"a": str, "b": str})
+        assert out["a"] == "7"
+        assert out["b"] == "2.5"
+        assert invalid == []
+
+    def test_container_to_str_is_invalid(self) -> None:
+        out, invalid = salvage_fields({"a": [1], "b": {"x": 1}}, {"a": str, "b": str})
+        assert out["a"] is None
+        assert out["b"] is None
+        assert invalid == ["a", "b"]
+
+    def test_list_expected_accepts_list_and_tuple(self) -> None:
+        out, invalid = salvage_fields({"a": [1, 2], "b": (3, 4)}, {"a": list, "b": list})
+        assert out["a"] == [1, 2]
+        assert out["b"] == [3, 4]
+        assert isinstance(out["b"], list)
+        assert invalid == []
+
+    def test_list_expected_rejects_scalar(self) -> None:
+        out, invalid = salvage_fields({"a": "x"}, {"a": list})
+        assert out["a"] is None
+        assert invalid == ["a"]
+
+    def test_dict_expected_accepts_dict_rejects_scalar(self) -> None:
+        out, invalid = salvage_fields({"a": {"x": 1}, "b": 5}, {"a": dict, "b": dict})
+        assert out["a"] == {"x": 1}
+        assert out["b"] is None
+        assert invalid == ["b"]
+
+    def test_generic_expected_type_isinstance_check(self) -> None:
+        out, invalid = salvage_fields({"a": (1, 2), "b": 5}, {"a": tuple, "b": tuple})
+        assert out["a"] == (1, 2)
+        assert out["b"] is None
+        assert invalid == ["b"]
+
 
 # ===================================================================
 # repair_json_once
@@ -320,6 +402,20 @@ class TestRepairJsonOnce:
 
         assert "score" in str(excinfo.value)
         assert "gateway down" in str(excinfo.value)
+
+    def test_non_jsondecodeerror_error_is_reraised_with_note(self) -> None:
+        """Non-JSONDecodeError failures keep their type and gain a note."""
+        original = ValueError("original parse boom")
+
+        def llm(prompt: str) -> str:
+            raise RuntimeError("gateway down")
+
+        with pytest.raises(ValueError) as excinfo:
+            repair_json_once('{"score": wiggle}', error=original, llm_call=llm)
+
+        assert excinfo.value is original
+        notes = getattr(original, "__notes__", [])
+        assert any("repair_json_once failed" in note for note in notes)
 
 
 # ===================================================================

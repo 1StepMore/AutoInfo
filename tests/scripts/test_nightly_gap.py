@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -66,12 +67,17 @@ APP_REVIEW_MSG = (
 ROBOTS_MSG = "robots.txt disallows /popular (HTTP 200 body: Disallow: /popular)"
 
 
-def _health(name: str, total_runs: int, status: str = "healthy") -> dict[str, Any]:
+def _health(
+    name: str,
+    total_runs: int,
+    status: str = "healthy",
+    last_run: str = "2026-08-10T00:00:00+00:00",
+) -> dict[str, Any]:
     """`autoinfo --json status` 里 source_health 的一个条目形状。"""
     return {
         "name": name,
         "status": status,
-        "last_run": "2026-08-10T00:00:00+00:00",
+        "last_run": last_run,
         "total_runs": total_runs,
     }
 
@@ -363,6 +369,34 @@ def test_corrupt_runs_json_does_not_crash(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# summarize_sources — 新鲜度（#528）
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_sources_reports_latest_last_run_and_stale_days(tmp_path: Path) -> None:
+    """``latest_last_run`` 取各源 ``last_run`` 的最大值；``stale_days`` 随之计算。"""
+    health = [
+        _health("a", 2, status="stale", last_run="2026-01-01T00:00:00+00:00"),
+        _health("b", 2, status="stale", last_run="2026-02-01T00:00:00+00:00"),
+    ]
+    agg = ng.summarize_sources(health, tmp_path / "collections", "d")
+
+    assert agg["latest_last_run"] == "2026-02-01T00:00:00+00:00"
+    assert isinstance(agg["stale_days"], int)
+    assert agg["stale_days"] > 7
+
+
+def test_summarize_sources_no_last_run_yields_none(tmp_path: Path) -> None:
+    """全空 ``last_run`` → 两个字段均为 ``None``（而不是 0 / 空串）。"""
+    agg = ng.summarize_sources(
+        [_health("a", 0, status="unknown", last_run="")], tmp_path / "collections", "d"
+    )
+
+    assert agg["latest_last_run"] is None
+    assert agg["stale_days"] is None
+
+
+# ---------------------------------------------------------------------------
 # main() 端到端（夹具替身，无子进程/无网络）
 # ---------------------------------------------------------------------------
 
@@ -513,3 +547,64 @@ def test_mixed_domain_counts_only_real_coverage(
     assert (unit["sources_ran"], unit["sources_total"], unit["sources_skipped"]) == (8, 11, 3)
     assert [e["source"] for e in unit["skipped_sources"]] == ["s0", "s1", "s2"]
     assert payload["skip_summary"]["by_reason"] == {ng.SKIP_REASON_ROBOTS: 3}
+
+
+# ---------------------------------------------------------------------------
+# #528 — ① 真语料的新鲜度判据（累计跑过不再算达标）
+# ---------------------------------------------------------------------------
+
+
+def test_stale_domain_fails_with_freshness_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """夹具域 A：源曾跑过 2 次但 ``last_run`` 超 7 天（status=stale）。
+
+    当前实现（#528 前）只看 ``ran>0`` + ``entries`` ⇒ 判 pass —— 这就是要修的假绿。
+    现在必须带「新鲜度」missing 且 ``passing=False``。
+    """
+    col = tmp_path / "collections"
+    stale_ts = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+    _write_runs(col, "d", "old", [_run("success", items=20, ts=stale_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources([_health("old", 2, status="stale", last_run=stale_ts)], col, "d"),
+        }
+    }
+
+    rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["d"])
+
+    assert rc == 1
+    unit = payload["units"][0]
+    assert unit["passing"] is False
+    assert any("新鲜度" in m for m in unit["missing"])
+    assert unit["sources_healthy"] == 0
+    assert unit["latest_last_run"] == stale_ts
+    assert unit["stale_days"] > 7
+    assert "新鲜度" in md
+
+
+def test_fresh_domain_passes_freshness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """夹具域 B：源 ``last_run`` 在 7 天内（status=healthy）⇒ ① 不产生 missing。"""
+    col = tmp_path / "collections"
+    fresh_ts = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    _write_runs(col, "d", "fresh", [_run("success", items=20, ts=fresh_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources(
+                [_health("fresh", 2, status="healthy", last_run=fresh_ts)], col, "d"
+            ),
+        }
+    }
+
+    rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["d"])
+
+    assert rc == 0
+    unit = payload["units"][0]
+    assert unit["passing"] is True
+    assert unit["missing"] == []
+    assert not any("新鲜度" in m for m in unit["missing"])
+    assert unit["stale_days"] <= 7

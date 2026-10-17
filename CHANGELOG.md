@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.22](https://github.com/1StepMore/AutoInfo/compare/v1.17.21...v1.17.22) (2026-10-17)
+
+
+### Bug Fixes
+
+* **nightly:** DoD ① 加新鲜度判据，采集停摆不再假绿 ([#528](https://github.com/1StepMore/AutoInfo/issues/528)) ([#531](https://github.com/1StepMore/AutoInfo/issues/531)) ([964b3aa](https://github.com/1StepMore/AutoInfo/commit/964b3aa8f8d57cd8f39651bf2e5c5fc519b45e9d))
+
 ## [1.17.21](https://github.com/1StepMore/AutoInfo/compare/v1.17.20...v1.17.21) (2026-10-17)
 
 

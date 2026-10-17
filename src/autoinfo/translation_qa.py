@@ -20,7 +20,7 @@ import json
 import logging
 from typing import Any
 
-from autoinfo.llm import call_with_fallback
+from autoinfo.llm import call_with_fallback, parse_json_response
 from autoinfo.prompts import get_prompt, render_prompt
 
 logger = logging.getLogger(__name__)
@@ -283,7 +283,7 @@ def llm_judge_translation(
         )
 
         content: str = response.choices[0].message.content
-        parsed = json.loads(content)
+        parsed = parse_json_response(content)
 
         faithfulness = max(0.0, min(100.0, float(parsed.get("faithfulness_score", 0))))
         raw_issues: list[dict[str, str]] = list(parsed.get("issues", []) or [])

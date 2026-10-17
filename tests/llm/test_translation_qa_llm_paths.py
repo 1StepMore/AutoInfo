@@ -180,6 +180,16 @@ class TestLlmJudgeTranslation:
         assert issue["description"].startswith("Failed to parse LLM response")
         assert issue["position"] == "n/a"
 
+    def test_repairable_json_is_salvaged_not_failed(self) -> None:
+        """Issue #533: single quotes + trailing comma no longer nuke the call."""
+        with patch(
+            "autoinfo.translation_qa.call_with_fallback",
+            return_value=_response("{'faithfulness_score': 80, 'issues': [],}"),
+        ):
+            result = llm_judge_translation("o", "b", "en", model="test/judge", timeout=1.0)
+        assert result["faithfulness_score"] == 80.0
+        assert result["issues"] == []
+
     def test_llm_call_failure_is_reported(self) -> None:
         with patch(
             "autoinfo.translation_qa.call_with_fallback",

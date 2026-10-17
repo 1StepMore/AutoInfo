@@ -568,7 +568,9 @@ def test_stale_domain_fails_with_freshness_missing(
     status = {
         "d": {
             "entries": 40,
-            **ng.summarize_sources([_health("old", 2, status="stale", last_run=stale_ts)], col, "d"),
+            **ng.summarize_sources(
+                [_health("old", 2, status="stale", last_run=stale_ts)], col, "d"
+            ),
         }
     }
 
@@ -584,9 +586,7 @@ def test_stale_domain_fails_with_freshness_missing(
     assert "新鲜度" in md
 
 
-def test_fresh_domain_passes_freshness(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_fresh_domain_passes_freshness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """夹具域 B：源 ``last_run`` 在 7 天内（status=healthy）⇒ ① 不产生 missing。"""
     col = tmp_path / "collections"
     fresh_ts = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()

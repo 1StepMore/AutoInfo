@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.23](https://github.com/1StepMore/AutoInfo/compare/v1.17.22...v1.17.23) (2026-10-17)
+
+
+### Bug Fixes
+
+* **llm:** parse_json_response 加文本级修复+字段级容错+一次二次修复；3 处裸 json.loads 逐处收口 ([#533](https://github.com/1StepMore/AutoInfo/issues/533)) ([#536](https://github.com/1StepMore/AutoInfo/issues/536)) ([60fe977](https://github.com/1StepMore/AutoInfo/commit/60fe977bf0fc765ecbd5a4944f40436ceb60db50))
+
 ## [1.17.22](https://github.com/1StepMore/AutoInfo/compare/v1.17.21...v1.17.22) (2026-10-17)
 
 

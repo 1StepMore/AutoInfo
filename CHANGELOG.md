@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.19](https://github.com/1StepMore/AutoInfo/compare/v1.17.18...v1.17.19) (2026-10-17)
+
+
+### Bug Fixes
+
+* **cli:** guard output digest --persist against no-data empty shells ([#525](https://github.com/1StepMore/AutoInfo/issues/525)) ([#527](https://github.com/1StepMore/AutoInfo/issues/527)) ([0ad9a01](https://github.com/1StepMore/AutoInfo/commit/0ad9a01dea789c18192f7e5410b6591d1b5d7c27))
+
 ## [1.17.18](https://github.com/1StepMore/AutoInfo/compare/v1.17.17...v1.17.18) (2026-10-15)
 
 

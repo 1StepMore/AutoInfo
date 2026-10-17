@@ -5,7 +5,7 @@
 它是 **冻结区** 的一部分：coding agent 只跑、不改。
 
 DoD（见 docs/dev/plans/NIGHTLY.md §完成定义）：21 个域，每域四条件同时成立
-  ① 真语料     该域 collected entries > 0
+  ① 真语料     该域 collected entries > 0，且至少 1 个源在 7 天内成功采集（新鲜度，#528）
   ② 真产物     该域 outputs/<domain>/ 下有持久化产物
   ③ 可溯源     产物断言无 P0/P1 失败（来源/占位/空壳 均由断言集覆盖）
   ④ 无占位     同上（占位符断言属于 P0/P1 集合）
@@ -55,6 +55,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -119,6 +120,21 @@ def _run_status(run: dict[str, Any]) -> str:
 
 def _run_has_items(run: dict[str, Any]) -> bool:
     return int(run.get("items_new") or 0) > 0 or int(run.get("items_found") or 0) > 0
+
+
+def _parse_iso_timestamp(timestamp: str) -> datetime | None:
+    """ISO 时间戳 → 带时区的 ``datetime``；解析失败返回 ``None``。
+
+    与 ``src/autoinfo/status.py`` 的 ``_is_recent`` 解析口径一致（``Z`` → ``+00:00``）；
+    无时区信息的历史条目按 UTC 读，避免 naive/aware 相减炸掉。
+    """
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def classify_skip_reason(runs: list[dict[str, Any]]) -> tuple[str, str]:
@@ -226,6 +242,24 @@ def summarize_sources(
         if str(s.get("status")) == "healthy" and not states[str(s.get("name") or "")]["skipped"]
     )
     total = len(health)
+
+    # 新鲜度（#528）：域内所有源 ``last_run`` 的**最大值** + 距今天 UTC 的天数。
+    # ``sources_healthy`` 已由上面的 ``healthy`` 算好，直接复用、不重算 7 天阈值 ——
+    # 阈值口径来源：src/autoinfo/status.py:160 的 ``_is_recent(last_run, days=7)``。
+    latest_last_run: str | None = None
+    latest_dt: datetime | None = None
+    for s in health:
+        lr = str(s.get("last_run") or "")
+        if not lr:
+            continue
+        dt = _parse_iso_timestamp(lr)
+        if dt is not None and (latest_dt is None or dt > latest_dt):
+            latest_dt = dt
+            latest_last_run = lr
+    stale_days: int | None = None
+    if latest_dt is not None:
+        stale_days = (datetime.now(timezone.utc).date() - latest_dt.date()).days
+
     return {
         "sources_total": total,
         "sources_ran": ran_before - len(skipped_names),
@@ -236,6 +270,8 @@ def summarize_sources(
         # 跳过的源既不算 healthy 也不算 unhealthy（它是第三类，不是坏源）
         "sources_healthy": healthy,
         "sources_unhealthy": total - healthy - len(skipped_names),
+        "latest_last_run": latest_last_run,
+        "stale_days": stale_days,
         "skipped_sources": [
             {
                 "source": name,
@@ -381,11 +417,19 @@ def main(argv: list[str] | None = None) -> int:
         #    仅看 entries>0 不够 —— 实测 19 个域在"从未跑过任何源"时
         #    仍报 entries=1（幻影计数/残渣），那样的门槛会被空跑满足。
         #    策略跳过的源不算跑过（#455），但要说清是被闸挡住，不是源坏了。
+        #    新鲜度（#528）：曾跑过 ≠ 现在还在采 —— 域内 0 个源在 7 天内成功采集
+        #    （sources_healthy==0）即判缺；阈值口径来源：src/autoinfo/status.py:160
+        #    的 _is_recent(last_run, days=7)，不在此另立常量。
         if ran <= 0:
             if skipped:
                 missing.append(f"真语料（该域没有任何源跑过：{skipped} 个源被策略跳过）")
             else:
                 missing.append("真语料（该域没有任何源跑过）")
+        elif s.get("sources_healthy", 0) == 0:
+            missing.append(
+                "真语料（新鲜度：该域 0 个源在 7 天内成功采集；"
+                f"最近一次 {s.get('latest_last_run') or '从未'}）"
+            )
         elif entries < args.min_entries:
             missing.append(f"真语料（{entries} 条 < 阈值 {args.min_entries}）")
         if not files:
@@ -399,6 +443,8 @@ def main(argv: list[str] | None = None) -> int:
                 sources_total=s.get("sources_total", 0),
                 sources_ran=ran,
                 sources_healthy=s.get("sources_healthy", 0),
+                latest_last_run=s.get("latest_last_run"),
+                stale_days=s.get("stale_days"),
                 sources_productive=s.get("sources_productive", 0),
                 sources_ran_empty=s.get("sources_ran_empty", 0),
                 sources_failed=s.get("sources_failed", 0),

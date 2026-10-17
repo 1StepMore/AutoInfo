@@ -25,7 +25,7 @@ import re
 import threading
 import time
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from autoinfo.config import (
     JUDGMENT_TASKS,
@@ -660,27 +660,314 @@ def parse_json_response(content: str | None) -> Any:
 
     # Strategy 1 — direct JSON
     try:
-        return json.loads(content)
+        return _json_loads(content)
     except (json.JSONDecodeError, TypeError):
         pass
+
+    # Strategy 1b — text-level repair, then direct JSON (issue #533)
+    repaired = _repair_json_text(content)
+    if repaired != content:
+        try:
+            return _json_loads(repaired)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     # Strategy 2 — markdown fenced code block
     match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
     if match:
-        try:
-            return json.loads(match.group(1))
-        except (json.JSONDecodeError, TypeError):
-            pass
+        for candidate in _repair_candidates(match.group(1)):
+            try:
+                return _json_loads(candidate)
+            except (json.JSONDecodeError, TypeError):
+                continue
 
     # Strategy 3 — bare JSON object anywhere in the text
     match = re.search(r"\{[\s\S]*\}", content)
     if match:
-        try:
-            return json.loads(match.group(0))
-        except (json.JSONDecodeError, TypeError):
-            pass
+        for candidate in _repair_candidates(match.group(0)):
+            try:
+                return _json_loads(candidate)
+            except (json.JSONDecodeError, TypeError):
+                continue
 
     raise json.JSONDecodeError("Failed to parse LLM response as JSON", content, 0)
+
+
+# ---------------------------------------------------------------------------
+# JSON tolerance helpers (issue #533)
+# ---------------------------------------------------------------------------
+
+#: Pre-existing JSON keywords that a bare-word repair must never overwrite.
+_JSON_LITERALS = frozenset({"true", "false", "null"})
+
+#: A bare (unquoted) object key: ``{key:`` or ``,key:``.
+_BARE_KEY_RE = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)")
+
+#: A bare identifier in value position: after ``:``, ``,`` or ``[`` and before
+#: ``,``, ``}`` or ``]``.  Example: ``{"score": wiggle}``.
+_BARE_VALUE_RE = re.compile(r"([:,\[]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*[,}\]])")
+
+#: ``NaN`` / ``Infinity`` / ``-Infinity`` as a bare token.
+_NAN_INF_RE = re.compile(r"(?<![\w\"'])-?(?:NaN|Infinity)(?![\w\"'])")
+
+#: A single-quoted JSON string (``'key'`` / ``'value'``).
+_SINGLE_QUOTED_RE = re.compile(r"'((?:[^'\\]|\\.)*)'")
+
+#: Trailing comma before a closing brace/bracket.
+_TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+
+#: A ``+`` sign on a number in value position (``: +5`` -> ``: 5``).
+_PLUS_NUMBER_RE = re.compile(r"([:,\[]\s*)\+(\d)")
+
+#: A bare percentage in value position (``: 30%`` -> ``: "30%"``).
+_BARE_PERCENT_RE = re.compile(r"([:,\[]\s*)(-?\d+(?:\.\d+)?%)(\s*[,}\]])")
+
+
+def _json_loads(text: str) -> Any:
+    """``json.loads`` that degrades non-standard ``NaN``/``Infinity`` to ``None``.
+
+    Python's decoder accepts ``NaN``/``Infinity`` and maps them to non-finite
+    floats even though JSON forbids them; AutoInfo treats such values as
+    unparseable and yields ``None`` instead (issue #533).
+    """
+    return json.loads(text, parse_constant=lambda _token: None)
+
+
+def _repair_bare_key(match: re.Match[str]) -> str:
+    return f'{match.group(1)}"{match.group(2)}"{match.group(3)}'
+
+
+def _repair_bare_value(match: re.Match[str]) -> str:
+    if match.group(2) in _JSON_LITERALS:
+        return match.group(0)
+    return f"{match.group(1)}null{match.group(3)}"
+
+
+def _repair_single_quotes(match: re.Match[str]) -> str:
+    inner = match.group(1).replace("\\'", "'")
+    return f'"{inner}"'
+
+
+def _repair_json_text(text: str) -> str:
+    """Best-effort repair of *illegal values inside* a JSON-looking string.
+
+    Only handles mechanical, unambiguous defects — trailing commas, single
+    quotes, ``NaN``/``Infinity``, a leading ``+``, a bare percentage, an
+    unquoted key, and a bare identifier in value position (``null``).  It is
+    deliberately conservative: when a defect cannot be repaired with certainty
+    the original (still-broken) text is returned unchanged rather than
+    guessed at, so :func:`parse_json_response` falls through to its other
+    strategies and, ultimately, still raises ``json.JSONDecodeError``.
+
+    Never raises.
+    """
+    text = _SINGLE_QUOTED_RE.sub(_repair_single_quotes, text)
+    text = _TRAILING_COMMA_RE.sub(r"\1", text)
+    text = _NAN_INF_RE.sub("null", text)
+    text = _PLUS_NUMBER_RE.sub(r"\1\2", text)
+    text = _BARE_PERCENT_RE.sub(r'\1"\2"\3', text)
+    text = _BARE_KEY_RE.sub(_repair_bare_key, text)
+    text = _BARE_VALUE_RE.sub(_repair_bare_value, text)
+    return text
+
+
+def _repair_candidates(text: str) -> list[str]:
+    """Return *text* and its repaired form for trial ``json.loads`` calls."""
+    repaired = _repair_json_text(text)
+    if repaired == text:
+        return [text]
+    return [text, repaired]
+
+
+def salvage_fields(
+    payload: dict[str, Any],
+    required: dict[str, type] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Coerce *payload* fields to an expected type schema.
+
+    For every field declared in *required*:
+
+    - a value already of the expected type (or losslessly convertible to it,
+      e.g. ``"30%"`` -> ``30.0`` for ``float``) is kept/coerced;
+    - a missing field, or a value that cannot be converted without data loss,
+      is set to ``None`` and its name is appended to ``invalid_fields``.
+
+    The input is never mutated — a shallow copy is returned.  With
+    ``required=None`` the copy is returned unchanged and no field is checked.
+
+    Parameters
+    ----------
+    payload:
+        The parsed JSON object to sanitise.
+    required:
+        Field name -> expected Python type.  ``None`` disables checking.
+
+    Returns
+    -------
+    tuple[dict, list[str]]
+        ``(payload', invalid_fields)``.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError(f"salvage_fields expected a dict, got {type(payload).__name__}")
+
+    result: dict[str, Any] = dict(payload)
+    invalid_fields: list[str] = []
+    if required is None:
+        return result, invalid_fields
+
+    for field_name, expected in required.items():
+        if field_name not in result:
+            invalid_fields.append(field_name)
+            result[field_name] = None
+            continue
+        coerced, ok = _coerce_field_value(result[field_name], expected)
+        if ok:
+            result[field_name] = coerced
+        else:
+            result[field_name] = None
+            invalid_fields.append(field_name)
+
+    return result, invalid_fields
+
+
+def _parse_numeric_string(value: str) -> float | None:
+    """Parse ``"30"`` / ``"30%"`` / ``"1,200"`` into a float, else ``None``."""
+    text = value.strip().replace(",", "")
+    if text.endswith("%"):
+        text = text[:-1]
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _coerce_field_value(value: Any, expected: type | None) -> tuple[Any, bool]:
+    """Losslessly coerce *value* to *expected*.
+
+    Returns ``(coerced, True)`` on success and ``(None, False)`` when the
+    conversion would lose information (or is undefined).
+    """
+    if expected is None or value is None:
+        return value, True
+
+    if expected is bool:
+        return (value, True) if isinstance(value, bool) else (None, False)
+
+    if isinstance(value, bool):
+        if expected is str:
+            return ("true" if value else "false"), True
+        return None, False
+
+    if expected is float:
+        if isinstance(value, float):
+            return value, True
+        if isinstance(value, int):
+            return float(value), True
+        if isinstance(value, str):
+            parsed = _parse_numeric_string(value)
+            if parsed is not None:
+                return parsed, True
+        return None, False
+
+    if expected is int:
+        if isinstance(value, int):
+            return value, True
+        if isinstance(value, float):
+            return (int(value), True) if value.is_integer() else (None, False)
+        if isinstance(value, str):
+            parsed = _parse_numeric_string(value)
+            if parsed is not None and float(parsed).is_integer():
+                return int(parsed), True
+        return None, False
+
+    if expected is str:
+        if isinstance(value, str):
+            return value, True
+        if isinstance(value, (int, float)):
+            return str(value), True
+        return None, False
+
+    if expected is list:
+        if isinstance(value, list):
+            return value, True
+        if isinstance(value, tuple):
+            return list(value), True
+        return None, False
+
+    if expected is dict:
+        return (value, True) if isinstance(value, dict) else (None, False)
+
+    if isinstance(value, expected):
+        return value, True
+    return None, False
+
+
+def repair_json_once(
+    raw_text: str | None,
+    *,
+    error: BaseException,
+    llm_call: Callable[[str], str],
+) -> Any:
+    """Ask the model once to re-emit a malformed JSON response.
+
+    A single repair attempt is assembled from the bad output plus the concrete
+    parse *error*; *llm_call* (injected by the caller, so tests can stub it and
+    production can reuse its existing channel) performs the call.  The returned
+    text is parsed through :func:`parse_json_response`.
+
+    The contract is one attempt only.  If the repair call fails or still does
+    not yield valid JSON, an exception ``error``'s message (carrying the
+    offending field, if any) is surfaced; a ``JSONDecodeError`` keeps that type
+    so callers can keep branching on it.
+
+    Parameters
+    ----------
+    raw_text:
+        The malformed LLM response.
+    error:
+        The original parse failure to echo back to the model.
+    llm_call:
+        ``prompt -> response_text``.
+
+    Returns
+    -------
+    Any
+        The parsed repaired JSON value.
+
+    Raises
+    ------
+    json.JSONDecodeError
+        If *error* is a ``JSONDecodeError`` (message enriched with the repair
+        failure).
+    BaseException
+        Otherwise the original *error*, re-raised with a chained cause.
+    """
+    prompt = (
+        "The following text was meant to be a single valid JSON value but "
+        "could not be parsed.\n\n"
+        f"Parse error: {error}\n\n"
+        f"Text:\n{raw_text}\n\n"
+        "Return ONLY the corrected JSON value. No prose, no markdown fences, "
+        "no explanation."
+    )
+    try:
+        repaired_text = llm_call(prompt)
+        return parse_json_response(repaired_text)
+    except Exception as repair_error:
+        message = (
+            "repair_json_once failed after one repair attempt "
+            f"(original error: {error}; repair attempt error: {repair_error})"
+        )
+        if isinstance(error, json.JSONDecodeError):
+            raise json.JSONDecodeError(message, error.doc, error.pos) from repair_error
+        try:
+            error.add_note(message)
+        except AttributeError:  # pragma: no cover - Python < 3.11
+            pass
+        raise error from repair_error
 
 
 def _completion_request(

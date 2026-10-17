@@ -22,7 +22,13 @@ from typing import Any, cast
 
 import typer
 
-from autoinfo.output import PRODUCT_TEMPLATES, DeliveryOutput, ProductTemplate, export_kb
+from autoinfo.output import (
+    PRODUCT_TEMPLATES,
+    DeliveryOutput,
+    ProductTemplate,
+    export_kb,
+    is_no_data_product,
+)
 
 from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
 
@@ -254,7 +260,7 @@ def digest(
             kwargs["product_template"] = product_template
         result = _output_text(generate_digest(**kwargs))
         persisted_path: str | None = None
-        if persist:
+        if persist and not is_no_data_product(result, format):
             import base64
             from datetime import datetime
 

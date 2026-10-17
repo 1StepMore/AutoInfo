@@ -174,6 +174,7 @@ cd <repo>
 | 2026-10-02 | seed（`src/autoinfo/data/domains/*/sources.yaml`）≠ 物化副本（`.autoinfo/config.yaml`）：改 seed 不影响已存在项目的采集；`domain import` 对已存在域是 no-op，需 `sources remove/add` | 否 | 记账（已写进本轮操作记录；建议 runbook 固化） |
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
 | 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账） |
+| 2026-10-17 | 10-15 行「等 owner 裁」收口：①「TTL 口径」→ #528 → PR #531（统一 7 天口径，复用 `status.py` `_is_recent`；owner 指令修复并合并）；②「跑批加采集步」不在本仓（e2e-test-suite #172） | 否 | 记账（随 #531 落地） |
 
 ---
 
@@ -184,3 +185,4 @@ cd <repo>
 | 日期 | 目标条款 | 理由 + 证据 | 裁定 |
 |:---|:---|:---|:---|
 | 2026-10-02 | DoD ③④「产物断言集无 P0/P1 失败」 | `_no_year_hallucination` 对非英文正文假阳（#444：Hindi 产物里源语料确实含 `2027`，仍被判 \"future year 2027\" P0）。建议断言改为**源对齐**（年份在源语料出现即放行）或按产物语言分派启发式。**未自行放宽，等地主裁定** | 待裁定 |
+| 2026-10-17 | DoD ①「真语料」 | 冻结 ① 无新鲜度项 → 采集停摆 15 天（143 源 0 healthy）仍判 21/21 假绿（#528 实测证据；与 L1 §2.1 ①「新鲜度在阈值内」口径分歧）。修复 PR #531 增加 `sources_healthy == 0` ⇒ missing 及 `latest_last_run`/`stale_days` 字段（统一 7 天口径，复用 `status.py` `_is_recent`；per-domain TTL 未采用） | 已裁：owner 2026-10-17 指令修复并合并 #531；冻结 ① 文本更新请 code profile 收口 |

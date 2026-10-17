@@ -14,11 +14,12 @@ writes). The report carries an AUTO-GENERATED header so hand edits are
 detectable; never hand-maintain the inventory — regenerate it.
 
 ``--check`` (no writes) verifies:
-  1. Cross-doc consistency of the seven drift-prone facts extracted from
-     README.md and AGENTS.md via regex (MCP tool count, CLI command groups,
-     delivery channels, validation scenarios, demo domains, LLM-required
-     tools, test count) — README value, AGENTS.md value, match/mismatch are
-     all reported.
+  1. Cross-doc consistency of the seven drift-prone facts via regex (MCP tool
+     count, CLI command groups, delivery channels, validation scenarios, demo
+     domains, LLM-required tools, test count). README.md is the single source
+     of truth and must carry each fact; AGENTS.md is pointer-only and optional
+     — a fact it does not carry is skipped (never a failure), but a value it
+     does carry must still match README.md.
   2. The same facts extracted from the doc-manager skill
      (``.opencode/skills/doc-manager-skill/SKILL.md``) agree with README.md —
      the skill's own numbers can no longer silently drift.
@@ -200,7 +201,9 @@ def render_report(rows: list[dict[str, Any]]) -> str:
 # --check: cross-doc consistency facts (README.md vs AGENTS.md vs SKILL.md)
 # ---------------------------------------------------------------------------
 
-#: (fact name, regex) — first match wins; pattern must hit BOTH README and AGENTS.
+#: (fact name, regex) — first match wins; README must hit each fact. AGENTS is
+#: optional (pointer-only): it may omit a fact (skipped, never a failure), but a
+#: value it does carry must still match README.
 FACTS: list[tuple[str, str]] = [
     ("MCP tool count", r"(\d+)\s+tools\s+across"),
     ("MCP categories", r"(\d+)\s+categories?"),
@@ -390,16 +393,25 @@ def run_check() -> list[str]:
     for fact, pattern in FACTS:
         rv = extract_number(readme_text, pattern)
         av = extract_number(agents_text, pattern)
-        match = rv is not None and rv == av
+        readme_values[fact] = rv
         rv_disp = rv if rv is not None else "not found"
-        av_disp = av if av is not None else "not found"
+        if av is None:
+            # AGENTS.md is pointer-only: not carrying the fact is fine; the
+            # README value is still required (single source of truth).
+            print(
+                f"  {fact}: README.md={rv_disp}, "
+                f"AGENTS.md=not carried (pointer-only) -> skip"
+            )
+            if rv is None:
+                failures.append(f"fact '{fact}': README.md=not found")
+            continue
+        match = rv is not None and rv == av
         print(
-            f"  {fact}: README.md={rv_disp}, AGENTS.md={av_disp} "
+            f"  {fact}: README.md={rv_disp}, AGENTS.md={av} "
             f"-> {'match' if match else 'MISMATCH'}"
         )
-        readme_values[fact] = rv
         if not match:
-            failures.append(f"fact '{fact}': README.md={rv_disp} vs AGENTS.md={av_disp}")
+            failures.append(f"fact '{fact}': README.md={rv_disp} vs AGENTS.md={av}")
 
     skill_text = read_text(SKILL) if SKILL.exists() else ""
     for fact, pattern in SKILL_FACTS:

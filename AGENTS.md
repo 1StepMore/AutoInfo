@@ -4,7 +4,7 @@
 
 AutoInfo is a **universal information tracking and knowledge base platform**. You configure sources and topics; AutoInfo handles collection, LLM-based structured extraction, summarization, and builds a queryable knowledge base.
 
-**Key principle**: Domain-agnostic. The 21 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, english-learning, french-learning, hindi-learning, italian-learning, korean-learning, portuguese-learning, russian-learning, spanish-learning) are configurations, not hardcoded features. Users define their own domains.
+**Key principle**: Domain-agnostic. The demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, english-learning, french-learning, hindi-learning, italian-learning, korean-learning, portuguese-learning, russian-learning, spanish-learning) are configurations, not hardcoded features. Users define their own domains.
 
 ## Agent Operating Model
 
@@ -17,7 +17,7 @@ Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP 
 ```
 
 1. **You (the agent)** connect to AutoInfo's MCP server over stdio (SSE transport is future work)
-2. **All capabilities** are exposed as MCP tools (149 tools across 35 categories)
+2. **All capabilities** are exposed as MCP tools (counts in `README.md` → Status table)
 3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
 4. **Human director** communicates intent to you in natural language; you translate to tool calls
 5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
@@ -86,7 +86,7 @@ AutoInfo/
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
 │   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
 │   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # 149 MCP tools across 35 categories
+│   │   │   ├── mcp-tools.md        # MCP tools catalog (counts in README.md Status table)
 │   │   │   ├── data-models.md      # Consolidated data model schemas
 │   │   │   ├── user-lifecycle-definition.md # Foundational user type definitions (B1/B2/B3)
 │   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
@@ -112,7 +112,7 @@ AutoInfo/
 │       ├── prompts.py                # Prompt registry + loader (issue #426): PROMPTS_DIR / list_prompts / get_prompt / render_prompt / PROMPT_VERSIONS / PROMPT_PLACEHOLDERS. `$name` placeholders — NOT `{name}` (several prompts carry literal JSON braces). Prompt text is byte-pinned in tests/test_prompts.py.
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
 │       ├── quality.py               # Quality gates G0-G7, D1-D3 delivery gates
-│       ├── delivery.py              # Delivery channel abstraction (13 channels)
+│       ├── delivery.py              # Delivery channel abstraction
 │       ├── delivery/scheduler.py    # Delivery schedule management (cron integration)
 │       ├── delivery/gate_report.py   # Per-product gate reports (01-QA-GATES/ md+json for validation delivery)
 │       ├── delivery/frequency_gate.py # Delivery frequency gate (free-tier frequency enforcement at cron add-delivery)
@@ -243,15 +243,17 @@ therefore fewer rebase cycles.
 
 ## Tool Discovery Guidance
 
-**149 MCP tools across 35 categories** — full catalog in `README.md` (MCP Tools table)
-and discoverable at runtime via `health_check()` → `tools/list` → `get_tool_count()`.
+The full MCP tools catalog — with the counts — lives in `README.md` (Status table
++ MCP Tools table) and is discoverable at runtime via `health_check()` →
+`tools/list` → `get_tool_count()`.
 Category → key-tool mapping is maintained in the README, not duplicated here.
 
 **Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
 
 
-**Validation**: `list_validation_scenarios` / `run_validation_scenario` — 182 scenarios
-(86 functional + 96 regression in `src/autoinfo/mcp/scenarios/regression/`); per-scenario timeout,
+**Validation**: `list_validation_scenarios` / `run_validation_scenario` — functional
+and regression scenarios (counts in `README.md` → Status table) under
+`src/autoinfo/mcp/scenarios/regression/`; per-scenario timeout,
 recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel;
 env-gated steps report `unconfigured` (never silently pass); `llm_assert` runs a real
 model call. Scenario authoring contract: `docs/dev/validation-scenario-contract.md`.
@@ -343,23 +345,13 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 
 ## Status
 
-Component-by-component status lives in **`README.md` → Status table** (the single
-authoritative component matrix; AGENTS.md and README are cross-checked by
-`scripts/doc_inventory.py --check` on the drift-prone facts below).
-
-Key counts the agent must know without opening README:
-
-| Fact | Value |
-|------|-------|
-| MCP tools | **149 tools across 35 categories** |
-| CLI command groups | **31 command groups** |
-| Delivery channels | **13 channels** |
-
-| Validation scenarios | **182 scenarios** (86 functional + 96 regression) |
-
-| Demo domains | **21 demo domains** |
-| LLM-required tools | **16 LLM-required tools** |
-| Test suite | **~6154 tests** |
+Component-by-component status and **all counts** live in **`README.md` → Status
+table** — that is the single source of truth; AGENTS.md deliberately does not
+duplicate them (pointer-only). For the concrete values, run
+`python3 scripts/doc_inventory.py`, which writes `docs/dev/doc-inventory.md`.
+`scripts/doc_inventory.py --check` still validates the README numbers against
+the code/CLI (live tool list, scenario files, pytest collection), so they cannot
+drift from reality.
 
 Operational invariants (full rules in Architecture Rules above and
 `docs/dev/acceptance-framework.md`):

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.21](https://github.com/1StepMore/AutoInfo/compare/v1.17.20...v1.17.21) (2026-10-17)
+
+
+### Miscellaneous Chores
+
+* **docs:** AGENTS.md 计数改指针化，去掉与 README 的双写 ([#529](https://github.com/1StepMore/AutoInfo/issues/529)) ([#532](https://github.com/1StepMore/AutoInfo/issues/532)) ([6bccd2a](https://github.com/1StepMore/AutoInfo/commit/6bccd2ac4d34a7e873149e94eb6dee53f619be2e))
+
 ## [1.17.20](https://github.com/1StepMore/AutoInfo/compare/v1.17.19...v1.17.20) (2026-10-17)
 
 

@@ -26,8 +26,20 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import doc_inventory as di  # noqa: E402  (sys.path insert above)
 
 
-def test_doc_inventory_check_passes() -> None:
-    """--check must exit 0: README↔AGENTS↔SKILL facts agree, no stray files."""
+def test_doc_inventory_check_passes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--check must exit 0 and AGENTS.md must be pointer-only.
+
+    Covers the whole gate: the real ``--check`` subprocess stays green, a
+    pointer-only AGENTS.md is *skipped* (not failed) for every fact, and an
+    AGENTS.md that carries a wrong number still trips MISMATCH (regression gate).
+
+    The pointer-only scenarios are exercised in-process (``run_check``) rather
+    than as extra collected test items: a new ``test_`` function would bump the
+    pytest-collected count, which the exact-count gate compares against README
+    (out of scope here — see issue #529).
+    """
     assert SCRIPT.exists(), f"Missing: {SCRIPT}"
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), "--check"],
@@ -40,6 +52,21 @@ def test_doc_inventory_check_passes() -> None:
         f"doc_inventory.py --check failed (exit {proc.returncode})\n"
         f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     )
+
+    agents = {"text": "## Status\n\nAll counts live in README.md.\n"}
+    _patch_agents(monkeypatch, agents)
+
+    # A pointer-only AGENTS.md (carrying no counts) skips every fact, fails none.
+    failures = di.run_check()
+    for fact, _ in di.FACTS:
+        assert not any(f.startswith(f"fact '{fact}'") for f in failures), (fact, failures)
+    out = capsys.readouterr().out
+    assert out.count("not carried (pointer-only) -> skip") == len(di.FACTS)
+
+    # ...but a number AGENTS.md does carry must still match README (regression gate).
+    agents["text"] = "## Status\n\nThere are 999 demo domains.\n"
+    failures = di.run_check()
+    assert any(f.startswith("fact 'Demo domains'") for f in failures), failures
 
 
 def test_environment_failure_is_none_in_a_healthy_env() -> None:
@@ -79,3 +106,21 @@ def test_check_reports_env_mismatch_instead_of_drift(
     assert "NOT documentation drift" in out
     assert "could not read live tool list" not in out
     assert "unparsable pytest output" not in out
+
+
+def _patch_agents(monkeypatch: pytest.MonkeyPatch, agents: dict[str, str]) -> None:
+    """Redirect ``di.run_check``'s AGENTS.md read to ``agents['text']``.
+
+    Only AGENTS.md is overridden (README/SKILL/docs stay real); the two live
+    subprocess probes are stubbed so the check stays fast and environment-free.
+    Mutating ``agents['text']`` between ``run_check()`` calls re-runs the check
+    against a different AGENTS.md without re-patching.
+    """
+    original_read_text = di.read_text
+    monkeypatch.setattr(
+        di,
+        "read_text",
+        lambda path: agents["text"] if Path(path) == di.AGENTS else original_read_text(path),
+    )
+    monkeypatch.setattr(di, "live_tool_names", lambda: (["tool_a", "tool_b"], None))
+    monkeypatch.setattr(di, "pytest_collected_count", lambda: (1, None))

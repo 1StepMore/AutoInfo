@@ -80,7 +80,7 @@ AutoInfo/
 │   ├── dev/
 │   │   ├── founder-expectations.md # Index doc (simplified; full content in specs/)
 │   │   ├── specs/                  # Extracted spec files (2026-07-26 restructuring)
-│   │   │   ├── expectations.md     # F01-F57 expectation catalog (57 expectations, 12 phases)
+│   │   │   ├── expectations.md     # F01-F72 expectation catalog (72 expectations, 16 phases)
 │   │   │   ├── quality-gates.md    # G0-G7, D1-D3 gate catalog & configuration + testing strategy
 │   │   │   ├── pipeline.md         # Collection pipeline, KB pipeline, LLM config, extraction, search, performance targets
 │   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
@@ -366,7 +366,7 @@ Operational invariants (full rules in Architecture Rules above and
 - `docs/dev/mcp-usage-examples.md` — Full worked MCP tool workflow examples (moved from Common Patterns)
 - `docs/dev/required-api-keys.md` — Full catalog of API keys and environment variables
 - `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
-- `docs/dev/specs/` — Extracted spec files (11 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md)
+- `docs/dev/specs/` — Extracted spec files (12 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md, end-user-matrix.yaml)
 - `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
 - `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (126 cells = 7×18; 42 catalogued gaps, 5 gap types). Supersedes archived gap-audit docs.
 - `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (A–E, 99 items); **generated** from `docs/dev/specs/end-user-matrix.yaml` (`report_demand`) by `scripts/coverage_matrix.py --render-enduser-doc`. Historical analysis: `docs/archive/enduser-coverage-matrix-analysis.md`.

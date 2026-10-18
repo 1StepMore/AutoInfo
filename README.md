@@ -373,8 +373,10 @@ Sources (RSS/API/Web)
 | Secret scanning | gitleaks v8.18.4 pre-commit hook + local `no-credential-url` guard (blocks token-authenticated GitHub URLs of the `https://<token>@` form and `ghp_`/`github_pat_` PAT prefixes in staged files) + the same pinned gitleaks release in CI (`.github/workflows/ci.yml` lint job, PR/push commit range) |
 
 Optional extras: `pip install "autoinfo[web]"` (Playwright),
-`"autoinfo[pdf]"` (PyMuPDF + weasyprint), `"autoinfo[tts]"` (edge-tts), or
-`"autoinfo[all]"` for everything.
+`"autoinfo[pdf]"` (PyMuPDF + weasyprint), `"autoinfo[tts]"` (edge-tts),
+`"autoinfo[video]"` (Pillow), `"autoinfo[ebook]"` (ebooklib + mutagen),
+`"autoinfo[akshare]"` (AKShare), or `"autoinfo[all]"` for everything
+(`all` already includes every extra above plus `dev`).
 
 ## CLI Commands (31 groups)
 
@@ -459,24 +461,24 @@ autoinfo mvp init|list               # Concierge MVP pilots: provision pilot use
 | **Medical Research** | PubMed (REST API), Semantic Scholar, arXiv, CrossRef, DBLP, OpenAlex, USPTO | 🔴 P0 | ✅ Implemented (7 curated sources) |
 | **AI Commercial Intelligence** | TechCrunch RSS, ProductHunt RSS, Crunchbase, 36kr | 🟡 P1 | ✅ Implemented (4 curated sources) |
 | **Financial/Business Intelligence** | Alpha Vantage, FRED, Finnhub, SEC EDGAR, Twelve Data, World Bank Data, Quandl/Nasdaq Data Link, CNBC Investing, TheStreet, MarketWatch Markets (DJ) | 🟡 P1 | ✅ Implemented (10 curated sources; WSJ Markets disabled) |
-| **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech), Stack Exchange, ProductHunt, Reddit, Bilibili, HN Algolia API, GitHub Blog | 🟡 P1 | ✅ Implemented (9 curated sources; Spotify AI Podcasts GFW-blocked, disabled) |
+| **Tech/AI/Developer** | GitHub Trending, HackerNews API, Substack RSS (tech) — Pragmatic Engineer, Stack Exchange, ProductHunt, Reddit, Bilibili (B站), HN Algolia API, GitHub Blog, hnrss, Ars Technica, TechCrunch AI, InfoQ 中文, Lobsters, 掘金 (Juejin), 量子位 (QbitAI) | 🟡 P1 | ✅ Implemented (16 curated sources; Spotify AI Podcasts GFW-blocked, disabled) |
 | **Language Learning** | Project Gutenberg, news-in-levels, commonlit | 🟢 P2 | ✅ Implemented (3 curated sources) |
-| **Online Video / OTT** | Variety, Hollywood Reporter, Netflix Tech Blog, Pitchfork, Billboard, Bilibili (popular), TheWrap | 🟡 P1 | ✅ Implemented (7 curated sources; YouTube/Apple Music GFW-blocked/dead, disabled) |
+| **Online Video / OTT** | Variety, Hollywood Reporter, Netflix Tech Blog, Pitchfork, Billboard, Bilibili (popular), TheWrap, The Verge, ComingSoon | 🟡 P1 | ✅ Implemented (9 curated sources; YouTube/Apple Music GFW-blocked/dead, disabled) |
 | **Financial News** | CNBC, Seeking Alpha, Microsoft Newsroom, WSJ RSS, MW RSS | 🟡 P1 | ✅ Implemented (5 curated sources; 5 dead/GFW feeds disabled) |
-| **Online Education** | Coursera Blog, Open Culture, Coursera, 万方 (Wanfang) | 🟢 P2 | ✅ Implemented (4 curated sources; EdSurge/Class Central/Khan/dedao/ncpssd GFW-blocked/dead, disabled) |
-| **Legal Compliance** | SCOTUSblog, Oyez, GDPR.eu | 🟢 P2 | ✅ Implemented (3 curated sources; IAPP/Law.com 404, disabled) |
-| **General News** | Guardian Open Platform, AP API, 知乎日报, wechat2rss (微信公众号), Wired, France24, NPR, Ars Technica, The Verge, Engadget, SpaceNews | 🟢 P2 | ✅ Implemented (11 curated sources; GDELT/Google News/NYT/Medium/Atlantic/Time/Mastodon/Bluesky GFW-blocked or throttled, disabled) |
-| **Gaming** | IGN RSS, GamesIndustry.biz, 机核网 gcores, GameSpot, PC Gamer, Eurogamer | 🟢 P2 | ✅ Implemented (6 curated sources; Polygon/游研社-via-GoogleNews disabled) |
-| **B2B / Enterprise** | ProductHunt, TechCrunch, Crunchbase News, HackerNews, SaaStr | 🟢 P2 | ✅ Implemented (5 curated sources; a16z feed 404, disabled) |
-| **Retail / E-commerce** | Retail Dive, Modern Retail, Shopify News, Digiday | 🟢 P2 | ✅ Implemented (4 curated sources; 亿邦-via-GoogleNews disabled) |
+| **Online Education** | Coursera Blog, EdSurge, Open Culture, Coursera, arXiv (cs.CY), Inside Higher Ed | 🟢 P2 | ✅ Implemented (6 curated sources; Class Central/Khan/dedao/ncpssd/wanfang GFW-blocked/dead, disabled) |
+| **Legal Compliance** | SCOTUSblog, Oyez, GDPR.eu, court.gov, 澎湃新闻 (The Paper) | 🟢 P2 | ✅ Implemented (5 curated sources; IAPP/Law.com 404, disabled) |
+| **General News** | Guardian Open Platform, AP API, 知乎日报, 界面新闻 (Jiemian), Wired, France24, NPR, Ars Technica, The Verge, Engadget, SpaceNews, 人民网 (People's Daily), CGTN, 新浪娱乐 (Sina) | 🟢 P2 | ✅ Implemented (14 curated sources; GDELT/Google News/NYT/Medium/Atlantic/Time/Mastodon/Bluesky/wechat2rss GFW-blocked or throttled, disabled) |
+| **Gaming** | IGN RSS, GamesIndustry.biz, 机核网 gcores, GameSpot, PC Gamer, Eurogamer, Rock Paper Shotgun, Gematsu | 🟢 P2 | ✅ Implemented (8 curated sources; Polygon/游研社-via-GoogleNews disabled) |
+| **B2B / Enterprise** | ProductHunt, TechCrunch, Crunchbase News, HackerNews, SaaStr, B2B News Network, MarTech | 🟢 P2 | ✅ Implemented (7 curated sources; a16z feed 404, disabled) |
+| **Retail / E-commerce** | Retail Dive, Modern Retail, Shopify News, Digiday, RetailWire | 🟢 P2 | ✅ Implemented (5 curated sources; 亿邦-via-GoogleNews disabled) |
 | **English Learning** | Duolingo Blog (RSS), NPR News (RSS) | 🟢 P2 | ✅ Implemented (2 curated sources) |
 | **French Learning** | France24 (RSS), Le Figaro (RSS) | 🟢 P2 | ✅ Implemented (2 curated sources) |
-| **Hindi Learning** | Aaj Tak (RSS) | 🟢 P2 | ✅ Implemented (1 curated source) |
-| **Italian Learning** | Corriere (RSS) | 🟢 P2 | ✅ Implemented (1 curated source) |
-| **Korean Learning** | Hankyoreh (RSS), Talk To Me In Korean (RSS) | 🟢 P2 | ✅ Implemented (2 curated sources) |
-| **Portuguese Learning** | Observador (RSS) | 🟢 P2 | ✅ Implemented (1 curated source) |
+| **Hindi Learning** | Aaj Tak (RSS), BBC Hindi (RSS), NDTV Khabar (RSS), Amar Ujala (RSS) | 🟢 P2 | ✅ Implemented (4 curated sources) |
+| **Italian Learning** | ANSA Cronaca, TGCOM24, Il Post | 🟢 P2 | ✅ Implemented (3 curated sources) |
+| **Korean Learning** | Donga, Khan | 🟢 P2 | ✅ Implemented (2 curated sources) |
+| **Portuguese Learning** | Observador (RSS), G1 Globo (RSS), Folha de S.Paulo (RSS), Público (RSS) | 🟢 P2 | ✅ Implemented (4 curated sources) |
 | **Russian Learning** | TASS (RSS), RT News (RSS), Interfax (RSS) | 🟢 P2 | ✅ Implemented (3 curated sources) |
-| **Spanish Learning** | 20 Minutos (RSS) | 🟢 P2 | ✅ Implemented (1 curated source) |
+| **Spanish Learning** | 20 Minutos (RSS), El País (RSS), El Mundo (RSS), BBC Mundo (RSS) | 🟢 P2 | ✅ Implemented (4 curated sources) |
 
 ## Development
 

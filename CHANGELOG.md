@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.24](https://github.com/1StepMore/AutoInfo/compare/v1.17.23...v1.17.24) (2026-10-18)
+
+
+### Miscellaneous Chores
+
+* **docs:** 冻结 DoD ① 收口为含 sources_healthy&gt;0 新鲜度（owner 2026-10-17 裁定 / [#531](https://github.com/1StepMore/AutoInfo/issues/531)） ([#542](https://github.com/1StepMore/AutoInfo/issues/542)) ([d3643a0](https://github.com/1StepMore/AutoInfo/commit/d3643a01fd7774a9f948ba96058e603d79447a91))
+
 ## [1.17.23](https://github.com/1StepMore/AutoInfo/compare/v1.17.22...v1.17.23) (2026-10-17)
 
 

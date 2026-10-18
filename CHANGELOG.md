@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.25](https://github.com/1StepMore/AutoInfo/compare/v1.17.24...v1.17.25) (2026-10-18)
+
+
+### Documentation
+
+* fix drifted counts/refs found by the 2026-10-18 drift audit ([#541](https://github.com/1StepMore/AutoInfo/issues/541)) ([0ce7e6e](https://github.com/1StepMore/AutoInfo/commit/0ce7e6eefbc5baecc68b1d6182330755ce884451))
+
 ## [1.17.24](https://github.com/1StepMore/AutoInfo/compare/v1.17.23...v1.17.24) (2026-10-18)
 
 

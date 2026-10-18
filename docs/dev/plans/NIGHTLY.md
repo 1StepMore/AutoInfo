@@ -15,7 +15,7 @@
 
 | # | 条件 | 判据（可机械计算） |
 |:--|:---|:---|
-| ① | **真语料** | 该域**至少 1 个源真的跑过**（`source_health[].total_runs > 0`）**且** `total_entries ≥ 10` |
+| ① | **真语料** | 该域**至少 1 个源真的跑过**（`source_health[].total_runs > 0`）**且** `total_entries ≥ 10` **且该域源新鲜**（`sources_healthy > 0`；复用 `status.py` 的 7 天口径 `_is_recent`，「最近一次采集 > 7 天」记为 stale） |
 | ② | **真产物** | `outputs/<domain>/` 下存在持久化产物（≥ 1 个文件） |
 | ③ | **可溯源** | 产物断言集（`real_product_assertions.py`）对该域产物**无 P0/P1 失败** |
 | ④ | **无占位** | 同 ③（空壳/占位符断言属 P0/P1 集合） |
@@ -185,4 +185,4 @@ cd <repo>
 | 日期 | 目标条款 | 理由 + 证据 | 裁定 |
 |:---|:---|:---|:---|
 | 2026-10-02 | DoD ③④「产物断言集无 P0/P1 失败」 | `_no_year_hallucination` 对非英文正文假阳（#444：Hindi 产物里源语料确实含 `2027`，仍被判 \"future year 2027\" P0）。建议断言改为**源对齐**（年份在源语料出现即放行）或按产物语言分派启发式。**未自行放宽，等地主裁定** | 待裁定 |
-| 2026-10-17 | DoD ①「真语料」 | 冻结 ① 无新鲜度项 → 采集停摆 15 天（143 源 0 healthy）仍判 21/21 假绿（#528 实测证据；与 L1 §2.1 ①「新鲜度在阈值内」口径分歧）。修复 PR #531 增加 `sources_healthy == 0` ⇒ missing 及 `latest_last_run`/`stale_days` 字段（统一 7 天口径，复用 `status.py` `_is_recent`；per-domain TTL 未采用） | 已裁：owner 2026-10-17 指令修复并合并 #531；冻结 ① 文本更新请 code profile 收口 |
+| 2026-10-17 | DoD ①「真语料」 | 冻结 ① 无新鲜度项 → 采集停摆 15 天（143 源 0 healthy）仍判 21/21 假绿（#528 实测证据；与 L1 §2.1 ①「新鲜度在阈值内」口径分歧）。修复 PR #531 增加 `sources_healthy == 0` ⇒ missing 及 `latest_last_run`/`stale_days` 字段（统一 7 天口径，复用 `status.py` `_is_recent`；per-domain TTL 未采用） | 已裁：owner 2026-10-17 指令修复并合并 #531；冻结 ① 文本更新请 code profile 收口。已收口（2026-10-18 · code profile）：冻结 ① 文本已按本裁定更新为「含 sources_healthy > 0 新鲜度要求」 |

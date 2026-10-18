@@ -58,9 +58,11 @@ validate:
 	@echo "  $(PY) scripts/agent_review/battery.py $(DIR)              # worklist preview"
 	@echo "  $(PY) scripts/agent_review/battery.py $(DIR) --semantic   # + LLM verdicts"
 
-# Documentation drift gate (issue #240): the generated end-user coverage view
-# and the doc inventory must both match their generators. Non-zero if either
-# drifts, so CI/humans catch hand-edits before they compound.
+# Documentation drift gate (issue #240, #540 follow-up): the generated
+# end-user coverage view, the demo-domains table (README, generated from
+# sources.yaml), and the doc inventory must all match their generators.
+# Non-zero if any drifts, so CI/humans catch hand-edits before they compound.
 doc-check:
 	$(PY) scripts/doc_inventory.py --check || exit 1
 	$(PY) scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md || exit 1
+	$(PY) scripts/gen_demo_domains_table.py --check || exit 1

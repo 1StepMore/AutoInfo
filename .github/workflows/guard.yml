@@ -83,3 +83,17 @@ jobs:
             exit 1
           fi
           echo "drift guard CLEAN"
+
+      # The README "Demo Domains" table is generated from
+      # src/autoinfo/data/domains/*/sources.yaml by
+      # scripts/gen_demo_domains_table.py; --check exits non-zero when the
+      # table drifts from the seed configs (issue #540 follow-up) — same
+      # rationale as the banned-string scan above: catch hand-edits before
+      # they compound.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Demo Domains table matches sources.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/gen_demo_domains_table.py --check

@@ -2,6 +2,13 @@
 # They are dormant snapshots of this repo; Dependabot running there only produced
 # noise (stale bound-widening PRs), so the file was removed from the mirrors on
 # 2026-10-05. Keep it out of any future "sync CI config from origin" pass.
+#
+# Dependency bumps do not change user-visible behavior, so they must not cut a
+# release or appear in the changelog. Without `release:skip`, `Release scope`
+# (a required check) fails EVERY dependency PR, including security updates,
+# because dependabot titles them `chore` while pyproject.toml is a user-visible
+# path (issue #547). Both labels below must exist in the repo, or dependabot
+# reports "labels could not be found".
 version: 2
 updates:
   - package-ecosystem: "pip"
@@ -12,6 +19,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "release:skip"
     ignore:
       # `update-types: ["version-update:semver-major"]` does NOT block these two:
       # it does not match a pip *constraint* widening, so mcp<2-><3 (#490) and
@@ -28,3 +36,4 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "release:skip"

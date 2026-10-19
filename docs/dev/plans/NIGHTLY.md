@@ -76,6 +76,15 @@ cd <repo>
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 
+### 2026-10-20 夜间复跑（在最新 main `abf948fb` 上）
+
+批跑（02:00，systemd `nightly-gap.service`，进程树外）：采集步 `ai-collect` **ok**（572s），`.venv/bin/python scripts/nightly_gap.py` **exit 0 —— 差距归零**（`nightly/gap.json`：`gap_units 0` / `passing_units 21` / `total_units 21`）。
+
+- 断言集 **19** 项；扫描 **57** 个文件；失败合计 **0**。21 域全部 ✅ 达标（语料与产物齐、占位符 0）。
+- 策略跳过源 1 个：`tech-ai-developer / Bilibili (B站)` — `app_review_required`（跳过 4/4 次，历史产出 0 次）；**不计覆盖、也不计源损坏**（#455）。
+- 同步基点：main `abf948fb`（由 `9f4769cc` 快进），六仓 `base.json` 无异常。
+- 读法：与上一次记录的复跑（2026-10-15，同样为零）一致 ⇒ **连续两轮机器可判差距归零、期间无新增「挡住 DoD」项**。**最终裁决仍由 owner 保留**（见【冻结区】）。
+
 ### 2026-10-15 夜间复跑（在最新 main `428bb73d` 上）
 
 `nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**。断言：19 项 / 扫描 57 文件 / 失败 0。

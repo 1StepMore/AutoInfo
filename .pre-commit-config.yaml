@@ -11,10 +11,10 @@
 # anything added below should also be covered by the CI gates.
 
 repos:
-  # Ruff rev mirrors the pyproject.toml pin (ruff==0.16.8) so the local hook
+  # Ruff rev mirrors the pyproject.toml pin (ruff==0.17.1) so the local hook
   # and the CI gate lint with the same rule set; bump both in the same change.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
+    rev: v0.17.1
     hooks:
       - id: ruff
         args: [--fix]

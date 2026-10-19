@@ -104,14 +104,14 @@ jobs:
       - name: Ruff gate on source
         run: ruff check --select E9,F --output-format=github src/
       # Full-src ruff: informational drift surface for the whole tree.
-      # The dev extra pins ruff==0.16.8 so this number is reproducible and
-      # comparable between local runs and CI. Under that pin: 287 pre-existing
-      # errors across the tree (E501×141, I001×55, F401×46, N803×11, F841×11,
-      # W292×6, F821×6, N806×4, N817×3, N802×2, F541×1, F811×1;
-      # line-length=100). Informational only — changed-files ruff (above) is
-      # the required gate. Cleanup is a separate tracked work item; if the
-      # count moves, update it here AND in pyproject.toml's per-file-ignores
-      # note. Do not re-range the pin.
+      # The dev extra pins ruff==0.17.1 so this number is reproducible and
+      # comparable between local runs and CI (per-file-ignores in
+      # pyproject.toml are part of the effective config). Under that pin the
+      # tree is clean: 0 errors, "All checks passed!" (2026-10-20). The 287
+      # pre-existing errors once recorded here have been cleaned up.
+      # Informational only — changed-files ruff (above) is the required gate.
+      # If the count moves, update it here AND in pyproject.toml's
+      # per-file-ignores note. Do not re-range the pin.
       - name: Ruff on full source
         run: ruff check src/ tests/
         continue-on-error: true

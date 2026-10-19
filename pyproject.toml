@@ -138,22 +138,26 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 
-# Pre-existing lint debt — CI yml declares "Cleanup is a separate tracked
-# work item" (287 pre-existing errors tree-wide under the pinned
-# ruff==0.17.1).  server.py rows injected by direct commit 2026-08-08
-# bypassing PR gates; never lint-cleaned.  Suppressing here so the
-# changed-files gate catches NEW errors without blocking legacy file touches.
+# Pre-existing lint debt — suppressing here so the changed-files gate catches
+# NEW errors without blocking legacy file touches. The full-tree run under
+# the pinned ruff==0.17.1 is clean (0 errors, "All checks passed!",
+# 2026-10-20) because the entries below mask the remaining per-file findings
+# (server.py 229 / video.py 37 / delivery/__init__.py 1); they stay until
+# those files are lint-cleaned. server.py rows injected by direct commit
+# 2026-08-08 bypassing PR gates; never lint-cleaned.
 [tool.ruff.lint.per-file-ignores]
 "src/autoinfo/mcp/server.py" = ["E501", "F841", "N806"]
-# video.py: added 2026-08-13 (64daae5) with 39 pre-existing E501 long lines;
-# never lint-cleaned. Suppressing here so the changed-files gate catches NEW
-# errors without blocking legacy file touches (same rationale as server.py).
+# video.py: added 2026-08-13 (64daae5) with 37 pre-existing E501 long lines
+# (re-measured 2026-10-20); never lint-cleaned. Suppressing here so the
+# changed-files gate catches NEW errors without blocking legacy file touches
+# (same rationale as server.py).
 "src/autoinfo/output/video.py" = ["E501"]
-# delivery/__init__.py: legacy file with 8 pre-existing E501 long lines in
-# channel docstrings and an unsorted import block; never lint-cleaned.
-# Suppressing here so the changed-files gate catches NEW errors without
+# delivery/__init__.py: legacy file with 1 pre-existing E501 long line in
+# channel docstrings (re-measured 2026-10-20); the former I001 suppression is
+# dropped because the import block is sorted. Never lint-cleaned; the
+# suppression keeps the changed-files gate catching NEW errors without
 # blocking legacy file touches (same rationale as server.py / video.py).
-"src/autoinfo/delivery/__init__.py" = ["E501", "I001"]
+"src/autoinfo/delivery/__init__.py" = ["E501"]
 # tests/ carries unbreakable long string literals on purpose: fixture URLs,
 # SQL fragments, skip reasons and cassette payloads. `ruff format` cannot
 # split a string, so E501 there is unreachable-by-fix noise that only blocks

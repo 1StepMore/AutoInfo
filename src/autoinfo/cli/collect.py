@@ -283,6 +283,15 @@ def _check_requested_sources(results: list[dict[str, Any]]) -> None:
         raise typer.Exit(code=1)
 
 
+def _count_notes(filtered: int, duplicate: int) -> str:
+    notes = []
+    if filtered:
+        notes.append(f"{filtered} filtered")
+    if duplicate:
+        notes.append(f"{duplicate} dup-skipped")
+    return f" ({', '.join(notes)})" if notes else ""
+
+
 def _make_progress_printer() -> Callable[[Any], None]:
     """Return a callback printing a live per-source progress line.
 
@@ -299,13 +308,12 @@ def _make_progress_printer() -> Callable[[Any], None]:
 
     def _on_source_done(src_result: Any) -> None:
         icon = icons.get(src_result.status, "?")
+        filtered = getattr(src_result, "items_filtered", 0) or 0
+        duplicate = getattr(src_result, "items_duplicate", 0) or 0
         line = (
             f"  {icon} {src_result.source}: {src_result.items_new} new / "
-            f"{src_result.items_found} found"
+            f"{src_result.items_found} found{_count_notes(filtered, duplicate)}"
         )
-        filtered = getattr(src_result, "items_filtered", 0) or 0
-        if filtered:
-            line += f" ({filtered} filtered)"
         print(f"{line} ({src_result.duration_s:.1f}s)", flush=True)
 
     return _on_source_done
@@ -324,12 +332,12 @@ def _print_human(result: dict[str, Any]) -> None:
             "skipped": "–",
         }.get(src["status"], "?")
 
-        line = (
-            f"  {status_icon} {src['source']}: {src['items_new']} new / {src['items_found']} found"
-        )
         filtered = src.get("items_filtered", 0) or 0
-        if filtered:
-            line += f" ({filtered} filtered)"
+        duplicate = src.get("items_duplicate", 0) or 0
+        line = (
+            f"  {status_icon} {src['source']}: {src['items_new']} new / "
+            f"{src['items_found']} found{_count_notes(filtered, duplicate)}"
+        )
         typer.echo(f"{line} ({src['duration_s']:.1f}s)")
 
         for err in src.get("errors", []):
@@ -342,6 +350,7 @@ def _print_human(result: dict[str, Any]) -> None:
     typer.echo(
         f"Total: {result['total_new']} new items from {result['total_found']} found "
         f"in {result['duration_s']:.1f}s"
+        f"{_count_notes(0, result.get('items_duplicate', 0) or 0)}"
     )
 
 

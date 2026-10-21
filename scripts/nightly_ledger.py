@@ -3,8 +3,11 @@
 
 `docs/dev/plans/nightly-ledger.jsonl` is the single source of truth for the
 four live sections of `docs/dev/plans/NIGHTLY.md`. The frozen zone
-(完成定义 / 验收命令) is never touched: the renderer only replaces text between
-the `LEDGER:BEGIN <name>` / `LEDGER:END <name>` marker pairs.
+(完成定义 / 验收命令) is never touched: the renderer owns the whole live zone,
+from the `## 【活区】当前差距矩阵` heading to EOF. The
+`LEDGER:BEGIN <name>` / `LEDGER:END <name>` markers are human-readable anchors
+only — `--check` compares the entire live segment byte-for-byte, so hand-edits
+outside a marker pair are caught too.
 
 Four event kinds:
 
@@ -37,7 +40,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 NIGHTLY_PATH = REPO_ROOT / "docs" / "dev" / "plans" / "NIGHTLY.md"
 LEDGER_PATH = REPO_ROOT / "docs" / "dev" / "plans" / "nightly-ledger.jsonl"
 
-BLOCK_NAMES = ("gap_snapshot", "next_queue", "friction_log", "revision_requests")
+LIVE_ZONE_HEADING = "## 【活区】当前差距矩阵"
+LIVE_SECTIONS = (
+    ("## 【活区】当前差距矩阵（2026-10-02 夜间循环）", "gap_snapshot"),
+    ("## 【活区】下一步队列", "next_queue"),
+    ("## 【活区】摩擦账本", "friction_log"),
+    ("## 【活区】修订请求", "revision_requests"),
+)
+BLOCK_NAMES = tuple(name for _, name in LIVE_SECTIONS)
 EVENT_KINDS = ("gap_snapshot", "queue_item", "friction", "revision_request")
 SNAPSHOT_LIMIT = 10
 
@@ -186,67 +196,50 @@ def build_blocks(events: list[dict]) -> dict[str, str]:
     }
 
 
-def _block_bounds(text: str, name: str) -> tuple[int, int]:
-    """Return (content_start, end_marker_line_start) for one marker pair."""
-    begin = f"<!-- LEDGER:BEGIN {name} -->"
-    end = f"<!-- LEDGER:END {name} -->"
-
-    begin_at = text.find(begin)
-    if begin_at < 0:
-        raise SystemExit(f"{NIGHTLY_PATH}: missing marker {begin!r}")
-    begin_newline = text.find("\n", begin_at)
-    if begin_newline < 0:
-        raise SystemExit(f"{NIGHTLY_PATH}: begin marker {name!r} is not on its own line")
-
-    end_at = text.find(end, begin_newline)
-    if end_at < 0:
-        raise SystemExit(f"{NIGHTLY_PATH}: missing marker {end!r}")
-    end_line_start = text.rfind("\n", 0, end_at) + 1
-    if text[end_line_start:end_at].strip():
-        raise SystemExit(f"{NIGHTLY_PATH}: end marker {name!r} is not on its own line")
-
-    if end_line_start < begin_newline:
-        raise SystemExit(f"{NIGHTLY_PATH}: markers out of order for {name!r}")
-    return begin_newline + 1, end_line_start
-
-
-def _current_content(text: str, name: str) -> str:
-    start, end = _block_bounds(text, name)
-    content = text[start:end]
-    if content.endswith("\n"):
-        content = content[:-1]
-    return content
-
-
-def check(path: Path, blocks: dict[str, str]) -> bool:
-    text = path.read_text(encoding="utf-8")
-    ok = True
-    for name in BLOCK_NAMES:
-        current = _current_content(text, name)
-        expected = blocks[name]
-        if current == expected:
-            continue
-        ok = False
-        print(f"DRIFT: {name} does not match the ledger", file=sys.stderr)
-        diff = difflib.unified_diff(
-            current.splitlines(),
-            expected.splitlines(),
-            fromfile=f"{path.name} [{name}]",
-            tofile=f"{LEDGER_PATH.name} [{name}]",
-            lineterm="",
-        )
-        print("\n".join(diff), file=sys.stderr)
-    return ok
-
-
-def write(path: Path, blocks: dict[str, str]) -> None:
-    text = path.read_text(encoding="utf-8")
-    for name in BLOCK_NAMES:
-        start, end = _block_bounds(text, name)
+def render_live_zone(events: list[dict]) -> str:
+    """Render the entire live zone, headings and separators included."""
+    blocks = build_blocks(events)
+    sections: list[str] = []
+    for heading, name in LIVE_SECTIONS:
+        lines = [heading, f"<!-- LEDGER:BEGIN {name} -->"]
         content = blocks[name]
-        replacement = f"{content}\n" if content else ""
-        text = text[:start] + replacement + text[end:]
-    path.write_text(text, encoding="utf-8")
+        if content:
+            lines.append(content)
+        lines.append(f"<!-- LEDGER:END {name} -->")
+        sections.append("\n".join(lines))
+    return "\n\n---\n\n".join(sections) + "\n"
+
+
+def live_zone_start(text: str) -> int:
+    """Return the byte offset where the hand-editable live zone begins."""
+    start = text.find(LIVE_ZONE_HEADING)
+    if start < 0:
+        raise SystemExit(f"{NIGHTLY_PATH}: missing live zone heading {LIVE_ZONE_HEADING!r}")
+    return start
+
+
+def check(path: Path, rendered: str) -> bool:
+    text = path.read_text(encoding="utf-8")
+    current = text[live_zone_start(text) :]
+    if current == rendered:
+        return True
+
+    print("DRIFT: live zone does not match the ledger", file=sys.stderr)
+    diff = difflib.unified_diff(
+        current.splitlines(),
+        rendered.splitlines(),
+        fromfile=f"{path.name} [live zone]",
+        tofile=f"{LEDGER_PATH.name} [live zone]",
+        lineterm="",
+    )
+    print("\n".join(diff), file=sys.stderr)
+    return False
+
+
+def write(path: Path, rendered: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    frozen = text[: live_zone_start(text)]
+    path.write_text(frozen + rendered, encoding="utf-8")
 
 
 def append_event(path: Path, raw: str) -> dict:
@@ -286,17 +279,17 @@ def main(argv: list[str] | None = None) -> int:
         append_event(LEDGER_PATH, args.append)
 
     events = load_events(LEDGER_PATH)
-    blocks = build_blocks(events)
+    rendered = render_live_zone(events)
 
     if args.check:
-        if check(NIGHTLY_PATH, blocks):
+        if check(NIGHTLY_PATH, rendered):
             print("nightly ledger: NIGHTLY.md live zone is in sync")
             return 0
         print("nightly ledger: NIGHTLY.md live zone is STALE — run --write", file=sys.stderr)
         return 1
 
-    write(NIGHTLY_PATH, blocks)
-    print(f"nightly ledger: wrote {len(BLOCK_NAMES)} live blocks to {NIGHTLY_PATH}")
+    write(NIGHTLY_PATH, rendered)
+    print(f"nightly ledger: wrote the live zone to {NIGHTLY_PATH}")
     return 0
 
 

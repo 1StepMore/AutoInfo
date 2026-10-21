@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.27](https://github.com/1StepMore/AutoInfo/compare/v1.17.26...v1.17.27) (2026-10-21)
+
+
+### Miscellaneous Chores
+
+* **nightly:** 记录 2026-10-20 / 10-21 夜间复跑结果（AutoInfo 21/21 达标） ([#553](https://github.com/1StepMore/AutoInfo/issues/553)) ([ca42900](https://github.com/1StepMore/AutoInfo/commit/ca429006f65b33824ef2813455423af68178abb2))
+
 ## [1.17.26](https://github.com/1StepMore/AutoInfo/compare/v1.17.25...v1.17.26) (2026-10-19)
 
 

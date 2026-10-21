@@ -17,6 +17,7 @@ monkeypatch 成夹具。
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -98,10 +99,43 @@ def _outputs_dir(tmp_path: Path, *domains: str) -> Path:
     return d
 
 
+def _created(dt: datetime) -> str:
+    """``entries.created_at`` 的真实格式：``YYYY-MM-DD HH:MM:SS``（UTC，无时区）。"""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _make_entries_db(path: Path, rows: list[tuple[str, str, str, int]]) -> Path:
+    """造一个最小 ``entries`` 表：(domain, created_at, collected_at, deleted)。"""
+    con = sqlite3.connect(path)
+    try:
+        con.execute(
+            "CREATE TABLE entries ("
+            "entry_id TEXT PRIMARY KEY, domain TEXT, created_at TEXT, "
+            "collected_at TEXT, deleted INTEGER DEFAULT 0)"
+        )
+        con.executemany(
+            "INSERT INTO entries (entry_id, domain, created_at, collected_at, deleted) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(f"e{i}", *row) for i, row in enumerate(rows)],
+        )
+        con.commit()
+    finally:
+        con.close()
+    return path
+
+
 def _run_main(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: dict[str, dict], domains: list[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: dict[str, dict],
+    domains: list[str],
+    db: Path | None = None,
 ) -> tuple[int, dict, str]:
-    """跑 main() 一次（status 用夹具替身），返回 (退出码, gap.json, gap.md)。"""
+    """跑 main() 一次（status 用夹具替身），返回 (退出码, gap.json, gap.md)。
+
+    ``db`` 缺省指向一个不存在的路径 → 产出轴标 ``unavailable``，既有用例保持
+    原期望（新增产出轴用例显式传临时 DB）。
+    """
     monkeypatch.setattr(ng, "status_by_domain", lambda python, collections=None: status)
     jp, mp = tmp_path / "gap.json", tmp_path / "gap.md"
     rc = ng.main(
@@ -112,6 +146,8 @@ def _run_main(
             str(_outputs_dir(tmp_path, *domains)),
             "--collections",
             str(tmp_path / "collections"),
+            "--db",
+            str(db if db is not None else tmp_path / "missing.db"),
             "--skip-assertions",
             "--json-out",
             str(jp),
@@ -608,3 +644,174 @@ def test_fresh_domain_passes_freshness(tmp_path: Path, monkeypatch: pytest.Monke
     assert unit["missing"] == []
     assert not any("新鲜度" in m for m in unit["missing"])
     assert unit["stale_days"] <= 7
+
+
+# ---------------------------------------------------------------------------
+# #554 — 产出轴：读 entries.created_at，不再只信 last_run
+# ---------------------------------------------------------------------------
+
+_NOW_FIXED = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
+
+
+def test_entries_freshness_counts_new_and_stale_content(tmp_path: Path) -> None:
+    """入库时间看 created_at；collected_at 只用来判内容陈旧；软删不计。"""
+    db = _make_entries_db(
+        tmp_path / "autoinfo.db",
+        [
+            # 新入库 + 新内容
+            ("d", _created(_NOW_FIXED - timedelta(days=1)), "2026-10-20T10:00:00+00:00", 0),
+            # 新入库 + 旧内容（late collect）
+            ("d", _created(_NOW_FIXED - timedelta(days=2)), "2026-09-01T10:00:00+00:00", 0),
+            # 旧入库（不进 7 天窗口）
+            ("d", _created(_NOW_FIXED - timedelta(days=30)), "2026-09-01T10:00:00+00:00", 0),
+            # 软删：即便新入库也不计
+            ("d", _created(_NOW_FIXED - timedelta(days=1)), "2026-10-20T10:00:00+00:00", 1),
+            # 别的域不受影响
+            ("other", _created(_NOW_FIXED - timedelta(days=1)), "2026-10-20T10:00:00+00:00", 0),
+        ],
+    )
+
+    res = ng.entries_freshness(db, ["d"], now=_NOW_FIXED)["d"]
+
+    assert res["entries_new_7d"] == 2
+    assert res["entries_new_7d_stale_content"] == 1
+    assert res["entries_latest_created_at"] == _created(_NOW_FIXED - timedelta(days=1))
+    assert res["entries_latest_collected_at"] == "2026-10-20T10:00:00+00:00"
+
+
+def test_entries_freshness_missing_db_raises_file_not_found(tmp_path: Path) -> None:
+    try:
+        ng.entries_freshness(tmp_path / "nope.db", ["d"])
+    except FileNotFoundError:
+        pass
+    else:  # pragma: no cover - 失败路径
+        raise AssertionError("missing DB should raise FileNotFoundError")
+
+
+def test_output_axis_fresh_domain_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """正常新鲜：近 7 天有新入库且内容也新 ⇒ 产出轴通过。"""
+    now = datetime.now(timezone.utc)
+    db = _make_entries_db(
+        tmp_path / "autoinfo.db",
+        [("d", _created(now - timedelta(days=1)), (now - timedelta(days=2)).isoformat(), 0)],
+    )
+    col = tmp_path / "collections"
+    fresh_ts = (now - timedelta(days=1)).isoformat()
+    _write_runs(col, "d", "fresh", [_run("success", items=5, ts=fresh_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources(
+                [_health("fresh", 2, status="healthy", last_run=fresh_ts)], col, "d"
+            ),
+        }
+    }
+
+    rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["d"], db=db)
+
+    assert rc == 0
+    unit = payload["units"][0]
+    assert unit["missing"] == []
+    assert unit["entries_new_7d"] == 1
+    assert unit["freshness_flags"] == []
+    assert payload["output_axis"]["status"] == ng.OUTPUT_AXIS_OK
+    assert "产出轴：近 7 天入库合计 1 条；FALSE_FRESH 域 0 个；LATE_COLLECT 域 0 个" in md
+
+
+def test_output_axis_zero_entries_is_false_fresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """源 7 天内跑过（healthy）但近 7 天 0 条入库 ⇒ FALSE_FRESH，必判缺。"""
+    now = datetime.now(timezone.utc)
+    db = _make_entries_db(tmp_path / "autoinfo.db", [])
+    col = tmp_path / "collections"
+    fresh_ts = (now - timedelta(days=1)).isoformat()
+    _write_runs(col, "d", "fresh", [_run("success", items=5, ts=fresh_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources(
+                [_health("fresh", 2, status="healthy", last_run=fresh_ts)], col, "d"
+            ),
+        }
+    }
+
+    rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["d"], db=db)
+
+    assert rc == 1
+    unit = payload["units"][0]
+    assert unit["passing"] is False
+    assert unit["entries_new_7d"] == 0
+    assert unit["freshness_flags"] == [ng.FLAG_FALSE_FRESH]
+    assert unit["missing"] == [
+        "真语料（FALSE_FRESH：源 7 天内跑过，但近 7 天 0 条入库 —— 采集在空转）"
+    ]
+    assert "FALSE_FRESH 域 1 个" in md
+
+
+def test_output_axis_all_stale_content_is_late_collect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """近 7 天入库 > 0，但内容发布时间全部早于 7 天前 ⇒ LATE_COLLECT，必判缺。"""
+    now = datetime.now(timezone.utc)
+    db = _make_entries_db(
+        tmp_path / "autoinfo.db",
+        [
+            ("d", _created(now - timedelta(days=1)), "2026-09-29T10:00:00+00:00", 0),
+            ("d", _created(now - timedelta(days=2)), "2026-10-01T10:00:00+00:00", 0),
+        ],
+    )
+    col = tmp_path / "collections"
+    fresh_ts = (now - timedelta(days=1)).isoformat()
+    _write_runs(col, "d", "fresh", [_run("success", items=5, ts=fresh_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources(
+                [_health("fresh", 2, status="healthy", last_run=fresh_ts)], col, "d"
+            ),
+        }
+    }
+
+    rc, payload, md = _run_main(tmp_path, monkeypatch, status, ["d"], db=db)
+
+    assert rc == 1
+    unit = payload["units"][0]
+    assert unit["passing"] is False
+    assert unit["entries_new_7d"] == 2
+    assert unit["entries_new_7d_stale_content"] == 2
+    assert unit["freshness_flags"] == [ng.FLAG_LATE_COLLECT]
+    assert unit["missing"] == [
+        "真语料（LATE_COLLECT：近 7 天入库 2 条，内容发布时间全部早于 7 天前）"
+    ]
+    assert "LATE_COLLECT 域 1 个" in md
+
+
+def test_output_axis_missing_db_is_unavailable_not_a_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DB 不存在 ⇒ 不崩、产出轴整段 unavailable、不误判通过/失败。"""
+    now = datetime.now(timezone.utc)
+    col = tmp_path / "collections"
+    fresh_ts = (now - timedelta(days=1)).isoformat()
+    _write_runs(col, "d", "fresh", [_run("success", items=5, ts=fresh_ts)])
+    status = {
+        "d": {
+            "entries": 40,
+            **ng.summarize_sources(
+                [_health("fresh", 2, status="healthy", last_run=fresh_ts)], col, "d"
+            ),
+        }
+    }
+
+    rc, payload, md = _run_main(
+        tmp_path, monkeypatch, status, ["d"], db=tmp_path / "does-not-exist.db"
+    )
+
+    assert rc == 0
+    unit = payload["units"][0]
+    assert unit["missing"] == []
+    assert unit["entries_new_7d"] is None
+    assert unit["freshness_flags"] == []
+    assert payload["output_axis"]["status"] == ng.OUTPUT_AXIS_UNAVAILABLE
+    assert "产出轴：unavailable" in md

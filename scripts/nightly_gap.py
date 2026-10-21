@@ -30,7 +30,22 @@ DoD（见 docs/dev/plans/NIGHTLY.md §完成定义）：21 个域，每域四条
     2 — 用法/环境错误（不是差距，是需要人介入的信号）
 
 不含 LLM、不联网、确定性：只读 ``autoinfo status`` 的 JSON、``outputs/`` 与
-``collections/`` 的文件系统，以及 ``scripts/real_product_assertions.py`` 的确定性断言集。
+``collections/`` 的文件系统、``autoinfo.db`` 的 ``entries`` 表，以及
+``scripts/real_product_assertions.py`` 的确定性断言集。
+
+双轴新鲜度（#554）
+------------------
+``last_run`` 只能证明「有人碰过」，不能证明「有语料进来」：采集 exit=0、日志报 N new，
+但 ``entries`` 今日新增 0 条时，旧口径仍会报「差距归零」。因此 ① 真语料改看两条轴：
+
+* **运行轴**（原有）：``sources_healthy > 0`` —— 7 天内至少一个源成功采集；
+* **产出轴**（新增）：``entries.created_at`` 近 7 天新增条数。入库时间为
+  ``created_at``；``collected_at`` 是**内容发布时间**，只用来判内容是否陈旧，
+  **不能**用来判「有没有新语料」。
+
+两个产出轴标记：``FALSE_FRESH``（源跑过但 7 天 0 条入库 = 采集空转）、
+``LATE_COLLECT``（近 7 天入库的条目全部是 7 天前的旧内容）。``last_run`` /
+``stale_days`` 保留为辅助信息，不再单独参与通过判定。
 
 「已跑」的三态口径（#455）
 ----------------------------
@@ -58,10 +73,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +85,14 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_DOMAINS_DIR = REPO / "src" / "autoinfo" / "data" / "domains"
 DEFAULT_OUTPUTS = REPO / "outputs"
 DEFAULT_COLLECTIONS = REPO / "collections"
+DEFAULT_DB = REPO / "autoinfo.db"
+
+FRESHNESS_DAYS = 7
+OUTPUT_AXIS_OK = "ok"
+OUTPUT_AXIS_UNAVAILABLE = "unavailable"
+
+FLAG_FALSE_FRESH = "FALSE_FRESH"
+FLAG_LATE_COLLECT = "LATE_COLLECT"
 
 # -- 源的三态与跳过原因（#455）------------------------------------------------
 STATE_PRODUCED = "produced"
@@ -292,6 +316,105 @@ def summarize_sources(
     }
 
 
+def _parse_db_timestamp(value: Any) -> datetime | None:
+    """``entries.created_at`` / ``collected_at`` → 带时区的 ``datetime``。
+
+    ``created_at`` 是 ``YYYY-MM-DD HH:MM:SS``（UTC，无时区后缀），``collected_at``
+    是带时区的 ISO8601，也可能是纯日期。无时区按 UTC 读；解析失败返回 ``None``。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def entries_freshness(
+    db_path: Path | str,
+    domains: list[str],
+    days: int = FRESHNESS_DAYS,
+    now: datetime | None = None,
+) -> dict[str, dict[str, Any]]:
+    """按域统计产出侧新鲜度（只读，``mode=ro``，绝不写库）。
+
+    返回::
+
+        {domain: {
+            "entries_new_7d": int,                 # created_at >= now-days 的行数
+            "entries_latest_created_at": str|None,
+            "entries_new_7d_stale_content": int,   # 上述行里 collected_at 早于 now-days 的条数
+            "entries_latest_collected_at": str|None,
+        }}
+
+    要点：入库时间看 ``created_at``；``collected_at`` 是**内容发布时间**，只用于判断
+    新入库的条目是否全是旧内容。软删行（``deleted``）一律不计。DB 不存在时抛
+    ``FileNotFoundError``，由调用方把产出轴标 ``unavailable``（不崩）。
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+    result: dict[str, dict[str, Any]] = {
+        d: {
+            "entries_new_7d": 0,
+            "entries_latest_created_at": None,
+            "entries_new_7d_stale_content": 0,
+            "entries_latest_collected_at": None,
+        }
+        for d in domains
+    }
+    if not domains:
+        return result
+
+    path = Path(db_path)
+    if not path.is_file():
+        raise FileNotFoundError(str(path))
+
+    placeholders = ",".join("?" for _ in domains)
+    sql = (
+        "SELECT domain, created_at, collected_at FROM entries "
+        "WHERE (deleted IS NULL OR deleted = 0) "
+        f"AND domain IN ({placeholders})"
+    )
+    con = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True)
+    try:
+        rows = con.execute(sql, list(domains)).fetchall()
+    finally:
+        con.close()
+
+    latest_created: dict[str, tuple[datetime, str]] = {}
+    latest_collected: dict[str, tuple[datetime, str]] = {}
+    for domain, created_raw, collected_raw in rows:
+        bucket = result.get(str(domain))
+        if bucket is None:
+            continue
+        created = _parse_db_timestamp(created_raw)
+        collected = _parse_db_timestamp(collected_raw)
+        if created is not None:
+            prev = latest_created.get(str(domain))
+            if prev is None or created > prev[0]:
+                latest_created[str(domain)] = (created, str(created_raw))
+            if created >= cutoff:
+                bucket["entries_new_7d"] += 1
+                if collected is not None and collected < cutoff:
+                    bucket["entries_new_7d_stale_content"] += 1
+        if collected is not None:
+            prev_c = latest_collected.get(str(domain))
+            if prev_c is None or collected > prev_c[0]:
+                latest_collected[str(domain)] = (collected, str(collected_raw))
+
+    for domain, bucket in result.items():
+        if domain in latest_created:
+            bucket["entries_latest_created_at"] = latest_created[domain][1]
+        if domain in latest_collected:
+            bucket["entries_latest_collected_at"] = latest_collected[domain][1]
+    return result
+
+
 def status_by_domain(python: str, collections: Path | None = None) -> dict[str, dict[str, Any]]:
     """`autoinfo --json status` → {domain: {entries, sources_ran, sources_total, ...}}"""
     col = Path(collections) if collections is not None else DEFAULT_COLLECTIONS
@@ -378,6 +501,11 @@ def main(argv: list[str] | None = None) -> int:
         help="采集运行记录根目录（读 <domain>/<source>/_runs.json 判 skipped，#455）",
     )
     ap.add_argument(
+        "--db",
+        default=str(DEFAULT_DB),
+        help="autoinfo.db 路径（只读打开 entries 表；缺省 <repo>/autoinfo.db）",
+    )
+    ap.add_argument(
         "--python", default=sys.executable, help="用哪个解释器跑仓库脚本（须是项目 venv）"
     )
     ap.add_argument("--skip-assertions", action="store_true")
@@ -403,6 +531,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     outs = outputs_by_domain(Path(args.outputs))
+
+    # 产出轴（#554）：读 entries.created_at；DB 缺失/不可读不崩，整段标 unavailable。
+    try:
+        output_axis_data = entries_freshness(Path(args.db), domains)
+        output_axis_status = OUTPUT_AXIS_OK
+        output_axis_error = ""
+    except (FileNotFoundError, sqlite3.Error, OSError) as e:
+        output_axis_data = {}
+        output_axis_status = OUTPUT_AXIS_UNAVAILABLE
+        output_axis_error = str(e)
 
     if args.skip_assertions:
         per_assert: dict[str, int] = {}
@@ -438,6 +576,34 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif entries < args.min_entries:
             missing.append(f"真语料（{entries} 条 < 阈值 {args.min_entries}）")
+
+        # 产出轴（#554）：last_run 能证明「有人碰过」，不能证明「有语料进来」。
+        # 入库时间看 created_at；collected_at 只用来判内容是否陈旧。
+        freshness_flags: list[str] = []
+        if output_axis_status == OUTPUT_AXIS_OK:
+            axis = output_axis_data.get(dom, {})
+            entries_new_7d: int | None = int(axis.get("entries_new_7d") or 0)
+            latest_created_at = axis.get("entries_latest_created_at")
+            stale_content: int | None = int(axis.get("entries_new_7d_stale_content") or 0)
+            latest_collected_at = axis.get("entries_latest_collected_at")
+            if s.get("sources_healthy", 0) > 0 and entries_new_7d == 0:
+                freshness_flags.append(FLAG_FALSE_FRESH)
+                missing.append(
+                    "真语料（FALSE_FRESH：源 7 天内跑过，但近 7 天 0 条入库 —— 采集在空转）"
+                )
+            if entries_new_7d > 0 and stale_content == entries_new_7d:
+                freshness_flags.append(FLAG_LATE_COLLECT)
+                missing.append(
+                    f"真语料（LATE_COLLECT：近 7 天入库 {entries_new_7d} 条，"
+                    "内容发布时间全部早于 7 天前）"
+                )
+        else:
+            # 产出轴不可用：无从判断，既不误判通过也不误判失败。
+            entries_new_7d = None
+            latest_created_at = None
+            stale_content = None
+            latest_collected_at = None
+
         if not files:
             missing.append("真产物")
         if files and n_assert > 0:
@@ -459,6 +625,11 @@ def main(argv: list[str] | None = None) -> int:
                 skipped_sources=s.get("skipped_sources", []),
                 output_files=len(files),
                 assertion_failures=n_assert,
+                entries_new_7d=entries_new_7d,
+                entries_latest_created_at=latest_created_at,
+                entries_new_7d_stale_content=stale_content,
+                entries_latest_collected_at=latest_collected_at,
+                freshness_flags=freshness_flags,
                 missing=missing,
                 passing=not missing,
             )
@@ -475,8 +646,12 @@ def main(argv: list[str] | None = None) -> int:
             skip_by_reason[key] = skip_by_reason.get(key, 0) + 1
     total_skipped = sum(r["sources_skipped"] for r in rows)
 
+    total_new_7d = sum(int(r["entries_new_7d"] or 0) for r in rows)
+    false_fresh_domains = sum(1 for r in rows if FLAG_FALSE_FRESH in r["freshness_flags"])
+    late_collect_domains = sum(1 for r in rows if FLAG_LATE_COLLECT in r["freshness_flags"])
+
     result = {
-        "schema_version": 2,
+        "schema_version": 3,
         "tool": "nightly_gap.py",
         "project": "AutoInfo",
         "dod": "21 域 × (真语料 + 真产物 + 可溯源 + 无占位)",
@@ -488,7 +663,17 @@ def main(argv: list[str] | None = None) -> int:
             "sources_skipped": total_skipped,
             "by_reason": {k: skip_by_reason[k] for k in sorted(skip_by_reason)},
         },
+        "output_axis": {
+            "status": output_axis_status,
+            "db": str(Path(args.db)),
+            "error": output_axis_error,
+            "entries_new_7d_total": total_new_7d,
+            "false_fresh_domains": false_fresh_domains,
+            "late_collect_domains": late_collect_domains,
+        },
         "units": rows,
+        # 兼容验收脚本里的 ``rows`` 读法；与 ``units`` 是同一份数据。
+        "rows": rows,
     }
 
     if args.json_out:
@@ -502,24 +687,38 @@ def main(argv: list[str] | None = None) -> int:
         if not gap
         else f"- 判定：**{len(gap)} / {len(rows)} 个域仍有差距**"
     )
+    if output_axis_status == OUTPUT_AXIS_OK:
+        axis_line = (
+            f"- 产出轴：近 7 天入库合计 {total_new_7d} 条；"
+            f"FALSE_FRESH 域 {false_fresh_domains} 个；"
+            f"LATE_COLLECT 域 {late_collect_domains} 个"
+        )
+    else:
+        axis_line = f"- 产出轴：unavailable（{output_axis_error or 'DB 不可读'}）"
     md = [
         "# AutoInfo 差距矩阵",
         "",
         verdict,
+        axis_line,
         f"- 断言：{assert_summary}",
         "",
-        "| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 |",
-        "|:---|---:|:---|--:|--:|:---|",
+        "| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 | "
+        "近7天入库 | 最新入库 | 内容新鲜度标记 |",
+        "|:---|---:|:---|--:|--:|:---|--:|:---|:---|",
     ]
     for r in rows:
         # 跳过数只在该域真的被跳过时出现（无 skip 的域逐字保持原样）
         cov = f"{r['sources_ran']}/{r['sources_total']}"
         if r["sources_skipped"]:
             cov += f"（含 {r['sources_skipped']} 策略跳过）"
+        new_7d = "—" if r["entries_new_7d"] is None else str(r["entries_new_7d"])
+        latest_created = r["entries_latest_created_at"] or "—"
+        flags = "、".join(r["freshness_flags"]) if r["freshness_flags"] else "—"
         md.append(
             f"| {r['domain']} | {r['entries']} | {cov} | "
             f"{r['output_files']} | {r['assertion_failures']} | "
-            f"{'、'.join(r['missing']) if r['missing'] else '✅ 达标'} |"
+            f"{'、'.join(r['missing']) if r['missing'] else '✅ 达标'} | "
+            f"{new_7d} | {latest_created} | {flags} |"
         )
     if total_skipped:
         md += ["", "## 策略跳过的源（不计覆盖，也不计源损坏，#455）", ""]

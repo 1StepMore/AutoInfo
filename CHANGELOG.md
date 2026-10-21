@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.29](https://github.com/1StepMore/AutoInfo/compare/v1.17.28...v1.17.29) (2026-10-21)
+
+
+### Bug Fixes
+
+* **nightly:** add backlog-triggered process stage ([#554](https://github.com/1StepMore/AutoInfo/issues/554)) ([#560](https://github.com/1StepMore/AutoInfo/issues/560)) ([8c6b2a1](https://github.com/1StepMore/AutoInfo/commit/8c6b2a1882279d6942c62f0a8107276d7ea5cbb3))
+
 ## [1.17.28](https://github.com/1StepMore/AutoInfo/compare/v1.17.27...v1.17.28) (2026-10-21)
 
 

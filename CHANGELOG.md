@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.28](https://github.com/1StepMore/AutoInfo/compare/v1.17.27...v1.17.28) (2026-10-21)
+
+
+### Bug Fixes
+
+* **collect:** report post-dedup new counts and duplicates ([#555](https://github.com/1StepMore/AutoInfo/issues/555)) ([#558](https://github.com/1StepMore/AutoInfo/issues/558)) ([1c5fc8a](https://github.com/1StepMore/AutoInfo/commit/1c5fc8adb7ae91760a67e5635078285a54c9672b))
+* **nightly-gap:** 新鲜度双轴判定 —— 读 entries 产出，不再只信 last_run ([#554](https://github.com/1StepMore/AutoInfo/issues/554)) ([#556](https://github.com/1StepMore/AutoInfo/issues/556)) ([743b4bf](https://github.com/1StepMore/AutoInfo/commit/743b4bf170d9ad4a9dfcc980ad5b128489c9461e))
+
 ## [1.17.27](https://github.com/1StepMore/AutoInfo/compare/v1.17.26...v1.17.27) (2026-10-21)
 
 

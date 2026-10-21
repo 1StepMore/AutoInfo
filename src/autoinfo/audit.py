@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from autoinfo import db
 from autoinfo.models import AuditLog
 
 # ---------------------------------------------------------------------------
@@ -64,10 +65,7 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     Creates the ``audit_log`` table on first connection (idempotent).
     """
     resolved = db_path or _default_db_path()
-    conn = sqlite3.connect(str(resolved))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn = db.connect(resolved)
     conn.executescript(_AUDIT_TABLE_DDL)
     return conn
 

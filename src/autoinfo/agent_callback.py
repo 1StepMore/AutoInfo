@@ -39,6 +39,8 @@ from typing import Any
 
 import httpx
 
+from autoinfo import db
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -105,15 +107,6 @@ _drain_lock = threading.Lock()
 # Bounded budget for joining live drain workers during shutdown.
 _DRAIN_JOIN_TIMEOUT = 5.0
 
-# First-writer budget for the WAL journal-mode conversion (issue #387).  Only a
-# connection that finds the database NOT already in WAL needs the conversion, so
-# this race is reachable only on a brand-new database and resolves within a few
-# milliseconds.  Attempts and delay are deliberately small: a larger busy_timeout
-# would not help here, because SQLite does not run the busy handler for a
-# journal-mode change at all.
-_JOURNAL_MODE_ATTEMPTS = 20
-_JOURNAL_MODE_RETRY_S = 0.01
-
 _drain_threads: set[threading.Thread] = set()
 _drain_registry_lock = threading.Lock()
 # Set by the shutdown hook; once set, ``_schedule_drain`` starts no new worker.
@@ -142,42 +135,10 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     product generation drops outbox events without it).
     """
     resolved = db_path or _default_db_path()
-    conn = sqlite3.connect(str(resolved))
-    conn.row_factory = sqlite3.Row
-    # busy_timeout FIRST — before any other pragma — so the WAL transition
-    # and every later statement wait on the lock instead of raising
-    # OperationalError under write contention (issue #387).  Same contract as
-    # the KB pipeline (kb.py): default 30s, env-configurable via
-    # AUTOINFO_DB_BUSY_TIMEOUT_MS.
-    from autoinfo.kb import _db_busy_timeout_ms  # noqa: PLC0415
-
-    _ = conn.execute(f"PRAGMA busy_timeout={_db_busy_timeout_ms()}")
-    # Only convert the journal mode when it is not already WAL (issue #387).
-    # `PRAGMA journal_mode=WAL` needs a brief EXCLUSIVE lock on the database to
-    # change the mode, and unlike ordinary statements SQLite does not run the
-    # busy handler for it — so `busy_timeout` set immediately above does not
-    # cover it. With 16 threads opening a *fresh* database at once, every one
-    # of them issued the conversion and the losers raised
-    # `OperationalError: database is locked`, which
-    # `enqueue_agent_notification` swallows into a return of 0 — a silently
-    # dropped notification row.
-    #
-    # Reading the current mode is a plain query that needs no exclusive lock.
-    # Once the database is in WAL (which the first connection to create it
-    # establishes), later connections skip the conversion entirely and never
-    # contend. A short bounded retry covers the remaining first-writer race on
-    # a brand-new database.
-    _mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
-    if _mode != "wal":
-        for _attempt in range(_JOURNAL_MODE_ATTEMPTS):
-            try:
-                conn.execute("PRAGMA journal_mode=WAL")
-                break
-            except sqlite3.OperationalError:
-                if _attempt == _JOURNAL_MODE_ATTEMPTS - 1:
-                    raise
-                time.sleep(_JOURNAL_MODE_RETRY_S)
-    _ = conn.execute("PRAGMA synchronous=NORMAL")
+    # ``db.connect`` keeps the #387 contract: busy_timeout before any
+    # journal-mode handling, and the WAL conversion only on a database that is
+    # not already in WAL (guarded read, bounded first-writer retry).
+    conn = db.connect(resolved)
     _ = conn.executescript(_AGENT_CALLBACK_TABLE_DDL)
     _ = conn.executescript(_AGENT_OUTBOX_TABLE_DDL)
     return conn

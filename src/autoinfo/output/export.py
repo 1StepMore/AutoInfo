@@ -44,6 +44,7 @@ from typing import Any, Callable, cast
 
 import yaml
 
+from autoinfo import db
 from autoinfo.config import load_config
 from autoinfo.kb import SQLiteIndex
 
@@ -275,7 +276,7 @@ def export_kb(
 def _list_domains_from_db(index: SQLiteIndex) -> list[str]:
     """Return distinct domain names from the SQLite index."""
     try:
-        conn = sqlite3.connect(str(index.db_path))
+        conn = db.connect(index.db_path, readonly=True)
         rows = conn.execute("SELECT DISTINCT domain FROM entries").fetchall()
         conn.close()
         return [r[0] for r in rows]
@@ -1505,6 +1506,8 @@ def _wal_checkpoint(db_path: Path) -> None:
     if not db_path.is_file():
         return
     try:
+        # Deliberately not db.connect: the checkpoint=truncate URI must run
+        # before any other statement, and db.connect issues its own PRAGMAs.
         conn = sqlite3.connect(f"file:{db_path.resolve()}?checkpoint=truncate", uri=True)
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         conn.close()
@@ -1522,6 +1525,8 @@ def _create_filtered_sqlite_copy(
     Reads the table schema from *src_path* (if it exists) or creates it
     from scratch.  Returns the number of entries copied.
     """
+    # Deliberately not db.connect: this is a throwaway export artifact, not a
+    # business connection, and it builds the DB before the schema is known.
     dst_conn = sqlite3.connect(str(dst_path))
     dst_conn.row_factory = sqlite3.Row
     dst_conn.execute("PRAGMA journal_mode=WAL")
@@ -1533,6 +1538,8 @@ def _create_filtered_sqlite_copy(
 
     if src_path.is_file():
         # Open source to read schema
+        # Deliberately not db.connect: read-only schema introspection of a
+        # source artifact during export, not a business connection.
         src_conn = sqlite3.connect(str(src_path))
         src_conn.row_factory = sqlite3.Row
 

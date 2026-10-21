@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 
+from autoinfo import db
 from autoinfo.config import DEFAULT_TTL_DAYS, Config
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.promotion import RejectionReason, check_promotion_admission
@@ -439,27 +440,10 @@ def _meaningful_search_terms(query: str) -> list[str]:
 # SQLite busy timeout (issue #295)
 # ---------------------------------------------------------------------------
 
-_DEFAULT_DB_BUSY_TIMEOUT_MS = 30000
-_DB_BUSY_TIMEOUT_ENV = "AUTOINFO_DB_BUSY_TIMEOUT_MS"
-
-
-def _db_busy_timeout_ms() -> int:
-    """Return the SQLite ``busy_timeout`` (ms) for KB connections.
-
-    Parallel ``autoinfo process`` workers write to the same SQLite DB; under
-    external-writer contention a write can raise ``OperationalError: database
-    is locked``.  A generous busy timeout makes a connection wait for the
-    lock instead of failing immediately.  Configurable via
-    ``AUTOINFO_DB_BUSY_TIMEOUT_MS`` (default 30000); unparsable values fall
-    back to the default.
-    """
-    raw = os.environ.get(_DB_BUSY_TIMEOUT_ENV)
-    if raw is None:
-        return _DEFAULT_DB_BUSY_TIMEOUT_MS
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return _DEFAULT_DB_BUSY_TIMEOUT_MS
+# The busy-timeout contract lives in ``db`` since issue #563; the alias keeps
+# the historical ``autoinfo.kb._db_busy_timeout_ms`` import path working
+# (``process.py`` imports it).
+_db_busy_timeout_ms = db.busy_timeout_ms
 
 
 class SQLiteIndex:
@@ -478,12 +462,7 @@ class SQLiteIndex:
 
     def _connect(self) -> sqlite3.Connection:
         """Open a connection (with row factory for dict-like rows)."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute(f"PRAGMA busy_timeout={_db_busy_timeout_ms()}")
-        return conn
+        return db.connect(self.db_path)
 
     # ------------------------------------------------------------------
     # Schema

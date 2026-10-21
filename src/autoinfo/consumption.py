@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from autoinfo import db
+
 logger = logging.getLogger(__name__)
 
 _DB_PATH: Path | None = None
@@ -49,10 +51,7 @@ def _connect() -> sqlite3.Connection:
     """
     db_path = _get_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    return db.connect(db_path)
 
 
 # ---------------------------------------------------------------------------

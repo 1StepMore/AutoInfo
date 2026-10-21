@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from autoinfo import db
 from autoinfo.config import get_config_path
 
 # ---------------------------------------------------------------------------
@@ -150,9 +151,7 @@ def _count_items_collected(db_path: Path, knowledge_dir: Path) -> int:
     # Try SQLite first
     if db_path.is_file():
         try:
-            import sqlite3
-
-            conn = sqlite3.connect(str(db_path))
+            conn = db.connect(db_path, readonly=True)
             row = conn.execute("SELECT COUNT(*) FROM entries WHERE deleted_at = ''").fetchone()
             conn.close()
             if row:
@@ -212,9 +211,7 @@ def _count_errors(db_path: Path, collections_dir: Path) -> int:
     # Count error-type feedback entries in DB
     if db_path.is_file():
         try:
-            import sqlite3
-
-            conn = sqlite3.connect(str(db_path))
+            conn = db.connect(db_path, readonly=True)
             row = conn.execute("SELECT COUNT(*) FROM entries WHERE quality_tier = 5").fetchone()
             conn.close()
             if row:

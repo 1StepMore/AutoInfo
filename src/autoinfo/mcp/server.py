@@ -37,7 +37,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from autoinfo import __version__
+from autoinfo import __version__, db
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.cli.init import _list_demo_domains
 from autoinfo.config import (
@@ -107,10 +107,7 @@ def _with_job_db(fn: Callable[[sqlite3.Connection], T]) -> T:
 
     Uses the same PRAGMA settings as :class:`~autoinfo.kb.SQLiteIndex`.
     """
-    conn = sqlite3.connect(str(_job_db_path()))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn = db.connect(_job_db_path())
     _init_job_state_table(conn)
     try:
         return fn(conn)

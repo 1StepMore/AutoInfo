@@ -19,13 +19,13 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from autoinfo import db
 from autoinfo.config import (
     get_config_path,
     llm_fallback_health,
@@ -156,7 +156,7 @@ def run_doctor() -> dict[str, Any]:
         # Default KB database is autoinfo.db alongside knowledge/
         kb_path = Path("autoinfo.db")
         if kb_path.is_file():
-            conn = sqlite3.connect(str(kb_path))
+            conn = db.connect(kb_path, readonly=True)
             try:
                 schema_ver = _get_schema_version(conn)
             finally:

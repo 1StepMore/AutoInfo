@@ -75,7 +75,7 @@ cd <repo>
 ---
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
-
+<!-- LEDGER:BEGIN gap_snapshot -->
 ### 2026-10-21 夜间复跑（在最新 main `abf948fb` 上）
 
 批跑（02:00，systemd `nightly-gap.service`，网关进程树外）：`.venv/bin/python scripts/nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**（`nightly/gap.json`：`gap_units 0`、`gap: []`）；同轮采集步 `ai-collect` **ok**（691s）。
@@ -155,11 +155,12 @@ cd <repo>
 5. korean-learning 全量语料被丢弃的根因是**源只给标题**（`hankyoreh` description 全 0，`talktomeinkorean` 解析失败），已提 #442 + PR #443（换 donga/khan，实测换后 39/40 条带正文）。
 
 **读法**：① 真语料**不再是瓶颈**（采集已跑通）；当下的瓶颈是 ② **产物**（legal-compliance 因源陈旧、生成器拒落空壳）与个别域的语料量/源质量（online-education、russian-learning）。
+<!-- LEDGER:END gap_snapshot -->
 
 ---
 
 ## 【活区】下一步队列
-
+<!-- LEDGER:BEGIN next_queue -->
 > 取活策略（L1 §4）：**先纵后横** —— 先把**一个域**的四条件全链路打穿（采集 → 处理 → 产物 → 断言全过），再把这套办法复制到其余域。
 > agent 每晚完成后自己更新此队列，并把已完成项移入「已完成」小节。
 
@@ -175,11 +176,12 @@ cd <repo>
 
 - 2026-10-02：17/21 域达标（见上表）；korean-learning 换源 #442/PR #443。
 - 2026-10-10：**21/21 域达标（差距归零）**，10-02 遗留的 4 个缺口全部闭合；`nightly_gap.py` exit 0。
+<!-- LEDGER:END next_queue -->
 
 ---
 
 ## 【活区】摩擦账本
-
+<!-- LEDGER:BEGIN friction_log -->
 > 规则（L1 §5）：**不挡住 DoD 的发现，当晚一律不修，只记账**。挡住 DoD 的允许插队。
 > 本阶段摩擦预算 = 0。
 
@@ -193,14 +195,16 @@ cd <repo>
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
 | 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账）**（已过时，2026-10-18 现状：`nightly/gap.json` 21 域 `sources_healthy` 均已 > 0。）** |
 | 2026-10-17 | 10-15 行「等 owner 裁」收口：①「TTL 口径」→ #528 → PR #531（统一 7 天口径，复用 `status.py` `_is_recent`；owner 指令修复并合并）；②「跑批加采集步」不在本仓（e2e-test-suite #172） | 否 | 记账（随 #531 落地） |
+<!-- LEDGER:END friction_log -->
 
 ---
 
 ## 【活区】修订请求
-
+<!-- LEDGER:BEGIN revision_requests -->
 > 认为冻结区某条不合理 → 写这里（附证据）。**不得自行修改冻结区。**
 
 | 日期 | 目标条款 | 理由 + 证据 | 裁定 |
 |:---|:---|:---|:---|
 | 2026-10-02 | DoD ③④「产物断言集无 P0/P1 失败」 | `_no_year_hallucination` 对非英文正文假阳（#444：Hindi 产物里源语料确实含 `2027`，仍被判 \"future year 2027\" P0）。建议断言改为**源对齐**（年份在源语料出现即放行）或按产物语言分派启发式。**未自行放宽，等地主裁定** | 待裁定 |
 | 2026-10-17 | DoD ①「真语料」 | 冻结 ① 无新鲜度项 → 采集停摆 15 天（143 源 0 healthy）仍判 21/21 假绿（#528 实测证据；与 L1 §2.1 ①「新鲜度在阈值内」口径分歧）。修复 PR #531 增加 `sources_healthy == 0` ⇒ missing 及 `latest_last_run`/`stale_days` 字段（统一 7 天口径，复用 `status.py` `_is_recent`；per-domain TTL 未采用） | 已裁：owner 2026-10-17 指令修复并合并 #531；冻结 ① 文本更新请 code profile 收口。已收口（2026-10-18 · code profile）：冻结 ① 文本已按本裁定更新为「含 sources_healthy > 0 新鲜度要求」 |
+<!-- LEDGER:END revision_requests -->

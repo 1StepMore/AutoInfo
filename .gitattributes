@@ -1,0 +1,4 @@
+# The nightly ledger is append-only: concurrent nightly branches add distinct
+# events at EOF. Plain git merges adjacent EOF insertions as a conflict, so use
+# the built-in union driver to keep both lines (issue #566).
+docs/dev/plans/nightly-ledger.jsonl merge=union

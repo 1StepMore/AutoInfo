@@ -97,3 +97,9 @@ jobs:
         run: |
           python -m pip install --quiet pyyaml
           python scripts/gen_demo_domains_table.py --check
+
+      # NIGHTLY.md's live zone is generated from nightly-ledger.jsonl
+      # (issue #566). Hand-edits to the live zone, or a ledger change that
+      # was not re-rendered, turn this red.
+      - name: Nightly ledger is in sync
+        run: python scripts/nightly_ledger.py --check

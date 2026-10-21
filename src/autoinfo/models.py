@@ -93,6 +93,11 @@ class CollectionResult:
     items_found: int = 0
     items_new: int = 0
     items_filtered: int = 0
+    #: Candidates dropped by the raw-cache write (cross-date URL dedup or an
+    #: already-present file).  Distinct from ``items_filtered`` (relevance
+    #: filtering): these items were *relevant* but already on disk, so they
+    #: must not be reported as new (#555).
+    items_duplicate: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
     source_failed: bool = False
     duration_s: float = 0.0
@@ -223,7 +228,9 @@ class KBEntry:
     version: int = 1
     previous_version: int = 0
     supersedes: str = ""
-    trace_id: str = ""  # Per-item pipeline traceability — UUID from collection, resolvable via trace_item  # noqa: E501
+    trace_id: str = (
+        ""  # Per-item pipeline traceability — UUID from collection, resolvable via trace_item  # noqa: E501
+    )
     # ToS compliance metadata from G1-TosCompliance gate (written to frontmatter
     # by _entry_to_frontmatter; kept as a field so from_dict parses cleanly).
     tos_compliant: bool | None = None

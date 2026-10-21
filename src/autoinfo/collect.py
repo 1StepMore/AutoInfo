@@ -17,7 +17,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import httpx
 
@@ -366,6 +366,7 @@ def run_collection(
         "total_found": total_found,
         "total_new": total_new,
         "items_filtered": sum(r.items_filtered for r in per_source),
+        "items_duplicate": sum(r.items_duplicate for r in per_source),
         "duration_s": round(elapsed, 3),
         "per_source": [r.to_dict() for r in per_source],
         "unknown_sources": unknown_sources,
@@ -853,8 +854,11 @@ def _collect_from_source(
     elapsed = round(time.time() - src_start, 3)
 
     # -- Cache (only if not dry_run) ---------------------------------------
+    items_duplicate = 0
     if not dry_run and new_items:
-        _cache_items(new_items, domain, source_config.name)
+        cache_result = _cache_items(new_items, domain, source_config.name)
+        items_new = cache_result.written
+        items_duplicate = cache_result.skipped_duplicate
         if new_items_collector is not None:
             new_items_collector.extend(new_items)
         _log_run(
@@ -867,6 +871,7 @@ def _collect_from_source(
             duration_s=elapsed,
             trace_ids=trace_ids,
             items_filtered=items_filtered,
+            items_duplicate=items_duplicate,
         )
 
     return CollectionResult(
@@ -877,6 +882,7 @@ def _collect_from_source(
         items_found=items_found,
         items_new=items_new,
         items_filtered=items_filtered,
+        items_duplicate=items_duplicate,
         errors=errors,
         duration_s=elapsed,
         estimated_duration_s=elapsed,
@@ -1353,11 +1359,16 @@ def _fetch_items(
     raise TypeError(f"Handler for '{source_config.name}' has no usable fetch method")
 
 
+class CacheWriteResult(NamedTuple):
+    written: int
+    skipped_duplicate: int
+
+
 def _cache_items(
     items: list[Item],
     domain: str,
     source_name: str,
-) -> None:
+) -> CacheWriteResult:
     """Write deduplicated items to ``collections/<domain>/<source>/<date>/<id>.json``."""
     today = date.today().isoformat()
     base_dir = Path("collections") / domain / source_name / today
@@ -1386,18 +1397,25 @@ def _cache_items(
             except (json.JSONDecodeError, OSError):
                 continue
 
+    written = 0
+    skipped_duplicate = 0
     for item in items:
         # Cross-date duplicate (same URL collected on an earlier day) — skip;
         # the earlier file already carries it and downstream counts stay unique.
         if item.source_url and item.source_url in seen_urls:
+            skipped_duplicate += 1
             continue
         safe_id = str(item.id).replace("/", "_") if item.id else item.id
         file_path = base_dir / f"{safe_id}.json"
         # Avoid overwriting existing cached files (idempotent)
         if file_path.exists():
+            skipped_duplicate += 1
             continue
         with open(file_path, "w", encoding="utf-8") as fh:
             json.dump(item.to_dict(), fh, ensure_ascii=False, indent=2)
+        written += 1
+
+    return CacheWriteResult(written=written, skipped_duplicate=skipped_duplicate)
 
 
 # ---------------------------------------------------------------------------
@@ -1507,6 +1525,7 @@ def _log_run(
     duration_s: float = 0.0,
     trace_ids: list[str] | None = None,
     items_filtered: int = 0,
+    items_duplicate: int = 0,
 ) -> None:
     """Append a run entry to ``collections/<domain>/<source>/_runs.json``.
 
@@ -1530,6 +1549,7 @@ def _log_run(
         "items_found": items_found,
         "items_new": items_new,
         "items_filtered": items_filtered,
+        "items_duplicate": items_duplicate,
         "errors": errors or [],
         "duration_ms": round(duration_s * 1000, 1),
     }

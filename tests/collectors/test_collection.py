@@ -20,7 +20,7 @@ from unittest.mock import ANY, patch
 import pytest
 import yaml
 
-from autoinfo.collect import _cache_items
+from autoinfo.collect import CacheWriteResult, _cache_items
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import Item, KBEntry
 from tests._ansi import strip_ansi
@@ -722,6 +722,7 @@ class TestRunCollection:
 
         with patch("autoinfo.collect._fetch_items", return_value=[pubmed_item]):
             with patch("autoinfo.collect._cache_items") as mock_cache:
+                mock_cache.return_value = CacheWriteResult(written=1, skipped_duplicate=0)
                 run_collection(
                     domain="medical-research",
                     topic="IVF",
@@ -852,6 +853,95 @@ class TestRunCollection:
                 f"Expected quality_tier=3 from source_config, got {pubmed_item.quality_tier}"
             )
             assert pubmed_item.domain == "medical-research"
+
+    @patch("autoinfo.collect.get_config_path")
+    @patch("autoinfo.collect.load_config")
+    def test_reports_post_cache_counts_not_pre_dedup_counts(
+        self,
+        mock_load_config,
+        mock_get_config_path,
+        with_config,
+    ):
+        """#555: a cross-date duplicate must not be reported as a new item."""
+        from autoinfo.collect import run_collection
+        from autoinfo.config import Config, DomainConfig, LLMConfig, ProjectConfig, SourceConfig
+
+        prior_dir = with_config / "collections" / "medical-research" / "pubmed" / "2026-08-24"
+        prior_dir.mkdir(parents=True)
+        (prior_dir / "old.json").write_text(
+            json.dumps({"id": "old", "source_url": "https://example.com/dup", "title": "Old"}),
+            encoding="utf-8",
+        )
+
+        duplicate = Item(
+            id="dup-again",
+            source_name="pubmed",
+            source_type="api",
+            source_url="https://example.com/dup",
+            title="Old article re-collected",
+            content="Abstract content...",
+            collected_at="2026-07-20T00:00:00Z",
+        )
+        fresh = Item(
+            id="fresh",
+            source_name="pubmed",
+            source_type="api",
+            source_url="https://example.com/fresh",
+            title="Fresh article",
+            content="Abstract content...",
+            collected_at="2026-07-20T00:00:00Z",
+        )
+
+        config = Config(
+            project=ProjectConfig(name="Test Project", created_at="2026-07-01"),
+            llm=LLMConfig(
+                provider="openrouter", model="deepseek/deepseek-chat", api_key="test-key"
+            ),
+            domains=[
+                DomainConfig(
+                    name="medical-research",
+                    active=True,
+                    sources=[
+                        SourceConfig(
+                            name="pubmed",
+                            type="api",
+                            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                        ),
+                    ],
+                    topics=[],
+                ),
+            ],
+        )
+        mock_get_config_path.return_value = with_config / ".autoinfo" / "config.yaml"
+        mock_load_config.return_value = config
+
+        with patch("autoinfo.collect._fetch_items", return_value=[duplicate, fresh]):
+            result = run_collection(
+                domain="medical-research",
+                topic="IVF",
+                limit=5,
+                dry_run=False,
+            )
+
+        assert result["total_found"] == 2
+        assert result["total_new"] == 1
+        assert result["items_duplicate"] == 1
+        src = result["per_source"][0]
+        assert src["items_new"] == 1
+        assert src["items_duplicate"] == 1
+
+        runs = json.loads(
+            (with_config / "collections" / "medical-research" / "pubmed" / "_runs.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert runs[-1]["items_new"] == 1
+        assert runs[-1]["items_duplicate"] == 1
+
+        today_dir = (
+            with_config / "collections" / "medical-research" / "pubmed" / date.today().isoformat()
+        )
+        assert sorted(f.name for f in today_dir.glob("*.json")) == ["fresh.json"]
 
 
 # ======================================================================
@@ -1209,3 +1299,24 @@ class TestCacheItemsCrossDateDedup:
 
         today_dir = tmp_path / "collections" / "tech" / "gh-trending" / date.today().isoformat()
         assert [f.name for f in today_dir.glob("*.json")] == ["b.json"]
+
+
+class TestCacheItemsWriteAccounting:
+    def test_reports_written_and_skipped_duplicate_counts(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        prior_dir = tmp_path / "collections" / "tech" / "gh-trending" / "2026-08-24"
+        prior_dir.mkdir(parents=True)
+        (prior_dir / "old.json").write_text(
+            json.dumps({"id": "old", "source_url": "https://example.com/dup"}),
+            encoding="utf-8",
+        )
+
+        duplicate = _make_item("dup")
+        duplicate.source_url = "https://example.com/dup"
+        fresh = _make_item("fresh")
+        fresh.source_url = "https://example.com/fresh"
+
+        result = _cache_items([duplicate, fresh], "tech", "gh-trending")
+
+        assert result.written == 1
+        assert result.skipped_duplicate == 1

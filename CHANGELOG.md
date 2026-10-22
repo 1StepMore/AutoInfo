@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.38](https://github.com/1StepMore/AutoInfo/compare/v1.17.37...v1.17.38) (2026-10-22)
+
+
+### Bug Fixes
+
+* **mcp:** tools/list 移除冗余 outputSchema；README 去重（[#588](https://github.com/1StepMore/AutoInfo/issues/588), [#584](https://github.com/1StepMore/AutoInfo/issues/584)） ([#594](https://github.com/1StepMore/AutoInfo/issues/594)) ([d2cb3bb](https://github.com/1StepMore/AutoInfo/commit/d2cb3bbb4d95ed0dcb4ccee0f44c2ed660c120e2))
+
 ## [1.17.37](https://github.com/1StepMore/AutoInfo/compare/v1.17.36...v1.17.37) (2026-10-22)
 
 

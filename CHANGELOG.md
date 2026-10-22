@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.31](https://github.com/1StepMore/AutoInfo/compare/v1.17.30...v1.17.31) (2026-10-22)
+
+
+### Documentation
+
+* **gates:** G0 确定性闸门不重试，重试只属 G4（+ 机器可读表与 CI 断言） ([#569](https://github.com/1StepMore/AutoInfo/issues/569)) ([18d3e7a](https://github.com/1StepMore/AutoInfo/commit/18d3e7a8c6238133bc4591c5391038aef0ae0268))
+
 ## [1.17.30](https://github.com/1StepMore/AutoInfo/compare/v1.17.29...v1.17.30) (2026-10-22)
 
 

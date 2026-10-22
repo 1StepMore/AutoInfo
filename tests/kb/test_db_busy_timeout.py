@@ -37,9 +37,7 @@ def test_connect_sets_default_busy_timeout(tmp_path: Path) -> None:
     assert _busy_timeout_ms(index) == _DEFAULT_BUSY_TIMEOUT_MS
 
 
-def test_connect_busy_timeout_env_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_connect_busy_timeout_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``AUTOINFO_DB_BUSY_TIMEOUT_MS`` overrides the default timeout.
 
     Uses 12345 — distinct from both the default (30000) and this SQLite
@@ -87,6 +85,9 @@ def test_connect_executes_busy_timeout_pragma(
             return self
 
         def __exit__(self, *exc: Any) -> None:
+            return None
+
+        def close(self) -> None:
             return None
 
     monkeypatch.setattr("autoinfo.kb.sqlite3.connect", lambda _path: _FakeConn())

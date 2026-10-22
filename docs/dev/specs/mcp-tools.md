@@ -3,7 +3,7 @@
 > Extracted from `founder-expectations.md §12.11`. References: all F-numbers — every feature has a corresponding MCP tool surface.
 > **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — MCP tools are the B2 (Direct Agent) interface to every A1-A7 pipeline capability. The CD catalog's B2 row shows which stages have full tool coverage and which have gaps.
 
-**148 tools across 35 categories**. Phase 4 adds 1 new category (Delivery Schedule) and 4 new tools: `generate_cross_domain_report`, `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. v1.8.1 added `configure_llm` to the System category for agent-oriented BYOK setup, plus `simplify_content` (Simplification category, E14 CEFR-parameterized content simplification). `test_llm_connection` (System category) probes LLM connectivity through the configured fallback chain. v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
+**149 tools across 35 categories**. Phase 4 adds 1 new category (Delivery Schedule) and 4 new tools: `generate_cross_domain_report`, `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule`. v1.8.1 added `configure_llm` to the System category for agent-oriented BYOK setup, plus `simplify_content` (Simplification category, E14 CEFR-parameterized content simplification). `test_llm_connection` (System category) probes LLM connectivity through the configured fallback chain. v1.8.0 added 12 tools + 1 new category (Audit): `get_tool_count`, `topic_group_add`, `topic_group_remove`, `clean_cache`, `create_kb_entry`, `knowledge_graph_export`, `cefr_batch`, `email_config`, `get_feeds`, `cost_dashboard`, `cost_allocation`, `query_audit_log`. v1.5 added 3 categories (Quality Gate Config, Product, Alert Rules). v1.6 adds 5 categories (End User, Cost, Data Privacy, Knowledge Lifecycle, Observability). v1.6.2 adds 12 tools: `reindex_kb`, `find_similar_items`, `get_budget_thresholds`, `set_budget_thresholds`, `list_active_deliveries`, `get_delivery_log`, `get_billing_summary`, `get_enduser_history`, `get_enduser_products`, `get_enduser_usage`, `get_enduser_invoice`, `query_delivery_log`.
 
 ---
 
@@ -46,6 +46,47 @@
 | **Validation** | `list_validation_scenarios` (list available Agent-native scenarios; 143 scenarios (70 functional + 73 regression); each entry carries a `regression: true/false` bool field — regression entries also carry `regression_issue`), `run_validation_scenario` (execute a scenario in-process: each step makes a real MCP/CLI/HTTP call and asserts on the `{success, data}` envelope; `llm_assert` steps run a real model call; env-gated steps report `unconfigured` when BYOK keys are missing — parameters: scenario (required), steps (optional, 1-based indices)), `get_coverage_report` (classify the 126 stage×user cells + 72 founder expectations into exactly one committed state with zero-unclassified enforcement; T-A-02/T-A-07), `run_all_validation_scenarios` (run the full live scenario library as one suite and persist a single aggregate run whose `scenarios[]` array holds every per-scenario result, so `scripts/validation_report.py` renders the whole suite from one run; parameters: save_results (default true), timeout (default 180s); R-S-05). Scenarios in `src/autoinfo/mcp/scenarios/` (functional flat + `regression/` subdirectory, recursive-glob auto-load); authoring contract in `docs/dev/validation-scenario-contract.md`. |
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
+
+## Payload cost (measured)
+
+`tools/list` ships the tool inventory at session start, so its size is a real
+per-session cost for an agent. A bare token number is not reproducible: it moves
+with the tokenizer, the view, and the serialization. All three are pinned here.
+
+- **Views**: `director` = all 149 declared tools; `agent` = the three
+  `_DIRECTOR_ONLY_TOOLS` removed (146); `readonly` = the `_READONLY_TOOLS`
+  whitelist (4).
+- **Shapes**: `wire` = `tool.model_dump(mode="json", exclude_none=True)` per
+  tool (includes `outputSchema`), wrapped as `{"tools": [...]}`, compact JSON
+  (`ensure_ascii=False`, `separators=(",", ":")`), UTF-8 bytes; `input-only` =
+  `{name, description, inputSchema}` with default `json.dumps` separators (the
+  shape issue #562's repro used).
+- **Tokenizer**: tiktoken `cl100k_base` and `o200k_base`.
+- **Unit**: one `tools/list` response. A client that re-injects the list every
+  turn multiplies these numbers by the turn count.
+- **Reproduce**: `.venv/bin/python scripts/mcp_payload_cost.py` (`--json` for
+  machine output).
+
+| View | Shape | Tools | Bytes | cl100k_base | o200k_base |
+|:--|:--|--:|--:|--:|--:|
+| director | wire | 149 | 244,289 | 52,495 | 53,878 |
+| agent | wire | 146 | 239,303 | 51,396 | 52,754 |
+| readonly | wire | 4 | 8,500 | 1,839 | 1,888 |
+| director | input-only | 149 | 106,004 | 26,358 | 26,373 |
+| agent | input-only | 146 | 103,816 | 25,800 | 25,818 |
+| readonly | input-only | 4 | 4,871 | 1,219 | 1,222 |
+
+Issue #562's baseline (25.8k tokens / 103,816 B) is the **agent + input-only**
+row. The actual MCP wire carries `outputSchema` on every tool: all 149 schemas
+are identical after key sorting (`distinct = 1`), and dropping them saves
+143,040 bytes — **58.6%** of the director wire payload. Including them is what
+takes the real `tools/list` cost to ~52.5k cl100k / ~53.9k o200k. The earlier
+"64k" figure was `bytes / 1.6` arithmetic, not a tokenizer measurement.
+
+A change that makes the schemas diverge moves these numbers and must update
+this baseline.
+
+*Baseline measured 2026-10-22 on `main` at 149 tools.*
 
 ## Collector Handlers (30 total)
 

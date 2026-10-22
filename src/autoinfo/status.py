@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from autoinfo import db
 from autoinfo.config import (
     Config,
     get_config_path,
@@ -345,9 +346,7 @@ def rate_item(
     db_path = Path("knowledge").resolve().parent / "autoinfo.db"
 
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        conn = db.connect(db_path)
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS feedback (

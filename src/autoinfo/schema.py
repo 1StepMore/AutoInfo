@@ -7,6 +7,8 @@ Usage::
 
     from autoinfo.schema import check_schema, SCHEMA_VERSION
 
+    # Deliberately a bare connection: schema bootstrap/migration runs before
+    # the business connection factory (db.connect) is applicable.
     conn = sqlite3.connect("autoinfo.db")
     check_schema(conn)  # auto-migrates to SCHEMA_VERSION
 """

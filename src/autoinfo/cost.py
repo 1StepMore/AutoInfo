@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from autoinfo import db
 from autoinfo.config import (
     Config,
     CostRatesConfig,
@@ -102,11 +103,7 @@ class CostMeter:
 
     def _connect(self) -> sqlite3.Connection:
         """Open a connection (with row factory for dict-like rows)."""
-        conn = sqlite3.connect(str(self._db_path))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        return conn
+        return db.connect(self._db_path)
 
     def _init_db(self) -> None:
         """Create the ``cost_log`` table if it does not exist."""

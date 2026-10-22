@@ -77,6 +77,12 @@ def test_connect_executes_busy_timeout_pragma(
             executed.append(sql)
             return self
 
+        def fetchone(self) -> tuple[str]:
+            # The shared factory reads the current journal mode before deciding
+            # whether a WAL conversion is needed (#387); report non-WAL so the
+            # conversion statement is still exercised.
+            return ("delete",)
+
         def __enter__(self) -> "_FakeConn":
             return self
 

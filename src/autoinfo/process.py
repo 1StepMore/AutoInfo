@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from autoinfo import db
 from autoinfo.config import (
     Config,
     DomainConfig,
@@ -38,7 +39,6 @@ from autoinfo.kb import (
     _FTS5_STOPWORDS,
     KBStore,
     PromotionRejected,
-    _db_busy_timeout_ms,
 )
 from autoinfo.keywords import KeywordsFile, KeywordState
 from autoinfo.llm import LLMExtractor
@@ -447,9 +447,7 @@ def _connect_progress_db() -> sqlite3.Connection:
     ``OperationalError: database is locked``.  A busy timeout makes the
     connection wait for the lock instead of failing immediately (issue #295).
     """
-    conn = sqlite3.connect(str(_get_progress_db_path()))
-    conn.execute(f"PRAGMA busy_timeout={_db_busy_timeout_ms()}")
-    return conn
+    return db.connect(_get_progress_db_path())
 
 
 def _init_progress_table(conn: sqlite3.Connection) -> None:

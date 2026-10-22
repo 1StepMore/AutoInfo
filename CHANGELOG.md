@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.30](https://github.com/1StepMore/AutoInfo/compare/v1.17.29...v1.17.30) (2026-10-22)
+
+
+### Bug Fixes
+
+* **db:** 统一 SQLite 连接工厂，补齐 busy_timeout（修确定性配置漂移） ([#568](https://github.com/1StepMore/AutoInfo/issues/568)) ([abb0135](https://github.com/1StepMore/AutoInfo/commit/abb01357deb012cba5fb0d2f95d6f796214b40e8))
+
 ## [1.17.29](https://github.com/1StepMore/AutoInfo/compare/v1.17.28...v1.17.29) (2026-10-21)
 
 

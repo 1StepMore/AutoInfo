@@ -31,10 +31,11 @@ connections and failed probabilistically in CI (sha 72b6fca4: one run 1 failed /
 foreign connection whose *first* statement is a journal-mode one —
 ``agent_callback._connect`` always sets ``busy_timeout`` first, but
 ``kb.SQLiteIndex._connect``, ``delivery_log``, ``user_store``, ``audit`` and
-``cost`` all issue ``PRAGMA journal_mode=WAL`` first — landing ahead of this
-test's own ``busy_timeout``. The buffer is therefore per connection instance and
-every assertion reads the connection the test itself opened, so foreign
-statements are structurally excluded from the window.
+``cost`` all delegate to ``db.connect``, whose probe reads ``journal_mode``
+first — landing ahead of this test's own ``busy_timeout``. The buffer is
+therefore per connection instance and every assertion reads the connection the
+test itself opened, so foreign statements are structurally excluded from the
+window.
 """
 
 from __future__ import annotations
@@ -145,19 +146,28 @@ def _wal_reads(statements: list[_Statement]) -> list[_Statement]:
 def test_fresh_database_is_converted_to_wal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recording_connect: type[_RecordingConnection]
 ) -> None:
-    """A database not yet in WAL must still be converted (no regression)."""
+    """A database not yet in WAL must still be converted (no regression).
+
+    The conversion is owned by ``db.ensure_initialized`` (#571), so the returned
+    connection must only observe WAL: it is reopened after the init connection
+    committed the mode change. Asserting the state (not a statement on this
+    connection) keeps #387's guard intact without pinning the ownership back to
+    the business connection.
+    """
     monkeypatch.setattr(ac, "_default_db_path", lambda: tmp_path / "autoinfo.db")
 
     conn = ac._connect()
     try:
         assert str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal"
         statements = _statements(conn)
-        assert _wal_writes(statements), (
-            "fresh database was never converted to WAL; statements on this connection:\n"
-            f"{_trace(statements)}"
-        )
     finally:
         conn.close()
+
+    assert not _wal_writes(statements), (
+        "the business connection performed the first WAL conversion itself; #571 "
+        "moved it to db.ensure_initialized so concurrent openers never race the "
+        f"EXCLUSIVE lock. Statements on this connection:\n{_trace(statements)}"
+    )
 
 
 def test_already_wal_database_is_not_converted_again(

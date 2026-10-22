@@ -6,6 +6,8 @@ validate_config, get_channel factory, list_channels, ProductTemplate.
 
 from __future__ import annotations
 
+import socket
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -83,10 +85,7 @@ class TestSMTPDeliveryChannel:
 
     def test_validate_config_missing_host(self) -> None:
         channel = SMTPDeliveryChannel()
-        assert (
-            channel.validate_config({"smtp_port": 587, "from_addr": "bot@example.com"})
-            is False
-        )
+        assert channel.validate_config({"smtp_port": 587, "from_addr": "bot@example.com"}) is False
 
     def test_validate_config_missing_port(self) -> None:
         channel = SMTPDeliveryChannel()
@@ -99,10 +98,7 @@ class TestSMTPDeliveryChannel:
 
     def test_validate_config_missing_from(self) -> None:
         channel = SMTPDeliveryChannel()
-        assert (
-            channel.validate_config({"smtp_host": "smtp.example.com", "smtp_port": 587})
-            is False
-        )
+        assert channel.validate_config({"smtp_host": "smtp.example.com", "smtp_port": 587}) is False
 
     def test_validate_config_empty_host(self) -> None:
         channel = SMTPDeliveryChannel()
@@ -282,13 +278,9 @@ class TestProductTemplate:
     def test_domain_override(self, tmp_path: Path) -> None:
         """Domain-specific template overrides the base template."""
         domain = "test-domain"
-        domain_dir = (
-            tmp_path / ".autoinfo" / "templates" / domain / "digest"
-        )
+        domain_dir = tmp_path / ".autoinfo" / "templates" / domain / "digest"
         domain_dir.mkdir(parents=True)
-        domain_dir.joinpath("custom.j2").write_text(
-            "CUSTOM OVERRIDE: {{ title }}"
-        )
+        domain_dir.joinpath("custom.j2").write_text("CUSTOM OVERRIDE: {{ title }}")
 
         pt = ProductTemplate(domain=domain)
         pt._domain_dir = domain_dir.parent.parent / domain
@@ -297,18 +289,12 @@ class TestProductTemplate:
         result = pt.render("digest", "custom", data)
         assert "CUSTOM OVERRIDE: Hello" in result
 
-    def test_unknown_variant_falls_back_to_default(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unknown_variant_falls_back_to_default(self, tmp_path: Path) -> None:
         """Unknown variant falls back to the default template for the type."""
         domain = "test-domain"
-        domain_dir = (
-            tmp_path / ".autoinfo" / "templates" / domain / "digest"
-        )
+        domain_dir = tmp_path / ".autoinfo" / "templates" / domain / "digest"
         domain_dir.mkdir(parents=True)
-        domain_dir.joinpath("default.j2").write_text(
-            "DEFAULT FALLBACK: {{ title }}"
-        )
+        domain_dir.joinpath("default.j2").write_text("DEFAULT FALLBACK: {{ title }}")
 
         pt = ProductTemplate(domain=domain)
         pt._domain_dir = domain_dir.parent.parent / domain
@@ -334,10 +320,9 @@ class TestProductTemplate:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_backward_compatible_digest(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_backward_compatible_digest(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """generate_digest still works without the product_template parameter."""
+
         # Mock KBStore so we don't need a real knowledge base
         class _MockStore:
             def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
@@ -386,9 +371,53 @@ class TestProductTemplate:
 class TestDigestDeliveryGates:
     """D1-D3 delivery gates wired into generate_digest()."""
 
-    def test_backward_compat_no_config_returns_str(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    @pytest.fixture(autouse=True)
+    def _hermetic_environment(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Issue #567: zero network and zero repo-root runtime state.
+
+        The digest/report paths previously reached unpatched LLM branches and
+        read the repo-root ``.autoinfo/`` config, so the verdict depended on
+        whether the developer's runtime directories existed and whether the
+        configured LLM was rate-limited.  Every test in this class now runs
+        with a hard network block, a temp CWD/config root, and all LLM entry
+        points stubbed, so an unexpected outbound call fails in milliseconds
+        instead of hanging until ``pytest-timeout``.
+        """
+
+        def _blocked(*args: object, **kwargs: object) -> None:
+            raise AssertionError(
+                "network access is forbidden in TestDigestDeliveryGates (issue #567)"
+            )
+
+        monkeypatch.setattr(socket.socket, "connect", _blocked)
+        monkeypatch.setattr(socket, "create_connection", _blocked)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("autoinfo.output.get_config_path", lambda: None)
+
+        monkeypatch.setattr("autoinfo.output._call_llm_for_digest", lambda *a, **k: {})
+        monkeypatch.setattr("autoinfo.output._call_llm_for_report_synthesis", lambda *a, **k: "")
+        monkeypatch.setattr("autoinfo.output._llm_json_extract", lambda *a, **k: None)
+        monkeypatch.setattr("autoinfo.output.call_with_fallback", _blocked)
+        monkeypatch.setattr("autoinfo.llm.call_with_fallback", _blocked)
+
+    def test_network_guard_blocks_real_connections(self) -> None:
+        """Issue #567 reverse proof: a real connect fails fast, never hangs."""
+        started = time.monotonic()
+        with pytest.raises(AssertionError, match="network access is forbidden"):
+            socket.create_connection(("example.com", 80), timeout=5)
+        assert time.monotonic() - started < 1.0
+
+    def test_llm_backstop_fails_fast(self) -> None:
+        """Issue #567 reverse proof: an unmocked LLM call cannot reach 180s."""
+        from autoinfo import output as output_module
+
+        started = time.monotonic()
+        with pytest.raises(AssertionError, match="network access is forbidden"):
+            output_module.call_with_fallback([{"role": "user", "content": "x"}])
+        assert time.monotonic() - started < 5.0
+
+    def test_backward_compat_no_config_returns_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Calling generate_digest without delivery_gate_configs returns str (backward compat)."""
 
         class _MockStore:
@@ -419,9 +448,7 @@ class TestDigestDeliveryGates:
         result = generate_digest(domain="test", period="daily", format="markdown")
         assert isinstance(result, str)
 
-    def test_d1_blocks_incomplete_digest(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_d1_blocks_incomplete_digest(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """D1 blocks delivery when digest has incomplete/empty sections."""
 
         class _MockStore:
@@ -474,9 +501,7 @@ class TestDigestDeliveryGates:
         assert result.delivery_format == "markdown"
         assert any("D2 fallback" in w for w in result.warnings)
 
-    def test_raw_skips_all_delivery_gates(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raw_skips_all_delivery_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """RAW product type causes all D1-D3 gates to skip."""
 
         class _MockStore:
@@ -517,13 +542,9 @@ class TestDigestDeliveryGates:
 
         assert isinstance(result, DeliveryOutput)
         for gate_name, gr in result.gate_results.items():
-            assert gr.details.get("skipped") is True, (
-                f"{gate_name} should be skipped for RAW"
-            )
+            assert gr.details.get("skipped") is True, f"{gate_name} should be skipped for RAW"
 
-    def test_gate_results_in_delivery_metadata(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_gate_results_in_delivery_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Gate results dict is included in DeliveryOutput when configs provided."""
 
         class _MockStore:
@@ -565,9 +586,7 @@ class TestDigestDeliveryGates:
         assert "D2-FormatIntegrity" in result.gate_results
         assert "D3-Freshness" in result.gate_results
 
-    def test_report_backward_compat_no_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_report_backward_compat_no_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """generate_report without delivery_gate_configs returns str."""
 
         class _MockStore:
@@ -611,9 +630,7 @@ class TestDigestDeliveryGates:
         result = generate_report(domain="test", format="markdown")
         assert isinstance(result, str)
 
-    def test_report_with_delivery_gates(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_report_with_delivery_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """generate_report with delivery_gate_configs returns DeliveryOutput with gate results."""
 
         class _MockStore:

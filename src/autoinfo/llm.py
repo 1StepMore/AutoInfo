@@ -36,17 +36,13 @@ from autoinfo.config import (
     resolve_fallback_api_key,
     resolve_primary_api_key,
 )
+from autoinfo.defaults import DEFAULT_LLM_TIMEOUT as DEFAULT_LLM_TIMEOUT
+from autoinfo.defaults import DEFAULT_MODEL as DEFAULT_MODEL
+from autoinfo.defaults import DEFAULT_PROVIDER as DEFAULT_PROVIDER
 from autoinfo.models import ExtractionResult, Item
 from autoinfo.prompts import get_prompt
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------------------------
-
-DEFAULT_PROVIDER = "openrouter"
-DEFAULT_MODEL = "deepseek/deepseek-chat"
 
 # Issue #426: the prompt text lives in data/prompts/extraction_system.md.
 SYSTEM_PROMPT = get_prompt("extraction_system")
@@ -306,7 +302,7 @@ class LLMExtractor:
         self._config = config
         self._json_mode = config.llm.json_mode
         self._reasoning_model = config.llm.reasoning_model
-        self._timeout = float(config.llm.timeout or 120.0)
+        self._timeout = float(config.llm.timeout or DEFAULT_LLM_TIMEOUT)
 
         provider = config.llm.provider or DEFAULT_PROVIDER
         model = config.llm.model or DEFAULT_MODEL

@@ -1872,7 +1872,7 @@ class TestConfigSchemaDefaults:
 
         cfg = create_default_config("medical-research")
         assert cfg["project"]["name"] == "autoinfo-medical-research"
-        assert cfg["llm"]["provider"] == "openai"
+        assert cfg["llm"]["provider"] == "openrouter"
         assert cfg["llm"]["api_key"] == "${AUTOINFO_LLM_API_KEY}"
         assert cfg["domains"][0]["name"] == "medical-research"
 

@@ -35,6 +35,7 @@ from autoinfo.config import (
     get_config_path,
     load_config,
 )
+from autoinfo.defaults import MIN_KB_CONTENT_CHARS
 from autoinfo.kb import (
     _FTS5_STOPWORDS,
     KBStore,
@@ -531,7 +532,7 @@ def _update_index_cefr(entry_id: str, cefr_level: str) -> None:
     Non-blocking: any failure is logged and swallowed.
     """
     try:
-        store = KBStore(min_content_chars=50)
+        store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
         with store.index._connect() as conn:
             conn.execute(
                 "UPDATE entries SET cefr = ? WHERE entry_id = ?",
@@ -916,7 +917,7 @@ def run_processing(
     # -- Initialise components ----------------------------------------------
     proc_config = _build_config_with_model(config, model)
     extractor = LLMExtractor(config=proc_config)
-    kb_store = KBStore(min_content_chars=50)
+    kb_store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
 
     # Load existing entries for G2 dedup checking
     # Convert SQLite dicts back to KBEntry objects for type safety.

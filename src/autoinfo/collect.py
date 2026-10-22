@@ -37,6 +37,7 @@ from autoinfo.collectors.robots import RobotsDisallowed
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
+from autoinfo.defaults import COLLECTIONS_DIR
 from autoinfo.models import CollectionResult, Item, KBEntry
 
 logger = logging.getLogger(__name__)
@@ -1371,7 +1372,7 @@ def _cache_items(
 ) -> CacheWriteResult:
     """Write deduplicated items to ``collections/<domain>/<source>/<date>/<id>.json``."""
     today = date.today().isoformat()
-    base_dir = Path("collections") / domain / source_name / today
+    base_dir = Path(COLLECTIONS_DIR) / domain / source_name / today
     base_dir.mkdir(parents=True, exist_ok=True)
 
     # Issue #139: cross-date URL dedup.  Each date directory is independent,
@@ -1381,7 +1382,7 @@ def _cache_items(
     # dirs of this source; an item whose URL is already cached is skipped
     # (the newest copy wins; the older file stays for provenance).
     seen_urls: set[str] = set()
-    source_root = Path("collections") / domain / source_name
+    source_root = Path(COLLECTIONS_DIR) / domain / source_name
     if source_root.is_dir():
         for prior_file in source_root.rglob("*.json"):
             if prior_file.parent.name == today:
@@ -1538,7 +1539,7 @@ def _log_run(
     duration_s:
         Wall-clock duration of the collection run in seconds.
     """
-    runs_dir = Path("collections") / domain / source_name
+    runs_dir = Path(COLLECTIONS_DIR) / domain / source_name
     runs_dir.mkdir(parents=True, exist_ok=True)
     runs_path = runs_dir / "_runs.json"
 
@@ -1579,7 +1580,7 @@ def list_active_collections() -> list[dict[str, Any]]:
     Falls back to returning the 5 most recent runs if no active run
     is found.
     """
-    runs_path = Path("collections") / "_runs.json"
+    runs_path = Path(COLLECTIONS_DIR) / "_runs.json"
     if not runs_path.is_file():
         return []
 

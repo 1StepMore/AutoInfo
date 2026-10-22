@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.36](https://github.com/1StepMore/AutoInfo/compare/v1.17.35...v1.17.36) (2026-10-22)
+
+
+### Bug Fixes
+
+* **mcp:** 错误码收口到 ErrorCode 枚举 + MOBI 按 blocked-with-record 登记（[#585](https://github.com/1StepMore/AutoInfo/issues/585), [#586](https://github.com/1StepMore/AutoInfo/issues/586)） ([#590](https://github.com/1StepMore/AutoInfo/issues/590)) ([e64908e](https://github.com/1StepMore/AutoInfo/commit/e64908e5126461ac6b0bbd38fa44e72bac294f5e))
+
 ## [1.17.35](https://github.com/1StepMore/AutoInfo/compare/v1.17.34...v1.17.35) (2026-10-22)
 
 

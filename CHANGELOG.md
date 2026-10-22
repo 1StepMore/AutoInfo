@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.37](https://github.com/1StepMore/AutoInfo/compare/v1.17.36...v1.17.37) (2026-10-22)
+
+
+### Refactoring
+
+* **config:** 默认值收口到 autoinfo.defaults 单一来源（[#587](https://github.com/1StepMore/AutoInfo/issues/587)） ([#591](https://github.com/1StepMore/AutoInfo/issues/591)) ([314796b](https://github.com/1StepMore/AutoInfo/commit/314796b99f7f691040edec846753a6aa48f624d0))
+
 ## [1.17.36](https://github.com/1StepMore/AutoInfo/compare/v1.17.35...v1.17.36) (2026-10-22)
 
 

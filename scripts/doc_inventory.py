@@ -383,6 +383,34 @@ def _server_docstring_counts(server_text: str) -> tuple[int, int] | None:
     return int(m.group(1)), int(m.group(2))
 
 
+def _readme_shape_failures(readme_text: str) -> list[str]:
+    """Enforce the README structural budget (#584).
+
+    Features is a thematic index, not a second status table; the historical
+    wave chronicle belongs in ``docs/archive``, not in a maintained section.
+    """
+    failures: list[str] = []
+    features_parts = readme_text.split("## Features", 1)
+    if len(features_parts) == 2:
+        body = features_parts[1].split("## Status", 1)[0]
+        bullets = len(re.findall(r"^- \*\*", body, re.M))
+        if bullets > 12:
+            failures.append(
+                f"README Features has {bullets} bullets (>12): keep a thematic index; "
+                "component details belong in the Status table"
+            )
+    known_parts = readme_text.split("## Known Limitations", 1)
+    if len(known_parts) == 2:
+        body = known_parts[1].split("\n## ", 1)[0]
+        lines = len(body.strip().splitlines())
+        if lines > 30:
+            failures.append(
+                f"README Known Limitations is {lines} lines (>30): move history to "
+                "docs/archive/readme-known-limitations-chronicle.md"
+            )
+    return failures
+
+
 def run_check() -> list[str]:
     """Check cross-doc consistency; return the list of human-readable failures."""
     failures: list[str] = []
@@ -398,17 +426,13 @@ def run_check() -> list[str]:
         if av is None:
             # AGENTS.md is pointer-only: not carrying the fact is fine; the
             # README value is still required (single source of truth).
-            print(
-                f"  {fact}: README.md={rv_disp}, "
-                f"AGENTS.md=not carried (pointer-only) -> skip"
-            )
+            print(f"  {fact}: README.md={rv_disp}, AGENTS.md=not carried (pointer-only) -> skip")
             if rv is None:
                 failures.append(f"fact '{fact}': README.md=not found")
             continue
         match = rv is not None and rv == av
         print(
-            f"  {fact}: README.md={rv_disp}, AGENTS.md={av} "
-            f"-> {'match' if match else 'MISMATCH'}"
+            f"  {fact}: README.md={rv_disp}, AGENTS.md={av} -> {'match' if match else 'MISMATCH'}"
         )
         if not match:
             failures.append(f"fact '{fact}': README.md={rv_disp} vs AGENTS.md={av}")
@@ -596,6 +620,8 @@ def run_check() -> list[str]:
                 f"  docs/dev/doc-inventory.md: header present, content fresh "
                 f"({len(rows)} files) -> ok"
             )
+
+    failures.extend(_readme_shape_failures(readme_text))
 
     return failures
 

@@ -78,19 +78,18 @@ def test_summary_metrics_present(result: Any) -> None:
         "no_enum_tools",
         "enum_params_total",
         "default_params_total",
-        "output_schema_ratio",
-        "no_output_schema",
-        "output_schema_floor_ok",
+        "per_tool_output_schema",
+        "legacy_output_schema_wrapped",
     ):
         assert key in s, key
 
 
-def test_output_schema_floor_100_percent(result: Any) -> None:
-    # T-S-01: every declared tool advertises the canonical envelope. The
-    # static check mirrors the runtime test in tests/mcp/
-    # test_tool_output_schema.py (both derive from _full_tool_list).
-    assert result["summary"]["no_output_schema"] == 0
-    assert result["summary"]["output_schema_floor_ok"] is True
+def test_no_legacy_shared_output_schema(result: Any) -> None:
+    # #588 removed the 149-times-repeated envelope schema.  No runtime
+    # assignment may come back; per-tool schemas are an explicit follow-up
+    # (#581), so the count is 0 until that lands.
+    assert result["summary"]["legacy_output_schema_wrapped"] is False
+    assert result["summary"]["per_tool_output_schema"] == 0
 
 
 def test_no_short_descriptions_remain(result: Any) -> None:

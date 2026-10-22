@@ -1,7 +1,7 @@
 """Tests for the standardised error response module (``autoinfo.mcp.errors``).
 
 Covers:
-    - All 26 ``ErrorCode`` enum members have correct (CamelCase) string values
+    - All 29 ``ErrorCode`` enum members have correct (CamelCase) string values
     - No SCREAMING_SNAKE casing outliers (T-S-05)
     - Retired dead codes are gone; ``PROCESSING_FAILED`` is retained + emitted
     - ``error_dict()`` returns the expected shape (``error_code``, ``message``,
@@ -54,6 +54,9 @@ class TestErrorCodeEnumValues:
             (ErrorCode.DIRECTOR_ONLY, "DirectorOnly"),
             (ErrorCode.READ_ONLY_SERVER, "ReadOnlyServer"),
             (ErrorCode.FREE_TIER_LIMIT, "FreeTierLimit"),
+            (ErrorCode.GATE_NOT_FOUND, "GateNotFound"),
+            (ErrorCode.INVALID_ARGUMENTS, "InvalidArguments"),
+            (ErrorCode.ALERT_RULE_NOT_FOUND, "AlertRuleNotFound"),
         ],
     )
     def test_value(self, member: ErrorCode, expected: str) -> None:
@@ -61,7 +64,7 @@ class TestErrorCodeEnumValues:
 
     def test_total_members(self) -> None:
         """Ensure the enum member count stays pinned (grows only with new codes)."""
-        assert len(ErrorCode) == 26
+        assert len(ErrorCode) == 29
 
     def test_values_are_camel_case(self) -> None:
         """T-S-05: every emitted code value is CamelCase, no SCREAMING_SNAKE.
@@ -258,3 +261,26 @@ class TestReExports:
         assert ErrorResponse is not None
         # Just verify it's a TypedDict (type construct)
         assert isinstance(ErrorResponse, type)
+
+
+class TestServerCodesUseTheEnum:
+    """Every literal ``code=`` in server.py must be an ErrorCode value."""
+
+    def test_no_bare_error_code_strings(self) -> None:
+        import ast
+
+        server_path = Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "mcp" / "server.py"
+        tree = ast.parse(server_path.read_text(encoding="utf-8"))
+        valid = {member.value for member in ErrorCode}
+        offenders: list[tuple[int, str]] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg != "code":
+                    continue
+                value = keyword.value
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    if value.value not in valid:
+                        offenders.append((value.lineno, value.value))
+        assert offenders == [], f"error codes outside ErrorCode enum: {offenders}"

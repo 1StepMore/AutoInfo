@@ -3061,6 +3061,7 @@ _PERSIST_EXT_BY_FORMAT: dict[str, str] = {
     "audiobook": ".zip",
 }
 
+
 def _persist_output(
     domain: str,
     product: str,
@@ -5363,7 +5364,7 @@ def _handle_get_gate_config(domain: str, gate: str) -> dict[str, Any]:
 
     if gate_config is None:
         return error_response(
-            code="GateNotFound",
+            code=ErrorCode.GATE_NOT_FOUND,
             message=f"Gate '{gate}' is not configured for domain '{domain}'",
             actionable=True,
         )
@@ -5535,7 +5536,7 @@ def _handle_set_budget_thresholds(
 
     if not thresholds:
         return error_response(
-            code="InvalidArguments",
+            code=ErrorCode.INVALID_ARGUMENTS,
             message="thresholds must be a non-empty list of floats",
             actionable=True,
         )
@@ -5584,7 +5585,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
     product_type_upper = product_type.upper()
     if product_type_upper not in ("RAW", "PROCESSED"):
         return error_response(
-            code="ValidationError",
+            code=ErrorCode.VALIDATION_ERROR,
             message=f"Invalid product_type '{product_type}'. Must be 'RAW' or 'PROCESSED'.",
             actionable=True,
         )
@@ -5886,7 +5887,7 @@ def _handle_remove_alert_rule(id: str) -> dict[str, Any]:
 
     if not removed:
         return error_response(
-            code="AlertRuleNotFound",
+            code=ErrorCode.ALERT_RULE_NOT_FOUND,
             message=f"Alert rule '{id}' not found",
             actionable=True,
         )

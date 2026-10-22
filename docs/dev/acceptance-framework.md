@@ -242,11 +242,20 @@ The service-coverage scope is fixed by the end-user willingness-to-pay research 
 
 ### Binary acceptance criteria
 
-1. **Hard gates cannot be bypassed.** G0 (schema integrity) and G4 (factual consistency) are hard: 3× retry then block, with blocked items written to `_failed/`. A path that silently passes a hard-gate failure = FAIL.
+1. **Hard gates cannot be bypassed.** G0 (schema integrity) is a **deterministic** gate: it blocks unconditionally, with no retries — re-running a schema check cannot flip an invalid document to valid. G4 (factual consistency) is an LLM-judged gate: 3× retry with escalating context, then block. Blocked items are written to `_failed/`. A path that silently passes a hard-gate failure = FAIL.
 2. **Soft gates act per configuration.** G1 (source authority), G2 (dedup), G3 (relevance), G5 (translation) apply their configured action (archive/flag/pass) with the configuration recorded. A gate running with no recorded configuration = RISK.
 3. **Delivery gates are enforced at output time.** D1 (product completeness), D2 (format integrity), D3 (freshness) run per delivery, with the configured thresholds recorded. A delivered product that skipped its gates = FAIL.
 4. **Raw-quality signals are present.** Freshness (per-domain TTL), dedup, and source traceability are enforced on the raw layer; stale content is demoted/excluded per lifecycle rules, never silently served. Violation = RISK.
 5. **The curation/admission gate is enforced and configured.** The CurationGate (Draft→Wiki promotion admission: provenance + G0 + G1 `source_score` ≥ 30 + G3 `relevance_score` ≥ 30 + G4 factual re-check, per `quality-gates.md` §3.1) is a hard gate: a failed admission check blocks promotion with a typed `PromotionRejected` and a `_failed/` marker, never a silent pass. Its thresholds (`quality_gates.CurationGate`: shared `threshold` default 30, G4 `enabled` default True) are recorded per domain and queryable via `get_gate_config`/`set_gate_config`. A promotion that bypasses the admission standard without director authorization (director-only `force_promote` backdoor) = FAIL.
+
+### Quality Gate Retry Semantics (machine-checked)
+
+| Gate | Category | Attempts |
+|:--|:--|--:|
+| G0-SchemaIntegrity | hard | 1 |
+| G4-SummaryFactual | hard | 3 |
+
+`Attempts` is the code's `QualityGateConfig.retries`: it counts **total attempts** (the gate loop is `for _ in range(retries)`), so `1` means no retry.
 
 ### 5.2 Director sampling review (human-as-end-user)
 

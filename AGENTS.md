@@ -163,11 +163,11 @@ Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
 
 ### Quality Gates (Production-Grade)
 
-Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — 3× retry then block. G1-G3 and G5 are **soft gates** with configurable thresholds and actions (archive/flag/pass). 3 delivery gates (D1-D3) check product completeness, format integrity, and freshness at output time. Validation-delivery packaging additionally persists per-product `01-QA-GATES/gate-report-<product>.{md,json}` (D1-D3 + authenticity verdicts, md for humans / json for agents) with a `gate-reports-index.json` — the packaged reports record delivery-gate outcomes; G0-G5 run at the process layer and are not recomputed in packaging.
+Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — G0 blocks without retry (deterministic check), G4 retries 3× with escalating context then blocks. G1-G3 and G5 are **soft gates** with configurable thresholds and actions (archive/flag/pass). 3 delivery gates (D1-D3) check product completeness, format integrity, and freshness at output time. Validation-delivery packaging additionally persists per-product `01-QA-GATES/gate-report-<product>.{md,json}` (D1-D3 + authenticity verdicts, md for humans / json for agents) with a `gate-reports-index.json` — the packaged reports record delivery-gate outcomes; G0-G5 run at the process layer and are not recomputed in packaging.
 
 | Gate | Type | Priority | Action on Failure |
 |------|------|----------|-------------------|
-| G0: Schema integrity | 🔴 Hard | 🔴 P0 | 3× retry → block (item written to `_failed/`) |
+| G0: Schema integrity | 🔴 Hard | 🔴 P0 | block (**no retry**; deterministic check, retrying cannot change the result) (item written to `_failed/`) |
 | G1: Source authority (tier check) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
 | G2: Dedup (URL + fuzzy title) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
 | G3: Relevance scoring (0-100) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass (below threshold) |
@@ -342,6 +342,14 @@ AutoInfo generates runtime state at execution time. Distinguish from source:
 | `.omo/` | Runtime | Agent-orchestrator workspace, gitignored (see above) |
 
 Never hand-edit runtime artifacts to fix behavior — fix the source.
+
+## Backlog Priority Triggers
+
+某些 P1 项的等级由「该工作量是否继续发生」决定 —— 触发条件命中时**等级自动回升，不需要重新评审**：
+
+| 项 | 当前等级 | 回升触发 | 回升后 |
+|:--|:--|:--|:--|
+| collectors 层重构（30+ handler / 130+ 源） | P1 | 下一次**加源或加域**（`src/autoinfo/collectors/` 或域配置新增） | P0 |
 
 ## Status
 

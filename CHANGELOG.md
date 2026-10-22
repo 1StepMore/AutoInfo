@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.34](https://github.com/1StepMore/AutoInfo/compare/v1.17.33...v1.17.34) (2026-10-22)
+
+
+### Documentation
+
+* **mcp:** 记录 tools/list 的实测 token 口径与 outputSchema 冗余（[#562](https://github.com/1StepMore/AutoInfo/issues/562)） ([#577](https://github.com/1StepMore/AutoInfo/issues/577)) ([861f9b6](https://github.com/1StepMore/AutoInfo/commit/861f9b6d12aa29a4c6493f815014f6a2921ec03a))
+
 ## [1.17.33](https://github.com/1StepMore/AutoInfo/compare/v1.17.32...v1.17.33) (2026-10-22)
 
 

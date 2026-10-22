@@ -12,6 +12,8 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
+from autoinfo.defaults import DEFAULT_EMBEDDING_MODEL
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -135,7 +137,7 @@ def generate_embedding(
         logger.warning("generate_embedding called with empty text — returning zero-vector")
         return [0.0] * _EMBEDDING_DIM
 
-    model = "text-embedding-ada-002"
+    model = DEFAULT_EMBEDDING_MODEL
     if model_config and isinstance(model_config, dict):
         model = model_config.get("model", model)
 

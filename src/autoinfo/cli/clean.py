@@ -7,12 +7,14 @@ from pathlib import Path
 
 import typer
 
+from autoinfo.defaults import COLLECTIONS_DIR
+
 from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
 
 app = typer.Typer(help="Remove cached artifacts and temporary files.")
 
 _DEFAULT_DIRS = {
-    "collections": Path("collections"),
+    "collections": Path(COLLECTIONS_DIR),
     "outputs": Path("outputs"),
     "knowledge": Path("knowledge"),
 }

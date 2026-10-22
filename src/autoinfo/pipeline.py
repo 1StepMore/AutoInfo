@@ -56,6 +56,7 @@ from autoinfo.checkpoint import (
     StepCheckpoint,
     make_signature,
 )
+from autoinfo.defaults import MIN_KB_CONTENT_CHARS
 
 #: Checkpoint namespace for the full production pipeline.
 PIPELINE_NAME = "pipeline"
@@ -206,7 +207,7 @@ def _step_kb_verify(ctx: dict[str, Any]) -> dict[str, Any]:
     """Step 3 — verify the KB holds entries for the domain."""
     from autoinfo.kb import KBStore
 
-    count = KBStore(min_content_chars=50).count_entries(ctx["domain"])
+    count = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS).count_entries(ctx["domain"])
     return {"kb_entry_count": count}
 
 
@@ -214,7 +215,7 @@ def _step_kb_index(ctx: dict[str, Any]) -> dict[str, Any]:
     """Step 4 — rebuild the KB index (idempotent)."""
     from autoinfo.kb import KBStore
 
-    report = KBStore(min_content_chars=50).reindex_knowledge_base(ctx["domain"])
+    report = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS).reindex_knowledge_base(ctx["domain"])
     return {
         "indexed": report.get("indexed", report.get("entries_indexed", 0)),
         "domain": ctx["domain"],

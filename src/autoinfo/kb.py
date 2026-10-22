@@ -32,6 +32,8 @@ import yaml
 
 from autoinfo import db
 from autoinfo.config import DEFAULT_TTL_DAYS, Config
+from autoinfo.defaults import DEFAULT_EMBEDDING_MODEL
+from autoinfo.defaults import MIN_KB_CONTENT_CHARS as MIN_KB_CONTENT_CHARS
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.promotion import RejectionReason, check_promotion_admission
 from autoinfo.quality import QualityResult
@@ -2080,7 +2082,7 @@ class SQLiteIndex:
         from autoinfo.config import get_config_path, load_config
 
         config_path = get_config_path()
-        model_name = "text-embedding-ada-002"
+        model_name = DEFAULT_EMBEDDING_MODEL
         w_fts5 = 0.7
         w_vec = 0.3
         if config_path:
@@ -2576,7 +2578,6 @@ def _default_kb_base_path() -> Path:
 # centralizing the constant here lets every write boundary — MCP
 # create_kb_entry / create_kb_draft and the REST API — share the same floor
 # (issue #279: entries with empty/short content must never enter the KB).
-MIN_KB_CONTENT_CHARS = 50
 
 # Issue #189: a fresh G3 re-score at or above this threshold is a strong
 # positive signal that must restore an archived entry to active (the #79
@@ -2987,7 +2988,7 @@ class KBStore:
         if not config.vector_search.enabled:
             return
 
-        model_name = config.vector_search.model or "text-embedding-ada-002"
+        model_name = config.vector_search.model or DEFAULT_EMBEDDING_MODEL
 
         # Construct meaningful text for embedding — title + body content
         entry_text = f"{entry.title}\n\n{body}"

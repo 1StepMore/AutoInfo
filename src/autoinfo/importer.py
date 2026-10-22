@@ -28,6 +28,7 @@ from typing import Any
 
 import yaml
 
+from autoinfo.defaults import MIN_KB_CONTENT_CHARS
 from autoinfo.kb import KBStore
 from autoinfo.models import Item
 
@@ -186,13 +187,13 @@ def import_markdown(domain: str, data: str) -> dict[str, Any]:
             language=frontmatter.get("language", ""),
             tags=frontmatter.get("tags"),
             **{
-                k: v for k, v in frontmatter.items()
-                if k not in MANDATORY_FIELDS_MD
-                and k not in ("title", "language", "tags", "domain")
+                k: v
+                for k, v in frontmatter.items()
+                if k not in MANDATORY_FIELDS_MD and k not in ("title", "language", "tags", "domain")
             },
         )
 
-        store = KBStore(min_content_chars=50)
+        store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
         entry = store.store_entry(item=item, tier="01-Raw")
         if entry is None:
             # Issue #182: content too short / rejected — surface a clean
@@ -277,9 +278,7 @@ def import_json(domain: str, data: str) -> dict[str, Any]:
         missing = MANDATORY_FIELDS_JSON - set(entry_data.keys())
         if missing:
             failed += 1
-            errors.append(
-                f"[{idx}] Missing mandatory fields: {', '.join(sorted(missing))}"
-            )
+            errors.append(f"[{idx}] Missing mandatory fields: {', '.join(sorted(missing))}")
             continue
 
         try:
@@ -297,13 +296,13 @@ def import_json(domain: str, data: str) -> dict[str, Any]:
                 language=entry_data.get("language", ""),
                 tags=entry_data.get("tags"),
                 **{
-                    k: v for k, v in entry_data.items()
-                    if k not in MANDATORY_FIELDS_JSON
-                    and k not in ("language", "tags")
+                    k: v
+                    for k, v in entry_data.items()
+                    if k not in MANDATORY_FIELDS_JSON and k not in ("language", "tags")
                 },
             )
 
-            store = KBStore(min_content_chars=50)
+            store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
             entry = store.store_entry(item=item, tier="01-Raw")
             if entry is None:
                 # Issue #182: rejected (content too short) — count as failed
@@ -392,7 +391,7 @@ def import_csv(domain: str, data: str) -> dict[str, Any]:
                 tags=tags,
             )
 
-            store = KBStore(min_content_chars=50)
+            store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
             entry = store.store_entry(item=item, tier="01-Raw")
             if entry is None:
                 # Issue #182: rejected (content too short) — count as failed
@@ -445,29 +444,21 @@ def import_opml(domain: str, data: str) -> dict[str, Any]:
     def _walk_outlines(parent: ET.Element) -> None:
         for elem in parent.iter("outline"):
             # Extract attributes
-            name = (
-                elem.get("text")
-                or elem.get("title")
-                or elem.get("label")
-                or ""
-            )
-            url = (
-                elem.get("xmlUrl")
-                or elem.get("url")
-                or elem.get("htmlUrl")
-                or ""
-            )
+            name = elem.get("text") or elem.get("title") or elem.get("label") or ""
+            url = elem.get("xmlUrl") or elem.get("url") or elem.get("htmlUrl") or ""
             feed_type = elem.get("type", "rss")
 
             if not url or url in seen_urls:
                 continue
             seen_urls.add(url)
 
-            suggestions.append({
-                "name": name,
-                "url": url,
-                "type": feed_type,
-            })
+            suggestions.append(
+                {
+                    "name": name,
+                    "url": url,
+                    "type": feed_type,
+                }
+            )
 
     _walk_outlines(root)
 

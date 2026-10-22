@@ -32,6 +32,7 @@ from autoinfo.config import (
     load_config,
     validate_config,
 )
+from autoinfo.defaults import COLLECTIONS_DIR
 from autoinfo.schema import get_schema_version as _get_schema_version
 
 # ---------------------------------------------------------------------------
@@ -252,9 +253,7 @@ def _probe_sources(probes: list[tuple[str, str]]) -> list[dict[str, Any]]:
     return [entry for _, entry in results]
 
 
-def _collect_probe(
-    fut: Future[dict[str, Any]], name: str, idx: int
-) -> tuple[int, dict[str, Any]]:
+def _collect_probe(fut: Future[dict[str, Any]], name: str, idx: int) -> tuple[int, dict[str, Any]]:
     try:
         return idx, fut.result(timeout=0)
     except Exception as exc:
@@ -417,7 +416,7 @@ def _load_collection_runs() -> list[dict[str, Any]]:
     treated as successful runs without latency samples.
     """
     runs: list[dict[str, Any]] = []
-    runs_dir = Path("collections")
+    runs_dir = Path(COLLECTIONS_DIR)
     if not runs_dir.is_dir():
         return runs
     for runs_file in sorted(runs_dir.rglob("_runs.json")):
@@ -571,7 +570,7 @@ def _compute_source_health() -> list[dict[str, Any]]:
     ``"unknown"``; all runs successful → ``"healthy"``; some failures →
     ``"degraded"``; every run failed → ``"error"``.
     """
-    runs_dir = Path("collections")
+    runs_dir = Path(COLLECTIONS_DIR)
     if not runs_dir.is_dir():
         return []
     per_source: dict[str, dict[str, Any]] = {}
@@ -593,9 +592,7 @@ def _compute_source_health() -> list[dict[str, Any]]:
             agg["runs"] += 1
             status = entry.get("status")
             errors = entry.get("errors")
-            if status not in (None, "success") or (
-                isinstance(errors, list) and errors
-            ):
+            if status not in (None, "success") or (isinstance(errors, list) and errors):
                 agg["errors"] += 1
             dur = entry.get("duration_ms")
             if isinstance(dur, (int, float)) and dur >= 0:

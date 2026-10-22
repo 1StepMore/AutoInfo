@@ -17,6 +17,10 @@ from typing import Any, Final
 
 import yaml
 
+from autoinfo.defaults import DEFAULT_LLM_TIMEOUT, DEFAULT_PROVIDER, DEFAULT_TIMEOUT_SECONDS
+from autoinfo.defaults import DEFAULT_MODEL as _DEFAULT_MODEL
+from autoinfo.defaults import DEFAULT_TTL_DAYS as _DEFAULT_TTL_DAYS
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -189,7 +193,7 @@ class LLMConfig:
     json_mode: bool = False
     reasoning_model: bool = False
     # Seconds per litellm call; overrides litellm's 600s default (config.yaml ``llm.timeout``).
-    timeout: float = 120.0
+    timeout: float = DEFAULT_LLM_TIMEOUT
     # Tokens per litellm call; ``None`` keeps the historical 2000 default.
     # Task-level overrides land here via :func:`_resolve_task_llm_config`.
     max_tokens: int | None = None
@@ -297,7 +301,7 @@ class TopicConfig:
 # module-level constants are the one place the mapping lives; every consumer
 # resolves through :func:`resolve_domain_freshness`.
 
-DEFAULT_TTL_DAYS = 90
+DEFAULT_TTL_DAYS = _DEFAULT_TTL_DAYS
 DEFAULT_FRESHNESS_THRESHOLD = 0.5
 DOMAIN_DEFAULT_TTL_DAYS: dict[str, int] = {
     "medical-research": 180,
@@ -566,7 +570,7 @@ class OutputConfig:
         parameter on ``generate_report`` / ``generate_digest``.
     """
 
-    pdf_timeout: float = 120.0
+    pdf_timeout: float = DEFAULT_TIMEOUT_SECONDS
     source_tier_badge: bool = True
     ref_limit: int = 60
 
@@ -752,7 +756,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             base_url=str(f.get("base_url", "")),
             json_mode=bool(f.get("json_mode", False)),
             reasoning_model=bool(f.get("reasoning_model", False)),
-            timeout=float(f.get("timeout", 120.0)),
+            timeout=float(f.get("timeout", DEFAULT_LLM_TIMEOUT)),
         )
         for f in fallback_raw
     ]
@@ -948,7 +952,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             base_url=str(llm_raw.get("base_url", "")),
             json_mode=bool(llm_raw.get("json_mode", False)),
             reasoning_model=bool(llm_raw.get("reasoning_model", False)),
-            timeout=float(llm_raw.get("timeout", 120.0)),
+            timeout=float(llm_raw.get("timeout", DEFAULT_LLM_TIMEOUT)),
             max_tokens=int(llm_raw["max_tokens"]) if llm_raw.get("max_tokens") else None,
             fallback=fallback,
             tasks=tasks,
@@ -1012,7 +1016,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             local_voice=str(tts_raw.get("local_voice", "en-US-JennyNeural")),
         ),
         output=OutputConfig(
-            pdf_timeout=float(output_raw.get("pdf_timeout", 120.0)),
+            pdf_timeout=float(output_raw.get("pdf_timeout", DEFAULT_TIMEOUT_SECONDS)),
             source_tier_badge=_as_bool(output_raw.get("source_tier_badge", True)),
             ref_limit=int(output_raw.get("ref_limit", 60)),
         ),
@@ -1205,8 +1209,8 @@ def create_default_config(domain: str) -> dict[str, Any]:
             "created_at": "",
         },
         "llm": {
-            "provider": "openai",
-            "model": "gpt-4o-mini",
+            "provider": DEFAULT_PROVIDER,
+            "model": _DEFAULT_MODEL,
             "api_key": "${AUTOINFO_LLM_API_KEY}",
         },
         "domains": [

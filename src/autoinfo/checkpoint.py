@@ -39,6 +39,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from autoinfo.defaults import COLLECTIONS_DIR
+
 #: Subdirectory (under the pipeline's base dir) holding checkpoint JSON files.
 CHECKPOINT_DIRNAME = "_checkpoint"
 
@@ -201,7 +203,7 @@ class CheckpointStore:
         cache uses), so state travels with the pipeline's own artifacts.
     """
 
-    def __init__(self, base_dir: str | Path = "collections") -> None:
+    def __init__(self, base_dir: str | Path = COLLECTIONS_DIR) -> None:
         self.base_dir = Path(base_dir)
 
     def path(self, domain: str, pipeline: str) -> Path:

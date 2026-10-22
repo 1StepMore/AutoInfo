@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.35](https://github.com/1StepMore/AutoInfo/compare/v1.17.34...v1.17.35) (2026-10-22)
+
+
+### Tests
+
+* **delivery:** 隔离 TestDigestDeliveryGates 的 LLM/网络与仓根运行时状态（[#567](https://github.com/1StepMore/AutoInfo/issues/567)） ([#579](https://github.com/1StepMore/AutoInfo/issues/579)) ([3c03437](https://github.com/1StepMore/AutoInfo/commit/3c034377efa6cf9b8eb3b5b77a6cebed14dea3d1))
+
 ## [1.17.34](https://github.com/1StepMore/AutoInfo/compare/v1.17.33...v1.17.34) (2026-10-22)
 
 

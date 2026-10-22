@@ -44,16 +44,14 @@ def _parse_retry_table() -> dict[str, int]:
     )
 
     header = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
-    assert header == ["Gate", "Category", "Retries"], (
-        f"unexpected retry-table header: {header!r}"
-    )
+    assert header == ["Gate", "Category", "Attempts"], f"unexpected retry-table header: {header!r}"
 
     parsed: dict[str, int] = {}
     for row in table_lines[2:]:
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         assert len(cells) == 3, f"malformed retry-table row: {row!r}"
-        gate, _category, retries = cells
-        parsed[gate] = int(retries)
+        gate, _category, attempts = cells
+        parsed[gate] = int(attempts)
     return parsed
 
 

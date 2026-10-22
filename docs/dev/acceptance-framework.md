@@ -250,10 +250,12 @@ The service-coverage scope is fixed by the end-user willingness-to-pay research 
 
 ### Quality Gate Retry Semantics (machine-checked)
 
-| Gate | Category | Retries |
+| Gate | Category | Attempts |
 |:--|:--|--:|
 | G0-SchemaIntegrity | hard | 1 |
 | G4-SummaryFactual | hard | 3 |
+
+`Attempts` is the code's `QualityGateConfig.retries`: it counts **total attempts** (the gate loop is `for _ in range(retries)`), so `1` means no retry.
 
 ### 5.2 Director sampling review (human-as-end-user)
 

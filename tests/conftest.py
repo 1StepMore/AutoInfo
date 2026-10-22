@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator
 from unittest.mock import MagicMock
@@ -19,6 +20,26 @@ import pytest
 import yaml
 
 from autoinfo.models import ExtractionResult, Item, KBEntry
+
+# ---------------------------------------------------------------------------
+# Hermetic import-time runtime state (issue #567)
+# ---------------------------------------------------------------------------
+# ``autoinfo.agent_callback`` runs ``_startup_requeue()`` the first time it is
+# imported, and that hook opens ``Path.cwd() / "autoinfo.db"``.  In a developer
+# worktree that file is the real runtime database: the outbox scan costs
+# seconds (there is no ``status`` index) and concurrent pytest processes
+# serialise on the same write lock, so identical tests are fast or slow
+# depending on who else is running.  Import the module once against a throwaway
+# CWD so the whole test session starts from an empty outbox instead.
+# ``agent_callback`` tests still patch ``_default_db_path`` themselves; this
+# only removes the import-time side effect on the repo-root DB.
+_SESSION_RUNTIME_DIR = tempfile.mkdtemp(prefix="autoinfo-test-runtime-")
+_PREVIOUS_CWD = os.getcwd()
+os.chdir(_SESSION_RUNTIME_DIR)
+try:
+    import autoinfo.agent_callback  # noqa: F401  (import-time requeue on temp DB)
+finally:
+    os.chdir(_PREVIOUS_CWD)
 
 if TYPE_CHECKING:
     from typer.testing import CliRunner

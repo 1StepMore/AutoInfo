@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.32](https://github.com/1StepMore/AutoInfo/compare/v1.17.31...v1.17.32) (2026-10-22)
+
+
+### Bug Fixes
+
+* **db:** 首切 WAL 收口到 ensure_initialized，业务连接不再发 journal_mode=WAL（[#571](https://github.com/1StepMore/AutoInfo/issues/571)） ([#574](https://github.com/1StepMore/AutoInfo/issues/574)) ([785591d](https://github.com/1StepMore/AutoInfo/commit/785591d54ee92609efb3ddc5a056512fc825a97f))
+
 ## [1.17.31](https://github.com/1StepMore/AutoInfo/compare/v1.17.30...v1.17.31) (2026-10-22)
 
 

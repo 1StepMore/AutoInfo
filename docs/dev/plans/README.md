@@ -35,6 +35,21 @@ the ADR + CHANGELOG when done (stage-7 backfill), and promoting them adds noise.
 5. Regenerate the doc inventory: `python3 scripts/doc_inventory.py` + `--check`
    (must exit 0).
 
+## NIGHTLY.md live zone is generated
+
+NIGHTLY.md 的【活区】禁止手改 —— 改 `docs/dev/plans/nightly-ledger.jsonl` 后跑
+`python scripts/nightly_ledger.py --write`。CI 会跑 `python scripts/nightly_ledger.py --check`。
+
+- 台账 append-only，一行一个 JSON 事件；状态变更用 `supersedes` 追加新事件，不改旧行。
+  两个夜间分支各自在 EOF 追加时，靠 `.gitattributes` 的 `merge=union` 合并（plain git 会把
+  相邻的 EOF 插入判为冲突）。
+- 四个活区块（`gap_snapshot` / `next_queue` / `friction_log` / `revision_requests`）
+  由 `<!-- LEDGER:BEGIN <name> -->` / `<!-- LEDGER:END <name> -->` 包围；marker 只作人读锚，
+  `--check` / `--write` 的比对单位是**整个活区段**（从 `## 【活区】当前差距矩阵` 到 EOF），
+  块外手改同样会红。
+- 【冻结区】（完成定义 / 验收命令）不受脚本影响，逐字节不变。
+- `scripts/nightly_gap.py` 只负责计算差距数据，可被台账的 `gap_snapshot` 事件引用。
+
 ## Relationship to other docs
 
 | Doc | Answers |

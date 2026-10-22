@@ -166,7 +166,7 @@ quality_gates:
 
 ## 8. ErrorCode & Error Response System
 
-The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all MCP tools. The `ErrorCode` enum (26 values) covers all known failure modes; every value follows one **CamelCase** convention and every retained code is emitted somewhere (T-S-05). The 20 baseline codes include `ProcessingFailed` (now emitted on a processing-run failure by `_handle_process_collection`); the 6 retained extended codes are:
+The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py`) that provides consistent error classification across all MCP tools. The `ErrorCode` enum (29 values) covers all known failure modes; every value follows one **CamelCase** convention and every retained code is emitted somewhere (T-S-05). The 20 baseline codes include `ProcessingFailed` (now emitted on a processing-run failure by `_handle_process_collection`); the 9 retained extended codes are:
 
 | Code | Value | Purpose |
 |------|-------|---------|
@@ -176,6 +176,9 @@ The MCP server uses a unified error response system (`src/autoinfo/mcp/errors.py
 | `DIRECTOR_ONLY` | `"DirectorOnly"` | Director-only tool dispatched to a non-director actor — e.g. `force_promote` / `demote_kb_wiki` / `soft_delete_entry` purge (actor whitelist `AUTOINFO_DIRECTOR_ACTORS`, default `director`) |
 | `READ_ONLY_SERVER` | `"ReadOnlyServer"` | Mutating tool dispatched on a read-only server (`autoinfo serve --agent`, 4 read-only tools) — the server refuses state-changing calls |
 | `FREE_TIER_LIMIT` | `"FreeTierLimit"` | Free-tier end user hit a Subscription platform limit (concurrency/products/channels) — freemium gating (G15) |
+| `GATE_NOT_FOUND` | `"GateNotFound"` | Requested quality/delivery gate is not configured for the domain (previously a bare string — #585) |
+| `INVALID_ARGUMENTS` | `"InvalidArguments"` | Argument combination rejected before dispatch (e.g. empty thresholds list; previously a bare string — #585) |
+| `ALERT_RULE_NOT_FOUND` | `"AlertRuleNotFound"` | Alert-rule id does not exist (previously a bare string — #585) |
 
 The baseline 20 are `NotFound`, `DomainNotFound`, `ValidationError`, `InvalidSourceId`, `SourceNotFound`, `Timeout`, `TopicNotFound`, `KeywordNotFound`, `EmailNotEnabled`, `EmailSendFailed`, `InvalidCronExpression`, `ScheduleAlreadyExists`, `ScheduleNotFound`, `NotPublished`, `CollectionFailed`, `ProcessingFailed`, `InvalidSection`, `UnknownTool`, `ConfirmationRequired`, `InternalError`. `LLM_NOT_CONFIGURED` is dispatched centrally by `call_tool` for all 16 LLM-required tools; `PROCESSING_FAILED` is emitted when a processing run raises. Four never-emitted values were retired in T-S-05 rather than left dead: `AuthRequired`/`SessionExpired` (no auth/session path — re-add with the SSE transport), `RateLimited` (no rate-limiting surface emits it — re-add together with retry/backoff guidance), and `NoCachedItems` (`process_collection` returns `{success: true, data: {status: "noop"}}`, never an error).
 

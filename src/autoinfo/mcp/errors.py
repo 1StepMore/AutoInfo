@@ -66,6 +66,9 @@ class ErrorCode(str, Enum):
     DIRECTOR_ONLY = "DirectorOnly"
     READ_ONLY_SERVER = "ReadOnlyServer"
     FREE_TIER_LIMIT = "FreeTierLimit"
+    GATE_NOT_FOUND = "GateNotFound"
+    INVALID_ARGUMENTS = "InvalidArguments"
+    ALERT_RULE_NOT_FOUND = "AlertRuleNotFound"
 
 
 class ErrorDetail(TypedDict):

@@ -14,15 +14,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 111 |
-| Total lines | 36756 |
+| Total lines | 36769 |
 | Active files | 83 |
 | Archived files | 28 |
 | Category — archive | 28 files / 8937 lines |
-| Category — known-limitations | 2 files / 349 lines |
+| Category — known-limitations | 2 files / 350 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
-| Category — adr | 11 files / 645 lines |
-| Category — specs | 12 files / 9764 lines |
+| Category — adr | 11 files / 654 lines |
+| Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
 | Category — docs/dev | 31 files / 11108 lines |
 | Category — docs/root | 5 files / 983 lines |
@@ -35,7 +35,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0002-draft-to-wiki-agent-promotion.md` | 46 | adr | active | adr |
 | `adr/0003-llm-fallback-chain.md` | 44 | adr | active | adr |
 | `adr/0004-reasoning-model-json-mode-thinking.md` | 48 | adr | active | adr |
-| `adr/0005-unified-success-error-envelope.md` | 83 | adr | active | adr |
+| `adr/0005-unified-success-error-envelope.md` | 92 | adr | active | adr |
 | `adr/0006-dev-process-workflow-charter.md` | 72 | adr | active | adr |
 | `adr/0007-release-please-version-truth.md` | 39 | adr | active | adr |
 | `adr/0008-dependency-version-policy.md` | 82 | adr | active | adr |
@@ -106,7 +106,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/operations.md` | 972 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
 | `dev/specs/pipeline.md` | 584 | specs | active | — |
-| `dev/specs/quality-gates.md` | 188 | specs | active | — |
+| `dev/specs/quality-gates.md` | 191 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/testing-layers.md` | 261 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
@@ -132,7 +132,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `glossary.md` | 61 | docs/root | active | glossary |
 | `handoff-2026-09-17.md` | 151 | docs/root | active | — |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
-| `known-limitations/demo-quality-residuals.md` | 61 | known-limitations | active | — |
+| `known-limitations/demo-quality-residuals.md` | 62 | known-limitations | active | — |
 | `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
 | `project-health-assessment-2026-09-17.md` | 441 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |

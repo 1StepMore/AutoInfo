@@ -81,3 +81,12 @@ every JSON-structured tool (``get_feeds(format="json")``, ``get_metrics``,
   additionally carry ``format``/``content_type``/``encoding``/``length``/
   ``bytes`` metadata beside the text (T-S-09, 2026-09-13); ``health_check``'s
   structured ``data`` is the documented exception.
+
+## Amendment (2026-10-22)
+
+The enum grew from 26 to 29 values: `GateNotFound`, `InvalidArguments`, and
+`AlertRuleNotFound` were emitted as bare strings in `server.py` without enum
+members (T-S-05 gap, #585). All four bare-string `code=` sites now use enum
+members, and a guard test AST-scans `server.py` so a literal `code=` outside
+`ErrorCode` fails the suite. The original 26-value decision above is kept
+verbatim as the historical record.

@@ -10,9 +10,9 @@ Views
     ``readonly``  only the ``_READONLY_TOOLS`` whitelist
 
 Shapes
-    ``wire``       ``tool.model_dump(mode="json", exclude_none=True)`` per tool,
-                   including ``outputSchema``; compact JSON — what the server
-                   actually sends.
+    ``wire``       ``tool.model_dump(mode="json", exclude_none=True)`` per tool;
+                   compact JSON — what the server actually sends (no shared
+                   ``outputSchema`` since #588).
     ``input-only`` ``{name, description, inputSchema}`` per tool with default
                    ``json.dumps`` separators — the shape the issue #562 repro
                    used, kept so its 25.8k figure stays reproducible.

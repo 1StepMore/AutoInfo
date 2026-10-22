@@ -13,15 +13,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 111 |
-| Total lines | 36769 |
-| Active files | 83 |
-| Archived files | 28 |
-| Category — archive | 28 files / 8937 lines |
+| Total files | 113 |
+| Total lines | 36824 |
+| Active files | 84 |
+| Archived files | 29 |
+| Category — archive | 29 files / 8944 lines |
 | Category — known-limitations | 2 files / 350 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
-| Category — adr | 11 files / 654 lines |
+| Category — adr | 12 files / 702 lines |
 | Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
 | Category — docs/dev | 31 files / 11108 lines |
@@ -40,7 +40,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0007-release-please-version-truth.md` | 39 | adr | active | adr |
 | `adr/0008-dependency-version-policy.md` | 82 | adr | active | adr |
 | `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
-| `adr/README.md` | 55 | adr | active | adr-index |
+| `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
+| `adr/README.md` | 56 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `archive/ac4-gap-key-acquisition.md` | 81 | archive | archived | — |
 | `archive/acceptance-2026-08-08.md` | 166 | archive | archived | — |
@@ -68,6 +69,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/launch-validation-framework.md` | 369 | archive | archived | — |
 | `archive/launch-validation-report.md` | 273 | archive | archived | — |
 | `archive/migration-v1.9.md` | 58 | archive | archived | — |
+| `archive/readme-known-limitations-chronicle.md` | 7 | archive | archived | — |
 | `archive/remaining-source-gap-verdicts.md` | 116 | archive | archived | verdicts |
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
 | `demo-release-standard.md` | 42 | docs/root | active | — |

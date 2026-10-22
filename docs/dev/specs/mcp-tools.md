@@ -57,10 +57,10 @@ with the tokenizer, the view, and the serialization. All three are pinned here.
   `_DIRECTOR_ONLY_TOOLS` removed (146); `readonly` = the `_READONLY_TOOLS`
   whitelist (4).
 - **Shapes**: `wire` = `tool.model_dump(mode="json", exclude_none=True)` per
-  tool (includes `outputSchema`), wrapped as `{"tools": [...]}`, compact JSON
-  (`ensure_ascii=False`, `separators=(",", ":")`), UTF-8 bytes; `input-only` =
-  `{name, description, inputSchema}` with default `json.dumps` separators (the
-  shape issue #562's repro used).
+  tool, wrapped as `{"tools": [...]}`, compact JSON (`ensure_ascii=False`,
+  `separators=(",", ":")`), UTF-8 bytes; `input-only` = `{name, description,
+  inputSchema}` with default `json.dumps` separators (the shape issue #562's
+  repro used).
 - **Tokenizer**: tiktoken `cl100k_base` and `o200k_base`.
 - **Unit**: one `tools/list` response. A client that re-injects the list every
   turn multiplies these numbers by the turn count.
@@ -69,24 +69,24 @@ with the tokenizer, the view, and the serialization. All three are pinned here.
 
 | View | Shape | Tools | Bytes | cl100k_base | o200k_base |
 |:--|:--|--:|--:|--:|--:|
-| director | wire | 149 | 244,289 | 52,495 | 53,878 |
-| agent | wire | 146 | 239,303 | 51,396 | 52,754 |
-| readonly | wire | 4 | 8,500 | 1,839 | 1,888 |
+| director | wire | 149 | 101,249 | 21,804 | 22,251 |
+| agent | wire | 146 | 99,143 | 21,320 | 21,763 |
+| readonly | wire | 4 | 4,660 | 1,014 | 1,039 |
 | director | input-only | 149 | 106,004 | 26,358 | 26,373 |
 | agent | input-only | 146 | 103,816 | 25,800 | 25,818 |
 | readonly | input-only | 4 | 4,871 | 1,219 | 1,222 |
 
 Issue #562's baseline (25.8k tokens / 103,816 B) is the **agent + input-only**
-row. The actual MCP wire carries `outputSchema` on every tool: all 149 schemas
-are identical after key sorting (`distinct = 1`), and dropping them saves
-143,040 bytes — **58.6%** of the director wire payload. Including them is what
-takes the real `tools/list` cost to ~52.5k cl100k / ~53.9k o200k. The earlier
-"64k" figure was `bytes / 1.6` arithmetic, not a tokenizer measurement.
+row and remains reproducible. Before #588 the wire shape also carried the same
+149-copy `outputSchema` (143,040 B = 58.6% of the director payload, `distinct =
+1`); that shared schema was removed (ADR 0010), so `wire` no longer contains it.
+`wire` is now smaller than `input-only` despite carrying more fields because
+`wire` drops `None` values and uses compact separators.
 
-A change that makes the schemas diverge moves these numbers and must update
-this baseline.
+A change to the tool surface or to the serialization moves these numbers and
+must update this baseline.
 
-*Baseline measured 2026-10-22 on `main` at 149 tools.*
+*Baseline measured 2026-10-22 on `main` at 149 tools after #588.*
 
 ## Collector Handlers (30 total)
 

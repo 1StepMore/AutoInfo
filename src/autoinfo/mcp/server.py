@@ -7985,53 +7985,6 @@ _DOMAIN_IDENTITY_TOOLS = frozenset(
     }
 )
 
-# Canonical envelope from errors.py (ADR-0005). Modeled as a two-branch
-# ``oneOf`` because per-tool ``data`` shapes are heterogeneous; only the
-# envelope is a fixed contract every tool shares.
-_TOOL_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "description": (
-        "Canonical AutoInfo envelope: {success: true, data: ...} on success, "
-        "{success: false, error: {code, message, actionable}} on failure."
-    ),
-    "properties": {
-        "success": {
-            "type": "boolean",
-            "description": "True on success, False on error.",
-        },
-        "data": {
-            "description": (
-                "Tool-specific success payload. Shape varies per tool; absent "
-                "when success is false."
-            ),
-        },
-        "error": {
-            "type": "object",
-            "description": "Canonical error detail; absent when success is true.",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "ErrorCode enum value (e.g. DomainNotFound).",
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Human-readable error message with remediation.",
-                },
-                "actionable": {
-                    "type": "boolean",
-                    "description": "True when the agent can act on the message.",
-                },
-            },
-            "required": ["code", "message", "actionable"],
-        },
-    },
-    "required": ["success"],
-    "oneOf": [
-        {"required": ["success", "data"], "not": {"required": ["error"]}},
-        {"required": ["success", "error"], "not": {"required": ["data"]}},
-    ],
-}
-
 
 def _inject_param_alias(
     schema: dict[str, Any],
@@ -8091,19 +8044,14 @@ def _inject_param_aliases(tool: Tool) -> None:
         )
 
 
-def _with_output_schema(tools: list[Tool]) -> list[Tool]:
-    """Attach the canonical envelope ``outputSchema`` to every declared tool.
+def _decorate_tools(tools: list[Tool]) -> list[Tool]:
+    """Inject legacy param aliases and the director-only marker.
 
-    ``Tool.outputSchema`` is optional in the MCP types; this fills it for
-    every tool so 100% of the declared surface advertises its return
-    contract.  Any explicitly-set ``outputSchema`` is preserved (future
-    per-tool refinement), so this is a defaulting layer, never an override.
-    Also injects legacy param aliases (:func:`_inject_param_aliases`) and the
-    ``DIRECTOR_ONLY_MARKER`` on director-only tools.
+    ``outputSchema`` is deliberately not attached: the canonical envelope is
+    documented once (ADR 0010, ``docs/dev/specs/mcp-tools.md``) instead of
+    being repeated on all 149 tools.  Per-tool schemas are a follow-up (#581).
     """
     for tool in tools:
-        if tool.outputSchema is None:
-            tool.outputSchema = _TOOL_OUTPUT_SCHEMA
         _inject_param_aliases(tool)
         if tool.name in _DIRECTOR_ONLY_TOOLS and isinstance(tool.inputSchema, dict):
             tool.inputSchema[DIRECTOR_ONLY_MARKER] = True
@@ -8111,7 +8059,7 @@ def _with_output_schema(tools: list[Tool]) -> list[Tool]:
 
 
 def _full_tool_list() -> list[Tool]:
-    return _with_output_schema(
+    return _decorate_tools(
         [
             # -- System (2) ---------------------------------------------------
             Tool(
@@ -12582,10 +12530,8 @@ def _envelope_result(
 ) -> tuple[list[TextContent], dict[str, Any]]:
     """Pack an envelope as ``(text_content, structured_content)``.
 
-    The MCP SDK validates ``structuredContent`` against the tool's declared
-    ``outputSchema``.  Returning the tuple form lets clients read the same
-    JSON either as text or as structured data, both carrying the canonical
-    envelope.
+    Returning the tuple form lets clients read the same JSON either as text
+    or as structured data, both carrying the canonical envelope.
     """
     return (
         [TextContent(type="text", text=json.dumps(envelope))],

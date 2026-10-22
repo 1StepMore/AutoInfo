@@ -176,22 +176,19 @@ def _kw(call: ast.Call, name: str) -> ast.AST | None:
     return None
 
 
-def _output_schema_mechanism(server_src: str) -> bool:
-    """Return whether ``_full_tool_list`` attaches an outputSchema to every tool.
+def _legacy_output_schema_wrapped(server_src: str) -> bool:
+    """Return whether any tool has ``outputSchema`` assigned at runtime.
 
-    The canonical envelope is attached at runtime by
-    ``_with_output_schema(...)`` around the tool list; an explicit
-    ``outputSchema=`` keyword also counts.  This is the static mirror of the
-    runtime 100%-coverage test in ``tests/mcp/test_tool_output_schema.py``.
+    #588 removed the shared envelope that was repeated on all 149 tools (58.6%
+    of the payload, zero per-tool information).  This static check is the
+    regression guard: an assignment like ``tool.outputSchema = ...`` means the
+    redundant schema came back.
     """
     tree = ast.parse(server_src)
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef) and node.name == "_full_tool_list"):
-            continue
-        for child in ast.walk(node):
-            if isinstance(child, ast.Return) and isinstance(child.value, ast.Call):
-                fn = child.value.func
-                if isinstance(fn, ast.Name) and fn.id == "_with_output_schema":
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and target.attr == "outputSchema":
                     return True
     return False
 
@@ -245,7 +242,7 @@ def audit_tools(server_src: str) -> dict[str, Any]:
     # the schema is attached by ``_with_output_schema`` in
     # ``_full_tool_list``; an explicit ``outputSchema=`` keyword also
     # counts (future per-tool refinement).
-    output_schema_wrapped = _output_schema_mechanism(server_src)
+    legacy_output_schema_wrapped = _legacy_output_schema_wrapped(server_src)
     for call in _tool_calls(server_src):
         name = _str_literal(_kw(call, "name"))
         if not name:
@@ -255,7 +252,7 @@ def audit_tools(server_src: str) -> dict[str, Any]:
         props = schema.get("properties", {})
         if not isinstance(props, dict):
             props = {}
-        has_output_schema = output_schema_wrapped or _kw(call, "outputSchema") is not None
+        has_output_schema = _kw(call, "outputSchema") is not None
 
         first_seg = name.split("_", 1)[0]
         verb_first = first_seg in VERBS
@@ -297,7 +294,6 @@ def audit_tools(server_src: str) -> dict[str, Any]:
     over5 = [r for r in rows if r["param_count"] > 5]
     short_desc = [r for r in rows if r["desc_words"] < 10]
     no_enum = [r for r in rows if r["param_count"] > 0 and r["enum_params"] == 0]
-    no_output_schema = [r for r in rows if not r["has_output_schema"]]
 
     summary = {
         "declared": declared,
@@ -323,13 +319,8 @@ def audit_tools(server_src: str) -> dict[str, Any]:
         "when_marker_ratio": round(sum(1 for r in rows if r["has_when_marker"]) / declared, 3)
         if declared
         else 0.0,
-        "output_schema_ratio": round(sum(1 for r in rows if r["has_output_schema"]) / declared, 3)
-        if declared
-        else 0.0,
-        "no_output_schema": len(no_output_schema),
-        # T-S-01 / D-工-1 floor: every declared tool must advertise the
-        # canonical envelope via ``_with_output_schema``.
-        "output_schema_floor_ok": len(no_output_schema) == 0,
+        "per_tool_output_schema": sum(1 for r in rows if r["has_output_schema"]),
+        "legacy_output_schema_wrapped": legacy_output_schema_wrapped,
     }
 
     return {
@@ -341,7 +332,6 @@ def audit_tools(server_src: str) -> dict[str, Any]:
             "over_5_params": [r["name"] for r in over5],
             "short_description_lt10": [r["name"] for r in short_desc],
             "no_enum_params": [r["name"] for r in no_enum],
-            "no_output_schema": [r["name"] for r in no_output_schema],
         },
         "tools": rows,
     }
@@ -375,8 +365,8 @@ def main() -> int:
         f"tools w/o enum: {s['no_enum_tools']}"
     )
     print(
-        f"outputSchema: {s['output_schema_ratio']:.1%} "
-        f"({s['no_output_schema']} missing, floor_ok={s['output_schema_floor_ok']})"
+        f"outputSchema: {s['per_tool_output_schema']} per-tool schema(s); "
+        f"legacy shared wrapper={s['legacy_output_schema_wrapped']}"
     )
 
     v = result["violations"]

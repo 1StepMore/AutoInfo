@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.33](https://github.com/1StepMore/AutoInfo/compare/v1.17.32...v1.17.33) (2026-10-22)
+
+
+### Refactoring
+
+* **nightly:** NIGHTLY.md 活区改为台账+渲染+CI --check（拿掉人为冲突源） ([#570](https://github.com/1StepMore/AutoInfo/issues/570)) ([4acb7e2](https://github.com/1StepMore/AutoInfo/commit/4acb7e2edc255aaa131435345c2dd33a8bf05314))
+
 ## [1.17.32](https://github.com/1StepMore/AutoInfo/compare/v1.17.31...v1.17.32) (2026-10-22)
 
 

@@ -16,7 +16,7 @@ from email.header import decode_header
 from email.message import Message
 from typing import Any, cast
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,29 @@ class EmailHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Build the IMAP config from ``ctx`` and collect unseen messages."""
+        import os
+
+        settings = ctx.settings or (
+            dict(ctx.source_config.settings or {}) if ctx.source_config else {}
+        )
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        email_config: dict[str, Any] = {
+            "host": url or settings.get("host", ""),
+            "port": int(settings.get("port", 993)),
+            "username": settings.get("username", ""),
+            "password": settings.get("password", "")
+            or os.environ.get("AUTOINFO_EMAIL_PASSWORD", ""),
+            "mailbox": settings.get("mailbox", "INBOX"),
+        }
+        if settings.get("since_date"):
+            email_config["since_date"] = settings["since_date"]
+        items = self.collect(email_config)
+        if ctx.limit is None:
+            return items
+        return items[: ctx.limit]
 
     def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:
         """Delegate to :meth:`collect` for BaseHandler compatibility."""

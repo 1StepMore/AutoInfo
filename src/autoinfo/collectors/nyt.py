@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -68,9 +68,7 @@ class NYTHandler(BaseHandler):
         if config is None:
             config = {}
         self.config: dict[str, Any] = config
-        self.api_key: str = config.get("api_key", "") or os.environ.get(
-            ENV_API_KEY, ""
-        )
+        self.api_key: str = config.get("api_key", "") or os.environ.get(ENV_API_KEY, "")
         self._last_request_time: float = 0.0
 
     # ------------------------------------------------------------------
@@ -128,6 +126,11 @@ class NYTHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch NYT articles and convert them to ``Item``."""
+        articles = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(a) for a in articles]
+
     def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
         """Fetch articles from the NYT Article Search API.
 
@@ -144,8 +147,7 @@ class NYTHandler(BaseHandler):
 
         if not self.api_key:
             logger.warning(
-                "NYT API key not set. Set AUTOINFO_NYT_API_KEY env var "
-                "or pass api_key in config."
+                "NYT API key not set. Set AUTOINFO_NYT_API_KEY env var or pass api_key in config."
             )
             return []
 

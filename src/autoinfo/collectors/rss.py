@@ -15,7 +15,7 @@ from typing import Any
 import feedparser
 import httpx
 
-from autoinfo.collectors.base import BaseHandler, SourceFailure
+from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
 from autoinfo.collectors.web import WebHandler
 from autoinfo.models import Item
 from autoinfo.textutil import clean_feed_text
@@ -65,6 +65,20 @@ class RSSHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch and parse the feed at ``ctx.url`` (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            logger.warning(
+                "RSS source has no URL configured",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        items = self.fetch(url)
+        if ctx.limit is None:
+            return items
+        return items[: ctx.limit]
 
     def fetch(self, url: str) -> list[Item]:
         """Fetch and parse a single RSS/Atom feed.

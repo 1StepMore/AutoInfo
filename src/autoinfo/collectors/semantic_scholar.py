@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler, SourceFailure
+from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
@@ -138,6 +138,12 @@ class SemanticScholarHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Semantic Scholar papers for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        papers = self.fetch(query, limit=ctx.resolved_limit(10))
+        return [self.to_item(p) for p in papers]
 
     def fetch(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search Semantic Scholar and return parsed paper dicts.

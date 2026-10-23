@@ -29,7 +29,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.collectors.web import WebHandler
 from autoinfo.models import Item
 
@@ -92,9 +92,7 @@ class GDELTHandler(BaseHandler):
         self.config: dict[str, Any] = config
         self.query: str = config.get("query", "")
         self.timespan: str = config.get("timespan", DEFAULT_TIMESPAN)
-        self.maxrecords: int = min(
-            int(config.get("maxrecords", DEFAULT_LIMIT)), MAX_LIMIT
-        )
+        self.maxrecords: int = min(int(config.get("maxrecords", DEFAULT_LIMIT)), MAX_LIMIT)
         self._last_request_time: float = 0.0
 
     # ------------------------------------------------------------------
@@ -209,8 +207,7 @@ class GDELTHandler(BaseHandler):
         url = article.get("source_url") or ""
         if not url:
             logger.debug(
-                "GDELT fulltext: no source_url for article '%s'; "
-                "keeping title content.",
+                "GDELT fulltext: no source_url for article '%s'; keeping title content.",
                 article.get("title", ""),
             )
             return
@@ -219,8 +216,7 @@ class GDELTHandler(BaseHandler):
             web_items = WebHandler().fetch(url)
         except Exception as exc:
             logger.debug(
-                "GDELT fulltext extraction failed for %s: %s; "
-                "keeping title content.",
+                "GDELT fulltext extraction failed for %s: %s; keeping title content.",
                 url,
                 exc,
             )
@@ -229,8 +225,7 @@ class GDELTHandler(BaseHandler):
         body = web_items[0].content if web_items else ""
         if not body:
             logger.debug(
-                "GDELT fulltext extraction returned no content for %s; "
-                "keeping title content.",
+                "GDELT fulltext extraction returned no content for %s; keeping title content.",
                 url,
             )
             return
@@ -240,6 +235,12 @@ class GDELTHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch GDELT articles for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        articles = self.fetch(query=query, limit=ctx.resolved_limit(25))
+        return [self.to_item(a) for a in articles]
 
     def fetch(
         self,
@@ -263,9 +264,7 @@ class GDELTHandler(BaseHandler):
 
         search_query = (query or self.query).strip()
         if not search_query:
-            logger.warning(
-                "GDELT fetch called with empty query; returning empty list."
-            )
+            logger.warning("GDELT fetch called with empty query; returning empty list.")
             return []
 
         page_size = min(limit, MAX_LIMIT)

@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -115,9 +115,7 @@ class APAPIHandler(BaseHandler):
     # HTTP request with retry
     # ------------------------------------------------------------------
 
-    def _request(
-        self, url: str, headers: dict[str, str] | None = None
-    ) -> httpx.Response:
+    def _request(self, url: str, headers: dict[str, str] | None = None) -> httpx.Response:
         """Issue a GET request with rate limiting and exponential-backoff retry.
 
         Args:
@@ -172,6 +170,11 @@ class APAPIHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch AP articles and convert them to ``Item``."""
+        articles = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(a) for a in articles]
 
     def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
         """Fetch articles from the AP Content API.
@@ -284,8 +287,7 @@ class APAPIHandler(BaseHandler):
         items = _traverse_json(data, "data.items")
         if items is None or not isinstance(items, list):
             logger.warning(
-                "Unexpected AP API response structure (missing data.items) "
-                "for URL %s",
+                "Unexpected AP API response structure (missing data.items) for URL %s",
                 url,
             )
             return []

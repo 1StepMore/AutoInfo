@@ -15,7 +15,7 @@ from typing import Any
 
 import feedparser
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 from autoinfo.textutil import clean_feed_text
 
@@ -48,6 +48,20 @@ class YahooFinanceHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch the configured Yahoo Finance feed (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            logger.warning(
+                "RSS source has no URL configured",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        items = self.fetch(url)
+        if ctx.limit is None:
+            return items
+        return items[: ctx.limit]
 
     def fetch(self, url: str | None = None) -> list[Item]:
         """Fetch and parse a Yahoo Finance RSS feed.

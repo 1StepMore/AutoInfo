@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.collectors.robots import robots_allows as _robots_allows
 from autoinfo.models import Item
 
@@ -112,6 +112,11 @@ class EdxSitemapHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch edX sitemap courses and convert them to ``Item``."""
+        courses = self.fetch(limit=ctx.resolved_limit(20))
+        return [self.to_item(c) for c in courses]
 
     def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch course metadata from the edX sitemap.

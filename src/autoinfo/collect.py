@@ -32,7 +32,12 @@ from autoinfo.checkpoint import (
     StepCheckpoint,
     make_signature,
 )
-from autoinfo.collectors.base import SourceFailure
+from autoinfo.collectors.base import Collector, CollectorContext, SourceFailure
+from autoinfo.collectors.registry import (
+    build_collector,
+    handler_settings,
+    registered_source_types,
+)
 from autoinfo.collectors.robots import RobotsDisallowed
 from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
@@ -891,17 +896,12 @@ def _collect_from_source(
 
 
 def _handler_settings(source_config: SourceConfig) -> dict[str, Any]:
-    """Build the ``config=`` dict passed to settings-based handlers.
+    """Build the ``config=`` dict passed to settings-based collectors.
 
-    Copies the source's ``settings`` (never mutating the shared
-    ``SourceConfig``) and injects the per-source ``fetch_depth``, so any
-    settings-based handler can branch on content depth (``fulltext`` vs
-    ``abstract``) without receiving the full ``SourceConfig``.  Handlers
-    that do not read ``fetch_depth`` are unaffected — the key is inert.
+    Thin alias for :func:`autoinfo.collectors.registry.handler_settings`
+    (kept because tests and callers reference this name).
     """
-    settings = dict(source_config.settings or {})
-    settings["fetch_depth"] = source_config.fetch_depth
-    return settings
+    return handler_settings(source_config)
 
 
 def _env_truthy(name: str) -> bool:
@@ -949,415 +949,51 @@ def _app_review_block_reason(source_config: SourceConfig, handler: Any) -> str |
     )
 
 
-def _build_handler(source_config: SourceConfig) -> Any:
-    """Build the appropriate handler for a source configuration.
+def _build_handler(source_config: SourceConfig) -> Collector:
+    """Build the collector for *source_config* via the registry.
 
-    Returns a handler instance with a common interface:
+    This is a thin lookup: :func:`autoinfo.collectors.registry.build_collector`
+    owns the ``source_type`` (and, for ``api``, source-name) resolution.
+    Nothing per-source lives here — adding a collector means adding one class
+    plus one registry registration.
 
-    * ``PubMedHandler`` — ``search(query, max_results)`` / ``fetch(pmids)``
-      / ``to_item(article)``
-    * ``RSSHandler`` — ``fetch(url) -> list[Item]``
-    * ``WebHandler`` — ``fetch(url) -> list[Item]``
-    * ``EmailHandler`` — ``collect(config) -> list[Item]``
-
-    Raises ``ValueError`` if the source type is unknown or unsupported.
+    Raises ``ValueError`` when the source type has no buildable collector
+    (unknown type, or a forward-declared / push-only type such as ``webhook``).
     """
-    name = (source_config.name or "").lower()
-    stype = (source_config.type or "").lower()
-
-    if stype == "api" and "pubmed" in name:
-        from autoinfo.collectors.pubmed import PubMedHandler
-
-        return PubMedHandler(source_config=source_config)
-
-    if stype == "api" and "semantic" in name:
-        from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
-
-        return SemanticScholarHandler(source_config=source_config)
-
-    if stype == "api" and "uspto" in name:
-        from autoinfo.collectors.uspto import USPTOHandler
-
-        return USPTOHandler(source_config=source_config)
-
-    if stype == "dblp":
-        from autoinfo.collectors.dblp import DBLPHandler
-
-        return DBLPHandler(source_config=source_config)
-
-    if stype == "nyt":
-        from autoinfo.collectors.nyt import NYTHandler
-
-        return NYTHandler(config=_handler_settings(source_config))
-
-    if stype == "openalex":
-        from autoinfo.collectors.openalex import OpenAlexHandler
-
-        return OpenAlexHandler(config=_handler_settings(source_config))
-
-    if stype == "ap_api":
-        from autoinfo.collectors.ap_api import APAPIHandler
-
-        return APAPIHandler(source_config=source_config)
-
-    if stype == "reuters_mcp":
-        from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
-
-        return ReutersMCPHandler(source_config=source_config)
-
-    if stype == "reddit":
-        from autoinfo.collectors.reddit import RedditHandler
-
-        return RedditHandler(config=_handler_settings(source_config))
-
-    if stype == "spotify":
-        from autoinfo.collectors.spotify import SpotifyHandler
-
-        return SpotifyHandler(config=_handler_settings(source_config))
-
-    if stype == "youtube":
-        from autoinfo.collectors.youtube import YouTubeHandler
-
-        return YouTubeHandler(config=_handler_settings(source_config))
-
-    if stype == "bilibili":
-        from autoinfo.collectors.bilibili import BilibiliHandler
-
-        return BilibiliHandler(config=_handler_settings(source_config))
-
-    if stype == "apple_podcasts":
-        from autoinfo.collectors.apple_podcasts import ApplePodcastsHandler
-
-        return ApplePodcastsHandler(config=_handler_settings(source_config))
-
-    if stype == "unpaywall":
-        from autoinfo.collectors.unpaywall import UnpaywallHandler
-
-        return UnpaywallHandler(config=_handler_settings(source_config))
-
-    if stype == "gdelt":
-        from autoinfo.collectors.gdelt import GDELTHandler
-
-        return GDELTHandler(config=_handler_settings(source_config))
-
-    if stype == "yahoo_finance":
-        from autoinfo.collectors.yahoo_finance import YahooFinanceHandler
-
-        return YahooFinanceHandler(source_name=source_config.name)
-
-    if stype == "quandl":
-        from autoinfo.collectors.quandl import QuandlHandler
-
-        return QuandlHandler(source_config=source_config)
-
-    if stype in ("huggingface", "kaggle"):
-        from autoinfo.collectors.huggingface import HuggingFaceHandler
-
-        provider = "kaggle" if stype == "kaggle" else "huggingface"
-        return HuggingFaceHandler(
-            config={
-                **_handler_settings(source_config),
-                "provider": provider,
-            },
+    collector = build_collector(source_config)
+    if collector is None:
+        supported = ", ".join(sorted(registered_source_types()))
+        raise ValueError(
+            f"Unknown source type '{source_config.type}' for source "
+            f"'{source_config.name}'. Supported types: {supported}."
         )
-
-    if stype == "rss":
-        from autoinfo.collectors.rss import RSSHandler
-
-        return RSSHandler(
-            source_name=source_config.name,
-            fetch_depth=source_config.fetch_depth,
-        )
-
-    if stype == "web":
-        from autoinfo.collectors.web import WebHandler
-
-        return WebHandler(source_name=source_config.name)
-
-    if stype in ("email", "email_imap"):
-        from autoinfo.collectors.email_imap import EmailHandler
-
-        return EmailHandler(source_name=source_config.name)
-
-    if stype == "pdf":
-        from autoinfo.collectors.pdf import PDFHandler
-
-        return PDFHandler(source_name=source_config.name)
-
-    if stype == "ssrn":
-        from autoinfo.collectors.ssrn import SSRNHandler
-
-        return SSRNHandler(config=_handler_settings(source_config))
-
-    if stype == "hackernews":
-        from autoinfo.collectors.hackernews import HackerNewsHandler
-
-        return HackerNewsHandler(source_config)
-
-    if stype == "akshare":
-        from autoinfo.collectors.akshare import AKShareHandler
-
-        return AKShareHandler(config=_handler_settings(source_config))
-
-    if stype == "sec_edgar":
-        from autoinfo.collectors.sec_edgar import SecEdgarHandler
-
-        return SecEdgarHandler(config=_handler_settings(source_config))
-
-    if stype == "edx_sitemap":
-        from autoinfo.collectors.edx_sitemap import EdxSitemapHandler
-
-        return EdxSitemapHandler(config=_handler_settings(source_config))
-
-    if stype == "api":
-        from autoinfo.collectors.http_api import HttpApiHandler
-
-        return HttpApiHandler(source_config)
-
-    raise ValueError(
-        f"Unknown source type '{source_config.type}' for source "
-        f"'{source_config.name}'. Supported types: api (pubmed + generic), rss, web, email_imap, pdf."  # noqa: E501
-    )
+    return collector
 
 
 def _fetch_items(
-    handler: Any,
+    handler: Collector,
     source_config: SourceConfig,
     topic: str,
     limit: int,
     keywords: list[str] | None = None,
 ) -> list[Item]:
-    """Fetch items from a handler.
+    """Fetch items from *handler* through the uniform collector contract.
 
-    Dispatches based on handler type:
-    * ``PubMedHandler`` — uses ``search()`` + ``fetch()`` + ``to_item()``
-    * ``RSSHandler`` — uses ``fetch(url)`` directly
-    * ``WebHandler`` — uses ``fetch(url)`` directly
+    Builds a :class:`~autoinfo.collectors.base.CollectorContext` from the
+    collection inputs and makes exactly one ``handler.fetch_items(ctx)`` call.
+    All source-specific behavior (guards, query resolution, slicing, dict ->
+    ``Item`` normalization) lives in the collector.
     """
-    # -- Webhook handler path (push-based, no URL to pull) ----------------
-    if hasattr(handler, "handle") and not hasattr(handler, "fetch"):
-        plog.info(
-            "Source is push-based; nothing to fetch during pull collection",
-            source_type=source_config.type,
-            extra={"source_name": source_config.name, "handler_type": type(handler).__name__},
-        )
-        return []
-
-    # -- Email handler path (uses collect() with settings dict) ------------
-    if hasattr(handler, "collect"):
-        settings = source_config.settings
-        email_config: dict[str, Any] = {
-            "host": source_config.url or settings.get("host", ""),
-            "port": int(settings.get("port", 993)),
-            "username": settings.get("username", ""),
-            "password": settings.get("password", "")
-            or os.environ.get("AUTOINFO_EMAIL_PASSWORD", ""),
-            "mailbox": settings.get("mailbox", "INBOX"),
-        }
-        if settings.get("since_date"):
-            email_config["since_date"] = settings["since_date"]
-        items = handler.collect(email_config)
-        return items[:limit]  # type: ignore[no-any-return]
-
-    # -- PubMed handler path -----------------------------------------------
-    if hasattr(handler, "search") and hasattr(handler, "fetch"):
-        # Issue #182: when no topic is provided, fall back to the first
-        # domain topic keyword instead of the source name — searching
-        # "pubmed" returns off-topic records that the relevance filter
-        # then discards (found>0, new=0).
-        query = topic or (keywords[0] if keywords else source_config.name)
-        pmids = handler.search(query, max_results=limit)
-        if not pmids:
-            return []
-        articles = handler.fetch(pmids)
-        return [handler.to_item(a) for a in articles]
-
-    # -- HttpApiHandler path (generic HTTP JSON API) -----------------------
-    if getattr(handler, "_handler_type", "") == "HttpApiHandler":
-        url = source_config.url
-        if not url:
-            plog.warning(
-                "API source has no URL configured",
-                source_type=source_config.type,
-                extra={"source_name": source_config.name},
-            )
-            return []
-        query = topic or source_config.settings.get("query", "") or ""
-        query_param = source_config.settings.get("query_param", "")
-        # #182 guard: skip query-driven sources (they configure query_param)
-        # when no topic is available — fetching unrelated content pollutes
-        # the KB.  Feed-style sources (no query_param — fixed-URL JSON feeds)
-        # are the API equivalent of an RSS feed and must fetch as-is.
-        if query_param and not query.strip():
-            plog.warning(
-                "API source has no query (no --topic and no source query); "
-                "skipping to avoid fetching unrelated content",
-                source_type=source_config.type,
-                extra={"source_name": source_config.name},
-            )
-            return []
-        items = handler.fetch(url, query=query, limit=limit)
-        return items[:limit]  # type: ignore[no-any-return]
-
-    # -- QuandlHandler path -------------------------------------------------
-    if getattr(handler, "_handler_type", "") == "QuandlHandler":
-        url = source_config.url
-        if not url:
-            plog.warning(
-                "Quandl source has no URL configured",
-                source_type=source_config.type,
-                extra={"source_name": source_config.name},
-            )
-            return []
-        query = topic or source_config.settings.get("query", "") or ""
-        if not query.strip():
-            plog.warning(
-                "Quandl source has no query (no --topic and no source query); "
-                "skipping to avoid fetching unrelated content",
-                source_type=source_config.type,
-                extra={"source_name": source_config.name},
-            )
-            return []
-        items = handler.fetch(url, query=query, limit=limit)
-        return items[:limit]  # type: ignore[no-any-return]
-
-    # -- NYT handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "nyt":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- OpenAlex handler path --------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "openalex":
-        query = " ".join(keywords) if keywords else topic
-        items = handler.fetch(limit=limit, query=query)
-        return [handler.to_item(item) for item in items]
-
-    # -- AP API handler path (paid/enterprise) ----------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "ap_api":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Reuters MCP handler path (paid/enterprise) -------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "reuters_mcp":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- DBLP handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "dblp":
-        query = topic if topic else ""
-        items = handler.fetch(query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Reddit handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "reddit":
-        query = topic if topic else ""
-        items = handler.fetch(query=query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Spotify handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "spotify":
-        query = topic if topic else ""
-        items = handler.fetch(limit=limit, query=query)
-        return [handler.to_item(item) for item in items]
-
-    # -- HackerNews handler path ----------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "hackernews":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- YouTube handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "youtube":
-        # Set topic as query on the handler if not already configured
-        if topic and not handler.config.get("query"):
-            handler.query = topic
-            handler.config["query"] = topic
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Bilibili handler path -----------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "bilibili":
-        # Set topic as query on the handler if not already configured
-        if topic and not handler.config.get("query"):
-            handler.query = topic
-            handler.config["query"] = topic
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Apple Podcasts handler path ----------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "apple_podcasts":
-        term = topic if topic else ""
-        items = handler.fetch(term=term, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Unpaywall handler path -------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "unpaywall":
-        query = topic if topic else ""
-        items = handler.fetch(query=query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- SSRN handler path --------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "ssrn":
-        query = topic if topic else ""
-        items = handler.fetch(query=query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- GDELT handler path -------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "gdelt":
-        search_query = topic if topic else ""
-        items = handler.fetch(query=search_query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- HuggingFace / Kaggle handler path -----------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") in (
-        "huggingface",
-        "kaggle",
-    ):  # noqa: E501
-        search_query = topic if topic else ""
-        items = handler.fetch(query=search_query, limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- AKShare handler path ------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "akshare":
-        items = [handler.to_item(i) for i in handler.fetch(limit=limit)]
-        return items
-
-    # -- edX Sitemap handler path ------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "edx_sitemap":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- SEC EDGAR handler path -----------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_type", "") == "sec_edgar":
-        items = handler.fetch(limit=limit)
-        return [handler.to_item(item) for item in items]
-
-    # -- Semantic Scholar handler path --------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "semantic_scholar":
-        query = topic if topic else ""
-        papers = handler.fetch(query, limit=limit)
-        return [handler.to_item(p) for p in papers]
-
-    # -- USPTO handler path --------------------------------------------------
-    if hasattr(handler, "fetch") and getattr(handler, "source_name", "") == "uspto":
-        query = topic if topic else ""
-        patents = handler.fetch(query, limit=limit)
-        return [handler.to_item(p) for p in patents]
-
-    # -- RSS / Web handler path --------------------------------------------
-    if hasattr(handler, "fetch"):
-        url = source_config.url
-        if not url:
-            plog.warning(
-                "RSS source has no URL configured",
-                source_type=source_config.type,
-                extra={"source_name": source_config.name},
-            )
-            return []
-        items = handler.fetch(url)
-        # Apply limit
-        return items[:limit]  # type: ignore[no-any-return]
-
-    raise TypeError(f"Handler for '{source_config.name}' has no usable fetch method")
+    ctx = CollectorContext(
+        source_config=source_config,
+        topic=topic or "",
+        keywords=list(keywords or []),
+        limit=limit,
+        url=source_config.url or "",
+        query=(source_config.settings or {}).get("query", "") or "",
+        settings=handler_settings(source_config),
+    )
+    return handler.fetch_items(ctx)
 
 
 class CacheWriteResult(NamedTuple):

@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
@@ -62,6 +62,30 @@ class QuandlHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch the configured Quandl dataset (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            logger.warning(
+                "Quandl source has no URL configured",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        settings = ctx.settings or (
+            dict(ctx.source_config.settings or {}) if ctx.source_config else {}
+        )
+        query = ctx.topic or ctx.query or settings.get("query", "") or ""
+        if not query.strip():
+            logger.warning(
+                "Quandl source has no query (no --topic and no source query); "
+                "skipping to avoid fetching unrelated content",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        limit = ctx.resolved_limit(20)
+        items = self.fetch(url, query=query, limit=limit)
+        return items[:limit]
 
     def fetch(self, url: str, query: str = "", limit: int = 20) -> list[Item]:
         """Fetch items from the Quandl API.

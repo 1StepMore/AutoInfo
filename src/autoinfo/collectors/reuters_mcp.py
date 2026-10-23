@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
@@ -231,6 +231,11 @@ class ReutersMCPHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Reuters articles and convert them to ``Item``."""
+        articles = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(a) for a in articles]
 
     def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
         """Fetch articles from the Reuters MCP endpoint.

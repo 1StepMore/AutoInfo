@@ -32,7 +32,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -254,6 +254,12 @@ class HuggingFaceHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API — fetch
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch HuggingFace/Kaggle datasets or models for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        datasets = self.fetch(query=query, limit=ctx.resolved_limit(10))
+        return [self.to_item(d) for d in datasets]
 
     def fetch(
         self,

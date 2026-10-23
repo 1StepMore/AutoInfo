@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -115,6 +115,12 @@ class DBLPHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch DBLP publications for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        publications = self.fetch(query, limit=ctx.resolved_limit(10))
+        return [self.to_item(p) for p in publications]
+
     def fetch(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search DBLP and return parsed publication dicts.
 
@@ -129,16 +135,17 @@ class DBLPHandler(BaseHandler):
             ``source_type``).  Returns an empty list on error.
         """
         limit = max(1, min(limit, 1000))
-        url = (
-            f"{BASE_URL}"
-            f"?q={quote(query)}&format=json&h={limit}"
-        )
+        url = f"{BASE_URL}?q={quote(query)}&format=json&h={limit}"
 
         try:
             resp = self._request(url)
             data = resp.json()
-        except (ValueError, httpx.HTTPStatusError, httpx.TimeoutException,
-                httpx.NetworkError) as exc:
+        except (
+            ValueError,
+            httpx.HTTPStatusError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+        ) as exc:
             logger.warning(
                 "DBLP API request failed for query '%s': %s",
                 query,
@@ -226,10 +233,7 @@ class DBLPHandler(BaseHandler):
         if isinstance(author_data, str):
             authors = [author_data]
         elif isinstance(author_data, list):
-            authors = [
-                a.get("text", a) if isinstance(a, dict) else str(a)
-                for a in author_data
-            ]
+            authors = [a.get("text", a) if isinstance(a, dict) else str(a) for a in author_data]
 
         # -- year → published_date --
         year = info.get("year", "")
@@ -271,11 +275,7 @@ class DBLPHandler(BaseHandler):
             source_name=self.source_name,
             source_type="api",
             source_platform="dblp",
-            source_url=(
-                publication.get("dblp_url", "")
-                if publication.get("dblp_url")
-                else ""
-            ),
+            source_url=(publication.get("dblp_url", "") if publication.get("dblp_url") else ""),
             title=title,
             content="",  # DBLP doesn't provide abstracts
             content_type="text",

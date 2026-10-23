@@ -37,7 +37,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.collectors.web import WebHandler
 from autoinfo.models import Item
 
@@ -170,10 +170,7 @@ def _map_core_item(work: dict[str, Any]) -> dict[str, Any]:
     download_url: str = work.get("downloadUrl") or ""
     full_text_url: str = work.get("fullText") or ""
     source_url: str = (
-        download_url
-        or full_text_url
-        or work.get("sourceFulltextUrls", [None])[0]
-        or ""
+        download_url or full_text_url or work.get("sourceFulltextUrls", [None])[0] or ""
     )
     if not source_url and doi:
         source_url = f"https://doi.org/{doi}"
@@ -242,9 +239,7 @@ class UnpaywallHandler(BaseHandler):
         self.config: dict[str, Any] = config
         self.provider: str = config.get("provider", "unpaywall").lower()
         self.max_rps: float = float(config.get("max_rps", 1.0))
-        self.content_cap: int = int(
-            config.get("content_cap", FULLTEXT_CONTENT_CAP)
-        )
+        self.content_cap: int = int(config.get("content_cap", FULLTEXT_CONTENT_CAP))
         self._last_request_time: float = 0.0
 
     # ------------------------------------------------------------------
@@ -288,9 +283,7 @@ class UnpaywallHandler(BaseHandler):
             self._last_request_time = time.time()
             return
 
-        min_interval = (
-            1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
-        )
+        min_interval = 1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
         elapsed = time.time() - self._last_request_time
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
@@ -352,6 +345,12 @@ class UnpaywallHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Unpaywall/CORE articles for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        articles = self.fetch(query=query, limit=ctx.resolved_limit(10))
+        return [self.to_item(a) for a in articles]
+
     def fetch(
         self,
         query: str = "",
@@ -378,9 +377,7 @@ class UnpaywallHandler(BaseHandler):
 
         q = (query or self.config.get("query", "") or "").strip()
         if not q:
-            logger.warning(
-                "Unpaywall fetch called with empty query; returning []."
-            )
+            logger.warning("Unpaywall fetch called with empty query; returning [].")
             return []
 
         # Guard: missing credentials → graceful degradation
@@ -444,8 +441,7 @@ class UnpaywallHandler(BaseHandler):
 
         if attempted:
             logger.warning(
-                "Unpaywall fulltext extraction failed for %s; "
-                "keeping mapped content for '%s'.",
+                "Unpaywall fulltext extraction failed for %s; keeping mapped content for '%s'.",
                 attempted,
                 article.get("title") or article.get("id") or "",
             )
@@ -455,9 +451,7 @@ class UnpaywallHandler(BaseHandler):
     # Unpaywall backend
     # ------------------------------------------------------------------
 
-    def _fetch_unpaywall(
-        self, query: str, limit: int
-    ) -> list[dict[str, Any]]:
+    def _fetch_unpaywall(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Fetch from the Unpaywall search API.
 
         GET https://api.unpaywall.org/v2/search?query=...&email=...&page=N
@@ -525,9 +519,7 @@ class UnpaywallHandler(BaseHandler):
                 article = _map_unpaywall_item(response_obj)
                 all_articles.append(article)
             except Exception as exc:
-                logger.debug(
-                    "Failed to map Unpaywall item: %s", exc, exc_info=True
-                )
+                logger.debug("Failed to map Unpaywall item: %s", exc, exc_info=True)
                 continue
 
         return all_articles[:limit]
@@ -536,9 +528,7 @@ class UnpaywallHandler(BaseHandler):
     # CORE backend
     # ------------------------------------------------------------------
 
-    def _fetch_core(
-        self, query: str, limit: int
-    ) -> list[dict[str, Any]]:
+    def _fetch_core(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Fetch from the CORE API v3.
 
         GET https://api.core.ac.uk/v3/search/works?q=...&limit=N
@@ -605,9 +595,7 @@ class UnpaywallHandler(BaseHandler):
                 article = _map_core_item(work)
                 all_articles.append(article)
             except Exception as exc:
-                logger.debug(
-                    "Failed to map CORE item: %s", exc, exc_info=True
-                )
+                logger.debug("Failed to map CORE item: %s", exc, exc_info=True)
                 continue
 
         return all_articles[:limit]

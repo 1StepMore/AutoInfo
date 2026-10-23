@@ -1,15 +1,29 @@
-"""Base handler abstract class for source-specific collectors.
+"""Collector contract for source-specific collectors.
 
-Provides :class:`BaseHandler`, an abstract base class that all source
-handlers must subclass.  Each handler implements :meth:`fetch` with its
-own signature; the ABC contract ensures a common programming interface.
+Defines the one enforced interface every collector implements:
+
+* :class:`CollectorContext` — the normalized input bundle (source config,
+  topic, keywords, limit, URL, query, PMIDs, payload, settings).
+* :class:`Collector` — an ABC whose single abstract member is
+  :meth:`Collector.fetch_items`, returning ``list[Item]``.
+
+Source-specific mechanics (a vendor's ``fetch(query=..., limit=...)``,
+``search()`` + ``fetch(pmids)``, RSS ``fetch(url)``, …) stay on the handler as
+implementation detail.  The pipeline only ever calls ``fetch_items(ctx)``, so
+the contract is uniform and enforced by ``abc`` + mypy instead of by
+attribute sniffing.
+
+``BaseHandler`` remains as an alias of :class:`Collector` so existing imports
+and subclasses keep working.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
+from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
 
@@ -30,14 +44,87 @@ class SourceFailure(Exception):  # noqa: N818 - deliberately not "*Error": the n
         self.reason = reason
 
 
-class BaseHandler(ABC):
-    """Abstract base class for all source handlers.
+@dataclass
+class CollectorContext:
+    """Everything a collector needs to run one fetch, in normalized form.
 
-    Concrete subclasses must implement :meth:`fetch`.  The method
-    signature varies by handler type — see each subclass for details.
+    All fields are defaulted so tests (and callers that only care about one
+    dimension) can build a minimal context.
 
-    All handlers share a :attr:`source_name` identifier used when
-    populating :class:`Item` metadata.
+    Attributes
+    ----------
+    source_config:
+        The full :class:`SourceConfig` for this source.  ``None`` when a
+        collector is exercised in isolation; handlers that need the source
+        name / URL / settings must tolerate ``None``.
+    topic:
+        The requested topic string (empty means "no topic given").
+    keywords:
+        Domain/topic keywords used to build search queries where a collector
+        accepts one.  Also used by PubMed as a fallback query when *topic* is
+        empty.
+    limit:
+        Maximum number of items to return.  ``None`` means "use the
+        handler's own default" — **handlers must distinguish that from
+        ``0``**, which is an explicit zero-item request.
+    url:
+        The resolved fetch URL for URL-driven collectors (RSS/Web/PDF/API).
+        Empty when the source has no URL.
+    query:
+        A pre-resolved free-text query (source ``settings.query``); empty
+        when unset.  Collectors that build their query from *topic* /
+        *keywords* use this only as a fallback.
+    pmids:
+        Explicit identifier list for identifier-driven collectors (PubMed).
+        Empty means "search using topic/keywords first".
+    payload:
+        Push-based input (webhook/receiver payloads).  Empty for pull
+        collection.
+    settings:
+        The source's ``settings`` dict (a copy, with ``fetch_depth``
+        injected where the pipeline builds one).  Never the shared mutable
+        config dict.
+    """
+
+    source_config: SourceConfig | None = None
+    topic: str = ""
+    keywords: list[str] = field(default_factory=list)
+    limit: int | None = None
+    url: str = ""
+    query: str = ""
+    pmids: list[str] = field(default_factory=list)
+    payload: dict[str, Any] = field(default_factory=dict)
+    settings: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def source_name(self) -> str:
+        """Source name from :attr:`source_config` (``""`` when absent)."""
+        return getattr(self.source_config, "name", "") or ""
+
+    @property
+    def source_type(self) -> str:
+        """Source type from :attr:`source_config` (``""`` when absent)."""
+        return getattr(self.source_config, "type", "") or ""
+
+    def resolved_limit(self, default: int) -> int:
+        """Return *default* when :attr:`limit` is ``None``, else the limit.
+
+        ``limit=0`` must survive as ``0`` (explicit empty request) rather
+        than being coerced to *default*.
+        """
+        return default if self.limit is None else self.limit
+
+
+class Collector(ABC):
+    """Abstract base class for all source collectors.
+
+    Concrete subclasses implement exactly one method:
+    :meth:`fetch_items`, which returns normalized
+    :class:`Item <autoinfo.models.Item>` instances.
+
+    Subclasses may expose additional source-specific methods (``fetch``,
+    ``search``, ``collect``, ``handle``, ``to_item``) — those are
+    implementation detail and are not part of the pipeline contract.
     """
 
     source_name: str = "base"
@@ -60,22 +147,18 @@ class BaseHandler(ABC):
         return bool(self.REQUIRES_APP_REVIEW)
 
     @abstractmethod
-    def fetch(self, *args: Any, **kwargs: Any) -> list[Item] | list[dict[str, Any]]:
-        """Fetch items from the source.
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch items from the source described by *ctx*.
 
-        Parameters (varies by handler type)
-        -----------------------------------
-        * RSS/Web/PDF: ``fetch(url: str) -> list[Item]``
-        * PubMed: ``fetch(pmids: list[str]) -> list[dict]``
-          (use :meth:`to_item` to convert dicts to ``Item``)
-        * Email: ``collect(config: dict) -> list[Item]``
-        * Webhook: ``handle(payload: dict, config: dict) -> Item``
-
-        Returns
-        -------
-        list[Item] | list[dict[str, Any]]
-            Zero or more collected items — :class:`Item` instances for the
-            handlers that build them directly, or raw ``dict`` payloads for
-            the handlers that expose :meth:`to_item` for the conversion.
+        This is the **only** pipeline-facing contract.  Implementations must
+        return :class:`Item <autoinfo.models.Item>` instances (converting
+        raw dict payloads via their own ``to_item()`` where they produce
+        dicts) and must honour ``ctx.limit`` — ``None`` means "handler
+        default", ``0`` means "return no items".
         """
         ...
+
+
+#: Backwards-compatible alias — existing handlers import ``BaseHandler``.
+#: New code should use :class:`Collector` (the enforced contract).
+BaseHandler = Collector

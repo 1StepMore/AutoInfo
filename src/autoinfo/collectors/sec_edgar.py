@@ -21,7 +21,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -208,6 +208,11 @@ class SecEdgarHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch SEC EDGAR filings and convert them to ``Item``."""
+        filings = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(f) for f in filings]
 
     def fetch(self, query: str = "", limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch recent filings for all configured tickers.

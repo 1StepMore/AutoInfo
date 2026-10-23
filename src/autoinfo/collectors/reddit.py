@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ RATE_LIMIT_RPM: int = 100  # Reddit's free-tier limit (requests/min)
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
+
 
 class RedditHandler(BaseHandler):
     """Fetch Reddit posts via OAuth2 client-credentials and search API.
@@ -99,9 +100,7 @@ class RedditHandler(BaseHandler):
             return self._access_token
 
         if not self.client_id or not self.client_secret:
-            raise ValueError(
-                "Reddit OAuth2 requires client_id and client_secret in config."
-            )
+            raise ValueError("Reddit OAuth2 requires client_id and client_secret in config.")
 
         auth_str = f"{self.client_id}:{self.client_secret}"
         auth_b64 = base64.b64encode(auth_str.encode()).decode()
@@ -231,6 +230,12 @@ class RedditHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Reddit posts for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        posts = self.fetch(query=query, limit=ctx.resolved_limit(10))
+        return [self.to_item(p) for p in posts]
+
     def fetch(self, query: str = "", limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Search configured subreddits and return parsed post dicts.
 
@@ -287,7 +292,9 @@ class RedditHandler(BaseHandler):
                             break
             except Exception:
                 logger.warning(
-                    "Reddit fetch failed for subreddit '%s'", subreddit, exc_info=True,
+                    "Reddit fetch failed for subreddit '%s'",
+                    subreddit,
+                    exc_info=True,
                 )
                 continue
 

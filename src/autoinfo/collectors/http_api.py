@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import trafilatura
 
-from autoinfo.collectors.base import BaseHandler, SourceFailure
+from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 from autoinfo.textutil import clean_feed_text
@@ -160,6 +160,35 @@ class HttpApiHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch the configured API endpoint (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            logger.warning(
+                "API source has no URL configured",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        settings = ctx.settings or (
+            dict(ctx.source_config.settings or {}) if ctx.source_config else {}
+        )
+        query = ctx.topic or ctx.query or settings.get("query", "") or ""
+        query_param = settings.get("query_param", "")
+        # #182 guard: skip query-driven sources (they configure query_param)
+        # when no topic is available — fetching unrelated content pollutes
+        # the KB.  Feed-style sources (no query_param — fixed-URL JSON feeds)
+        # are the API equivalent of an RSS feed and must fetch as-is.
+        if query_param and not query.strip():
+            logger.warning(
+                "API source has no query (no --topic and no source query); "
+                "skipping to avoid fetching unrelated content",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        limit = ctx.resolved_limit(20)
+        items = self.fetch(url, query=query, limit=limit)
+        return items[:limit]
 
     def fetch(self, url: str, query: str = "", limit: int = 20) -> list[Item]:
         """Fetch items from the configured API endpoint.

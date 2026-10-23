@@ -17,7 +17,7 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.config import SourceConfig
 from autoinfo.models import Item
 
@@ -146,6 +146,21 @@ class PubMedHandler(BaseHandler):
         data = resp.json()
         pmids: list[str] = data.get("esearchresult", {}).get("idlist", [])
         return pmids
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Search by topic/keywords then convert the articles to ``Item``."""
+        # Issue #182: when no topic is provided, fall back to the first
+        # domain topic keyword instead of the source name — searching
+        # "pubmed" returns off-topic records that the relevance filter
+        # then discards (found>0, new=0).
+        fallback_name = ctx.source_name or self.source_name
+        query = ctx.topic or (ctx.keywords[0] if ctx.keywords else fallback_name)
+        limit = ctx.resolved_limit(10)
+        pmids = ctx.pmids or self.search(query, max_results=limit)
+        if not pmids:
+            return []
+        articles = self.fetch(pmids)
+        return [self.to_item(a) for a in articles]
 
     def fetch(self, pmids: list[str]) -> list[dict[str, Any]]:
         """Fetch full article metadata for one or more PMIDs.

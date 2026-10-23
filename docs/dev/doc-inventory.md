@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 113 |
-| Total lines | 36824 |
+| Total lines | 36827 |
 | Active files | 84 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 12 files / 702 lines |
 | Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
-| Category — docs/dev | 31 files / 11108 lines |
+| Category — docs/dev | 31 files / 11111 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -78,7 +78,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/AutoInfo-development-brief-v3.md` | 247 | docs/dev | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
 | `dev/AutoInfo开发简报.md` | 104 | docs/dev | active | — |
-| `dev/acceptance-framework.md` | 505 | docs/dev | active | — |
+| `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
 | `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |

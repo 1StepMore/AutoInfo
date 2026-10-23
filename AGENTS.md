@@ -102,12 +102,12 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 31 CLI command groups
-│       ├── mcp/                     # MCP server (149 tools)
+│       ├── mcp/                     # MCP server (149 tools); tools/ = per-domain Tool schema registry (#581)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap)
+│       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap) + registry.py (source_type → Collector lookup; enforced `fetch_items(ctx)` contract)
 │       ├── llm.py                   # LLM extraction engine
-│       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video) — __init__.py + export.py (KB export family: export_kb + all format exporters) + entries.py (shared deterministic entry filters) + ebook.py (B23: EPUB/MOBI/audiobook) + video.py (HyperFrames HTML+GSAP→MP4, 36+8 themes) + video_assets/ (themes + templates) + seo.py + free_tier.py (free-tier product limits)
+│       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video) — __init__.py (hub + product orchestration) + export.py (KB export family: export_kb + all format exporters) + entries.py (shared deterministic entry filters) + grouping.py (thematic grouping: LLM/deterministic/keyword + degradation state) + render.py (report + generic Markdown/HTML/JSON/agent renderers) + ebook.py (B23: EPUB/MOBI/audiobook) + video.py (HyperFrames HTML+GSAP→MP4, 36+8 themes) + video_assets/ (themes + templates) + seo.py + free_tier.py (free-tier product limits)
 │       ├── data/                     # Domain configs (domains/*/sources.yaml) + 8 output product templates (incl. premium-briefing.md.j2, enterprise-briefing.md.j2) + prompts/ (16 LLM prompt files, loaded via prompts.py)
 │       ├── prompts.py                # Prompt registry + loader (issue #426): PROMPTS_DIR / list_prompts / get_prompt / render_prompt / PROMPT_VERSIONS / PROMPT_PLACEHOLDERS. `$name` placeholders — NOT `{name}` (several prompts carry literal JSON braces). Prompt text is byte-pinned in tests/test_prompts.py.
 │       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
@@ -153,6 +153,10 @@ Phase 1 — Fetch:     autoinfo collect --domain medical
   → Raw JSON cached to collections/
   → Dedup (URL → DOI → fuzzy title → semantic)
   → Collection log written
+
+Every handler implements the `Collector` ABC's `fetch_items(ctx)` contract.
+`collect.py` resolves it through `collectors/registry.py` — adding a source is
+one class plus one registration, never a dispatch-chain edit.
 
 Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
   → Reads cached raw items
